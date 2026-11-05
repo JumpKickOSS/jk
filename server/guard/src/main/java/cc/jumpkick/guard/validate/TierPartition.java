@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.validate;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
@@ -104,6 +105,8 @@ public final class TierPartition {
                         new LinkedHashSet<>(e.getValue().includeTags()),
                         new LinkedHashSet<>(e.getValue().excludeTags())));
             }
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             // a manifest that does not parse has its own diagnostics upstream of every guard lane
             return Table.EMPTY;

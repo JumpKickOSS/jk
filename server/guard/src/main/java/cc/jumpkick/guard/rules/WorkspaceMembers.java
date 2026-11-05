@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.rules;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
@@ -22,6 +23,8 @@ final class WorkspaceMembers {
         JkBuild build;
         try {
             build = JkBuildParser.parse(manifest);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (RuntimeException unparseable) {
             return out; // parse-build reports it
         }

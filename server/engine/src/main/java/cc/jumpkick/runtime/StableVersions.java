@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Log;
@@ -91,6 +92,8 @@ public final class StableVersions {
                 if (group.equals(moduleGroup)
                         && artifact.equals(module.project().name())) return true;
             }
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             Log.debug("requireExists: workspace unreadable; checking the repositories", e);
         }

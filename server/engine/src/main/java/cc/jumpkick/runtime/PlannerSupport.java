@@ -17,6 +17,7 @@ import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -301,12 +302,8 @@ public final class PlannerSupport {
             Path dir = root.resolve(module);
             Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.exists(manifest)) continue;
-            JkBuild sib;
-            try {
-                sib = JkBuildParser.parse(manifest);
-            } catch (IOException | RuntimeException ignored) {
-                continue;
-            }
+            JkBuild sib = siblingOrNull(manifest);
+            if (sib == null) continue;
             BuildLayout layout = BuildLayout.of(dir, sib);
             // An assembly plugin runs from its -all.jar — that's the artifact
             // that bundles plugin-api/PluginMain and the plugin's deps; a
@@ -507,12 +504,8 @@ public final class PlannerSupport {
         for (String module : rootManifest.workspaceModules()) {
             Path manifest = ManifestPaths.manifestIn(root.resolve(module));
             if (!Files.exists(manifest)) continue;
-            JkBuild sib;
-            try {
-                sib = JkBuildParser.parse(manifest);
-            } catch (IOException | RuntimeException ignored) {
-                continue;
-            }
+            JkBuild sib = siblingOrNull(manifest);
+            if (sib == null) continue;
             out.put(sib.project().name(), sib);
             out.put(sib.project().group() + ":" + sib.project().name(), sib);
         }
@@ -527,19 +520,25 @@ public final class PlannerSupport {
             Path dir = root.resolve(module);
             Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.exists(manifest)) continue;
-            try {
-                JkBuild sib = JkBuildParser.parse(manifest);
-                if (sib.project().group().equals(sibling.project().group())
-                        && sib.project().name().equals(sibling.project().name())) {
-                    return dir;
-                }
-            } catch (IOException | RuntimeException e) {
-                // an unparsable sibling cannot be the one already parsed
-                Log.debug("siblingDir: an unparsable sibling cannot be the one already parsed", e);
-            }
+            // an unparsable sibling cannot be the one already parsed
+            JkBuild sib = siblingOrNull(manifest);
+            if (sib != null
+                    && sib.project().group().equals(sibling.project().group())
+                    && sib.project().name().equals(sibling.project().name())) return dir;
         }
         throw new IOException("workspace module for " + sibling.project().group() + ":"
                 + sibling.project().name() + " is no longer listed at " + root);
+    }
+
+    /** A sibling's manifest, or null when it does not parse; a config.toml that does not parse is thrown. */
+    private static @Nullable JkBuild siblingOrNull(Path manifest) {
+        try {
+            return JkBuildParser.parse(manifest);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
+        } catch (IOException | RuntimeException unparsable) {
+            return null;
+        }
     }
 
     /**
@@ -1090,6 +1089,8 @@ public final class PlannerSupport {
             if (rootOpt.isEmpty()) return List.of();
             root = rootOpt.get();
             rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             return List.of();
         }
@@ -1101,12 +1102,8 @@ public final class PlannerSupport {
             Path dir = root.resolve(module);
             Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(manifest)) continue;
-            JkBuild sib;
-            try {
-                sib = JkBuildParser.parse(manifest);
-            } catch (IOException | RuntimeException ignored) {
-                continue;
-            }
+            JkBuild sib = siblingOrNull(manifest);
+            if (sib == null) continue;
             byDir.put(dir, sib);
             indexWorkerSibling(dirByName, dirByCoord, dir, sib);
         }

@@ -6,6 +6,7 @@ import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.CacheTree;
@@ -571,6 +572,8 @@ public final class PreflightMemo {
                 }
             }
             return Optional.of(new BuildGraph.Result(List.copyOf(topo), Map.copyOf(edges), List.of()));
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return Optional.empty();
         }
@@ -843,6 +846,8 @@ public final class PreflightMemo {
             Path manifest = ManifestPaths.manifestIn(moduleDir);
             JkBuild project = Files.isRegularFile(manifest) ? JkBuildParser.parse(manifest) : null;
             return fingerprintModule(moduleDir, project, skipTests, "");
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return uncertain(moduleDir, e);
         }

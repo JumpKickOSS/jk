@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Linking;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -36,6 +37,8 @@ public final class WorkspaceArtifacts {
             JkBuild build;
             try {
                 build = JkBuildParser.parse(buildFile);
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (Exception ignored) {
                 continue;
             }

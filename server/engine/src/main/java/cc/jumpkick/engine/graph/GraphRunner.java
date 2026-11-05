@@ -9,6 +9,7 @@ import cc.jumpkick.config.GraphConfig;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.plugin.HeapLadder;
@@ -666,6 +667,8 @@ public final class GraphRunner {
                     WorkspaceLoader.loadModules(root, build).entrySet()) {
                 out.putIfAbsent(m.getKey().toAbsolutePath().normalize(), m.getValue());
             }
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException unparsable) {
             Log.debug("graph: no module list for " + root, unparsable);
         }

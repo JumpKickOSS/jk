@@ -5,6 +5,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ManifestImage;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.image.ImageConfig;
@@ -58,6 +59,8 @@ final class NodeImagePlans {
     static boolean isNodeModule(Path manifest, Path projectDir) {
         try {
             return NodeShape.kind(JkBuildParser.parse(manifest), projectDir) == NodeShape.Kind.MODULE;
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             return false;
         }

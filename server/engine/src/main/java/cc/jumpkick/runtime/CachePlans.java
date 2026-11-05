@@ -12,6 +12,7 @@ import cc.jumpkick.config.DiskPressure;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
@@ -505,6 +506,8 @@ public final class CachePlans {
                     dirs.add(mod);
                 }
             }
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             // Standalone project, or an unparseable manifest: just this dir.
             Log.debug("resolveModuleDirs: Standalone project, or an unparseable manifest", e);
@@ -523,6 +526,8 @@ public final class CachePlans {
             JkBuild project;
             try {
                 project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (Exception e) {
                 continue; // no/invalid manifest here — nothing to tag
             }

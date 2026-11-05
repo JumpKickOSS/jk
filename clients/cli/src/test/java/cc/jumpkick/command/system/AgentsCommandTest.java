@@ -48,4 +48,33 @@ class AgentsCommandTest {
         assertThat(dir.resolve(".claude/settings.json")).doesNotExist();
         assertThat(Files.readString(dir.resolve(AgentsGuide.FILE))).isEqualTo("# Mine\n\nrules\n");
     }
+
+    @Test
+    void agents_beside_a_broken_config_toml_names_its_position_and_writes_nothing(@TempDir Path home, @TempDir Path dir)
+            throws Exception {
+        Path config = Files.writeString(home.resolve("config.toml"), "[network\n");
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "g"
+                name = "p"
+                version = "1.0"
+                java = 25
+                """);
+        String prev = System.getProperty("jk.env.JK_HOME");
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        try {
+            int[] exit = new int[1];
+            String err = Capture.stderr(() -> {
+                exit[0] = Jk.execute("agents", dir.toString());
+            });
+
+            assertThat(exit[0]).isEqualTo(Exit.CONFIG);
+            assertThat(err).contains(config + ":1:");
+            assertThat(dir.resolve(AgentsGuide.FILE))
+                    .as("the guide's format line depends on the manifest, which cannot be read")
+                    .doesNotExist();
+        } finally {
+            if (prev == null) System.clearProperty("jk.env.JK_HOME");
+            else System.setProperty("jk.env.JK_HOME", prev);
+        }
+    }
 }

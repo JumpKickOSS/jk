@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -152,6 +153,8 @@ public final class NativeEffort {
                 }
             }
             return new InputSplit(app, deps);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return new InputSplit(0, 0);
         }

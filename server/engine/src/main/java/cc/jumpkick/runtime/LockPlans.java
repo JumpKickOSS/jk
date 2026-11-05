@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.compat.LibraryRegistryMirror;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Errors;
@@ -532,6 +533,8 @@ public final class LockPlans {
             if (!wsRootBuild.isWorkspaceRoot()) return Variants.unionDependencies(project);
             var siblings = WorkspaceLoader.loadModules(wsRoot, wsRootBuild);
             return WorkspaceMerge.applyToModule(wsRootBuild, project, siblings.values());
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception ignored) {
             return Variants.unionDependencies(project);
         }
@@ -608,6 +611,8 @@ public final class LockPlans {
                 out.add(new LockOrchestrator.Member(rel, applied.manifest(), applied.carried()));
             }
             return new LockMembers(out, workspaceVersions(rootManifest));
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             Log.debug("lockMembers: members unreadable, the merged solve stands alone", e);
             return LockMembers.NONE;

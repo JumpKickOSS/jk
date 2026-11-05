@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -124,6 +125,8 @@ public final class OutputArtifacts {
                 // the full parse, as the engine's own layout does: a member inherits its version from
                 // the root, and the jar is named after the inherited one
                 build = JkBuildParser.parse(manifest);
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (RuntimeException unparseable) {
                 continue;
             }

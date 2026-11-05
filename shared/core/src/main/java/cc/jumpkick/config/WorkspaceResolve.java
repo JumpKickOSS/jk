@@ -127,6 +127,8 @@ public final class WorkspaceResolve {
                 out.add(m.project().group() + ":" + m.project().name());
             }
             return out;
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return Set.of(); // best-effort, same policy as applyWorkspace
         }
@@ -154,6 +156,8 @@ public final class WorkspaceResolve {
             index(out, root);
             for (JkBuild m : WorkspaceLoader.loadModules(rootDir.get(), root).values()) index(out, m);
             return Map.copyOf(out);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return Map.of();
         }

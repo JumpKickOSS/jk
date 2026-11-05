@@ -3,6 +3,7 @@ package cc.jumpkick.builds;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.library.LibraryCatalog;
@@ -71,6 +72,8 @@ public final class DeclaredDeps {
             for (var e : build.dependencies().byScope().entrySet()) {
                 addDeps(e.getValue(), catalog, out);
             }
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             // best-effort
             Log.debug("collectFromToml: best-effort", e);
@@ -95,6 +98,8 @@ public final class DeclaredDeps {
             if (rootBuild.isWorkspaceRoot()) {
                 rels = rootBuild.workspaceModules();
             }
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             TomlScan scan = TomlScan.scan(rootToml, "workspace.modules");
             rels = scan.stringArray("workspace.modules");

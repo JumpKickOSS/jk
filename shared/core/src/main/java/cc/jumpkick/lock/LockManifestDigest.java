@@ -2,6 +2,7 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
@@ -77,6 +78,8 @@ public final class LockManifestDigest {
                         addPathDepManifests(parts, owner, member.getKey(), member.getValue(), inputs);
                     }
                 }
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (RuntimeException e) {
                 // parse failure: still digest whatever files we found
                 Log.debug("compute: parse failure", e);

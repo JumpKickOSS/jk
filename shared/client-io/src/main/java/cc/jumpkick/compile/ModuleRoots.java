@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.layout.LanguageRuntimes;
 import cc.jumpkick.lock.LockPaths;
@@ -173,6 +174,8 @@ final class ModuleRoots {
         try {
             JkBuild target = JkBuildParser.parse(manifest);
             return target.project().group() + ":" + target.project().name();
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             return null;
         }
