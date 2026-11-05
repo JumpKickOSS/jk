@@ -187,7 +187,11 @@ variables, the request's values over the engine's, so a test that downloads goes
 engine does ([Build § Worker environment](build.md#worker-environment-env)). A plugin step whose
 own Maven resolver fetches outside the lock (Quarkus's build-time closure) is handed each
 repository with the proxy jk chose for its URL, `[network]` and the shell included, so it does not
-fall back to reading `settings.xml` alone. A credential in a
+fall back to reading `settings.xml` alone. The `git` that clones the template catalogs
+(`[templates] official` and `[templates.sources]`, over http or https) runs with the proxy jk
+chose for the source's URL as its `http.proxy`, and with git's proxy off for a host jk sends
+direct; with no proxy configured for jk, git's own configuration decides. The value reaches git
+through its environment, never its command line. A credential in a
 proxy URL is never printed; an unusable value is reported
 by the name that set it (`ignoring https_proxy: …`) and the request goes direct. For a proxy that
 wants Basic on an https `CONNECT`, jk clears the JDK's `jdk.http.auth.tunneling.disabledSchemes`
@@ -280,8 +284,7 @@ firewall that allows only your mirrors costs you that feature's freshness, not a
 | `github.com/JetBrains/kotlin`, `services.gradle.org` | the Kotlin compiler and Gradle distributions, when a project uses them | `[mirrors] kotlin`, `[mirrors] gradle` | the build that needs them fails |
 
 A repository a project or a POM declares is asked at its own URL unless a `mirror-of` table
-matches it. A `[network] proxy` carries all of the above except git, which reads its own
-configuration.
+matches it. A `[network] proxy` carries all of the above, the template catalog's git included.
 
 ## Node network
 

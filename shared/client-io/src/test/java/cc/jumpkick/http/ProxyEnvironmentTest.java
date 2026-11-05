@@ -334,6 +334,26 @@ class ProxyEnvironmentTest {
         assertThat(env.noProxyHosts()).containsExactly("intranet", ".corp", "nexus.local");
     }
 
+    @Test
+    void git_is_told_the_proxy_jk_would_use_and_to_go_direct_where_jk_would() {
+        Map<String, String> shell = Map.of("https_proxy", "http://u:p@proxy.corp:3128", "no_proxy", "git.corp");
+        ProxyEnvironment env = new ProxyEnvironment(() -> NetworkConfig.EMPTY, () -> shell::get);
+
+        assertThat(env.gitHttpProxy(URI.create("https://github.com/JumpKickOSS/jk-templates.git")))
+                .contains("http://u:p@proxy.corp:3128");
+        assertThat(env.gitHttpProxy(URI.create("https://git.corp/t.git")))
+                .as("a no-proxy host: git's empty http.proxy turns its own proxy off")
+                .contains("");
+        assertThat(env.gitHttpProxy(URI.create("https://127.0.0.1:8080/t.git")))
+                .as("loopback goes direct")
+                .contains("");
+        assertThat(env.gitHttpProxy(URI.create("http://github.com/t.git")))
+                .as("no proxy for http: git's own configuration decides")
+                .isEmpty();
+        assertThat(env.gitHttpProxy(URI.create("file:///srv/t.git"))).isEmpty();
+        assertThat(env.gitHttpProxy(URI.create("ssh://git@github.com/t.git"))).isEmpty();
+    }
+
     private static MavenSettings maven(Path dir, String xml) throws Exception {
         Path file = dir.resolve("settings.xml");
         Files.writeString(file, xml);

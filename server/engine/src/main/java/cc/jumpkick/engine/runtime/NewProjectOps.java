@@ -17,6 +17,7 @@ import cc.jumpkick.giter8.PluginTemplates;
 import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.repo.RepoGroup;
@@ -407,7 +408,7 @@ public final class NewProjectOps {
         Optional<TemplateSpec> spec = resolveIndexed(ref, lang, cwd);
         if (spec.isEmpty()) {
             try {
-                OfficialTemplatesFreshen.refreshQuiet(s -> {});
+                OfficialTemplatesFreshen.refreshQuiet(s -> {}, ProxyEnvironment.ambient()::gitHttpProxy);
             } catch (Throwable e) {
                 // best-effort
                 Log.debug("resolveIndexed: best-effort", e);
