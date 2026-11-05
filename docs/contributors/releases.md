@@ -8,9 +8,9 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.50.2`** | The root `jk.toml` version: the next release, never written with `-SNAPSHOT` |
-| Tag **`v0.50.2`** | Cut from that line when it is released |
-| Prior | **`0.50.1`** — previous release; **`0.10.1`** first public |
+| **`0.50.3`** | The root `jk.toml` version: the next release, never written with `-SNAPSHOT` |
+| Tag **`v0.50.3`** | Cut from that line when it is released |
+| Prior | **`0.50.2`** — previous release; **`0.10.1`** first public |
 | Later | Semver-ish: `0.30.1`, `0.31.0`, … |
 
 The root `jk.toml` `version` is the one place the version is written, and it always names the
@@ -30,6 +30,26 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.50.3
+
+- **Logins live in the OS keychain.** `jk repo login` and `jk auth login` keep the secret in the
+  macOS keychain, the Windows Credential Manager or the Secret Service when one answers, and in the
+  file without a word on a CI server, in a container or with no keychain. A locked keychain refuses
+  at once instead of prompting.
+- **Secrets from files and helpers.** A credential, object-store key or mirror in
+  `~/.jk/config.toml` can read its secret from `${file:path}` or a helper command, `${cmd:...}`,
+  re-run once when the repository refuses its value. `settings.xml` expands `${env.NAME}` and
+  decrypts `{...}` and Maven 4 `mvnenc` passwords.
+- **A mirror really stands in.** A `[repositories.<id>]` table with `mirror-of` is a native mirror,
+  and nothing goes around a mirror, native or `settings.xml`: scripts, tools, formatter jars, plugin
+  workers, the library registry, the Maven distribution, `jk add --ping` and the calibration probe
+  all go through it. The lock still names the logical repository.
+- **A broken `config.toml` is named, not ignored.** A file that does not parse fails every command
+  that resolves, fetches or authenticates, naming the file, line and column; `jk doctor` keeps
+  running and points at the spot.
+- **Release jars are the same bytes from every builder.** The embedded SBOM names jk without its
+  version, and Guava is managed at 33.8.0-jre, past the CompactHashMap deserialization advisory.
 
 ### 0.50.2
 
