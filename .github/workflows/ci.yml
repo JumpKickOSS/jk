@@ -261,6 +261,17 @@ jobs:
       - name: The build must not rewrite the committed lock
         run: git diff --exit-code -- jk-lock.toml
 
+      # A CI runner and a build container have no desktop session: a login there must keep its
+      # secret in the owner-only file without a word about a keychain, and a lock must authenticate
+      # with it. The check installs target/dist/jk into a throwaway home and runs it in an image
+      # with no D-Bus; the runner's docker is required, so a missing runtime fails instead of
+      # skipping.
+      - name: Headless login and lock in a container
+        timeout-minutes: 10
+        env:
+          JK_HEADLESS_REQUIRE_RUNTIME: '1'
+        run: bash scripts/test-headless-keychain.sh target/dist/jk
+
       # jk audits itself: every row of the committed lock against OSV, by the checkout's own jk
       # and its own audit worker. HIGH and CRITICAL fail the job, and so does an advisory OSV left
       # unlabelled; the machine view is the artifact and the step below attributes a red run to
