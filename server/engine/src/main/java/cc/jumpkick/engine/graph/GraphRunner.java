@@ -111,6 +111,15 @@ public final class GraphRunner {
 
     public static GraphAck run(GraphRequest req, Consumer<GraphProgress> progress)
             throws IOException, InterruptedException {
+        return run(req, progress, true);
+    }
+
+    /**
+     * As {@link #run(GraphRequest, Consumer)}; {@code compile} false reads the classes as they
+     * are, which is what the refresh after a build wants (see {@link #refreshExisting}).
+     */
+    private static GraphAck run(GraphRequest req, Consumer<GraphProgress> progress, boolean compile)
+            throws IOException, InterruptedException {
         Path root = rootOf(Path.of(req.dir()));
         ReentrantLock lock = LOCKS.computeIfAbsent(root, k -> new ReentrantLock());
         lock.lock();
@@ -121,7 +130,7 @@ public final class GraphRunner {
             } catch (IOException | RuntimeException refused) {
                 return GraphAck.error(String.valueOf(refused.getMessage()));
             }
-            String skipped = req.noRefresh() ? null : compileStale(root);
+            String skipped = req.noRefresh() || !compile ? null : compileStale(root);
             ClassIndexes indexes = req.noRefresh() ? ClassIndexes.NONE : classIndexes(root);
             List<String> modules = req.noRefresh() ? List.of() : moduleRows(root);
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
@@ -219,6 +228,12 @@ public final class GraphRunner {
      * agent reads next, and the one committed with the change, is the tree the build just compiled,
      * not the one before it. A workspace with no graph gets none: the first graph question makes
      * one. Best-effort: a refresh that fails is logged, and the next graph operation refreshes anyway.
+     *
+     * <p>It compiles nothing, even over sources that moved since the classes: a compile it submitted
+     * would run on the engine's own settings, not the build's (the default cache rather than the
+     * build's {@code --cache-dir}, none of its variant, offline or JVM settings), for modules that
+     * build chose not to compile. The graph notes the edited files, and the next graph question
+     * compiles them under its own request.
      */
     public static void refreshExisting(Path dir) {
         Path root = rootOf(dir);
@@ -241,7 +256,7 @@ public final class GraphRunner {
                 null,
                 List.of());
         try {
-            GraphAck ack = run(build, progress -> {});
+            GraphAck ack = run(build, progress -> {}, false);
             if (!ack.ok()) Log.warn("jk: the code graph was not refreshed after the build: " + ack.error());
         } catch (IOException | RuntimeException failed) {
             Log.warn("jk: the code graph was not refreshed after the build", failed);
