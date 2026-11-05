@@ -2,6 +2,7 @@
 package cc.jumpkick.git;
 
 import cc.jumpkick.forge.ForgeGitCredentials;
+import cc.jumpkick.util.GitProxy;
 import java.nio.file.Path;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.provider.Arguments;
@@ -16,21 +17,31 @@ final class GitBackendsTestSupport {
 
     @FunctionalInterface
     interface BackendFactory {
-        GitBackend create(Path gitRoot);
+        GitBackend create(Path gitRoot, GitProxy proxy);
+
+        /** A backend that leaves every remote to git's own proxy configuration. */
+        default GitBackend create(Path gitRoot) {
+            return create(gitRoot, GitProxy.NONE);
+        }
     }
 
     /** JUnit {@code @MethodSource}: (name, factory) for each available backend. */
     static Stream<Arguments> backends() {
         Stream.Builder<Arguments> b = Stream.builder();
-        b.add(Arguments.of("jgit", (BackendFactory) gitRoot -> new JGitExtension(gitRoot, new ForgeGitCredentials())));
+        b.add(Arguments.of("jgit", (BackendFactory)
+                (gitRoot, proxy) -> new JGitExtension(gitRoot, new ForgeGitCredentials(), proxy)));
         GitCliExtension.detect()
                 .ifPresent(git -> b.add(Arguments.of("cli", (BackendFactory)
-                        gitRoot -> new GitCliExtension(gitRoot, new ForgeGitCredentials(), git))));
+                        (gitRoot, proxy) -> new GitCliExtension(gitRoot, new ForgeGitCredentials(), git, proxy))));
         // The same git taken for 2.31: the floor below the format placeholders a newer one reads
         // in a single command, so the older commands' answers are held to the same behaviour.
         GitCliExtension.detect()
-                .ifPresent(git -> b.add(Arguments.of("cli-2.31", (BackendFactory) gitRoot -> new GitCliExtension(
-                        gitRoot, new ForgeGitCredentials(), new GitCliExtension.GitCli(git.exe(), 2, 31)))));
+                .ifPresent(
+                        git -> b.add(Arguments.of("cli-2.31", (BackendFactory) (gitRoot, proxy) -> new GitCliExtension(
+                                gitRoot,
+                                new ForgeGitCredentials(),
+                                new GitCliExtension.GitCli(git.exe(), 2, 31),
+                                proxy))));
         return b.build();
     }
 }

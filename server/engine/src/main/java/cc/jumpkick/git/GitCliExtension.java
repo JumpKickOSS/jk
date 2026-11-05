@@ -7,6 +7,7 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
+import cc.jumpkick.util.GitProxy;
 import cc.jumpkick.util.GitUrl;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -37,7 +38,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Credentials (forge tokens, HTTP Basic over https) are fed to git through the child process
  * <em>environment</em> ({@code GIT_CONFIG_*} → a URL-scoped {@code http.<url>.extraHeader}) so the
- * secret never appears in {@code argv} ({@code ps}) or on disk.
+ * secret never appears in {@code argv} ({@code ps}) or on disk. The {@code http.proxy} jk chose for
+ * the remote ({@link GitProxy}) travels the same way, after the credential.
  *
  * <p>git is a worker like every other fork: it runs with the {@link WorkerEnv} allow-list plus what
  * this class adds for it, never the engine's whole environment. The shell that started the daemon
@@ -132,17 +134,24 @@ public final class GitCliExtension implements GitBackend {
     private final GitCli git;
     private final long localTimeoutSec;
     private final long networkTimeoutSec;
+    private final GitProxy proxy;
 
-    public GitCliExtension(Path gitRoot, ForgeGitCredentials credentials, GitCli git) {
-        this(gitRoot, credentials, git, LOCAL_TIMEOUT_SEC, NETWORK_TIMEOUT_SEC);
+    public GitCliExtension(Path gitRoot, ForgeGitCredentials credentials, GitCli git, GitProxy proxy) {
+        this(gitRoot, credentials, git, proxy, LOCAL_TIMEOUT_SEC, NETWORK_TIMEOUT_SEC);
     }
 
     /** With explicit timeouts for local and network commands, in seconds; tests shorten them. */
     GitCliExtension(
-            Path gitRoot, ForgeGitCredentials credentials, GitCli git, long localTimeoutSec, long networkTimeoutSec) {
+            Path gitRoot,
+            ForgeGitCredentials credentials,
+            GitCli git,
+            GitProxy proxy,
+            long localTimeoutSec,
+            long networkTimeoutSec) {
         this.gitRoot = Objects.requireNonNull(gitRoot, "gitRoot");
         this.credentials = Objects.requireNonNull(credentials, "credentials");
         this.git = Objects.requireNonNull(git, "git");
+        this.proxy = Objects.requireNonNull(proxy, "proxy");
         this.localTimeoutSec = localTimeoutSec;
         this.networkTimeoutSec = networkTimeoutSec;
     }
@@ -370,17 +379,18 @@ public final class GitCliExtension implements GitBackend {
 
     /**
      * Run {@code git <args>} with the worker allow-list environment plus git's own switches (no
-     * prompts, no pager, C locale). When {@code credUrl} is a https URL with resolvable forge
-     * credentials, inject an {@code Authorization: Basic} header scoped to that URL through the
-     * environment (never argv). A command that outlives {@code timeoutSec} dies with its whole
+     * prompts, no pager, C locale). {@code remoteUrl} names the remote a network command talks to:
+     * git reaches it through the {@code http.proxy} jk chose for it, and when it is a https URL
+     * with resolvable forge credentials, an {@code Authorization: Basic} header scoped to that URL
+     * is injected through the environment (never argv). A command that outlives {@code timeoutSec} dies with its whole
      * process tree: {@code git-remote-https} and {@code ssh} are children that would otherwise
      * keep the transfer, and the stdout pipe, going.
      */
-    private ProcResult exec(@Nullable Path cwd, @Nullable String credUrl, List<String> args, long timeoutSec)
+    private ProcResult exec(@Nullable Path cwd, @Nullable String remoteUrl, List<String> args, long timeoutSec)
             throws IOException {
         List<String> lead = new ArrayList<>();
         Map<String, String> credEnv = new HashMap<>();
-        if (credUrl != null) prepareCredentials(credUrl, lead, credEnv);
+        if (remoteUrl != null) prepareCredentials(remoteUrl, lead, credEnv);
 
         List<String> cmd = new ArrayList<>();
         cmd.add(git.exe());
@@ -394,6 +404,7 @@ public final class GitCliExtension implements GitBackend {
         extras.put("GIT_PAGER", "cat");
         extras.put("LC_ALL", "C");
         extras.putAll(credEnv);
+        if (remoteUrl != null) proxy.httpProxy(remoteUrl).ifPresent(value -> routeThrough(value, extras));
         replaceEnvironment(pb, extras);
 
         Process p;
@@ -430,6 +441,19 @@ public final class GitCliExtension implements GitBackend {
     }
 
     /**
+     * Set git's {@code http.proxy} to {@code value} among {@code extras}, after the credential
+     * entry. A proxy also blanks {@code no_proxy}: jk applied its own bypass list when it chose the
+     * proxy, and the list the worker environment carries underneath must not overrule that choice.
+     */
+    private static void routeThrough(String value, Map<String, String> extras) {
+        GitProxy.configure(extras, value);
+        if (!value.isEmpty()) {
+            extras.put("no_proxy", "");
+            extras.put("NO_PROXY", "");
+        }
+    }
+
+    /**
      * The child's whole environment: the worker allow-list, the caller's {@code GIT_*} settings that
      * {@link #passes}, {@code SSH_AUTH_SOCK} so an ssh remote can still reach the user's agent (a
      * socket path, not a secret), then {@code extras} on top.
@@ -452,7 +476,7 @@ public final class GitCliExtension implements GitBackend {
      * Whether the caller's {@code name} reaches git: its {@code GIT_*} transport, auth and tracing
      * settings, but not the variables that say which repository to work on (a git hook running
      * {@code jk} has {@code GIT_DIR} and {@code GIT_INDEX_FILE} pointing at the user's checkout, not
-     * jk's cache), nor the {@code GIT_CONFIG_COUNT} channel this class injects credentials through.
+     * jk's cache), nor the {@code GIT_CONFIG_COUNT} channel this class injects credentials and the proxy through.
      */
     static boolean passes(String name) {
         if (!name.startsWith("GIT_") || GIT_LOCATION.contains(name)) return false;

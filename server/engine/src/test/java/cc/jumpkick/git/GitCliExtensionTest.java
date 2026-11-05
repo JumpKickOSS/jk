@@ -11,6 +11,7 @@ import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.testing.Await;
+import cc.jumpkick.util.GitProxy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -117,6 +118,7 @@ class GitCliExtensionTest {
                 dir.resolve("git-root"),
                 new ForgeGitCredentials(),
                 new GitCliExtension.GitCli(git.toString(), 2, 40),
+                GitProxy.NONE,
                 timeoutSec,
                 timeoutSec);
     }

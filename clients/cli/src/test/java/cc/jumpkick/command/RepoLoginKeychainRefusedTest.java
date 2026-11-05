@@ -6,9 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.IsolatedHome;
 import cc.jumpkick.cli.testing.Capture;
-import cc.jumpkick.cli.testing.RecordingProxy;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import cc.jumpkick.testing.RecordingProxy;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;

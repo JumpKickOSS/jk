@@ -5,6 +5,7 @@ import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
+import cc.jumpkick.util.GitProxy;
 import cc.jumpkick.util.GitUrl;
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -35,7 +36,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Pure-Java {@link GitBackend} backed by JGit. Always available; the fallback when no {@code git}
- * command is found. Runs in-process in the engine JVM.
+ * command is found. Runs in-process in the engine JVM; its http(s) connections take the proxy jk
+ * chose for the remote ({@link JGitProxyRoute}), as a {@code git} child's do.
  */
 public final class JGitExtension implements GitBackend {
 
@@ -46,11 +48,13 @@ public final class JGitExtension implements GitBackend {
 
     private final Path gitRoot;
     private final ForgeGitCredentials credentials;
+    private final GitProxy proxy;
     static final Pattern DESCRIBE_SUFFIX = Pattern.compile("^(.*)-\\d+-g[0-9a-fA-F]+$");
 
-    public JGitExtension(Path gitRoot, ForgeGitCredentials credentials) {
+    public JGitExtension(Path gitRoot, ForgeGitCredentials credentials, GitProxy proxy) {
         this.gitRoot = Objects.requireNonNull(gitRoot, "gitRoot");
         this.credentials = Objects.requireNonNull(credentials, "credentials");
+        this.proxy = Objects.requireNonNull(proxy, "proxy");
     }
 
     /** Build a per-URL credentials provider from the resolved forge token, or null for anonymous. */
@@ -62,6 +66,10 @@ public final class JGitExtension implements GitBackend {
 
     @Override
     public GitFetcher.RemoteRefs listRefs(GitSource source) throws IOException {
+        return JGitProxyRoute.call(proxy, () -> lsRemote(source));
+    }
+
+    private GitFetcher.RemoteRefs lsRemote(GitSource source) throws IOException {
         CredentialsProvider creds = providerFor(source.canonicalUrl());
         try {
             // No setHeads/setTags filter: those exclude the symbolic HEAD. We want every ref and
@@ -139,6 +147,10 @@ public final class JGitExtension implements GitBackend {
     }
 
     Path ensureBareClone(GitSource source) throws IOException {
+        return JGitProxyRoute.call(proxy, () -> cloneOrFetch(source));
+    }
+
+    private Path cloneOrFetch(GitSource source) throws IOException {
         CredentialsProvider creds = providerFor(source.canonicalUrl());
         Path bareDir = gitRoot.resolve("db").resolve(GitUrl.canonicalHash(source.canonicalUrl()));
         if (Files.isDirectory(bareDir.resolve("HEAD")) || Files.exists(bareDir.resolve("HEAD"))) {
