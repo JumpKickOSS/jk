@@ -757,7 +757,7 @@ population = { examined = 4 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1401, sites = 102035 }
+"server/engine" = { classes = 1407, sites = 102544 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 59, sites = 3494 }
 "server/resolver" = { classes = 123, sites = 7334 }
@@ -1017,10 +1017,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.engine.EngineMaintenance#runMaintenanceCycle()V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.EngineServer#<init>(Lcc/jumpkick/wire/EnginePaths$Paths;Lcc/jumpkick/config/JkEngineConfig;Lcc/jumpkick/config/JkHttpConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/function/Consumer;)V -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"

@@ -11,6 +11,7 @@ import cc.jumpkick.engine.plugin.UserPluginPins;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Forks;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.ShadowManifests;
@@ -105,7 +106,14 @@ public final class EngineMain {
                 return 1;
             }
             JkHttpConfig httpConfig = JkHttpConfig.resolve().orElse(null);
-            EngineServer server = new EngineServer(paths, config, httpConfig, JkVersion.VERSION, Log::info);
+            EngineServer server = new EngineServer(
+                    paths,
+                    config,
+                    httpConfig,
+                    JkVersion.VERSION,
+                    BuildIdentity.buildId(),
+                    Log::info,
+                    JkDirs.userConfigFile());
             if (logSink != null) server.logSink(logSink);
             OwnerWatchdog.start(server::close, Log::info);
             server.run();

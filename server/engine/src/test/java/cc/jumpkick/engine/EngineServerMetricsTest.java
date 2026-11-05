@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.MetricsRequest;
@@ -88,6 +89,70 @@ class EngineServerMetricsTest extends EngineServerHarness {
             assertThat(Jsonl.longValue(taskRow, "okTotalMillis", -1)).isEqualTo(700);
         }
         server.close();
+    }
+
+    /**
+     * An engine built in-process for a state directory takes its housekeeping budgets from the
+     * {@code config.toml} beside its own engine files, never from the jk home the process sees. The
+     * process's home here holds a hostile config, standing in for the developer's own
+     * {@code ~/.jk/config.toml}, whose one-day metrics window would evict the three-day-old runs at
+     * the first idle boundary; the engine keeps them. The same window written into the engine's own
+     * config does evict them, so the engine reads that file and not the other.
+     */
+    @Test
+    void housekeeping_prunes_by_the_engines_own_config_never_the_process_homes() throws Exception {
+        Path processHome = shortTempDir();
+        // No calibration pass either: the idle boundary would start one in this throwaway home.
+        Files.writeString(
+                processHome.resolve("config.toml"), "[engine]\nauto-warmup = false\n\n[metrics]\nmax-age-days = 1\n");
+        String previous = System.getProperty(HOME_OVERLAY);
+        System.setProperty(HOME_OVERLAY, processHome.toString());
+        try {
+            assertThat(JkDirs.userConfigFile()).isEqualTo(processHome.resolve("config.toml"));
+
+            Path kept = seededEngineStore(shortTempDir(), false);
+            assertThat(BuildMetrics.load(kept).entries())
+                    .as("the process home's one-day window never reaches the engine")
+                    .isNotEmpty();
+
+            Path pruned = seededEngineStore(shortTempDir(), true);
+            assertThat(BuildMetrics.load(pruned).entries())
+                    .as("the engine's own one-day window evicts the three-day-old runs")
+                    .isEmpty();
+        } finally {
+            if (previous == null) System.clearProperty(HOME_OVERLAY);
+            else System.setProperty(HOME_OVERLAY, previous);
+        }
+    }
+
+    private static final String HOME_OVERLAY = "jk.env.JK_HOME";
+
+    /**
+     * Seeds a metrics store with runs three days old, builds an engine over {@code stateDir} (with
+     * a one-day window in its own config when {@code ownWindow}), and passes one idle boundary.
+     */
+    private static Path seededEngineStore(Path stateDir, boolean ownWindow) throws Exception {
+        Path metricsFile = stateDir.resolve("metrics.json");
+        long threeDaysAgo = System.currentTimeMillis() - Duration.ofDays(3).toMillis();
+        BuildMetrics.record(
+                metricsFile,
+                new BuildMetrics.Outcome("build", "/proj/a", "g:a", true, false, 1200, List.of()),
+                threeDaysAgo);
+        EnginePaths.Paths p = paths(stateDir);
+        if (ownWindow) {
+            Path own = EngineServer.ownConfig(p);
+            Files.createDirectories(own.getParent());
+            Files.writeString(own, "[metrics]\nmax-age-days = 1\n");
+        }
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        try {
+            server.metricsFileForTests(metricsFile);
+            assertThat(server.claimPlanSlotForTests()).isTrue();
+            server.releasePlanSlotForTests();
+        } finally {
+            server.close();
+        }
+        return metricsFile;
     }
 
     /** The entry rows of one metrics request and the count its terminal reports. */

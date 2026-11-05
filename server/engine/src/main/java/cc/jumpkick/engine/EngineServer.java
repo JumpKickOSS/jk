@@ -26,8 +26,10 @@ import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.EnginePaths;
@@ -201,7 +203,16 @@ public final class EngineServer implements AutoCloseable {
     private final JobEnvelope jobs;
     private final VerbRegistry verbs;
 
-    private final JkHistoryConfig historyConfig = JkHistoryConfig.resolve();
+    /**
+     * The {@code config.toml} this engine's housekeeping reads its budgets from: the user's, for the
+     * installed engine ({@link EngineMain}); for an engine built in-process for a state directory, a
+     * file beside its own engine files, which exists only when a test writes it. An in-process engine
+     * shares the process's jk home, so it would otherwise prune by whatever config the process
+     * happens to see, the developer's own included.
+     */
+    private final Path userConfig;
+
+    private final JkHistoryConfig historyConfig;
 
     private final BuildJournal journal = BuildJournal.current();
 
@@ -210,6 +221,11 @@ public final class EngineServer implements AutoCloseable {
 
     /** Exclusive same-fingerprint slots + in-flight holds. */
     private final InFlightBuilds inFlightBuilds = new InFlightBuilds();
+
+    /** The config file of an engine built for a state directory alone: beside its engine files. */
+    static Path ownConfig(EnginePaths.Paths paths) {
+        return paths.dir().resolve(ManifestPaths.CONFIG);
+    }
 
     /** Test seam: point the metrics store at a sandbox file instead of the user's real state dir. */
     void metricsFileForTests(Path file) {
@@ -298,6 +314,20 @@ public final class EngineServer implements AutoCloseable {
             String version,
             String buildId,
             @Nullable Consumer<String> log) {
+        this(paths, config, httpConfig, version, buildId, log, ownConfig(paths));
+    }
+
+    /** As above, with the {@code config.toml} its housekeeping budgets come from (see {@link #userConfig}). */
+    public EngineServer(
+            EnginePaths.Paths paths,
+            JkEngineConfig config,
+            @Nullable JkHttpConfig httpConfig,
+            String version,
+            String buildId,
+            @Nullable Consumer<String> log,
+            Path userConfig) {
+        this.userConfig = userConfig;
+        this.historyConfig = JkHistoryConfig.resolve(userConfig, ProcessEnv::get);
         this.paths = paths;
         this.config = config;
         this.httpConfig = httpConfig;
@@ -305,7 +335,7 @@ public final class EngineServer implements AutoCloseable {
         this.version = version;
         this.buildId = buildId == null ? "" : buildId;
         this.log = log != null ? log : s -> {};
-        this.clockMillis = System::currentTimeMillis;
+        this.clockMillis = Clock.SYSTEM::millis;
         this.pid = ProcessHandle.current().pid();
         this.startedAtMillis = clockMillis.getAsLong();
         // Process-scoped generation id for the dashboard hard-refresh contract.
@@ -380,6 +410,7 @@ public final class EngineServer implements AutoCloseable {
                 historyConfig,
                 journal,
                 () -> metricsFile,
+                () -> BuildMetrics.Limits.resolve(userConfig, ProcessEnv::get),
                 paths.dir(),
                 clockMillis,
                 this.log,
