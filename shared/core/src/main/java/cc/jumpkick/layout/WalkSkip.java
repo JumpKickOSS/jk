@@ -41,7 +41,7 @@ public final class WalkSkip {
      * {@code .jk/graph/}: jk's index of the checkout's code, rewritten whenever the graph refreshes,
      * so never an input of a key over that checkout (guard's text view skips it too).
      */
-    static boolean jkGraph(Path dir) {
+    public static boolean jkGraph(Path dir) {
         Path name = dir.getFileName();
         Path parent = dir.getParent();
         return name != null
