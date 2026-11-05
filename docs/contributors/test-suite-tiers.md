@@ -337,6 +337,15 @@ calibration, learned weights) build it under a throwaway: `@SysProps.TempRoots("
 on the class, and `Calibration.invalidateMemo()` where a process-wide memo could carry a previous
 reader's file. `:cli` classes use `@IsolatedState` / `@IsolatedStore` (guard `cli-test-isolated-state`).
 
+**A test that writes the user's `config.toml`** (a mirror, a repository with a `${file:}` or
+`${cmd:}` secret, a `[network]` proxy) takes a home of its own: `@IsolatedHome` on the `:cli` class
+or method. The tier's home is shared by every class of the module, so a `config.toml` written there
+reaches every later resolve. The isolated home has its own store, cache, state and engine; its
+`config.toml` starts with `[m2] integration = false`, so a repository at Central's URL stores under
+the home rather than in the pooled Maven local repository, and Maven's `settings.xml` is pointed
+at a file that does not exist. `RecordingProxy`, named as the home's `[network] proxy`, is the
+request log of everything dialed past the loopback stubs.
+
 **The fixtures' injected test roots are warm by construction.** Every fixture lock injects
 `junit-platform-launcher` (and `junit-jupiter` when the fixture declares no test dependencies) as
 `latest`, which needs a version list. When the engine prepares a module's sandbox it seeds that

@@ -2,7 +2,10 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.testing.PropertyRoots;
+import java.io.IOException;
 import java.lang.annotation.Annotation;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -29,7 +32,16 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
 
     private static final List<Root> ROOTS = List.of(
             new Root(IsolatedStore.class, "JK_STORE_DIR", "jk-iso-store"),
-            new Root(IsolatedState.class, "JK_STATE_DIR", "jk-iso-state"));
+            new Root(IsolatedState.class, "JK_STATE_DIR", "jk-iso-state"),
+            new Root(IsolatedHome.class, "JK_HOME", "jk-iso-home"));
+
+    /** What an {@link IsolatedHome}'s {@code config.toml} says before the test adds to it. */
+    static final String HOME_CONFIG = """
+            # A repository at Central's URL stores under this home, not in the tier's pooled Maven
+            # local repository.
+            [m2]
+            integration = false
+            """;
 
     private static final ExtensionContext.Namespace NS =
             ExtensionContext.Namespace.create(IsolatedRootsExtension.class);
@@ -43,9 +55,26 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
                     .map(m -> m.isAnnotationPresent(root.marker()))
                     .orElse(false);
             if (!onMethod && !testClass.isAnnotationPresent(root.marker())) continue;
-            redirects.add(PropertyRoots.redirect(root.property(), root.tempPrefix()));
+            PropertyRoots.Redirect redirect = PropertyRoots.redirect(root.property(), root.tempPrefix());
+            redirects.add(redirect);
+            if (root.marker() == IsolatedHome.class) redirects.add(furnishHome(redirect.dir()));
         }
         ctx.getStore(NS).put("redirects", redirects);
+    }
+
+    /**
+     * The home's starting {@code config.toml}, a {@code settings.xml} overlay naming a file that is
+     * not there, and the engine assembly the home's engine is spawned from. Returns the overlay's
+     * redirect, so teardown restores it with the rest.
+     */
+    private static PropertyRoots.Redirect furnishHome(Path home) throws IOException {
+        Files.writeString(home.resolve("config.toml"), HOME_CONFIG);
+        Path m2 = Files.createDirectories(home.resolve("m2"));
+        String property = "jk.env.JK_M2_SETTINGS";
+        PropertyRoots.Redirect settings = new PropertyRoots.Redirect(property, m2, System.getProperty(property));
+        System.setProperty(property, m2.resolve("settings.xml").toString());
+        EngineTestSupport.ensureEngineMaterialized();
+        return settings;
     }
 
     @Override
