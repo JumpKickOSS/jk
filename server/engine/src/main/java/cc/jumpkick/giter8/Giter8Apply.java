@@ -95,6 +95,14 @@ public final class Giter8Apply {
     }
 
     public static Optional<String> defaultName(Path templateRoot) {
+        return defaultProperty(templateRoot, "name");
+    }
+
+    /**
+     * {@code key}'s non-blank value in the template's {@code default.properties} (beside the
+     * template or under {@code src/main/g8}), uninterpolated; empty when unset or unreadable.
+     */
+    public static Optional<String> defaultProperty(Path templateRoot, String key) {
         Path g8 = templateRoot.resolve("src/main/g8");
         Path contentRoot = Files.isDirectory(g8) ? g8 : templateRoot;
         for (Path propsFile :
@@ -106,7 +114,7 @@ public final class Giter8Apply {
             } catch (IOException e) {
                 return Optional.empty();
             }
-            String n = p.getProperty("name");
+            String n = p.getProperty(key);
             if (n != null && !n.isBlank()) return Optional.of(n.trim());
         }
         return Optional.empty();

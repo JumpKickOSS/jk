@@ -34,6 +34,11 @@ Layout (`traditional` vs `simple`) is **file placement**, not a `jk.toml` key â€
 [Layout](layout.md). `--layout simple` sets Giter8 `simple=yes` when the templateâ€™s
 `layouts` include both.
 
+The layout a template renders is the first of these that is set: `-L` / `--layout` (`auto`
+leaves the choice to the rest of this list), `-p jk_layout=<layout>`, the template's own
+`jk_layout` in `default.properties`, then `traditional`. So `jk new -t cli` renders the simple
+tree its template names, and `jk new -t cli -L traditional` the Maven one.
+
 The **engine** applies Giter8 (StringTemplate 4). The native CLI does not ship ST4.
 
 ## Resolution (`-t <ref>`)

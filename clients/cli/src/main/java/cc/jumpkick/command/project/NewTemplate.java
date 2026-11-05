@@ -96,10 +96,11 @@ final class NewTemplate {
         if (officialShortName(args.ref())) {
             EngineCatalogFreshen.freshenCatalog(EnginePaths.current(), "templates", args.offline(), null, null);
         }
+        // No -L leaves the layout to the engine: a jk_layout parameter, else the template's default.
         Layout resolvedLayout;
         try {
             resolvedLayout =
-                    args.layout() == null || args.layout().isBlank() ? Layout.TRADITIONAL : Layout.parse(args.layout());
+                    args.layout() == null || args.layout().isBlank() ? Layout.AUTO : Layout.parse(args.layout());
         } catch (IllegalArgumentException e) {
             CommandWedge.printFail("New", e.getMessage());
             return Exit.USAGE;
