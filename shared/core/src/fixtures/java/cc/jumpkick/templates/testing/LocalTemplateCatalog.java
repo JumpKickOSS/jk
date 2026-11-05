@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.engine;
+package cc.jumpkick.templates.testing;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
@@ -21,8 +21,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A bare git repository holding the checkout's {@code templates/} tree: the official template
- * catalog as this commit ships it, at a {@code file:} URL, so a test home's engine clones its
- * catalog without reaching github.com.
+ * catalog as this commit ships it, at a {@code file:} URL, so a test home's engine (a suite's
+ * shared sandbox home, or a per-test home of its own) clones its catalog without reaching
+ * github.com.
  *
  * <p>Under a sandbox slot ({@link TestHomes}) the repository sits beside the slot's home, named by
  * the content of {@code templates/}: every test JVM of the suite shares it, a green run discards
@@ -30,14 +31,14 @@ import org.jspecify.annotations.Nullable;
  * directory deleted when the JVM exits. The location is fixed by the first call, which {@link
  * SharedHomeTemplateCatalog} makes before any test runs and any overlay moves {@code JK_HOME}.
  */
-final class LocalTemplateCatalog {
+public final class LocalTemplateCatalog {
 
     private static @Nullable String url;
 
     private LocalTemplateCatalog() {}
 
     /** The {@code file:} URL of the repository, the value of an {@code [templates] official} key. */
-    static synchronized String url() {
+    public static synchronized String url() {
         String built = url;
         if (built == null) {
             built = build().toUri().toString();

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.engine;
+package cc.jumpkick.templates.testing;
 
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -15,10 +15,10 @@ import org.junit.platform.launcher.TestExecutionListener;
 import org.junit.platform.launcher.TestPlan;
 
 /**
- * Points the tier's shared sandbox home at {@link LocalTemplateCatalog}: its {@code config.toml}
- * names the local repository as {@code [templates] official}, so the engines of every test
- * without an {@link IsolatedHome} clone their catalog without reaching github.com, as isolated
- * homes do.
+ * Points a suite's shared sandbox home at {@link LocalTemplateCatalog}: its {@code config.toml}
+ * names the local repository as {@code [templates] official}, so every engine the suite starts in
+ * that home clones its catalog without reaching github.com. A suite that starts engines lists this
+ * class in its {@code META-INF/services/org.junit.platform.launcher.TestExecutionListener}.
  *
  * <p>Registered via {@code META-INF/services}, so it runs once per test JVM, before the first
  * test and before any overlay moves {@code JK_HOME}. It touches nothing outside a sandbox slot: a

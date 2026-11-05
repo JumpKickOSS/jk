@@ -60,6 +60,7 @@ product-lib = "jk-engine"
 
 [test-dependencies]
 jk-host = { workspace = true, fixtures = true }
+jk-core = { workspace = true, fixtures = true }
 jk-client-io = { workspace = true, fixtures = true }
 jk-resolver = { workspace = true, fixtures = true }
 assertj-core = "3.27.7"
