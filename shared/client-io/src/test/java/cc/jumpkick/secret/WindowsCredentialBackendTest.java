@@ -59,14 +59,14 @@ class WindowsCredentialBackendTest {
     }
 
     @Test
-    void a_secret_is_stored_as_a_utf16_blob_under_the_jk_target_and_reads_back() {
+    void a_secret_is_stored_as_a_utf8_blob_under_the_jk_target_and_reads_back() {
         FakeCalls calls = new FakeCalls();
         WindowsCredentialBackend backend = new WindowsCredentialBackend(calls);
 
         backend.write("repo/nexus", "jk repo login nexus", "p@ss w0rd \"é€\"");
 
         assertThat(calls.blobs).containsOnlyKeys("jk:repo/nexus");
-        assertThat(calls.blobs.get("jk:repo/nexus")).isEqualTo("p@ss w0rd \"é€\"".getBytes(StandardCharsets.UTF_16LE));
+        assertThat(calls.blobs.get("jk:repo/nexus")).isEqualTo("p@ss w0rd \"é€\"".getBytes(StandardCharsets.UTF_8));
         assertThat(calls.comments.get("jk:repo/nexus")).isEqualTo("jk repo login nexus");
         assertThat(calls.users.get("jk:repo/nexus")).isEqualTo("jk");
         assertThat(backend.read("repo/nexus")).contains("p@ss w0rd \"é€\"");
@@ -113,15 +113,24 @@ class WindowsCredentialBackendTest {
     }
 
     @Test
-    void a_secret_longer_than_the_credential_blob_limit_is_refused_before_any_call() {
+    void a_token_of_2560_characters_fits_and_one_byte_more_is_refused_before_any_call() {
         FakeCalls calls = new FakeCalls();
-        String token = "x".repeat(WindowsCredentialBackend.MAX_BLOB_BYTES / 2 + 1);
-        assertThatThrownBy(() -> new WindowsCredentialBackend(calls).write("repo/nexus", "l", token))
+        WindowsCredentialBackend backend = new WindowsCredentialBackend(calls);
+        String jwt = "eyJ" + "a".repeat(WindowsCredentialBackend.MAX_BLOB_BYTES - 3);
+
+        backend.write("repo/nexus", "l", jwt);
+
+        assertThat(calls.blobs.get("jk:repo/nexus")).hasSize(2560);
+        assertThat(backend.read("repo/nexus")).contains(jwt);
+        calls.targets.clear();
+        assertThatThrownBy(() -> backend.write("repo/other", "l", jwt + "b"))
                 .isInstanceOf(SecretBackendException.class)
-                .hasMessageContaining("at most 1280");
+                .hasMessageContaining("at most 2560 bytes")
+                .hasMessageContaining("2561 bytes in UTF-8");
+        assertThatThrownBy(() -> backend.write("repo/other", "l", "é".repeat(1281)))
+                .as("the limit is bytes, not characters")
+                .hasMessageContaining("2562 bytes");
         assertThat(calls.targets).isEmpty();
-        new WindowsCredentialBackend(calls).write("repo/nexus", "l", "x".repeat(1280));
-        assertThat(calls.blobs).containsKey("jk:repo/nexus");
     }
 
     @Test
