@@ -155,13 +155,14 @@ exclude-tags = ["network", "live", "bench"]
 include-tags = ["network"]
 exclude-tags = ["live", "bench"]
 
-# Talks to a service of the machine it runs on and writes to it: the user's OS keychain. Off
-# every gate and every CI run, which have no desktop session; on demand on a desktop. The env
-# entries are each live test's own opt-in, so `jk test --all` leaves the user's keychain alone.
+# Talks to a service of the machine it runs on and writes to it: the user's OS keychain, or a
+# private gpg-agent it starts in a scratch GNUPGHOME and stops. Off every gate and every CI run,
+# which have no desktop session; on demand on a desktop. The env entries are each live test's own
+# opt-in, so `jk test --all` leaves the user's keychain alone.
 [profiles.live]
 include-tags = ["live"]
 exclude-tags = ["bench"]
-env = { JK_TEST_SECRET_SERVICE = "1" }
+env = { JK_TEST_SECRET_SERVICE = "1", JK_TEST_GPG_AGENT = "1" }
 
 # Microbenchmarks print medians and assert nothing about deltas, so gating on them would
 # gate on CI noise. They still need a tier, or nothing runs them at all.

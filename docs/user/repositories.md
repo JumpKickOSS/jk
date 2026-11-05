@@ -678,6 +678,11 @@ is Maven 3's format above. When gpg-agent has nothing cached, let a `mvn` run as
 under the cache id `plexus:secDispatcherMasterPassword`; jk asks the agent again on every
 command.
 
+The `gpg-agent:` source is verified on Linux against a real agent (`jk test -p live`). It needs
+the agent's Unix socket; GnuPG on macOS listens on one too, though that is not verified. On
+Windows it is unsupported and unverified: Gpg4win's agent socket is an emulation file, not a
+socket jk connects to, so use `env:` or `file:` there.
+
 ## Related
 
 [Lockfile](lockfile.md) · [Publish](publish.md) · [Dependencies](dependencies.md)
