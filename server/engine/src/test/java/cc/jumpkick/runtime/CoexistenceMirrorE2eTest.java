@@ -78,6 +78,7 @@ class CoexistenceMirrorE2eTest {
 
     private @Nullable String priorSettings;
     private @Nullable String priorM2;
+    private @Nullable String priorStore;
 
     @BeforeAll
     static void engineShadowSource() {
@@ -93,10 +94,14 @@ class CoexistenceMirrorE2eTest {
         RepoGroup.clearProcessVersionsCache();
         Files.createDirectories(CACHE);
         TestStoreSeed.seed(CACHE);
-        // The tier's local repository is the Central tree every sandbox shares: an artifact found there
-        // would answer without reaching the mirror, and the one only the mirror hosts would land there.
+        // The tier's local repository and its store's Central tree are the one every sandbox shares:
+        // an artifact found there would answer without reaching the mirror, and the one only the
+        // mirror hosts, with its memos, would land there.
         priorM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", CACHE.resolve("m2").toAbsolutePath().toString());
+        priorStore = System.getProperty("jk.env.JK_STORE_DIR");
+        System.setProperty(
+                "jk.env.JK_STORE_DIR", CACHE.resolve("store").toAbsolutePath().toString());
         nexus.start();
     }
 
@@ -107,6 +112,8 @@ class CoexistenceMirrorE2eTest {
         else System.setProperty(MavenSettings.SETTINGS_PROPERTY, priorSettings);
         if (priorM2 == null) System.clearProperty("jk.m2.local");
         else System.setProperty("jk.m2.local", priorM2);
+        if (priorStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
+        else System.setProperty("jk.env.JK_STORE_DIR", priorStore);
         SessionContext.reset();
     }
 
