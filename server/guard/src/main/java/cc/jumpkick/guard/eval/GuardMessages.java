@@ -6,6 +6,7 @@ import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The failure text an agent reads. First line is the title (what {@code diagnostics} shows as the
@@ -193,6 +194,38 @@ public final class GuardMessages {
         return sb.append(output ? "); a build that packages them" : "); a build that compiles them")
                 .append(" tightens it and judges its scope")
                 .toString();
+    }
+
+    /** The diagnostic code of a lane's {@link #withheldNotice}. */
+    public static final String WITHHELD = "guard-withheld";
+
+    private static final String WITHHELD_PREFIX = "guard baseline not tightened: ";
+
+    /**
+     * What a lane that withheld its tightening says: the {@link #withheldSummary} line, then the
+     * lane's {@link #withheld} detail.
+     */
+    public static String withheldNotice(Lane lane, List<String> unseen, int modules) {
+        return withheldSummary(modules) + "\n  " + withheld(lane, unseen);
+    }
+
+    /**
+     * The one line a run's report gives a withheld baseline: the guards passed, but over a view
+     * missing {@code modules} modules, so the baseline was left as it was and no scope floor judged.
+     */
+    public static String withheldSummary(int modules) {
+        return WITHHELD_PREFIX + modules + (modules == 1 ? " module" : " modules")
+                + " unseen by this run (not built yet); a build of every module tightens it and judges its scope";
+    }
+
+    /** The module count a {@link #withheldNotice} carries, or 0 when {@code message} is not one. */
+    public static int withheldModules(@Nullable String message) {
+        if (message == null || !message.startsWith(WITHHELD_PREFIX)) return 0;
+        int at = WITHHELD_PREFIX.length();
+        int end = at;
+        while (end < message.length() && Character.isDigit(message.charAt(end))) end++;
+        if (end == at || end - at > 9) return 0;
+        return Integer.parseInt(message.substring(at, end));
     }
 
     /** The one-line summary of a lane run, for the task label and the results file. */

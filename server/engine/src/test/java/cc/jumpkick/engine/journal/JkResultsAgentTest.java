@@ -3,6 +3,8 @@ package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.guard.eval.GuardMessages;
+import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.nio.file.Files;
@@ -37,6 +39,41 @@ class JkResultsAgentTest {
                 waited 12s for memory
                 waited 2s for memory (JK_WORKER_BUDGET_MB)
                 """);
+    }
+
+    @Test
+    void an_ok_run_over_a_partial_build_says_in_one_line_that_the_guard_baseline_was_left_alone() {
+        BuildRecord.Diag workspace = new BuildRecord.Diag(
+                "warning",
+                "/ws",
+                null,
+                GuardMessages.WITHHELD,
+                GuardMessages.withheldNotice(Lane.WORKSPACE, List.of("a/src/main/java/A.java"), 49),
+                null,
+                null);
+        BuildRecord.Diag output = new BuildRecord.Diag(
+                "warning",
+                "/ws",
+                null,
+                GuardMessages.WITHHELD,
+                GuardMessages.withheldNotice(Lane.OUTPUT, List.of("a", "b"), 51),
+                null,
+                null);
+        BuildRecord r = record(
+                "test", true, false, 500, new BuildRecord.Tests(1, 1, 0, 0), List.of(workspace, output), List.of());
+
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                OK test rest-service · 1 test · 500ms
+                W guard baseline not tightened: 51 modules unseen by this run (not built yet); \
+                a build of every module tightens it and judges its scope
+                """);
+    }
+
+    @Test
+    void an_ok_run_whose_guards_saw_every_module_has_no_baseline_line() {
+        BuildRecord r = record("test", true, false, 500, new BuildRecord.Tests(1, 1, 0, 0), List.of(), List.of());
+
+        assertThat(JkResultsAgent.render(r)).isEqualTo("OK test rest-service · 1 test · 500ms\n");
     }
 
     @Test

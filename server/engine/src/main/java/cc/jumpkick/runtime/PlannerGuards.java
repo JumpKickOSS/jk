@@ -744,7 +744,11 @@ final class PlannerGuards {
         for (Fault f : faults) ctx.error(f.code(), EngineValidations.render(f));
         boolean ci = Baselines.ciMode();
         String storedBaselineSha = tightenBaseline(ctx, g, baselineFile, result, ci, baselineSha);
-        if (!result.unseen().isEmpty()) ctx.warn("guards", GuardMessages.withheld(lane, result.unseen()));
+        if (!result.unseen().isEmpty()) {
+            ctx.warn(
+                    GuardMessages.WITHHELD,
+                    GuardMessages.withheldNotice(lane, result.unseen(), result.unseenModules()));
+        }
         writeJsonl(g.root(), taskId, result);
         // The machine view of the whole run, re-rendered from every lane's output: cheap, and always
         // current after the lane that just wrote.
@@ -780,6 +784,9 @@ final class PlannerGuards {
         // A skipped guard is not a verdict: the lane runs again next build, so installing the tool
         // is enough to have it judged — a cached green would outlive the reason it was green.
         if (!result.complete()) return;
+        // Nor is a view missing modules: the run that builds them tightens the baseline, and until
+        // then every run over the partial view says it left the baseline alone.
+        if (!result.unseen().isEmpty()) return;
         String storeKey = GuardKeys.laneKey(taskId, tokens, storedBaselineSha);
         List<Path> evidence = new ArrayList<>();
         for (Path f : List.of(RuleSummaries.file(g.root(), taskId), observationsFile(g.root(), taskId))) {

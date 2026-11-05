@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.io.IOException;
@@ -144,6 +145,7 @@ public final class JkResultsAgent {
         appendInputsChanged(sb, record);
         boolean ok = record.success() && !record.cancelled();
         appendNotices(sb, record, reason);
+        appendGuardWithheld(sb, record);
         appendMemoryEvents(sb, record);
         if (ok && !reported) return sb.toString();
         sb.append(body(record, loci, tests, opt));
@@ -200,6 +202,22 @@ public final class JkResultsAgent {
             }
             if (!line.isEmpty()) sb.append("W ").append(line).append('\n');
         }
+    }
+
+    /**
+     * One line, on every verdict, when a guard lane left the baseline alone because its view lacked
+     * modules: without it a green run over a partial build reads as a full guard pass. Every lane
+     * that withheld says so; the line names the most modules any of them missed.
+     */
+    private static void appendGuardWithheld(StringBuilder sb, BuildRecord record) {
+        int modules = 0;
+        for (BuildRecord.Diag d : record.diagnostics()) {
+            if (d != null && GuardMessages.WITHHELD.equals(d.code())) {
+                modules = Math.max(modules, GuardMessages.withheldModules(d.message()));
+            }
+        }
+        if (modules > 0)
+            sb.append("W ").append(GuardMessages.withheldSummary(modules)).append('\n');
     }
 
     private static final List<String> NOTICE_PREFIXES = List.of("jk: warning: ", "jk: notice: ");
