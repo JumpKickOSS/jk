@@ -1120,10 +1120,6 @@ at     = "cc.jumpkick.runtime.HardwareProbe#measureHashCpu()J -> java.lang.Syste
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.HardwareProbe#measureResolve()J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.HardwareProbe#timeProcess(Ljava/lang/ProcessBuilder;)J -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
