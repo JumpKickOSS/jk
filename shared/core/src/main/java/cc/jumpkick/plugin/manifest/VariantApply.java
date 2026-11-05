@@ -6,6 +6,7 @@ import cc.jumpkick.config.Interpolation;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestEnvValues;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
@@ -55,6 +56,8 @@ public final class VariantApply {
             for (Variants.Dimension dimension : build.variants().custom()) chooseCustom(dimension, selection, false);
             chooseBuildType(build.variants(), selection);
             return null;
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (JkBuildParseException e) {
             return e.getMessage();
         }

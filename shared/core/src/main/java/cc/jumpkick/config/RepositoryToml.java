@@ -84,6 +84,8 @@ public final class RepositoryToml {
             try {
                 RepositorySpec spec = entry(name, value, vars, onBad);
                 if (spec != null) result.add(spec);
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (JkBuildParseException e) {
                 if (onBad == OnBad.REJECT) throw e;
             } catch (RuntimeException e) {

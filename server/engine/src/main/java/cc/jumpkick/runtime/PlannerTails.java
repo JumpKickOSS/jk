@@ -19,6 +19,7 @@ import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.compile.PackagedTree;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
@@ -127,6 +128,8 @@ public final class PlannerTails {
                 if (joinStage.ordinal() < BuildStage.NATIVE.ordinal()) joinStage = BuildStage.NATIVE;
             }
             join(b, in, joined, joinStage, !leaves.isEmpty() || outputLane);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (JkBuildParseException | IOException ignored) {
             // Core planning parses the same file and has already reported an unreadable or
             // malformed jk.toml loudly; re-reporting here would double the diagnostic. Anything
