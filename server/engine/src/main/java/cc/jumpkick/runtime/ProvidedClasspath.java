@@ -110,7 +110,8 @@ public final class ProvidedClasspath {
             Path path = fetched.get(entry.dependency());
             if (path == null) {
                 throw new RuntimeException("[[contribute.provided-classpath]] names `" + entry.dependency()
-                        + "` but no step-dependency resolved under that artifact name");
+                        + "` but no step-dependency resolved under that artifact name: the plugin declares none,"
+                        + " or its `when` or an empty list in its coordinate left it out for this module");
             }
             if (entry.jars().isEmpty()) {
                 jars.add(new Provided.Jar(

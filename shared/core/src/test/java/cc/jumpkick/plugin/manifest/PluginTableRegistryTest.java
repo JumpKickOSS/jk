@@ -9,8 +9,8 @@ import cc.jumpkick.model.PluginConfig;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.jar.JarEntry;
@@ -102,6 +102,47 @@ class PluginTableRegistryTest {
                 .hasMessageContaining("[spring-boot].version is required")
                 .hasMessageContaining("e.g. version = \"" + version.example() + "\"")
                 .hasMessageContaining(version.hint());
+    }
+
+    /**
+     * A required list must name something: {@code [intellij] libraries} is what the code compiles
+     * against, and an empty list left a module with no platform classes and an error about a
+     * step-dependency instead. The example is written as the list it is, not quoted.
+     */
+    @Test
+    void a_required_list_is_refused_absent_or_empty_with_its_example_unquoted() {
+        PluginDescriptor manifest = PluginDescriptors.parse("""
+                [plugin]
+                id      = "zz-required-list"
+                table   = "zz-required-list"
+                version = "1.0.0"
+
+                [schema]
+                version = { type = "string", required = true }
+                modules = { type = "string-list", required = true, example = '["a:b"]', hint = "what it compiles against" }
+                """, "test");
+
+        for (String toml : List.of("version = \"1\"", "version = \"1\"\nmodules = []")) {
+            assertThatThrownBy(() -> PluginTableRegistry.validate(manifest, Toml.parse(toml)))
+                    .as(toml)
+                    .isInstanceOf(JkBuildParseException.class)
+                    .hasMessageContaining("[zz-required-list].modules is required, with at least one entry")
+                    .hasMessageContaining("e.g. modules = [\"a:b\"]")
+                    .hasMessageContaining("what it compiles against");
+        }
+        assertThat(PluginTableRegistry.validate(manifest, Toml.parse("version = \"1\"\nmodules = [\"a:b\"]"))
+                        .values())
+                .containsEntry("modules", List.of("a:b"));
+    }
+
+    @Test
+    void the_intellij_table_requires_the_platform_modules_it_compiles_against() {
+        var manifest = PluginTableRegistry.byTable("intellij").orElseThrow();
+
+        assertThatThrownBy(() -> PluginTableRegistry.validate(manifest, Toml.parse("version = \"262.11879.100\"")))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[intellij].libraries is required")
+                .hasMessageContaining("e.g. libraries = [\"platform:ide-impl\"");
     }
 
     @Test
