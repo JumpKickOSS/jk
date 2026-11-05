@@ -343,8 +343,11 @@ or method. The tier's home is shared by every class of the module, so a `config.
 reaches every later resolve. The isolated home has its own store, cache, state and engine; its
 `config.toml` starts with `[m2] integration = false`, so a repository at Central's URL stores under
 the home rather than in the pooled Maven local repository, and Maven's `settings.xml` is pointed
-at a file that does not exist. `RecordingProxy`, named as the home's `[network] proxy`, is the
-request log of everything dialed past the loopback stubs.
+at a file that does not exist. Its `[templates] official` is a local bare repository built once
+per test JVM from the checkout's `templates/`, so the home's engine clones its catalog without
+github.com; a test about the real catalog's origin opts out with
+`@IsolatedHome(officialCatalogFromOrigin = true)`. `RecordingProxy` (host fixtures), named as the
+home's `[network] proxy`, is the request log of everything dialed past the loopback stubs.
 
 **The fixtures' injected test roots are warm by construction.** Every fixture lock injects
 `junit-platform-launcher` (and `junit-jupiter` when the fixture declares no test dependencies) as

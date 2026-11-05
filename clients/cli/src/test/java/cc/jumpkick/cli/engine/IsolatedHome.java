@@ -24,7 +24,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * Central's URL then stores under the home, where it would otherwise use the Maven local
  * repository, which the tier points at the pooled Central tree every sandbox on the host shares.
  * Maven's {@code settings.xml} is pointed at a file that does not exist, so the developer's mirrors
- * and proxies stay out.
+ * and proxies stay out. Its {@code [templates] official} is a local bare repository built from the
+ * checkout's {@code templates/}, so the home's engine clones its catalog without the network; a test
+ * about the real catalog's origin says so with {@link #officialCatalogFromOrigin}.
  *
  * <p>Mechanics: sets the {@code jk.env.JK_HOME} and {@code jk.env.JK_M2_SETTINGS} overlays to the
  * per-method directory, materializes the engine assembly under it, and stops that home's engine
@@ -33,4 +35,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 @ExtendWith(IsolatedRootsExtension.class)
-public @interface IsolatedHome {}
+public @interface IsolatedHome {
+
+    /**
+     * Leave {@code [templates] official} unset, so the home's engine clones the official catalog
+     * from its origin on github.com. On a method, wins over the class's annotation.
+     */
+    boolean officialCatalogFromOrigin() default false;
+}
