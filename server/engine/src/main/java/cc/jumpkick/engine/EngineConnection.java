@@ -272,6 +272,7 @@ final class EngineConnection {
             case VerbShape.SyncRead() -> {
                 RequestKeychain.runWhere(
                         ProtoSession.keychainOf(line),
+                        ProtoSession.keychainRefusedOf(line),
                         () -> RequestShell.runWhere(
                                 ProtoSession.shellOf(line),
                                 () -> verb.run(line, Session.defaults().cancel(), writer)));

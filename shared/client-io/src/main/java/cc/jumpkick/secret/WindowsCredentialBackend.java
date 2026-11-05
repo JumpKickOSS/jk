@@ -72,11 +72,6 @@ public final class WindowsCredentialBackend implements SecretBackend {
         return "Windows Credential Manager";
     }
 
-    @Override
-    public boolean daemonReachable() {
-        return false;
-    }
-
     /**
      * A read of a target no item has: {@code ERROR_NOT_FOUND} means the credential set answers.
      * It takes microseconds and can show nothing.

@@ -381,8 +381,5 @@ class KeychainBackendsTest {
                 List.of(new SecretServiceBackend(none), viaCli(none), WindowsCredentialBackendTest.fake())) {
             assertThat(SecretVault.displayName(b.id())).isEqualTo(b.displayName());
         }
-        assertThat(new SecretServiceBackend(none).daemonReachable()).isFalse();
-        assertThat(viaCli(none).daemonReachable()).isFalse();
-        assertThat(WindowsCredentialBackendTest.fake().daemonReachable()).isFalse();
     }
 }

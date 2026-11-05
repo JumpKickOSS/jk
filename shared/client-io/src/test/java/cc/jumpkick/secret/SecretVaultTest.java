@@ -3,6 +3,7 @@ package cc.jumpkick.secret;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -183,14 +184,58 @@ class SecretVaultTest {
         SecretVault.Pointer pointer = new SecretVault.Pointer("fake", "repo/nexus");
         Path record = Files.writeString(dir.resolve("nexus"), "bearer https://n keychain\nfake repo/nexus\n");
 
-        String sent = RequestKeychain.where(Map.of(pointer.text(), "from-client"), () -> vault.resolve(pointer, record)
-                .orElseThrow());
+        String sent = RequestKeychain.where(
+                Map.of(pointer.text(), "from-client"), Map.of(), () -> vault.resolve(pointer, record)
+                        .orElseThrow());
         assertThat(sent).isEqualTo("from-client");
         assertThat(keychain.calls).isEmpty();
 
         assertThat(vault.resolve(pointer, record)).contains("from-keychain");
         assertThat(vault.resolve(pointer, record)).contains("from-keychain");
         assertThat(keychain.calls).containsExactly("read repo/nexus");
+    }
+
+    @Test
+    void an_item_the_client_could_not_read_fails_with_its_reason_and_the_keychain_is_not_asked_again(@TempDir Path dir)
+            throws Exception {
+        FakeKeychain keychain = new FakeKeychain();
+        keychain.items.put("repo/nexus", "from-keychain");
+        SecretVault vault = SecretVault.of(SecretVault.Choice.AUTO, List.of(keychain));
+        SecretVault.Pointer pointer = new SecretVault.Pointer("fake", "repo/nexus");
+        SecretVault.Pointer other = new SecretVault.Pointer("fake", "repo/other");
+        Path record = Files.writeString(dir.resolve("nexus"), "bearer https://n keychain\nfake repo/nexus\n");
+
+        Throwable refused = RequestKeychain.where(
+                Map.of(),
+                Map.of(pointer.text(), "the default keyring is locked"),
+                () -> catchThrowable(() -> vault.resolve(pointer, record)));
+
+        assertThat(refused).isInstanceOf(SecretBackendException.class).hasMessage("the default keyring is locked");
+        assertThat(keychain.calls).isEmpty();
+        assertThat(RequestKeychain.where(
+                        Map.of(), Map.of(pointer.text(), "locked"), () -> vault.resolve(other, record)))
+                .as("a pointer the client did not speak for is the engine's to read")
+                .isEmpty();
+        assertThat(keychain.calls).containsExactly("read repo/other");
+    }
+
+    @Test
+    void a_client_read_is_the_secret_or_why_there_is_none() {
+        FakeKeychain keychain = new FakeKeychain();
+        keychain.items.put("repo/nexus", "tok");
+        SecretVault vault = SecretVault.of(SecretVault.Choice.AUTO, List.of(keychain));
+
+        assertThat(vault.readForRequest(new SecretVault.Pointer("fake", "repo/nexus")))
+                .isEqualTo(new SecretVault.ClientRead("tok", null));
+        assertThat(vault.readForRequest(new SecretVault.Pointer("fake", "repo/gone")))
+                .isEqualTo(new SecretVault.ClientRead(null, "it holds no item repo/gone"));
+        assertThat(vault.readForRequest(new SecretVault.Pointer("elsewhere", "repo/nexus"))
+                        .refused())
+                .startsWith("this machine has no elsewhere keychain");
+        keychain.refusing = "denied";
+        assertThat(vault.readForRequest(new SecretVault.Pointer("fake", "repo/nexus"))
+                        .refused())
+                .contains("denied");
     }
 
     @Test

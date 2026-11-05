@@ -563,6 +563,7 @@ public final class JobEnvelope {
                 // Every read of the caller's environment in this job answers from its shell.
                 outcome = RequestKeychain.where(
                         ProtoSession.keychainOf(requestLine),
+                        ProtoSession.keychainRefusedOf(requestLine),
                         () -> RequestShell.where(
                                 ProtoSession.shellOf(requestLine), () -> runner.run(requestLine, cancelToken, writer)));
             } catch (Throwable t) {

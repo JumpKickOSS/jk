@@ -32,8 +32,14 @@ import org.jspecify.annotations.Nullable;
  * prompts or waits on one: a locked keychain refuses on the spot.
  *
  * <p>A secret in a keychain leaves a {@link Pointer} in its record. {@link #resolve} turns the
- * pointer back into the secret: from what the client sent with the request ({@link
- * RequestKeychain}) when it did, else by asking the keychain from this process.
+ * pointer back into the secret. A {@code jk} command reads every pointer its logins hold ({@link
+ * #readForRequest}) and sends the secret, or why the keychain did not give it up, with its request
+ * ({@link RequestKeychain}), because a resident engine keeps the session of whichever shell
+ * started it: the Secret Service is found through that shell's D-Bus variables, the Windows
+ * Credential Manager belongs to its logon session, and the macOS login keychain is unlocked per
+ * security session. The engine answers from what the command sent and asks the keychain from its
+ * own process only for a pointer no command spoke for: a build the dashboard or an MCP client
+ * started, which reaches a keychain only when the engine was started from a desktop session.
  */
 public final class SecretVault {
 
@@ -276,7 +282,8 @@ public final class SecretVault {
 
     /**
      * The secret {@code pointer} names: the one the client sent with this request, else the
-     * keychain's answer to this process. {@code record} is the file the pointer was read from; a
+     * keychain's answer to this process when no client spoke for the pointer. A pointer the client
+     * could not read fails with the client's reason, without asking the keychain again. {@code record} is the file the pointer was read from; a
      * keychain's answer is remembered until that file changes, so a build that resolves one
      * repository many times asks once.
      *
@@ -284,27 +291,51 @@ public final class SecretVault {
      */
     public Optional<String> resolve(Pointer pointer, Path record) {
         RequestKeychain carried = RequestKeychain.current();
-        String sent = carried == null ? null : carried.get(pointer);
-        if (sent != null) return Optional.of(sent);
-        SecretBackend backend = backend(pointer.backend())
-                .orElseThrow(() -> new SecretBackendException("this machine has no " + pointer.backend()
-                        + " keychain (the record names one; run the login again here)"));
+        if (carried != null) {
+            String sent = carried.get(pointer);
+            if (sent != null) return Optional.of(sent);
+            String refused = carried.refusal(pointer);
+            if (refused != null) throw new SecretBackendException(refused);
+        }
+        SecretBackend backend =
+                backend(pointer.backend()).orElseThrow(() -> new SecretBackendException(noSuchKeychain(pointer)));
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(record);
         if (stamp == null) return backend.read(pointer.item());
         return Optional.ofNullable(READS.get(
                 pointer.text(), stamp, () -> backend.read(pointer.item()).orElse(null)));
     }
 
-    /**
-     * Read {@code pointer} from the keychain directly, for the client to send: empty when the
-     * keychain has no such item or refuses.
-     */
-    public Optional<String> readForRequest(Pointer pointer) {
-        try {
-            return backend(pointer.backend()).flatMap(b -> b.read(pointer.item()));
-        } catch (SecretBackendException refused) {
-            return Optional.empty();
+    /** What a client read for one pointer: the secret, or why the keychain did not give it up. */
+    public record ClientRead(
+            @Nullable String secret, @Nullable String refused) {
+        public ClientRead {
+            if ((secret == null) == (refused == null)) {
+                throw new IllegalArgumentException("a read has a secret or a refusal, not both or neither");
+            }
         }
+    }
+
+    /**
+     * Read {@code pointer} from the keychain directly, for the client to send: the secret, or why
+     * there is none — the keychain refused, it holds no such item, or this machine has no such
+     * keychain.
+     */
+    public ClientRead readForRequest(Pointer pointer) {
+        Optional<SecretBackend> backend = backend(pointer.backend());
+        if (backend.isEmpty()) return new ClientRead(null, noSuchKeychain(pointer));
+        try {
+            Optional<String> secret = backend.get().read(pointer.item());
+            return secret.isPresent()
+                    ? new ClientRead(secret.get(), null)
+                    : new ClientRead(null, "it holds no item " + pointer.item());
+        } catch (SecretBackendException refused) {
+            return new ClientRead(null, String.valueOf(refused.getMessage()));
+        }
+    }
+
+    private static String noSuchKeychain(Pointer pointer) {
+        return "this machine has no " + pointer.backend() + " keychain (the record names one; run the login again"
+                + " here)";
     }
 
     /**

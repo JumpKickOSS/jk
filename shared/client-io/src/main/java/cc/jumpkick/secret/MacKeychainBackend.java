@@ -75,11 +75,6 @@ public final class MacKeychainBackend implements SecretBackend {
     }
 
     @Override
-    public boolean daemonReachable() {
-        return false;
-    }
-
-    @Override
     public Probe probe() {
         MacKeychainLock.Status status = lock.status();
         switch (status.state()) {

@@ -80,11 +80,6 @@ public final class SecretServiceBackend implements SecretBackend {
     }
 
     @Override
-    public boolean daemonReachable() {
-        return false;
-    }
-
-    @Override
     public Probe probe() {
         if (!session.sessionBus()) return Probe.unavailable("no D-Bus session bus");
         if (!session.onPath(TOOL)) return Probe.unavailable(TOOL + " is not installed");

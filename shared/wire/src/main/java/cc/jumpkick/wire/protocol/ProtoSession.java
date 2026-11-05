@@ -28,6 +28,9 @@ public final class ProtoSession {
     /** The request field carrying the keychain secrets the client read; see {@link #withKeychain}. */
     public static final String KEYCHAIN = "keychain";
 
+    /** The request field carrying why the client could not read a keychain item; see {@link #withKeychain}. */
+    public static final String KEYCHAIN_REFUSED = "keychainRefused";
+
     private ProtoSession() {}
 
     /**
@@ -393,21 +396,37 @@ public final class ProtoSession {
     }
 
     /**
-     * Attach the keychain secrets the client read for this request, as {@code POINTER=SECRET}
-     * strings keyed by the record's pointer text. An empty map leaves the line byte-identical.
+     * Attach what the client read from the keychain for this request, keyed by the record's
+     * pointer text: {@code secrets} as {@code POINTER=SECRET} strings, and {@code refused} — why an
+     * item was not read — as {@code POINTER=REASON}. Both empty leave the line byte-identical.
      */
-    public static String withKeychain(String request, Map<String, String> secrets) {
-        if (secrets.isEmpty()) return request;
-        List<String> pairs = new ArrayList<>(secrets.size());
-        secrets.forEach((pointer, secret) -> pairs.add(pointer + "=" + secret));
-        return Jsonl.append(
-                request, RequestJson.fields().optionalArray(KEYCHAIN, pairs).body());
+    public static String withKeychain(String request, Map<String, String> secrets, Map<String, String> refused) {
+        if (secrets.isEmpty() && refused.isEmpty()) return request;
+        RequestJson fields = RequestJson.fields();
+        if (!secrets.isEmpty()) fields.optionalArray(KEYCHAIN, pairs(secrets));
+        if (!refused.isEmpty()) fields.optionalArray(KEYCHAIN_REFUSED, pairs(refused));
+        return Jsonl.append(request, fields.body());
+    }
+
+    private static List<String> pairs(Map<String, String> byPointer) {
+        List<String> pairs = new ArrayList<>(byPointer.size());
+        byPointer.forEach((pointer, value) -> pairs.add(pointer + "=" + value));
+        return pairs;
     }
 
     /** Decode side of {@link #withKeychain}: the secrets by pointer text, or empty when it sent none. */
     public static Map<String, String> keychainOf(String request) {
+        return pointerPairs(request, KEYCHAIN);
+    }
+
+    /** Decode side of {@link #withKeychain}: why each unread item was not read, by pointer text. */
+    public static Map<String, String> keychainRefusedOf(String request) {
+        return pointerPairs(request, KEYCHAIN_REFUSED);
+    }
+
+    private static Map<String, String> pointerPairs(String request, String field) {
         Map<String, String> out = new LinkedHashMap<>();
-        for (String pair : Jsonl.strArray(request, KEYCHAIN)) {
+        for (String pair : Jsonl.strArray(request, field)) {
             int eq = pair.indexOf('=');
             if (eq > 0) out.put(pair.substring(0, eq), pair.substring(eq + 1));
         }
