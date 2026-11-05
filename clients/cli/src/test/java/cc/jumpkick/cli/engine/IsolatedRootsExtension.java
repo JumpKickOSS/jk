@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -43,6 +44,20 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
             integration = false
             """;
 
+    /**
+     * {@link #HOME_CONFIG} with the official template catalog at {@code catalogUrl}, or at its
+     * origin when that is null.
+     */
+    static String homeConfig(@Nullable String catalogUrl) {
+        if (catalogUrl == null) return HOME_CONFIG;
+        return """
+                # The official template catalog as this checkout ships it, cloned without the network.
+                [templates]
+                official = "%s"
+
+                """.formatted(catalogUrl) + HOME_CONFIG;
+    }
+
     private static final ExtensionContext.Namespace NS =
             ExtensionContext.Namespace.create(IsolatedRootsExtension.class);
 
@@ -57,9 +72,19 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
             if (!onMethod && !testClass.isAnnotationPresent(root.marker())) continue;
             PropertyRoots.Redirect redirect = PropertyRoots.redirect(root.property(), root.tempPrefix());
             redirects.add(redirect);
-            if (root.marker() == IsolatedHome.class) redirects.add(furnishHome(redirect.dir()));
+            if (root.marker() == IsolatedHome.class) {
+                redirects.add(furnishHome(redirect.dir(), fromOrigin(ctx, testClass)));
+            }
         }
         ctx.getStore(NS).put("redirects", redirects);
+    }
+
+    /** The method's {@link IsolatedHome#officialCatalogFromOrigin}, else the class's. */
+    private static boolean fromOrigin(ExtensionContext ctx, Class<?> testClass) {
+        IsolatedHome home = ctx.getTestMethod()
+                .map(m -> m.getAnnotation(IsolatedHome.class))
+                .orElseGet(() -> testClass.getAnnotation(IsolatedHome.class));
+        return home != null && home.officialCatalogFromOrigin();
     }
 
     /**
@@ -67,8 +92,9 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
      * not there, and the engine assembly the home's engine is spawned from. Returns the overlay's
      * redirect, so teardown restores it with the rest.
      */
-    private static PropertyRoots.Redirect furnishHome(Path home) throws IOException {
-        Files.writeString(home.resolve("config.toml"), HOME_CONFIG);
+    private static PropertyRoots.Redirect furnishHome(Path home, boolean catalogFromOrigin) throws IOException {
+        Files.writeString(
+                home.resolve("config.toml"), homeConfig(catalogFromOrigin ? null : LocalTemplateCatalog.url()));
         Path m2 = Files.createDirectories(home.resolve("m2"));
         String property = "jk.env.JK_M2_SETTINGS";
         PropertyRoots.Redirect settings = new PropertyRoots.Redirect(property, m2, System.getProperty(property));
