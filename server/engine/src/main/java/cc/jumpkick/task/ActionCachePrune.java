@@ -17,10 +17,10 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -68,6 +68,7 @@ public final class ActionCachePrune {
 
     private static final Pattern TASK = Pattern.compile("^TASK (\\S+)", Pattern.MULTILINE);
     private static final Pattern OUTPUT_SHA = Pattern.compile("^OUTPUT ([0-9a-fA-F]{64}) ", Pattern.MULTILINE);
+    private static final int[] NO_BLOBS = new int[0];
 
     private ActionCachePrune() {}
 
@@ -177,17 +178,15 @@ public final class ActionCachePrune {
 
         Incremental incremental = pruneIncremental(actionsDir, policy, now, grace, dryRun);
 
-        Map<String, Long> blobSize = new HashMap<>();
-        Map<String, Long> blobMtime = new HashMap<>();
-        long used = scanCas(cacheCas, alreadyFreedShas, blobSize, blobMtime);
+        Blobs blobs = new Blobs();
+        long used = scanCas(cacheCas, alreadyFreedShas, blobs);
 
         Path keysDir = ActionTree.KEYS.under(actionsDir);
         Path tasksDir = ActionTree.TASKS.under(actionsDir);
-        Scan scan = scanActions(actionsDir, keysDir, tasksDir);
+        Scan scan = scanActions(actionsDir, keysDir, tasksDir, blobs);
         used += scan.bytes();
 
-        Evictor evictor =
-                new Evictor(keysDir, tasksDir, cacheCas, scan.refs(), blobSize, blobMtime, now, grace, dryRun);
+        Evictor evictor = new Evictor(keysDir, tasksDir, cacheCas, blobs, now, grace, dryRun);
 
         List<Entry> actions = new ArrayList<>();
         List<Entry> memos = new ArrayList<>();
@@ -266,9 +265,7 @@ public final class ActionCachePrune {
         private final Path keysDir;
         private final Path tasksDir;
         private final Cas cacheCas;
-        private final Map<String, Integer> refs;
-        private final Map<String, Long> blobSize;
-        private final Map<String, Long> blobMtime;
+        private final Blobs blobs;
         private final long now;
         private final long grace;
         private final boolean dryRun;
@@ -277,22 +274,11 @@ public final class ActionCachePrune {
         int deletedBlobs;
         long freed;
 
-        Evictor(
-                Path keysDir,
-                Path tasksDir,
-                Cas cacheCas,
-                Map<String, Integer> refs,
-                Map<String, Long> blobSize,
-                Map<String, Long> blobMtime,
-                long now,
-                long grace,
-                boolean dryRun) {
+        Evictor(Path keysDir, Path tasksDir, Cas cacheCas, Blobs blobs, long now, long grace, boolean dryRun) {
             this.keysDir = keysDir;
             this.tasksDir = tasksDir;
             this.cacheCas = cacheCas;
-            this.refs = refs;
-            this.blobSize = blobSize;
-            this.blobMtime = blobMtime;
+            this.blobs = blobs;
             this.now = now;
             this.grace = grace;
             this.dryRun = dryRun;
@@ -309,16 +295,15 @@ public final class ActionCachePrune {
             deletedKeys++;
             long bytes = entry.bytes();
 
-            for (String sha : entry.shas()) {
+            for (int blob : entry.blobs()) {
                 // Key records are the whole root set for this pool, so a refcount of zero really is
                 // unreferenced: the cache CAS holds action outputs only, and CacheRoots' other roots
                 // (synced manifests, tool envs, jk-local memos) name store-CAS blobs.
-                if (refs.merge(sha, -1, Integer::sum) > 0) continue;
-                Long size = blobSize.get(sha);
-                if (size == null) continue; // swept this pass, or never in this CAS
-                Long mtime = blobMtime.get(sha);
-                if (mtime != null && now - mtime < grace) continue;
-                if (!dryRun) Files.deleteIfExists(cacheCas.pathFor(sha));
+                if (blobs.release(blob) > 0) continue;
+                long size = blobs.size(blob);
+                if (size < 0) continue; // swept this pass, or never in this CAS
+                if (now - blobs.mtime(blob) < grace) continue;
+                if (!dryRun) Files.deleteIfExists(cacheCas.pathFor(blobs.sha(blob)));
                 deletedBlobs++;
                 bytes += size;
             }
@@ -327,22 +312,81 @@ public final class ActionCachePrune {
         }
     }
 
-    /** One action-cache entry: the key record and the outputs it names. */
+    /**
+     * Every output sha one pass meets, each held once: an entry names its outputs by index here.
+     * Successive generations of a key name mostly the same outputs, so a cache holds tens of
+     * references per blob, and a string per reference would cost the engine heap a few hundred
+     * bytes for each one.
+     */
+    private static final class Blobs {
+        private final Map<String, Integer> index = new HashMap<>();
+        private final List<String> shas = new ArrayList<>();
+        private long[] sizes = new long[1024];
+        private long[] mtimes = new long[1024];
+        private int[] refs = new int[1024];
+
+        /** The index of {@code sha}, added with no size (not in this CAS) the first time it is met. */
+        int intern(String sha) {
+            Integer known = index.get(sha);
+            if (known != null) return known;
+            int id = shas.size();
+            if (id == sizes.length) {
+                sizes = Arrays.copyOf(sizes, id * 2);
+                mtimes = Arrays.copyOf(mtimes, id * 2);
+                refs = Arrays.copyOf(refs, id * 2);
+            }
+            index.put(sha, id);
+            shas.add(sha);
+            sizes[id] = -1L;
+            return id;
+        }
+
+        /** Records a live blob of this CAS. */
+        void stored(String sha, long size, long mtime) {
+            int id = intern(sha);
+            sizes[id] = size;
+            mtimes[id] = mtime;
+        }
+
+        void retain(int id) {
+            refs[id]++;
+        }
+
+        /** Drops one reference and returns how many remain. */
+        int release(int id) {
+            return --refs[id];
+        }
+
+        String sha(int id) {
+            return shas.get(id);
+        }
+
+        /** Bytes of the blob in this CAS, or {@code -1} when it is not there. */
+        long size(int id) {
+            return sizes[id];
+        }
+
+        long mtime(int id) {
+            return mtimes[id];
+        }
+    }
+
+    /** One action-cache entry: the key record and the outputs it names, as {@link Blobs} indices. */
     private static final class Entry {
         private final String actionKey;
         private final String taskId;
         private final long bytes;
         private final long mtime;
-        private final Set<String> shas;
+        private final int[] blobs;
         private final boolean superseded;
         private boolean deleted;
 
-        Entry(String actionKey, String taskId, long bytes, long mtime, Set<String> shas, boolean superseded) {
+        Entry(String actionKey, String taskId, long bytes, long mtime, int[] blobs, boolean superseded) {
             this.actionKey = actionKey;
             this.taskId = taskId;
             this.bytes = bytes;
             this.mtime = mtime;
-            this.shas = shas;
+            this.blobs = blobs;
             this.superseded = superseded;
         }
 
@@ -362,8 +406,8 @@ public final class ActionCachePrune {
             return mtime;
         }
 
-        Set<String> shas() {
-            return shas;
+        int[] blobs() {
+            return blobs;
         }
 
         boolean superseded() {
@@ -384,98 +428,101 @@ public final class ActionCachePrune {
          * byte budget must never spend a test run to reclaim it.
          */
         boolean memo() {
-            return shas.isEmpty();
+            return blobs.length == 0;
         }
     }
 
     /** What one pass over {@code actions/} found, minus the incremental trees. */
-    private record Scan(long bytes, List<Entry> entries, Map<String, Integer> refs) {}
+    private record Scan(long bytes, List<Entry> entries) {}
 
     /** What the incremental pass reclaimed, and what it left. */
     private record Incremental(int deletedFiles, long freedBytes, long finalBytes) {}
 
-    /** Records {@code size}/{@code mtime} per live cache-CAS blob and returns their total bytes. */
-    private static long scanCas(
-            Cas cacheCas, Set<String> alreadyFreedShas, Map<String, Long> blobSize, Map<String, Long> blobMtime)
-            throws IOException {
+    /** Records size and mtime per live cache-CAS blob in {@code blobs} and returns their total bytes. */
+    private static long scanCas(Cas cacheCas, Set<String> alreadyFreedShas, Blobs blobs) throws IOException {
         Path shaRoot = cacheCas.root().resolve("sha256");
         if (!Files.isDirectory(shaRoot)) return 0L;
-        long bytes = 0L;
-        try (Stream<Path> stream = Files.walk(shaRoot)) {
-            for (Path file : (Iterable<Path>) stream::iterator) {
-                if (!Files.isRegularFile(file)) continue;
-                if (file.getFileName().toString().startsWith(".put-")) continue;
-                var hex = cacheCas.hashFromPath(file);
-                if (hex.isEmpty() || alreadyFreedShas.contains(hex.get())) continue;
-                long size = Files.size(file);
-                blobSize.put(hex.get(), size);
-                blobMtime.put(hex.get(), Files.getLastModifiedTime(file).toMillis());
-                bytes += size;
-            }
-        }
-        return bytes;
+        long[] bytes = {0L};
+        PathUtil.forEachRegularFile(shaRoot, (file, attrs) -> {
+            if (file.getFileName().toString().startsWith(".put-")) return;
+            var hex = cacheCas.hashFromPath(file);
+            if (hex.isEmpty() || alreadyFreedShas.contains(hex.get())) return;
+            blobs.stored(hex.get(), attrs.size(), attrs.lastModifiedTime().toMillis());
+            bytes[0] += attrs.size();
+        });
+        return bytes[0];
     }
 
     /**
-     * Read every key record under {@code keysDir}, count how many name each output sha, and total
-     * the action tier's bytes — key records plus task pointers plus generation lists, the
-     * denominator {@code max-cache-size-gb} bounds. The incremental trees are excluded: they are
+     * Read every key record under {@code keysDir}, count in {@code blobs} how many name each output
+     * sha, and total the action tier's bytes — key records plus task pointers plus generation lists,
+     * the denominator {@code max-cache-size-gb} bounds. The incremental trees are excluded: they are
      * measured and bounded separately, and folding them in here is what let a large workspace's Zinc
-     * state push the action budget over a line no amount of key eviction could bring back.
+     * state push the action budget over a line no amount of key eviction could bring back. A record
+     * is parsed as the walk meets it, so the pass holds one record's text at a time.
      */
-    private static Scan scanActions(Path actionsDir, Path keysDir, Path tasksDir) throws IOException {
-        record KeyFile(Path file, long bytes, long mtime) {}
-        List<KeyFile> keyFiles = new ArrayList<>();
-        long bytes = 0L;
-        try (Stream<Path> stream = Files.walk(actionsDir)) {
-            for (Path file : (Iterable<Path>) stream::iterator) {
-                if (!Files.isRegularFile(file)) continue;
-                if (underIncremental(actionsDir, file)) continue;
-                long size = Files.size(file);
-                bytes += size;
-                if (keysDir.equals(file.getParent())) {
-                    keyFiles.add(new KeyFile(
-                            file, size, Files.getLastModifiedTime(file).toMillis()));
-                }
-            }
-        }
-
+    private static Scan scanActions(Path actionsDir, Path keysDir, Path tasksDir, Blobs blobs) throws IOException {
         // A null pointer set means "could not tell": every key then counts as current, so the
         // secondary sort degrades to plain oldest-first instead of marking the whole cache free.
         Set<String> live = livePointers(tasksDir);
         List<Entry> entries = new ArrayList<>();
-        Map<String, Integer> refs = new HashMap<>();
-        for (KeyFile keyFile : keyFiles) {
+        long[] bytes = {0L};
+        PathUtil.forEachRegularFile(actionsDir, dir -> underIncremental(actionsDir, dir), (file, attrs) -> {
+            bytes[0] += attrs.size();
+            if (!keysDir.equals(file.getParent())) return;
             String body;
             try {
-                body = Files.readString(keyFile.file(), StandardCharsets.UTF_8);
+                body = Files.readString(file, StandardCharsets.UTF_8);
             } catch (NoSuchFileException vanished) {
-                // A concurrent ActionCache.trimGenerations dropped it between the walk and here.
-                // Any other read fault propagates: without the record we cannot tell which blobs it
+                // A concurrent ActionCache.trimGenerations dropped it between the walk and here. Any
+                // other read fault propagates: without the record we cannot tell which blobs it
                 // roots, and guessing "none" would let another entry's eviction unlink them.
-                continue;
+                return;
             }
-            Set<String> shas = new LinkedHashSet<>();
-            Matcher outputs = OUTPUT_SHA.matcher(body);
-            while (outputs.find()) shas.add(outputs.group(1).toLowerCase(Locale.ROOT));
-            for (String sha : shas) refs.merge(sha, 1, Integer::sum);
+            int[] named = outputs(body, blobs);
+            for (int blob : named) blobs.retain(blob);
 
             Matcher task = TASK.matcher(body);
-            // ActionCache always renders TASK first, so a record without one is foreign content,
-            // not a jk entry: there is no pointer or generation list to unlink with it. Its shas
-            // stay counted above, which is what CacheRoots.collect does with the same text — the
-            // prune must not unlink a blob the same pass's sweep considers rooted.
-            if (!task.find()) continue;
-            String actionKey = keyFile.file().getFileName().toString();
+            // ActionCache always renders TASK first, so a record without one is foreign content, not
+            // a jk entry: there is no pointer or generation list to unlink with it. Its shas stay
+            // counted above, which is what CacheRoots.collect does with the same text — the prune
+            // must not unlink a blob the same pass's sweep considers rooted.
+            if (!task.find()) return;
+            String actionKey = file.getFileName().toString();
             boolean superseded = live != null && !live.contains(actionKey);
-            entries.add(new Entry(actionKey, task.group(1), keyFile.bytes(), keyFile.mtime(), shas, superseded));
-        }
-        return new Scan(bytes, entries, refs);
+            entries.add(new Entry(
+                    actionKey,
+                    task.group(1),
+                    attrs.size(),
+                    attrs.lastModifiedTime().toMillis(),
+                    named,
+                    superseded));
+        });
+        return new Scan(bytes[0], entries);
     }
 
-    /** True when {@code file} sits inside one of the separately-budgeted Zinc analysis trees. */
-    private static boolean underIncremental(Path actionsDir, Path file) {
-        Path relative = actionsDir.relativize(file);
+    /** The distinct output shas one key record names, as {@link Blobs} indices. */
+    private static int[] outputs(String body, Blobs blobs) {
+        Matcher outputs = OUTPUT_SHA.matcher(body);
+        int[] named = new int[8];
+        int count = 0;
+        while (outputs.find()) {
+            if (count == named.length) named = Arrays.copyOf(named, count * 2);
+            named[count++] = blobs.intern(outputs.group(1).toLowerCase(Locale.ROOT));
+        }
+        if (count == 0) return NO_BLOBS;
+        int[] sorted = Arrays.copyOf(named, count);
+        Arrays.sort(sorted);
+        int distinct = 1;
+        for (int i = 1; i < count; i++) {
+            if (sorted[i] != sorted[distinct - 1]) sorted[distinct++] = sorted[i];
+        }
+        return distinct == count ? sorted : Arrays.copyOf(sorted, distinct);
+    }
+
+    /** True when {@code path} is or sits inside one of the separately-budgeted Zinc analysis trees. */
+    private static boolean underIncremental(Path actionsDir, Path path) {
+        Path relative = actionsDir.relativize(path);
         return relative.getNameCount() > 0
                 && ActionTree.incremental().stream()
                         .anyMatch(t -> t.entry().equals(relative.getName(0).toString()));
