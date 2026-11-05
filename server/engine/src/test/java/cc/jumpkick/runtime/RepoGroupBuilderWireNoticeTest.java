@@ -15,6 +15,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
@@ -35,6 +36,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * End-to-end witness for the run-notice channel: the dependency-confusion warning — a security
@@ -56,7 +58,7 @@ class RepoGroupBuilderWireNoticeTest {
     private static final List<List<String>> NO_BINDINGS = List.of(List.of(), List.of());
 
     @Test
-    void the_dependency_confusion_warning_reaches_the_client_as_a_warn_line() {
+    void the_dependency_confusion_warning_reaches_the_client_as_a_warn_line(@TempDir Path dir) {
         EnvelopeHost host = new EnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
@@ -66,7 +68,7 @@ class RepoGroupBuilderWireNoticeTest {
         try {
             ConnectedClient.submit(
                     env,
-                    "{\"type\":\"build-request\",\"dir\":\"/tmp/repo-notice\"}",
+                    "{\"type\":\"build-request\",\"dir\":" + Jsonl.quote(dir.toString()) + "}",
                     JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                         // The way the planner stands when it builds the group: a Session derived
                         // inside the request carries the run's ledger.
