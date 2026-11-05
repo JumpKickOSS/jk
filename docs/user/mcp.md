@@ -37,7 +37,7 @@ Outside a project `jk mcp` still serves, and the tools take `dir` as over HTTP.
 | Discovery | `GET {httpUrl}/mcp` |
 | Live events | `GET {httpUrl}/mcp` with `Accept: text/event-stream` |
 | Auth | `Authorization: Bearer <token>` (**always** required) |
-| Session | `initialize` answers with an `Mcp-Session-Id` header; echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <id>`. `DELETE /mcp` with the header ends it |
+| Session | `initialize` answers with an `Mcp-Session-Id` header; echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <id>`. `DELETE /mcp` with the header ends it. An id the engine no longer knows (its session ended or was pruned) is a `404`, and the client sends `initialize` again for a new session |
 | Protocol | `2025-11-25`, `2025-06-18`, `2025-03-26` or `2024-11-05`, negotiated at `initialize` ([below](#protocol-revisions)); Streamable HTTP. Send `MCP-Protocol-Version` on every later request |
 | Server name | `jk-engine` |
 | Tool list | `tools/list` answers six tools (`run`, `diagnostics`, `deps`, `callers`, `rename`, `skill`); `run(kind=snapshot)` installs for a sibling project. `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
@@ -96,9 +96,11 @@ stream: the `elicitation/create` request comes first, and the call's own respons
 event. The client answers the request in a new `POST` on the same session, which is accepted with
 `202`. A question left unanswered past the tool's wait is withdrawn with `notifications/cancelled`.
 `jk mcp` carries both directions over stdio: the request is written to stdout while the call is
-outstanding, and the client's response on stdin goes back to the engine. When the engine restarted
-under it, `jk mcp` repeats the client's `initialize` on the new session, so the session still knows
-what the client declared.
+outstanding, and the client's response on stdin goes back to the engine. An engine that replaced
+the one the session opened on answers the same session. When the engine answers `404` instead (the
+session is gone), `jk mcp` repeats the client's `initialize` for a new session, so it still knows
+what the client declared, and sends the refused request once more; the client sees only that
+answer.
 
 ## Verdict
 

@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
@@ -191,14 +192,20 @@ public final class McpHandler {
     }
 
     /**
-     * The response body and, when this body's {@code initialize} opened a connection, the
-     * {@code Mcp-Session-Id} the transport must hand back.
+     * The response body, the HTTP status it goes out with, and, when this body's {@code initialize}
+     * opened a connection, the {@code Mcp-Session-Id} the transport must hand back.
      */
-    public record Reply(String body, @Nullable String openedSessionId) {}
+    public record Reply(String body, @Nullable String openedSessionId, int status) {}
+
+    /** The JSON-RPC code of a request naming a session this engine does not know. */
+    static final int UNKNOWN_SESSION = -32001;
+
+    /** The JSON-RPC code of a request the transport refuses as it stands. */
+    static final int BAD_REQUEST = -32000;
 
     /**
-     * Handle one HTTP body (JSON-RPC request or batch) from the connection behind {@code sessionId}
-     * — null or unknown resolves to no connection, and the calls run anonymous.
+     * Handle one HTTP body (JSON-RPC request or batch) from the connection behind {@code sessionId},
+     * or from no connection when it is null.
      */
     public Reply handle(String body, @Nullable String sessionId) {
         return handle(body, sessionId, null, null, null);
@@ -211,12 +218,13 @@ public final class McpHandler {
 
     /**
      * One HTTP body. {@code sessionId} names a connection this engine has loaded, or one stored
-     * with a session it adopted, which is loaded and answered as it was. {@code project} is the
-     * {@code Jk-Project} header ({@code jk mcp} sends it): {@code initialize} opens a connection
-     * pinned to it, and a call on a connection found nowhere opens one too and hands its id back,
-     * so a client whose session ended keeps its project. {@code protocolVersion} is the {@code MCP-Protocol-Version} header; one jk does not
-     * speak is an {@link IllegalArgumentException}. {@code outbound} is the way back to the client
-     * while this body's request is outstanding, or null when the transport has none.
+     * with a session it adopted, which is loaded and answered as it was; an id found nowhere is a
+     * {@code 404}, and the client starts a new session with {@code initialize}. {@code project} is
+     * the {@code Jk-Project} header ({@code jk mcp} sends it): {@code initialize} opens a connection
+     * pinned to it, and any other request from such a client without a session is a {@code 400}.
+     * {@code protocolVersion} is the {@code MCP-Protocol-Version} header; one jk does not speak is
+     * an {@link IllegalArgumentException}. {@code outbound} is the way back to the client while
+     * this body's request is outstanding, or null when the transport has none.
      */
     public Reply handle(
             String body,
@@ -230,15 +238,20 @@ public final class McpHandler {
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "unsupported MCP-Protocol-Version: " + protocolVersion.strip()));
         String pin = project == null || project.isBlank() ? null : pinnedDir(project);
-        McpConnection found = ctx.connections().find(sessionId);
-        AtomicReference<McpConnection> opened = new AtomicReference<>();
-        if (found == null && pin != null) {
-            McpRevision revision = named != null ? named : McpRevision.HTTP_DEFAULT;
-            opened.set(ctx.connections().open("jk mcp", pin, revision, McpElicitModes.NONE));
-        }
-        McpConnection connection = found != null ? found : opened.get();
+        String claimed = sessionId == null || sessionId.isBlank() ? null : sessionId.strip();
+        McpConnection connection = ctx.connections().find(sessionId);
         McpRevision revision =
                 named != null ? named : connection != null ? connection.revision() : McpRevision.HTTP_DEFAULT;
+        if (claimed != null && connection == null) {
+            return refuse(
+                    body,
+                    404,
+                    UNKNOWN_SESSION,
+                    "unknown Mcp-Session-Id " + claimed + ": send initialize to start a new session",
+                    revision);
+        }
+        AtomicReference<McpConnection> opened = new AtomicReference<>();
+        AtomicInteger status = new AtomicInteger(200);
         String response = McpRpc.handleBody(
                 body,
                 new McpRpc.Router() {
@@ -251,6 +264,10 @@ public final class McpHandler {
                             String playbook = c.pinned() ? McpTools.PINNED_INSTRUCTIONS : McpTools.INSTRUCTIONS;
                             return McpRpc.initialize(c.revision().wire(), SERVER_NAME, ctx.version(), playbook);
                         }
+                        if (connection == null && pin != null) {
+                            status.set(400);
+                            throw new McpError(BAD_REQUEST, "no Mcp-Session-Id: send initialize first");
+                        }
                         return route(method, params, connection, outbound);
                     }
 
@@ -261,7 +278,23 @@ public final class McpHandler {
                 },
                 revision.batches());
         McpConnection c = opened.get();
-        return new Reply(response, c == null ? null : c.id());
+        return new Reply(response, c == null ? null : c.id(), status.get());
+    }
+
+    /** True when {@code sessionId} is absent or names a connection this engine can answer. */
+    public boolean knows(@Nullable String sessionId) {
+        return sessionId == null || sessionId.isBlank() || ctx.connections().find(sessionId) != null;
+    }
+
+    /** Answer every request in {@code body} with one JSON-RPC error, under {@code status}; nothing runs. */
+    private static Reply refuse(String body, int status, int code, String message, McpRevision revision) {
+        String response = McpRpc.handleBody(
+                body,
+                (method, params) -> {
+                    throw new McpError(code, message);
+                },
+                revision.batches());
+        return new Reply(response, null, status);
     }
 
     /** Open the connection an {@code initialize} asks for: its revision and its elicitation modes. */

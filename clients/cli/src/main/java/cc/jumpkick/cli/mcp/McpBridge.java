@@ -50,9 +50,10 @@ import org.jspecify.annotations.Nullable;
  * notification on it is written to stdout as it arrives, and the call's own response is the
  * stream's last event. The client's answer is a response line on stdin, POSTed back on the same
  * session. The bridge sends {@code MCP-Protocol-Version} with the revision {@code initialize}
- * negotiated. An engine that replaced the one the session opened on answers the same session; when
- * the engine hands back a new one (it found the session nowhere), the bridge repeats the client's
- * {@code initialize} on it, so the new session knows what the client declared.
+ * negotiated. An engine that replaced the one the session opened on answers the same session. One
+ * that answers {@code 404} no longer knows it: the bridge repeats the client's {@code initialize}
+ * without a session, so the new session knows what the client declared, and sends the request
+ * once more on it. The client sees only that answer.
  */
 public final class McpBridge {
 
@@ -96,8 +97,11 @@ public final class McpBridge {
     private volatile @Nullable String session;
     private volatile @Nullable String protocolVersion;
 
-    /** The client's {@code initialize}, repeated on a session the engine opened without one. */
+    /** The client's {@code initialize}, repeated when the engine no longer knows the session. */
     private volatile @Nullable String initialize;
+
+    /** Held while a session the engine forgot is replaced, so concurrent calls replace it once. */
+    private final Object renewal = new Object();
 
     /** Where a message the engine sends the client goes: one stdout line. */
     private volatile Consumer<String> toClient = line -> {};
@@ -138,7 +142,7 @@ public final class McpBridge {
                     Message m = Message.of(line);
                     if (m.method().equals("initialize")) {
                         initialize = line;
-                        write(lines, initialized(forward(line)));
+                        write(lines, initialized(forward(line, true)));
                         continue;
                     }
                     if (m.isResponse()) {
@@ -317,14 +321,19 @@ public final class McpBridge {
      * new port), then answers a JSON-RPC error rather than leaving the client waiting.
      */
     String forward(String message) {
+        return forward(message, false);
+    }
+
+    /** As {@link #forward(String)}; {@code fresh} sends it with no session, as {@code initialize} goes. */
+    private String forward(String message, boolean fresh) {
         try {
-            return oneLine(post(message));
+            return oneLine(send(message, fresh));
         } catch (RuntimeException e) {
             return error(message, "jk mcp: " + e.getMessage());
         } catch (IOException first) {
             endpoint = null;
             try {
-                return oneLine(post(message));
+                return oneLine(send(message, fresh));
             } catch (IOException | RuntimeException e) {
                 return error(message, "jk engine unreachable: " + e.getMessage());
             } catch (InterruptedException e) {
@@ -337,7 +346,27 @@ public final class McpBridge {
         }
     }
 
-    private String post(String message) throws IOException, InterruptedException {
+    /**
+     * {@code message} on the current session, and once more on a new one when the engine answers
+     * {@code 404} for it; any other non-2xx answer is a JSON-RPC error.
+     */
+    private String send(String message, boolean fresh) throws IOException, InterruptedException {
+        String sent = fresh ? null : session;
+        Answer answer = post(message, sent);
+        if (answer.status() == 404 && sent != null && renew(sent, message)) answer = post(message, session);
+        if (answer.status() / 100 != 2) {
+            return error(
+                    message,
+                    "jk engine answered HTTP " + answer.status() + ": "
+                            + answer.body().strip());
+        }
+        return answer.body();
+    }
+
+    /** An engine reply: its status and its body, the call's response when the reply was a stream. */
+    private record Answer(int status, String body) {}
+
+    private Answer post(String message, @Nullable String sent) throws IOException, InterruptedException {
         if (endpoint == null) endpoint = endpoints.current();
         Endpoint target = endpoint;
         HttpRequest.Builder request = Http.proxiedRequest(target.url())
@@ -347,24 +376,41 @@ public final class McpBridge {
                 .header("Accept", "application/json, text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(message, StandardCharsets.UTF_8));
         if (project != null) request.header(PROJECT_HEADER, project);
-        String sent = session;
         if (sent != null) request.header(SESSION_HEADER, sent);
         String version = protocolVersion;
         if (version != null) request.header(PROTOCOL_HEADER, version);
         HttpResponse<InputStream> response = http.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
-        String handedBack = response.headers().firstValue(SESSION_HEADER).orElse(null);
-        if (handedBack != null) session = handedBack;
+        response.headers().firstValue(SESSION_HEADER).ifPresent(opened -> session = opened);
         int status = response.statusCode();
-        String body;
         try (InputStream in = response.body()) {
-            if (status == 202) return "";
+            if (status == 202) return new Answer(status, "");
             boolean stream =
                     response.headers().firstValue("Content-Type").orElse("").startsWith("text/event-stream");
-            body = stream && status / 100 == 2 ? stream(in) : new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            return new Answer(
+                    status,
+                    stream && status / 100 == 2 ? stream(in) : new String(in.readAllBytes(), StandardCharsets.UTF_8));
         }
-        if (status / 100 != 2) return error(message, "jk engine answered HTTP " + status + ": " + body.strip());
-        if (handedBack != null && sent != null && !handedBack.equals(sent)) reinitialize(message);
-        return body;
+    }
+
+    /**
+     * The engine no longer knows session {@code gone}: repeat the client's {@code initialize}
+     * without one, so the new session records what the client declared. Its reply is the bridge's
+     * own and never reaches the client. True when {@code message} may be sent again on a new
+     * session, one another call may already have opened.
+     */
+    private boolean renew(String gone, String message) throws IOException, InterruptedException {
+        String hello = initialize;
+        if (hello == null || hello.equals(message)) return false;
+        synchronized (renewal) {
+            String now = session;
+            if (now != null && !now.equals(gone)) return true;
+            Answer answer = post(hello, null);
+            String opened = session;
+            if (answer.status() / 100 != 2 || opened == null || opened.equals(gone)) return false;
+            initialized(answer.body());
+            post(MiniJson.write(Map.of("jsonrpc", "2.0", "method", "notifications/initialized")), opened);
+            return true;
+        }
     }
 
     /**
@@ -388,18 +434,6 @@ public final class McpBridge {
             toClient.accept(oneLine(json));
         }
         return data.isEmpty() ? "" : oneLine(data.toString());
-    }
-
-    /**
-     * The engine answered on a session other than the one sent: it no longer knew that one. Repeat
-     * the client's {@code initialize} so the new session records what the client declared; its
-     * reply is the bridge's own and never reaches the client.
-     */
-    private void reinitialize(String message) {
-        String hello = initialize;
-        if (hello == null || hello.equals(message)) return;
-        session = null;
-        initialized(forward(hello));
     }
 
     /** JSON has no raw line breaks outside strings, so dropping them keeps one message per line. */

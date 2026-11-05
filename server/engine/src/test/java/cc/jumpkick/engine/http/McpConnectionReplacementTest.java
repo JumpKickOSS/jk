@@ -12,6 +12,13 @@ import cc.jumpkick.engine.sessions.FinishedRun;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.mcp.McpRevision;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +26,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -104,12 +112,76 @@ class McpConnectionReplacementTest {
     }
 
     @Test
-    void an_id_found_nowhere_is_handed_a_new_connection_on_a_pinned_client() {
+    void an_id_found_nowhere_is_a_404_on_every_path_and_a_stored_one_is_served() throws Exception {
+        McpHandler first = handler(log());
+        String stored = requireNonNull(
+                first.handle(HELLO, null, project.toString(), null, null).openedSessionId());
         McpHandler next = handler(log());
+        URI url = serve(next);
+        HttpClient http = HttpClient.newHttpClient();
 
-        McpHandler.Reply reply = run(next, "beef");
+        HttpResponse<String> call = http.send(post(url, "beef", CALL), HttpResponse.BodyHandlers.ofString());
+        assertThat(call.statusCode()).isEqualTo(404);
+        assertThat(call.headers().firstValue(McpFront.SESSION_HEADER)).isEmpty();
+        assertThat(call.body()).contains("\"id\":2").contains("-32001");
+        assertThat(specs).as("nothing ran").isEmpty();
+        HttpResponse<String> events = http.send(
+                HttpRequest.newBuilder(url)
+                        .header("Accept", "text/event-stream")
+                        .header(McpFront.SESSION_HEADER, "beef")
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(events.statusCode()).isEqualTo(404);
+        HttpResponse<String> delete = http.send(
+                HttpRequest.newBuilder(url)
+                        .header(McpFront.SESSION_HEADER, "beef")
+                        .DELETE()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(delete.statusCode()).isEqualTo(404);
 
-        assertThat(reply.openedSessionId()).isNotNull().isNotEqualTo("beef");
+        HttpResponse<String> served = http.send(post(url, stored, CALL), HttpResponse.BodyHandlers.ofString());
+        assertThat(served.statusCode()).as(served.body()).isEqualTo(200);
+        assertThat(served.body()).contains("\"result\"");
+        assertThat(specs.getLast().origin().session()).isEqualTo("claude-code " + stored);
+    }
+
+    private static final String CALL = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":"
+            + "{\"name\":\"run\",\"arguments\":{\"kind\":\"build\",\"wait\":false}}}";
+
+    private @Nullable HttpServer server;
+
+    @AfterEach
+    void stop() {
+        if (server != null) server.stop(0);
+    }
+
+    /** {@code handler} behind {@link McpFront} on a loopback port; the {@code /mcp} URL. */
+    private URI serve(McpHandler handler) throws Exception {
+        HttpEvents hub = new HttpEvents();
+        LiveVitals vitals = new LiveVitals(hub, () -> null, () -> null);
+        McpFront front =
+                new McpFront(handler, new SseEndpoint(hub, vitals, new ProgressTokenRegistry(), line -> {}), "1");
+        HttpServer s = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        s.createContext("/mcp", exchange -> {
+            try (exchange) {
+                front.handle(exchange);
+            }
+        });
+        s.start();
+        server = s;
+        return URI.create("http://127.0.0.1:" + s.getAddress().getPort() + "/mcp");
+    }
+
+    private HttpRequest post(URI url, String session, String body) {
+        return HttpRequest.newBuilder(url)
+                .header("Content-Type", "application/json")
+                .header(McpFront.SESSION_HEADER, session)
+                .header(McpFront.PROJECT_HEADER, project.toString())
+                .header(McpFront.PROTOCOL_HEADER, "2025-06-18")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
     }
 
     private SessionLog log() {

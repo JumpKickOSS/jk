@@ -53,6 +53,10 @@ final class McpFront {
         String method = exchange.getRequestMethod();
         if (method.equals("GET") || method.equals("HEAD")) {
             if (method.equals("GET") && HttpAdmission.acceptsEventStream(exchange)) {
+                if (!mcp.knows(exchange.getRequestHeaders().getFirst(SESSION_HEADER))) {
+                    HttpResponses.sendText(exchange, 404, "unknown Mcp-Session-Id\n");
+                    return;
+                }
                 sse.serveMcp(exchange);
                 return;
             }
@@ -114,7 +118,14 @@ final class McpFront {
         if (reply.openedSessionId() != null) {
             exchange.getResponseHeaders().set(SESSION_HEADER, reply.openedSessionId());
         }
-        if (response == null || response.isEmpty()) {
+        boolean empty = response == null || response.isEmpty();
+        if (reply.status() != 200) {
+            // Refused: each request in the body is answered with the JSON-RPC error that says why.
+            if (empty) exchange.sendResponseHeaders(reply.status(), -1);
+            else HttpResponses.sendJson(exchange, reply.status(), response);
+            return;
+        }
+        if (empty) {
             // JSON-RPC notification or response — accepted, no body.
             exchange.sendResponseHeaders(202, -1);
             return;

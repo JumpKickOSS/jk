@@ -20,6 +20,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -39,6 +41,9 @@ class McpBridgeTest {
     private final List<String> sessions = new CopyOnWriteArrayList<>();
     private final List<String> tokens = new CopyOnWriteArrayList<>();
     private final List<String> eventQueries = new CopyOnWriteArrayList<>();
+    private final List<String> bodies = new CopyOnWriteArrayList<>();
+    private final Set<String> forgotten = ConcurrentHashMap.newKeySet();
+    private final AtomicInteger opened = new AtomicInteger();
     private volatile boolean eventsDown;
 
     @BeforeEach
@@ -55,7 +60,20 @@ class McpBridgeTest {
             projects.add(exchange.getRequestHeaders().getFirst(McpBridge.PROJECT_HEADER));
             sessions.add(exchange.getRequestHeaders().getFirst(McpBridge.SESSION_HEADER));
             tokens.add(exchange.getRequestHeaders().getFirst("Authorization"));
-            if (body.contains("\"initialize\"")) exchange.getResponseHeaders().set(McpBridge.SESSION_HEADER, "ab12");
+            bodies.add(body);
+            String session = exchange.getRequestHeaders().getFirst(McpBridge.SESSION_HEADER);
+            if (session != null && forgotten.contains(session)) {
+                byte[] gone = "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32001,\"message\":\"unknown\"}}"
+                        .getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(404, gone.length);
+                exchange.getResponseBody().write(gone);
+                exchange.close();
+                return;
+            }
+            if (body.contains("\"initialize\"")) {
+                exchange.getResponseHeaders()
+                        .set(McpBridge.SESSION_HEADER, opened.getAndIncrement() == 0 ? "ab12" : "cd34");
+            }
             if (!body.contains("\"id\"")) {
                 exchange.sendResponseHeaders(202, -1);
                 exchange.close();
@@ -213,6 +231,26 @@ class McpBridgeTest {
         // Two replies, one per line: the notification's 202 writes nothing, the body's newline is gone.
         assertThat(out.split("\n", -1)).hasSize(3).endsWith("");
         assertThat(out).doesNotContain(",\n\"id\"");
+    }
+
+    @Test
+    void a_forgotten_session_is_initialized_again_and_the_request_retried_once_on_the_new_one() throws IOException {
+        forgotten.add("ab12");
+        String hello = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}}}";
+        String out = serve(
+                new McpBridge(this::live, "/ws/app"),
+                hello,
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
+        assertThat(sessions)
+                .as("initialize, the refused call, initialize again, initialized, the retry")
+                .containsExactly(null, "ab12", null, "cd34", "cd34");
+        assertThat(bodies.get(2)).isEqualTo(hello);
+        assertThat(bodies.get(3)).contains("notifications/initialized");
+        assertThat(bodies.get(4)).contains("tools/list");
+        assertThat(out.split("\n"))
+                .as("the client sees its own initialize answered, then the retried call, nothing else")
+                .hasSize(2)
+                .allSatisfy(line -> assertThat(line).contains("\"result\""));
     }
 
     @Test
