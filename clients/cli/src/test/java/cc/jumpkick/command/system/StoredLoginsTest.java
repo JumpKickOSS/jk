@@ -8,9 +8,13 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.repo.RepoCredentialStore;
 import cc.jumpkick.secret.SecretVault;
+import cc.jumpkick.util.JkDirs;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class StoredLoginsTest {
 
@@ -39,5 +43,27 @@ class StoredLoginsTest {
                         "login:    repo nexus → https://nexus.acme (the Secret Service)",
                         "login:    repo ghcr.io → https://ghcr.io (the owner-only file)",
                         "login:    forge github.com (the macOS Keychain)");
+    }
+
+    @Test
+    void a_config_toml_that_does_not_parse_leaves_doctor_running_and_names_the_position(@TempDir Path home)
+            throws Exception {
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        try {
+            Files.writeString(JkDirs.userConfigFile(), "[credentials]\nstore = \"keychain\"\n\n[mirrors\n");
+
+            StoredLogins.Rows rows = StoredLogins.collect();
+
+            assertThat(rows.destination()).isEqualTo("unknown");
+            assertThat(rows.error())
+                    .startsWith("where a new login goes is unknown: " + JkDirs.userConfigFile() + ":4:")
+                    .endsWith(" does not parse");
+            assertThat(StoredLogins.render(rows, Theme.active()).stream().map(TestAnsi::strip))
+                    .first()
+                    .asString()
+                    .startsWith("warn:    logins — where a new login goes is unknown");
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
     }
 }

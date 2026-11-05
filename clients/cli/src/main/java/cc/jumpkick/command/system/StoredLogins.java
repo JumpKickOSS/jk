@@ -2,11 +2,13 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.repo.RepoCredentialStore;
 import cc.jumpkick.secret.SecretBackend;
 import cc.jumpkick.secret.SecretVault;
+import cc.jumpkick.util.JkDirs;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -32,12 +34,35 @@ public final class StoredLogins {
     public record Rows(
             List<Login> rows, String destination, @Nullable String error) {}
 
+    /**
+     * As {@link #collect(List, List, SecretVault)} with this machine's stores. A config.toml that
+     * does not parse leaves {@code [credentials] store} unknown, so the destination is unknown too
+     * and says why; the logins themselves are still listed, and doctor keeps running.
+     */
     static Rows collect() {
-        SecretVault vault = SecretVault.current();
-        return collect(new RepoCredentialStore().logins(), new TokenStore().logins(), vault);
+        // Listing reads only the records, never a secret, so it needs no keychain choice.
+        List<RepoCredentialStore.Login> repo =
+                new RepoCredentialStore(JkDirs.creds().resolve("repo")).logins();
+        List<TokenStore.Login> forge = new TokenStore(JkDirs.creds().resolve("forge")).logins();
+        SecretVault vault;
+        try {
+            vault = SecretVault.current();
+        } catch (UserConfigParseException unparsed) {
+            return new Rows(
+                    rows(repo, forge),
+                    "unknown",
+                    "where a new login goes is unknown: " + unparsed.file() + ":" + unparsed.line() + ":"
+                            + unparsed.column() + " does not parse");
+        }
+        return collect(repo, forge, vault);
     }
 
     static Rows collect(List<RepoCredentialStore.Login> repo, List<TokenStore.Login> forge, SecretVault vault) {
+        Optional<SecretBackend> destination = vault.destination(new ArrayList<>());
+        return new Rows(rows(repo, forge), destination.map(SecretBackend::id).orElse("file"), vault.misconfigured());
+    }
+
+    private static List<Login> rows(List<RepoCredentialStore.Login> repo, List<TokenStore.Login> forge) {
         List<Login> rows = new ArrayList<>();
         for (RepoCredentialStore.Login login : repo) {
             rows.add(new Login(
@@ -49,8 +74,7 @@ public final class StoredLogins {
         for (TokenStore.Login login : forge) {
             rows.add(new Login("forge", login.host(), null, storeOf(login.pointer())));
         }
-        Optional<SecretBackend> destination = vault.destination(new ArrayList<>());
-        return new Rows(List.copyOf(rows), destination.map(SecretBackend::id).orElse("file"), vault.misconfigured());
+        return List.copyOf(rows);
     }
 
     private static String storeOf(SecretVault.@Nullable Pointer pointer) {
