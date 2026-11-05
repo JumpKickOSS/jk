@@ -6,6 +6,9 @@ java = $java$
 [application]
 main = "$package$.Main"
 
+# No [image]: a native CLI ships as the binary `jk native` writes, which runs on its own; a
+# container image would wrap a self-contained executable in a runtime it does not need.
+
 [dependencies]
 jline = "4.4.8"
 

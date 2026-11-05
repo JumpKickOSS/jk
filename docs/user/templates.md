@@ -83,7 +83,7 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 
 | Name | Framework | Languages | Intent | Rule pack |
 |------|-----------|-----------|--------|-----------|
-| `cli` | none | java, kotlin | Simple executable | house rules |
+| `cli` | none | java, kotlin | Simple executable | `library` (java), house rules (kotlin) |
 | `cli-native` | none | java | Interactive Java CLI with JLine | house rules |
 | `library` | none | java, kotlin | Published library: sources and javadoc jars (Dokka's for Kotlin), `[build-info]`, unit test; the Java one a `@NullMarked` API | `library` |
 | `ktor-3` | none | kotlin | Ktor + Koin + Exposed | house rules |
@@ -138,7 +138,8 @@ ships a small `jk-guards.toml` of its own — a file-size ratchet and one ban wi
 `guard-fixtures/` — so the guard loop is there from the first build.
 
 Every template also declares test tiers (`[test] exclude-tags` with one profile per tag), a
-`[format]` style, and, for a runnable app, an `[image]` table. Every Java template declares [`[nullness]`](build.md#null-checking-nullness)
+`[format]` style, and, for a runnable app on the JVM, an `[image]` table (`cli-native` has none: its
+native binary ships as itself). Every Java template declares [`[nullness]`](build.md#null-checking-nullness)
 and marks each package it generates `@NullMarked`, so NullAway checks the project from the first
 build. The Spring Boot and `library`
 templates carry a [`[build-info]`](packaging.md#build-info-gitproperties-and-boots-build-infoproperties)
