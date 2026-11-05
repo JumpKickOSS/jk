@@ -260,12 +260,16 @@ class NewCommandTest {
     void help_lists_traditional_before_simple() {
         String newHelp =
                 Capture.stdout(() -> assertThat(Jk.execute("new", "--help")).isZero());
-        assertThat(newHelp).contains("Tree: traditional (default) | simple | auto.");
+        assertThat(newHelp.replaceAll("\\s+", " "))
+                .contains(
+                        "Tree: traditional (default) | simple | auto; with -t, the template's own jk_layout is the default.");
         assertThat(newHelp.indexOf("traditional")).isLessThan(newHelp.indexOf("simple"));
 
         String initHelp =
                 Capture.stdout(() -> assertThat(Jk.execute("init", "--help")).isZero());
-        assertThat(initHelp).contains("Tree: traditional (default) | simple | auto.");
+        assertThat(initHelp.replaceAll("\\s+", " "))
+                .contains(
+                        "Tree: traditional (default) | simple | auto; with -t, the template's own jk_layout is the default.");
         assertThat(initHelp.indexOf("traditional")).isLessThan(initHelp.indexOf("simple"));
     }
 
