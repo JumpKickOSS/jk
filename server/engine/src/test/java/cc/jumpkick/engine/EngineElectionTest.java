@@ -4,6 +4,9 @@ package cc.jumpkick.engine;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.journal.SessionJournal;
+import cc.jumpkick.engine.sessions.EpisodeInference;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.EnginePaths;
@@ -30,10 +33,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -473,5 +480,89 @@ class EngineElectionTest {
         assertThat(won).isNotNull();
         closeLater(won.listener());
         assertThat(Files.getPosixFilePermissions(p.dir())).isEqualTo(PosixFilePermissions.fromString("rwx------"));
+    }
+    /** A predecessor socket that accepts and runs {@code answer} on each connection's first line. */
+    private Path fakePredecessor(Path dir, Function<String, @Nullable String> answer) throws IOException {
+        Path socket = dir.resolve("pred.sock");
+        ServerSocketChannel listener = closeLater(ServerSocketChannel.open(StandardProtocolFamily.UNIX));
+        listener.bind(UnixDomainSocketAddress.of(socket));
+        List<SocketChannel> accepted = Collections.synchronizedList(new ArrayList<>());
+        closeLater(() -> {
+            synchronized (accepted) {
+                for (SocketChannel ch : accepted) ch.close();
+            }
+        });
+        Thread t = new Thread(
+                () -> {
+                    while (listener.isOpen()) {
+                        try {
+                            SocketChannel ch = listener.accept();
+                            accepted.add(ch);
+                            BufferedReader r = new BufferedReader(
+                                    new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
+                            String reply = answer.apply(r.readLine());
+                            if (reply == null) continue; // silent: the connection stays open, unanswered
+                            BufferedWriter w = new BufferedWriter(
+                                    new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+                            w.write(reply);
+                            w.write('\n');
+                            w.flush();
+                        } catch (IOException e) {
+                            return; // listener closed
+                        }
+                    }
+                },
+                "fake-predecessor");
+        t.setDaemon(true);
+        t.start();
+        return socket;
+    }
+
+    /** A successor adopts once the predecessor has said it stopped writing sessions. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_predecessor_that_stops_writing_sessions_says_so() throws Exception {
+        Path dir = tempDirs.create();
+        EnginePaths.Paths p = EnginePaths.resolve(dir);
+        EngineElection e = election(p, "aaaa", 4242);
+        closeLater(requireNonNull(e.win()).listener());
+        List<String> asked = new ArrayList<>();
+        Path predecessor = fakePredecessor(dir, line -> {
+            asked.add(EngineProtocol.typeOf(line));
+            return ProtoLifecycle.sessionsStopped(77);
+        });
+
+        assertThat(e.stopPredecessorSessions(predecessor)).isTrue();
+        assertThat(asked).containsExactly(EngineProtocol.STOP_SESSIONS);
+    }
+
+    /**
+     * A predecessor that never answers, dead or wedged, is treated as stopped once the deadline
+     * passes: the successor's adoption goes ahead rather than waiting on it.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_predecessor_that_never_answers_does_not_hold_adoption_past_the_deadline() throws Exception {
+        Path dir = tempDirs.create();
+        EnginePaths.Paths p = EnginePaths.resolve(dir);
+        List<String> log = new ArrayList<>();
+        EngineElection e = election(p, "aaaa", 4242, log::add);
+        closeLater(requireNonNull(e.win()).listener());
+        Path predecessor = fakePredecessor(dir, line -> null);
+        SessionJournal journal = new SessionJournal(dir.resolve("sessions"));
+        new SessionLog(journal, () -> 1_000L, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS)
+                .open("mcp", "client", "client 3f9a", "/ws/app");
+        SessionLog successor = new SessionLog(journal, () -> 2_000L, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+        successor.adoptAfter(() -> e.stopPredecessorSessions(predecessor));
+        long stoppedMs = EngineElection.sessionsStoppedMs;
+        EngineElection.sessionsStoppedMs = 200;
+        try {
+            long start = System.nanoTime();
+            assertThat(successor.adopt()).isEqualTo(1);
+            assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
+        } finally {
+            EngineElection.sessionsStoppedMs = stoppedMs;
+        }
+        assertThat(log).anyMatch(l -> l.contains("did not confirm it stopped writing sessions"));
     }
 }

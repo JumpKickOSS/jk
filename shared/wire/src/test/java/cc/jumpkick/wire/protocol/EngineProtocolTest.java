@@ -156,6 +156,14 @@ class EngineProtocolTest {
     }
 
     @Test
+    void stop_sessions_and_its_ack_round_trip() {
+        assertThat(EngineProtocol.typeOf(ProtoLifecycle.stopSessions())).isEqualTo(EngineProtocol.STOP_SESSIONS);
+        String stopped = ProtoLifecycle.sessionsStopped(99);
+        assertThat(EngineProtocol.typeOf(stopped)).isEqualTo(EngineProtocol.SESSIONS_STOPPED);
+        assertThat(SessionsStoppedFrame.decode(stopped).pid()).isEqualTo(99);
+    }
+
+    @Test
     void drain_status_carries_each_run_it_finished_as_the_text_of_one_json_object() {
         List<String> runs = List.of("{\"episode\":\"s.1\",\"failingTests\":[\"A#b]\"]}", "{\"episode\":\"s.2\"}");
         String status = ProtoLifecycle.drainStatus(99, 0, "1.2.3", runs);

@@ -181,6 +181,16 @@ public final class ProtoLifecycle {
         return new DrainDoneFrame(pid).encode();
     }
 
+    /** Successor → displaced predecessor: stop writing session records before this engine adopts them. */
+    public static String stopSessions() {
+        return new StopSessionsFrame().encode();
+    }
+
+    /** Predecessor → successor: no session record is written here from now on. */
+    public static String sessionsStopped(long pid) {
+        return new SessionsStoppedFrame(pid).encode();
+    }
+
     /** The one error envelope; see {@link EngineProtocol#ERROR} for the code vocabulary. */
     public static String error(String code, String message) {
         return new ErrorFrame(code, message).encode();

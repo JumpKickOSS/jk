@@ -56,6 +56,8 @@ class ProtoLifecycleFrozenBytesTest {
         assertThat(ProtoLifecycle.drainStatus(77, 2, "0.13.0", List.of()))
                 .isEqualTo("{\"type\":\"drain-status\",\"pid\":77,\"plans\":2,\"version\":\"0.13.0\"}");
         assertThat(ProtoLifecycle.drainDone(77)).isEqualTo("{\"type\":\"drain-done\",\"pid\":77}");
+        assertThat(ProtoLifecycle.stopSessions()).isEqualTo("{\"type\":\"stop-sessions\"}");
+        assertThat(ProtoLifecycle.sessionsStopped(77)).isEqualTo("{\"type\":\"sessions-stopped\",\"pid\":77}");
         assertThat(ProtoLifecycle.error("deadline", "too slow"))
                 .isEqualTo("{\"type\":\"error\",\"code\":\"deadline\",\"message\":\"too slow\"}");
         assertThat(ProtoLifecycle.requestFailed("boom"))

@@ -389,7 +389,8 @@ public final class EventCatalog {
                 EngineProtocol.HELLO,
                 EngineProtocol.PING,
                 EngineProtocol.STATUS,
-                EngineProtocol.SHUTDOWN)) {
+                EngineProtocol.SHUTDOWN,
+                EngineProtocol.STOP_SESSIONS)) {
             out.put(request, "client to engine: a request of the connection");
         }
         for (String reply : List.of(
@@ -398,7 +399,8 @@ public final class EventCatalog {
                 EngineProtocol.STATUS_ACK,
                 EngineProtocol.BYE,
                 EngineProtocol.DRAIN_STATUS,
-                EngineProtocol.DRAIN_DONE)) {
+                EngineProtocol.DRAIN_DONE,
+                EngineProtocol.SESSIONS_STOPPED)) {
             out.put(reply, "engine to client: the reply to a connection request");
         }
         for (String row : List.of(

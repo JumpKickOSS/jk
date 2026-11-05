@@ -276,7 +276,7 @@ Same-version client/engine only — not a multi-version public API. Conventions 
 | Envelope | One JSON object per line; discriminator field `"type"` (same as CLI JSONL / SSE / MCP) |
 | Auth (TCP only) | First line `{"type":"auth","token":…}` — never a raw token line |
 | Handshake | `hello` / `hello-ack` carry `version`, `proto` (`EngineProtocol.PROTOCOL`), `purpose` (`connect`\|`probe`); `hello-ack` uses `startedAt` (millis) |
-| Handover | Displaced predecessor yields UDS/HTTP, then `drain-status` / `drain-done` to the successor |
+| Handover | Displaced predecessor yields HTTP on `shutdown` / `bye`, stops writing sessions on `stop-sessions` / `sessions-stopped`, then sends `drain-status` / `drain-done` to the successor |
 | Errors | `{"type":"error","code",…,"message",…}` (`auth`, `protocol`, `version-skew`, …) |
 | Project path | Field name is always `dir` |
 | BuildPlan finish | `{"type":"buildplan-finish","kind":…,"dir":…,"success":…}` (+ kind-specific tails) |

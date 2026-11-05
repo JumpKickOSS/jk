@@ -268,9 +268,10 @@ class EngineTakeoverTest {
     }
 
     /**
-     * One writer across the hand-off: a run the displaced engine finishes while it drains is
-     * folded into its episode by the successor, from the {@code drain-status} that carries it, and
-     * the displaced engine writes no session record of its own.
+     * One writer across the hand-off: the successor adopts once the displaced engine has said it
+     * stopped writing sessions, a run the displaced engine finishes while it drains is folded into
+     * its episode by the successor, from the {@code drain-status} that carries it, and the displaced
+     * engine writes no session record of its own.
      */
     @Test
     void a_run_the_displaced_engine_finishes_lands_in_its_episode_through_the_successor() throws Exception {
@@ -321,6 +322,9 @@ class EngineTakeoverTest {
                     .as("one run line, appended by the successor alone")
                     .singleElement()
                     .satisfies(a -> assertThat(a).containsEntry("summary", "test #7"));
+            assertThat(List.copyOf(logs))
+                    .as("the displaced engine acknowledged it stopped writing sessions before the adoption")
+                    .anyMatch(l -> l.contains("stopped writing sessions; adopting them"));
         } finally {
             newer.close();
             old.close();
