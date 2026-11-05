@@ -561,6 +561,10 @@ public final class BuildMetrics {
         static final long DEFAULT_MAX_MB = 10;
         static final long DEFAULT_MAX_AGE_DAYS = 730; // 2 years
 
+        /** The budget with no config file and no environment: 10 MB, two years. */
+        public static final Limits DEFAULTS =
+                new Limits(DEFAULT_MAX_MB * 1024L * 1024L, DEFAULT_MAX_AGE_DAYS * 86_400_000L);
+
         /**
          * Resolve from {@code JK_METRICS_MAX_SIZE_MB} / {@code JK_METRICS_MAX_AGE_DAYS} env vars,
          * else the {@code [metrics] max-size-mb} / {@code max-age-days} keys in the user config,

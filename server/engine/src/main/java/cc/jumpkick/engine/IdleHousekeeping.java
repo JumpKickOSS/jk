@@ -10,7 +10,6 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.CachePlans;
@@ -61,6 +60,9 @@ public final class IdleHousekeeping {
     private final JkHistoryConfig historyConfig;
     private final BuildJournal journal;
     private final Supplier<Path> metricsFile;
+    /** The metrics store's size and age budget, read at each prune: the engine's config, not the process's. */
+    private final Supplier<BuildMetrics.Limits> metricsLimits;
+
     private final Path engineDir;
     private final LongSupplier clock;
     private final Consumer<String> log;
@@ -343,8 +345,8 @@ public final class IdleHousekeeping {
 
     private void pruneMetrics() {
         try {
-            BuildMetrics.Limits limits = BuildMetrics.Limits.resolve(JkDirs.userConfigFile(), ProcessEnv::get);
-            BuildMetrics.PruneReport r = BuildMetrics.prune(metricsFile.get(), limits, clock.getAsLong(), false);
+            BuildMetrics.PruneReport r =
+                    BuildMetrics.prune(metricsFile.get(), metricsLimits.get(), clock.getAsLong(), false);
             if (r.evictedByAge() + r.evictedBySize() > 0) {
                 log.accept("jk engine: build metrics prune removed " + (r.evictedByAge() + r.evictedBySize())
                         + " rows (" + r.kept() + " kept, " + r.finalBytes() + " bytes)");
