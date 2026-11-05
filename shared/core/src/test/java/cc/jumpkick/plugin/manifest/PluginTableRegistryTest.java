@@ -9,6 +9,8 @@ import cc.jumpkick.model.PluginConfig;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.jar.JarEntry;
@@ -200,6 +202,31 @@ class PluginTableRegistryTest {
                         "openapi",
                         "minified",
                         "micronaut");
+    }
+
+    /**
+     * The catalog writes each built-in's table beside its id so a cold store can fetch the plugin
+     * that owns a table before any manifest is on disk. Each pair must be what the plugin's own
+     * {@code jk-plugin.toml} says, or the lazy fetch asks for the wrong worker.
+     */
+    @Test
+    void every_built_in_table_is_the_one_its_shipped_manifest_owns() {
+        Path root = PluginTableRegistry.discoverTestWorkspaceRoot();
+        Assumptions.assumeTrue(root != null && Files.isRegularFile(root.resolve("plugins/generator/jk-plugin.toml")));
+        Map<String, String> fromSources = new LinkedHashMap<>();
+        PluginTableRegistry.loadFromWorkspacePluginSources(root)
+                .values()
+                .forEach(m -> fromSources.put(m.id(), m.table()));
+
+        assertThat(PluginTableRegistry.builtInTables()).containsExactlyInAnyOrderEntriesOf(fromSources);
+    }
+
+    @Test
+    void a_built_in_answers_to_its_table_and_to_its_id() {
+        assertThat(PluginTableRegistry.builtInId("generate")).contains("generator");
+        assertThat(PluginTableRegistry.builtInId("generator")).contains("generator");
+        assertThat(PluginTableRegistry.builtInId("openapi")).contains("openapi");
+        assertThat(PluginTableRegistry.builtInId("not-a-plugin")).isEmpty();
     }
 
     @Test
