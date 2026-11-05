@@ -100,6 +100,11 @@ test-plugin-jars = [
   "kotlin-compiler",
   "groovy-compiler",
   "spring-boot",
+  # Rule packs the templates/ catalog declares: staged into the test sandbox store, where a
+  # scaffolded project's lock looks for a first-party pack (TemplateCatalogE2eTest).
+  "cc.jumpkick.guards:spring",
+  "cc.jumpkick.guards:library",
+  "cc.jumpkick.guards:monorepo",
 ]
 
 [test]
