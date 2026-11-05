@@ -55,6 +55,9 @@ public final class NewProjectOps {
 
     private NewProjectOps() {}
 
+    /** The template parameter (and {@code default.properties} key) naming a template's layout. */
+    static final String TEMPLATE_LAYOUT_PARAM = "jk_layout";
+
     public record Request(
             @Nullable String name,
             @Nullable String parentDir,
@@ -250,7 +253,9 @@ public final class NewProjectOps {
                     spec = resolveIndexed(prep.template(), langName, prep.parent());
                 }
             }
-            if (prep.layout() == Layout.SIMPLE) {
+            Layout layout = templateLayout(req.layout(), params, templateRoot);
+            params.put(TEMPLATE_LAYOUT_PARAM, layout.token());
+            if (layout == Layout.SIMPLE) {
                 if (spec.isPresent() && !spec.get().supportsLayout(Giter8ShortNames.LAYOUT_SIMPLE)) {
                     throw new IOException("template " + prep.template() + " does not support --layout "
                             + Layout.SIMPLE.token() + " (declared layouts: "
@@ -625,6 +630,29 @@ public final class NewProjectOps {
             case "scala" -> NewInputs.Language.SCALA;
             default -> throw new IllegalArgumentException("lang must be java|kotlin|groovy|scala");
         };
+    }
+
+    /**
+     * The layout a template scaffold renders, first one set wins: an explicit {@code --layout}
+     * (blank or {@code auto} leaves the choice to the template), a {@code jk_layout} template
+     * parameter, the template's own {@code jk_layout} default in {@code default.properties}, then
+     * traditional.
+     */
+    static Layout templateLayout(@Nullable String requested, Map<String, String> params, Path templateRoot) {
+        Layout explicit = parseLayout(requested);
+        if (requested != null && !requested.isBlank() && explicit != Layout.AUTO) return explicit;
+        String param = params.get(TEMPLATE_LAYOUT_PARAM);
+        if (param != null && !param.isBlank()) return scaffoldLayout(Layout.parse(param.strip()));
+        return Giter8Apply.defaultProperty(templateRoot, TEMPLATE_LAYOUT_PARAM)
+                .map(Giter8ShortNames::normalizeLayout)
+                .filter(Giter8ShortNames.LAYOUT_SIMPLE::equals)
+                .map(simple -> Layout.SIMPLE)
+                .orElse(Layout.TRADITIONAL);
+    }
+
+    /** A template places its own tree, so {@code auto} there means the traditional one. */
+    private static Layout scaffoldLayout(Layout layout) {
+        return layout == Layout.AUTO ? Layout.TRADITIONAL : layout;
     }
 
     /** Scaffold default is traditional placement; blank → {@link Layout#TRADITIONAL}. */

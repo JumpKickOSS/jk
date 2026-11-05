@@ -4,11 +4,13 @@ package cc.jumpkick.engine.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -279,5 +281,108 @@ class NewProjectOpsTest {
         Files.createDirectories(parent);
         Path resolved = NewProjectOps.resolveTemplate("acme-demo", parent);
         assertThat(resolved).isEqualTo(g8.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void the_shipped_cli_template_scaffolds_its_simple_layout_with_no_layout_given(@TempDir Path temp)
+            throws Exception {
+        Path cli = RepoRoot.find(NewProjectOpsTest.class).resolve("templates/java/none/cli.g8");
+        assertThat(cli.resolve("default.properties")).content().contains("jk_layout=simple");
+        Path parent = Files.createDirectories(temp.resolve("apps"));
+
+        Path root = NewProjectOps.create(new NewProjectOps.Request(
+                        "widget", parent.toString(), "com.acme", null, null, cli.toString(), true))
+                .path();
+
+        assertThat(root.resolve("src/main")).doesNotExist();
+        try (var files = Files.walk(root.resolve("src"))) {
+            assertThat(files.filter(f -> f.getFileName().toString().equals("Main.java")))
+                    .singleElement()
+                    .satisfies(
+                            main -> assertThat(root.relativize(main).toString()).doesNotContain("java/"));
+        }
+    }
+
+    @Test
+    void a_template_default_of_simple_renders_the_simple_tree(@TempDir Path temp) throws Exception {
+        assertThat(scaffoldDual(temp, "simple", null, Map.of())).isEqualTo("src/Main.java");
+    }
+
+    @Test
+    void auto_leaves_the_layout_to_the_template(@TempDir Path temp) throws Exception {
+        assertThat(scaffoldDual(temp, "simple", "auto", Map.of())).isEqualTo("src/Main.java");
+    }
+
+    @Test
+    void a_template_without_a_default_renders_the_traditional_tree(@TempDir Path temp) throws Exception {
+        assertThat(scaffoldDual(temp, null, null, Map.of())).isEqualTo("src/main/java/Main.java");
+    }
+
+    @Test
+    void an_explicit_layout_overrides_the_template_default(@TempDir Path temp) throws Exception {
+        assertThat(scaffoldDual(temp, "simple", "traditional", Map.of())).isEqualTo("src/main/java/Main.java");
+    }
+
+    @Test
+    void a_jk_layout_parameter_overrides_the_template_default(@TempDir Path temp) throws Exception {
+        assertThat(scaffoldDual(temp, "simple", null, Map.of("jk_layout", "traditional")))
+                .isEqualTo("src/main/java/Main.java");
+    }
+
+    @Test
+    void an_explicit_layout_overrides_a_jk_layout_parameter(@TempDir Path temp) throws Exception {
+        assertThat(scaffoldDual(temp, "traditional", "simple", Map.of("jk_layout", "traditional")))
+                .isEqualTo("src/Main.java");
+    }
+
+    @Test
+    void an_unknown_jk_layout_parameter_is_refused(@TempDir Path temp) {
+        assertThatThrownBy(() -> scaffoldDual(temp, null, null, Map.of("jk_layout", "sideways")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /**
+     * Scaffolds a template that renders either layout, with {@code templateDefault} as its
+     * {@code jk_layout} default; returns where its {@code Main.java} landed.
+     */
+    private static String scaffoldDual(
+            Path temp, @Nullable String templateDefault, @Nullable String layout, Map<String, String> params)
+            throws Exception {
+        Path g8 = temp.resolve("dual.g8");
+        String src = "src/main/g8/src/$if(simple.truthy)$.$else$main$endif$/$if(simple.truthy)$.$else$java$endif$";
+        Files.createDirectories(g8.resolve(src));
+        Files.writeString(
+                g8.resolve("default.properties"),
+                "name=demo\n" + (templateDefault == null ? "" : "jk_layout=" + templateDefault + "\n"));
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name = \"$name$\"\n");
+        Files.writeString(g8.resolve(src + "/Main.java"), "class Main {}\n");
+        Path parent = Files.createDirectories(temp.resolve("apps"));
+        Path root = NewProjectOps.create(new NewProjectOps.Request(
+                        "widget",
+                        parent.toString(),
+                        "com.acme",
+                        "java",
+                        layout,
+                        g8.toAbsolutePath().toString(),
+                        false,
+                        null,
+                        0,
+                        false,
+                        false,
+                        false,
+                        null,
+                        List.of(),
+                        false,
+                        false,
+                        params,
+                        false,
+                        null))
+                .path();
+        try (var files = Files.walk(root)) {
+            return files.filter(f -> f.getFileName().toString().equals("Main.java"))
+                    .map(f -> root.relativize(f).toString().replace('\\', '/'))
+                    .findFirst()
+                    .orElseThrow();
+        }
     }
 }
