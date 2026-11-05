@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -461,6 +462,40 @@ class JkResultsAgentTest {
                         E lock: com.example.absent:nowhere:1.0.0 was not found
                           searched the repositories declared in jk.toml
                         """);
+    }
+
+    @Test
+    void a_failed_lock_names_the_notice_that_explains_its_401_above_the_error_once() {
+        String keychain = "jk: warning: the `jk repo login nexus` secret is in the Secret Service, which did not"
+                + " give it up (the default keyring is locked); the repository is tried without it.";
+        BuildAccumulator a = new BuildAccumulator("lock", "/ws/rest-service", "com.example:rest-service", "cli");
+        a.addTask("/ws/rest-service", "lock", "resolve", "FAIL", 400, 0);
+        a.addNotice(RunNotices.CODE, keychain);
+        BuildRecord base = a.toRecord(1_000, false, 400, "0.14.0", null);
+        BuildRecord.Diag err = new BuildRecord.Diag("error", "/ws/rest-service", "lock", "verbatim", """
+                Cannot resolve dependencies:
+                repository `nexus` was passed over (HTTP 401: it asks for credentials)
+                """, null, null);
+        List<BuildRecord.Diag> diags = new ArrayList<>(base.diagnostics());
+        diags.add(err);
+        BuildRecord r = record("lock", false, false, 400, null, diags, base.steps());
+
+        assertThat(base.diagnostics()).singleElement().satisfies(d -> assertThat(d.code())
+                .isEqualTo(RunNotices.CODE));
+        assertThat(JkResultsAgent.render(r)).isEqualTo("""
+                        FAIL lock rest-service · 1 error · 400ms
+                        W the `jk repo login nexus` secret is in the Secret Service, which did not give it up \
+                        (the default keyring is locked); the repository is tried without it.
+                        E lock: repository `nexus` was passed over (HTTP 401: it asks for credentials)
+                        """);
+    }
+
+    @Test
+    void a_passing_run_keeps_its_notices_off_the_one_line_report() {
+        BuildRecord.Diag notice = new BuildRecord.Diag(
+                "warning", "/ws/rest-service", null, RunNotices.CODE, "jk: warning: a note", null, null);
+        BuildRecord r = record("lock", true, false, 400, null, List.of(notice), List.of());
+        assertThat(JkResultsAgent.render(r)).isEqualTo("OK lock rest-service · 400ms\n");
     }
 
     @Test

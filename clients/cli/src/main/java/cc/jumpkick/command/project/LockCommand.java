@@ -186,8 +186,7 @@ public final class LockCommand implements CliCommand {
         }
         if (!outcome.success()) {
             handler.errorLines.addAll(outcome.errors());
-            view.finishBuildPlanFailure(lockFailTail(), handler.errorLines);
-            printNotes(handler.notes());
+            view.finishBuildPlanFailure(lockFailTail(), failureLines(handler.notes(), handler.errorLines));
             return outcome.exitCode();
         }
         view.finishBuildPlanSuccess(lockSuccessTail(
@@ -197,13 +196,29 @@ public final class LockCommand implements CliCommand {
     }
 
     /**
-     * The lock's notes, after the summary chip: which member reads its own rows, which pin or BOM
+     * The lock's notes, after the summary chip of a lock that succeeded: which member reads its own rows, which pin or BOM
      * overrode what a POM asked for, which repository a POM declared served a row. One line each.
      */
     static void printNotes(List<String> notes) {
-        if (notes.isEmpty()) return;
+        for (String note : noteLines(notes)) CliOutput.out(note);
+    }
+
+    /**
+     * What a failed lock prints above its chip: the notes first, then the errors. A note on a
+     * failed lock is usually its cause — the credential a keychain did not give up, the repository
+     * passed over — so it reads before the 401 it explains, not after the verdict.
+     */
+    static List<String> failureLines(List<String> notes, List<String> errors) {
+        List<String> lines = new ArrayList<>(noteLines(notes));
+        lines.addAll(errors);
+        return lines;
+    }
+
+    private static List<String> noteLines(List<String> notes) {
         String bang = Theme.colorize(Glyphs.bang(), Theme.active().warning());
-        for (String note : notes) CliOutput.out("  " + bang + " " + note);
+        List<String> lines = new ArrayList<>(notes.size());
+        for (String note : notes) lines.add("  " + bang + " " + note);
+        return lines;
     }
 
     /**

@@ -47,6 +47,9 @@ import java.util.function.Supplier;
  */
 public final class RunNotices {
 
+    /** The diagnostic code a run notice carries on the wire and on the run's record. */
+    public static final String CODE = "notice";
+
     /** Where a run's notices go instead of standard error; {@code code} is the notice key. */
     @FunctionalInterface
     public interface Sink {

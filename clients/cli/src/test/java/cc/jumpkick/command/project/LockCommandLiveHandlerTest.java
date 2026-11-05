@@ -68,4 +68,18 @@ class LockCommandLiveHandlerTest {
         assertThat(out.lines().toList())
                 .containsExactly("  " + Glyphs.bang() + " " + note, "  " + Glyphs.bang() + " " + override);
     }
+
+    /** On a failed lock a note is the likely cause: it prints above the error, not after the verdict. */
+    @Test
+    void a_failed_locks_notes_print_above_its_errors() {
+        String keychain = "jk: warning: the `jk repo login nexus` secret is in the Secret Service, which did not"
+                + " give it up (locked)";
+        String error = "repository `nexus` was passed over (HTTP 401: it asks for credentials)";
+
+        List<String> lines = LockCommand.failureLines(List.of(keychain), List.of(error)).stream()
+                .map(l -> l.replaceAll("\u001b\\[[\\d;]*m", ""))
+                .toList();
+
+        assertThat(lines).containsExactly("  " + Glyphs.bang() + " " + keychain, error);
+    }
 }

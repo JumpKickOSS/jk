@@ -544,7 +544,7 @@ public final class JobEnvelope {
             host.openResults(eventRequestId);
             // Run-scoped notices join this request's stream for the run's life; the finally
             // removes the sink, or a later run's notice would ride the wrong request.
-            RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, message));
+            RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, code, message));
             // Every download this job makes, whichever step or caller asked for the bytes, streams
             // from the run's board: to its CLI client on the wire, and to the dashboard and MCP
             // subscribers as the same event, so a job started from the web UI or by an agent shows
@@ -696,13 +696,16 @@ public final class JobEnvelope {
     /**
      * A run-scoped {@link RunNotices} note: one WARN line on the request's stream (step {@code ""},
      * code {@code "notice"}) and the SSE feed, redacted like every other event that leaves the
-     * engine. Invoked from whatever thread noticed — the wire writer and SSE hub both take
-     * concurrent writers.
+     * engine, and a warning on the run's record, so the reports a failed run leaves name it too
+     * (all but the inputs-changed note, which the record already holds). Invoked from whatever
+     * thread noticed — the wire writer, the SSE hub and the accumulator all take concurrent writers.
      */
-    private void publishNotice(long id, String dir, @Nullable BufferedWriter writer, String message) {
+    private void publishNotice(long id, String dir, @Nullable BufferedWriter writer, String code, String message) {
         String redacted = EventRedaction.redactEnv(dir, message);
         String safe = redacted == null ? message : redacted;
-        if (writer != null) WireWriter.sendQuiet(writer, ProtoEvents.warn(dir, "", "notice", safe));
+        BuildAccumulator acc = host.accumulatorOf(id);
+        if (acc != null && !BuildAccumulator.INPUTS_CHANGED.equals(code)) acc.addNotice(RunNotices.CODE, safe);
+        if (writer != null) WireWriter.sendQuiet(writer, ProtoEvents.warn(dir, "", RunNotices.CODE, safe));
         host.publishEvent(
                 "warn",
                 JsonOut.object()
@@ -711,7 +714,7 @@ public final class JobEnvelope {
                         .put("jid", id)
                         .put("dir", dir)
                         .put("step", "")
-                        .put("code", "notice")
+                        .put("code", RunNotices.CODE)
                         .put("message", safe));
     }
 
