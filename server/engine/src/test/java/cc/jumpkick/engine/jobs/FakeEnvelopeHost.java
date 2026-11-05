@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -38,6 +39,10 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
     final AtomicInteger abandoned = new AtomicInteger();
     final AtomicInteger finished = new AtomicInteger();
     final AtomicInteger activePlans = new AtomicInteger();
+
+    /** Whether the journal write had returned when the last plan slot was released. */
+    volatile boolean recordWrittenAtRelease;
+
     volatile BuildAccumulator accumulator = new BuildAccumulator("build", "/p", null, "cli");
     final List<String> events = Collections.synchronizedList(new ArrayList<>());
     final List<Long> cleared = Collections.synchronizedList(new ArrayList<>());
@@ -59,6 +64,7 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
 
     @Override
     public void noteBuildPlanFinished() {
+        recordWrittenAtRelease = journalWritten;
         finished.incrementAndGet();
         activePlans.decrementAndGet();
         sequence.add("plan-slot-released");
@@ -206,12 +212,23 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
 
     volatile boolean journalThrows;
 
+    /** When set, the journal write waits for it: a record still being written. */
+    volatile @Nullable CountDownLatch journalHeld;
+
     @Override
     public @Nullable String writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         teardownOrder.add("writeJournal");
         sequence.add("writeJournal");
         journalCancelled = cancelled;
         journalMillis = millis;
+        CountDownLatch held = journalHeld;
+        if (held != null) {
+            try {
+                held.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         journalWritten = true;
         if (journalThrows) throw new IllegalStateException("journal disk full");
         return null;

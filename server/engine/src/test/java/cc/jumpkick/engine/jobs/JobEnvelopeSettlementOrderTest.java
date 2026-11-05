@@ -9,11 +9,14 @@ import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.StringWriter;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
@@ -23,12 +26,13 @@ import org.junit.jupiter.api.io.TempDir;
 class JobEnvelopeSettlementOrderTest {
 
     /**
-     * The order one successful plan job's observable effects leave the envelope in. The plan slot is
-     * released before request-finish so the event carries the post-finish plan count; the journal is
-     * written before clearProgress retires the session; the idle boundary comes last.
+     * The order one successful plan job's observable effects leave the envelope in. The journal is
+     * written while the job holds its plan slot; the slot is released before request-finish so the
+     * event carries the post-finish plan count; clearProgress retires the session after both; the
+     * idle boundary comes last.
      */
     @Test
-    void a_successful_job_emits_its_effects_in_one_order_with_the_slot_released_first(@TempDir Path dir)
+    void a_successful_job_emits_its_effects_in_one_order_with_the_record_written_first(@TempDir Path dir)
             throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", dir.toString(), null, "cli");
@@ -45,9 +49,9 @@ class JobEnvelopeSettlementOrderTest {
                 .containsExactly(
                         "request-start",
                         "progress-pinned:100.0",
+                        "writeJournal",
                         "plan-slot-released",
                         "request-finish",
-                        "writeJournal",
                         "clearProgress",
                         "idle-boundary");
         String finish = host.requestFinish();
@@ -69,6 +73,37 @@ class JobEnvelopeSettlementOrderTest {
         assertThat(Jsonl.intValue(finish, "schema", -1)).isEqualTo(1);
     }
 
+    /**
+     * A draining engine exits once no plan holds a slot, on a thread that does not wait for a
+     * detached job's settlement. So the slot must outlive the record: while the record is still
+     * being written the job counts as in flight, and once the count reads zero the record is there.
+     */
+    @Test
+    void a_detached_job_holds_its_plan_slot_until_its_record_is_written(@TempDir Path dir) throws Exception {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        host.accumulator = new BuildAccumulator("build", dir.toString(), null, "mcp");
+        CountDownLatch held = new CountDownLatch(1);
+        host.journalHeld = held;
+        new JobEnvelope(host, JobLimits.DEFAULTS)
+                .submit(
+                        buildRequest(dir),
+                        JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
+                        new JobTransport.FireAndForget());
+        Await.until(Duration.ofSeconds(30), () -> host.sequence.contains("writeJournal"));
+
+        assertThat(host.activePlans.get())
+                .as("a job whose record is still being written is in flight")
+                .isEqualTo(1);
+        assertThat(host.sequence).doesNotContain("plan-slot-released", "request-finish");
+
+        held.countDown();
+        host.awaitSettled();
+        assertThat(host.activePlans.get()).isZero();
+        assertThat(host.recordWrittenAtRelease)
+                .as("no jobs in flight means every record written")
+                .isTrue();
+    }
+
     /** A failed and a thrown body share the success path's order and never pin the bar at 100%. */
     @Test
     void a_failed_and_a_thrown_job_emit_the_same_order_without_the_progress_pin(@TempDir Path dir) throws Exception {
@@ -86,9 +121,9 @@ class JobEnvelopeSettlementOrderTest {
             assertThat(host.sequence)
                     .containsExactly(
                             "request-start",
+                            "writeJournal",
                             "plan-slot-released",
                             "request-finish",
-                            "writeJournal",
                             "clearProgress",
                             "idle-boundary");
             String finish = host.requestFinish();
@@ -138,10 +173,13 @@ class JobEnvelopeSettlementOrderTest {
         assertThat(keysOf(finish)).endsWith("activeBuildPlans", "cancelReason");
         assertThat(Jsonl.str(finish, "cancelReason")).contains("cancelled by the user");
         assertThat(host.sequence)
-                .endsWith("plan-slot-released", "request-finish", "writeJournal", "clearProgress", "idle-boundary");
+                .endsWith("writeJournal", "plan-slot-released", "request-finish", "clearProgress", "idle-boundary");
     }
 
-    /** job-finish is written in a finally, so a throwing journal cannot strand the client on EOF. */
+    /**
+     * The slot release, request-finish and job-finish are in a finally, so a throwing journal
+     * cannot strand the client on EOF or hold a draining engine open.
+     */
     @Test
     void a_throwing_journal_still_delivers_job_finish(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
@@ -158,7 +196,8 @@ class JobEnvelopeSettlementOrderTest {
         assertThat(out.toString().lines().map(EngineProtocol::typeOf))
                 .as("the client reads its terminal, not EOF")
                 .contains(EngineProtocol.JOB_FINISH);
-        assertThat(host.sequence).containsSubsequence("request-finish", "writeJournal");
+        assertThat(host.sequence).containsSubsequence("writeJournal", "plan-slot-released", "request-finish");
+        assertThat(host.activePlans.get()).isZero();
     }
 
     /** Top-level keys of a flat JSON object, in document order. */

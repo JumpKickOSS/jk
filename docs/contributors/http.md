@@ -59,6 +59,13 @@ can leave a ghost engine whose socket *name* matches the successor.
 | names another process, or pid file / hello pid differs | **displaced** | Yields HTTP **immediately**, drains in-flight jobs on its own generation socket, reports `drain-status` to the successor, exits when idle or at the drain deadline. |
 | absent | **orphaned** | Exits once genuinely unused: no in-flight jobs **and** no attached SSE stream. |
 
+"No jobs in flight" means every record written. A job, attached or detached (MCP, `POST /api/build`),
+writes its journal record, `jk-results.md` and session fold while it still holds its plan slot, and
+releases the slot only then, before its `request-finish`. So an engine that drains to idle and exits
+(displaced, `jk engine stop`) has written the record of every job it ran. Only the drain deadline
+can cut one short: it cancels the jobs still running, and one whose record is not written by the
+end of the grace goes with the engine.
+
 ### Displacement surrenders the HTTP port unconditionally
 
 A newer engine taking over needs the fixed HTTP port. A draining engine — displaced, or told to stop
@@ -78,9 +85,8 @@ Only the primary engine writes session records: an engine stops writing them for
 the endpoint names another (`SessionLog.writeWhile`). Each run a displaced engine finishes while it
 drains goes out in its next `drain-status` instead, under `runs` (each the text of one JSON object,
 the fields the session log folds), and the successor folds it into its episode as if it had
-finished there. The last job's record lands after its plan slot is released, so a drained engine
-keeps reporting until every finished run is queued (at most five seconds), sends them, and only
-then `drain-done`.
+finished there. A drained engine sends whatever runs the ticks have not carried in one last
+`drain-status`, and only then `drain-done`.
 
 The successor takes the sessions over rather than ending them: see [`GET /api/sessions`](#get-apisessions)
 and [MCP sessions](#mcp-sessions-and-server-requests).

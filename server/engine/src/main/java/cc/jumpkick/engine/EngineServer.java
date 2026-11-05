@@ -184,7 +184,7 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /** Release a plan slot after work finished — call <em>before</em> publishing {@code request-finish}. */
+    /** Release a plan slot once its job's record is written, before {@code request-finish} is published. */
     private void noteBuildPlanFinished() {
         if (activeBuildPlans.decrementAndGet() == 0 && draining) {
             synchronized (lifecycleLock) {
@@ -412,7 +412,6 @@ public final class EngineServer implements AutoCloseable {
                     }
                 },
                 activeBuildPlans::get,
-                () -> journalWriter.settled(),
                 DrainReporter.sockets(),
                 this.log,
                 DrainReporter.TICK_MS);
@@ -955,8 +954,9 @@ public final class EngineServer implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        // A drained engine's last runs reach its successor before it goes.
-        drain.awaitReported(DrainReporter.SETTLE_MS + 4 * DrainReporter.TICK_MS);
+        // A drained engine's last runs reach its successor before it goes: the report loop sees the
+        // drain is over within a tick, then sends one last report and signs off.
+        drain.awaitReported(4 * DrainReporter.TICK_MS);
         // A tool install cut short by the shutdown leaves its archive and staging tree; reap them.
         ToolInstaller.reapInFlight();
         // A trainer is this engine's child and must not outlive it or keep store jars open.
