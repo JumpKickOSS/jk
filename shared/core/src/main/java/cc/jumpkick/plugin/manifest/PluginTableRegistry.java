@@ -204,7 +204,44 @@ public final class PluginTableRegistry {
         if (archive != null) ARCHIVES.put(manifest.id(), archive);
     }
 
+    /**
+     * Take {@code manifest} out, exactly as {@link #putBuiltIn} put it in: its table entry, when it
+     * is still the one registered there, and its archive. Whatever it displaced comes back only
+     * through {@link #restoreBuiltIn}.
+     */
+    public static void unregister(PluginDescriptor manifest) {
+        Objects.requireNonNull(manifest, "manifest");
+        synchronized (PluginTableRegistry.class) {
+            if (!manifest.equals(BY_TABLE.get(manifest.table()))) return;
+            Map<String, PluginDescriptor> next = new LinkedHashMap<>(BY_TABLE);
+            next.remove(manifest.table());
+            BY_TABLE = Map.copyOf(next);
+            ARCHIVES.remove(manifest.id());
+        }
+    }
+
     private PluginTableRegistry() {}
+
+    /**
+     * Engine-registered hook that brings the user-config ({@code ~/.jk/config.toml [plugins]})
+     * path pins in the registry in step with the file, run before every manifest parse so a pin
+     * edited while the engine runs validates the next parse. Unset outside the engine.
+     */
+    private static volatile @Nullable Runnable USER_PIN_SYNC;
+
+    public static void userPinSync(@Nullable Runnable sync) {
+        USER_PIN_SYNC = sync;
+    }
+
+    /**
+     * Run the {@link #userPinSync} hook, when one is registered.
+     *
+     * @throws JkBuildParseException when a pin in the file cannot be honored
+     */
+    public static void syncUserPins() {
+        Runnable sync = USER_PIN_SYNC;
+        if (sync != null) sync.run();
+    }
 
     /**
      * Engine-registered hook: given an unowned table name, fetch + install the built-in plugin

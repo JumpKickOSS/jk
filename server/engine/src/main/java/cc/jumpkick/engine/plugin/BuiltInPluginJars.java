@@ -2,20 +2,14 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.config.UserConfigParseException;
-import cc.jumpkick.config.UserPlugins;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -130,51 +124,6 @@ public final class BuiltInPluginJars {
         PluginDescriptor.Code code = descriptor.code();
         String worker = code == null ? null : code.worker();
         return worker == null || worker.isBlank() ? "jk-" + descriptor.id() : worker;
-    }
-
-    /**
-     * Overlay {@code ~/.jk/config.toml [plugins]} path pins onto the registry. Maven pins
-     * wait for {@code jk lock} (project lock is law). A pin that cannot be honored — missing
-     * file, unreadable jar, hash mismatch — throws: the pin is explicit user intent, and
-     * silently running the shipped plugin instead is wrong code with no diagnostic. This matches
-     * the project-pin posture ({@code jk lock} errors naming both digests).
-     *
-     * <p>A config.toml that does not parse registers nothing and does not stop the engine: engine
-     * control, doctor and help load no user plugin, and every request that does fails on its own
-     * with the file's position ({@link UserPlugins#fromConfig(Path)}).
-     */
-    public static void installUserConfig() {
-        Path config = JkDirs.userConfigFile();
-        Path base = config.getParent() != null ? config.getParent() : Path.of(".");
-        List<PluginDeclaration> pins;
-        try {
-            pins = UserPlugins.fromConfig(config);
-        } catch (UserConfigParseException unparsed) {
-            Log.warn("jk engine: " + config + " [plugins] not registered: " + unparsed.getMessage());
-            return;
-        }
-        for (PluginDeclaration decl : pins) {
-            if (!decl.isPathPin()) continue;
-            Path jar = Path.of(decl.path());
-            if (!jar.isAbsolute()) jar = base.resolve(jar).normalize();
-            if (!Files.isRegularFile(jar)) {
-                throw new IllegalStateException(config + " [plugins] pins " + decl.path() + " but no file exists at "
-                        + jar + " — fix or remove the pin");
-            }
-            String actual;
-            try {
-                actual = Hashing.sha256Hex(jar);
-            } catch (IOException e) {
-                throw new IllegalStateException(
-                        config + " [plugins] pin " + jar + " is unreadable: " + e.getMessage(), e);
-            }
-            if (!actual.equals(decl.sha256())) {
-                throw new IllegalStateException(config + " [plugins] pin " + jar
-                        + " hash mismatch: declared sha256 " + decl.sha256() + ", file is " + actual
-                        + " — update the pin after rebuilding the jar");
-            }
-            PluginTableRegistry.installFromJar(jar);
-        }
     }
 
     /** Store-resident first-party jars that carry a root {@code jk-plugin.toml}. */

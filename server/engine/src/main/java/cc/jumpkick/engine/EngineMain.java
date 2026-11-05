@@ -7,6 +7,7 @@ import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.ExecutionSpeed;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.UserPluginPins;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Forks;
 import cc.jumpkick.host.Log;
@@ -94,11 +95,12 @@ public final class EngineMain {
             BuiltInPluginJars.install();
             ShadowManifests.install(dir -> ImportPinRaises.apply(dir, JkDirs.cache()));
             try {
-                BuiltInPluginJars.installUserConfig();
+                UserPluginPins.install();
             } catch (RuntimeException badConfig) {
                 // A user-config plugin pin that cannot be honored is explicit user intent — refuse
                 // to start with the message, never a raw stack. A config.toml that does not parse
-                // starts the engine; each request that reads it fails with the position.
+                // starts the engine; each request that reads it fails with the position. Either
+                // way the pins follow the file from here on, so a later edit needs no restart.
                 Log.error("jk engine: " + badConfig.getMessage());
                 return 1;
             }

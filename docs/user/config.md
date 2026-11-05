@@ -77,6 +77,12 @@ you pinned. Commands that load no user plugin (`jk --version`, `jk help`, `jk do
 are unaffected, and the engine still starts. A plugin command that jk cannot look up because the
 file does not parse names the file, line and column instead of showing the help.
 
+A `path` pin under `[plugins]` follows the file while the engine runs: add, edit or remove one —
+or fix a file that did not parse when the engine started — and the next command uses it, with no
+`jk engine stop`. A pin whose jar is missing or whose `sha256` disagrees with the jar fails every
+command that reads a `jk.toml`, naming the pin, and the plugin registered before the edit stays
+until the pin is fixed.
+
 An engine command that reads nothing the file governs (no `jk.toml`, no resolve, no download)
 still succeeds, and prints one warning after its result naming the file, line and column, so you
 hear of the break before the next command that needs it. The dashboard and MCP see the same

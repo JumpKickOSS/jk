@@ -5,7 +5,10 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.MinimalToml;
 import java.io.OutputStream;
@@ -20,7 +23,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A user-config plugin pin that cannot be honored is a loud error — silently running the shipped
- * plugin instead is wrong code with no diagnostic.
+ * plugin instead is wrong code with no diagnostic — and the pins follow config.toml while the engine
+ * runs: added, edited or removed, the next manifest parse sees the file as it is now.
  */
 class UserConfigPluginPinTest {
 
@@ -35,7 +39,11 @@ class UserConfigPluginPinTest {
             """;
 
     @AfterEach
-    void restoreConfigOverride() {
+    void restoreConfigOverride(@TempDir Path empty) {
+        // Unregister whatever a test pinned, so no other test in this JVM sees it.
+        PluginTableRegistry.userPinSync(null);
+        System.setProperty("jk.env.JK_HOME", empty.resolve("no-home").toString());
+        UserPluginPins.sync();
         System.clearProperty("jk.env.JK_HOME");
     }
 
@@ -49,7 +57,7 @@ class UserConfigPluginPinTest {
                 """.formatted(MinimalToml.quote(tmp.resolve("gone.jar").toString()), "ab".repeat(32)));
         System.setProperty("jk.env.JK_HOME", requireNonNull(config.getParent()).toString());
 
-        assertThatThrownBy(BuiltInPluginJars::installUserConfig)
+        assertThatThrownBy(UserPluginPins::sync)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("no file exists")
                 .hasMessageContaining("gone.jar");
@@ -67,7 +75,7 @@ class UserConfigPluginPinTest {
                 """.formatted(MinimalToml.quote(jar.toString()), declared));
         System.setProperty("jk.env.JK_HOME", requireNonNull(config.getParent()).toString());
 
-        assertThatThrownBy(BuiltInPluginJars::installUserConfig)
+        assertThatThrownBy(UserPluginPins::sync)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(declared)
                 .hasMessageContaining(actual);
@@ -85,7 +93,7 @@ class UserConfigPluginPinTest {
                 """.formatted(MinimalToml.quote(jar.toString()), Hashing.sha256Hex(jar)));
         System.setProperty("jk.env.JK_HOME", requireNonNull(config.getParent()).toString());
 
-        BuiltInPluginJars.installUserConfig();
+        UserPluginPins.install();
 
         assertThat(PluginTableRegistry.byTable("zz-userpin-broken")).isEmpty();
     }
@@ -100,9 +108,110 @@ class UserConfigPluginPinTest {
                 """.formatted(MinimalToml.quote(jar.toString()), Hashing.sha256Hex(jar)));
         System.setProperty("jk.env.JK_HOME", requireNonNull(config.getParent()).toString());
 
-        BuiltInPluginJars.installUserConfig();
+        UserPluginPins.sync();
 
         assertThat(PluginTableRegistry.byTable("zz-userpin")).isPresent();
+    }
+
+    @Test
+    void a_pin_added_while_the_engine_runs_validates_the_next_parse(@TempDir Path tmp) throws Exception {
+        Path config = home(tmp);
+        Files.writeString(config, "");
+        UserPluginPins.install();
+        Path manifest = project(tmp);
+        assertThatThrownBy(() -> JkBuildParser.parseLocal(manifest)).isInstanceOf(JkBuildParseException.class);
+
+        Path jar = writePluginJar(tmp.resolve("acme.jar"));
+        writePin(config, jar, Hashing.sha256Hex(jar));
+
+        assertThat(JkBuildParser.parseLocal(manifest)).isNotNull();
+        assertThat(PluginTableRegistry.byTable("zz-userpin")).isPresent();
+    }
+
+    @Test
+    void a_pin_removed_while_the_engine_runs_is_unregistered_and_the_shipped_plugin_returns(@TempDir Path tmp)
+            throws Exception {
+        PluginDescriptor shipped = PluginTableRegistry.manifests().getFirst();
+        Path shippedArchive = PluginTableRegistry.archive(shipped.id());
+        Path jar = writePluginJar(tmp.resolve("override.jar"), """
+                [plugin]
+                id      = "%s"
+                table   = "%s"
+                version = "99.0.0"
+                """.formatted(shipped.id(), shipped.table()));
+        Path config = home(tmp);
+        writePin(config, jar, Hashing.sha256Hex(jar));
+        UserPluginPins.install();
+        assertThat(PluginTableRegistry.byTable(shipped.table()))
+                .hasValueSatisfying(m -> assertThat(m.version()).isEqualTo("99.0.0"));
+        assertThat(PluginTableRegistry.archive(shipped.id())).isEqualTo(jar);
+
+        Files.writeString(config, "");
+        PluginTableRegistry.syncUserPins();
+
+        assertThat(PluginTableRegistry.byTable(shipped.table())).contains(shipped);
+        assertThat(PluginTableRegistry.archive(shipped.id())).isEqualTo(shippedArchive);
+    }
+
+    @Test
+    void a_config_broken_at_start_registers_its_pin_once_it_is_fixed(@TempDir Path tmp) throws Exception {
+        Path jar = writePluginJar(tmp.resolve("acme.jar"));
+        Path config = home(tmp);
+        Files.writeString(config, "[network\n");
+        UserPluginPins.install();
+        assertThat(PluginTableRegistry.byTable("zz-userpin")).isEmpty();
+
+        writePin(config, jar, Hashing.sha256Hex(jar));
+        PluginTableRegistry.syncUserPins();
+
+        assertThat(PluginTableRegistry.byTable("zz-userpin")).isPresent();
+    }
+
+    @Test
+    void a_pin_edited_to_a_wrong_digest_fails_the_parse_and_keeps_the_registered_plugin(@TempDir Path tmp)
+            throws Exception {
+        Path jar = writePluginJar(tmp.resolve("acme.jar"));
+        Path config = home(tmp);
+        writePin(config, jar, Hashing.sha256Hex(jar));
+        UserPluginPins.install();
+        Path manifest = project(tmp);
+
+        String declared = "ef".repeat(32);
+        writePin(config, jar, declared);
+
+        assertThatThrownBy(() -> JkBuildParser.parseLocal(manifest))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining(declared)
+                .hasMessageContaining(config.toString());
+        assertThat(PluginTableRegistry.byTable("zz-userpin")).isPresent();
+    }
+
+    /** A jk home under {@code tmp}; its config.toml path. */
+    private static Path home(Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        return home.resolve("config.toml");
+    }
+
+    /** A module whose jk.toml configures the pinned plugin's table. */
+    private static Path project(Path tmp) throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("app"));
+        return Files.writeString(dir.resolve("jk.toml"), """
+                group   = "g"
+                name    = "app"
+                version = "1.0"
+                java    = 25
+
+                [zz-userpin]
+                enabled = false
+                """);
+    }
+
+    private static void writePin(Path config, Path jar, String sha256) throws Exception {
+        Files.writeString(config, """
+                [plugins]
+                acme = { path = %s, sha256 = "%s" }
+                """.formatted(MinimalToml.quote(jar.toString()), sha256));
     }
 
     private static Path writePluginJar(Path target) throws Exception {
