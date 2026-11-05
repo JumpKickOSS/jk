@@ -17,6 +17,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.MirrorOf;
 import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.task.RunNotices;
+import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.LoopbackHttp;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -225,20 +226,20 @@ class MavenRepoMirrorTest {
     void a_mirror_nothing_answers_at_fails_naming_it_and_the_repository_is_not_asked_at_its_own_url(@TempDir Path dir)
             throws Exception {
         origin.serve("/com/example/widget/1.0/widget-1.0.pom", new String(POM, StandardCharsets.UTF_8));
-        URI dead = nexus.base();
-        nexus.stop();
-        RepositoryMirror corp = new RepositoryMirror(
-                "corp", dead, new MirrorOf(List.of("*")), null, false, Path.of("/home/me/.jk/config.toml"));
-        MavenRepo optional =
-                new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas"))).withOptional(true);
+        try (DeadEndpoint dead = DeadEndpoint.open()) {
+            RepositoryMirror corp = new RepositoryMirror(
+                    "corp", dead.uri(), new MirrorOf(List.of("*")), null, false, Path.of("/home/me/.jk/config.toml"));
+            MavenRepo optional = new MavenRepo("central", origin.base(), Http.failFast(), new Cas(dir.resolve("cas")))
+                    .withOptional(true);
 
-        MavenRepo mirrored =
-                RepoMirrors.apply(optional, List.of(corp), MavenSettings.empty(), creds(MavenSettings.empty(), dir));
+            MavenRepo mirrored = RepoMirrors.apply(
+                    optional, List.of(corp), MavenSettings.empty(), creds(MavenSettings.empty(), dir));
 
-        assertThatThrownBy(() -> mirrored.fetchPom(WIDGET))
-                .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
-                .hasMessageContaining("reached through mirror `corp` (/home/me/.jk/config.toml)")
-                .hasMessageContaining("a mirror is never bypassed");
+            assertThatThrownBy(() -> mirrored.fetchPom(WIDGET))
+                    .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
+                    .hasMessageContaining("reached through mirror `corp` (/home/me/.jk/config.toml)")
+                    .hasMessageContaining("a mirror is never bypassed");
+        }
         assertThat(origin.requested()).isEmpty();
     }
 
