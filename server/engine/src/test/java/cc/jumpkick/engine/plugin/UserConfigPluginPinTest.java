@@ -186,6 +186,35 @@ class UserConfigPluginPinTest {
         assertThat(PluginTableRegistry.byTable("zz-userpin")).isPresent();
     }
 
+    @Test
+    void a_pinned_jar_rebuilt_in_place_is_refused_on_the_next_parse_until_its_pin_matches(@TempDir Path tmp)
+            throws Exception {
+        Path jar = writePluginJar(tmp.resolve("acme.jar"));
+        String pinned = Hashing.sha256Hex(jar);
+        Path config = home(tmp);
+        writePin(config, jar, pinned);
+        UserPluginPins.install();
+        Path manifest = project(tmp);
+        assertThat(JkBuildParser.parseLocal(manifest)).isNotNull();
+
+        writePluginJar(jar, MANIFEST.replace("1.0.0", "1.0.1-rebuilt"));
+        String rebuilt = Hashing.sha256Hex(jar);
+
+        assertThatThrownBy(() -> JkBuildParser.parseLocal(manifest))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining(jar.toString())
+                .hasMessageContaining(pinned)
+                .hasMessageContaining(rebuilt);
+        assertThat(PluginTableRegistry.byTable("zz-userpin"))
+                .hasValueSatisfying(m -> assertThat(m.version()).isEqualTo("1.0.0"));
+
+        writePin(config, jar, rebuilt);
+
+        assertThat(JkBuildParser.parseLocal(manifest)).isNotNull();
+        assertThat(PluginTableRegistry.byTable("zz-userpin"))
+                .hasValueSatisfying(m -> assertThat(m.version()).isEqualTo("1.0.1-rebuilt"));
+    }
+
     /** A jk home under {@code tmp}; its config.toml path. */
     private static Path home(Path tmp) throws Exception {
         Path home = Files.createDirectories(tmp.resolve("home"));
