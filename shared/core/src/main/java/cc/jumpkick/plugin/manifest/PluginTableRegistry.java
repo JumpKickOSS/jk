@@ -300,7 +300,7 @@ public final class PluginTableRegistry {
             if (manifest.subTables().containsKey(key.name()) && readTable(table, key.name()) != null) continue;
             Object value = read(manifest.table(), key, table);
             if (value == null) value = key.normalizedDefault();
-            if (value == null) {
+            if (value == null || (key.required() && isEmptyList(value))) {
                 if (key.required()) throw new JkBuildParseException(requiredMessage(manifest.table(), key));
                 continue; // tri-state: absent stays absent
             }
@@ -386,10 +386,10 @@ public final class PluginTableRegistry {
         for (PluginDescriptor.SchemaKey key : subSchema.values()) {
             Object value = read(where, key, entryTable);
             if (value == null) value = key.normalizedDefault();
-            if (value == null) {
+            if (value == null || (key.required() && isEmptyList(value))) {
                 if (key.required()) {
                     throw new JkBuildParseException("[" + where + "] requires `" + key.name() + "`"
-                            + (key.example() != null ? " (e.g. " + key.name() + " = \"" + key.example() + "\")" : ""));
+                            + (key.example() != null ? " (e.g. " + exampleAssignment(key) + ")" : ""));
                 }
                 continue;
             }
@@ -473,15 +473,26 @@ public final class PluginTableRegistry {
     /** Message parity with the old hand-written parsers: example + hint when the schema has them. */
     private static String requiredMessage(String tableName, PluginDescriptor.SchemaKey key) {
         StringBuilder sb = new StringBuilder("[" + tableName + "]." + key.name() + " is required");
-        if (key.example() != null) {
-            sb.append(" (e.g. ")
-                    .append(key.name())
-                    .append(" = \"")
-                    .append(key.example())
-                    .append("\")");
-        }
+        if (key.type() == PluginDescriptor.SchemaKey.Type.STRING_LIST) sb.append(", with at least one entry");
+        if (key.example() != null)
+            sb.append(" (e.g. ").append(exampleAssignment(key)).append(')');
         if (key.hint() != null) sb.append(" — ").append(key.hint());
         return sb.toString();
+    }
+
+    /**
+     * {@code key = example} as a manifest would spell it: a string's example quoted, any other
+     * type's (a list, a number, a boolean) written as the TOML literal it already is.
+     */
+    private static String exampleAssignment(PluginDescriptor.SchemaKey key) {
+        boolean quoted = key.type() == PluginDescriptor.SchemaKey.Type.STRING
+                || key.type() == PluginDescriptor.SchemaKey.Type.COORDINATE;
+        return key.name() + " = " + (quoted ? "\"" + key.example() + "\"" : key.example());
+    }
+
+    /** A list value with no elements: what a required list key may not be. */
+    private static boolean isEmptyList(Object value) {
+        return value instanceof List<?> list && list.isEmpty();
     }
 
     /**

@@ -190,7 +190,7 @@ version = "1.0.0"
 [intellij]
 version = "262.10968.63"   # the platform build: IntelliJ IDEA's About dialog shows IC-262.10968.63
 plugins = ["java"]         # bundled plugins the code uses, by directory under the IDE's plugins/
-libraries = ["platform:ide-impl", "java:java-impl"]   # platform modules to compile against, as Maven artifacts
+libraries = ["platform:ide-impl", "java:java-impl"]   # required: platform modules to compile against, as Maven artifacts
 # requires = ["platform-todo-plugin"]   # other bundled plugins the named ones need at run time
 # product     = "ideaIC"   # ideaIC (Community, the default) or ideaIU (Ultimate)
 # since-build = "262"      # defaults to the branch of version
@@ -199,11 +199,16 @@ libraries = ["platform:ide-impl", "java:java-impl"]   # platform modules to comp
 [repositories.jetbrains]
 url    = "https://www.jetbrains.com/intellij-repository/releases"
 groups = ["com.jetbrains.intellij.*"]
+
+[repositories.ij-deps]     # the one platform dependency in neither Central nor the repository above
+url    = "https://packages.jetbrains.team/maven/p/ij/intellij-dependencies"
+groups = ["org.jetbrains.intellij.deps.fastutil"]
 ```
 
-- **Compiling.** The code compiles against the platform modules `libraries` names — each is
-  `<group suffix>:<artifact>` under `com.jetbrains.intellij`, at `version` — with their transitive
-  closure, from JetBrains' repository (and `org.jetbrains.intellij.deps.fastutil` from the
+- **Compiling.** The code compiles against the platform modules `libraries` names, and only
+  those: the table requires at least one (`platform:ide-impl` covers actions, editors and
+  commands). Each is `<group suffix>:<artifact>` under `com.jetbrains.intellij`, at `version` —
+  with their transitive closure, from JetBrains' repository (and `org.jetbrains.intellij.deps.fastutil` from the
   `intellij-dependencies` repository, which a module declares restricted to that group). The
   closure is about a tenth the size of the distribution and compile-only: `jk build` fetches it
   and never unpacks the distribution.
