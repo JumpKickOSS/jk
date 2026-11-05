@@ -39,8 +39,11 @@ record carries the `episode` it belongs to (`mcp-3f9a-mfx2k1.2`: the session's i
 episode's number).
 
 A session is **live** while it acts, **idle** after ten minutes of quiet, and **ended** when its
-MCP connection closes. The shell and the dashboard have no connection to close, so their session
-ends once it has been idle; the next run opens another. Besides its runs, a session's timeline
+MCP connection closes (`DELETE /mcp`) or once it has had no activity for the session expiry
+(`[mcp] session-expiry`, default 24 hours). That one rule covers every session: an agent's whose
+connection is still open, the shell's, the dashboard's, and one a previous engine left open. The
+next run after it opens another session, and an agent whose session expired is asked to start a new
+one. Besides its runs, a session's timeline
 holds the MCP calls that are not runs, each as one line with its outcome and time: the code
 graph's `query`, `callers`, `read` and `find`, `rename`, and the dependency changes `deps`,
 `update` and `workspace`.
@@ -48,8 +51,8 @@ graph's `query`, `callers`, `read` and `find`, `rename`, and the dependency chan
 A session survives the engine. When an upgrade replaces the engine, or the engine dies and the
 next command starts another, the new engine carries on every session the old one left open: an
 agent's next call keeps its session, its label and its current episode, and a run that was still
-finishing on the old engine lands in that episode. A session nobody returns to ends once it has
-been idle for ten minutes.
+finishing on the old engine lands in that episode. A session nobody returns to ends at the
+session expiry, like any other.
 
 An episode starts with the session's first action, and again when the session moves to another
 project, when it acts after ten minutes of quiet, and after a red run streak ends green (the

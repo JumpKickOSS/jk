@@ -393,7 +393,9 @@ public final class EngineServer implements AutoCloseable {
         SessionLog log = new SessionLog(
                 historyConfig.enabled() ? SessionJournal.under(journal.buildsRoot()) : null,
                 clockMillis,
-                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
+                (httpConfig != null ? httpConfig.mcp().sessionExpiry() : JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY)
+                        .toMillis());
         HttpEvents hub = httpEvents;
         if (hub != null) log.events((type, payload) -> hub.publishDashboard(type, JsonOut.rawObject(payload)));
         // One writer: once a successor holds the endpoint, the runs this engine finishes go to it.

@@ -150,10 +150,12 @@ They are not project-overridable.
 # enabled = false          # 404 /mcp only; dashboard stays
 # max-event-streams = 16
 # max-sessions = 256       # loaded MCP connections; initialize is a 503 only when all are busy
+# session-expiry = "24h"   # a session with no activity this long ends and forgets its connection
 # tools = "loop"           # tools/list: "loop" (six tools) or "all"; a client can also pass extended=true
 ```
 
-`JK_HTTP_ENABLED=false`, `JK_MCP_ENABLED=false`, `JK_MCP_MAX_SESSIONS=64`, `JK_MCP_TOOLS=all`. Details: [MCP](mcp.md),
+`JK_HTTP_ENABLED=false`, `JK_MCP_ENABLED=false`, `JK_MCP_MAX_SESSIONS=64`, `JK_MCP_SESSION_EXPIRY=8h`,
+`JK_MCP_TOOLS=all`. Details: [MCP](mcp.md),
 [Web](web.md).
 
 ## Network

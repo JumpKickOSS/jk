@@ -22,8 +22,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * The session records beside the run records: {@code <builds>/sessions/<id>/session.json} holds one
  * session and its episodes, rewritten whole on every change, and {@code actions.jsonl} beside it
- * appends one line per action the session took. An MCP session's {@code connection.json} holds the
- * connection behind it, so a successor engine answers the same {@code Mcp-Session-Id}. The shapes are the session log's; this class only
+ * appends one line per action the session took. An open MCP session's {@code connection.json} holds
+ * the connection behind it, so a successor engine answers the same {@code Mcp-Session-Id}; it is
+ * removed when the session ends. The shapes are the session log's; this class only
  * stores and reads them as {@link MiniJson} objects. Pruned with the runs, under the same {@code
  * [history]} budgets ({@link BuildJournal#prune}).
  */
@@ -55,8 +56,8 @@ public final class SessionJournal {
     /**
      * Every ended session under {@code buildsRoot} as a prune entry, made by {@code entry} from its
      * directory and when it last changed, its connection with it. A session still live or idle is
-     * never prunable: the engine adopts every session a previous engine left open, and its idle
-     * sweep ends the ones nobody returns to.
+     * never prunable: the engine adopts every session a previous engine left open, and its sweep
+     * ends the ones with no activity for the session expiry.
      */
     static <T> List<T> prunable(Path buildsRoot, long nowMillis, BiFunction<Path, Long, T> entry) {
         List<T> out = new ArrayList<>();
@@ -87,6 +88,11 @@ public final class SessionJournal {
         Path dir = dirOf(id);
         OwnerOnlyFiles.createDirectories(dir);
         AtomicWrites.replace(dir.resolve(CONNECTION_JSON), MiniJson.write(doc) + "\n");
+    }
+
+    /** Remove session {@code id}'s {@code connection.json}, when it has one. */
+    public void deleteConnection(String id) throws IOException {
+        Files.deleteIfExists(dirOf(id).resolve(CONNECTION_JSON));
     }
 
     /** Session {@code id}'s connection, or empty when it has none or it does not parse. */

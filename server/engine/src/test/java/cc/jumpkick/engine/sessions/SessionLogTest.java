@@ -3,6 +3,7 @@ package cc.jumpkick.engine.sessions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.jsonl.MiniJson;
@@ -28,6 +29,7 @@ class SessionLogTest {
 
     private static final long T = 1_700_000_000_000L;
     private static final String LABEL = "claude-code 3f9a";
+    private static final long EXPIRY = JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis();
 
     @TempDir
     Path root;
@@ -44,7 +46,7 @@ class SessionLogTest {
     }
 
     private SessionLog newLog() {
-        SessionLog l = new SessionLog(journal, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+        SessionLog l = new SessionLog(journal, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, EXPIRY);
         l.events((type, payload) -> events.add(type + ":" + change(payload)));
         return l;
     }
@@ -105,22 +107,58 @@ class SessionLogTest {
     }
 
     @Test
-    void a_quiet_connection_goes_idle_and_a_quiet_shell_ends() {
+    void a_quiet_session_goes_idle_after_the_gap_and_ends_only_at_the_expiry() {
         String mcp = log.open("mcp", "claude-code", LABEL, "/ws/app");
         String shell = sessionOf(log.placeRun("cli", null, "build", "/ws/app", T));
         now.set(T + EpisodeInference.DEFAULT_IDLE_GAP_MILLIS + 1);
         log.sweep();
 
         assertThat(log.session(mcp, 0, 1).orElseThrow().session()).containsEntry("state", "idle");
-        assertThat(log.session(shell, 0, 1).orElseThrow().session()).containsEntry("state", "ended");
-        assertThat(events).contains("session:idle", "session:ended");
+        assertThat(log.session(shell, 0, 1).orElseThrow().session()).containsEntry("state", "idle");
+        assertThat(events).contains("session:idle").doesNotContain("session:ended");
 
         callers(now.get());
         assertThat(log.session(mcp, 0, 1).orElseThrow().session()).containsEntry("state", "live");
         assertThat(events).contains("session:live");
-        // The shell's next run is another session.
         assertThat(sessionOf(log.placeRun("cli", null, "build", "/ws/app", now.get())))
+                .as("the shell's run after a quiet gap stays in its session")
+                .isEqualTo(shell);
+
+        now.addAndGet(EXPIRY + 60_000);
+        log.sweep();
+        assertThat(log.session(mcp, 0, 1).orElseThrow().session()).containsEntry("state", "ended");
+        assertThat(log.session(shell, 0, 1).orElseThrow().session()).containsEntry("state", "ended");
+        assertThat(sessionOf(log.placeRun("cli", null, "build", "/ws/app", now.get())))
+                .as("the shell's next run after the expiry is another session")
                 .isNotEqualTo(shell);
+    }
+
+    @Test
+    void an_attached_session_ends_after_the_expiry_and_its_connection_is_forgotten() {
+        List<String> forgotten = new ArrayList<>();
+        log.whenConnectionEnds(forgotten::add);
+        String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
+        log.saveConnection("mcp", LABEL, Map.of("id", "3f9a", "lastSeenAt", T));
+        Path connection = root.resolve("sessions").resolve(id).resolve("connection.json");
+        assertThat(connection).exists();
+        assertThat(log.connection("3f9a")).as("attached").isPresent();
+
+        // A request on the connection is activity, though it logged no fact.
+        now.set(T + EXPIRY - 1);
+        log.saveConnection("mcp", LABEL, Map.of("id", "3f9a", "lastSeenAt", T + EXPIRY - 1));
+        now.set(T + EXPIRY + 1);
+        log.sweep();
+        assertThat(log.session(id, 0, 1).orElseThrow().session()).containsEntry("state", "idle");
+        assertThat(forgotten).isEmpty();
+
+        now.set(T + 2 * EXPIRY);
+        log.sweep();
+        assertThat(log.session(id, 0, 1).orElseThrow().session()).containsEntry("state", "ended");
+        assertThat(forgotten).containsExactly("3f9a");
+        assertThat(log.connection("3f9a")).isEmpty();
+        assertThat(log.holdsConnection("3f9a")).isFalse();
+        assertThat(connection).as("forgotten on disk too").doesNotExist();
+        assertThat(newLog().adopt()).as("nothing left to adopt").isZero();
     }
 
     @Test
@@ -153,18 +191,21 @@ class SessionLogTest {
     }
 
     @Test
-    void a_session_a_dead_engine_left_open_is_adopted_then_ended_by_the_idle_sweep() {
+    void a_session_a_dead_engine_left_open_is_adopted_survives_the_idle_gap_and_ends_at_the_expiry() {
         String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
         log.saveConnection("mcp", LABEL, Map.of("id", "3f9a"));
         callers(T + 1_000);
 
         SessionLog next = newLog();
         next.adopt();
-        now.set(T + 1_000 + EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+        now.set(T + 1_000 + 3 * EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
         next.sweep();
-        assertThat(next.session(id, 0, 1).orElseThrow().session()).containsEntry("state", "live");
+        assertThat(next.session(id, 0, 1).orElseThrow().session())
+                .as("an adopted session nobody returned to outlasts the idle gap")
+                .containsEntry("state", "idle");
+        assertThat(next.holdsConnection("3f9a")).isTrue();
 
-        now.set(T + 2_000 + EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+        now.set(T + 60_000 + EXPIRY);
         next.sweep();
         SessionLog.Page page = next.session(id, 0, 10).orElseThrow();
         assertThat(page.session()).containsEntry("state", "ended");
@@ -175,6 +216,8 @@ class SessionLogTest {
                 .as("an ended session's connection is gone")
                 .isEmpty();
         assertThat(next.holdsConnection("3f9a")).isFalse();
+        assertThat(root.resolve("sessions").resolve(id).resolve("connection.json"))
+                .doesNotExist();
     }
 
     @Test
@@ -326,7 +369,7 @@ class SessionLogTest {
 
     @Test
     void without_a_journal_a_live_session_is_kept_in_memory() {
-        SessionLog memory = new SessionLog(null, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+        SessionLog memory = new SessionLog(null, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, EXPIRY);
         String id = memory.open("mcp", "claude-code", LABEL, "/ws/app");
         memory.action(
                 "mcp",

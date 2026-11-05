@@ -37,7 +37,7 @@ Outside a project `jk mcp` still serves, and the tools take `dir` as over HTTP.
 | Discovery | `GET {httpUrl}/mcp` |
 | Live events | `GET {httpUrl}/mcp` with `Accept: text/event-stream` |
 | Auth | `Authorization: Bearer <token>` (**always** required) |
-| Session | `initialize` answers with an `Mcp-Session-Id` header; echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <id>`. `DELETE /mcp` with the header ends it. An id the engine no longer knows (its session ended or was pruned) is a `404`, and the client sends `initialize` again for a new session |
+| Session | `initialize` answers with an `Mcp-Session-Id` header; echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <id>`. `DELETE /mcp` with the header ends it, and so does the [session expiry](#session-expiry) (a day with no activity, by default). An id the engine no longer knows (its session ended or was pruned) is a `404`, and the client sends `initialize` again for a new session |
 | Protocol | `2025-11-25`, `2025-06-18`, `2025-03-26` or `2024-11-05`, negotiated at `initialize` ([below](#protocol-revisions)); Streamable HTTP. Send `MCP-Protocol-Version` on every later request |
 | Server name | `jk-engine` |
 | Tool list | `tools/list` answers six tools (`run`, `diagnostics`, `deps`, `callers`, `rename`, `skill`); `run(kind=snapshot)` installs for a sibling project. `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
@@ -69,6 +69,15 @@ connection comes back with the same session on its next request. Only when every
 busy does a new `initialize` get `503` with `Retry-After` and an error naming the limit: close idle
 agents, or raise `max-sessions` and restart the engine. Calls on connections already open are
 never refused.
+
+### Session expiry
+
+Most clients never send `DELETE /mcp`. A session with no activity (no call, no run) for `[mcp]
+session-expiry` / `JK_MCP_SESSION_EXPIRY` (default **24h**; `"90m"`, `"7d"`, `"3600s"` or a number
+of seconds) ends, and the engine forgets its connection, whether the client still holds it or the
+session came over from a previous engine. A client that comes back with the old `Mcp-Session-Id`
+gets the `404` and sends `initialize` for a new session; `jk mcp` does that for the host. Ten
+minutes of quiet only marks a session idle and starts a new episode on its next call.
 
 The loop tools (`run`, `diagnostics`, `deps`, `callers`, `rename`, `skill`) and `why` answer `content` text only;
 for `run` and `diagnostics` that text **is** the verdict (below). They send no

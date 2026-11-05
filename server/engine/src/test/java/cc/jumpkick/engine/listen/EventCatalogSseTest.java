@@ -3,6 +3,7 @@ package cc.jumpkick.engine.listen;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.SseEvents;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.Fact;
@@ -97,7 +98,11 @@ class EventCatalogSseTest {
 
         long[] now = {1_700_000_000_000L};
         Set<String> published = new LinkedHashSet<>();
-        SessionLog log = new SessionLog(null, () -> now[0], EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+        SessionLog log = new SessionLog(
+                null,
+                () -> now[0],
+                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
+                JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis());
         log.events((type, payload) -> {
             assertThat(payload.get("type")).as("the payload of `%s`", type).isEqualTo(type);
             published.add(type);

@@ -353,14 +353,22 @@ segment of letters, digits, `.`, `-` and `_` is a **400**; an unknown one a **40
 Both are bearer-gated like every `/api/*`. The records live under the journal root,
 `sessions/<id>/session.json` (the session and its episodes) and `actions.jsonl` (one line per
 action), and are pruned with the runs under the same `[history]` age and disk budgets; a session
-that has not ended is never pruned. An MCP session's directory also holds `connection.json`, the
-connection behind it (below), pruned with it.
+that has not ended is never pruned. An open MCP session's directory also holds `connection.json`,
+the connection behind it (below); it is removed when the session ends.
+
+A session ends at `DELETE /mcp`, or when the sweep (the engine's maintenance tick, and every read
+of the sessions) finds it has had no activity for the session expiry (`[mcp] session-expiry`,
+default 24 hours). Activity is its last fact or the last request on its MCP connection, whichever
+is later. The rule is the same for every session, attached or not, adopted or not, and an ending
+session takes its connection with it: `SessionLog` drops it, deletes `connection.json`, and tells
+`McpConnections` to unload it, so its id is a 404 from then on. The idle gap (ten minutes) marks a
+session `idle` and splits episodes; it never ends a session.
 
 An engine adopts every session a previous engine left open, whether that engine was displaced or
 died: each stays open with its episodes as they stood (`session.json` keeps the running tallies
-inference needs under `inference`) and its timeline's sequence. The idle sweep ends an adopted
-session once it has been quiet for the idle gap with no client back; one whose connection or
-label acts again on the new engine is the same session as before.
+inference needs under `inference`) and its timeline's sequence. An adopted session is under the
+same expiry as any other; one whose connection or label acts again on the new engine is the same
+session as before.
 
 ### `GET /report/<token>/<id>/<path>`
 
@@ -414,8 +422,8 @@ it negotiated and the `McpElicitModes` the client declared.
 last seen) once its session opens, again when its bind changes, and at most once a minute for
 last seen. A request whose `Mcp-Session-Id` the engine has not loaded (it started after the
 connection opened, or the table unloaded it) is answered from the connection an open session
-holds, with the same id, label and session and no new `initialize`. A stored connection is pruned
-with its session's directory.
+holds, with the same id, label and session and no new `initialize`. A connection goes when its
+session ends, at `DELETE /mcp` or at the session expiry (above).
 
 The table holds at most `[mcp] max-sessions` connections (default 256) while any of them is idle:
 stored, with no request being served and none for 30 seconds. To load one more past that, it
