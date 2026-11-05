@@ -36,10 +36,11 @@ final class NewTemplate {
     /**
      * The flags this mode seeds its parameter map from.
      *
-     * @param standalone true when no enclosing project was detected: the project gets jk's seeded
-     *     {@code .gitignore} (unless the template ships one), {@code AGENTS.md}, the files of each
-     *     agent in use and a first code graph, as a plain {@code jk new} does. A workspace module
-     *     gets none of these; the workspace root owns them.
+     * @param parent the enclosing project when one was detected: the scaffold becomes one of its
+     *     modules and is listed in its {@code [workspace].modules}, as a plain {@code jk new} module
+     *     is. Null makes a standalone project, which gets jk's seeded {@code .gitignore} (unless the
+     *     template ships one), {@code AGENTS.md}, the files of each agent in use and a first code
+     *     graph; a module gets none of these, the workspace root owns them.
      */
     record Args(
             String ref,
@@ -51,9 +52,14 @@ final class NewTemplate {
             @Nullable Path directory,
             Path cwd,
             boolean plugin,
-            boolean standalone,
+            NewCommand.@Nullable ParentInfo parent,
             boolean offline,
-            @Nullable String frontend) {}
+            @Nullable String frontend) {
+
+        boolean standalone() {
+            return parent == null;
+        }
+    }
 
     static int apply(Args args) {
         if (args.plugin()) {
@@ -130,13 +136,22 @@ final class NewTemplate {
                         NewNode.replaceFrontend(target.resolve("web"), args.frontend(), List.of(), args.offline());
                 if (swapped != Exit.SUCCESS) return swapped;
             }
-            if (args.standalone()) AgentWiring.report(target);
+            NewCommand.ParentInfo parent = args.parent();
+            if (parent == null) {
+                AgentWiring.report(target);
+            } else {
+                NewCommand.registerModule(parent.root(), target);
+            }
             CommandWedge.envelopeStart();
-            CliOutput.out(JkWedge.chipLine(
-                    Glyphs.CHECK,
-                    "New Project",
-                    GlobalConfig.nerdFont(),
-                    "Applied template (" + ack.filesWritten() + " files) → " + target.getFileName()));
+            String applied = "Applied template (" + ack.filesWritten() + " files) → " + target.getFileName();
+            CliOutput.out(
+                    parent == null
+                            ? JkWedge.chipLine(Glyphs.CHECK, "New Project", GlobalConfig.nerdFont(), applied)
+                            : JkWedge.chipLine(
+                                    Glyphs.CHECK,
+                                    "New Module",
+                                    GlobalConfig.nerdFont(),
+                                    applied + ", added to project " + parent.displayName()));
             return Exit.SUCCESS;
         } catch (IOException e) {
             CommandWedge.printFail("New", e.getMessage());
