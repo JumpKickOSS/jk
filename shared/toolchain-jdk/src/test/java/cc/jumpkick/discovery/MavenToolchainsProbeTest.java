@@ -42,6 +42,18 @@ class MavenToolchainsProbeTest {
     }
 
     @Test
+    void expansion_reads_maven_spellings_like_settings_xml() {
+        assertThat(MavenToolchains.expand("${env.A}/${env.B}", Map.of("A", "/opt", "B", "jdk-25")::get))
+                .isEqualTo("/opt/jdk-25");
+        assertThat(MavenToolchains.expand("${user.home}/jdk ${env:A} $${env.A}}", Map.of("A", "x")::get))
+                .as("only env.NAME is expanded; other expressions and jk's own scheme stay as written")
+                .isEqualTo("${user.home}/jdk ${env:A} $x}");
+        assertThat(MavenToolchains.expand("${env.A}", Map.of("A", "")::get))
+                .as("an empty variable is unset")
+                .isNull();
+    }
+
+    @Test
     void a_missing_file_is_empty(@TempDir Path tmp) throws IOException {
         assertThat(new MavenToolchainsProbe(tmp.resolve("toolchains.xml"), name -> null).discoverAllJdks())
                 .isEmpty();
