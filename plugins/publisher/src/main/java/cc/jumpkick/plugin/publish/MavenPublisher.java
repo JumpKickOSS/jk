@@ -7,7 +7,7 @@ import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.repo.RepoTransport;
-import cc.jumpkick.repo.RepoTransports;
+import cc.jumpkick.repo.transport.RepoTransports;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;

@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.repo.s3.S3Transport;
+import cc.jumpkick.repo.transport.RepoTransports;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.InputStream;

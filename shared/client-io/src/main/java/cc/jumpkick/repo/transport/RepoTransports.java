@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.repo;
+package cc.jumpkick.repo.transport;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.ObjectStoreConfig;
+import cc.jumpkick.repo.FileTransport;
+import cc.jumpkick.repo.HttpTransport;
+import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.s3.AwsCredentialChain;
 import cc.jumpkick.repo.s3.S3Transport;
 import java.net.URI;
