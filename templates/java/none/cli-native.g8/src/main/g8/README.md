@@ -30,6 +30,9 @@ native-image step — keep it off while iterating on the JVM if you prefer faste
 GraalVM must be available (`GRAALVM_HOME`, a project JDK with `native-image`, or the
 client-resolved Graal install used by `jk native` / `jk install`).
 
+The project has no `[image]` table: the native binary runs on its own, so it ships as itself
+rather than inside a container image.
+
 [JLine]: https://github.com/jline/jline3
 
 ## Tiers, null checking and guards
