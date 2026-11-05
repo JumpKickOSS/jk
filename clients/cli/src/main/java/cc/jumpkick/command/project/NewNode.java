@@ -7,7 +7,6 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.command.toolchain.NodeCli;
 import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
@@ -89,7 +88,7 @@ final class NewNode {
                     NodeGenerators.manifest(name, Integer.toString(lts), group, null),
                     StandardCharsets.UTF_8);
             ignore(target);
-            if (root != null) join(root, target);
+            if (root != null) NewCommand.registerModule(root, target);
             else AgentWiring.report(target);
             CommandWedge.envelopeStart();
             CliOutput.out(JkWedge.chipLine(
@@ -217,17 +216,6 @@ final class NewNode {
         if (add.isEmpty()) return;
         String sep = text.isEmpty() || text.endsWith("\n") ? "" : "\n";
         Files.writeString(file, text + sep + add, StandardCharsets.UTF_8);
-    }
-
-    /** Register {@code module} in {@code root}'s {@code [workspace] modules}. */
-    static void join(Path root, Path module) throws IOException {
-        Path manifest = ManifestPaths.manifestIn(root);
-        String rel = root.toAbsolutePath()
-                .normalize()
-                .relativize(module.toAbsolutePath().normalize())
-                .toString();
-        String text = Files.readString(manifest, StandardCharsets.UTF_8);
-        Files.writeString(manifest, JkBuildEditor.registerWorkspaceModule(text, rel), StandardCharsets.UTF_8);
     }
 
     private static boolean isEmpty(Path dir) throws IOException {
