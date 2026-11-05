@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.http.mcp.McpConnections;
 import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.engine.plugin.OverbookSignals;
 import cc.jumpkick.engine.plugin.WorkerContainment;
@@ -47,6 +48,8 @@ public final class EngineVitals {
         WorkerContainment.Report containment = WorkerContainment.report();
         WorkerContainment.LeaseBudget budget = WorkerContainment.leaseBudget();
         WorkerLeases.Snapshot workers = WorkerLeases.engine().snapshot();
+        HttpEngineServer http = httpServer.get();
+        McpConnections.Counts mcp = http == null ? new McpConnections.Counts(0, 0, 0) : http.mcpConnections();
         return new StatusSnapshot(
                 version,
                 pid,
@@ -85,6 +88,9 @@ public final class EngineVitals {
                 OverbookSignals.policyOff(),
                 workers.waiting(),
                 workers.overLease(),
+                mcp.max(),
+                mcp.loaded(),
+                mcp.active(),
                 jobs.get());
     }
 

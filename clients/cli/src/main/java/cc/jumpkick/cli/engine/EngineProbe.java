@@ -134,6 +134,12 @@ public final class EngineProbe {
              * when the engine did not report.
              */
             @Nullable String workerOverLease,
+            /** {@code [mcp] max-sessions}; {@code 0} when the engine serves no MCP or did not report. */
+            int mcpMaxSessions,
+            /** MCP connections the engine has loaded; {@code 0} when none or not reported. */
+            int mcpLoadedConnections,
+            /** Loaded MCP connections that are active, which no new connection may unload. */
+            int mcpActiveConnections,
             /**
              * Epoch millis by which a draining engine exits; {@code -1} when it is not draining, its
              * drain is unbounded, or it did not report.
@@ -216,6 +222,9 @@ public final class EngineProbe {
                     false,
                     null,
                     null,
+                    0,
+                    0,
+                    0,
                     -1L,
                     jobs);
         }
@@ -407,6 +416,9 @@ public final class EngineProbe {
                     Jsonl.bool(ack, "overbookingOff", false),
                     Jsonl.str(ack, "workerWaiting"),
                     Jsonl.str(ack, "workerOverLease"),
+                    Jsonl.intValue(ack, "mcpMaxSessions", 0),
+                    Jsonl.intValue(ack, "mcpLoadedConnections", 0),
+                    Jsonl.intValue(ack, "mcpActiveConnections", 0),
                     Jsonl.longValue(ack, "drainDeadline", -1),
                     Job.decodeAll(ack)));
         } catch (IOException e) {

@@ -66,6 +66,61 @@ class LiveVitalsTest {
         assertThat(LiveVitals.PresentStatus.of(ticked)).isEqualTo(LiveVitals.PresentStatus.of(ticked));
     }
 
+    /** An MCP connection loaded, or one going quiet, is a frame: the Engine card shows both counts. */
+    @Test
+    void presentStatus_notices_mcp_connections_loading_and_going_quiet() {
+        StatusSnapshot base = withMcp(snap(5L * 1024 * 1024 * 1024, 0.10), 256, 1, 1);
+        assertThat(LiveVitals.PresentStatus.of(base))
+                .isNotEqualTo(LiveVitals.PresentStatus.of(withMcp(base, 256, 2, 2)))
+                .isNotEqualTo(LiveVitals.PresentStatus.of(withMcp(base, 256, 1, 0)))
+                .isEqualTo(LiveVitals.PresentStatus.of(withMcp(base, 256, 1, 1)));
+    }
+
+    private static StatusSnapshot withMcp(StatusSnapshot b, int max, int loaded, int active) {
+        return new StatusSnapshot(
+                b.version(),
+                b.pid(),
+                b.startedAtMillis(),
+                b.activeRequests(),
+                b.activeBuildPlans(),
+                b.heapUsedBytes(),
+                b.heapCommittedBytes(),
+                b.heapMaxBytes(),
+                b.rssBytes(),
+                b.cores(),
+                b.totalMemoryBytes(),
+                b.availableMemoryBytes(),
+                b.systemCpuLoad(),
+                b.systemLoadAverage(),
+                b.engineEpoch(),
+                b.peakActiveRequests(),
+                b.peakActiveBuildPlans(),
+                b.idleDropped(),
+                b.logBytes(),
+                b.logRolledAt(),
+                b.ignoredSignals(),
+                b.queuedBuildPlans(),
+                b.installSource(),
+                b.containment(),
+                b.containmentReason(),
+                b.workerMemoryMax(),
+                b.workerCap(),
+                b.workerBudgetBytes(),
+                b.workerLeasedBytes(),
+                b.workerOverbookedBytes(),
+                b.workerQueued(),
+                b.workerBudgetSource(),
+                b.workerRunningJvms(),
+                b.workerCpuCap(),
+                b.overbookingOff(),
+                b.workerWaiting(),
+                b.workerOverLease(),
+                max,
+                loaded,
+                active,
+                b.jobs());
+    }
+
     private static StatusSnapshot withJobs(StatusSnapshot base, List<JobRow> rows) {
         return new StatusSnapshot(
                 base.version(),

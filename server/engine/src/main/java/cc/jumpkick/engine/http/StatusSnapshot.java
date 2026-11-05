@@ -118,6 +118,12 @@ public record StatusSnapshot(
          * 700 MiB}, largest first. {@code ""} when none is.
          */
         String workerOverLease,
+        /** {@code [mcp] max-sessions}; {@code 0} when the engine serves no MCP. */
+        int mcpMaxSessions,
+        /** MCP connections loaded in the engine's connection table. */
+        int mcpLoadedConnections,
+        /** Loaded MCP connections that are active: serving a request, quiet under 30 s, or not yet stored. */
+        int mcpActiveConnections,
         /**
          * Every live and queued job, live first in admission order then queued in arrival order,
          * each as {@code JobRow.toJson()} renders it: {@code jid}, {@code kind}, {@code dir},
@@ -198,6 +204,9 @@ public record StatusSnapshot(
                 false,
                 "",
                 "",
+                0,
+                0,
+                0,
                 jobs);
     }
 
@@ -263,6 +272,9 @@ public record StatusSnapshot(
                 false,
                 "",
                 "",
+                0,
+                0,
+                0,
                 List.of());
     }
 
@@ -366,6 +378,9 @@ public record StatusSnapshot(
         m.put("overbookingOff", overbookingOff);
         m.put("workerWaiting", workerWaiting == null ? "" : workerWaiting);
         m.put("workerOverLease", workerOverLease == null ? "" : workerOverLease);
+        m.put("mcpMaxSessions", mcpMaxSessions);
+        m.put("mcpLoadedConnections", mcpLoadedConnections);
+        m.put("mcpActiveConnections", mcpActiveConnections);
         m.put("jobs", jobs);
         return m;
     }

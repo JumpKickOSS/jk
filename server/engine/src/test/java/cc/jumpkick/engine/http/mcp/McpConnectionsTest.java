@@ -80,6 +80,23 @@ class McpConnectionsTest {
     }
 
     @Test
+    void counts_name_the_limit_the_loaded_connections_and_the_active_ones() {
+        table.max(4);
+        assertThat(table.counts()).isEqualTo(new McpConnections.Counts(4, 0, 0));
+        McpConnection quietOne = opened("claude-code");
+        McpConnection busy = opened("cursor");
+        busy.callStarted();
+        assertThat(table.counts()).isEqualTo(new McpConnections.Counts(4, 2, 2));
+
+        quiet();
+        assertThat(table.counts())
+                .as("the quiet one is idle; the one with a call outstanding stays active")
+                .isEqualTo(new McpConnections.Counts(4, 2, 1));
+        assertThat(table.find(quietOne.id())).isNotNull();
+        assertThat(table.counts()).as("a request makes it active again").isEqualTo(new McpConnections.Counts(4, 2, 2));
+    }
+
+    @Test
     void a_connection_with_a_call_outstanding_never_unloads_and_a_full_active_table_refuses_a_new_one() {
         table.max(1);
         McpConnection parked = opened("claude-code");

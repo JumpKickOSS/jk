@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.http.mcp.McpConnections;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.sessions.SessionLog;
@@ -279,6 +280,12 @@ public final class HttpEngineServer implements AutoCloseable {
     /** True when the MCP surface is mounted ({@code [mcp] enabled}). */
     public boolean mcpEnabled() {
         return mcp != null;
+    }
+
+    /** The MCP connection table's limit and counts; all zero when the surface is not mounted. */
+    public McpConnections.Counts mcpConnections() {
+        McpHandler h = mcp;
+        return h == null ? new McpConnections.Counts(0, 0, 0) : h.connectionCounts();
     }
 
     /** The served base URL, e.g. {@code http://127.0.0.1:8910/} — actual bound port, so 0 works. */
