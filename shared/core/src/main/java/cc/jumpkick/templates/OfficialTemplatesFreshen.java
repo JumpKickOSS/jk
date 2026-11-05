@@ -7,6 +7,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AttemptWindow;
 import cc.jumpkick.util.GitProxy;
+import cc.jumpkick.util.GitVersion;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
@@ -17,6 +18,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -295,8 +297,9 @@ public final class OfficialTemplatesFreshen {
 
     /**
      * Run {@code args}, with {@code httpProxy} as git's {@code http.proxy} when it is not null (an
-     * empty value turns git's proxy off). The value goes through git's environment ({@link
-     * GitProxy#configure}), not the argv, because it can carry the proxy's credential.
+     * empty value turns git's proxy off). The value goes through git's environment by {@link
+     * GitProxy#route}, never the argv, because it can carry the proxy's credential; a git too old
+     * to read it there is refused a proxy by name.
      */
     static void runGit(List<String> args, @Nullable String httpProxy, Duration timeout) throws IOException {
         // Both streams are handled at the OS level — stdout discarded, stderr into a file — because
@@ -307,7 +310,9 @@ public final class OfficialTemplatesFreshen {
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(stderr.toFile());
         pb.environment().put("GIT_TERMINAL_PROMPT", "0");
-        if (httpProxy != null) GitProxy.configure(pb.environment(), httpProxy);
+        if (httpProxy != null) {
+            GitProxy.route(pb.environment(), httpProxy, gitVersion(args.get(0)), remoteOf(args));
+        }
         try {
             Process proc;
             try {
@@ -333,6 +338,53 @@ public final class OfficialTemplatesFreshen {
         } finally {
             Files.deleteIfExists(stderr);
         }
+    }
+
+    /** The version of each git command asked for, once per process. */
+    private static final ConcurrentHashMap<String, GitVersion> VERSIONS = new ConcurrentHashMap<>();
+
+    /** The first git that reads {@code GIT_CONFIG_*}: what an unreadable answer is taken for. */
+    private static final GitVersion READS_CONFIG_ENV = new GitVersion(2, 31);
+
+    /**
+     * {@code exe}'s version, from {@code exe --version} bounded to a few seconds. A git that does
+     * not answer is taken to read {@code GIT_CONFIG_*}: the command itself then fails by its own
+     * name, which says more than a version guess would.
+     */
+    static GitVersion gitVersion(String exe) {
+        return VERSIONS.computeIfAbsent(exe, OfficialTemplatesFreshen::probeVersion);
+    }
+
+    private static GitVersion probeVersion(String exe) {
+        try {
+            Path out = Files.createTempFile("jk-git-version-", ".txt");
+            try {
+                Process proc = new ProcessBuilder(exe, "--version")
+                        .redirectErrorStream(true)
+                        .redirectOutput(out.toFile())
+                        .start();
+                if (!proc.waitFor(5, TimeUnit.SECONDS)) {
+                    kill(proc);
+                    return READS_CONFIG_ENV;
+                }
+                return GitVersion.parse(Files.readString(out)).orElse(READS_CONFIG_ENV);
+            } finally {
+                Files.deleteIfExists(out);
+            }
+        } catch (IOException notStarted) {
+            return READS_CONFIG_ENV;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return READS_CONFIG_ENV;
+        }
+    }
+
+    /** The remote URL among {@code args}, for a refusal to name; null when the command names none. */
+    private static @Nullable String remoteOf(List<String> args) {
+        for (String arg : args) {
+            if (arg.contains("://")) return arg;
+        }
+        return null;
     }
 
     /**
