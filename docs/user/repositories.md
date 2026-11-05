@@ -454,11 +454,13 @@ A resident engine keeps the session of whichever shell started it, and the next 
 another: the Secret Service is found through the shell's D-Bus variables (none when the engine was
 started over SSH or by systemd), a Windows engine started over SSH has no credential set, and a
 macOS engine started over SSH sees the login keychain locked while the desktop has it open. So the
-`jk` command reads the keychain items its logins point at and sends the secrets with its request,
-the way `JK_REPO_*` variables travel. A build started without a `jk` command — from the dashboard or
-an MCP client — reads them from the engine, which reaches a keychain only when it was started from a
-desktop session; an engine with no keychain never tries to reach one, and a login whose secret is in
-its record serves it as usual.
+`jk` command always reads the keychain items its logins point at and sends the secrets with its
+request, the way `JK_REPO_*` variables travel. An item the command could not read (the keychain is
+locked or refused, or holds no such item) is sent as the reason, and the engine warns with it
+instead of asking the keychain again. Only a build started without a `jk` command — from the
+dashboard or an MCP client — reads keychain items from the engine, which reaches a keychain only when
+it was started from a desktop session; an engine with no keychain never tries to reach one, and a
+login whose secret is in its record serves it as usual.
 
 ### A name is not a destination
 

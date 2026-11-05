@@ -276,11 +276,12 @@ public final class EngineWire {
 
     /**
      * {@code requestLine} carrying this shell's environment, which the engine decides the request
-     * by, and the keychain secrets the engine cannot read itself ({@link ClientKeychain}).
+     * by, and what this command read from the keychain ({@link ClientKeychain}).
      */
     static String withShell(String requestLine) {
+        ClientKeychain.Carried keychain = ClientKeychain.carried();
         return ProtoSession.withKeychain(
-                ProtoSession.withShell(requestLine, ClientEnvForward.shell()), ClientKeychain.carried());
+                ProtoSession.withShell(requestLine, ClientEnvForward.shell()), keychain.secrets(), keychain.refused());
     }
 
     /**

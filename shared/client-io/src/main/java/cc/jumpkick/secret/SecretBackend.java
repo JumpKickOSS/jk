@@ -45,19 +45,6 @@ public interface SecretBackend {
      */
     Probe probe();
 
-    /**
-     * Whether a daemon of this user reaches the keychain as well as the shell that ran {@code jk}.
-     * None does: a resident engine keeps the session of whichever shell started it, and the next
-     * {@code jk} may run in another. The Secret Service is found through the shell's D-Bus
-     * variables (none when the engine was started over SSH or by systemd). The Windows Credential
-     * Manager belongs to the logon session, and an SSH key logon has no credential set ({@code
-     * ERROR_NO_SUCH_LOGON_SESSION}), so an engine started over SSH cannot read a desktop login's
-     * item. The macOS login keychain is unlocked per security session, so an engine started over
-     * SSH sees it locked while the desktop has it open. The client reads the item and sends the
-     * secret with the request.
-     */
-    boolean daemonReachable();
-
     /** The secret {@code item} holds, or empty when there is no such item. */
     Optional<String> read(String item);
 

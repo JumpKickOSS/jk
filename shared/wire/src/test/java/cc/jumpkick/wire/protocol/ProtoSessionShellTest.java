@@ -38,15 +38,20 @@ class ProtoSessionShellTest {
     }
 
     @Test
-    void keychain_secrets_round_trip_beside_the_shell_keyed_by_pointer() {
+    void keychain_secrets_and_refusals_round_trip_beside_the_shell_keyed_by_pointer() {
         Map<String, String> secrets = new LinkedHashMap<>();
         secrets.put("secret-service repo/nexus", "p=ss \"w\" \\ 1");
         secrets.put("secret-service forge/github.com", "ghp_x");
-        String line =
-                ProtoSession.withKeychain(ProtoSession.withShell("{\"type\":\"x\"}", Map.of("PATH", "/bin")), secrets);
+        Map<String, String> refused = Map.of("macos-keychain repo/corp", "the default keychain is locked (a=b)");
+        String line = ProtoSession.withKeychain(
+                ProtoSession.withShell("{\"type\":\"x\"}", Map.of("PATH", "/bin")), secrets, refused);
 
         assertThat(ProtoSession.keychainOf(line)).isEqualTo(secrets);
+        assertThat(ProtoSession.keychainRefusedOf(line)).isEqualTo(refused);
         assertThat(ProtoSession.shellOf(line)).isEqualTo(Map.of("PATH", "/bin"));
-        assertThat(ProtoSession.withKeychain("{\"type\":\"x\"}", Map.of())).isEqualTo("{\"type\":\"x\"}");
+        assertThat(ProtoSession.withKeychain("{\"type\":\"x\"}", Map.of(), Map.of()))
+                .isEqualTo("{\"type\":\"x\"}");
+        assertThat(ProtoSession.keychainRefusedOf(ProtoSession.withKeychain("{\"type\":\"x\"}", secrets, Map.of())))
+                .isEmpty();
     }
 }

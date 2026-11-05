@@ -3,7 +3,6 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.repo.RepoCredentialStore;
-import cc.jumpkick.secret.SecretBackend;
 import cc.jumpkick.secret.SecretVault;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,38 +10,42 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The keychain secrets this {@code jk} command sends with its requests: those of the stored logins
- * whose keychain the engine cannot reach itself ({@link SecretBackend#daemonReachable()}: a
- * resident engine keeps the session of whichever shell started it, and this command may run in
- * another).
+ * What this {@code jk} command sends with its requests from the keychain: for every stored login
+ * whose secret is in one, the secret, or why the keychain did not give it up. A resident engine
+ * keeps the session of whichever shell started it, and this command may run in another, so the
+ * command always reads; the engine never asks the keychain again for an item named here, and
+ * warns with the command's reason for one it could not read.
  *
- * <p>Read once per command, when the first request goes out, and only when a record points into
- * such a keychain: a machine with no keychain logins pays one directory listing. Each item is read
- * on its own platform thread, so several logins cost one tool's latency, not their sum. An item
- * the keychain will not give up is left out; the engine then tries the keychain itself and warns.
+ * <p>Read once per command, when the first request goes out, and only when a record points into a
+ * keychain: a machine with no keychain logins pays one directory listing. Each item is read on its
+ * own platform thread, so several logins cost one tool's latency, not their sum.
  */
 final class ClientKeychain {
 
-    private static volatile @Nullable Map<String, String> carried;
+    /** The secrets and the refusals, each by pointer text. */
+    record Carried(Map<String, String> secrets, Map<String, String> refused) {
+        static final Carried NONE = new Carried(Map.of(), Map.of());
+    }
+
+    private static volatile @Nullable Carried carried;
 
     private ClientKeychain() {}
 
-    /** The secrets to send, by pointer text; empty when no login needs carrying. */
-    static Map<String, String> carried() {
-        Map<String, String> known = carried;
+    /** What to send; {@link Carried#NONE} when no login points into a keychain. */
+    static Carried carried() {
+        Carried known = carried;
         if (known != null) return known;
-        Map<String, String> read;
+        Carried read;
         try {
             SecretVault vault = SecretVault.current();
             read = read(vault, pointers(new RepoCredentialStore().logins(), new TokenStore().logins()));
         } catch (RuntimeException unreadable) {
-            read = Map.of();
+            read = Carried.NONE;
         }
         carried = read;
         return read;
@@ -60,19 +63,16 @@ final class ClientKeychain {
         return List.copyOf(out);
     }
 
-    /** Read every pointer whose keychain the engine cannot reach, concurrently. */
-    static Map<String, String> read(SecretVault vault, List<SecretVault.Pointer> pointers) {
-        List<SecretVault.Pointer> wanted = new ArrayList<>();
+    /** Read every pointer, concurrently: each one's secret, or why there is none. */
+    static Carried read(SecretVault vault, List<SecretVault.Pointer> pointers) {
+        if (pointers.isEmpty()) return Carried.NONE;
+        Map<String, SecretVault.ClientRead> got = new ConcurrentHashMap<>();
+        List<Thread> readers = new ArrayList<>(pointers.size());
         for (SecretVault.Pointer pointer : pointers) {
-            Optional<SecretBackend> backend = vault.backend(pointer.backend());
-            if (backend.isPresent() && !backend.get().daemonReachable()) wanted.add(pointer);
-        }
-        if (wanted.isEmpty()) return Map.of();
-        Map<String, String> got = new ConcurrentHashMap<>();
-        List<Thread> readers = new ArrayList<>(wanted.size());
-        for (SecretVault.Pointer pointer : wanted) {
-            readers.add(Thread.ofPlatform().daemon().name("jk-keychain-read").start(() -> vault.readForRequest(pointer)
-                    .ifPresent(secret -> got.put(pointer.text(), secret))));
+            readers.add(Thread.ofPlatform()
+                    .daemon()
+                    .name("jk-keychain-read")
+                    .start(() -> got.put(pointer.text(), vault.readForRequest(pointer))));
         }
         for (Thread reader : readers) {
             try {
@@ -82,11 +82,14 @@ final class ClientKeychain {
                 break;
             }
         }
-        Map<String, String> ordered = new LinkedHashMap<>();
-        for (SecretVault.Pointer pointer : wanted) {
-            String secret = got.get(pointer.text());
-            if (secret != null) ordered.put(pointer.text(), secret);
+        Map<String, String> secrets = new LinkedHashMap<>();
+        Map<String, String> refused = new LinkedHashMap<>();
+        for (SecretVault.Pointer pointer : pointers) {
+            SecretVault.ClientRead answer = got.get(pointer.text());
+            if (answer == null) continue;
+            if (answer.secret() != null) secrets.put(pointer.text(), answer.secret());
+            else if (answer.refused() != null) refused.put(pointer.text(), answer.refused());
         }
-        return Collections.unmodifiableMap(ordered);
+        return new Carried(Collections.unmodifiableMap(secrets), Collections.unmodifiableMap(refused));
     }
 }
