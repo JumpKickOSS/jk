@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.git;
 
+import cc.jumpkick.http.ProxyUserInfo;
 import cc.jumpkick.util.GitProxy;
 import java.io.IOException;
 import java.net.Authenticator;
@@ -12,9 +13,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
-import java.net.URLDecoder;
 import java.net.URLStreamHandler;
-import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import org.eclipse.jgit.transport.HttpTransport;
 import org.eclipse.jgit.transport.http.HttpConnection;
@@ -118,17 +117,8 @@ final class JGitProxyRoute implements HttpConnectionFactory2 {
         // jk's proxies are http proxies, on port 80 unless the URL says otherwise (ProxyEnvironment).
         int port = uri.getPort() == -1 ? 80 : uri.getPort();
         Proxy proxy = new Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved(host, port));
-        // Split the spelled form, then decode each half: a %3A in the user name is not the separator.
         String userInfo = uri.getRawUserInfo();
-        if (userInfo == null) return new Route(proxy, null);
-        int colon = userInfo.indexOf(':');
-        String user = decode(colon < 0 ? userInfo : userInfo.substring(0, colon));
-        String password = decode(colon < 0 ? "" : userInfo.substring(colon + 1));
-        return new Route(proxy, new PasswordAuthentication(user, password.toCharArray()));
-    }
-
-    private static String decode(String spelled) {
-        return URLDecoder.decode(spelled.replace("+", "%2B"), StandardCharsets.UTF_8);
+        return new Route(proxy, userInfo == null ? null : ProxyUserInfo.credential(userInfo));
     }
 
     /** Answers the one proxy it was made for, and nobody else. */

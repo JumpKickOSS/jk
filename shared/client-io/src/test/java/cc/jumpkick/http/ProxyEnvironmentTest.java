@@ -369,6 +369,21 @@ class ProxyEnvironmentTest {
      * Maven matches it, sends its credential as Basic, and its {@code nonProxyHosts} go direct.
      */
     @Test
+    void a_proxy_s_user_info_is_split_before_it_is_decoded() {
+        Map<String, String> shell = Map.of("https_proxy", "http://us%3Aer:p%40ss@proxy.corp:3128");
+
+        ProxyEnvironment.Settings settings =
+                ProxyEnvironment.Settings.from(NetworkConfig.EMPTY, MavenSettings.empty(), shell::get);
+        ProxyEnvironment.Endpoint endpoint =
+                ProxyEnvironment.endpointFor(CENTRAL, settings).orElseThrow();
+
+        PasswordAuthentication credential = Objects.requireNonNull(endpoint.credential());
+        assertThat(credential.getUserName()).isEqualTo("us:er");
+        assertThat(new String(credential.getPassword())).isEqualTo("p@ss");
+        assertThat(endpoint.spelledPassword()).isEqualTo("p%40ss");
+    }
+
+    @Test
     void a_settings_xml_proxy_is_taken_for_its_protocol_after_the_file_and_before_the_shell(@TempDir Path dir)
             throws Exception {
         MavenSettings maven = maven(dir, """

@@ -158,13 +158,9 @@ public final class ProxyEnvironment extends ProxySelector {
             if (uri.getHost() == null) return unusable(source, "names no host");
             PasswordAuthentication credential = null;
             String spelledPassword = null;
-            String userInfo = uri.getUserInfo();
-            if (userInfo != null) {
-                int colon = userInfo.indexOf(':');
-                String user = colon < 0 ? userInfo : userInfo.substring(0, colon);
-                String password = colon < 0 ? "" : userInfo.substring(colon + 1);
-                credential = new PasswordAuthentication(user, password.toCharArray());
-                String raw = Objects.requireNonNull(uri.getRawUserInfo());
+            String raw = uri.getRawUserInfo();
+            if (raw != null) {
+                credential = ProxyUserInfo.credential(raw);
                 spelledPassword = raw.indexOf(':') < 0 ? null : raw.substring(raw.indexOf(':') + 1);
             }
             int port = uri.getPort() == -1 ? 80 : uri.getPort();
