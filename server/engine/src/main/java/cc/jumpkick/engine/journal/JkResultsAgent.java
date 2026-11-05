@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -141,8 +142,10 @@ public final class JkResultsAgent {
         if (reason != null && !reason.isBlank()) sb.append(" — ").append(one(reason, record.dir()));
         sb.append('\n');
         appendInputsChanged(sb, record);
+        boolean ok = record.success() && !record.cancelled();
+        if (!ok) appendNotices(sb, record, reason);
         appendMemoryEvents(sb, record);
-        if (record.success() && !record.cancelled() && !reported) return sb.toString();
+        if (ok && !reported) return sb.toString();
         sb.append(body(record, loci, tests, opt));
         String delta = deltaLine(record);
         if (delta != null) sb.append(delta).append('\n');
@@ -175,6 +178,30 @@ public final class JkResultsAgent {
             }
         }
     }
+
+    /**
+     * The run's notices, one line each, ahead of the problems on a run that did not pass: a notice
+     * says why something the run needed was left out (a credential a keychain did not give up, a
+     * repository passed over), which is the cause of the error below it. The notice's own {@code
+     * jk: warning:} prefix gives way to the report's {@code W}. The notice the headline already
+     * gives as the reason ({@code headline}) is not repeated.
+     */
+    private static void appendNotices(StringBuilder sb, BuildRecord record, @Nullable String headline) {
+        for (BuildRecord.Diag d : record.diagnostics()) {
+            if (d == null || !RunNotices.CODE.equals(d.code()) || d.message() == null) continue;
+            String line = JkResultsHints.firstLine(d.message()).strip();
+            if (line.equals(headline)) continue;
+            for (String prefix : NOTICE_PREFIXES) {
+                if (line.startsWith(prefix)) {
+                    line = line.substring(prefix.length());
+                    break;
+                }
+            }
+            if (!line.isEmpty()) sb.append("W ").append(line).append('\n');
+        }
+    }
+
+    private static final List<String> NOTICE_PREFIXES = List.of("jk: warning: ", "jk: notice: ");
 
     /**
      * A memory wait, a heap retry and a worker far over its lease, one line each, including on a

@@ -377,6 +377,16 @@ public final class BuildAccumulator {
     /** The diagnostic code of {@link #addInputsChanged}. */
     public static final String INPUTS_CHANGED = "inputs-changed";
 
+    /**
+     * A run notice the request said on its stream ({@code RunNotices}, already once per run), kept
+     * as a warning so the reports carry it too: the one that says why a credential was not sent
+     * explains the 401 the run then failed on.
+     */
+    public void addNotice(String code, String message) {
+        if (message != null && !message.isBlank())
+            addDiag(new BuildRecord.Diag("warning", dir, null, code, message, null, null));
+    }
+
     /** At most this many changed inputs are named; the rest are counted. */
     static final int INPUTS_CHANGED_NAMED = 5;
 
