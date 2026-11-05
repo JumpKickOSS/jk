@@ -30,6 +30,40 @@ a test that broke, else a diagnostic that appeared, else a test fixed, else a di
 the files changed, else the wall against the previous attempt; hovering it shows the whole strip.
 Two agents on one project are two blocks; your own `jk build` is a third.
 
+## Sessions and episodes
+
+The engine keeps who asked as records of their own, beside the runs and under the same
+`[history]` retention: a **session** is one origin talking to the engine — an MCP connection, a
+BSP client, the dashboard, or the shell — and an **episode** is one goal inside it. Every run
+record carries the `episode` it belongs to (`mcp-3f9a-mfx2k1.2`: the session's id, then the
+episode's number).
+
+A session is **live** while it acts, **idle** after ten minutes of quiet, and **ended** when its
+MCP connection closes. The shell and the dashboard have no connection to close, so their session
+ends once it has been idle; the next run opens another. Besides its runs, a session's timeline
+holds the MCP calls that are not runs, each as one line with its outcome and time: the code
+graph's `query`, `callers`, `read` and `find`, `rename`, and the dependency changes `deps`,
+`update` and `workspace`.
+
+An episode starts with the session's first action, and again when the session moves to another
+project, when it acts after ten minutes of quiet, and after a red run streak ends green (the
+green run closes the episode it fixed). Its title is inferred from what it did, in this order:
+
+| What happened | Title |
+|---|---|
+| A run failed tests | `Fixing QuoteTest#threeNightWeekendStay (+2 more)`: the first red run's failing tests |
+| A `deps` add, remove or pin | `Adding org.postgresql:postgresql` |
+| An `update` | `Updating 14 pins` |
+| A `rename` | `Renaming PricingRules.weekendUplift` |
+| Only code-graph questions | `Exploring the code` |
+| Anything else | `Working in <module>` |
+
+An open episode is **working**. A closed one is **green** or **red** by its last run (or, with no
+run, its last action), and **abandoned** when nothing in it was judged — as is an episode a
+stopped engine left open. `GET /api/sessions` lists live and recent sessions with their current
+episode; `GET /api/sessions/<id>` returns one with its episodes and a page of its timeline
+([HTTP](../contributors/http.md#get-apisessions)).
+
 ## Following a run
 
 The project page shows one run above its build history: the **newest** by default (a live

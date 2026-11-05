@@ -4,6 +4,9 @@ package cc.jumpkick.engine.listen;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.SseEvents;
+import cc.jumpkick.engine.sessions.EpisodeInference;
+import cc.jumpkick.engine.sessions.Fact;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EventCatalog;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
@@ -25,7 +28,8 @@ import org.junit.jupiter.api.Test;
  * The SSE event sink publishes exactly what {@link EventCatalog} says it does: every engine event
  * is pushed through the real sink, and a frame comes out for it when, and only when, its row says
  * SSE carries it from the event sink. Every event has a row, and every row the sink is said to
- * publish is published by some event — a stale row fails as surely as an empty case did.
+ * publish is published by some event — a stale row fails as surely as an empty case did. The
+ * session log's rows are published by the session log, and by it alone.
  */
 class EventCatalogSseTest {
 
@@ -69,6 +73,49 @@ class EventCatalogSseTest {
                         .contains(row.type());
             }
         }
+    }
+
+    /**
+     * The session log publishes exactly the session rows of the catalog, each under the name its SSE
+     * column carries and with a payload whose {@code type} is that name; a session, its episode
+     * starting, retitled and settled, an action, idle and ended are all driven through it.
+     */
+    @Test
+    void the_session_log_publishes_exactly_the_session_rows() {
+        Set<String> rows = Set.of(EventCatalog.SSE_SESSION, EventCatalog.SSE_EPISODE, EventCatalog.SSE_ACTION);
+        for (String type : rows) {
+            EventCatalog.Row row = Objects.requireNonNull(EventCatalog.row(type), type + " has a row");
+            assertThat(row.sse())
+                    .as("`%s` on SSE", type)
+                    .isEqualTo(EventCatalog.Carried.as(type, ((EventCatalog.Carried) row.sse()).how()));
+            assertThat(row.wire()).as("`%s` on the wire", type).isInstanceOf(EventCatalog.Omitted.class);
+            assertThat(row.consoleJsonl()).as("`%s` on -O jsonl", type).isInstanceOf(EventCatalog.Omitted.class);
+            assertThat(EventCatalog.carries(EventCatalog.Surface.MCP, type))
+                    .as("`%s` on MCP", type)
+                    .isFalse();
+        }
+
+        long[] now = {1_700_000_000_000L};
+        Set<String> published = new LinkedHashSet<>();
+        SessionLog log = new SessionLog(null, () -> now[0], EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, () -> "devbox");
+        log.events((type, payload) -> {
+            assertThat(payload.get("type")).as("the payload of `%s`", type).isEqualTo(type);
+            published.add(type);
+        });
+        log.open("mcp", "claude-code", "claude-code 3f9a", "/ws/app");
+        log.action(
+                "mcp",
+                "claude-code 3f9a",
+                "claude-code",
+                Fact.action(now[0], 1, "/ws/app", Fact.Kind.RENAME, true, "PricingRules.weekendUplift", 0),
+                "rename",
+                "rename PricingRules.weekendUplift → uplift",
+                null);
+        now[0] += EpisodeInference.DEFAULT_IDLE_GAP_MILLIS + 1;
+        log.sweep();
+        log.end("mcp", "claude-code 3f9a");
+
+        assertThat(published).as("what the session log published").isEqualTo(rows);
     }
 
     /** Every engine event the wire sink encodes is sent as the type it says it is. */

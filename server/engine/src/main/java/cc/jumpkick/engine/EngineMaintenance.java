@@ -51,6 +51,9 @@ public final class EngineMaintenance implements AutoCloseable {
     private final ScheduledExecutorService scheduler;
     private volatile long configMtimeMillis = -1L;
 
+    /** Runs on every tick, before the config check; must not throw. */
+    private volatile Runnable onTick = () -> {};
+
     /**
      * @param onMaintenanceDue after feeds/templates; typically enqueue the cache prune + schedule host
      *     calibration. Must not throw.
@@ -75,6 +78,11 @@ public final class EngineMaintenance implements AutoCloseable {
         });
     }
 
+    /** Run {@code onTick} on every tick: a chore that needs a minute's resolution and no more. */
+    public void onTick(Runnable onTick) {
+        this.onTick = onTick != null ? onTick : () -> {};
+    }
+
     /** Immediate first tick, then every {@link #TICK}. */
     public void start() {
         long sec = Math.max(1, TICK.toSeconds());
@@ -83,6 +91,11 @@ public final class EngineMaintenance implements AutoCloseable {
 
     void tickQuietly() {
         if (closed.get()) return;
+        try {
+            onTick.run();
+        } catch (Throwable e) {
+            Log.debug("tickQuietly: Throwable ignored", e);
+        }
         try {
             maybeReloadConfig();
         } catch (Throwable e) {

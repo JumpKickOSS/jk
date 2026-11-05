@@ -23,6 +23,17 @@ public interface JobJournaling {
     @Nullable
     BuildAccumulator accumulatorOf(long id);
 
+    /**
+     * The session episode request {@code id}, a run of {@code kind} in {@code dir} admitted at {@code
+     * at} for {@code trigger} and {@code session}, belongs to; its journal record carries it. {@code
+     * null} when no session log is wired or the origin is not a session's (a fixture, the code
+     * graph's compile).
+     */
+    default @Nullable String episodeFor(
+            long id, String trigger, @Nullable String session, String kind, String dir, long at) {
+        return null;
+    }
+
     /** Bind the request's results sink on the calling thread; see {@code JournalWriter#openResults}. */
     void openResults(long id);
 

@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.engine.api.InFlightBuilds;
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.graph.GraphCompiles;
 import cc.jumpkick.engine.graph.GraphRunner;
@@ -20,9 +21,12 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.journal.NoopRecords;
+import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
+import cc.jumpkick.engine.sessions.EpisodeInference;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
@@ -39,6 +43,8 @@ import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
@@ -124,6 +130,10 @@ public final class EngineServer implements AutoCloseable {
     private final SsePublisher sse;
     private final LiveRuns liveRuns;
     private final JournalWriter journalWriter;
+
+    /** Sessions, their episodes and actions: written beside the journal, served on /api/sessions. */
+    private final SessionLog sessionLog;
+
     private final EngineListeners listeners;
     private final EngineHttpFront http;
     private final AtomicInteger activeBuildPlans = new AtomicInteger();
@@ -351,6 +361,8 @@ public final class EngineServer implements AutoCloseable {
                 .orElse(null);
         this.journalWriter = new JournalWriter(
                 sessions, journal, historyConfig, () -> metricsFile, clockMillis, this.version, this.log);
+        this.sessionLog = newSessionLog();
+        journalWriter.onFinished(sessionLog::runFinished);
         this.sse = new SsePublisher(
                 sessions,
                 inFlightBuilds,
@@ -372,6 +384,32 @@ public final class EngineServer implements AutoCloseable {
     }
 
     // ---- constructor wiring, in the order the constructor assigns them ---------------------
+
+    private SessionLog newSessionLog() {
+        SessionLog log = new SessionLog(
+                historyConfig.enabled() ? SessionJournal.under(journal.buildsRoot()) : null,
+                clockMillis,
+                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
+                EngineServer::hostName);
+        HttpEvents hub = httpEvents;
+        if (hub != null) log.events((type, payload) -> hub.publishDashboard(type, JsonOut.rawObject(payload)));
+        return log;
+    }
+
+    /** This machine's name, as sessions record it; asked once. */
+    private static String hostName() {
+        String name = HOST_NAME;
+        if (name != null) return name;
+        try {
+            name = InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException | RuntimeException e) {
+            name = null;
+        }
+        HOST_NAME = name == null || name.isBlank() ? "localhost" : name;
+        return HOST_NAME;
+    }
+
+    private static volatile @Nullable String HOST_NAME;
 
     private DrainReporter newDrainReporter() {
         return new DrainReporter(
@@ -445,7 +483,8 @@ public final class EngineServer implements AutoCloseable {
                         this.log,
                         this.version,
                         historyConfig,
-                        journal),
+                        journal,
+                        sessionLog),
                 config.jobLimits());
     }
 
@@ -493,7 +532,8 @@ public final class EngineServer implements AutoCloseable {
                 verbs,
                 jobs::cancelJob,
                 jobs::cancelJobsForDir,
-                cacheGate);
+                cacheGate,
+                sessionLog);
     }
 
     private EngineVitals newVitals() {
@@ -565,6 +605,12 @@ public final class EngineServer implements AutoCloseable {
         EngineStartup.Started started = new EngineStartup(version, pid, election, http, journal, idle, log).run(won);
         storeFeedRefresh = started.feeds();
         engineMaintenance = started.maintenance();
+        engineMaintenance.onTick(sessionLog::sweep);
+        // Sessions a previous engine left open died with it; off the startup path.
+        Thread.ofVirtual().name("jk-engine-sessions-stale").start(() -> {
+            int ended = sessionLog.endStale();
+            if (ended > 0) log.accept("jk engine: ended " + ended + " session(s) a previous engine left open");
+        });
         if (selfUpdate != null) selfUpdate.start();
         watchdog.start();
         Thread lastWords = lastWordsOnSignal();

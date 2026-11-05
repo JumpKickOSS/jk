@@ -18,6 +18,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>{@code running=true} marks an in-flight admission written at request-start so the web UI can
  * rehydrate active builds after refresh. Finished records keep {@code running=false}.
+ *
+ * <p>{@code episode} is the id of the session episode the run was admitted into ({@code
+ * <session>.<n>}), or {@code null} for a run no session owns: a fixture or the code graph's own
+ * compile.
  */
 public record BuildRecord(
         @Nullable String id,
@@ -47,7 +51,8 @@ public record BuildRecord(
         long requestId,
         @Nullable Publish publish,
         List<Coverage> coverage,
-        @Nullable JobDelta delta) {
+        @Nullable JobDelta delta,
+        @Nullable String episode) {
 
     /**
      * The on-disk schema version stamped into every {@code record.json}: 1 until 1.0, like every
@@ -61,6 +66,68 @@ public record BuildRecord(
         steps = steps == null ? List.of() : List.copyOf(steps);
         diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
         coverage = coverage == null ? List.of() : List.copyOf(coverage);
+    }
+
+    /** A run placed in no episode: every producer but the engine's own admission. */
+    public BuildRecord(
+            @Nullable String id,
+            long buildNumber,
+            int schema,
+            String kind,
+            String dir,
+            @Nullable String coord,
+            @Nullable String projectId,
+            long startedAt,
+            long finishedAt,
+            long millis,
+            boolean success,
+            boolean cancelled,
+            int exitCode,
+            String jkVersion,
+            @Nullable Tests tests,
+            List<Module> modules,
+            List<Task> steps,
+            List<Diag> diagnostics,
+            @Nullable String trigger,
+            @Nullable String session,
+            @Nullable String commit,
+            @Nullable CacheBenefit benefit,
+            boolean running,
+            @Nullable Io io,
+            long requestId,
+            @Nullable Publish publish,
+            List<Coverage> coverage,
+            @Nullable JobDelta delta) {
+        this(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                millis,
+                success,
+                cancelled,
+                exitCode,
+                jkVersion,
+                tests,
+                modules,
+                steps,
+                diagnostics,
+                trigger,
+                session,
+                commit,
+                benefit,
+                running,
+                io,
+                requestId,
+                publish,
+                coverage,
+                delta,
+                null);
     }
 
     /** A run with no {@link JobDelta} yet: every producer but the journal writer's finish. */
@@ -210,7 +277,8 @@ public record BuildRecord(
                 requestId,
                 publish,
                 coverage,
-                delta);
+                delta,
+                episode);
     }
 
     /** This record with its per-project build number set. */
@@ -243,7 +311,8 @@ public record BuildRecord(
                 requestId,
                 publish,
                 coverage,
-                delta);
+                delta,
+                episode);
     }
 
     /** This record with its journal id set (begin path). */
@@ -276,7 +345,8 @@ public record BuildRecord(
                 requestId,
                 publish,
                 coverage,
-                delta);
+                delta,
+                episode);
     }
 
     /** This record with what changed since the run before it from the same origin. */
@@ -309,7 +379,42 @@ public record BuildRecord(
                 requestId,
                 publish,
                 coverage,
-                delta);
+                delta,
+                episode);
+    }
+
+    /** This record placed in the session episode {@code episode}. */
+    public BuildRecord withEpisode(@Nullable String episode) {
+        return new BuildRecord(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                millis,
+                success,
+                cancelled,
+                exitCode,
+                jkVersion,
+                tests,
+                modules,
+                steps,
+                diagnostics,
+                trigger,
+                session,
+                commit,
+                benefit,
+                running,
+                io,
+                requestId,
+                publish,
+                coverage,
+                delta,
+                episode);
     }
 
     /**
@@ -353,7 +458,8 @@ public record BuildRecord(
                 requestId,
                 publish,
                 coverage,
-                delta);
+                delta,
+                episode);
     }
 
     /** {@code trigger}, then the session that asked when there is one: {@code mcp · claude-code 3f9a}. */

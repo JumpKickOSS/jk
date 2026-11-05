@@ -1,0 +1,3 @@
+# A remove is titled as one.
++0:00 remove app com.h2database:h2
+expect 1 working Removing com.h2database:h2

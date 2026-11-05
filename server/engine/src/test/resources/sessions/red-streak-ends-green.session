@@ -1,0 +1,9 @@
+# An agent asks the graph, breaks two tests, fixes them over two runs, then explores again.
+# The green run that ends the red streak closes the episode; the next question opens another.
++0:00 query app where is the weekend uplift applied
++0:40 run app red QuoteTest#threeNightWeekendStay QuoteTest#oneNightStay
++2:10 run app red QuoteTest#threeNightWeekendStay
++3:30 run app green
++4:00 callers app PricingRules.weekendUplift
+expect 1 green Fixing QuoteTest#threeNightWeekendStay (+1 more)
+expect 2 working Exploring the code

@@ -13,6 +13,7 @@ import cc.jumpkick.engine.http.mcp.McpPrompts;
 import cc.jumpkick.engine.http.mcp.McpResources;
 import cc.jumpkick.engine.http.mcp.McpRpc;
 import cc.jumpkick.engine.http.mcp.McpTools;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.mcp.McpRevision;
 import java.nio.file.Path;
 import java.util.List;
@@ -135,9 +136,24 @@ public final class McpHandler {
         return ctx.connections().find(sessionId);
     }
 
-    /** Forget a connection ({@code DELETE /mcp}). */
+    /** Log connections' sessions and their non-run actions in {@code sessions}. Optional. */
+    public void sessions(SessionLog sessions) {
+        ctx.sessions(sessions);
+    }
+
+    /** Forget a connection ({@code DELETE /mcp}); its session ends. */
     public boolean closeConnection(@Nullable String sessionId) {
-        return ctx.connections().close(sessionId);
+        McpConnection c = ctx.connections().find(sessionId);
+        boolean closed = ctx.connections().close(sessionId);
+        SessionLog log = ctx.sessions();
+        if (closed && c != null && log != null) log.end("mcp", c.label());
+        return closed;
+    }
+
+    /** Open the session of a connection that just introduced itself. */
+    private void opened(McpConnection c) {
+        SessionLog log = ctx.sessions();
+        if (log != null) log.open("mcp", c.client(), c.label(), c.dir());
     }
 
     /**
@@ -205,6 +221,7 @@ public final class McpHandler {
                         if ("initialize".equals(method)) {
                             McpConnection c = initialize(params, pin);
                             opened.set(c);
+                            opened(c);
                             String playbook = c.pinned() ? McpTools.PINNED_INSTRUCTIONS : McpTools.INSTRUCTIONS;
                             return McpRpc.initialize(c.revision().wire(), SERVER_NAME, ctx.version(), playbook);
                         }

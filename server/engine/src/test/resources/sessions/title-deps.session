@@ -1,0 +1,7 @@
+# A dependency change names the episode ahead of an update and a rename; the coordinates every
+# deps call named are counted in its "more".
++0:00 rename app PricingRules.weekendUplift
++0:20 add app org.postgresql:postgresql org.flywaydb:flyway-core
++0:40 update app 3
++1:00 run app green
+expect 1 working Adding org.postgresql:postgresql (+1 more)

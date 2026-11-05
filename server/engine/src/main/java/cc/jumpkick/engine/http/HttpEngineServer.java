@@ -6,6 +6,7 @@ import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import com.sun.net.httpserver.HttpExchange;
@@ -109,6 +110,17 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Engine hook: the cache maintenance gate for MCP {@code disk clean|nuke}. */
     public void setCacheGate(ReentrantReadWriteLock cacheGate) {
         if (mcp != null && cacheGate != null) mcp.cacheGate(cacheGate);
+    }
+
+    /**
+     * Engine hook: serve {@code sessions} on {@code GET /api/sessions} and {@code
+     * /api/sessions/<id>}, and log MCP connections and their actions in it. Before {@link #start}.
+     */
+    public void setSessions(SessionLog sessions) {
+        HttpSessionsApi sessionsApi = new HttpSessionsApi(sessions);
+        api.register("GET", "/api/sessions", sessionsApi::handleSessions);
+        api.registerPrefix("GET", HttpSessionsApi.PREFIX, sessionsApi::handleSession);
+        if (mcp != null) mcp.sessions(sessions);
     }
 
     public void setOnSseAdmitted(Runnable onSseAdmitted) {

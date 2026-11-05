@@ -1,0 +1,7 @@
+# Each change of project starts an episode, including the switch back.
++0:00 callers app PricingRules.weekendUplift
++0:30 run lib red
++1:00 read app PricingRules.weekendUplift
+expect 1 green Exploring the code
+expect 2 red Working in lib
+expect 3 working Exploring the code

@@ -1,0 +1,4 @@
+# Failing tests name the episode ahead of the dependency change made to fix them.
++0:00 add app org.assertj:assertj-core
++0:30 run app red QuoteTest#threeNightWeekendStay
+expect 1 working Fixing QuoteTest#threeNightWeekendStay

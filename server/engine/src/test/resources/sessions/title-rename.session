@@ -1,0 +1,5 @@
+# Graph questions and a rename: the rename names it.
++0:00 callers app PricingRules.weekendUplift
++0:10 rename app PricingRules.weekendUplift
++0:20 find app PricingRules
+expect 1 working Renaming PricingRules.weekendUplift

@@ -181,11 +181,12 @@ in     = "clients/intellij"
 reason = "the IntelliJ plugin is wire-only and never loads a jk jar, so ManifestNames is not on its classpath"
 
 # G15. A cache tier is named once, in the CacheTree enum. A directory that is not a cache tier —
-# a module's own build/generated, say — must not borrow the constant.
+# a module's own build/generated, say — must not borrow the constant. A session's `actions` (its
+# timeline, in /api/sessions and session.json) is a field name, not the action-cache tier.
 [guards.cache-tiers]
 kind     = "vocabulary"
 owner    = "cc.jumpkick.host.CacheTree"
-homonyms = ["sha256", "generated", "projects", "npm", "bun", "yarn", "kts"]
+homonyms = ["sha256", "generated", "projects", "npm", "bun", "yarn", "kts", "actions"]
 instead  = "CacheTree.<TIER>.under(cacheRoot)"
 why      = "a cache tier is named once; the homonyms each have their own owner"
 

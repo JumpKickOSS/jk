@@ -1,0 +1,7 @@
+# A red run with no failing test (a compile error) does not name the episode; anything that is
+# not a graph question, a dependency change, an update or a rename leaves it "Working in".
++0:00 query app what implements PricingRule
++0:30 other app
++1:00 run app red
++2:00 end
+expect 1 red Working in app

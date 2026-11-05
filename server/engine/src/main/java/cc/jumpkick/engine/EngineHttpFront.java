@@ -11,6 +11,7 @@ import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.host.PathUtil;
@@ -57,6 +58,7 @@ public final class EngineHttpFront {
     private final LongPredicate cancelJob;
     private final ToIntFunction<String> cancelJobsForDir;
     private final @Nullable ReentrantReadWriteLock cacheGate;
+    private final SessionLog sessions;
 
     private volatile @Nullable HttpEngineServer server;
     private volatile @Nullable String error;
@@ -104,6 +106,7 @@ public final class EngineHttpFront {
         // not only when a status snapshot happens to run.
         candidate.setOnSseAdmitted(() -> peakActiveConnections.accumulateAndGet(liveConnections.getAsInt(), Math::max));
         if (cacheGate != null) candidate.setCacheGate(cacheGate);
+        candidate.setSessions(sessions);
         try {
             candidate.start(1);
             serve(candidate);
