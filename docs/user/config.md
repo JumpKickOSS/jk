@@ -201,9 +201,10 @@ fall back to reading `settings.xml` alone. The `git` that clones the template ca
 over http or https, runs with the proxy jk chose for the remote's URL as its `http.proxy`, and
 with git's proxy off for a host jk sends direct; with no proxy configured for jk, git's own configuration decides. The value reaches git
 through its environment, never its command line. JGit, used when no `git` is installed, takes the
-same route and answers a proxy's Basic challenge with the URL's `user:password@`. A git dependency
-needs git 2.31 or later to be handed a proxy; an older git is refused by name rather than sent
-direct (`JK_GIT_BACKEND=jgit` uses the built-in git instead). A credential in a
+same route and answers a proxy's Basic challenge with the URL's `user:password@`. git needs to be 2.31
+or later to be handed a proxy; an older git is refused by name rather than sent direct, for the
+template catalogs and git dependencies alike (a git dependency can use the built-in git instead,
+`JK_GIT_BACKEND=jgit`). A credential in a
 proxy URL is never printed; an unusable value is reported
 by the name that set it (`ignoring https_proxy: …`) and the request goes direct. For a proxy that
 wants Basic on an https `CONNECT`, jk clears the JDK's `jdk.http.auth.tunneling.disabledSchemes`

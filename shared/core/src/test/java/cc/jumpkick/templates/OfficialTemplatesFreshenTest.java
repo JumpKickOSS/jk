@@ -58,6 +58,29 @@ class OfficialTemplatesFreshenTest {
                 Files.readAllLines(seen));
     }
 
+    /** A git before 2.31 reads no {@code GIT_CONFIG_*}: it is refused a proxy by version, never run. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_git_too_old_for_the_config_environment_is_refused_the_proxy_by_version() throws Exception {
+        Path ran = tmp.resolve("ran");
+        Path script = script("#!/bin/sh\n"
+                + "if [ \"$1\" = --version ]; then echo 'git version 2.30.9'; exit 0; fi\n"
+                + "touch '" + ran + "'\n");
+
+        IOException refused = assertThrows(
+                IOException.class,
+                () -> OfficialTemplatesFreshen.runGit(
+                        List.of(script.toString(), "clone", "https://git.corp/t.git"),
+                        "http://u:s3cr3t@proxy.corp:3128",
+                        Duration.ofSeconds(30)));
+
+        String message = Objects.requireNonNull(refused.getMessage());
+        assertTrue(message.contains("git 2.30"), message);
+        assertTrue(message.contains("git.corp"), message);
+        assertTrue(!message.contains("s3cr3t"), message);
+        assertTrue(!Files.exists(ran), "the old git never ran");
+    }
+
     /** A subprocess that never exits must be killed within the timeout, not awaited to EOF. */
     @Test
     @DisabledOnOs(OS.WINDOWS)

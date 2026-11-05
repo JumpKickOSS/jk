@@ -130,6 +130,7 @@ class GitCliExtensionTest {
                 .hasMessageContaining("git 2.30")
                 .hasMessageContaining("example.invalid")
                 .hasMessageContaining("2.31")
+                .hasMessageContaining("JK_GIT_BACKEND=jgit")
                 .hasMessageNotContaining("secret");
         assertThat(ran)
                 .as("git never ran, so it went nowhere jk did not choose")

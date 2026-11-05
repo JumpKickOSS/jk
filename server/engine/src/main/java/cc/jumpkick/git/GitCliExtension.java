@@ -9,9 +9,9 @@ import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.util.GitProxy;
 import cc.jumpkick.util.GitUrl;
+import cc.jumpkick.util.GitVersion;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,7 +27,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -56,15 +55,19 @@ public final class GitCliExtension implements GitBackend {
         return "git-cli";
     }
 
-    private static final Pattern VERSION = Pattern.compile("^git version (\\d+)\\.(\\d+).*");
     private static final long LOCAL_TIMEOUT_SEC = 120;
     private static final long NETWORK_TIMEOUT_SEC = 600;
 
     /** A detected, usable {@code git} executable and its version. */
     public record GitCli(String exe, int major, int minor) {
+        /** The version, as {@link GitProxy#route} and the credential channel judge it. */
+        GitVersion version() {
+            return new GitVersion(major, minor);
+        }
+
         /** {@code git} ≥ 2.31 supports {@code GIT_CONFIG_COUNT}/{@code GIT_CONFIG_KEY_n} config env. */
         boolean supportsConfigEnv() {
-            return major > 2 || (major == 2 && minor >= 31);
+            return version().readsConfigEnv();
         }
     }
 
@@ -118,9 +121,8 @@ public final class GitCliExtension implements GitBackend {
             }
             reader.join(1_000);
             if (p.exitValue() != 0) return Optional.empty();
-            Matcher m = VERSION.matcher(buf.toString(StandardCharsets.UTF_8).strip());
-            if (!m.find()) return Optional.empty();
-            return Optional.of(new GitCli(exe, Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))));
+            return GitVersion.parse(buf.toString(StandardCharsets.UTF_8))
+                    .map(v -> new GitCli(exe, v.major(), v.minor()));
         } catch (IOException e) { // command-not-found lands here
             return Optional.empty();
         } catch (InterruptedException e) {
@@ -445,36 +447,18 @@ public final class GitCliExtension implements GitBackend {
     }
 
     /**
-     * Set git's {@code http.proxy} to {@code value} among {@code extras}, after the credential
-     * entry. A proxy also blanks {@code no_proxy}: jk applied its own bypass list when it chose the
-     * proxy, and the list the worker environment carries underneath must not overrule that choice.
-     *
-     * <p>A git before 2.31 reads no {@code GIT_CONFIG_*}. A direct route still reaches it, as a
-     * {@code no_proxy} that names every host; a proxy does not, since the only other way in is the
-     * command line, where its credential would show in {@code ps}, so the command is refused by
-     * name rather than sent somewhere jk did not choose.
+     * Hand git the route {@code value} among {@code extras} by {@link GitProxy#route}, the rule the
+     * template catalog's git follows too; a refusal adds the way out a git dependency has besides
+     * upgrading.
      */
     private void routeThrough(String value, String remoteUrl, Map<String, String> extras) throws IOException {
-        if (!git.supportsConfigEnv()) {
-            if (!value.isEmpty()) throw new IOException(tooOldForProxy(remoteUrl));
-            extras.put("no_proxy", "*");
-            extras.put("NO_PROXY", "*");
-            return;
+        try {
+            GitProxy.route(extras, value, git.version(), remoteUrl);
+        } catch (IOException tooOld) {
+            throw new IOException(
+                    tooOld.getMessage() + " Or set " + GitFetcher.BACKEND_ENV + "=jgit to use jk's built-in git.",
+                    tooOld);
         }
-        GitProxy.configure(extras, value);
-        if (!value.isEmpty()) {
-            extras.put("no_proxy", "");
-            extras.put("NO_PROXY", "");
-        }
-    }
-
-    /** Why a git too old for {@code GIT_CONFIG_*} cannot reach {@code remoteUrl} through jk's proxy. */
-    private String tooOldForProxy(String remoteUrl) {
-        String host = URI.create(remoteUrl).getHost();
-        return "git " + git.major() + "." + git.minor() + " cannot be handed the proxy jk chose for "
-                + (host == null ? "this remote" : host)
-                + ": that needs git 2.31 or later. Upgrade git, or set " + GitFetcher.BACKEND_ENV
-                + "=jgit to use jk's built-in git.";
     }
 
     /**
