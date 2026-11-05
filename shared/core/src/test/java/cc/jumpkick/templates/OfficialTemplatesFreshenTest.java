@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -138,27 +139,40 @@ class OfficialTemplatesFreshenTest {
     @Test
     @DisabledOnOs(OS.WINDOWS)
     void runGitKillsTheDescendantsOfATimedOutGit() throws Exception {
-        // 599, not 600: a marker no other test's sleeper carries.
-        Path script = script("#!/bin/sh\nsleep 599 &\nwait\n");
-        assertThrows(
-                IOException.class,
-                () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), Duration.ofMillis(500)));
+        // The script reports its child's pid and the test takes that process's handle while git is
+        // still running, so the check follows the one process this test spawned rather than any
+        // sleeper on the machine (another checkout may run this test at the same time).
+        Path pidFile = tmp.resolve("sleeper.pid");
+        Path script = script("#!/bin/sh\nsleep 600 &\necho $! > '" + pidFile + ".part'\nmv '" + pidFile + ".part' '"
+                + pidFile + "'\nwait\n");
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> git = pool.submit(() -> {
+                OfficialTemplatesFreshen.runGit(List.of(script.toString()), Duration.ofSeconds(3));
+                return null;
+            });
+            long reported = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            while (!Files.exists(pidFile) && System.nanoTime() < reported) {
+                Thread.sleep(10);
+            }
+            assertTrue(Files.exists(pidFile), "the script never reported its sleeper's pid");
+            // A handle carries its process's start time, so once the sleeper dies a newer process
+            // that the OS hands the same pid reads as a different process, not this one alive.
+            ProcessHandle sleeper = ProcessHandle.of(
+                            Long.parseLong(Files.readString(pidFile).strip()))
+                    .orElseThrow();
 
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (sleeper599Alive() && System.nanoTime() < deadline) {
-            Thread.sleep(50);
+            ExecutionException timedOut = assertThrows(ExecutionException.class, () -> git.get(30, TimeUnit.SECONDS));
+            assertTrue(timedOut.getCause() instanceof IOException, () -> "expected git's timeout, got: " + timedOut);
+
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (sleeper.isAlive() && System.nanoTime() < deadline) {
+                Thread.sleep(50);
+            }
+            assertTrue(!sleeper.isAlive(), "the sleeper git spawned outlived the kill");
+        } finally {
+            pool.shutdownNow();
         }
-        assertTrue(!sleeper599Alive(), "the sleeper git spawned outlived the kill");
-    }
-
-    private static boolean sleeper599Alive() {
-        return ProcessHandle.allProcesses().anyMatch(h -> {
-            ProcessHandle.Info info = h.info();
-            return info.command().map(c -> c.endsWith("sleep")).orElse(false)
-                    && info.arguments()
-                            .map(a -> a.length == 1 && a[0].equals("599"))
-                            .orElse(false);
-        });
     }
 
     /** The quiet paths log every failure, cut to a width a log line can carry. */
