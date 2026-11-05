@@ -45,8 +45,7 @@ class VerifyBuildCommandTest {
         // Verify's scratch rebuild bypasses the action cache in BOTH directions: its keys hash
         // the (random, never-recurring) scratch paths, so any store would be a permanent orphan.
         Set<String> keysBefore = actionKeys(cache);
-        assertThat(run("verify", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
-                .isEqualTo(0);
+        assertVerifies(tempDir, cache);
         assertThat(actionKeys(cache))
                 .as("verify leaves no orphan action-cache entries behind")
                 .isEqualTo(keysBefore);
@@ -82,17 +81,48 @@ class VerifyBuildCommandTest {
                         TestCaches.dir("shared-cache").toString(),
                         "--skip-tests"))
                 .isEqualTo(0);
-        // What verify printed is the only record of why it judged the build stale; keep it with the failure.
+        assertVerifies(tempDir, TestCaches.dir("shared-cache"));
+    }
+
+    /**
+     * {@code jk verify} exits 0, or the failure says what it printed. A test report's summary shows
+     * an assertion's first line only, so the output rides on that line: what verify printed is the
+     * only record of why it judged the build stale or could not rebuild it.
+     */
+    private static void assertVerifies(Path dir, Path cache) {
         int[] exit = new int[1];
-        Capture.Streams said = Capture.both(() -> exit[0] = run(
-                "verify",
-                "-C",
-                tempDir.toString(),
-                "--cache-dir",
-                TestCaches.dir("shared-cache").toString()));
+        Capture.Streams said =
+                Capture.both(() -> exit[0] = run("verify", "-C", dir.toString(), "--cache-dir", cache.toString()));
         assertThat(exit[0])
-                .as("jk verify exit; stdout:%n%s%nstderr:%n%s", said.out(), said.err())
+                .as("jk verify said: %s | %s", oneLine(said.out()), oneLine(said.err()))
                 .isEqualTo(0);
+    }
+
+    private static String oneLine(String text) {
+        return text.strip().replaceAll("\\s*\\R\\s*", " / ");
+    }
+
+    @Test
+    void the_scratch_copy_leaves_the_code_graph_behind(@TempDir Path tempDir) throws IOException {
+        Path project = tempDir.resolve("project");
+        Files.createDirectories(project.resolve("src/main/java/example"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"widget\"\n");
+        Files.writeString(project.resolve("src/main/java/example/Hello.java"), "package example; class Hello {}");
+        Files.createDirectories(project.resolve(".jk/graph"));
+        Files.writeString(project.resolve(".jk/graph/graph.jsonl"), "{}\n");
+        Files.createDirectories(project.resolve(".jk/scripts"));
+        Files.writeString(project.resolve(".jk/scripts/gen.java"), "class Gen {}");
+        Files.createDirectories(project.resolve("target/classes"));
+        Path scratch = tempDir.resolve("scratch");
+
+        VerifyBuildCommand.copyProjectTree(project, scratch);
+
+        // The graph is rewritten in the background after every build and is no build input; the
+        // rest of .jk/ is the project's build logic and travels with the sources.
+        assertThat(scratch.resolve(".jk/graph")).doesNotExist();
+        assertThat(scratch.resolve(".jk/scripts/gen.java")).exists();
+        assertThat(scratch.resolve("src/main/java/example/Hello.java")).exists();
+        assertThat(scratch.resolve("target")).doesNotExist();
     }
 
     @Test
@@ -157,8 +187,7 @@ class VerifyBuildCommandTest {
 
         assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString(), "--skip-tests"))
                 .isEqualTo(0);
-        assertThat(run("verify", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
-                .isEqualTo(0);
+        assertVerifies(tempDir, cache);
 
         // A drifted module artifact must flip the whole workspace verify to a mismatch.
         Files.writeString(
