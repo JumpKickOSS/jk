@@ -10,6 +10,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.DeadEndpoint;
 import com.sun.net.httpserver.HttpServer;

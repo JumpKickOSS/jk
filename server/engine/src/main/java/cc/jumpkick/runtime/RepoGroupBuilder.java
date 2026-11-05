@@ -22,7 +22,7 @@ import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.repo.RepoTransport;
-import cc.jumpkick.repo.RepoTransports;
+import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.task.RunNotices;
 import java.net.URI;
 import java.util.ArrayList;

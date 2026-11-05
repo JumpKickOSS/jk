@@ -13,6 +13,7 @@ import cc.jumpkick.http.HttpStatusException;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.util.StoreWriteGate;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;

@@ -11,6 +11,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.charset.StandardCharsets;

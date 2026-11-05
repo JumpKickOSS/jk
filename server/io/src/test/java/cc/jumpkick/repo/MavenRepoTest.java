@@ -12,6 +12,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.transport.RepoTransports;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

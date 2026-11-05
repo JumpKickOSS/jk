@@ -15,7 +15,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.repo.RepoTransports;
+import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;

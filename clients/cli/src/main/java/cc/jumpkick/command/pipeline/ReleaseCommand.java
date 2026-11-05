@@ -22,7 +22,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.repo.RemoteClaim;
-import cc.jumpkick.repo.RepoTransports;
+import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;

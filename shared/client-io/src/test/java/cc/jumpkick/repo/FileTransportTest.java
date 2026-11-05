@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.repo.transport.RepoTransports;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
