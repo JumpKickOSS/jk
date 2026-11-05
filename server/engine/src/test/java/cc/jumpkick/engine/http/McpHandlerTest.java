@@ -10,12 +10,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.mcp.McpHistoryViews;
-import cc.jumpkick.engine.http.mcp.McpRevision;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.jobs.JobRow;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.mcp.McpRevision;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

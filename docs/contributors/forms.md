@@ -88,7 +88,7 @@ round, so the caller flattens again until it gets `Complete`.
 
 Escalation (`Escalate`) means the web wizard, by URL elicitation. `Ask.answers(content)` maps the
 client's reply back to field answers (folding the per-option booleans into a list), which then go
-through `Form.check`. `McpRevision.of(protocolVersion)` picks the newest revision the client speaks.
+through `Form.check`. The revision is the one the session negotiated (`cc.jumpkick.mcp.McpRevision`, shared with the engine's MCP server); flattening refuses one without form elicitation.
 The flattening produces payloads only; the MCP transport sends them.
 
 ## The summary command

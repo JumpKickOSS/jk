@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.engine.http.mcp;
+package cc.jumpkick.mcp;
 
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -61,6 +61,14 @@ public enum McpRevision {
 
     /** URL-mode {@code elicitation/create} and the {@code mode} field, from 2025-11-25. */
     public boolean urlElicitation() {
+        return compareTo(V2025_11_25) >= 0;
+    }
+
+    /**
+     * Form elicitation's arrays of enums and titled options ({@code oneOf} / {@code anyOf} of
+     * {@code const} + {@code title}), from 2025-11-25. Before it an enum's labels go in {@code enumNames}.
+     */
+    public boolean arrayEnums() {
         return compareTo(V2025_11_25) >= 0;
     }
 }

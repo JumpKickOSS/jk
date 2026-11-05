@@ -9,8 +9,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.http.mcp.McpElicitModes;
-import cc.jumpkick.engine.http.mcp.McpRevision;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.mcp.McpRevision;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

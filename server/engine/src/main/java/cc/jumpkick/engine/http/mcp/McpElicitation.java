@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.mcp.McpRevision;
 import java.util.LinkedHashMap;
 import java.util.Map;
 

@@ -2,12 +2,14 @@
 package cc.jumpkick.form;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.form.McpFlattening.Answered;
 import cc.jumpkick.form.McpFlattening.Ask;
 import cc.jumpkick.form.McpFlattening.Complete;
 import cc.jumpkick.form.McpFlattening.Elicitation;
 import cc.jumpkick.form.McpFlattening.Escalate;
+import cc.jumpkick.mcp.McpRevision;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +29,7 @@ class McpFlatteningTest {
                 .build();
 
         for (McpRevision rev : McpRevision.values()) {
+            if (!rev.formElicitation()) continue;
             assertThat(schema(rev, name))
                     .isEqualTo("{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"title\":\"Name\","
                             + "\"description\":\"The leaf\",\"pattern\":\"[a-z]+\"}},\"required\":[\"name\"]}");
@@ -184,12 +187,18 @@ class McpFlatteningTest {
     }
 
     @Test
-    void the_revision_follows_the_negotiated_protocol_version() {
-        assertThat(McpRevision.of("2024-11-05")).isNull();
-        assertThat(McpRevision.of("2025-06-18")).isEqualTo(McpRevision.V2025_06_18);
-        assertThat(McpRevision.of("2025-09-01")).isEqualTo(McpRevision.V2025_06_18);
-        assertThat(McpRevision.of("2025-11-25")).isEqualTo(McpRevision.V2025_11_25);
-        assertThat(McpRevision.of("2026-06-01")).isEqualTo(McpRevision.V2025_11_25);
+    void a_revision_without_form_elicitation_is_refused() {
+        Form form = Form.of(
+                "f", "F", Step.of("s", "S", Field.of("a", "A", FieldKind.BOOL).build()));
+        assertThatThrownBy(() -> McpFlattening.flatten(
+                        form,
+                        form.steps().getFirst(),
+                        Map.of(),
+                        McpRevision.V2025_03_26,
+                        DerivedDefaults.NONE,
+                        NO_SEARCH))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("2025-03-26");
     }
 
     private static Field features() {

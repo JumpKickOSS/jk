@@ -2,9 +2,9 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
-import cc.jumpkick.engine.http.mcp.McpRevision;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.mcp.McpRevision;
 import cc.jumpkick.runtime.base.ProjectCard;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;

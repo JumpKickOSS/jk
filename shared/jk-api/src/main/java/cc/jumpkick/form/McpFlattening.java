@@ -2,6 +2,7 @@
 package cc.jumpkick.form;
 
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.mcp.McpRevision;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -108,6 +109,9 @@ public final class McpFlattening {
             McpRevision revision,
             DerivedDefaults derived,
             SearchMatches search) {
+        if (!revision.formElicitation()) {
+            throw new IllegalArgumentException("MCP " + revision.wire() + " has no form elicitation");
+        }
         Map<String, Object> values = form.check(known, derived).values();
         List<Field> asked = new ArrayList<>();
         Set<String> pending = new HashSet<>();
