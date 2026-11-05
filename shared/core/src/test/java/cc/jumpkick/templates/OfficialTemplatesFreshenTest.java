@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.config.JkTemplatesConfig;
+import cc.jumpkick.util.GitProxy;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.testing;
+package cc.jumpkick.testing;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -24,7 +24,8 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * An HTTP proxy on {@code 127.0.0.1:0} that writes down the host of every request it is handed and
  * refuses it with a 403: the request log of everything a jk command dialed off this machine.
  *
- * <p>Name it as the {@code [network] proxy} of the user's {@code config.toml}. Loopback targets go
+ * <p>Name it as the {@code [network] proxy} of the user's {@code config.toml}, or hand its {@link
+ * #url()} to the code under test as the proxy it chose. Loopback targets go
  * direct (a proxy for {@code 127.0.0.1} is never meant), so the stubs a test stands up answer as
  * usual and this sees only what went past them: an https target as its {@code CONNECT host:port},
  * an http one by its absolute URI. Nothing is forwarded, so a request that went around the user's
@@ -43,7 +44,8 @@ public final class RecordingProxy implements BeforeEachCallback, AfterEachCallba
         ServerSocket bound = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
         socket = bound;
         // A platform thread: it parks in accept() for the whole test.
-        Thread accept = Thread.ofPlatform().daemon().name("recording-proxy").unstarted(() -> serve(bound));
+        Thread accept = new Thread(() -> serve(bound), "recording-proxy");
+        accept.setDaemon(true);
         accept.start();
     }
 

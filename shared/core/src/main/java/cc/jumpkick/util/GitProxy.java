@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.templates;
+package cc.jumpkick.util;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -7,9 +7,10 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * The {@code http.proxy} a {@code git} child runs with for one remote, so a template clone takes the
- * route jk's own requests take: a proxy URL, an empty value (git's "no proxy", for a host jk sends
- * direct), or nothing at all, which leaves git's own configuration in charge.
+ * The {@code http.proxy} git runs with for one remote, so a template catalog's clone and a git
+ * dependency's fetch take the route jk's own requests take: a proxy URL, an empty value (git's "no
+ * proxy", for a host jk sends direct), or nothing at all, which leaves git's own configuration in
+ * charge.
  *
  * <p>The engine answers from the user's {@code [network]}, Maven's {@code settings.xml} and the
  * shell's proxy variables; this module only carries the answer to git.
@@ -24,8 +25,8 @@ public interface GitProxy {
     Optional<String> forRemote(URI remote);
 
     /**
-     * As {@link #forRemote} for a remote as written in a template source: a URL, or a form that is
-     * not one ({@code git@host:path}), which git reaches without an http proxy.
+     * As {@link #forRemote} for a remote as written in a template source or a git dependency: a URL,
+     * or a form that is not one ({@code git@host:path}), which git reaches without an http proxy.
      */
     default Optional<String> httpProxy(String remote) {
         URI uri;

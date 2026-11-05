@@ -197,10 +197,11 @@ engine does ([Build § Worker environment](build.md#worker-environment-env)). A 
 own Maven resolver fetches outside the lock (Quarkus's build-time closure) is handed each
 repository with the proxy jk chose for its URL, `[network]` and the shell included, so it does not
 fall back to reading `settings.xml` alone. The `git` that clones the template catalogs
-(`[templates] official` and `[templates.sources]`, over http or https) runs with the proxy jk
-chose for the source's URL as its `http.proxy`, and with git's proxy off for a host jk sends
-direct; with no proxy configured for jk, git's own configuration decides. The value reaches git
-through its environment, never its command line. A credential in a
+(`[templates] official` and `[templates.sources]`) and fetches git dependencies (`{ git = … }`),
+over http or https, runs with the proxy jk chose for the remote's URL as its `http.proxy`, and
+with git's proxy off for a host jk sends direct; with no proxy configured for jk, git's own configuration decides. The value reaches git
+through its environment, never its command line. JGit, used when no `git` is installed, takes the
+same route, but does not answer a proxy that asks for Basic. A credential in a
 proxy URL is never printed; an unusable value is reported
 by the name that set it (`ignoring https_proxy: …`) and the request goes direct. For a proxy that
 wants Basic on an https `CONNECT`, jk clears the JDK's `jdk.http.auth.tunneling.disabledSchemes`

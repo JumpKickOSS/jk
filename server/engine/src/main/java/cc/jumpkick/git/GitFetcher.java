@@ -3,7 +3,9 @@ package cc.jumpkick.git;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
+import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.model.GitSource;
+import cc.jumpkick.util.GitProxy;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -29,28 +31,38 @@ public final class GitFetcher {
         this(gitRoot, new ForgeGitCredentials());
     }
 
-    /** Test seam: inject a custom credentials resolver. */
+    /**
+     * Test seam: inject a custom credentials resolver. A remote is reached through the proxy jk
+     * chooses for its URL ({@link ProxyEnvironment#gitHttpProxy}), as jk's own requests are.
+     */
     public GitFetcher(Path gitRoot, ForgeGitCredentials credentials) {
-        Objects.requireNonNull(gitRoot, "gitRoot");
-        Objects.requireNonNull(credentials, "credentials");
-        this.backend = select(BuildEnv.get(BACKEND_ENV), gitRoot, credentials);
+        this(gitRoot, credentials, ProxyEnvironment.ambient()::gitHttpProxy);
     }
 
-    static GitBackend select(@Nullable String mode, Path gitRoot, ForgeGitCredentials credentials) {
+    /** With the {@code http.proxy} each remote is reached through. */
+    public GitFetcher(Path gitRoot, ForgeGitCredentials credentials, GitProxy proxy) {
+        Objects.requireNonNull(gitRoot, "gitRoot");
+        Objects.requireNonNull(credentials, "credentials");
+        Objects.requireNonNull(proxy, "proxy");
+        this.backend = select(BuildEnv.get(BACKEND_ENV), gitRoot, credentials, proxy);
+    }
+
+    static GitBackend select(@Nullable String mode, Path gitRoot, ForgeGitCredentials credentials, GitProxy proxy) {
         String m = (mode == null || mode.isBlank()) ? "auto" : mode.trim().toLowerCase(Locale.ROOT);
         return switch (m) {
-            case "jgit" -> new JGitExtension(gitRoot, credentials);
+            case "jgit" -> new JGitExtension(gitRoot, credentials, proxy);
             case "cli" ->
                 new GitCliExtension(
                         gitRoot,
                         credentials,
                         GitCliExtension.detect()
                                 .orElseThrow(() -> new IllegalStateException(
-                                        BACKEND_ENV + "=cli but no usable git command was found on PATH")));
+                                        BACKEND_ENV + "=cli but no usable git command was found on PATH")),
+                        proxy);
             case "auto" ->
                 GitCliExtension.detect()
-                        .<GitBackend>map(git -> new GitCliExtension(gitRoot, credentials, git))
-                        .orElseGet(() -> new JGitExtension(gitRoot, credentials));
+                        .<GitBackend>map(git -> new GitCliExtension(gitRoot, credentials, git, proxy))
+                        .orElseGet(() -> new JGitExtension(gitRoot, credentials, proxy));
             default ->
                 throw new IllegalArgumentException("invalid " + BACKEND_ENV + "=" + mode + " (expected auto|cli|jgit)");
         };
