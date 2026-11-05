@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import static cc.jumpkick.engine.jobs.FakeEnvelopeHost.buildRequest;
+import static cc.jumpkick.engine.jobs.FakeEnvelopeHost.request;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
@@ -37,7 +39,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -45,8 +46,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -55,7 +54,7 @@ import org.junit.jupiter.api.io.TempDir;
 class JobEnvelopeTest {
 
     @Test
-    void draining_plan_is_refused_without_running() {
+    void draining_plan_is_refused_without_running(@TempDir Path dir) {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.tryStart = false;
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
@@ -63,7 +62,7 @@ class JobEnvelopeTest {
         StringWriter out = new StringWriter();
         ConnectedClient.submit(
                 env,
-                "{\"type\":\"build-request\",\"dir\":\"/p\"}",
+                buildRequest(dir),
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     ran.set(true);
                     return JobOutcome.declined();
@@ -75,14 +74,14 @@ class JobEnvelopeTest {
     }
 
     @Test
-    void runner_completes_and_publishes_request_finish() {
+    void runner_completes_and_publishes_request_finish(@TempDir Path dir) {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         AtomicBoolean ran = new AtomicBoolean();
         StringWriter out = new StringWriter();
         ConnectedClient.submit(
                 env,
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("lock", "jk-test-", (line, tok, w) -> {
                     ran.set(true);
                     return JobOutcome.declined();
@@ -145,13 +144,13 @@ class JobEnvelopeTest {
     }
 
     @Test
-    void maintenance_kind_never_writes_a_timeline() {
+    void maintenance_kind_never_writes_a_timeline(@TempDir Path dir) {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         ConnectedClient.submit(
                 env,
-                "{\"type\":\"cache-prune-request\",\"op\":\"clear\",\"dir\":\"/tmp/job-env\"}",
+                "{\"type\":\"cache-prune-request\",\"op\":\"clear\",\"dir\":" + Jsonl.quote(dir.toString()) + "}",
                 JobRequest.maintenance("cache", "jk-test-", (line, tok, w) -> JobOutcome.declined()),
                 out);
         // A clean that leaves a fresh target/jk-profile.json behind un-cleans itself.
@@ -159,20 +158,20 @@ class JobEnvelopeTest {
 
         ConnectedClient.submit(
                 env,
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.declined()),
                 out);
         assertThat(host.lastNoTimeline).isFalse();
     }
 
     @Test
-    void toolchain_kind_never_writes_a_timeline() {
+    void toolchain_kind_never_writes_a_timeline(@TempDir Path dir) {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         ConnectedClient.submit(
                 env,
-                "{\"type\":\"provision-request\",\"dir\":\"/tmp/job-env\"}",
+                request("provision-request", dir),
                 JobRequest.toolchain("provision", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
                 out);
         // Provisioning acts on the machine, not the project: the run it precedes owns target/.
@@ -194,12 +193,12 @@ class JobEnvelopeTest {
     }
 
     @Test
-    void fire_and_forget_returns_jid_and_finishes_detached() throws Exception {
+    void fire_and_forget_returns_jid_and_finishes_detached(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         CountDownLatch ran = new CountDownLatch(1);
         long jid = env.submit(
-                "{\"type\":\"lock-request\",\"dir\":\"/tmp/job-env\"}",
+                request("lock-request", dir),
                 JobRequest.plan("lock", "jk-test-", (line, tok, w) -> {
                     ran.countDown();
                     return JobOutcome.declined();
@@ -216,6 +215,7 @@ class JobEnvelopeTest {
         assertThat(List.copyOf(host.teardownOrder)).containsExactly("writeJournal", "clearProgress");
         assertThat(host.events.stream().anyMatch(e -> e.contains("request-finish")))
                 .isTrue();
+        host.awaitSettled();
     }
 
     @Test
@@ -247,6 +247,7 @@ class JobEnvelopeTest {
         assertThat(header.trigger()).isEqualTo("mcp");
         assertThat(header.session()).isEqualTo("claude-code 3f9a");
         assertThat(header.ts()).isPositive();
+        host.awaitSettled();
     }
 
     @Test
@@ -280,6 +281,7 @@ class JobEnvelopeTest {
         } finally {
             release.countDown();
         }
+        host.awaitSettled();
     }
 
     @Test
@@ -304,20 +306,21 @@ class JobEnvelopeTest {
      * waits longer than the job takes to be killed. A detached job runs under the detached deadline.
      */
     @Test
-    void a_wall_deadline_cancels_a_running_job_and_names_the_deadline() throws Exception {
+    void a_wall_deadline_cancels_a_running_job_and_names_the_deadline(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.clock = System::currentTimeMillis;
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
+        host.accumulator = new BuildAccumulator("build", dir.toString(), null, "web");
         JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 50L, 100L, 500L, 0L, 0L));
         CountDownLatch release = new CountDownLatch(1);
 
         env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("build", "jk-test-", parkedBody(release)),
                 new JobTransport.FireAndForget());
 
         Await.until(Duration.ofSeconds(10), () -> host.journalWritten);
         release.countDown();
+        host.awaitSettled();
         assertThat(host.journalWritten).isTrue();
         assertThat(host.journalCancelled).isTrue();
         assertThat(host.accumulator.cancelReason())
@@ -337,36 +340,37 @@ class JobEnvelopeTest {
      * the host's, so the hour passes in one step.
      */
     @Test
-    void a_detached_job_nobody_cancels_is_settled_at_the_default_detached_deadline() throws Exception {
+    void a_detached_job_nobody_cancels_is_settled_at_the_default_detached_deadline(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         AtomicLong now = new AtomicLong(1_000L);
         host.clock = now::get;
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
+        host.accumulator = new BuildAccumulator("build", dir.toString(), null, "web");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         CountDownLatch release = new CountDownLatch(1);
 
         env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("build", "jk-test-", parkedBody(release)),
                 new JobTransport.FireAndForget());
         now.addAndGet(JobLimits.DEFAULT_DETACHED_DEADLINE_MS);
 
         Await.until(Duration.ofSeconds(10), () -> host.journalWritten);
         release.countDown();
+        host.awaitSettled();
         assertThat(host.journalCancelled).isTrue();
         assertThat(host.accumulator.cancelReason())
                 .contains(JobLimits.DEFAULT_DETACHED_DEADLINE_MS + "ms wall deadline")
                 .contains("JK_ENGINE_DETACHED_DEADLINE_MS");
-        assertThat(Jsonl.str(requestFinish(host), "cancelReason")).contains("wall deadline");
+        assertThat(Jsonl.str(host.requestFinish(), "cancelReason")).contains("wall deadline");
     }
 
     /** EOF is a socket job's deadline: under the defaults the clock alone never cancels it. */
     @Test
-    void a_socket_job_runs_unbounded_under_the_defaults() throws Exception {
+    void a_socket_job_runs_unbounded_under_the_defaults(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         AtomicLong now = new AtomicLong(1_000L);
         host.clock = now::get;
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        host.accumulator = new BuildAccumulator("build", dir.toString(), null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch started = new CountDownLatch(1);
@@ -376,7 +380,7 @@ class JobEnvelopeTest {
         StringWriter out = new StringWriter();
         Thread connection = Thread.ofVirtual()
                 .start(() -> env.submit(
-                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                        buildRequest(dir),
                         JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                             started.countDown();
                             return parkedBody(release).run(line, tok, w);
@@ -397,33 +401,37 @@ class JobEnvelopeTest {
         }
         assertThat(host.journalWritten).isTrue();
         assertThat(host.journalCancelled).isFalse();
+        host.awaitSettled();
     }
 
     /** A detached submission may bring its own deadline, or lift the engine's with {@code 0}. */
     @Test
-    void a_detached_submission_may_carry_its_own_deadline_or_lift_the_cap() throws Exception {
+    void a_detached_submission_may_carry_its_own_deadline_or_lift_the_cap(@TempDir Path dir) throws Exception {
+        Path ownDir = dir.resolve("own");
         FakeEnvelopeHost own = new FakeEnvelopeHost();
         own.clock = System::currentTimeMillis;
-        own.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
+        own.accumulator = new BuildAccumulator("build", ownDir.toString(), null, "web");
         CountDownLatch release = new CountDownLatch(1);
         new JobEnvelope(own, JobLimits.DEFAULTS)
                 .submit(
-                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                        buildRequest(ownDir),
                         JobRequest.plan("build", "jk-test-", parkedBody(release)),
                         new JobTransport.FireAndForget(50L));
         Await.until(Duration.ofSeconds(10), () -> own.journalWritten);
         release.countDown();
+        own.awaitSettled();
         assertThat(own.journalCancelled).isTrue();
         assertThat(own.accumulator.cancelReason())
                 .contains("50ms wall deadline")
                 .contains("the request's deadline");
 
+        Path liftedDir = dir.resolve("lifted");
         FakeEnvelopeHost lifted = new FakeEnvelopeHost();
         lifted.clock = System::currentTimeMillis;
-        lifted.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
+        lifted.accumulator = new BuildAccumulator("build", liftedDir.toString(), null, "web");
         new JobEnvelope(lifted, JobLimits.DEFAULTS.withDetachedDeadlineMs(50L))
                 .submit(
-                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                        buildRequest(liftedDir),
                         JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                             // Outlives the 50ms cap the engine would apply; the submission lifted it.
                             boolean released = false;
@@ -438,6 +446,7 @@ class JobEnvelopeTest {
         Await.until(Duration.ofSeconds(10), () -> lifted.journalWritten);
         assertThat(lifted.journalCancelled).isFalse();
         assertThat(lifted.accumulator.wasCancelled()).isFalse();
+        lifted.awaitSettled();
     }
 
     /** A body that parks until released; a deadline kill's interrupt ends the wait early. */
@@ -482,15 +491,16 @@ class JobEnvelopeTest {
      */
     @Test
     @Tag("integration")
-    void the_cancel_grace_the_envelope_was_given_is_the_one_the_worker_shutdown_uses() throws Exception {
+    void the_cancel_grace_the_envelope_was_given_is_the_one_the_worker_shutdown_uses(@TempDir Path dir)
+            throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        host.accumulator = new BuildAccumulator("build", dir.toString(), null, "cli");
         JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 0L, 0L, 0L));
         AtomicReference<Process> worker = new AtomicReference<>();
         CountDownLatch release = new CountDownLatch(1);
 
         long jid = env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     try {
                         worker.set(JobWorkers.start(Sleepers.sleeper(60)));
@@ -521,6 +531,7 @@ class JobEnvelopeTest {
             Process p = worker.get();
             if (p != null && p.isAlive()) p.destroyForcibly();
         }
+        host.awaitSettled();
     }
 
     /**
@@ -582,6 +593,7 @@ class JobEnvelopeTest {
         } finally {
             release.countDown();
         }
+        host.awaitSettled();
     }
 
     /**
@@ -645,15 +657,16 @@ class JobEnvelopeTest {
      * real hang-up does — so a body that has already ruled success must not be re-labelled.
      */
     @Test
-    void a_body_that_ruled_success_is_not_relabelled_cancelled_by_the_end_of_request_eof() {
+    void a_body_that_ruled_success_is_not_relabelled_cancelled_by_the_end_of_request_eof(@TempDir Path dir)
+            throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        host.accumulator = new BuildAccumulator("cache", "/tmp/job-env", null, "cli");
+        host.accumulator = new BuildAccumulator("cache", dir.toString(), null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
 
         ConnectedClient.submit(
                 env,
-                "{\"type\":\"cache-prune-request\",\"op\":\"prune\",\"dir\":\"/tmp/job-env\"}",
+                "{\"type\":\"cache-prune-request\",\"op\":\"prune\",\"dir\":" + Jsonl.quote(dir.toString()) + "}",
                 JobRequest.maintenance("cache", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
                 out);
 
@@ -673,13 +686,13 @@ class JobEnvelopeTest {
      * the envelope's catch (and, beneath it, the no-verdict derivation) holds this row red.
      */
     @Test
-    void a_detached_runner_that_dies_without_ruling_journals_a_failure() throws Exception {
+    void a_detached_runner_that_dies_without_ruling_journals_a_failure(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        host.accumulator = new BuildAccumulator("build", dir.toString(), null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
         env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     throw new IllegalStateException("runner died");
                 }),
@@ -693,6 +706,7 @@ class JobEnvelopeTest {
         BuildRecord record = host.journalRecord();
         assertThat(record.success()).isFalse();
         assertThat(record.exitCode()).isNotZero();
+        host.awaitSettled();
     }
 
     /**
@@ -700,7 +714,7 @@ class JobEnvelopeTest {
      * leaked sink would attribute a later run's notices to this request's stream.
      */
     @Test
-    void run_notices_ride_the_wire_during_the_run_and_the_log_after_it() {
+    void run_notices_ride_the_wire_during_the_run_and_the_log_after_it(@TempDir Path dir) throws Exception {
         RunNotices.clear();
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
@@ -713,7 +727,7 @@ class JobEnvelopeTest {
         try {
             ConnectedClient.submit(
                     env,
-                    "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                    buildRequest(dir),
                     JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                         // The way a real caller stands: a Session derived inside the request
                         // adopts the run's open ledger, and RunNotices claims against it.
@@ -754,13 +768,13 @@ class JobEnvelopeTest {
      * on the record.
      */
     @Test
-    void a_runner_that_throws_after_clean_rows_journals_a_failure_not_green() throws Exception {
+    void a_runner_that_throws_after_clean_rows_journals_a_failure_not_green(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        host.accumulator = new BuildAccumulator("build", dir.toString(), null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
         env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     host.accumulator.addModule(new ModuleOutcome("g:a", Path.of("/w/a"), true, 0, 10, true));
                     throw new IllegalStateException("threw past its own handler");
@@ -778,6 +792,7 @@ class JobEnvelopeTest {
                         && "java.lang.IllegalStateException".equals(d.exceptionClass()));
         assertThat(host.events.stream().anyMatch(e -> e.contains("request-finish") && e.contains("\"success\":false")))
                 .isTrue();
+        host.awaitSettled();
     }
 
     /**
@@ -787,15 +802,15 @@ class JobEnvelopeTest {
      * the stream just ends, and a bare EOF is all the CLI has to report.
      */
     @Test
-    void a_body_killed_by_an_error_is_logged_and_settles_a_terminal_for_the_client() {
+    void a_body_killed_by_an_error_is_logged_and_settles_a_terminal_for_the_client(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        host.accumulator = new BuildAccumulator("build", dir.toString(), null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
 
         ConnectedClient.submit(
                 env,
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     throw new NoClassDefFoundError("cc/example/Missing");
                 }),
@@ -818,13 +833,13 @@ class JobEnvelopeTest {
      * documented derive-from-facts path and still reads green.
      */
     @Test
-    void a_runner_that_declines_with_clean_rows_still_derives_green() throws Exception {
+    void a_runner_that_declines_with_clean_rows_still_derives_green(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        host.accumulator = new BuildAccumulator("build", dir.toString(), null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
         env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     host.accumulator.addModule(new ModuleOutcome("g:a", Path.of("/w/a"), true, 0, 10, true));
                     return JobOutcome.declined();
@@ -836,146 +851,7 @@ class JobEnvelopeTest {
         BuildRecord record = host.journalRecord();
         assertThat(record.success()).isTrue();
         assertThat(record.exitCode()).isZero();
-    }
-
-    /**
-     * The order one successful plan job's observable effects leave the envelope in. The plan slot is
-     * released before request-finish so the event carries the post-finish plan count; the journal is
-     * written before clearProgress retires the session; the idle boundary comes last.
-     */
-    @Test
-    void a_successful_job_emits_its_effects_in_one_order_with_the_slot_released_first() {
-        FakeEnvelopeHost host = new FakeEnvelopeHost();
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-        // Detached: a socket whose reader is already at EOF reads as a client disconnect, which
-        // would race the body's own verdict. The wire terminal is pinned by the journal test below.
-        new JobEnvelope(host, JobLimits.DEFAULTS)
-                .submit(
-                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
-                        JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
-                        new JobTransport.FireAndForget());
-        awaitTail(host);
-
-        assertThat(host.sequence)
-                .containsExactly(
-                        "request-start",
-                        "progress-pinned:100.0",
-                        "plan-slot-released",
-                        "request-finish",
-                        "writeJournal",
-                        "clearProgress",
-                        "idle-boundary");
-        String finish = requestFinish(host);
-        assertThat(keysOf(finish))
-                .containsExactly(
-                        "schema",
-                        "type",
-                        "jid",
-                        "kind",
-                        "dir",
-                        "projectId",
-                        "success",
-                        "cancelled",
-                        "millis",
-                        "activeBuildPlans");
-        assertThat(Jsonl.intValue(finish, "activeBuildPlans", -1))
-                .as("the count after the release, so the dashboard settles in the same frame")
-                .isZero();
-        assertThat(Jsonl.intValue(finish, "schema", -1)).isEqualTo(1);
-    }
-
-    /** A failed and a thrown body share the success path's order and never pin the bar at 100%. */
-    @Test
-    void a_failed_and_a_thrown_job_emit_the_same_order_without_the_progress_pin() {
-        for (JobBody body : List.<JobBody>of((line, tok, w) -> JobOutcome.failed(Exit.SOFTWARE), (line, tok, w) -> {
-            throw new IllegalStateException("boom");
-        })) {
-            FakeEnvelopeHost host = new FakeEnvelopeHost();
-            host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-            new JobEnvelope(host, JobLimits.DEFAULTS)
-                    .submit(
-                            "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
-                            JobRequest.plan("build", "jk-test-", body),
-                            new JobTransport.FireAndForget());
-            awaitTail(host);
-            assertThat(host.sequence)
-                    .containsExactly(
-                            "request-start",
-                            "plan-slot-released",
-                            "request-finish",
-                            "writeJournal",
-                            "clearProgress",
-                            "idle-boundary");
-            String finish = requestFinish(host);
-            assertThat(Jsonl.bool(finish, "success", true)).isFalse();
-            assertThat(Jsonl.has(finish, "cancelReason")).isFalse();
-        }
-    }
-
-    /** A plan admitted in another workspace than the one before it tells the host which it left. */
-    @Test
-    void a_plan_in_another_workspace_reports_the_switch_and_one_in_the_same_does_not() {
-        FakeEnvelopeHost host = new FakeEnvelopeHost();
-        for (String dir : List.of("/tmp/job-env-switch-a", "/tmp/job-env-switch-a", "/tmp/job-env-switch-b")) {
-            host.accumulator = new BuildAccumulator("build", dir, null, "cli");
-            new JobEnvelope(host, JobLimits.DEFAULTS)
-                    .submit(
-                            "{\"type\":\"build-request\",\"dir\":\"" + dir + "\"}",
-                            JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
-                            new JobTransport.FireAndForget());
-            awaitTail(host);
-            host.sequence.clear();
-        }
-
-        // A root is the dir as sent, normalized: on macOS /tmp is a link to /private/tmp, which a
-        // real-path form would resolve whenever another test has created the directory.
-        Path a = Path.of("/tmp/job-env-switch-a").toAbsolutePath().normalize();
-        Path b = Path.of("/tmp/job-env-switch-b").toAbsolutePath().normalize();
-        assertThat(host.switches).endsWith(a + " -> " + b);
-        assertThat(host.switches).doesNotContain(a + " -> " + a);
-    }
-
-    /** A cancelled job adds exactly one key, cancelReason, and still ends on the same tail. */
-    @Test
-    void a_cancelled_job_adds_cancel_reason_and_nothing_else() {
-        FakeEnvelopeHost host = new FakeEnvelopeHost();
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
-        env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
-                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
-                    env.live().beginUserCancel(1L, tok, null, 0L, true);
-                    return JobOutcome.declined();
-                }),
-                new JobTransport.FireAndForget());
-        awaitTail(host);
-
-        String finish = requestFinish(host);
-        assertThat(Jsonl.bool(finish, "cancelled", false)).isTrue();
-        assertThat(keysOf(finish)).endsWith("activeBuildPlans", "cancelReason");
-        assertThat(Jsonl.str(finish, "cancelReason")).contains("cancelled by the user");
-        assertThat(host.sequence)
-                .endsWith("plan-slot-released", "request-finish", "writeJournal", "clearProgress", "idle-boundary");
-    }
-
-    /** job-finish is written in a finally, so a throwing journal cannot strand the client on EOF. */
-    @Test
-    void a_throwing_journal_still_delivers_job_finish() {
-        FakeEnvelopeHost host = new FakeEnvelopeHost();
-        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-        host.journalThrows = true;
-        StringWriter out = new StringWriter();
-        assertThatThrownBy(() -> ConnectedClient.submit(
-                        new JobEnvelope(host, JobLimits.DEFAULTS),
-                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
-                        JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
-                        out))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("journal disk full");
-        assertThat(out.toString().lines().map(EngineProtocol::typeOf))
-                .as("the client reads its terminal, not EOF")
-                .contains(EngineProtocol.JOB_FINISH);
-        assertThat(host.sequence).containsSubsequence("request-finish", "writeJournal");
+        host.awaitSettled();
     }
 
     /**
@@ -983,13 +859,13 @@ class JobEnvelopeTest {
      * why every other socket test submits through {@link ConnectedClient}.
      */
     @Test
-    void eof_before_the_body_finishes_is_a_disconnect_and_cancels_it() {
+    void eof_before_the_body_finishes_is_a_disconnect_and_cancels_it(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = quickJoins(host, JobLimits.DEFAULTS);
         AtomicBoolean interrupted = new AtomicBoolean();
         StringWriter out = new StringWriter();
         env.submit(
-                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                buildRequest(dir),
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
                     // Never finishes on its own: only the disconnect's cancel ends it.
                     try {
@@ -1000,7 +876,9 @@ class JobEnvelopeTest {
                     return JobOutcome.declined();
                 }),
                 new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
-        assertThat(interrupted).isTrue();
+        // The connection settles after its 50 ms join; the runner sees the cancel on its own thread.
+        Await.until(Duration.ofSeconds(30), interrupted::get, () -> "the disconnect never interrupted the body");
+        host.awaitSettled();
         assertThat(out.toString()).contains("\"cancelled\":true");
     }
 
@@ -1008,30 +886,5 @@ class JobEnvelopeTest {
     private static JobEnvelope quickJoins(FakeEnvelopeHost host, JobLimits limits) {
         return new JobEnvelope(
                 host, limits, MemoryAdmission.forRuntime(limits.queueWaitMs(), host::nowMillis), 50L, 0L);
-    }
-
-    /** The detached tail runs on its own thread; the idle boundary is its last effect. */
-    private static void awaitTail(FakeEnvelopeHost host) {
-        try {
-            Await.until(Duration.ofSeconds(30), () -> host.sequence.contains("idle-boundary"));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private static String requestFinish(FakeEnvelopeHost host) {
-        return host.events.stream()
-                .filter(e -> e.startsWith("request-finish:"))
-                .map(e -> e.substring("request-finish:".length()))
-                .findFirst()
-                .orElseThrow();
-    }
-
-    /** Top-level keys of a flat JSON object, in document order. */
-    private static List<String> keysOf(String json) {
-        List<String> keys = new ArrayList<>();
-        Matcher m = Pattern.compile("\"(\\w+)\":").matcher(json);
-        while (m.find()) keys.add(m.group(1));
-        return keys;
     }
 }

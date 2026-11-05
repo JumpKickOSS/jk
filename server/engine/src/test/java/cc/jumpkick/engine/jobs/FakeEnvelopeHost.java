@@ -7,11 +7,14 @@ import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.RunResults;
+import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -278,5 +281,37 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
     @Override
     public String coordOf(String dir) {
         return "test:job";
+    }
+
+    /** A build request for the checkout {@code dir}: each case submits for its own directory. */
+    static String buildRequest(Path dir) {
+        return request("build-request", dir);
+    }
+
+    static String request(String type, Path dir) {
+        return "{\"type\":" + Jsonl.quote(type) + ",\"dir\":" + Jsonl.quote(dir.toString()) + "}";
+    }
+
+    /**
+     * Waits until every job this host admitted has left the engine: the runner has released its
+     * checkout slot and the request has settled (the idle boundary, or the idle GC for maintenance,
+     * is the tail's last effect). A detached job, or a socket job whose connection stopped waiting,
+     * outlives {@code submit}; a case that returned before it settled would leave a runner behind
+     * that the next case meets.
+     */
+    void awaitSettled() throws InterruptedException {
+        Await.until(
+                Duration.ofSeconds(30),
+                () -> inFlight.list().isEmpty() && (sequence.contains("idle-boundary") || sequence.contains("idle-gc")),
+                () -> "a job was still in flight: " + inFlight.list());
+    }
+
+    /** The first request-finish event's payload. */
+    String requestFinish() {
+        return events.stream()
+                .filter(e -> e.startsWith("request-finish:"))
+                .map(e -> e.substring("request-finish:".length()))
+                .findFirst()
+                .orElseThrow();
     }
 }
