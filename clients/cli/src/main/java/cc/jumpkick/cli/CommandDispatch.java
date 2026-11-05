@@ -502,6 +502,12 @@ public final class CommandDispatch {
             closeActiveLiveRegion();
             printWorkerJarError(e, ansi);
             code = 1;
+        } catch (UserConfigParseException unparsed) {
+            // The message is the fix: file:line:col and what TOML said. No stack, a config exit.
+            closeActiveLiveRegion();
+            CliOutput.err(
+                    HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi) + " " + unparsed.getMessage());
+            code = Exit.CONFIG;
         } catch (Exception e) {
             closeActiveLiveRegion();
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();

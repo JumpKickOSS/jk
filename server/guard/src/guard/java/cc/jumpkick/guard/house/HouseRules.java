@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.house;
 
+import cc.jumpkick.guard.api.Allow;
 import cc.jumpkick.guard.api.Blank;
 import cc.jumpkick.guard.api.Fixture;
 import cc.jumpkick.guard.api.Guard;
@@ -431,5 +432,140 @@ final class HouseRules {
             }
         }
         v.population(files);
+    }
+
+    /**
+     * The reads that throw {@code UserConfigParseException} for a {@code ~/.jk/config.toml} that does
+     * not parse: every manifest parse (it folds the user's {@code [plugins]} pins in) and the strict
+     * {@code GlobalConfig} readers.
+     */
+    private static final Pattern CONFIG_DOOR = Pattern.compile("\\b(?:JkBuildParser\\.(?:parse|parseLocal|reparse)"
+            + "|WorkspaceLoader\\.loadModules"
+            + "|UserPlugins\\.fromConfig"
+            + "|JkTemplatesConfig\\.resolve"
+            + "|EffectiveUserConfig\\.rows"
+            + "|GlobalConfig\\.(?:credentialsStore|image|network|nodeSources|mirrors|repositories"
+            + "|repositoryMirrors|repositoryDeclarations))\\s*\\(");
+
+    private static final Pattern TRY = Pattern.compile("(?<![\\w$])try\\s*");
+    private static final Pattern CATCH = Pattern.compile("\\G\\s*catch\\s*\\(");
+    private static final Pattern BROAD =
+            Pattern.compile("(?<![\\w$.])(?:Exception|RuntimeException|Throwable)(?![\\w$])");
+    private static final Pattern NARROW_CONFIG =
+            Pattern.compile("(?<![\\w$])(?:UserConfigParseException|JkBuildParseException)(?![\\w$])");
+
+    @Guard(
+            id = "config-error-through-broad-catch",
+            why =
+                    "a catch (Exception) around a manifest parse or a strict config.toml read turns a broken ~/.jk/config.toml into a silent fallback, and the user never learns which line to fix",
+            instead =
+                    "put `catch (UserConfigParseException unparsed) { throw unparsed; }` ahead of the broad catch, or render the caught exception's message (Errors.text(e), e.getMessage(), requestFailedLine(dir, e)): it carries file:line:col")
+    @Fixture("server/guard/fixtures/config-error-through-broad-catch")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/engine/SsePublisher.java",
+            reason = "the dashboard's coordinate for a starting request; the request's own parse reports the file")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/engine/journal/JournalWriter.java",
+            reason = "the journal's coordinate for a run; the run's own parse reports the file")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/runtime/HardwareProbe.java",
+            reason =
+                    "a probe that stays off the network when the repositories cannot be read; the resolve names the file")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/runtime/LockFlow.java",
+            reason = "a hint built after a failed resolve; it must never replace the resolve's own error")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/runtime/TestLaunch.java",
+            reason = "a once-per-engine warm-up of the test roots; the test run's own parse reports the file")
+    @Allow(
+            in = "shared/core/src/main/java/cc/jumpkick/templates/OfficialTemplatesFreshen.java",
+            reason = "a background freshen that never throws; its log line carries the message and the position")
+    void configErrorThroughBroadCatch(Text text, Violations v) {
+        long tries = 0;
+        for (String rel : text.files(MAIN_JAVA)) {
+            String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
+            if (!CONFIG_DOOR.matcher(code).find()) continue;
+            Matcher t = TRY.matcher(code);
+            while (t.find()) {
+                int open = t.end();
+                if (open < code.length() && code.charAt(open) == '(')
+                    open = skipSpace(code, closing(code, open, '(', ')') + 1);
+                if (open >= code.length() || code.charAt(open) != '{') continue;
+                int close = closing(code, open, '{', '}');
+                Matcher door = CONFIG_DOOR.matcher(code).region(open, close);
+                if (!door.find()) continue;
+                tries++;
+                boolean through = false;
+                int at = close + 1;
+                Matcher c = CATCH.matcher(code);
+                while (c.find(at) && c.start() == at) {
+                    int paren = c.end() - 1;
+                    int parenEnd = closing(code, paren, '(', ')');
+                    String types = code.substring(paren + 1, parenEnd);
+                    int body = code.indexOf('{', parenEnd);
+                    if (body < 0) break;
+                    int bodyEnd = closing(code, body, '{', '}');
+                    String handler = code.substring(body, bodyEnd + 1);
+                    String var = types.strip().replaceAll(".*\\s", "");
+                    if (NARROW_CONFIG.matcher(types).find()) {
+                        through = true;
+                    } else if (BROAD.matcher(types).find() && !through) {
+                        if (handlesConfigError(handler, var)) {
+                            if (rethrows(handler, var)) through = true;
+                        } else {
+                            v.add(
+                                    new TextSite(
+                                            rel,
+                                            lineOf(code, c.start()),
+                                            "catch (" + types.strip() + ") around "
+                                                    + door.group().replaceAll("\\s*\\($", "")),
+                                    "catch (" + types.strip() + ") around "
+                                            + door.group().replaceAll("\\s*\\($", "")
+                                            + " neither lets UserConfigParseException through nor renders its message");
+                        }
+                    }
+                    at = bodyEnd + 1;
+                }
+            }
+        }
+        v.population(tries);
+    }
+
+    /** Whether a broad handler lets a config.toml error out or shows its message, which carries the position. */
+    private static boolean handlesConfigError(String handler, String var) {
+        String v = Pattern.quote(var);
+        return handler.contains("UserConfigParseException")
+                || rethrows(handler, var)
+                || Pattern.compile("Errors\\.text\\(\\s*" + v + "\\s*\\)")
+                        .matcher(handler)
+                        .find()
+                || Pattern.compile("(?<![\\w$])" + v + "\\.getMessage\\(\\)")
+                        .matcher(handler)
+                        .find()
+                || Pattern.compile("requestFailedLine\\([^;]*,\\s*" + v + "\\s*\\)")
+                        .matcher(handler)
+                        .find();
+    }
+
+    private static boolean rethrows(String handler, String var) {
+        return Pattern.compile("throw\\s+" + Pattern.quote(var) + "\\s*;")
+                .matcher(handler)
+                .find();
+    }
+
+    private static int skipSpace(String code, int i) {
+        while (i < code.length() && Character.isWhitespace(code.charAt(i))) i++;
+        return i;
+    }
+
+    /** The index of the bracket that closes the one at {@code open}; the last index when unbalanced. */
+    private static int closing(String code, int open, char in, char out) {
+        int depth = 0;
+        for (int i = open; i < code.length(); i++) {
+            char ch = code.charAt(i);
+            if (ch == in) depth++;
+            else if (ch == out && --depth == 0) return i;
+        }
+        return code.length() - 1;
     }
 }

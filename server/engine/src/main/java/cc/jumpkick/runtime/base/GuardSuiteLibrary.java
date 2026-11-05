@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
@@ -132,6 +133,8 @@ public final class GuardSuiteLibrary {
         JkBuild build;
         try {
             build = JkBuildParser.parse(manifest);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             return null;
         }
@@ -143,6 +146,8 @@ public final class GuardSuiteLibrary {
             try {
                 JkBuild module = JkBuildParser.parse(mm);
                 if (ARTIFACT.equals(module.project().name())) return new Module(dir, module);
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (IOException | RuntimeException e) {
                 // an unparseable sibling is not the library
             }

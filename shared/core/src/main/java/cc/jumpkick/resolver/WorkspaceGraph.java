@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -86,6 +87,8 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
             byName.putIfAbsent(rootBuild.project().name(), rootGa);
             byGa.putIfAbsent(rootGa, new LoadedModule(rootBuild, lock));
             return new WorkspaceGraph(byName, byGa);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return none();
         }
@@ -106,6 +109,8 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
                 byName.put(
                         b.project().name(),
                         b.project().group() + ":" + b.project().name());
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (Exception e) {
                 // unreadable module jk.toml — sibling refs to it fall back to the raw module
                 Log.debug("modulesByName: unreadable module jk.toml", e);
@@ -158,6 +163,8 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
             try {
                 Path rootToml = ManifestPaths.manifestIn(rootDir);
                 if (Files.isRegularFile(rootToml)) rootBuild = JkBuildParser.parse(rootToml);
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (Exception e) {
                 // inheritance best-effort
                 Log.debug("loadModules: inheritance best-effort", e);
@@ -179,6 +186,8 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
                     lock = lockMemo.get(key);
                 }
                 if (lock != null && lf != null && dir != null) lock = MemberRows.view(lock, lf, dir);
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (Exception e) {
                 // unreadable module — dropped (can't read its scopes)
                 Log.debug("loadModules: unreadable module", e);

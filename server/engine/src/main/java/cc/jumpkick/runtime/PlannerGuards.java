@@ -12,6 +12,7 @@ import static cc.jumpkick.runtime.BuildPlanner.TEST_RUNTIME_CP;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
@@ -145,6 +146,8 @@ final class PlannerGuards {
                 Path dir = root.resolve(m);
                 if (Files.isDirectory(dir) && TestSuites.hasGuardSuite(dir, ModuleLayout.isCompact(dir))) return true;
             }
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             return false;
         }
@@ -851,6 +854,8 @@ final class PlannerGuards {
             return JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
                     .build()
                     .testCoverage();
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return false;
         }
@@ -1078,6 +1083,8 @@ final class PlannerGuards {
         if (!Files.isRegularFile(manifest)) return List.of();
         try {
             return moduleDirs(root, JkBuildParser.parse(manifest));
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException unparseable) {
             return List.of();
         }

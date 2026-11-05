@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -358,6 +359,8 @@ public final class TestFailureSource {
         try {
             JkBuild b = JkBuildParser.parse(toml);
             return SourceLayout.isSimpleLayout(b.project(), moduleDir);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return ModuleLayout.isCompact(moduleDir);
         }

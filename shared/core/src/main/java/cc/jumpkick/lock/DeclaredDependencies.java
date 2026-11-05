@@ -2,6 +2,7 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Dependency;
@@ -34,6 +35,8 @@ public final class DeclaredDependencies {
             if (root.isWorkspaceRoot()) {
                 for (JkBuild member : WorkspaceLoader.loadModules(owner, root).values()) collect(member, modules);
             }
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             Log.debug("countDistinct: counted the manifests that parsed", e);
         }

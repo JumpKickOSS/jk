@@ -8,6 +8,7 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -166,6 +167,8 @@ public final class TestSupport {
             return JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
                     .build()
                     .testClassSuites();
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             return Map.of();
         }

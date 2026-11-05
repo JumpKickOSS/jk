@@ -2,6 +2,7 @@
 package cc.jumpkick.ide;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
@@ -64,6 +65,8 @@ public final class IdeSourceRoots {
             classSuites = JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
                     .build()
                     .testClassSuites();
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             classSuites = Map.of();
         }

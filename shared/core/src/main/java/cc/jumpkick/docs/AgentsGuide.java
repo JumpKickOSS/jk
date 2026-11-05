@@ -2,6 +2,7 @@
 package cc.jumpkick.docs;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -85,6 +86,8 @@ public final class AgentsGuide {
         if (!Files.isRegularFile(manifest)) return false;
         try {
             return JkBuildParser.parse(manifest).format().enforce();
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception unreadable) {
             return false;
         }

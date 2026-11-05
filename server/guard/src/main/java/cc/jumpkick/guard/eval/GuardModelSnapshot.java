@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.guard.validate.TierPartition;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.Lockfile;
@@ -52,6 +53,8 @@ public final class GuardModelSnapshot {
             JkBuild build;
             try {
                 build = rel.isEmpty() ? JkBuildParser.parse(manifest) : JkBuildParser.parseLocal(manifest);
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (RuntimeException unparseable) {
                 continue;
             }

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ToolchainSpec;
@@ -40,6 +41,8 @@ final class NodeUpdates {
         JkBuild own;
         try {
             own = JkBuildParser.parse(text);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (RuntimeException unparsable) {
             return null;
         }

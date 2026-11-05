@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.ManifestPaths;
@@ -58,6 +59,8 @@ public record ProjectCard(
             javaRelease = p.javaRelease();
             jdk = p.jdk();
             members = membersOf(root, build);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             // missing/unparseable jk.toml — identity-only card, with the POM's coordinate if there is one
             Log.debug("of: missing/unparseable jk.toml", e);
@@ -83,6 +86,8 @@ public record ProjectCard(
                 var p = JkBuildParser.parseLocal(ManifestPaths.manifestIn(moduleDir))
                         .project();
                 coord = p.group() + ":" + p.name();
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (Exception e) {
                 // path-only member
                 Log.debug("membersOf: path-only member", e);

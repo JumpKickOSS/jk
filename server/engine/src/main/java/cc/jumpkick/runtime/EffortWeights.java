@@ -6,6 +6,7 @@ import cc.jumpkick.cache.FetchTimings;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jdk.JdkInventory;
@@ -687,6 +688,8 @@ public final class EffortWeights {
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
             int staticPkg = coldWorkWeight(TaskNames.PACKAGE_JAR, 1);
             pkg = jarFresh ? SKIP : StepWalls.learnedFixedWeight(metrics, mod, TaskNames.PACKAGE_JAR, staticPkg);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             // Unparseable project / layout — parse-build will surface the real
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.
@@ -792,6 +795,8 @@ public final class EffortWeights {
                     env::apply);
             var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
             return (r.jdkOpt().isEmpty() && r.wouldInstall()) ? JDK_DOWNLOAD : SKIP;
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return SKIP;
         }
@@ -893,6 +898,8 @@ public final class EffortWeights {
             if (dir == null || !Files.isDirectory(dir)) return false;
             JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             return project.nativeMode() == JkBuild.NativeMode.ALWAYS;
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return false;
         }
@@ -930,6 +937,8 @@ public final class EffortWeights {
                 return true;
             }
             return false;
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             // Unparseable / I/O — over-reserve so the bar never drops a multi-minute step.
             return true;
@@ -956,6 +965,8 @@ public final class EffortWeights {
             if (!Files.isRegularFile(mainJar)) return false; // no jar → not fresh; rebuild inputs first
             return Files.getLastModifiedTime(art).toMillis()
                     >= Files.getLastModifiedTime(mainJar).toMillis();
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return false;
         }

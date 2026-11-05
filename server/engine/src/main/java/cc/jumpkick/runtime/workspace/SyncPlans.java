@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compat.NodeProvisioning;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
@@ -574,6 +575,8 @@ public final class SyncPlans {
         if (!Files.exists(buildFile)) return null;
         try {
             return JkBuildParser.parse(buildFile);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return null;
         }

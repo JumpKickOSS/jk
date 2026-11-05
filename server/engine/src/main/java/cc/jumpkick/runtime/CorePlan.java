@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
@@ -135,6 +136,8 @@ final class CorePlan {
                 useGroovy = false;
                 workspaceNoSources = true;
             }
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             // Unparseable/missing jk.toml — parse-build will surface the real error.
             Log.debug("readShape: Unparseable/missing jk.toml", e);

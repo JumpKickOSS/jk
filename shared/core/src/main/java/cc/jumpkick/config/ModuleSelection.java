@@ -208,6 +208,8 @@ public final class ModuleSelection {
                     JkBuild unit = JkBuildParser.parse(manifest);
                     String name = unit.project().name();
                     if (name != null && !name.isBlank()) addNameAliases(aliases, name);
+                } catch (UserConfigParseException unparsed) {
+                    throw unparsed; // config.toml's own error, with its position — never this site's fallback
                 } catch (Exception e) {
                     // unparseable member — path aliases still select it
                     Log.debug("candidateFor: unparseable member", e);

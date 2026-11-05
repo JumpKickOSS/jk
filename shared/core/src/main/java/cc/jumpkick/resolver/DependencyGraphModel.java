@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Log;
@@ -229,6 +230,8 @@ public final class DependencyGraphModel {
                     b.sibling(modDir, e.getValue(), relLabel(dir, modDir));
                 }
             }
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             // Sibling enrichment only — the module graph itself must still render.
             Log.debug("buildStandalone: Sibling enrichment only", e);

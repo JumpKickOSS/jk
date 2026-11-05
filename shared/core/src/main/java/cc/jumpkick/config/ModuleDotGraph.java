@@ -124,6 +124,8 @@ public final class ModuleDotGraph {
                 return graphData(root, modules, null);
             }
             return singleModuleData(entry, root);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             // Missing modules / parse errors: empty graph rather than 500 (detail page still loads).
             return GraphData.empty(false);

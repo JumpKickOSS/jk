@@ -7,6 +7,7 @@ import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.ManifestPaths;
@@ -142,6 +143,8 @@ public final class AffectedTestRun {
                 if (AffectedTestsCompute.hasLocalDirty(wsRoot, modDir, dirty)) n++;
             }
             return n;
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return 1; // best-effort: an unreadable workspace never fabricates a refuse
         }

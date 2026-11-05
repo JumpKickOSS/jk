@@ -9,6 +9,7 @@ import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -847,6 +848,8 @@ public final class ExecPlans {
                 out.put(built, shelf.toAbsolutePath().normalize());
             }
             return out;
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             return Map.of();
         }

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Errors;
@@ -129,6 +130,8 @@ public final class ProjectInfoPlans {
                 workspaceRootDir = wsRoot.toString();
                 try {
                     rootBuild = JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
+                } catch (UserConfigParseException unparsed) {
+                    throw unparsed; // config.toml's own error, with its position — never this site's fallback
                 } catch (Exception ignored) {
                     rootBuild = build;
                 }
@@ -143,6 +146,8 @@ public final class ProjectInfoPlans {
                     envSources.add(e.getValue()); // a member declares what the root does not
                     toolchains.put(abs, toolchain(e.getValue()));
                 }
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (Exception ignored) {
                 for (String m : rootBuild.workspaceModules()) {
                     Path abs = wsRoot.resolve(m).toAbsolutePath().normalize();

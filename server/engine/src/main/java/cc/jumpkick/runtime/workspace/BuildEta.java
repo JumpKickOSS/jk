@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.ManifestPaths;
@@ -384,6 +385,8 @@ public final class BuildEta {
             Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(manifest)) return 0;
             return JkBuildParser.parse(manifest).build().effectiveTestWorkers(0);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
             return 0;
         }

@@ -2,6 +2,7 @@
 package cc.jumpkick.layout;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
@@ -28,6 +29,8 @@ public final class ModuleLayoutPlugins {
                         root.dir(), root.resource() ? ModuleLayout.Kind.RESOURCE : ModuleLayout.Kind.SOURCE));
             }
             return List.copyOf(out);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception ignored) {
             return List.of();
         }
