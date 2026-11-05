@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.mcp.McpConnection;
+import cc.jumpkick.engine.http.mcp.McpConnections;
 import cc.jumpkick.engine.http.mcp.McpContext;
 import cc.jumpkick.engine.http.mcp.McpElicitModes;
 import cc.jumpkick.engine.http.mcp.McpError;
@@ -50,6 +51,9 @@ import org.jspecify.annotations.Nullable;
 public final class McpHandler {
 
     public static final String SERVER_NAME = "jk-engine";
+
+    /** The session origin every MCP connection's runs and actions carry. */
+    private static final String ORIGIN = "mcp";
 
     private final McpContext ctx;
     private volatile McpTools tools = McpTools.standard();
@@ -136,9 +140,28 @@ public final class McpHandler {
         return ctx.connections().find(sessionId);
     }
 
-    /** Log connections' sessions and their non-run actions in {@code sessions}. Optional. */
+    /**
+     * Log connections' sessions and their non-run actions in {@code sessions}, and keep each
+     * connection with its session, so an engine that adopts the session answers its id. Optional.
+     */
     public void sessions(SessionLog sessions) {
         ctx.sessions(sessions);
+        ctx.connections().store(new McpConnections.Store() {
+            @Override
+            public void save(McpConnection connection) {
+                sessions.saveConnection(ORIGIN, connection.label(), connection.toMap());
+            }
+
+            @Override
+            public @Nullable McpConnection load(String id) {
+                return sessions.connection(id).map(McpConnection::of).orElse(null);
+            }
+
+            @Override
+            public boolean holds(String id) {
+                return sessions.holdsConnection(id);
+            }
+        });
     }
 
     /** Forget a connection ({@code DELETE /mcp}); its session ends. */
@@ -146,14 +169,16 @@ public final class McpHandler {
         McpConnection c = ctx.connections().find(sessionId);
         boolean closed = ctx.connections().close(sessionId);
         SessionLog log = ctx.sessions();
-        if (closed && c != null && log != null) log.end("mcp", c.label());
+        if (closed && c != null && log != null) log.end(ORIGIN, c.label());
         return closed;
     }
 
-    /** Open the session of a connection that just introduced itself. */
+    /** Open the session of a connection that just introduced itself, and store the connection with it. */
     private void opened(McpConnection c) {
         SessionLog log = ctx.sessions();
-        if (log != null) log.open("mcp", c.client(), c.label(), c.dir());
+        if (log == null) return;
+        log.open(ORIGIN, c.client(), c.label(), c.dir());
+        ctx.connections().save(c);
     }
 
     /**
@@ -185,10 +210,11 @@ public final class McpHandler {
     }
 
     /**
-     * One HTTP body. {@code project} is the {@code Jk-Project} header ({@code jk mcp} sends it):
-     * {@code initialize} opens a connection pinned to it, and a call on no known connection opens
-     * one too and hands its id back, so a client that outlived an engine restart keeps its
-     * project. {@code protocolVersion} is the {@code MCP-Protocol-Version} header; one jk does not
+     * One HTTP body. {@code sessionId} names a connection this engine has loaded, or one stored
+     * with a session it adopted, which is loaded and answered as it was. {@code project} is the
+     * {@code Jk-Project} header ({@code jk mcp} sends it): {@code initialize} opens a connection
+     * pinned to it, and a call on a connection found nowhere opens one too and hands its id back,
+     * so a client whose session ended keeps its project. {@code protocolVersion} is the {@code MCP-Protocol-Version} header; one jk does not
      * speak is an {@link IllegalArgumentException}. {@code outbound} is the way back to the client
      * while this body's request is outstanding, or null when the transport has none.
      */

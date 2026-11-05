@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -52,7 +53,7 @@ class ProtoLifecycleFrozenBytesTest {
         assertThat(ProtoLifecycle.shutdown(true)).isEqualTo("{\"type\":\"shutdown\",\"force\":true}");
         assertThat(ProtoLifecycle.bye()).isEqualTo("{\"type\":\"bye\",\"plans\":0,\"draining\":false}");
         assertThat(ProtoLifecycle.bye(3, true)).isEqualTo("{\"type\":\"bye\",\"plans\":3,\"draining\":true}");
-        assertThat(ProtoLifecycle.drainStatus(77, 2, "0.13.0"))
+        assertThat(ProtoLifecycle.drainStatus(77, 2, "0.13.0", List.of()))
                 .isEqualTo("{\"type\":\"drain-status\",\"pid\":77,\"plans\":2,\"version\":\"0.13.0\"}");
         assertThat(ProtoLifecycle.drainDone(77)).isEqualTo("{\"type\":\"drain-done\",\"pid\":77}");
         assertThat(ProtoLifecycle.error("deadline", "too slow"))

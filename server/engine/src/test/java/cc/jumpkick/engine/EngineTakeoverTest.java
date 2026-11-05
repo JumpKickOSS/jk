@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.sessions.FinishedRun;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.ShortTempDirs;
@@ -258,6 +260,67 @@ class EngineTakeoverTest {
             old.releasePlanSlotForTests();
             assertThat(oldRun.done().await(10, TimeUnit.SECONDS)).isTrue();
             waitUntil(Duration.ofSeconds(30), () -> logs.stream().anyMatch(s -> s.contains("finished draining")));
+        } finally {
+            newer.close();
+            old.close();
+            assertThat(newerRun.thread().join(Duration.ofSeconds(10))).isTrue();
+        }
+    }
+
+    /**
+     * One writer across the hand-off: a run the displaced engine finishes while it drains is
+     * folded into its episode by the successor, from the {@code drain-status} that carries it, and
+     * the displaced engine writes no session record of its own.
+     */
+    @Test
+    void a_run_the_displaced_engine_finishes_lands_in_its_episode_through_the_successor() throws Exception {
+        Path state = tempDirs.create();
+        EnginePaths.Paths p = EnginePaths.resolve(state);
+
+        EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
+        Running oldRun = start(old);
+        waitUntil(Duration.ofSeconds(30), () -> Files.exists(EnginePaths.endpoint(p)));
+        Path firstSocket = EnginePaths.activeSocket(p);
+        String label = "claude-code " + Long.toHexString(System.nanoTime());
+        String dir = state.toString();
+        SessionLog before = old.sessionsForTests();
+        String id = before.open("mcp", "claude-code", label, dir);
+        long at = System.currentTimeMillis();
+        String episode = requireNonNull(before.placeRun("mcp", label, "test", dir, at));
+        assertThat(old.claimPlanSlotForTests()).isTrue();
+
+        List<String> logs = Collections.synchronizedList(new ArrayList<>());
+        EngineServer newer = new EngineServer(p, JkEngineConfig.DEFAULTS, "2.0.0-test", logs::add);
+        Running newerRun = start(newer);
+        try {
+            waitUntil(Duration.ofSeconds(10), () -> "2.0.0-test".equals(helloVersion(EnginePaths.activeSocket(p))));
+            waitUntil(Duration.ofSeconds(30), () -> Boolean.TRUE.equals(helloDraining(firstSocket)));
+            before.runFinished(new FinishedRun(
+                    episode,
+                    "test",
+                    dir,
+                    7,
+                    at,
+                    at + 900,
+                    900,
+                    false,
+                    false,
+                    "app",
+                    List.of("QuoteTest#weekend"),
+                    null));
+            old.releasePlanSlotForTests();
+            assertThat(oldRun.done().await(20, TimeUnit.SECONDS)).isTrue();
+
+            SessionLog.Page page =
+                    requireNonNull(newer.sessionsForTests().session(id, 0, 10).orElse(null));
+            assertThat(page.episodes()).singleElement().satisfies(e -> assertThat(e)
+                    .containsEntry("id", episode)
+                    .containsEntry("title", "Fixing QuoteTest#weekend")
+                    .containsEntry("runs", 1));
+            assertThat(page.actions())
+                    .as("one run line, appended by the successor alone")
+                    .singleElement()
+                    .satisfies(a -> assertThat(a).containsEntry("summary", "test #7"));
         } finally {
             newer.close();
             old.close();

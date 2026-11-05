@@ -66,7 +66,9 @@ public final class EngineProtocol {
 
     /**
      * Predecessor → successor while a displaced engine drains in-flight jobs. Additive; protocol
-     * stays 1. Fields: {@code pid}, {@code plans}, {@code version}.
+     * stays 1. Fields: {@code pid}, {@code plans}, {@code version}, and {@code runs}: the runs
+     * finished since the last report, each the text of one JSON object the session log folds, omitted
+     * when there are none.
      */
     public static final String DRAIN_STATUS = "drain-status";
 

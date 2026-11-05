@@ -72,6 +72,19 @@ finishes, or at `[engine] drain-deadline-ms`, when it cancels its jobs, kills th
 exits. The HTTP token is deliberately preserved across the respawn so the tab does not have to
 re-authenticate. Client-side reconnect is the SPA's job.
 
+### Sessions cross the hand-off
+
+Only the primary engine writes session records: an engine stops writing them for good the moment
+the endpoint names another (`SessionLog.writeWhile`). Each run a displaced engine finishes while it
+drains goes out in its next `drain-status` instead, under `runs` (each the text of one JSON object,
+the fields the session log folds), and the successor folds it into its episode as if it had
+finished there. The last job's record lands after its plan slot is released, so a drained engine
+keeps reporting until every finished run is queued (at most five seconds), sends them, and only
+then `drain-done`.
+
+The successor takes the sessions over rather than ending them: see [`GET /api/sessions`](#get-apisessions)
+and [MCP sessions](#mcp-sessions-and-server-requests).
+
 ### An orphan waits for an attached tab
 
 An orphaned engine is one no pointer names: no CLI will reach it again, and no successor wants its
@@ -323,8 +336,14 @@ segment of letters, digits, `.`, `-` and `_` is a **400**; an unknown one a **40
 Both are bearer-gated like every `/api/*`. The records live under the journal root,
 `sessions/<id>/session.json` (the session and its episodes) and `actions.jsonl` (one line per
 action), and are pruned with the runs under the same `[history]` age and disk budgets; a session
-that has not ended is never pruned. An engine ends the sessions a previous engine left open when
-it starts, leaving their open episodes `abandoned`.
+that has not ended is never pruned. An MCP session's directory also holds `connection.json`, the
+connection behind it (below), pruned with it.
+
+An engine adopts every session a previous engine left open, whether that engine was displaced or
+died: each stays open with its episodes as they stood (`session.json` keeps the running tallies
+inference needs under `inference`) and its timeline's sequence. The idle sweep ends an adopted
+session once it has been quiet for the idle gap with no client back; one whose connection or
+label acts again on the new engine is the same session as before.
 
 ### `GET /report/<token>/<id>/<path>`
 
@@ -371,7 +390,18 @@ respawn. `jk engine rotate-token` is the explicit way to invalidate it.
 ## MCP sessions and server requests
 
 `McpHandler` opens one `McpConnection` per `initialize`: the `Mcp-Session-Id`, the `McpRevision`
-it negotiated and the `McpElicitModes` the client declared. The revision decides what the session
+it negotiated and the `McpElicitModes` the client declared.
+
+`McpConnections` is a cache over the session records. A connection is written to its session's
+`connection.json` (id, client, pinned project, bound dir, revision, elicitation modes, created and
+last seen) once its session opens, again when its bind changes, and at most once a minute for
+last seen. A request whose `Mcp-Session-Id` the engine has not loaded (it started after the
+connection opened, or the connection fell off the table's 256-entry cap) is answered from the
+connection an open session holds, with the same id, label and session and no new `initialize`.
+An id found nowhere resolves to no connection: a call from `jk mcp` (it sends `Jk-Project`)
+opens a new pinned connection and hands its id back, and the bridge repeats the client's
+`initialize` on it; any other client's calls run with no session. A new connection never takes an
+id an open session still holds. The revision decides what the session
 may use (batches before `2025-06-18`, form elicitation from it, URL mode from `2025-11-25`), so a
 new rule that depends on the revision reads it there rather than comparing strings.
 

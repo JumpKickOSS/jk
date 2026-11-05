@@ -5,6 +5,7 @@ import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.wire.protocol.EventCatalog;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -16,6 +17,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -30,6 +33,12 @@ import org.jspecify.annotations.Nullable;
  * shell, the dashboard) has no connection to close, so it ends once it has been idle for the idle
  * gap; the next run opens another. The code graph's own compiles and fixture runs belong to no
  * session.
+ *
+ * <p>Sessions outlive the engine. A new engine {@link #adopt adopts} every session a previous one
+ * left open, with its episodes as they stood and the MCP connection behind it ({@link
+ * #saveConnection}), so an agent that returns keeps its session; one nobody returns to is ended by
+ * the {@link #sweep idle sweep}. Only the primary engine writes the records ({@link #writeWhile}):
+ * a displaced engine hands the runs it finishes to its successor instead.
  */
 public final class SessionLog {
 
@@ -49,17 +58,34 @@ public final class SessionLog {
     private final LongSupplier clock;
     private final long idleGapMillis;
     private volatile Events events = (type, payload) -> {};
+    private volatile BooleanSupplier primary = () -> true;
+    private volatile Consumer<FinishedRun> successor = run -> {};
 
     private final Map<String, Live> byKey = new LinkedHashMap<>();
-    private final Map<String, Live> byId = new HashMap<>();
+    private final Map<String, Live> byId = new LinkedHashMap<>();
+    private final Map<String, Live> byConnection = new HashMap<>();
     private final Map<String, @Nullable String> projectIds = new HashMap<>();
 
-    /** One open session: its record, its episodes, and the sequence its next action takes. */
+    /** Whether {@link #adopt} has run. */
+    private boolean adopted;
+
+    /** Set once {@link #primary} fails: the log writes nothing from then on. */
+    private boolean retired;
+
+    /**
+     * One open session: its record, its episodes, the sequence its next action takes, and the MCP
+     * connection behind it. {@code attached} is false for a session adopted from a previous engine
+     * until it acts or its connection returns.
+     */
     private static final class Live {
         SessionRecord record;
         final EpisodeInference episodes;
         long seq;
         final List<ActionRecord> memory = new ArrayList<>();
+        boolean attached = true;
+
+        @Nullable
+        Map<String, Object> connection;
 
         Live(SessionRecord record, EpisodeInference episodes) {
             this.record = record;
@@ -84,6 +110,15 @@ public final class SessionLog {
         this.events = events != null ? events : (type, payload) -> {};
     }
 
+    /**
+     * Write records only while {@code primary} holds. Once it fails the log writes nothing more and
+     * hands each run that finishes here to {@code successor}, the engine that now writes them.
+     */
+    public void writeWhile(BooleanSupplier primary, Consumer<FinishedRun> successor) {
+        this.primary = primary;
+        this.successor = successor;
+    }
+
     public long idleGapMillis() {
         return idleGapMillis;
     }
@@ -98,53 +133,38 @@ public final class SessionLog {
     // ---- lifecycle -----------------------------------------------------------------------------
 
     /**
-     * End every stored session a previous engine left open: its connections died with it. Their open
-     * episodes are left {@code abandoned}, since nothing is left to judge them by. Returns how many.
+     * Take over every stored session a previous engine left open, as it stood: its episodes, its
+     * timeline's sequence and its MCP connection. An adopted session stays open; the {@link #sweep}
+     * ends it once it has been idle for the idle gap with nobody back. Runs once, and every other
+     * entry point runs it first. Answers how many it adopted.
      */
-    public synchronized int endStale() {
+    public synchronized int adopt() {
+        if (adopted) return 0;
+        adopted = true;
         if (journal == null) return 0;
-        int ended = 0;
+        int n = 0;
         for (Map<String, Object> doc : journal.list()) {
             if (!(doc.get("session") instanceof Map<?, ?> s)) continue;
             SessionRecord r = SessionRecord.of(s);
-            if (SessionRecord.ENDED.equals(r.state()) || byId.containsKey(r.id())) continue;
-            SessionRecord closed = new SessionRecord(
-                    r.id(),
-                    r.origin(),
-                    r.client(),
-                    r.label(),
-                    r.project(),
-                    r.projectId(),
-                    r.startedAt(),
-                    r.lastActiveAt(),
-                    Math.max(r.lastActiveAt(), r.startedAt()),
-                    SessionRecord.ENDED,
-                    r.episode());
-            List<Map<String, Object>> episodes = new ArrayList<>();
-            for (Object e : list(doc.get("episodes"))) {
-                if (!(e instanceof Map<?, ?> m)) continue;
-                Episode ep = Episode.of(m);
-                if (Episode.WORKING.equals(ep.outcome())) {
-                    ep = new Episode(
-                            ep.id(),
-                            ep.session(),
-                            ep.number(),
-                            ep.project(),
-                            ep.projectId(),
-                            ep.title(),
-                            ep.titleSource(),
-                            Episode.ABANDONED,
-                            ep.startedAt(),
-                            ep.lastAt(),
-                            ep.runs(),
-                            ep.actions());
-                }
-                episodes.add(ep.toMap());
+            if (r.id().isBlank() || SessionRecord.ENDED.equals(r.state()) || byId.containsKey(r.id())) continue;
+            Map<?, ?> state = doc.get("inference") instanceof Map<?, ?> m ? m : null;
+            Live live = new Live(r, EpisodeInference.resume(r.id(), idleGapMillis, episodesOf(doc), state));
+            live.attached = false;
+            List<Map<String, Object>> actions = journal.actions(r.id());
+            live.seq = actions.isEmpty() ? 0 : Episode.num(actions.getLast(), "seq");
+            byId.put(r.id(), live);
+            Live other = byKey.get(key(r.origin(), r.label()));
+            if (other == null || other.record.lastActiveAt() < r.lastActiveAt())
+                byKey.put(key(r.origin(), r.label()), live);
+            Map<String, Object> connection = journal.connection(r.id()).orElse(null);
+            String cid = connection == null ? null : MiniJson.str(connection, "id");
+            if (connection != null && cid != null) {
+                live.connection = connection;
+                byConnection.put(cid, live);
             }
-            write(closed, episodes);
-            ended++;
+            n++;
         }
-        return ended;
+        return n;
     }
 
     /**
@@ -153,6 +173,7 @@ public final class SessionLog {
      */
     public synchronized String open(
             String origin, @Nullable String client, @Nullable String label, @Nullable String project) {
+        adopt();
         Live live = sessionFor(origin, label, client, clock.getAsLong());
         if (project != null && !project.isBlank() && live.record.project() == null) {
             live.record = withProject(live.record, project, live.record.lastActiveAt());
@@ -163,23 +184,67 @@ public final class SessionLog {
 
     /** The connection behind {@code origin} and {@code label} closed: end its session. */
     public synchronized void end(String origin, @Nullable String label) {
+        adopt();
         Live live = byKey.get(key(origin, label));
         if (live != null) end(live, clock.getAsLong());
     }
 
     /**
-     * Announce sessions that went quiet: one with a connection goes idle, one with none ends. Called
-     * on the engine's maintenance tick and before every read.
+     * Store the MCP connection behind the session of {@code origin} and {@code label}, as it opened
+     * or changed, so an engine that adopts the session answers the connection too. Nothing while no
+     * such session is open.
+     */
+    public synchronized void saveConnection(String origin, @Nullable String label, Map<String, Object> connection) {
+        adopt();
+        Live live = byKey.get(key(origin, label));
+        if (live == null) return;
+        Map<String, Object> previous = live.connection;
+        String was = previous == null ? null : MiniJson.str(previous, "id");
+        if (was != null) byConnection.remove(was, live);
+        live.connection = Map.copyOf(connection);
+        String id = MiniJson.str(connection, "id");
+        if (id != null) byConnection.put(id, live);
+        if (journal == null || !writing()) return;
+        try {
+            journal.writeConnection(live.record.id(), live.connection);
+        } catch (IOException | RuntimeException e) {
+            Log.debug("session connection not written: " + live.record.id(), e);
+        }
+    }
+
+    /**
+     * The stored MCP connection {@code id} of a session still open, which counts as its client
+     * back; empty when no open session has it.
+     */
+    public synchronized Optional<Map<String, Object>> connection(String id) {
+        adopt();
+        Live live = byConnection.get(id);
+        Map<String, Object> connection = live == null ? null : live.connection;
+        if (live == null || connection == null) return Optional.empty();
+        live.attached = true;
+        return Optional.of(connection);
+    }
+
+    /** True when an open session holds MCP connection {@code id}, so a new connection must not take it. */
+    public synchronized boolean holdsConnection(String id) {
+        adopt();
+        return byConnection.containsKey(id);
+    }
+
+    /**
+     * Announce sessions that went quiet: one with a connection goes idle; one with none, or adopted
+     * and not yet back, ends. Called on the engine's maintenance tick and before every read.
      */
     public synchronized void sweep() {
+        adopt();
         long now = clock.getAsLong();
-        for (Live live : List.copyOf(byKey.values())) {
+        for (Live live : List.copyOf(byId.values())) {
             String state = live.record.stateAt(now, idleGapMillis);
-            if (state.equals(live.record.state())) continue;
-            if (SessionRecord.IDLE.equals(state) && live.record.label() == null) {
+            if (SessionRecord.IDLE.equals(state) && (live.record.label() == null || !live.attached)) {
                 end(live, now);
                 continue;
             }
+            if (state.equals(live.record.state())) continue;
             live.record = live.record.withState(state);
             persist(live);
             publishSession(live, state);
@@ -196,6 +261,7 @@ public final class SessionLog {
     public synchronized @Nullable String placeRun(
             String trigger, @Nullable String label, String kind, String dir, long at) {
         if (!ownsTrigger(trigger) || dir == null || dir.isBlank()) return null;
+        adopt();
         Live live = sessionFor(trigger, label, clientOf(label), at);
         EpisodeInference.Placement p = live.episodes.place(at, projectOr(live, dir));
         touch(live, dir, at, p.episode());
@@ -205,16 +271,30 @@ public final class SessionLog {
     }
 
     /** Fold a finished run into the episode its admission placed it in, and log it as the session's action. */
-    public synchronized void runFinished(BuildRecord r) {
+    public void runFinished(BuildRecord r) {
+        FinishedRun run = FinishedRun.of(r);
+        if (run != null) runFinished(run);
+    }
+
+    /**
+     * {@link #runFinished(BuildRecord)} for a run as {@link FinishedRun} carries it: one finished
+     * here, or one a displaced engine reported. A log that no longer writes hands it to its
+     * successor.
+     */
+    public synchronized void runFinished(FinishedRun r) {
+        if (!writing()) {
+            successor.accept(r);
+            return;
+        }
+        adopt();
         String episode = r.episode();
-        if (episode == null || r.running()) return;
         int dot = episode.lastIndexOf('.');
         Live live = dot > 0 ? byId.get(episode.substring(0, dot)) : null;
         if (live == null) return;
         List<EpisodeInference.Change> changes =
                 r.cancelled() ? List.of() : live.episodes.fold(episode, RunFacts.fact(r));
         touch(live, r.dir(), r.finishedAt(), live.record.episode());
-        ActionRecord action = RunFacts.action(r, episode);
+        ActionRecord action = RunFacts.action(r);
         append(live, action);
         persist(live);
         publish(live, changes);
@@ -234,6 +314,7 @@ public final class SessionLog {
             String summary,
             @Nullable String headline) {
         if (!ownsTrigger(origin)) return;
+        adopt();
         Live live = sessionFor(origin, label, client, fact.at());
         String project = projectOr(live, fact.project());
         EpisodeInference.Placement p = live.episodes.place(fact.at(), project);
@@ -278,6 +359,7 @@ public final class SessionLog {
      */
     public synchronized @Nullable String goal(String origin, @Nullable String label, String project, String text) {
         if (!ownsTrigger(origin)) return null;
+        adopt();
         long now = clock.getAsLong();
         Live live = sessionFor(origin, label, clientOf(label), now);
         EpisodeInference.Placement p = live.episodes.goal(now, projectOr(live, project), text);
@@ -294,7 +376,7 @@ public final class SessionLog {
         sweep();
         Map<String, Map<String, Object>> rows = new LinkedHashMap<>();
         synchronized (this) {
-            for (Live live : byKey.values()) rows.put(live.record.id(), row(live.record, live.episodes.episodes()));
+            for (Live live : byId.values()) rows.put(live.record.id(), row(live.record, live.episodes.episodes()));
         }
         if (journal != null) {
             for (Map<String, Object> doc : journal.list()) {
@@ -368,6 +450,7 @@ public final class SessionLog {
         String key = key(origin, label);
         Live live = byKey.get(key);
         if (live != null) {
+            live.attached = true;
             if (!SessionRecord.LIVE.equals(live.record.state())) {
                 live.record = live.record.withState(SessionRecord.LIVE);
                 publishSession(live, SessionRecord.LIVE);
@@ -403,8 +486,10 @@ public final class SessionLog {
         persist(live);
         publish(live, changes);
         publishSession(live, SessionRecord.ENDED);
-        byKey.remove(key(r.origin(), r.label()));
+        byKey.remove(key(r.origin(), r.label()), live);
         byId.remove(r.id());
+        String connection = live.connection == null ? null : MiniJson.str(live.connection, "id");
+        if (connection != null) byConnection.remove(connection, live);
     }
 
     private void touch(Live live, @Nullable String dir, long at, @Nullable String episode) {
@@ -454,6 +539,7 @@ public final class SessionLog {
             if (live.memory.size() > MEMORY_ACTIONS) live.memory.removeFirst();
             return logged;
         }
+        if (!writing()) return logged;
         try {
             journal.append(live.record.id(), logged.toMap());
         } catch (IOException | RuntimeException e) {
@@ -463,22 +549,27 @@ public final class SessionLog {
     }
 
     private void persist(Live live) {
+        if (journal == null || !writing()) return;
         List<Map<String, Object>> eps = new ArrayList<>();
         for (Episode e : live.episodes.episodes()) eps.add(withProjectId(e).toMap());
-        write(live.record, eps);
-    }
-
-    private void write(SessionRecord record, List<Map<String, Object>> episodes) {
-        if (journal == null) return;
         Map<String, Object> doc = new LinkedHashMap<>();
         doc.put("schema", 1);
-        doc.put("session", record.toMap());
-        doc.put("episodes", episodes);
+        doc.put("session", live.record.toMap());
+        doc.put("episodes", eps);
+        doc.put("inference", live.episodes.state());
         try {
-            journal.write(record.id(), doc);
+            journal.write(live.record.id(), doc);
         } catch (IOException | RuntimeException e) {
-            Log.debug("session not written: " + record.id(), e);
+            Log.debug("session not written: " + live.record.id(), e);
         }
+    }
+
+    /** True while this engine writes the records; false for good once {@link #primary} fails. */
+    private boolean writing() {
+        if (retired) return false;
+        if (primary.getAsBoolean()) return true;
+        retired = true;
+        return false;
     }
 
     /**

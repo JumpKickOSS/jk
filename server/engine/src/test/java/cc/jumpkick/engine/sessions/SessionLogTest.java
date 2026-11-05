@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.jspecify.annotations.Nullable;
@@ -120,16 +121,107 @@ class SessionLogTest {
     }
 
     @Test
-    void a_new_engine_ends_the_sessions_a_dead_one_left_open() {
+    void a_new_engine_adopts_an_open_session_and_carries_on_its_episode() {
         String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
-        log.placeRun("mcp", LABEL, "test", "/ws/app", T + 1);
+        log.saveConnection("mcp", LABEL, Map.of("id", "3f9a", "client", "claude-code"));
+        String episode = Objects.requireNonNull(log.placeRun("mcp", LABEL, "test", "/ws/app", T + 1_000));
+        log.runFinished(run(episode, 27, T + 1_000, false));
 
         SessionLog next = newLog();
-        assertThat(next.endStale()).isEqualTo(1);
+        assertThat(next.adopt()).isEqualTo(1);
+        assertThat(next.connection("3f9a"))
+                .hasValueSatisfying(c -> assertThat(c).containsEntry("client", "claude-code"));
+        assertThat(next.holdsConnection("3f9a")).isTrue();
+        now.set(T + 5_000);
+        // Same session, same episode: the red streak the first engine saw is the one this green run ends.
+        assertThat(next.placeRun("mcp", LABEL, "test", "/ws/app", T + 5_000)).isEqualTo(episode);
+        next.runFinished(run(episode, 28, T + 5_000, true));
+
+        SessionLog.Page page = next.session(id, 0, 10).orElseThrow();
+        assertThat(page.session()).containsEntry("state", "live");
+        assertThat(page.episodes()).singleElement().satisfies(e -> assertThat(e)
+                .containsEntry("title", "Fixing QuoteTest#threeNightWeekendStay")
+                .containsEntry("outcome", "green")
+                .containsEntry("runs", 2));
+        assertThat(page.actions()).extracting(a -> a.get("seq")).containsExactly(1L, 2L);
+        assertThat(next.sessions(10)).singleElement().satisfies(r -> assertThat(r)
+                .containsEntry("id", id));
+        assertThat(next.adopt()).as("adoption runs once").isZero();
+    }
+
+    @Test
+    void a_session_a_dead_engine_left_open_is_adopted_then_ended_by_the_idle_sweep() {
+        String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
+        log.saveConnection("mcp", LABEL, Map.of("id", "3f9a"));
+        callers(T + 1_000);
+
+        SessionLog next = newLog();
+        next.adopt();
+        now.set(T + 1_000 + EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+        next.sweep();
+        assertThat(next.session(id, 0, 1).orElseThrow().session()).containsEntry("state", "live");
+
+        now.set(T + 2_000 + EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+        next.sweep();
         SessionLog.Page page = next.session(id, 0, 10).orElseThrow();
         assertThat(page.session()).containsEntry("state", "ended");
-        assertThat(page.episodes()).singleElement().satisfies(e -> assertThat(e).containsEntry("outcome", "abandoned"));
-        assertThat(next.endStale()).isZero();
+        assertThat(page.episodes())
+                .singleElement()
+                .satisfies(e -> assertThat(e).as("judged by its last action").containsEntry("outcome", "green"));
+        assertThat(next.connection("3f9a"))
+                .as("an ended session's connection is gone")
+                .isEmpty();
+        assertThat(next.holdsConnection("3f9a")).isFalse();
+    }
+
+    @Test
+    void an_adopted_session_whose_connection_returns_goes_idle_and_does_not_end() {
+        String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
+        log.saveConnection("mcp", LABEL, Map.of("id", "3f9a"));
+
+        SessionLog next = newLog();
+        assertThat(next.connection("3f9a")).isPresent();
+        now.set(T + EpisodeInference.DEFAULT_IDLE_GAP_MILLIS + 1);
+        next.sweep();
+
+        assertThat(next.session(id, 0, 1).orElseThrow().session()).containsEntry("state", "idle");
+    }
+
+    @Test
+    void a_displaced_log_writes_nothing_and_hands_its_runs_to_the_successor() throws Exception {
+        AtomicBoolean primary = new AtomicBoolean(true);
+        List<FinishedRun> handed = new ArrayList<>();
+        log.writeWhile(primary::get, handed::add);
+        String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
+        String episode = Objects.requireNonNull(log.placeRun("mcp", LABEL, "test", "/ws/app", T + 1_000));
+        Path dir = root.resolve("sessions").resolve(id);
+        String before = Files.readString(dir.resolve("session.json"));
+
+        SessionLog successor = newLog();
+        successor.adopt();
+        primary.set(false);
+        log.runFinished(run(episode, 27, T + 1_000, false));
+        callers(T + 2_000);
+        primary.set(true);
+        log.sweep();
+        callers(T + 3_000);
+
+        assertThat(Files.readString(dir.resolve("session.json")))
+                .as("once displaced, never again")
+                .isEqualTo(before);
+        assertThat(Files.exists(dir.resolve("actions.jsonl"))).isFalse();
+        assertThat(handed).singleElement().satisfies(r -> assertThat(r.episode())
+                .isEqualTo(episode));
+
+        successor.runFinished(
+                Objects.requireNonNull(FinishedRun.of(handed.getFirst().toMap())));
+        SessionLog.Page page = successor.session(id, 0, 10).orElseThrow();
+        assertThat(page.episodes()).singleElement().satisfies(e -> assertThat(e)
+                .containsEntry("title", "Fixing QuoteTest#threeNightWeekendStay")
+                .containsEntry("runs", 1));
+        assertThat(page.actions()).singleElement().satisfies(a -> assertThat(a)
+                .containsEntry("summary", "test #27")
+                .containsEntry("outcome", "red"));
     }
 
     @Test

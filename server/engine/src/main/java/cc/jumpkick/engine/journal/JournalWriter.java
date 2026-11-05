@@ -41,6 +41,7 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -70,6 +71,9 @@ public final class JournalWriter {
 
     /** The session episode each request was admitted into, until its record is written. */
     private final Map<Long, String> episodes = new ConcurrentHashMap<>();
+
+    /** Records being written right now. */
+    private final AtomicInteger writing = new AtomicInteger();
 
     /** Request {@code requestId}'s record carries {@code episode}; null places it in none. */
     public void episode(long requestId, @Nullable String episode) {
@@ -249,6 +253,24 @@ public final class JournalWriter {
      * would have held, and otherwise {@code null}.
      */
     public @Nullable String write(long requestId, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
+        writing.incrementAndGet();
+        try {
+            return writeRecord(requestId, cancelled, millis, writer);
+        } finally {
+            writing.decrementAndGet();
+        }
+    }
+
+    /**
+     * True when no run is waiting for its record or being written: every finished run has been
+     * handed to {@link #onFinished}. A draining engine waits for it before it signs off.
+     */
+    public boolean settled() {
+        return writing.get() == 0 && episodes.isEmpty();
+    }
+
+    private @Nullable String writeRecord(
+            long requestId, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         BuildAccumulator a = sessions.takeAccumulator(requestId);
         String episode = episodes.remove(requestId);
         if (a == null) {

@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
-/** A finished run record as episode inference reads it, and as the session's timeline shows it. */
+/** A finished run as episode inference reads it, and as the session's timeline shows it. */
 final class RunFacts {
 
     /** Characters of a headline the timeline keeps. */
@@ -14,11 +14,12 @@ final class RunFacts {
 
     private RunFacts() {}
 
-    static Fact fact(BuildRecord r) {
-        return Fact.run(r.startedAt(), r.millis(), r.dir(), module(r), r.success(), failingTests(r));
+    static Fact fact(FinishedRun r) {
+        String dir = r.dir();
+        return Fact.run(r.startedAt(), r.millis(), dir == null ? "" : dir, r.module(), r.success(), r.failingTests());
     }
 
-    static ActionRecord action(BuildRecord r, String episode) {
+    static ActionRecord action(FinishedRun r) {
         String outcome = r.cancelled() ? "cancelled" : r.success() ? Episode.GREEN : Episode.RED;
         String summary = r.kind() + (r.buildNumber() > 0 ? " #" + r.buildNumber() : "");
         return new ActionRecord(
@@ -26,10 +27,10 @@ final class RunFacts {
                 r.startedAt(),
                 ActionRecord.RUN,
                 summary,
-                headline(r),
+                r.headline(),
                 outcome,
                 r.millis(),
-                episode,
+                r.episode(),
                 r.dir() == null || r.dir().isBlank() ? null : r.dir(),
                 r.buildNumber());
     }
@@ -64,7 +65,7 @@ final class RunFacts {
         return name != null ? name : EpisodeInference.baseName(r.dir());
     }
 
-    private static @Nullable String headline(BuildRecord r) {
+    static @Nullable String headline(BuildRecord r) {
         BuildRecord.Tests t = r.tests();
         if (t != null && t.failed() > 0) return t.failed() + " of " + t.total() + " tests failed";
         for (BuildRecord.Diag d : r.diagnostics()) {

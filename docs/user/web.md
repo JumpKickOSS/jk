@@ -45,6 +45,12 @@ holds the MCP calls that are not runs, each as one line with its outcome and tim
 graph's `query`, `callers`, `read` and `find`, `rename`, and the dependency changes `deps`,
 `update` and `workspace`.
 
+A session survives the engine. When an upgrade replaces the engine, or the engine dies and the
+next command starts another, the new engine carries on every session the old one left open: an
+agent's next call keeps its session, its label and its current episode, and a run that was still
+finishing on the old engine lands in that episode. A session nobody returns to ends once it has
+been idle for ten minutes.
+
 An episode starts with the session's first action, and again when the session moves to another
 project, when it acts after ten minutes of quiet, and after a red run streak ends green (the
 green run closes the episode it fixed). Its title is inferred from what it did, in this order:
@@ -59,10 +65,9 @@ green run closes the episode it fixed). Its title is inferred from what it did, 
 | Anything else | `Working in <module>` |
 
 An open episode is **working**. A closed one is **green** or **red** by its last run (or, with no
-run, its last action), and **abandoned** when nothing in it was judged — as is an episode a
-stopped engine left open. `GET /api/sessions` lists live and recent sessions with their current
-episode; `GET /api/sessions/<id>` returns one with its episodes and a page of its timeline
-([HTTP](../contributors/http.md#get-apisessions)).
+run, its last action), and **abandoned** when nothing in it was judged. `GET /api/sessions` lists
+live and recent sessions with their current episode; `GET /api/sessions/<id>` returns one with its
+episodes and a page of its timeline ([HTTP](../contributors/http.md#get-apisessions)).
 
 ## Following a run
 
