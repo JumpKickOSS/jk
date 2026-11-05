@@ -410,7 +410,8 @@ a project that could name a command would run it on your machine at its first re
 
 On a desktop, `jk repo login` and `jk auth login` put the token or password in the OS keychain
 when one answers: the macOS Keychain (`/usr/bin/security`), the Windows Credential Manager
-(`CredWriteW` in process, a generic credential `jk:repo/<id>` that `cmdkey /list` shows), or the
+(`CredWriteW` in process, a generic credential `jk:repo/<id>` that `cmdkey /list` shows, holding
+the secret in UTF-8, so a token of up to 2,560 characters), or the
 Secret Service on Linux (GNOME Keyring, KWallet, KeePassXC, through libsecret's `secret-tool`). The
 record under `~/.jk/creds/repo/<id>` keeps what is not secret: the `<scheme> <origin>` binding, the
 username, and a pointer to the keychain item (`secret-service repo/nexus`). A `jk auth login`

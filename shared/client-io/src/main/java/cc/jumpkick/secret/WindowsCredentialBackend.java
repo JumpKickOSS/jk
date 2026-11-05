@@ -11,7 +11,9 @@ import org.jspecify.annotations.Nullable;
  * The Windows Credential Manager, through {@code advapi32}'s {@code CredReadW}, {@code CredWriteW}
  * and {@code CredDeleteW} called in process ({@link Advapi32Credentials}). An item is a generic
  * credential whose target is {@code jk:<item>} and whose user name is {@code jk}; its blob is the
- * secret in UTF-16, the way the Credential Manager UI and {@code cmdkey} show one.
+ * secret in UTF-8. The blob holds at most {@value #MAX_BLOB_BYTES} bytes, so UTF-8 keeps a token
+ * (ASCII, as tokens and JWTs are) of up to {@value #MAX_BLOB_BYTES} characters, twice what UTF-16
+ * would; a longer secret is refused before any call, and the login keeps it in its record.
  *
  * <p>No child process runs and the secret never leaves this process's memory on its way in or
  * out. A logon session without a credential store ({@code ERROR_NO_SUCH_LOGON_SESSION}, as a
@@ -25,7 +27,7 @@ public final class WindowsCredentialBackend implements SecretBackend {
     /** {@code ERROR_NO_SUCH_LOGON_SESSION}: this logon session has no credential set. */
     static final int ERROR_NO_SUCH_LOGON_SESSION = 1312;
 
-    /** {@code CRED_MAX_CREDENTIAL_BLOB_SIZE}: 2560 bytes, so 1280 UTF-16 code units. */
+    /** {@code CRED_MAX_CREDENTIAL_BLOB_SIZE}: 2560 bytes. */
     static final int MAX_BLOB_BYTES = 5 * 512;
 
     /** What a {@code CredReadW} answered: a Win32 error, and the blob when it was 0. */
@@ -103,15 +105,15 @@ public final class WindowsCredentialBackend implements SecretBackend {
             throw new SecretBackendException(
                     "the Windows Credential Manager refused to read " + item + ": " + describe(r.error()));
         }
-        return Optional.of(new String(blob, StandardCharsets.UTF_16LE));
+        return Optional.of(new String(blob, StandardCharsets.UTF_8));
     }
 
     @Override
     public void write(String item, String label, String secret) {
-        byte[] blob = secret.getBytes(StandardCharsets.UTF_16LE);
+        byte[] blob = secret.getBytes(StandardCharsets.UTF_8);
         if (blob.length > MAX_BLOB_BYTES) {
-            throw new SecretBackendException("the Windows Credential Manager holds at most " + MAX_BLOB_BYTES / 2
-                    + " UTF-16 characters, and the secret for " + item + " has " + blob.length / 2);
+            throw new SecretBackendException("the Windows Credential Manager holds at most " + MAX_BLOB_BYTES
+                    + " bytes in a credential, and the secret for " + item + " is " + blob.length + " bytes in UTF-8");
         }
         int error = calls().write(target(item), label, SecretItems.SERVICE, blob);
         if (error != 0) {
