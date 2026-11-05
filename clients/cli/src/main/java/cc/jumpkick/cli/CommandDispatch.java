@@ -88,6 +88,7 @@ import cc.jumpkick.command.toolchain.ToolRunCommand;
 import cc.jumpkick.command.toolchain.TrustCommand;
 import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
@@ -249,8 +250,13 @@ public final class CommandDispatch {
             // Not a jk command — a build plugin may declare it. Only when a project manifest is
             // present, and never by SPAWNING an engine for a typo: the hosted attempt requires a
             // live socket; the test seam runs in-process.
-            Integer pluginExit = tryPluginCommand(
-                    Path.of("").toAbsolutePath().normalize(), command, all.subList(commandAt + 1, all.size()));
+            // The project is the one every command works in: -C/--dir when given, else the cwd.
+            Path dir = SessionContext.current()
+                    .config()
+                    .dirOr(Path.of(""))
+                    .toAbsolutePath()
+                    .normalize();
+            Integer pluginExit = tryPluginCommand(dir, command, all.subList(commandAt + 1, all.size()));
             if (pluginExit != null) return pluginExit;
             return null; // let the caller show top-level help
         }
@@ -327,14 +333,16 @@ public final class CommandDispatch {
      * the exit code when a plugin owned and ran it, else {@code null} (no jk.toml, no reachable
      * engine, no owning plugin — the normal unknown-command help follows).
      *
-     * <p>Beside a {@code ~/.jk/config.toml} that does not parse, an unanswered command is not shown
-     * the help: a {@code [plugins]} pin there may be what declares it, so the file and its position
-     * are named instead ({@link #unreadableUserConfig}).
+     * <p>Beside a {@code ~/.jk/config.toml} that does not parse, the command is not looked up at all:
+     * a {@code [plugins]} pin there may be what declares it, and the lookup parses the project with
+     * the file, so the file and its position are named instead ({@link #unreadableUserConfig}) —
+     * the same answer whether or not an engine is running.
      */
     static @Nullable Integer tryPluginCommand(Path dir, String command, List<String> args) {
         if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) return null;
-        Integer ran = runPluginCommand(dir, command, args);
-        return ran != null ? ran : unreadableUserConfig(command);
+        Integer unreadable = unreadableUserConfig(command);
+        if (unreadable != null) return unreadable;
+        return runPluginCommand(dir, command, args);
     }
 
     /**
