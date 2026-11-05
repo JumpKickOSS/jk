@@ -88,7 +88,11 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<k=v>", "Template property k=v (repeatable)", "-p", "--param")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "-d", "--deps"),
-                Opt.value("<layout>", "Tree: " + Layout.scaffoldHelp() + ".", "-L", "--layout"),
+                Opt.value(
+                        "<layout>",
+                        "Tree: " + Layout.scaffoldHelp() + "; with -t, the template's own jk_layout is the default.",
+                        "-L",
+                        "--layout"),
                 Opt.value("<module>", "Kotlin module name (-> project.module).", "-m", "--kotlin-module"),
                 Opt.flag("Force a standalone project (not a module).", "-N", "--no-module"),
                 Opt.flag("", "--no-member").hide()); // undocumented synonym for --no-module
