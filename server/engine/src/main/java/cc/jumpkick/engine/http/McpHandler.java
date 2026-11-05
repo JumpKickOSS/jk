@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
@@ -120,6 +121,11 @@ public final class McpHandler {
         this.surface = surface;
     }
 
+    /** Keep at most {@code max} connections loaded while any is idle ({@code [mcp] max-sessions}). */
+    public void maxSessions(int max) {
+        ctx.connections().max(max);
+    }
+
     /** Serve another tool registry; tests only. */
     void tools(McpTools tools) {
         this.tools = tools;
@@ -185,9 +191,10 @@ public final class McpHandler {
 
     /**
      * The response body, the HTTP status it goes out with, and, when this body's {@code initialize}
-     * opened a connection, the {@code Mcp-Session-Id} the transport must hand back.
+     * opened a connection, the {@code Mcp-Session-Id} the transport must hand back. {@code
+     * retryAfterSeconds} is the {@code Retry-After} of a {@code 503}, else 0.
      */
-    public record Reply(String body, @Nullable String openedSessionId, int status) {}
+    public record Reply(String body, @Nullable String openedSessionId, int status, long retryAfterSeconds) {}
 
     /** The JSON-RPC code of a request naming a session this engine does not know. */
     static final int UNKNOWN_SESSION = -32001;
@@ -244,32 +251,46 @@ public final class McpHandler {
         }
         AtomicReference<McpConnection> opened = new AtomicReference<>();
         AtomicInteger status = new AtomicInteger(200);
-        String response = McpRpc.handleBody(
-                body,
-                new McpRpc.Router() {
-                    @Override
-                    public @Nullable Object call(String method, Map<String, Object> params) {
-                        if ("initialize".equals(method)) {
-                            McpConnection c = initialize(params, pin);
-                            opened.set(c);
-                            String playbook = c.pinned() ? McpTools.PINNED_INSTRUCTIONS : McpTools.INSTRUCTIONS;
-                            return McpRpc.initialize(c.revision().wire(), SERVER_NAME, ctx.version(), playbook);
+        AtomicLong retryAfter = new AtomicLong();
+        if (connection != null) connection.callStarted();
+        String response;
+        try {
+            response = McpRpc.handleBody(
+                    body,
+                    new McpRpc.Router() {
+                        @Override
+                        public @Nullable Object call(String method, Map<String, Object> params) {
+                            if ("initialize".equals(method)) {
+                                McpConnection c;
+                                try {
+                                    c = initialize(params, pin);
+                                } catch (McpConnections.Full full) {
+                                    status.set(503);
+                                    retryAfter.set(full.retryAfterSeconds());
+                                    throw new McpError(BAD_REQUEST, full.getMessage());
+                                }
+                                opened.set(c);
+                                String playbook = c.pinned() ? McpTools.PINNED_INSTRUCTIONS : McpTools.INSTRUCTIONS;
+                                return McpRpc.initialize(c.revision().wire(), SERVER_NAME, ctx.version(), playbook);
+                            }
+                            if (connection == null && pin != null) {
+                                status.set(400);
+                                throw new McpError(BAD_REQUEST, "no Mcp-Session-Id: send initialize first");
+                            }
+                            return route(method, params, connection, outbound);
                         }
-                        if (connection == null && pin != null) {
-                            status.set(400);
-                            throw new McpError(BAD_REQUEST, "no Mcp-Session-Id: send initialize first");
-                        }
-                        return route(method, params, connection, outbound);
-                    }
 
-                    @Override
-                    public void answer(Map<String, Object> response) {
-                        if (connection != null) connection.answer(response);
-                    }
-                },
-                revision.batches());
+                        @Override
+                        public void answer(Map<String, Object> response) {
+                            if (connection != null) connection.answer(response);
+                        }
+                    },
+                    revision.batches());
+        } finally {
+            if (connection != null) connection.callEnded();
+        }
         McpConnection c = opened.get();
-        return new Reply(response, c == null ? null : c.id(), status.get());
+        return new Reply(response, c == null ? null : c.id(), status.get(), retryAfter.get());
     }
 
     /** True when {@code sessionId} is absent or names a connection this engine can answer. */
@@ -285,7 +306,7 @@ public final class McpHandler {
                     throw new McpError(code, message);
                 },
                 revision.batches());
-        return new Reply(response, null, status);
+        return new Reply(response, null, status, 0);
     }
 
     /**

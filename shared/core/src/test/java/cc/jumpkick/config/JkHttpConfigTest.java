@@ -328,6 +328,23 @@ class JkHttpConfigTest {
     }
 
     @Test
+    void mcp_max_sessions_reads_the_file_and_the_env_and_refuses_zero(@TempDir Path tempDir) throws IOException {
+        assertThat(JkHttpConfig.Mcp.DEFAULTS.maxSessions()).isEqualTo(JkHttpConfig.DEFAULT_MCP_MAX_SESSIONS);
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[mcp]\nmax-sessions = 32\n");
+        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().mcp().maxSessions())
+                .isEqualTo(32);
+        assertThat(JkHttpConfig.resolve(toml, Map.of("JK_MCP_MAX_SESSIONS", "8")::get)
+                        .orElseThrow()
+                        .mcp()
+                        .maxSessions())
+                .isEqualTo(8);
+        Files.writeString(toml, "[mcp]\nmax-sessions = 0\n");
+        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().mcp().maxSessions())
+                .isEqualTo(JkHttpConfig.DEFAULT_MCP_MAX_SESSIONS);
+    }
+
+    @Test
     void mcp_disable_does_not_disable_http(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("config.toml");
         Files.writeString(toml, "[mcp]\nenabled = false\n");

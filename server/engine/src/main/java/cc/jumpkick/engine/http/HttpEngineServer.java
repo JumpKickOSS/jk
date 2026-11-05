@@ -191,6 +191,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 : null;
         // tools/list answers the loop set unless [mcp] tools = "all" asked for every card.
         if (this.mcp != null) this.mcp.surface(McpTools.Surface.of(config.mcp().tools()));
+        if (this.mcp != null) this.mcp.maxSessions(config.mcp().maxSessions());
         // disk / doctor / jk://disk read the same memoized walk as GET /api/cache.
         if (this.mcp != null) this.mcp.cacheSnapshot(cache);
         // details serves a budgeted tail of the journal-owned details.jsonl transcript.

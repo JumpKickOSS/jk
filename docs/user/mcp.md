@@ -62,6 +62,14 @@ Disable MCP only: `[mcp] enabled = false` in `~/.jk/config.toml` (or
 
 SSE budget: `[mcp] max-event-streams` / `JK_MCP_MAX_EVENT_STREAMS` (default **16**).
 
+Session limit: `[mcp] max-sessions` / `JK_MCP_MAX_SESSIONS` (default **256**) MCP connections stay
+loaded in the engine. Past it, the engine sets aside the connection that has been quiet the
+longest (no call outstanding, no request for 30 seconds); its client notices nothing, and the
+connection comes back with the same session on its next request. Only when every connection is
+busy does a new `initialize` get `503` with `Retry-After` and an error naming the limit: close idle
+agents, or raise `max-sessions` and restart the engine. Calls on connections already open are
+never refused.
+
 The loop tools (`run`, `diagnostics`, `deps`, `callers`, `rename`, `skill`) and `why` answer `content` text only;
 for `run` and `diagnostics` that text **is** the verdict (below). They send no
 `structuredContent`, because hosts that get one show the model that instead of the text. A

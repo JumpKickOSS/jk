@@ -121,6 +121,9 @@ final class McpFront {
         boolean empty = response == null || response.isEmpty();
         if (reply.status() != 200) {
             // Refused: each request in the body is answered with the JSON-RPC error that says why.
+            if (reply.retryAfterSeconds() > 0) {
+                exchange.getResponseHeaders().set("Retry-After", String.valueOf(reply.retryAfterSeconds()));
+            }
             if (empty) exchange.sendResponseHeaders(reply.status(), -1);
             else HttpResponses.sendJson(exchange, reply.status(), response);
             return;
