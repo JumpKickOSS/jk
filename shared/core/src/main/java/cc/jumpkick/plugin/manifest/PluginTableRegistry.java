@@ -50,31 +50,65 @@ public final class PluginTableRegistry {
     /** The engine fat jar: the only shipped artifact that embeds {@code :core}. */
     private static final String ENGINE_FAT_JAR_PREFIX = "jk-engine";
 
-    private static final List<String> BUILT_IN = List.of(
-            "spring-boot.jk-plugin.toml",
-            "grails.jk-plugin.toml",
-            "quarkus.jk-plugin.toml",
-            "android.jk-plugin.toml",
-            "protobuf.jk-plugin.toml",
-            "generator.jk-plugin.toml",
-            "openapi.jk-plugin.toml",
-            "localizer.jk-plugin.toml",
-            "antlr.jk-plugin.toml",
-            "taglib.jk-plugin.toml",
-            "jenkins-test.jk-plugin.toml",
-            "avro.jk-plugin.toml",
-            "jaxb.jk-plugin.toml",
-            "jooq.jk-plugin.toml",
-            "lint.jk-plugin.toml",
-            "minified.jk-plugin.toml",
-            "micronaut.jk-plugin.toml",
-            "hibernate.jk-plugin.toml",
-            "intellij.jk-plugin.toml",
-            "javafx.jk-plugin.toml");
+    /** A first-party plugin: its id (the {@code jk-<id>} worker it ships in) and the table it owns. */
+    private record BuiltIn(String id, String table) {}
+
+    /**
+     * Every first-party plugin, with the top-level table it owns. The table is written here as well
+     * as in the plugin's own {@code jk-plugin.toml} because a cold store has no manifest to read
+     * yet: an unowned {@code [generate]} must still name {@code jk-generator} to fetch.
+     * {@code PluginTableRegistryTest} holds each pair to the shipped manifest.
+     */
+    private static final List<BuiltIn> BUILT_INS = List.of(
+            new BuiltIn("spring-boot", "spring-boot"),
+            new BuiltIn("grails", "grails"),
+            new BuiltIn("quarkus", "quarkus"),
+            new BuiltIn("android", "android"),
+            new BuiltIn("protobuf", "protobuf"),
+            new BuiltIn("generator", "generate"),
+            new BuiltIn("openapi", "openapi"),
+            new BuiltIn("localizer", "localizer"),
+            new BuiltIn("antlr", "antlr"),
+            new BuiltIn("taglib", "taglib"),
+            new BuiltIn("jenkins-test", "jenkins-test"),
+            new BuiltIn("avro", "avro"),
+            new BuiltIn("jaxb", "jaxb"),
+            new BuiltIn("jooq", "jooq"),
+            new BuiltIn("lint", "lint"),
+            new BuiltIn("minified", "minified"),
+            new BuiltIn("micronaut", "micronaut"),
+            new BuiltIn("hibernate", "hibernate"),
+            new BuiltIn("intellij", "intellij"),
+            new BuiltIn("javafx", "javafx"));
+
+    private static final List<String> BUILT_IN =
+            BUILT_INS.stream().map(b -> b.id() + BUILT_IN_SUFFIX).toList();
 
     /** The built-in manifest filenames — the only names the resources strip may delete. */
     public static List<String> builtInManifestNames() {
         return BUILT_IN;
+    }
+
+    /**
+     * The id of the first-party plugin named by {@code idOrTable}, which may be either: the
+     * plugin's id ({@code generator}) or the table it owns ({@code generate}). Empty for a name no
+     * built-in answers to.
+     */
+    public static Optional<String> builtInId(String idOrTable) {
+        for (BuiltIn b : BUILT_INS) {
+            if (b.table().equals(idOrTable)) return Optional.of(b.id());
+        }
+        for (BuiltIn b : BUILT_INS) {
+            if (b.id().equals(idOrTable)) return Optional.of(b.id());
+        }
+        return Optional.empty();
+    }
+
+    /** Built-in plugin id → the table it owns, in catalog order. */
+    public static Map<String, String> builtInTables() {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (BuiltIn b : BUILT_INS) out.put(b.id(), b.table());
+        return out;
     }
 
     /** Load a plugin resource relative to its manifest ({@code <id>/<relPath>}). */
@@ -570,7 +604,7 @@ public final class PluginTableRegistry {
         return name == null ? "" : name.toString();
     }
 
-    private static String builtInId(String resource) {
+    private static String idOfResource(String resource) {
         return resource.endsWith(BUILT_IN_SUFFIX)
                 ? resource.substring(0, resource.length() - BUILT_IN_SUFFIX.length())
                 : resource;
@@ -584,7 +618,7 @@ public final class PluginTableRegistry {
     static Map<String, PluginDescriptor> loadFromPluginJarProperties() {
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
         for (String resource : BUILT_IN) {
-            String id = builtInId(resource);
+            String id = idOfResource(resource);
             String override = System.getProperty("jk." + id + ".plugin.jar");
             if (override == null || override.isBlank()) continue;
             Path jar = Path.of(override);
@@ -611,7 +645,7 @@ public final class PluginTableRegistry {
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
         int missing = 0;
         for (String resource : BUILT_IN) {
-            Path toml = root.resolve("plugins").resolve(builtInId(resource)).resolve(ManifestPaths.PLUGIN_MANIFEST);
+            Path toml = root.resolve("plugins").resolve(idOfResource(resource)).resolve(ManifestPaths.PLUGIN_MANIFEST);
             if (!Files.isRegularFile(toml)) {
                 missing++;
                 continue;
@@ -676,7 +710,7 @@ public final class PluginTableRegistry {
     private static boolean isFirstPartyPluginCheckout(Path dir) {
         return Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))
                 && Files.isRegularFile(dir.resolve("plugins")
-                        .resolve(builtInId(BUILT_IN.getFirst()))
+                        .resolve(idOfResource(BUILT_IN.getFirst()))
                         .resolve(ManifestPaths.PLUGIN_MANIFEST));
     }
 

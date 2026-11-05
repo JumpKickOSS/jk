@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
@@ -59,12 +60,14 @@ public final class BuiltInPluginJars {
     }
 
     /**
-     * Fetch + install the built-in whose worker is {@code jk-<table>}; failure detail or null. A
-     * worker jar this machine holds that does not own the table is the detail of {@link
-     * #doesNotOwn}: the project was written for a newer plugin than the one installed here.
+     * Fetch + install the built-in that owns {@code table} (or whose id it is); failure detail or
+     * null. The worker is {@code jk-<id>}, and the id is not always the table: {@code [generate]}
+     * is {@code generator}'s. A worker jar this machine holds that does not own the table is the
+     * detail of {@link #doesNotOwn}: the project was written for a newer plugin than the one
+     * installed here.
      */
-    private static @Nullable String fetchAndInstall(String table) {
-        var plugin = PluginJar.byArtifactId("jk-" + table);
+    static @Nullable String fetchAndInstall(String table) {
+        var plugin = workerOwning(table);
         if (plugin.isEmpty()) return null; // not a first-party table — the plain error stands
         try {
             Path jar = plugin.get().locate(JkStores.storeCas());
@@ -75,6 +78,11 @@ public final class BuiltInPluginJars {
         } catch (IOException | RuntimeException e) {
             return e.getMessage();
         }
+    }
+
+    /** The first-party worker whose plugin owns {@code idOrTable}; empty for a name no built-in answers to. */
+    static Optional<PluginJar> workerOwning(String idOrTable) {
+        return PluginTableRegistry.builtInId(idOrTable).flatMap(id -> PluginJar.byArtifactId("jk-" + id));
     }
 
     /**
