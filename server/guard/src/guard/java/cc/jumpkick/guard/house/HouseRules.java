@@ -434,18 +434,19 @@ final class HouseRules {
         v.population(files);
     }
 
-    /**
-     * The reads that throw {@code UserConfigParseException} for a {@code ~/.jk/config.toml} that does
-     * not parse: every manifest parse (it folds the user's {@code [plugins]} pins in) and the strict
-     * {@code GlobalConfig} readers.
-     */
-    private static final Pattern CONFIG_DOOR = Pattern.compile("\\b(?:JkBuildParser\\.(?:parse|parseLocal|reparse)"
-            + "|WorkspaceLoader\\.loadModules"
-            + "|UserPlugins\\.fromConfig"
-            + "|JkTemplatesConfig\\.resolve"
-            + "|EffectiveUserConfig\\.rows"
-            + "|GlobalConfig\\.(?:credentialsStore|image|network|nodeSources|mirrors|repositories"
-            + "|repositoryMirrors|repositoryDeclarations))\\s*\\(");
+    /** A javadoc that says the declaration under it throws {@code UserConfigParseException}. */
+    private static final Pattern THROWS_CONFIG_ERROR =
+            Pattern.compile("/\\*\\*(?:(?!\\*/).)*?@throws\\s+UserConfigParseException\\b.*?\\*/", Pattern.DOTALL);
+    /** The name such a declaration declares: annotations skipped, the identifier before its {@code (}. */
+    private static final Pattern DECLARED_NAME =
+            Pattern.compile("\\s*(?:@\\w+(?:\\([^)]*\\))?\\s*)*[^;{=(]*?(\\w+)\\s*\\(");
+
+    private static final Pattern METHOD_HEADER =
+            Pattern.compile("(\\w+)\\s*\\((?:[^()]|\\([^()]*\\))*\\)\\s*(?:throws\\s+[\\w.\\s,]+)?$");
+    private static final Pattern NOT_A_METHOD = Pattern.compile("=|->|\\b(?:class|record|interface|enum|new)\\b");
+    private static final Pattern TYPE_HEADER = Pattern.compile("(?<![\\w$.])(?:class|interface|enum|record)\\s+(\\w+)");
+    private static final Set<String> STATEMENT_KEYWORDS =
+            Set.of("if", "for", "while", "switch", "catch", "synchronized", "try", "return", "else", "do", "throw");
 
     private static final Pattern TRY = Pattern.compile("(?<![\\w$])try\\s*");
     private static final Pattern CATCH = Pattern.compile("\\G\\s*catch\\s*\\(");
@@ -454,10 +455,16 @@ final class HouseRules {
     private static final Pattern NARROW_CONFIG =
             Pattern.compile("(?<![\\w$])(?:UserConfigParseException|JkBuildParseException)(?![\\w$])");
 
+    /** A method a call can name: its file's class, its own name, and the file that declares it. */
+    private record Callee(String owner, String name, String file) {}
+
+    /** A method or type body in blanked code: its name and the offsets of its braces. */
+    private record Method(String name, int open, int close) {}
+
     @Guard(
             id = "config-error-through-broad-catch",
             why =
-                    "a catch (Exception) around a manifest parse or a strict config.toml read turns a broken ~/.jk/config.toml into a silent fallback, and the user never learns which line to fix",
+                    "a catch (Exception) around a read that throws UserConfigParseException, or around a same-module method that calls one, turns a broken ~/.jk/config.toml into a silent fallback, and the user never learns which line to fix",
             instead =
                     "put `catch (UserConfigParseException unparsed) { throw unparsed; }` ahead of the broad catch, or render the caught exception's message (Errors.text(e), e.getMessage(), requestFailedLine(dir, e)): it carries file:line:col")
     @Fixture("server/guard/fixtures/config-error-through-broad-catch")
@@ -481,10 +488,42 @@ final class HouseRules {
             in = "shared/core/src/main/java/cc/jumpkick/templates/OfficialTemplatesFreshen.java",
             reason = "a background freshen that never throws; its log line carries the message and the position")
     void configErrorThroughBroadCatch(Text text, Violations v) {
+        List<String> files = text.files(MAIN_JAVA);
+        Map<String, String> codes = new LinkedHashMap<>();
+        for (String rel : files) codes.put(rel, text.blanked(rel, Blank.COMMENTS_AND_STRINGS));
+        // The reads: every method whose javadoc declares the throw. No list to keep: a new strict
+        // reader is followed as soon as it says what it throws.
+        List<Callee> doors = new ArrayList<>();
+        for (String rel : files) {
+            String raw = text.blanked(rel, Blank.NONE);
+            if (!raw.contains("UserConfigParseException")) continue;
+            List<Method> types = types(codes.get(rel));
+            Matcher doc = THROWS_CONFIG_ERROR.matcher(raw);
+            while (doc.find()) {
+                Matcher name = DECLARED_NAME.matcher(raw).region(doc.end(), raw.length());
+                if (name.lookingAt()) doors.add(new Callee(ownerAt(types, doc.end(), rel), name.group(1), rel));
+            }
+        }
+        if (doors.isEmpty())
+            throw new OwnerMissing(
+                    "no method declares `@throws UserConfigParseException`, so this guard knows no read to follow");
+        // One hop: a method that calls a read is a read to a caller in its own module.
+        List<Callee> wrappers = new ArrayList<>();
+        for (String rel : files) {
+            String code = codes.get(rel);
+            Pattern direct = calls(doors, List.of(), rel);
+            if (!direct.matcher(code).find()) continue;
+            List<Method> types = types(code);
+            for (Method m : methods(code)) {
+                if (direct.matcher(code).region(m.open(), m.close()).find())
+                    wrappers.add(new Callee(ownerAt(types, m.open(), rel), m.name(), rel));
+            }
+        }
         long tries = 0;
-        for (String rel : text.files(MAIN_JAVA)) {
-            String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
-            if (!CONFIG_DOOR.matcher(code).find()) continue;
+        for (String rel : files) {
+            String code = codes.get(rel);
+            if (!code.contains("catch")) continue;
+            Pattern reach = calls(doors, wrappers, rel);
             Matcher t = TRY.matcher(code);
             while (t.find()) {
                 int open = t.end();
@@ -492,9 +531,10 @@ final class HouseRules {
                     open = skipSpace(code, closing(code, open, '(', ')') + 1);
                 if (open >= code.length() || code.charAt(open) != '{') continue;
                 int close = closing(code, open, '{', '}');
-                Matcher door = CONFIG_DOOR.matcher(code).region(open, close);
+                Matcher door = reach.matcher(code).region(open, close);
                 if (!door.find()) continue;
                 tries++;
+                String read = door.group().replaceAll("\\s*\\($", "").replaceAll("\\s+", "");
                 boolean through = false;
                 int at = close + 1;
                 Matcher c = CATCH.matcher(code);
@@ -513,15 +553,10 @@ final class HouseRules {
                         if (handlesConfigError(handler, var)) {
                             if (rethrows(handler, var)) through = true;
                         } else {
+                            String site = "catch (" + types.strip() + ") around " + read;
                             v.add(
-                                    new TextSite(
-                                            rel,
-                                            lineOf(code, c.start()),
-                                            "catch (" + types.strip() + ") around "
-                                                    + door.group().replaceAll("\\s*\\($", "")),
-                                    "catch (" + types.strip() + ") around "
-                                            + door.group().replaceAll("\\s*\\($", "")
-                                            + " neither lets UserConfigParseException through nor renders its message");
+                                    new TextSite(rel, lineOf(code, c.start()), site),
+                                    site + " neither lets UserConfigParseException through nor renders its message");
                         }
                     }
                     at = bodyEnd + 1;
@@ -529,6 +564,70 @@ final class HouseRules {
             }
         }
         v.population(tries);
+    }
+
+    /**
+     * A call of a read or of a wrapper in {@code rel}'s module: {@code Owner.name(} anywhere, a bare
+     * {@code name(} in the file that declares it.
+     */
+    private static Pattern calls(List<Callee> doors, List<Callee> wrappers, String rel) {
+        String module = moduleOf(rel);
+        Set<String> alternatives = new LinkedHashSet<>();
+        for (Callee d : doors) addCall(alternatives, d, rel);
+        for (Callee w : wrappers) if (moduleOf(w.file()).equals(module)) addCall(alternatives, w, rel);
+        return Pattern.compile("(?:" + String.join("|", alternatives) + ")\\s*\\(");
+    }
+
+    private static void addCall(Set<String> alternatives, Callee c, String rel) {
+        alternatives.add("(?<![\\w$])" + Pattern.quote(c.owner()) + "\\s*\\.\\s*" + Pattern.quote(c.name()));
+        if (c.file().equals(rel)) alternatives.add("(?<![\\w$.])" + Pattern.quote(c.name()));
+    }
+
+    /** Every brace whose header reads as a method or constructor declaration, lambdas and statements left out. */
+    private static List<Method> methods(String code) {
+        List<Method> out = new ArrayList<>();
+        for (int i = code.indexOf('{'); i >= 0; i = code.indexOf('{', i + 1)) {
+            int from = Math.max(
+                    code.lastIndexOf(';', i - 1), Math.max(code.lastIndexOf('{', i - 1), code.lastIndexOf('}', i - 1)));
+            String header = code.substring(from + 1, i).strip();
+            if (header.isEmpty() || NOT_A_METHOD.matcher(header).find()) continue;
+            Matcher h = METHOD_HEADER.matcher(header);
+            if (!h.find() || STATEMENT_KEYWORDS.contains(h.group(1))) continue;
+            out.add(new Method(h.group(1), i, closing(code, i, '{', '}')));
+        }
+        return out;
+    }
+
+    /** The module a main source belongs to: its path before {@code src/main/java}. */
+    private static String moduleOf(String rel) {
+        int at = rel.indexOf("src/main/java/");
+        return at < 0 ? "" : rel.substring(0, at);
+    }
+
+    /** Every class, interface, enum and record body in blanked code, by name. */
+    private static List<Method> types(String code) {
+        List<Method> out = new ArrayList<>();
+        Matcher t = TYPE_HEADER.matcher(code);
+        while (t.find()) {
+            int open = code.indexOf('{', t.end());
+            if (open >= 0) out.add(new Method(t.group(1), open, closing(code, open, '{', '}')));
+        }
+        return out;
+    }
+
+    /** The innermost type declared around {@code offset}: the name a caller qualifies its member with. */
+    private static String ownerAt(List<Method> types, int offset, String rel) {
+        String owner = "";
+        int innermost = -1;
+        for (Method t : types) {
+            if (t.open() < offset && offset < t.close() && t.open() > innermost) {
+                owner = t.name();
+                innermost = t.open();
+            }
+        }
+        if (!owner.isEmpty()) return owner;
+        String file = rel.substring(rel.lastIndexOf('/') + 1);
+        return file.endsWith(".java") ? file.substring(0, file.length() - 5) : file;
     }
 
     /** Whether a broad handler lets a config.toml error out or shows its message, which carries the position. */

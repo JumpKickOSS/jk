@@ -2,6 +2,7 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.model.BuildBlock;
@@ -98,6 +99,8 @@ public final class LockFreshness {
             return missingNodePin(modules.values(), lock)
                     || missingKotlinPluginPin(owner, modules, lock)
                     || missingToolPin(owner, modules, lock);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return true; // unreadable lock / digest failure → re-lock
         }

@@ -327,9 +327,11 @@ public final class GlobalConfig {
 
     /**
      * User-global {@code [image]} defaults from {@code ~/.jk/config.toml} — the layer under
-     * a project's {@code [image]} table ({@link JkBuild#image()}). Lenient, like
-     * everything else read from this file: a malformed config yields
-     * {@link ImageTable#EMPTY} rather than failing a packaging run.
+     * a project's {@code [image]} table ({@link JkBuild#image()}). Lenient about its
+     * values: a malformed {@code [image]} table yields {@link ImageTable#EMPTY} rather than
+     * failing a packaging run.
+     *
+     * @throws UserConfigParseException when the file exists and is not valid TOML
      */
     public static ImageTable image() {
         return image(JkDirs.userConfigFile());
@@ -358,6 +360,8 @@ public final class GlobalConfig {
      * of thousands, so a stat and a table read per ask would be a measurable share of the io threads'
      * time. Within one request the file is what it was when the request began; the next request
      * sees an edit.
+     *
+     * @throws UserConfigParseException when the file exists and is not valid TOML
      */
     public static NetworkConfig network() {
         return network(JkDirs.userConfigFile());
@@ -407,6 +411,11 @@ public final class GlobalConfig {
         }
     }
 
+    /**
+     * {@code [node]} of {@code ~/.jk/config.toml} ({@link NodeSources}).
+     *
+     * @throws UserConfigParseException when the file exists and is not valid TOML
+     */
     public static NodeSources nodeSources() {
         return nodeSources(JkDirs.userConfigFile());
     }
@@ -431,6 +440,8 @@ public final class GlobalConfig {
      * the tool distributions ({@code node}, {@code kotlin}, {@code gradle}, {@code maven}), the JDK
      * catalog and archives ({@code jdk}) and the library registry ({@code libraries}). Empty when the
      * table is absent.
+     *
+     * @throws UserConfigParseException when the file exists and is not valid TOML
      */
     public static Map<String, String> mirrors() {
         return mirrors(JkDirs.userConfigFile());
@@ -476,7 +487,9 @@ public final class GlobalConfig {
     /**
      * Repositories declared in the {@code [repositories]} table of {@code ~/.jk/config.toml}.
      * Returns an empty list when the file is absent, the table is missing, or any entry is
-     * malformed (lenient — global config must never fail a build).
+     * malformed (lenient about entries).
+     *
+     * @throws UserConfigParseException when the file exists and is not valid TOML
      */
     public static List<RepositorySpec> repositories() {
         return repositories(JkDirs.userConfigFile());
@@ -496,6 +509,8 @@ public final class GlobalConfig {
      * declare. Strict where {@link #repositories()} is lenient — see {@link RepositoryToml#mirrors}.
      *
      * @throws JkBuildParseException when a mirror table is malformed
+     *
+     * @throws UserConfigParseException when the file exists and is not valid TOML
      */
     public static List<RepositoryMirror> repositoryMirrors() {
         return repositoryMirrors(JkDirs.userConfigFile());
@@ -513,6 +528,8 @@ public final class GlobalConfig {
      * the credential resolver treats as the user's own declaration — a mirror's {@code ${VAR}}
      * credential is the user's word for the mirror's URL exactly as a repository's is — and never
      * a repository group: a mirror is not a source.
+     *
+     * @throws UserConfigParseException when the file exists and is not valid TOML
      */
     public static List<RepositorySpec> repositoryDeclarations() {
         Path file = JkDirs.userConfigFile();

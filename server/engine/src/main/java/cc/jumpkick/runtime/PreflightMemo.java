@@ -295,6 +295,8 @@ public final class PreflightMemo {
                     "cause",
                     describe(e));
             return Optional.empty();
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (RuntimeException e) {
             Log.debug("tryLoadDirty: memo miss", e);
             return Optional.empty();
@@ -415,6 +417,8 @@ public final class PreflightMemo {
             Files.createDirectories(durable.getParent());
             AtomicWrites.replaceIfChanged(durable, body);
             writeInTree(memoFile(entryDir), entryDir, body);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             // fail-open
             Log.debug("storeDirty: fail-open", e);

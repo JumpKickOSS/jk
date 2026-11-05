@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
@@ -75,6 +76,8 @@ public final class MutationCheck {
                 e = rule.kind() == Kind.TOOLCHAIN
                         ? ToolchainEvaluator.evaluateProposed(rule, module, proposed, lock)
                         : DependEvaluator.evaluateProposed(rule, module, proposed, lock);
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (RuntimeException failed) {
                 continue; // an unparseable proposal is the editor's error to report
             }

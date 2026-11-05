@@ -48,6 +48,12 @@ public final class WorkspaceLoader {
         return LOADS.sum();
     }
 
+    /**
+     * The workspace's member manifests, parsed, by module directory.
+     *
+     * @throws UserConfigParseException when {@code ~/.jk/config.toml} does not parse: every member is a
+     *     full parse
+     */
     public static Map<Path, JkBuild> loadModules(Path workspaceRoot, JkBuild root) throws IOException {
         Objects.requireNonNull(workspaceRoot, "workspaceRoot");
         Objects.requireNonNull(root, "root");
