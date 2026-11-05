@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.watch.SourceWatch;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.repo.RepoCredentialStore;
@@ -18,6 +19,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -108,6 +110,40 @@ class ClientKeychainTest {
             assertThat(SessionContext.invocation(ClientKeychain::carried).refused())
                     .as("the command after a new login sends the new item")
                     .containsOnlyKeys("no-such-keychain repo/rotated");
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
+    }
+
+    @Test
+    void a_running_watch_sends_a_login_rotated_under_it_with_the_next_rebuild(@TempDir Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Path src = Files.createDirectories(project.resolve("src"));
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        try {
+            login("private", "no-such-keychain repo/private");
+
+            SessionContext.invocation(() -> {
+                try (SourceWatch watch = SourceWatch.open(project, List.of(src), 0)) {
+                    assertThat(ClientKeychain.carried().refused())
+                            .as("the watch's first build")
+                            .containsOnlyKeys("no-such-keychain repo/private");
+
+                    login("private", "no-such-keychain repo/rotated");
+                    assertThat(ClientKeychain.carried().refused())
+                            .as("within one pass the read stands")
+                            .containsOnlyKeys("no-such-keychain repo/private");
+
+                    Files.writeString(src.resolve("Main.java"), "class Main {}\n");
+                    assertThat(watch.pollChange(30, TimeUnit.SECONDS)).isPresent();
+
+                    assertThat(ClientKeychain.carried().refused())
+                            .as("the rebuild after the change sends the rotated login")
+                            .containsOnlyKeys("no-such-keychain repo/rotated");
+                }
+                return null;
+            });
         } finally {
             System.clearProperty("jk.env.JK_HOME");
         }

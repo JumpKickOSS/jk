@@ -127,7 +127,8 @@ public final class SessionContext {
 
     /**
      * {@code compute}'s value for {@code key}, read once per CLI invocation: every later ask in the
-     * same invocation gets the first answer, and the next invocation in the same JVM reads afresh.
+     * same invocation gets the first answer until its {@link #nextPass}, and the next invocation in the
+     * same JVM reads afresh.
      * Outside an invocation it is computed on every ask, which is uncached but never stale. Two
      * threads racing on one key may both compute; the first value stored is the one every caller
      * gets.
@@ -141,6 +142,17 @@ public final class SessionContext {
         T computed = compute.get();
         Object prior = facts.putIfAbsent(key, computed);
         return prior != null ? (T) prior : computed;
+    }
+
+    /**
+     * The open invocation starts its next pass: every {@link #perInvocation} fact is read again on its
+     * next ask. A long-lived command ({@code jk watch}, {@code jk dev}) is one invocation for its whole
+     * life, and each change it rebuilds for is a pass; without this, a keychain login rotated or
+     * removed while it runs would not reach the requests it sends. Outside an invocation there is
+     * nothing to forget.
+     */
+    public static void nextPass() {
+        if (INVOCATION.isBound()) INVOCATION.get().facts().clear();
     }
 
     /** Convenience: install the config slice onto the current session (keeps the other fields). */
