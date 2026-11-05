@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
@@ -10,6 +11,7 @@ import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -61,6 +63,30 @@ final class HardwareProbe {
     static final String RESOLVE_PROBE_PATH = "org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar";
 
     static final String CENTRAL_BASE = RepositorySpec.MAVEN_CENTRAL.url().toString();
+
+    /**
+     * Where this machine asks Central for a file: the mirror that stands in for it ({@code
+     * mirror-of} in {@code config.toml}, or a {@code settings.xml} {@code <mirror>}), a {@code
+     * config.toml} override of its URL, else Central's own. The probe's traffic is a resolve's, so
+     * it never goes around a mirror; null when the user's repositories cannot be read, and then
+     * nothing is fetched.
+     */
+    static @Nullable String centralBase() {
+        try {
+            URI central = RepositorySpec.MAVEN_CENTRAL.url();
+            for (RepositorySpec declared : GlobalConfig.repositories()) {
+                if (declared.name().equals(RepositorySpec.CENTRAL)) central = declared.url();
+            }
+            // The mirror's URL only: no credential is resolved, so no helper runs for a probe.
+            String base = RepoMirrors.urlFor(RepositorySpec.CENTRAL, central)
+                    .orElse(central)
+                    .toString();
+            return base.endsWith("/") ? base : base + "/";
+        } catch (RuntimeException unreadable) {
+            // A malformed mirror table: the resolve that uses it names it; the probe stays off the network.
+            return null;
+        }
+    }
 
     private static final Http HTTP = new Http();
 
@@ -390,7 +416,8 @@ final class HardwareProbe {
 
     /** Locate or fetch the minimal Jupiter + Platform jars needed to run one test. */
     static List<Path> resolveJunitClasspath(Options opts) {
-        return resolveJunitClasspath(opts, HardwareProbe::httpGet);
+        String base = opts.allowNetwork() ? centralBase() : null;
+        return resolveJunitClasspath(opts, base == null ? url -> null : HardwareProbe::httpGet, base);
     }
 
     /**
@@ -400,6 +427,11 @@ final class HardwareProbe {
      * miss with network fetches into the <em>store</em> so later resolves can reuse the jars.
      */
     static List<Path> resolveJunitClasspath(Options opts, CentralFetch fetch) {
+        return resolveJunitClasspath(opts, fetch, CENTRAL_BASE);
+    }
+
+    /** As {@link #resolveJunitClasspath(Options, CentralFetch)}, fetching from {@code base}. */
+    static List<Path> resolveJunitClasspath(Options opts, CentralFetch fetch, @Nullable String base) {
         // artifactId → (group path, version)
         Map<String, String[]> coords = new LinkedHashMap<>();
         coords.put("junit-jupiter-api", new String[] {"org/junit/jupiter", JUNIT_VER});
@@ -419,8 +451,8 @@ final class HardwareProbe {
             // Re-listed per artifact: a fetch publishes a new repo view under the store.
             List<Path> roots = artifactRoots(opts.storeRoot());
             Path found = findLocal(roots, rel);
-            if (found == null && opts.allowNetwork()) {
-                found = fetchFromCentral(opts.storeRoot(), rel, fetch);
+            if (found == null && opts.allowNetwork() && base != null) {
+                found = fetchFromCentral(opts.storeRoot(), base + rel, rel, fetch);
             }
             if (found == null) {
                 // Try any version already on disk (dogfood machines often have newer 6.x in ~/.m2).
@@ -488,12 +520,13 @@ final class HardwareProbe {
         return null;
     }
 
-    private static @Nullable Path fetchFromCentral(Path storeRoot, String relativeMavenPath, CentralFetch fetch) {
+    private static @Nullable Path fetchFromCentral(
+            Path storeRoot, String url, String relativeMavenPath, CentralFetch fetch) {
         try {
-            byte[] body = fetch.get(CENTRAL_BASE + relativeMavenPath);
+            byte[] body = fetch.get(url);
             if (body == null || body.length == 0) return null;
             // Never persist unverified bytes: no .sha1, no store entry.
-            byte[] sha1 = fetch.get(CENTRAL_BASE + relativeMavenPath + ".sha1");
+            byte[] sha1 = fetch.get(url + ".sha1");
             if (sha1 == null || sha1.length == 0) return null;
             // SHA-1 because that is what Central publishes beside the artifact; the sidecar names
             // the algorithm, so the call site does too.
@@ -532,7 +565,9 @@ final class HardwareProbe {
     private static long measureResolve() {
         try {
             // Prefer timing a real download into a temp file (not the shared cache) so we always hit network.
-            String url = CENTRAL_BASE + RESOLVE_PROBE_PATH + "?jk_calib=" + System.nanoTime();
+            String base = centralBase();
+            if (base == null) return -1;
+            String url = base + RESOLVE_PROBE_PATH + "?jk_calib=" + System.nanoTime();
             List<Long> samples = new ArrayList<>();
             for (int i = 0; i < WARM_SAMPLES + 1; i++) {
                 long t0 = System.nanoTime();

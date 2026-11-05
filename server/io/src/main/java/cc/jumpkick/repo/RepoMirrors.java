@@ -49,7 +49,7 @@ public final class RepoMirrors {
      */
     public static MavenRepo apply(
             MavenRepo repo, List<RepositoryMirror> natives, MavenSettings settings, RepoCredentialResolver creds) {
-        Optional<Chosen> match = choose(repo, natives, settings);
+        Optional<Chosen> match = choose(repo.name(), repo.baseUrl(), natives, settings);
         if (match.isEmpty()) return repo;
         Chosen mirror = match.get();
         RepoCredential credential = mirror.refusal() != null
@@ -75,14 +75,24 @@ public final class RepoMirrors {
         return apply(repo, natives, settings, RepoCredentialResolver.withEnv(BuildEnv.ambient(), settings));
     }
 
-    private static Optional<Chosen> choose(MavenRepo repo, List<RepositoryMirror> natives, MavenSettings settings) {
+    /**
+     * The URL of the mirror this machine declares for the repository {@code name} at {@code url},
+     * without resolving its credential: for a caller that only needs to know where the requests go.
+     */
+    public static Optional<URI> urlFor(String name, URI url) {
+        return choose(name, url, GlobalConfig.repositoryMirrors(), MavenSettings.current())
+                .map(Chosen::url);
+    }
+
+    private static Optional<Chosen> choose(
+            String name, URI url, List<RepositoryMirror> natives, MavenSettings settings) {
         for (RepositoryMirror mirror : natives) {
-            if (mirror.matches(repo.name(), repo.baseUrl())) {
+            if (mirror.matches(name, url)) {
                 return Optional.of(new Chosen(
                         mirror.id(), mirror.url(), Optional.ofNullable(mirror.credential()), mirror.label(), null));
             }
         }
-        return settings.mirrorFor(repo.name(), repo.baseUrl())
+        return settings.mirrorFor(name, url)
                 .map(m -> new Chosen(m.id(), m.url(), Optional.empty(), m.label(), refusal(m)));
     }
 
