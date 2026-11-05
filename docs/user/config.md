@@ -276,7 +276,7 @@ firewall that allows only your mirrors costs you that feature's freshness, not a
 | `dl.google.com` | Google's Maven repository | the same | the same |
 | `jumpkick.build` (`/repo/…`) | jk's own repository: plugins, and the engine's worker jars when the store lacks them | the same (it is the `jumpkick` repository) | the same |
 | `jumpkick.build` (`/releases/…`) | `jk self update` and the engine jar of an install that has none | `JK_RELEASES_URL`; `self-update = "never"` stops the checks | the update or install fails |
-| `raw.githubusercontent.com` | the library registry | `[mirrors] libraries` | optional: the copy on disk, else the one built into jk |
+| `raw.githubusercontent.com` | the library registry | `[mirrors] libraries` | optional: the copy on disk, else the one built into jk; asked again 10 minutes later at the earliest, and the engine log says so once |
 | `download.jetbrains.com` | the JDK catalog | `[mirrors] jdk` | optional: the catalog on disk; `jk new` lists the JDKs you have installed, and provisioning a JDK needs a catalog |
 | the JDK vendors' hosts (`github.com`, `cdn.azul.com`, …) | JDK archives the catalog names | `[mirrors] jdk` | provisioning that JDK fails |
 | `github.com` (git) | the official template catalog | `[templates] official` | optional: the catalog on disk |

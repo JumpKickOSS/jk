@@ -426,9 +426,11 @@ public final class GlobalConfig {
     }
 
     /**
-     * {@code [mirrors]} of {@code ~/.jk/config.toml}: a tool distribution's key ({@code node},
-     * {@code kotlin}, {@code gradle}, {@code maven}) to the base URL it is downloaded from instead of
-     * the public one, as written, {@code ${VAR}} references unexpanded. Empty when the table is absent.
+     * {@code [mirrors]} of {@code ~/.jk/config.toml}: a download's key to the base URL it is fetched
+     * from instead of the public one, as written, {@code ${VAR}} references unexpanded. The keys are
+     * the tool distributions ({@code node}, {@code kotlin}, {@code gradle}, {@code maven}), the JDK
+     * catalog and archives ({@code jdk}) and the library registry ({@code libraries}). Empty when the
+     * table is absent.
      */
     public static Map<String, String> mirrors() {
         return mirrors(JkDirs.userConfigFile());

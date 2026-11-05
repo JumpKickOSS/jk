@@ -3,17 +3,24 @@ package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.testing.FakeClock;
+import cc.jumpkick.util.AttemptWindow;
 import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +51,11 @@ class LibraryRegistrySyncTest {
             }
             exchange.close();
         });
+        server.createContext("/down.toml", exchange -> {
+            hits.incrementAndGet();
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+        });
         server.start();
         uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/libraries.toml");
     }
@@ -51,6 +63,50 @@ class LibraryRegistrySyncTest {
     @AfterEach
     void stop() {
         server.stop(0);
+    }
+
+    @Test
+    void a_failed_fetch_leaves_the_source_alone_until_the_retry_window_passes(@TempDir Path tmp) {
+        URI down = uri.resolve("/down.toml");
+        Path cache = tmp.resolve("libs.global.toml");
+        AttemptWindow failed = new AttemptWindow(LibraryRegistrySync.RETRY_AFTER);
+        FakeClock clock = new FakeClock();
+
+        int[] afterFirst = {0};
+        String log = logged(() -> {
+            LibraryRegistrySync.ensurePresent(false, down, new Http(), cache, failed, clock);
+            afterFirst[0] = hits.get();
+            for (int lock = 0; lock < 15; lock++) {
+                LibraryRegistrySync.ensurePresent(false, down, new Http(), cache, failed, clock);
+                clock.advance(Duration.ofSeconds(30));
+            }
+        });
+        assertThat(afterFirst[0]).as("the first lock asks").isPositive();
+        assertThat(hits.get()).as("the locks inside the window").isEqualTo(afterFirst[0]);
+        assertThat(cache).doesNotExist();
+        assertThat(log.lines().filter(line -> line.contains("library registry not fetched")))
+                .as("one notice for the window")
+                .hasSize(1);
+
+        clock.advance(LibraryRegistrySync.RETRY_AFTER);
+        LibraryRegistrySync.ensurePresent(false, down, new Http(), cache, failed, clock);
+        assertThat(hits.get()).as("the first lock after the window").isGreaterThan(afterFirst[0]);
+
+        LibraryRegistrySync.ensurePresent(false, uri, new Http(), cache, failed, clock);
+        assertThat(cache).as("another source is not held back").exists();
+    }
+
+    /** What {@code body} writes to the log at info and above. */
+    private static String logged(Runnable body) {
+        var out = new ByteArrayOutputStream();
+        Log.install(
+                new PrintStream(out, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
+        try {
+            body.run();
+        } finally {
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
+        }
+        return out.toString(StandardCharsets.UTF_8);
     }
 
     @Test

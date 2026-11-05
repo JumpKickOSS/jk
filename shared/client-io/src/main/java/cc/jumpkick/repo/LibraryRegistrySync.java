@@ -5,8 +5,10 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.AttemptWindow;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -29,8 +31,10 @@ import java.util.Objects;
  * resident engine keeps the file warm on this same cadence; foreground commands must not stack
  * blocking fetches on top (a blackholed network stalls each one to the full HTTP timeouts, and
  * a stale-lock <em>build</em> reaches here via auto-relock).
- * <li><b>Stale file</b> — conditional-GET revalidation (same as historical {@code jk lock}
- * behaviour); a 304 re-arms the freshness window.
+ * <li><b>Stale file</b> — conditional-GET revalidation; a 304 re-arms the freshness window.
+ * <li><b>Failed fetch</b> — the source is not asked again for {@link #RETRY_AFTER}, and the
+ * engine log says so once: without the pause an unreachable origin is dialed by every
+ * {@code jk lock}, and a network that drops the packets stalls each one to the HTTP timeouts.
  * </ul>
  *
  * <p>Offline callers skip the network entirely.
@@ -43,6 +47,12 @@ public final class LibraryRegistrySync {
      */
     public static final Duration FRESH_FOR = Duration.ofHours(12);
 
+    /** How long a source whose fetch failed is left alone before a command asks it again. */
+    public static final Duration RETRY_AFTER = Duration.ofMinutes(10);
+
+    /** The sources whose last fetch failed, per engine: the one long-lived process that asks. */
+    private static final AttemptWindow FAILED = new AttemptWindow(RETRY_AFTER);
+
     private LibraryRegistrySync() {}
 
     /**
@@ -52,18 +62,36 @@ public final class LibraryRegistrySync {
      * @param cacheFile local mirror path (and sibling {@code .*.etag})
      */
     public static void ensurePresent(boolean offline, URI source, Http http, Path cacheFile) {
+        ensurePresent(offline, source, http, cacheFile, FAILED, Clock.SYSTEM);
+    }
+
+    /** As {@link #ensurePresent(boolean, URI, Http, Path)} with the failure window and its clock injected (tests). */
+    static void ensurePresent(
+            boolean offline, URI source, Http http, Path cacheFile, AttemptWindow failed, Clock clock) {
         if (offline) return;
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(http, "http");
         Objects.requireNonNull(cacheFile, "cacheFile");
         if (isFresh(cacheFile)) return;
+        String key = source.toString();
+        if (!failed.open(key, clock.nanos())) return;
         try {
             fetchAndStore(source, http, cacheFile);
+        } catch (InterruptedException e) {
+            // The command was cancelled; that says nothing about the source.
+            Thread.currentThread().interrupt();
         } catch (Exception e) {
             // Fail soft: missing → bundled floor; present → keep stale. Lock must not fail solely
-            // because the registry is unreachable (except operators may still lack short names only
-            // present upstream — then parse reports unknown library).
-            Log.debug("ensurePresent: Fail soft: missing → bundled floor; present → keep stale", e);
+            // because the registry is unreachable (a short name only upstream knows then reports
+            // as an unknown library).
+            failed.record(key, clock.nanos());
+            Log.info(
+                    "library registry not fetched; using the copy on disk or the built-in catalog," + " next try in "
+                            + failed.window().toMinutes() + " min",
+                    "source",
+                    SafeUri.forMessage(source),
+                    "cause",
+                    Errors.text(e));
         }
     }
 

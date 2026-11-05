@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.util.AttemptWindow;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
@@ -15,7 +16,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -36,9 +36,9 @@ public final class OfficialTemplatesFreshen {
      * {@link #refreshQuiet} from the engine's request path: without this guard an offline
      * host would re-run a 60–120 s git attempt on every retry of a missing template.
      */
-    private static final ConcurrentHashMap<String, Long> LAST_ATTEMPT_NANOS = new ConcurrentHashMap<>();
+    private static final AttemptWindow ATTEMPTS = new AttemptWindow(Duration.ofMinutes(10));
 
-    static final long ATTEMPT_TTL_NANOS = TimeUnit.MINUTES.toNanos(10);
+    static final long ATTEMPT_TTL_NANOS = ATTEMPTS.window().toNanos();
 
     private OfficialTemplatesFreshen() {}
 
@@ -92,17 +92,11 @@ public final class OfficialTemplatesFreshen {
 
     /** True when the caller won the attempt slot (none in the last TTL); atomically records it. */
     static boolean markAttempt(String cacheKey, long nowNanos) {
-        boolean[] won = {false};
-        LAST_ATTEMPT_NANOS.compute(cacheKey, (k, last) -> {
-            if (last != null && nowNanos - last < ATTEMPT_TTL_NANOS) return last;
-            won[0] = true;
-            return nowNanos;
-        });
-        return won[0];
+        return ATTEMPTS.tryAcquire(cacheKey, nowNanos);
     }
 
     static void resetAttemptGuardForTests() {
-        LAST_ATTEMPT_NANOS.clear();
+        ATTEMPTS.clear();
     }
 
     static String officialRef(JkTemplatesConfig config) {
