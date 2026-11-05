@@ -1,27 +1,117 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.Nullable;
 
 /**
  * One {@code tools/call}: the engine context, the client's {@code arguments}, the MCP progress
  * token bound from {@code params._meta}, and the {@link McpConnection connection} the call rode in
- * on (null when the client sent no {@code Mcp-Session-Id}). The argument readers live here so every
- * tool decodes {@code dir} / {@code limit} / {@code apply} the same way — a tool that hand-rolls
- * one is inventing private semantics for a shared wire.
+ * on (null when the client sent no {@code Mcp-Session-Id}), and the {@link McpOutbound way back}
+ * to that client while the call is outstanding (null when the transport has none). The argument
+ * readers live here so every tool decodes {@code dir} / {@code limit} / {@code apply} the same way
+ * — a tool that hand-rolls one is inventing private semantics for a shared wire.
  */
 public record McpCall(
         McpContext ctx,
         Map<String, Object> args,
         @Nullable String progressToken,
-        @Nullable McpConnection connection) {
+        @Nullable McpConnection connection,
+        @Nullable McpOutbound outbound) {
 
     /** A call from no identified connection. */
     public McpCall(McpContext ctx, Map<String, Object> args, @Nullable String progressToken) {
-        this(ctx, args, progressToken, null);
+        this(ctx, args, progressToken, null, null);
+    }
+
+    /** A call on {@code connection} with no way back to its client. */
+    public McpCall(
+            McpContext ctx,
+            Map<String, Object> args,
+            @Nullable String progressToken,
+            @Nullable McpConnection connection) {
+        this(ctx, args, progressToken, connection, null);
+    }
+
+    /** This call with other arguments: same connection, token and way back. */
+    public McpCall withArgs(Map<String, Object> other) {
+        return new McpCall(ctx, other, progressToken, connection, outbound);
+    }
+
+    /**
+     * Ask the human behind this call's client, and wait up to {@code timeout} for the answer. Sends
+     * {@code elicitation/create} only when the session declared the mode and the call has a way back;
+     * otherwise answers {@link McpElicitResult.Unsupported} and sends nothing. A wait that runs out
+     * withdraws the question with {@code notifications/cancelled}. The caller picks {@code timeout}
+     * under the client's own tool-call timeout, since the call stays outstanding while it waits.
+     */
+    public McpElicitResult elicit(McpElicitation question, Duration timeout) {
+        McpConnection c = connection;
+        if (c == null) return new McpElicitResult.Unsupported("the call rode on no session");
+        McpElicitModes modes = c.elicitation();
+        boolean declared = question instanceof McpElicitation.Url ? modes.url() : modes.form();
+        if (!declared) {
+            String mode = question instanceof McpElicitation.Url ? "url" : "form";
+            return new McpElicitResult.Unsupported("the client declared no " + mode + " elicitation under "
+                    + c.revision().wire());
+        }
+        McpOutbound out = outbound;
+        if (out == null) return new McpElicitResult.Unsupported("the transport carries no request to the client");
+        McpConnection.Expected expected = c.expect();
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("jsonrpc", "2.0");
+        request.put("id", expected.requestId());
+        request.put("method", "elicitation/create");
+        request.put("params", question.params(c.revision()));
+        try {
+            out.send(request);
+        } catch (IOException | RuntimeException e) {
+            c.forget(expected.requestId());
+            return new McpElicitResult.Failed("could not reach the client: " + e.getMessage());
+        }
+        return ctx.admissionYield().yielding(() -> awaitAnswer(c, out, expected, timeout));
+    }
+
+    private static McpElicitResult awaitAnswer(
+            McpConnection c, McpOutbound out, McpConnection.Expected expected, Duration timeout) {
+        try {
+            return McpElicitResult.of(expected.answer().get(Math.max(1, timeout.toMillis()), TimeUnit.MILLISECONDS));
+        } catch (TimeoutException e) {
+            withdraw(c, out, expected.requestId(), "timed out");
+            return new McpElicitResult.TimedOut();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            withdraw(c, out, expected.requestId(), "the call was cancelled");
+            return new McpElicitResult.Failed("interrupted while waiting for the client");
+        } catch (ExecutionException e) {
+            c.forget(expected.requestId());
+            return new McpElicitResult.Failed(String.valueOf(e.getCause()));
+        }
+    }
+
+    /** Tell the client the engine no longer wants an answer to {@code requestId}. */
+    private static void withdraw(McpConnection c, McpOutbound out, String requestId, String reason) {
+        c.forget(requestId);
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("requestId", requestId);
+        params.put("reason", reason);
+        Map<String, Object> note = new LinkedHashMap<>();
+        note.put("jsonrpc", "2.0");
+        note.put("method", "notifications/cancelled");
+        note.put("params", params);
+        try {
+            out.send(note);
+        } catch (IOException | RuntimeException ignored) {
+            // The client is gone; there is no question left to withdraw.
+        }
     }
 
     /** The journal's session label for a job this call starts, or null when the connection is anonymous. */

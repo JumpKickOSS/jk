@@ -334,6 +334,23 @@ owner's config path and raw values, the same class as `/api/projects/defaults`.
 The token file persists across restarts precisely so an open tab survives an upgrade or crash
 respawn. `jk engine rotate-token` is the explicit way to invalidate it.
 
+## MCP sessions and server requests
+
+`McpHandler` opens one `McpConnection` per `initialize`: the `Mcp-Session-Id`, the `McpRevision`
+it negotiated and the `McpElicitModes` the client declared. The revision decides what the session
+may use (batches before `2025-06-18`, form elicitation from it, URL mode from `2025-11-25`), so a
+new rule that depends on the revision reads it there rather than comparing strings.
+
+A tool asks the client with `McpCall.elicit(question, timeout)`. It answers `Unsupported` without
+sending anything when the session did not declare the mode or the call has no `McpOutbound`.
+Otherwise the request goes out on the call's own response: `McpFront` commits that response as
+`text/event-stream` on the first message, and writes the call's JSON-RPC response as the last
+event. A request that sends nothing still answers plain JSON. The client's response arrives as a
+separate `POST`; `McpRpc` hands any message with an id and no method to the connection, which
+completes the waiting call by request id. The wait yields the RPC admission permit, as a parked
+`run` does. `jk mcp` (`McpBridge`) asks for both content types, writes each streamed request to
+stdout, and posts the host's response lines back.
+
 ## Starting a job (`POST /api/build`)
 
 One admission point for every HTTP and MCP job: the body's `dir` (required) and `kind`

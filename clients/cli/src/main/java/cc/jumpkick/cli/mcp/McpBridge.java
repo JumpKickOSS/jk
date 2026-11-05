@@ -44,6 +44,14 @@ import org.jspecify.annotations.Nullable;
  * an outstanding call is forwarded with that token, so the engine cancels the call's job and the
  * parked call answers with its verdict. While a call that carries the client's own token is
  * outstanding, {@link McpProgress} writes {@code notifications/progress} lines for it.
+ *
+ * <p>The engine may ask the client something while a call is outstanding ({@code
+ * elicitation/create}). It then answers that call's POST as an event stream: each request or
+ * notification on it is written to stdout as it arrives, and the call's own response is the
+ * stream's last event. The client's answer is a response line on stdin, POSTed back on the same
+ * session. The bridge sends {@code MCP-Protocol-Version} with the revision {@code initialize}
+ * negotiated; when the engine hands back a new session (it restarted), the bridge repeats the
+ * client's {@code initialize} on it, so the new session knows what the client declared.
  */
 public final class McpBridge {
 
@@ -56,6 +64,7 @@ public final class McpBridge {
 
     static final String PROJECT_HEADER = "Jk-Project";
     static final String SESSION_HEADER = "Mcp-Session-Id";
+    static final String PROTOCOL_HEADER = "MCP-Protocol-Version";
 
     /** Longer than any parked {@code run}: the engine's own wait cap answers first. */
     private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(65);
@@ -84,6 +93,13 @@ public final class McpBridge {
     private final Duration gap;
     private volatile @Nullable Endpoint endpoint;
     private volatile @Nullable String session;
+    private volatile @Nullable String protocolVersion;
+
+    /** The client's {@code initialize}, repeated on a session the engine opened without one. */
+    private volatile @Nullable String initialize;
+
+    /** Where a message the engine sends the client goes: one stdout line. */
+    private volatile Consumer<String> toClient = line -> {};
 
     public McpBridge(Endpoints endpoints, @Nullable String project) {
         this(endpoints, project, HEARTBEAT, GAP);
@@ -110,6 +126,7 @@ public final class McpBridge {
                 out.flush();
             }
         };
+        toClient = lines;
         Semaphore room = new Semaphore(MAX_IN_FLIGHT);
         BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
         try {
@@ -119,7 +136,13 @@ public final class McpBridge {
                     if (line.isBlank()) continue;
                     Message m = Message.of(line);
                     if (m.method().equals("initialize")) {
-                        write(lines, forward(line));
+                        initialize = line;
+                        write(lines, initialized(forward(line)));
+                        continue;
+                    }
+                    if (m.isResponse()) {
+                        // The client's answer to a request the engine sent; it gets no reply.
+                        forward(line);
                         continue;
                     }
                     if (m.method().equals("notifications/cancelled")) {
@@ -145,6 +168,20 @@ public final class McpBridge {
 
     private static void write(Consumer<String> lines, String reply) {
         if (!reply.isEmpty()) lines.accept(reply);
+    }
+
+    /** Note the revision an {@code initialize} reply negotiated; the reply itself goes on unchanged. */
+    private String initialized(String reply) {
+        try {
+            if (MiniJson.parse(reply) instanceof Map<?, ?> m
+                    && m.get("result") instanceof Map<?, ?> result
+                    && result.get("protocolVersion") instanceof String version) {
+                protocolVersion = version;
+            }
+        } catch (RuntimeException e) {
+            // Not JSON: an error line, already shaped for the client.
+        }
+        return reply;
     }
 
     /**
@@ -232,6 +269,12 @@ public final class McpBridge {
 
     /** One line from the client: its method ({@code ""} for a reply or garbage), its id, and its parsed form. */
     record Message(String method, @Nullable Object id, Map<String, Object> json) {
+
+        /** A JSON-RPC response: the client answering a request the engine sent it. */
+        boolean isResponse() {
+            return method.isEmpty() && id != null && (json.containsKey("result") || json.containsKey("error"));
+        }
+
         @SuppressWarnings("unchecked")
         static Message of(String line) {
             try {
@@ -300,20 +343,62 @@ public final class McpBridge {
                 .timeout(REQUEST_TIMEOUT)
                 .header("Authorization", "Bearer " + target.token())
                 .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
+                .header("Accept", "application/json, text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(message, StandardCharsets.UTF_8));
         if (project != null) request.header(PROJECT_HEADER, project);
-        if (session != null) request.header(SESSION_HEADER, session);
-        HttpResponse<String> response =
-                http.send(request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        response.headers().firstValue(SESSION_HEADER).ifPresent(id -> session = id);
+        String sent = session;
+        if (sent != null) request.header(SESSION_HEADER, sent);
+        String version = protocolVersion;
+        if (version != null) request.header(PROTOCOL_HEADER, version);
+        HttpResponse<InputStream> response = http.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
+        String handedBack = response.headers().firstValue(SESSION_HEADER).orElse(null);
+        if (handedBack != null) session = handedBack;
         int status = response.statusCode();
-        if (status == 202) return "";
-        if (status / 100 != 2)
-            return error(
-                    message,
-                    "jk engine answered HTTP " + status + ": " + response.body().strip());
-        return response.body();
+        String body;
+        try (InputStream in = response.body()) {
+            if (status == 202) return "";
+            boolean stream =
+                    response.headers().firstValue("Content-Type").orElse("").startsWith("text/event-stream");
+            body = stream && status / 100 == 2 ? stream(in) : new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        if (status / 100 != 2) return error(message, "jk engine answered HTTP " + status + ": " + body.strip());
+        if (handedBack != null && sent != null && !handedBack.equals(sent)) reinitialize(message);
+        return body;
+    }
+
+    /**
+     * Read a POST's event stream: every request or notification the engine sends the client goes to
+     * stdout as it arrives; the response, the stream's last event, is returned.
+     */
+    private String stream(InputStream in) throws IOException {
+        BufferedReader events = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        StringBuilder data = new StringBuilder();
+        String line;
+        while ((line = events.readLine()) != null) {
+            if (line.startsWith("data:")) {
+                if (!data.isEmpty()) data.append('\n');
+                data.append(line.substring(line.startsWith("data: ") ? 6 : 5));
+                continue;
+            }
+            if (!line.isEmpty() || data.isEmpty()) continue;
+            String json = data.toString();
+            data.setLength(0);
+            if (Message.of(json).method().isEmpty()) return oneLine(json);
+            toClient.accept(oneLine(json));
+        }
+        return data.isEmpty() ? "" : oneLine(data.toString());
+    }
+
+    /**
+     * The engine answered on a session other than the one sent: it no longer knew that one. Repeat
+     * the client's {@code initialize} so the new session records what the client declared; its
+     * reply is the bridge's own and never reaches the client.
+     */
+    private void reinitialize(String message) {
+        String hello = initialize;
+        if (hello == null || hello.equals(message)) return;
+        session = null;
+        initialized(forward(hello));
     }
 
     /** JSON has no raw line breaks outside strings, so dropping them keeps one message per line. */

@@ -75,7 +75,7 @@ public final class McpRenameCheck {
     private static McpCall sub(McpCall in, Map<String, Object> args, int timeoutS) {
         Map<String, Object> withWait = new LinkedHashMap<>(args);
         withWait.put("timeout_s", timeoutS);
-        return new McpCall(in.ctx(), withWait, in.progressToken(), in.connection());
+        return in.withArgs(withWait);
     }
 
     /** The text of a {@code tools/call} result. */
