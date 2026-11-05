@@ -91,6 +91,7 @@ final class EngineConnection {
             BooleanSupplier draining,
             LongSupplier drainDeadline,
             DrainReporter drain,
+            Runnable stopSessions,
             ShutdownHandler shutdown,
             Runnable idleDropped) {}
 
@@ -236,6 +237,11 @@ final class EngineConnection {
             }
             case EngineProtocol.DRAIN_STATUS -> ctx.drain().predecessorReported(line);
             case EngineProtocol.DRAIN_DONE -> ctx.drain().predecessorFinished(Jsonl.longValue(line, "pid", -1));
+            case EngineProtocol.STOP_SESSIONS -> {
+                // A successor adopts once this ack is out, so the gate closes first.
+                ctx.stopSessions().run();
+                WireWriter.send(writer, ProtoLifecycle.sessionsStopped(ctx.pid()));
+            }
             case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
             case EngineProtocol.JOB_CONTROL_REQUEST -> handleJobControlRequest(line, writer);
             default ->

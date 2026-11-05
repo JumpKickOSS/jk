@@ -37,8 +37,9 @@ import org.jspecify.annotations.Nullable;
  * <p>Sessions outlive the engine. A new engine {@link #adopt adopts} every session a previous one
  * left open, with its episodes as they stood and the MCP connection behind it ({@link
  * #saveConnection}), so an agent that returns keeps its session; one nobody returns to is ended by
- * the {@link #sweep idle sweep}. Only the primary engine writes the records ({@link #writeWhile}):
- * a displaced engine hands the runs it finishes to its successor instead.
+ * the {@link #sweep idle sweep}. Only the primary engine writes the records: a successor adopts
+ * only once the engine it displaced has {@link #stopWriting stopped writing} ({@link #adoptAfter}),
+ * and a displaced engine hands the runs it finishes to its successor instead ({@link #writeWhile}).
  */
 public final class SessionLog {
 
@@ -60,6 +61,7 @@ public final class SessionLog {
     private volatile Events events = (type, payload) -> {};
     private volatile BooleanSupplier primary = () -> true;
     private volatile Consumer<FinishedRun> successor = run -> {};
+    private volatile Runnable predecessorStopped = () -> {};
 
     private final Map<String, Live> byKey = new LinkedHashMap<>();
     private final Map<String, Live> byId = new LinkedHashMap<>();
@@ -69,7 +71,7 @@ public final class SessionLog {
     /** Whether {@link #adopt} has run. */
     private boolean adopted;
 
-    /** Set once {@link #primary} fails: the log writes nothing from then on. */
+    /** Set once {@link #primary} fails or {@link #stopWriting} runs: the log writes nothing from then on. */
     private boolean retired;
 
     /**
@@ -119,6 +121,22 @@ public final class SessionLog {
         this.successor = successor;
     }
 
+    /**
+     * Before adopting, run {@code predecessorStopped}: it returns once the engine this one displaced
+     * has stopped writing session records, or has been given up on.
+     */
+    public void adoptAfter(Runnable predecessorStopped) {
+        this.predecessorStopped = predecessorStopped != null ? predecessorStopped : () -> {};
+    }
+
+    /**
+     * Write nothing more, for good: a successor is about to adopt these sessions. Returns once any
+     * write in flight has landed, so the successor's adoption reads it.
+     */
+    public synchronized void stopWriting() {
+        retired = true;
+    }
+
     public long idleGapMillis() {
         return idleGapMillis;
     }
@@ -136,12 +154,14 @@ public final class SessionLog {
      * Take over every stored session a previous engine left open, as it stood: its episodes, its
      * timeline's sequence and its MCP connection. An adopted session stays open; the {@link #sweep}
      * ends it once it has been idle for the idle gap with nobody back. Runs once, and every other
-     * entry point runs it first. Answers how many it adopted.
+     * entry point runs it first, after the engine this one displaced has stopped writing ({@link
+     * #adoptAfter}). Answers how many it adopted.
      */
     public synchronized int adopt() {
         if (adopted) return 0;
         adopted = true;
         if (journal == null) return 0;
+        predecessorStopped.run();
         int n = 0;
         for (Map<String, Object> doc : journal.list()) {
             if (!(doc.get("session") instanceof Map<?, ?> s)) continue;
@@ -564,7 +584,7 @@ public final class SessionLog {
         }
     }
 
-    /** True while this engine writes the records; false for good once {@link #primary} fails. */
+    /** True while this engine writes the records; false for good once {@link #primary} fails or it is stopped. */
     private boolean writing() {
         if (retired) return false;
         if (primary.getAsBoolean()) return true;

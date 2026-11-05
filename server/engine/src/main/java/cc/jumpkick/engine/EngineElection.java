@@ -63,6 +63,12 @@ final class EngineElection {
     /** Test seam: the probe and yield read timeout, {@link #HANDOVER_BYE_MS} unless a test shortens it. */
     static long handoverByeMs = HANDOVER_BYE_MS;
 
+    /** How long a successor waits for a displaced predecessor to say it stopped writing sessions. */
+    private static final long SESSIONS_STOPPED_MS = 2_000;
+
+    /** Test seam: the {@code sessions-stopped} wait, {@link #SESSIONS_STOPPED_MS} unless a test shortens it. */
+    static long sessionsStoppedMs = SESSIONS_STOPPED_MS;
+
     /** Highest generation number tried before giving up on finding a free one. */
     private static final int MAX_GENERATIONS = 10_000;
 
@@ -256,6 +262,37 @@ final class EngineElection {
         } catch (IOException e) {
             // Nothing live there (stale file) — the watchdog on the other side also covers us.
         }
+    }
+
+    /**
+     * Ask a displaced predecessor to stop writing session records, and wait for its ack: the last
+     * write it had in flight has landed by then. A predecessor that does not answer within {@link
+     * #sessionsStoppedMs} (dead, wedged, or already gone) is treated as stopped. Answers whether it
+     * acknowledged.
+     */
+    boolean stopPredecessorSessions(@Nullable Path previousActive) {
+        if (previousActive == null || previousActive.equals(bound().socket())) return false;
+        if (!Files.exists(previousActive) || namesSelf(previousActive)) return false;
+        try (SocketChannel ch = openClient(previousActive)) {
+            BufferedWriter w =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader r = new BoundedLineReader(
+                    new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, sessionsStoppedMs);
+            w.write(ProtoLifecycle.stopSessions());
+            w.write('\n');
+            w.flush();
+            String ack = r.readLine();
+            if (ack != null && EngineProtocol.SESSIONS_STOPPED.equals(EngineProtocol.typeOf(ack))) {
+                log.accept("jk engine: displaced engine at " + previousActive.getFileName()
+                        + " stopped writing sessions; adopting them");
+                return true;
+            }
+        } catch (IOException e) {
+            // Nothing answered in time: the endpoint check stops a predecessor that comes back.
+        }
+        log.accept("jk engine: displaced engine at " + previousActive.getFileName()
+                + " did not confirm it stopped writing sessions; adopting them anyway");
+        return false;
     }
 
     /**

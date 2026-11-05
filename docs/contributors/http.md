@@ -81,8 +81,17 @@ re-authenticate. Client-side reconnect is the SPA's job.
 
 ### Sessions cross the hand-off
 
-Only the primary engine writes session records: an engine stops writing them for good the moment
-the endpoint names another (`SessionLog.writeWhile`). Each run a displaced engine finishes while it
+Only the primary engine writes session records, and the hand-off between two engines is a
+handshake. Once the successor has taken the endpoint and asked its predecessor to yield, it sends
+`stop-sessions` on the predecessor's generation socket, the one the drain uses. The predecessor closes
+its write gate (`SessionLog.stopWriting`), which returns once any session write it had in flight has
+landed, and answers `sessions-stopped`. Only then does the successor read the stored sessions and
+adopt them (`SessionLog.adopt`, which every session entry point runs first), so it sees the
+predecessor's last write and never writes over it. A predecessor that does not answer within two
+seconds (dead, wedged, or an engine that predates the message) is treated as stopped, and the
+successor adopts without it; the predecessor still checks the endpoint before every session write and
+stops for good the moment it names another (`SessionLog.writeWhile`), so one that comes back late
+writes nothing more. Each run a displaced engine finishes while it
 drains goes out in its next `drain-status` instead, under `runs` (each the text of one JSON object,
 the fields the session log folds), and the successor folds it into its episode as if it had
 finished there. A drained engine sends whatever runs the ticks have not carried in one last

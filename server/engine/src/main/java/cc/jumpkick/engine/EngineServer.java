@@ -274,6 +274,9 @@ public final class EngineServer implements AutoCloseable {
     /** The {@code drain-status} channel to a successor, and the record of our own predecessors. */
     private final DrainReporter drain;
 
+    /** The socket of the engine this one displaced, asked to stop writing sessions before adoption. */
+    private volatile @Nullable Path displaced;
+
     private @Nullable ServerSocketChannel serverChannel;
     private @Nullable ExecutorService connectionExecutor;
 
@@ -395,6 +398,7 @@ public final class EngineServer implements AutoCloseable {
         if (hub != null) log.events((type, payload) -> hub.publishDashboard(type, JsonOut.rawObject(payload)));
         // One writer: once a successor holds the endpoint, the runs this engine finishes go to it.
         log.writeWhile(this::primary, run -> drain.finished(run.toMap()));
+        log.adoptAfter(() -> election.stopPredecessorSessions(displaced));
         return log;
     }
 
@@ -575,6 +579,7 @@ public final class EngineServer implements AutoCloseable {
     public boolean run() throws IOException {
         EngineElection.Won won = election.win();
         if (won == null) return false; // lost the spawn race / an identical engine already serves
+        displaced = won.displaced();
         serverChannel = won.listener();
         expectedToken = won.token();
         connection = new EngineConnection(
@@ -591,6 +596,7 @@ public final class EngineServer implements AutoCloseable {
                         () -> draining,
                         () -> drainDeadlineMillis,
                         drain,
+                        sessionLog::stopWriting,
                         this::handleShutdown,
                         this::noteIdleDropped),
                 helloIdleMillis);

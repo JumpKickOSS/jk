@@ -75,6 +75,15 @@ public final class EngineProtocol {
     /** Predecessor → successor: drain finished; the predecessor is exiting. */
     public static final String DRAIN_DONE = "drain-done";
 
+    /**
+     * Successor → displaced predecessor, before the successor adopts the open sessions: stop writing
+     * session records. Answered with {@link #SESSIONS_STOPPED} once the last write has landed.
+     */
+    public static final String STOP_SESSIONS = "stop-sessions";
+
+    /** Predecessor → successor: the ack for {@link #STOP_SESSIONS}. Fields: {@code pid}. */
+    public static final String SESSIONS_STOPPED = "sessions-stopped";
+
     /** Client → server: start a workspace build (see {@link BuildRequest}). */
     public static final String BUILD_REQUEST = "build-request";
 

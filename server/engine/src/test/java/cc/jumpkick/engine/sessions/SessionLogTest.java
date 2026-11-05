@@ -8,10 +8,13 @@ import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.jsonl.MiniJson;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.assertj.core.api.InstanceOfAssertFactories;
@@ -222,6 +225,71 @@ class SessionLogTest {
         assertThat(page.actions()).singleElement().satisfies(a -> assertThat(a)
                 .containsEntry("summary", "test #27")
                 .containsEntry("outcome", "red"));
+    }
+
+    /**
+     * A write the predecessor had past its check when the successor came to adopt lands first: the
+     * successor's adoption waits for the predecessor to stop writing, so it reads that write, and its
+     * own next write carries it on rather than overwriting it.
+     */
+    @Test
+    void a_successor_adopts_only_after_the_predecessors_write_in_flight_has_landed() throws Exception {
+        String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
+        String episode = Objects.requireNonNull(log.placeRun("mcp", LABEL, "test", "/ws/app", T + 1_000));
+        CountDownLatch checking = new CountDownLatch(1);
+        CountDownLatch held = new CountDownLatch(1);
+        AtomicBoolean first = new AtomicBoolean(true);
+        log.writeWhile(
+                () -> {
+                    if (first.getAndSet(false)) {
+                        checking.countDown();
+                        await(held);
+                    }
+                    return true;
+                },
+                r -> {});
+        Thread writer = Thread.ofPlatform().start(() -> log.runFinished(run(episode, 27, T + 1_000, false)));
+        assertThat(checking.await(10, TimeUnit.SECONDS)).isTrue();
+
+        SessionLog successor = newLog();
+        successor.adoptAfter(log::stopWriting);
+        Thread adopting = Thread.ofPlatform().start(successor::adopt);
+        adopting.join(Duration.ofMillis(300));
+        assertThat(adopting.isAlive())
+                .as("adoption waits for the write in flight")
+                .isTrue();
+        held.countDown();
+        assertThat(adopting.join(Duration.ofSeconds(10))).isTrue();
+        assertThat(writer.join(Duration.ofSeconds(10))).isTrue();
+
+        now.set(T + 5_000);
+        successor.runFinished(run(episode, 28, T + 5_000, true));
+        log.runFinished(run(episode, 29, T + 6_000, true));
+
+        SessionLog.Page page = successor.session(id, 0, 10).orElseThrow();
+        assertThat(page.actions())
+                .as("the predecessor's last write, then the successor's, and nothing after the hand-off")
+                .extracting(a -> a.get("summary"))
+                .containsExactly("test #27", "test #28");
+        assertThat(page.episodes())
+                .singleElement()
+                .satisfies(e -> assertThat(e).containsEntry("runs", 2).containsEntry("outcome", "green"));
+        assertThat(MiniJson.list(journal.read(id).orElseThrow(), "episodes"))
+                .as("the record on disk counts both runs")
+                .singleElement()
+                .satisfies(e -> assertThat(Episode.num((Map<?, ?>) e, "runs")).isEqualTo(2L));
+        assertThat(Files.readAllLines(root.resolve("sessions").resolve(id).resolve("actions.jsonl")))
+                .extracting(line -> ActionRecord.of((Map<?, ?>) Objects.requireNonNull(MiniJson.parse(line)))
+                        .seq())
+                .containsExactly(1L, 2L);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Test
