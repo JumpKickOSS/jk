@@ -232,6 +232,55 @@ class CredentialHelpersTest {
     }
 
     @Test
+    void a_hand_off_drops_a_value_an_earlier_request_printed_and_keeps_one_this_request_printed() {
+        AtomicInteger runs = countingRunner(0);
+        var cmd = CredentialHelpers.parse("helper", "w");
+        IoLedger.open(new IoLedger());
+        try {
+            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-1");
+            assertThat(CredentialHelpers.renewForHandOff("token-1"))
+                    .as("printed during this request")
+                    .isFalse();
+            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-1");
+        } finally {
+            RequestScope.release();
+            IoLedger.close();
+        }
+
+        IoLedger.open(new IoLedger());
+        try {
+            assertThat(CredentialHelpers.value(cmd, Map.of(), "w"))
+                    .as("still within its time to live")
+                    .isEqualTo("token-1");
+            assertThat(CredentialHelpers.renewForHandOff("token-1"))
+                    .as("printed by an earlier request")
+                    .isTrue();
+            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
+            assertThat(CredentialHelpers.renewForHandOff("token-2")).isFalse();
+            assertThat(runs).hasValue(2);
+
+            // The hand-off's run is an ordinary one: a refusal of its value still runs the helper again.
+            assertThat(CredentialHelpers.forget("token-2")).isTrue();
+            assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-3");
+        } finally {
+            RequestScope.release();
+            IoLedger.close();
+        }
+    }
+
+    @Test
+    void off_a_request_a_hand_off_always_runs_the_helper_again() {
+        AtomicInteger runs = countingRunner(0);
+        var cmd = CredentialHelpers.parse("helper", "w");
+        CredentialHelpers.value(cmd, Map.of(), "w");
+
+        assertThat(CredentialHelpers.renewForHandOff("token-1")).isTrue();
+        assertThat(CredentialHelpers.value(cmd, Map.of(), "w")).isEqualTo("token-2");
+        assertThat(CredentialHelpers.renewForHandOff("literal")).isFalse();
+        assertThat(runs).hasValue(2);
+    }
+
+    @Test
     void fifty_concurrent_resolves_share_one_run() throws Exception {
         AtomicInteger runs = countingRunner(100);
         var cmd = CredentialHelpers.parse("helper", "w");
