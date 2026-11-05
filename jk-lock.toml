@@ -4,7 +4,7 @@ generated-by-build = "0be5674be3a6"
 generated-by-build-time = "2026-11-05T05:03:57Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "b50cde31034d8de93545788229dbf2b4429ce5ece5187cfb0e334e0906c8cd33"
+manifests-sha256 = "27a87f9b50845f82ea504b3e3f73d05151d344e9937d9fa59dd0802ab9edc282"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.templates.testing.LocalTemplateCatalog;
 import cc.jumpkick.testing.PropertyRoots;
 import java.io.IOException;
 import java.lang.annotation.Annotation;

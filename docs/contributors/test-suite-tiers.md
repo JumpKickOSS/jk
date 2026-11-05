@@ -346,9 +346,10 @@ the home rather than in the pooled Maven local repository, and Maven's `settings
 at a file that does not exist. Its `[templates] official` is a local bare repository built from
 the checkout's `templates/` (`LocalTemplateCatalog`, beside the sandbox slot's home and named by the
 content), so the home's engine clones its catalog without github.com; a test about the real
-catalog's origin opts out with `@IsolatedHome(officialCatalogFromOrigin = true)`. The tier's shared
-home names the same repository: `SharedHomeTemplateCatalog`, a launcher listener, writes it into
-that home's `config.toml` before the first test, so no engine of the tier clones from github.com. `RecordingProxy` (host fixtures), named as the
+catalog's origin opts out with `@IsolatedHome(officialCatalogFromOrigin = true)`. A suite's shared
+home names the same repository: `SharedHomeTemplateCatalog` (core fixtures), a launcher listener
+that a suite starting engines lists in its `META-INF/services`, writes it into that home's
+`config.toml` before the first test, so no engine of the tier clones from github.com. `RecordingProxy` (host fixtures), named as the
 home's `[network] proxy`, is the request log of everything dialed past the loopback stubs.
 
 **The fixtures' injected test roots are warm by construction.** Every fixture lock injects
