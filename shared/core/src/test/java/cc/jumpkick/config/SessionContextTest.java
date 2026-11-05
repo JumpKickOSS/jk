@@ -72,4 +72,28 @@ class SessionContextTest {
 
         assertThat(reads).hasValue(2);
     }
+
+    @Test
+    void the_next_pass_of_a_long_lived_invocation_reads_a_per_invocation_fact_again() throws Exception {
+        Object key = new Object();
+        AtomicInteger reads = new AtomicInteger();
+        Session installed = Session.defaults().withConfig(JkConfig.empty());
+
+        SessionContext.invocation(() -> {
+            SessionContext.install(installed);
+            assertThat((int) SessionContext.perInvocation(key, reads::incrementAndGet))
+                    .isEqualTo(1);
+            assertThat((int) SessionContext.perInvocation(key, reads::incrementAndGet))
+                    .isEqualTo(1);
+
+            SessionContext.nextPass();
+
+            assertThat((int) SessionContext.perInvocation(key, reads::incrementAndGet))
+                    .isEqualTo(2);
+            assertThat(SessionContext.current())
+                    .as("a pass forgets read facts, not the session")
+                    .isSameAs(installed);
+            return null;
+        });
+    }
 }

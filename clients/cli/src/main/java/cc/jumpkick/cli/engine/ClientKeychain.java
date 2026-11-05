@@ -24,7 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Read once per command ({@link SessionContext#perInvocation}), when the first request goes
  * out, and only when a record points into a keychain: a machine with no keychain logins pays one
  * directory listing. The next command in the same process (the JVM client, an in-process test)
- * reads again, so a login rotated or removed in between is what it sends. Each item is read on its
+ * reads again, so a login rotated or removed in between is what it sends; so does each pass of a
+ * long-lived command ({@code jk watch}, {@code jk dev}), which starts at the change it rebuilds for
+ * ({@link SessionContext#nextPass}) and reads without prompting. Each item is read on its
  * own platform thread, so several logins cost one tool's latency, not their sum.
  */
 final class ClientKeychain {

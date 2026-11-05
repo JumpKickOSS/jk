@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.watch;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.layout.WalkSkip;
@@ -30,6 +31,10 @@ import java.util.concurrent.TimeUnit;
  * node_modules}, VCS dirs, editor junk and the {@code skipped} trees a caller names are not
  * registered — so they never wake the loop. A node module watches its whole directory, its root
  * files ({@code package.json}, a bundler's config) included.
+ *
+ * <p>A change it reports starts the loop's next pass ({@link SessionContext#nextPass}): what the
+ * command read once, its keychain logins among them, is read again for the requests that pass
+ * sends, so a login rotated or removed while the loop runs is what the next rebuild carries.
  */
 public final class SourceWatch implements AutoCloseable {
 
@@ -85,7 +90,7 @@ public final class SourceWatch implements AutoCloseable {
         while (true) {
             WatchKey key = watcher.take();
             Changes c = drainEvents(key);
-            if (c.any()) return c;
+            if (c.any()) return nextPass(c);
         }
     }
 
@@ -101,8 +106,13 @@ public final class SourceWatch implements AutoCloseable {
             WatchKey key = watcher.poll(remaining, TimeUnit.NANOSECONDS);
             if (key == null) return Optional.empty();
             Changes c = drainEvents(key);
-            if (c.any()) return Optional.of(c);
+            if (c.any()) return Optional.of(nextPass(c));
         }
+    }
+
+    private static Changes nextPass(Changes changes) {
+        SessionContext.nextPass();
+        return changes;
     }
 
     @Override
