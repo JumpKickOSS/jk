@@ -39,6 +39,7 @@ class BrokenUserConfigLockTest {
 
     private @Nullable String priorSettings;
     private @Nullable String priorHome;
+    private @Nullable String priorM2;
 
     @TempDir
     Path tmp;
@@ -49,6 +50,10 @@ class BrokenUserConfigLockTest {
         priorHome = System.getProperty("jk.env.JK_HOME");
         Path home = Files.createDirectories(tmp.resolve("home"));
         System.setProperty("jk.env.JK_HOME", home.toString());
+        // The test JVM's JK_M2_LOCAL is shared with every other test; a real POM cached there
+        // would stand in for the stub's.
+        priorM2 = System.getProperty("jk.m2.local");
+        System.setProperty("jk.m2.local", tmp.resolve("m2").toString());
         System.setProperty(
                 MavenSettings.SETTINGS_PROPERTY,
                 tmp.resolve("absent-settings.xml").toString());
@@ -66,6 +71,7 @@ class BrokenUserConfigLockTest {
     void restore() {
         restore(MavenSettings.SETTINGS_PROPERTY, priorSettings);
         restore("jk.env.JK_HOME", priorHome);
+        restore("jk.m2.local", priorM2);
     }
 
     private static void restore(String property, @Nullable String prior) {
