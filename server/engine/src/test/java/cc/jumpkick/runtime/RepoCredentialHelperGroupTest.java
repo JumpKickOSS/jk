@@ -47,8 +47,13 @@ class RepoCredentialHelperGroupTest {
     private final AtomicReference<String> accepted = new AtomicReference<>("token-1");
     private final List<String> authorizations = Collections.synchronizedList(new ArrayList<>());
 
+    /** The test's own local repository: a POM cached in the tier's shared one would answer for the stub. */
+    @TempDir
+    Path m2;
+
     @BeforeEach
     void start() throws IOException {
+        System.setProperty("jk.m2.local", m2.toString());
         RepoGroup.clearProcessFetchCache();
         RepoGroup.clearProcessVersionsCache();
         RunNotices.clear();
@@ -80,6 +85,7 @@ class RepoCredentialHelperGroupTest {
     void stop() {
         server.stop(0);
         System.clearProperty("jk.env.JK_HOME");
+        System.clearProperty("jk.m2.local");
         RunNotices.clear();
     }
 
