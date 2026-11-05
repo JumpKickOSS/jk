@@ -79,9 +79,10 @@ file does not parse names the file, line and column instead of showing the help.
 
 A `path` pin under `[plugins]` follows the file while the engine runs: add, edit or remove one —
 or fix a file that did not parse when the engine started — and the next command uses it, with no
-`jk engine stop`. A pin whose jar is missing or whose `sha256` disagrees with the jar fails every
-command that reads a `jk.toml`, naming the pin, and the plugin registered before the edit stays
-until the pin is fixed.
+`jk engine stop`. The pinned jar is followed too: rebuild it in place and the next command checks
+it again. A pin whose jar is missing or whose `sha256` disagrees with the jar fails every command
+that reads a `jk.toml`, naming the pin, and the plugin registered before the change stays until the
+pin is fixed.
 
 An engine command that reads nothing the file governs (no `jk.toml`, no resolve, no download)
 still succeeds, and prints one warning after its result naming the file, line and column, so you

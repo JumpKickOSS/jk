@@ -28,6 +28,10 @@ import org.jspecify.annotations.Nullable;
  * runs is what the next manifest parse validates against, with no restart. Maven pins wait for
  * {@code jk lock} (project lock is law) and are not registered here.
  *
+ * <p>Each pinned jar is stamped alongside the file: a jar rebuilt in place is re-checked on the next
+ * parse even though config.toml did not move, so a rebuild without its pin updated is refused rather
+ * than served under the registration of the jar it replaced.
+ *
  * <p>A pin that cannot be honored — missing file, unreadable jar, hash mismatch — is an error, never
  * the shipped plugin in its place: the pin is explicit user intent, and silently running other code
  * is wrong code with no diagnostic. This matches the project-pin posture ({@code jk lock} errors
@@ -49,14 +53,28 @@ public final class UserPluginPins {
     private record Displaced(
             PluginDescriptor descriptor, @Nullable Path archive) {}
 
-    /** A pin the registry holds: its descriptor (null for a jar without one) and what it replaced. */
-    private record Registered(Pin pin, @Nullable PluginDescriptor descriptor, List<Displaced> displaced) {}
+    /**
+     * A pin the registry holds: its descriptor (null for a jar without one), what it replaced, and
+     * the jar's stamp taken before its digest was checked.
+     */
+    private record Registered(
+            Pin pin,
+            @Nullable PluginDescriptor descriptor,
+            List<Displaced> displaced,
+            StampedMemo.@Nullable FileStamp jarStamp) {}
 
-    /** The file version the registry was last brought in step with, and the pin error it gave. */
+    /**
+     * The file version and pinned-jar versions the registry was last brought in step with, and the
+     * pin error they gave.
+     */
     private record Seen(
             Path config,
             StampedMemo.@Nullable FileStamp stamp,
+            List<JarStamp> jars,
             @Nullable String failure) {}
+
+    /** A pinned jar and its stamp when the registry was last brought in step with it. */
+    private record JarStamp(Path jar, StampedMemo.@Nullable FileStamp stamp) {}
 
     private static final Object LOCK = new Object();
 
@@ -104,9 +122,15 @@ public final class UserPluginPins {
     }
 
     private static boolean current(Seen last, Path config, StampedMemo.@Nullable FileStamp stamp) {
-        return last.config().equals(config)
-                && Objects.equals(last.stamp(), stamp)
-                && (stamp == null || stamp.settled());
+        if (!last.config().equals(config) || !unchanged(last.stamp(), stamp)) return false;
+        for (JarStamp jar : last.jars()) {
+            if (!unchanged(jar.stamp(), StampedMemo.FileStamp.of(jar.jar()))) return false;
+        }
+        return true;
+    }
+
+    private static boolean unchanged(StampedMemo.@Nullable FileStamp then, StampedMemo.@Nullable FileStamp now) {
+        return Objects.equals(then, now) && settled(now);
     }
 
     /**
@@ -122,21 +146,36 @@ public final class UserPluginPins {
             Path config = JkDirs.userConfigFile();
             StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(config);
             List<Pin> wanted = pathPins(config, UserPlugins.fromConfig(config));
+            // Stamped before any digest is read: a jar rewritten mid-check carries a newer stamp
+            // than the one remembered here, so the next parse checks it again.
+            List<JarStamp> jars = wanted.stream()
+                    .map(pin -> new JarStamp(pin.jar(), StampedMemo.FileStamp.of(pin.jar())))
+                    .toList();
             try {
-                if (!wanted.equals(registered.stream().map(Registered::pin).toList())) {
-                    replace(config, wanted);
+                if (!wanted.equals(registered.stream().map(Registered::pin).toList())
+                        || !jars.equals(registered.stream()
+                                .map(r -> new JarStamp(r.pin().jar(), r.jarStamp()))
+                                .toList())) {
+                    replace(config, wanted, jars);
                 }
             } catch (IllegalStateException unhonored) {
-                remember(config, stamp, unhonored.getMessage());
+                remember(config, stamp, jars, unhonored.getMessage());
                 throw unhonored;
             }
-            remember(config, stamp, null);
+            remember(config, stamp, jars, null);
         }
     }
 
     /** An unsettled stamp may not tell this version from the next, so it is not remembered. */
-    private static void remember(Path config, StampedMemo.@Nullable FileStamp stamp, @Nullable String failure) {
-        seen = stamp != null && !stamp.settled() ? null : new Seen(config, stamp, failure);
+    private static void remember(
+            Path config, StampedMemo.@Nullable FileStamp stamp, List<JarStamp> jars, @Nullable String failure) {
+        boolean settled = settled(stamp) && jars.stream().allMatch(j -> settled(j.stamp()));
+        seen = settled ? new Seen(config, stamp, jars, failure) : null;
+    }
+
+    /** Absent files are settled: a file appearing later gives a stamp that differs from none. */
+    private static boolean settled(StampedMemo.@Nullable FileStamp stamp) {
+        return stamp == null || stamp.settled();
     }
 
     private static List<Pin> pathPins(Path config, List<PluginDeclaration> decls) {
@@ -152,7 +191,7 @@ public final class UserPluginPins {
     }
 
     /** Check every wanted pin first, so a bad one leaves the registry as it was; then swap. */
-    private static void replace(Path config, List<Pin> wanted) {
+    private static void replace(Path config, List<Pin> wanted, List<JarStamp> jars) {
         List<@Nullable PluginDescriptor> descriptors = new ArrayList<>();
         for (Pin pin : wanted) descriptors.add(descriptorOf(config, pin));
         for (Registered r : registered.reversed()) {
@@ -174,7 +213,8 @@ public final class UserPluginPins {
                 }
                 PluginTableRegistry.putBuiltIn(descriptor, pin.jar());
             }
-            now.add(new Registered(pin, descriptor, List.copyOf(displaced)));
+            now.add(new Registered(
+                    pin, descriptor, List.copyOf(displaced), jars.get(i).stamp()));
         }
         registered = List.copyOf(now);
         // A memoized parse validated its tables against the registry as it was.
