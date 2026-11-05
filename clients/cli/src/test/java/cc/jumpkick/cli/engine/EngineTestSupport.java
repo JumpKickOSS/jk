@@ -14,7 +14,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
@@ -25,19 +26,21 @@ import org.jspecify.annotations.Nullable;
  */
 public final class EngineTestSupport {
 
-    private static final AtomicBoolean MATERIALIZED = new AtomicBoolean();
+    /** The product libraries this JVM has materialized the engine into: the tier's, and each isolated home's. */
+    private static final Set<Path> MATERIALIZED = ConcurrentHashMap.newKeySet();
 
     private EngineTestSupport() {}
 
     /**
-     * Idempotent materialize of the engine assembly into EngineInstall under the test {@code
-     * JK_HOME}: {@code -Djk.engine.jar} (the run-tests step names the workspace engine's fat jar),
+     * Idempotent materialize of the engine assembly into EngineInstall under the current {@code
+     * JK_HOME} (the tier's, or an {@link IsolatedHome}'s): {@code -Djk.engine.jar} (the run-tests step names the workspace engine's fat jar),
      * else the checkout's assembly. Never the installed engine, which is not the code under test.
      */
     public static void ensureEngineMaterialized() {
-        if (MATERIALIZED.get()) return;
+        Path lib = JkDirs.productLib();
+        if (MATERIALIZED.contains(lib)) return;
         synchronized (MATERIALIZED) {
-            if (MATERIALIZED.get()) return;
+            if (MATERIALIZED.contains(lib)) return;
             Path engineJar = resolveEngineJar();
             if (engineJar == null || !Files.isRegularFile(engineJar)) {
                 throw new IllegalStateException("no engine assembly at "
@@ -76,7 +79,7 @@ public final class EngineTestSupport {
                 // message and nothing below it, and a bare "failed to materialize" names no path.
                 throw new IllegalStateException("failed to materialize engine jar into JK_HOME: " + e, e);
             }
-            MATERIALIZED.set(true);
+            MATERIALIZED.add(lib);
         }
     }
 
