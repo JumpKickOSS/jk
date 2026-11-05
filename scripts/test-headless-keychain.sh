@@ -9,9 +9,10 @@
 #
 # Runs in podman, else docker; with neither answering it skips with a notice. The jk under test is
 # installed into a throwaway home; that home's store hard-links the host's (JK_STORE_DIR, else
-# ~/.jk/store) when it can, and the host's JDKs (JK_JDKS_DIR, else ~/.jdks) are mounted
+# $JK_HOME/store, else ~/.jk/store) when it can, and the host's JDKs (JK_JDKS_DIR, else ~/.jdks) are mounted
 # read-only, so a developer machine needs no network beyond the container image.
 # JK_HEADLESS_IMAGE overrides the image (default docker.io/library/ubuntu:24.04).
+# JK_HEADLESS_REQUIRE_RUNTIME=1 (CI) turns the no-runtime skip into a failure.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -29,6 +30,8 @@ if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
   RUNTIME=(podman run --rm --network=host --userns=keep-id --security-opt label=disable)
 elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   RUNTIME=(docker run --rm --network=host --user "$(id -u):$(id -g)" --security-opt label=disable)
+elif [[ "${JK_HEADLESS_REQUIRE_RUNTIME:-}" == 1 ]]; then
+  fail "neither podman nor docker answers here, and JK_HEADLESS_REQUIRE_RUNTIME=1 asks for the container check"
 else
   echo "test-headless-keychain: skipped — neither podman nor docker answers here (install one to run the container check)" >&2
   exit 0
@@ -60,7 +63,7 @@ ENGINE_HTTP_PORT="$(free_port)"
 # The private home: the jk under test, its rc files left alone.
 HOME_DIR="$WORK/home"
 mkdir -p "$HOME_DIR"
-HOST_STORE="${JK_STORE_DIR:-$HOME/.jk/store}"
+HOST_STORE="${JK_STORE_DIR:-${JK_HOME:-$HOME/.jk}/store}"
 if [[ -d "$HOST_STORE" ]] && ! cp -al "$HOST_STORE" "$HOME_DIR/store" 2>/dev/null; then
   rm -rf "$HOME_DIR/store"
   echo "test-headless-keychain: the store at $HOST_STORE is on another file system; the lock fetches what it needs" >&2
