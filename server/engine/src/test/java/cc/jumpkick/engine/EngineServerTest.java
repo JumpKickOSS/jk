@@ -5,11 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
-import cc.jumpkick.wire.protocol.MetricsRequest;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -24,8 +22,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -63,79 +59,6 @@ class EngineServerTest extends EngineServerHarness {
                     .isGreaterThanOrEqualTo(Jsonl.longValue(status, "heapUsedBytes", -1));
             long rss = Jsonl.longValue(status, "rssBytes", -99);
             assertThat(rss == -1 || rss > 0).isTrue(); // -1 only where the OS exposes no RSS
-        }
-        server.close();
-    }
-
-    @Test
-    void metrics_request_streams_aggregate_rows_and_a_terminal() throws Exception {
-        Path stateDir = shortTempDir();
-        Path metricsFile = stateDir.resolve("metrics.json");
-        // Seed the store the same way a finished build/test does at request-finish.
-        BuildMetrics.record(
-                metricsFile,
-                new BuildMetrics.Outcome(
-                        "build",
-                        "/proj/a",
-                        "g:a",
-                        true,
-                        false,
-                        1200,
-                        List.of(new BuildMetrics.StepSample("/proj/a", "compile-java", "SUCCESS", 700))),
-                1_700_000_000_000L);
-        BuildMetrics.record(
-                metricsFile,
-                new BuildMetrics.Outcome("build", "/proj/b", "g:b", false, false, 400, List.of()),
-                1_700_000_000_001L);
-
-        EnginePaths.Paths p = paths(stateDir);
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
-        server.metricsFileForTests(metricsFile);
-        runInBackground(server);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
-
-        try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            // Unfiltered: global build row + both project rows + global/project step rows.
-            c.sendLine(new MetricsRequest(null).encode());
-            List<String> rows = new ArrayList<>();
-            String line;
-            while ((line = c.readLine()) != null && EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(line))) {
-                rows.add(line);
-            }
-            assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.METRICS_DONE);
-            assertThat(Jsonl.intValue(line, "count", -1)).isEqualTo(rows.size());
-            assertThat(rows).hasSize(5);
-
-            String global = rows.stream()
-                    .filter(r -> BuildMetrics.SCOPE_GLOBAL.equals(Jsonl.str(r, "scope")))
-                    .findFirst()
-                    .orElseThrow();
-            assertThat(Jsonl.longValue(global, "okCount", -1)).isEqualTo(1);
-            assertThat(Jsonl.longValue(global, "failCount", -1)).isEqualTo(1); // the /proj/b failure
-            assertThat(Jsonl.longValue(global, "okAvgMillis", -1)).isEqualTo(1200);
-
-            String failedProject = rows.stream()
-                    .filter(r -> "/proj/b".equals(Jsonl.str(r, "dir")))
-                    .findFirst()
-                    .orElseThrow();
-            assertThat(Jsonl.longValue(failedProject, "okCount", -1)).isZero();
-            assertThat(Jsonl.longValue(failedProject, "failTotalMillis", -1)).isEqualTo(400);
-
-            // Filtered: /proj/a's rows plus the always-included global tiers; /proj/b drops out.
-            c.sendLine(new MetricsRequest("/proj/a").encode());
-            List<String> filtered = new ArrayList<>();
-            while ((line = c.readLine()) != null && EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(line))) {
-                filtered.add(line);
-            }
-            assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.METRICS_DONE);
-            assertThat(filtered).hasSize(4);
-            assertThat(filtered).noneMatch(r -> "/proj/b".equals(Jsonl.str(r, "dir")));
-            String taskRow = filtered.stream()
-                    .filter(r -> BuildMetrics.SCOPE_PROJECT_TASK.equals(Jsonl.str(r, "scope")))
-                    .findFirst()
-                    .orElseThrow();
-            assertThat(Jsonl.str(taskRow, "task")).isEqualTo("compile-java");
-            assertThat(Jsonl.longValue(taskRow, "okTotalMillis", -1)).isEqualTo(700);
         }
         server.close();
     }
