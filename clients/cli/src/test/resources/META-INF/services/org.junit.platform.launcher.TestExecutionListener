@@ -3,3 +3,4 @@ cc.jumpkick.config.testing.ClassOrderRecorder
 cc.jumpkick.cli.engine.EngineOwnerListener
 cc.jumpkick.http.testing.ConnectFaultsReset
 cc.jumpkick.resolve.testing.ResolveProcessCacheReset
+cc.jumpkick.cli.engine.SharedHomeTemplateCatalog
