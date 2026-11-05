@@ -553,7 +553,8 @@ public final class CommandDispatch {
             String verdict = thisRunReport();
             try {
                 if (verdict != null) {
-                    System.out.write(verdict.getBytes(StandardCharsets.UTF_8));
+                    System.out.write(
+                            agentAnswer(verdict, CliOutput.takeVerdicts()).getBytes(StandardCharsets.UTF_8));
                     System.out.flush();
                 } else {
                     System.out.write(outBuf.toByteArray());
@@ -827,6 +828,18 @@ public final class CommandDispatch {
     }
 
     /** The agent report of the run this invocation started, or {@code null} when it started none. */
+    /**
+     * What an agent reads from a command that ran a build: the build's run report, then the
+     * command's own {@link CliOutput#verdict} lines, so its conclusion is never replaced by the
+     * build it ran first.
+     */
+    static String agentAnswer(String runReport, List<String> verdicts) {
+        StringBuilder out = new StringBuilder(runReport);
+        if (!verdicts.isEmpty() && !runReport.endsWith("\n")) out.append('\n');
+        for (String own : verdicts) out.append(own).append('\n');
+        return out.toString();
+    }
+
     private static @Nullable String thisRunReport() {
         // A no-op has no run directory; its verdict came on the job's last line.
         Optional<String> noop = WireStream.lastJobNoop();

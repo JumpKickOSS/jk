@@ -23,6 +23,23 @@ class CliOutputTest {
     }
 
     @Test
+    void a_verdict_prints_like_out_and_is_kept_until_taken() {
+        String captured = Capture.stdout(() -> CliOutput.verdict("Guards: clean"));
+
+        assertThat(captured).isEqualTo("\nGuards: clean\n");
+        assertThat(CliOutput.takeVerdicts()).containsExactly("Guards: clean");
+        assertThat(CliOutput.takeVerdicts()).isEmpty();
+    }
+
+    @Test
+    void the_next_command_starts_with_no_verdict() {
+        Capture.stdout(() -> CliOutput.verdict("19 fixtures, every rule bites"));
+        CliOutput.beginCommand(false);
+
+        assertThat(CliOutput.takeVerdicts()).isEmpty();
+    }
+
+    @Test
     void first_out_inserts_one_leading_blank() {
         String captured = Capture.stdout(() -> {
             CliOutput.out("hello");

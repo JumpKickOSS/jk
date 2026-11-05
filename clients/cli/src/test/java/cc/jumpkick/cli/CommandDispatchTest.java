@@ -276,4 +276,13 @@ class CommandDispatchTest {
         assertThat(CommandDispatch.pluginArgsAskJson(List.of("build", "--fast")))
                 .isFalse();
     }
+
+    @Test
+    void an_agent_reads_the_command_s_own_verdict_after_the_report_of_the_build_it_ran() {
+        assertThat(CommandDispatch.agentAnswer("OK build jk · 1.1s\n", List.of("Guards: clean")))
+                .isEqualTo("OK build jk · 1.1s\nGuards: clean\n");
+        assertThat(CommandDispatch.agentAnswer("OK build jk", List.of("a", "b")))
+                .isEqualTo("OK build jk\na\nb\n");
+        assertThat(CommandDispatch.agentAnswer("OK build jk\n", List.of())).isEqualTo("OK build jk\n");
+    }
 }

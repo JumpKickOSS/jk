@@ -223,10 +223,10 @@ public final class GuardFixtures {
 
     /**
      * Modules whose {@code src/guard} suite has no compiled index. Guard tests and their fixtures are
-     * discovered from {@code target/incremental/guard-guard.idx}, which {@code jk guard} (or a {@code
-     * --guard} build) writes when it compiles the suite; a standalone {@code jk guard test} on a
-     * checkout that has run neither would otherwise report the suite's fixtures as simply absent.
-     * Each is a load error naming the module and the command that writes the index.
+     * discovered from {@code target/incremental/guard-guard.idx}, which {@link #indexSuites} writes
+     * from the suite's classes; {@code jk guard test} compiles the suites before it asks, so a
+     * suite still without one compiled to nothing, and its fixtures would otherwise read as simply
+     * absent. Each is a load error naming the module.
      */
     static List<String> unindexedSuites(Path root) throws IOException {
         List<String> out = new ArrayList<>();
@@ -243,8 +243,8 @@ public final class GuardFixtures {
             out.add((rel.isEmpty() ? "the workspace root" : rel)
                     + " declares a guard suite under src/guard and its compiled index "
                     + root.relativize(idx).toString().replace('\\', '/')
-                    + " is missing — guard tests and their fixtures are discovered from the compiled suite; run"
-                    + " `jk guard` (or `jk build -g`) first, then `jk guard test`");
+                    + " is missing — guard tests and their fixtures are discovered from the compiled suite, and"
+                    + " this one compiled to no classes");
         }
         return out;
     }

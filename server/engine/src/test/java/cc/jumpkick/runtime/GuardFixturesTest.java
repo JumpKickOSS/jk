@@ -216,10 +216,9 @@ class GuardFixturesTest {
         assertThat(GuardFixtures.COMPILES.get()).isEqualTo(before);
     }
 
-    /** The verb judges from the compiled suite; a checkout that has not compiled one hears which command does, not "no fixtures". */
+    /** The verb judges from the compiled suite; a suite with no compiled index is named, not reported as "no fixtures". */
     @Test
-    void a_guard_suite_without_its_compiled_index_is_named_with_the_command_that_writes_it(
-            @TempDir Path root, @TempDir Path store) throws Exception {
+    void a_guard_suite_without_its_compiled_index_is_named(@TempDir Path root, @TempDir Path store) throws Exception {
         Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njava = 25\n");
         Files.writeString(
                 root.resolve("jk-guards.toml"),
@@ -231,7 +230,8 @@ class GuardFixturesTest {
         assertThat(r.loadErrors()).singleElement().satisfies(e -> assertThat(e)
                 .contains("the workspace root declares a guard suite")
                 .contains("target/incremental/guard-guard.idx is missing")
-                .contains("run `jk guard`"));
+                .contains("compiled to no classes")
+                .doesNotContain("run `jk guard`"));
         assertThat(r.ok()).isFalse();
         assertThat(r.text()).startsWith("load error  ");
         assertThat(GuardFixtures.COMPILES.get()).isEqualTo(before);
