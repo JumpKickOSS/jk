@@ -11,7 +11,7 @@ commons-compress = "1.28.0"
 # jib-core needs the JRE flavour of Guava (ImmutableList.toImmutableList and the other stream
 # collectors are absent from -android), and Guava publishes both flavours under one module, so
 # the flavour is pinned here rather than left to whichever transitive request the walk meets.
-guava = { group = "com.google.guava", name = "guava", version = "33.7.2-jre" }
+guava = { group = "com.google.guava", name = "guava", version = "33.8.0-jre" }
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
