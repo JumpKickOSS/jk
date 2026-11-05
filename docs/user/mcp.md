@@ -76,7 +76,8 @@ asked; the human report is `target/jk-results.md` and [Web](web.md). `details` a
 
 ## Verdict
 
-An OK run is one line. A failure adds one line per problem, capped at five, then
+An OK run is one line, plus a `W` line for each notice the run gave: a login whose secret the keychain
+did not give up, so a request went without it, is a `W` line on a green run as on a red one. A failure adds one line per problem, capped at five, then
 `+K more: jk results -A | diagnostics(file=<path>)`: the shell command, then this tool. With no
 `file`, `diagnostics` returns every problem with its source lines (the same text as `jk results
 --all`); with `file`, that file's.
