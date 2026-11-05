@@ -134,13 +134,13 @@ public record Reconciliation(
     }
 
     /**
-     * This verdict with the baseline left as it was: a lane whose view cannot prove an entry gone
-     * reports the same sites and writes nothing.
+     * This verdict with the baseline left as it was and the scope floor unjudged: a lane whose view
+     * cannot prove an entry gone, or a population smaller, reports the same sites and writes nothing.
      */
     public Reconciliation withheld() {
-        if (!tighteningNeeded) return this;
+        if (!tighteningNeeded && scopeShrunk == null) return this;
         return new Reconciliation(
-                ruleId, lane, fresh, baselined, stale, before, false, scopeShrunk, observedPopulation, before);
+                ruleId, lane, fresh, baselined, stale, before, false, null, observedPopulation, before);
     }
 
     public boolean red() {

@@ -109,12 +109,12 @@ class PartialClassesViewTest {
                 .as("the banked cycle survives a view that lacks one of its classes")
                 .extracting(Entry::key)
                 .containsExactly("m:a");
-        assertThat(result.uncompiled())
+        assertThat(result.unseen())
                 .as("the source file the view has no class for, and not the package-info that compiles to nothing")
                 .containsExactly("m/src/main/java/p/c/C.java");
-        assertThat(GuardMessages.withheld(result.uncompiled()))
+        assertThat(GuardMessages.withheld(Lane.MODULE, result.unseen()))
                 .isEqualTo("baseline not tightened: 1 source file has no class in this lane's view"
-                        + " (m/src/main/java/p/c/C.java); a build that compiles them tightens it");
+                        + " (m/src/main/java/p/c/C.java); a build that compiles them tightens it and judges its scope");
     }
 
     @Test
@@ -126,6 +126,6 @@ class PartialClassesViewTest {
 
         assertThat(result.tightened()).isPositive();
         assertThat(result.baseline().of("r").entries("m")).isEmpty();
-        assertThat(result.uncompiled()).isEmpty();
+        assertThat(result.unseen()).isEmpty();
     }
 }

@@ -55,6 +55,9 @@ final class OutputEvaluator implements Evaluator {
                 if (gav != null) published.add(gav[0] + ":" + gav[1]);
             }
         }
+        // The packaged set is known only when every module has packaged: a sibling this build did
+        // not reach is not evidence that a dependency on it names nothing.
+        boolean publishedKnown = OutputArtifacts.unbuilt(modules).isEmpty();
         for (OutputArtifacts.Module m : modules) {
             Allow allow = allowing(rule.allow(), m.module());
             if (allow != null) allowUsed.put(allow, true);
@@ -62,7 +65,8 @@ final class OutputEvaluator implements Evaluator {
                 Path p = m.existingPom();
                 if (p != null) {
                     poms++;
-                    if (allow == null) checkPom(pom, p, OutputArtifacts.rel(ctx.root(), p), published, out);
+                    if (allow == null)
+                        checkPom(pom, p, OutputArtifacts.rel(ctx.root(), p), publishedKnown ? published : null, out);
                 }
             }
             if (jar != null || manifest != null) {
@@ -114,8 +118,9 @@ final class OutputEvaluator implements Evaluator {
         return s == null ? "" : s;
     }
 
+    /** @param published the packaged {@code group:artifact} set, or {@code null} when the lane did not see it whole */
     private static void checkPom(
-            TomlTable spec, Path pomFile, String rel, TreeSet<String> published, List<Observation> out) {
+            TomlTable spec, Path pomFile, String rel, @Nullable TreeSet<String> published, List<Observation> out) {
         boolean noUnspecified = Boolean.TRUE.equals(spec.getBoolean("no-unspecified"));
         List<String> groups = strings(spec.getArray("groups"));
         Document doc;
@@ -163,7 +168,7 @@ final class OutputEvaluator implements Evaluator {
                         "the POM depends on `" + dg + ":" + da + ":" + dv + "`, an unspecified coordinate"));
                 continue;
             }
-            if (groups.contains(dg) && !published.contains(dg + ":" + da)) {
+            if (published != null && groups.contains(dg) && !published.contains(dg + ":" + da)) {
                 out.add(Observation.site(
                         rel + " | dependency " + dg + ":" + da,
                         rel,

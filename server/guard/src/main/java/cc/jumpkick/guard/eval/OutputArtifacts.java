@@ -144,6 +144,17 @@ public final class OutputArtifacts {
         return out;
     }
 
+    /**
+     * The modules of {@code modules} with no jar, POM or native binary on disk, by label, in
+     * workspace order: what a build scoped to fewer modules (or one not run yet) leaves the output
+     * lane unable to see. Every member packages one of the three in a full build.
+     */
+    public static List<String> unbuilt(List<Module> modules) {
+        List<String> out = new ArrayList<>();
+        for (Module m : modules) if (!m.any()) out.add(m.label());
+        return out;
+    }
+
     /** {@code module/}-prefixed workspace-relative spelling of an artefact, for a site's file. */
     public static String rel(Path root, Path file) {
         return WorkspaceModel.rel(root, file);
