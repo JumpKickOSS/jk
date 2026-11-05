@@ -8,8 +8,11 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.AuthHeaders;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.wire.PluginJarNotFoundException;
 import java.io.IOException;
 import java.net.URI;
@@ -19,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -151,6 +155,10 @@ public enum PluginJar {
      * Download {@code relPath} and its sibling {@code .pom} (+ optional {@code .sha256}) from the
      * official Maven repo into that repository's store. Returns the local jar path, {@code null} if
      * the jar 404s, or throws if the jar exists without a POM.
+     *
+     * <p>The requests go where a resolve of the {@code jumpkick} repository's go: through the
+     * mirror that stands in for it ({@code mirror-of}, or a {@code settings.xml} {@code <mirror>}),
+     * with the mirror's credential, and never around it. The store keeps the official origin.
      */
     public static @Nullable Path fetchOfficial(Cas cas, String relPath) throws IOException, InterruptedException {
         if (!relPath.endsWith(".jar")) {
@@ -158,12 +166,18 @@ public enum PluginJar {
         }
         URI base = officialRepoBase();
         String pomRel = relPath.substring(0, relPath.length() - 4) + ".pom";
-        URI jarUri = base.resolve(relPath);
-        URI pomUri = base.resolve(pomRel);
         Http http = new Http();
+        MavenRepo routed = RepoMirrors.apply(new MavenRepo(RepositorySpec.JUMPKICK_NAME, base, http, cas));
+        String refusal = routed.mirror().map(MavenRepo.Mirror::refusal).orElse(null);
+        if (refusal != null) throw new IOException(refusal);
+        String opened = routed.fetchBase().toString();
+        URI fetchBase = URI.create(opened.endsWith("/") ? opened : opened + "/");
+        Map<String, String> auth = AuthHeaders.of(routed.credential());
+        URI jarUri = fetchBase.resolve(relPath);
+        URI pomUri = fetchBase.resolve(pomRel);
         HttpResponse<byte[]> jarResp;
         try {
-            jarResp = http.get(jarUri);
+            jarResp = http.get(jarUri, auth);
         } catch (IOException e) {
             // A network failure is not "not found" — surfacing it as null made an offline host
             // report a plain missing plugin with no cause.
@@ -173,7 +187,7 @@ public enum PluginJar {
         if (jarResp.statusCode() < 200 || jarResp.statusCode() >= 300) {
             throw new IOException("GET " + jarUri + " → HTTP " + jarResp.statusCode());
         }
-        HttpResponse<byte[]> pomResp = http.get(pomUri);
+        HttpResponse<byte[]> pomResp = http.get(pomUri, auth);
         if (pomResp.statusCode() < 200 || pomResp.statusCode() >= 300) {
             throw new IOException("official repo has no POM for " + relPath + " (HTTP " + pomResp.statusCode() + ")");
         }
@@ -185,7 +199,7 @@ public enum PluginJar {
         String sha = Hashing.sha256Hex(bytes);
         Optional<String> published = Optional.empty();
         try {
-            HttpResponse<byte[]> sumResp = http.get(URI.create(jarUri + ".sha256"));
+            HttpResponse<byte[]> sumResp = http.get(URI.create(jarUri + ".sha256"), auth);
             if (sumResp.statusCode() >= 200 && sumResp.statusCode() < 300) {
                 published = Hashing.checksumFromSidecar(new String(sumResp.body(), StandardCharsets.UTF_8), 64);
             }

@@ -302,7 +302,8 @@ final class EngineReads {
     }
 
     static @Nullable String freshenCatalogNow(
-            EnginePaths.Paths paths, String catalog, String url, @Nullable String cacheFile) throws IOException {
+            EnginePaths.Paths paths, String catalog, @Nullable String url, @Nullable String cacheFile)
+            throws IOException {
         return request(
                 paths,
                 new FreshenCatalogRequest(catalog, false, url, cacheFile, true).encode(),

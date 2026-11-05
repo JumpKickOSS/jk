@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -55,7 +56,7 @@ class LibraryRegistrySyncTest {
     @Test
     void missing_file_is_downloaded(@TempDir Path tmp) throws Exception {
         Path cache = tmp.resolve("libs.global.toml");
-        LibraryRegistrySync.ensurePresent(false, uri, cache);
+        LibraryRegistrySync.ensurePresent(false, uri, new Http(), cache);
         assertThat(cache).exists();
         assertThat(Files.readAllBytes(cache)).isEqualTo(BODY);
         assertThat(Files.readString(LibraryCatalog.etagFileFor(cache))).isEqualTo(ETAG);
@@ -69,7 +70,7 @@ class LibraryRegistrySyncTest {
         Path cache = tmp.resolve("libs.global.toml");
         Files.write(cache, BODY);
         Files.writeString(LibraryCatalog.etagFileFor(cache), ETAG);
-        LibraryRegistrySync.ensurePresent(false, uri, cache);
+        LibraryRegistrySync.ensurePresent(false, uri, new Http(), cache);
         assertThat(hits.get()).isZero();
         assertThat(Files.readAllBytes(cache)).isEqualTo(BODY);
     }
@@ -81,11 +82,11 @@ class LibraryRegistrySyncTest {
         Files.writeString(LibraryCatalog.etagFileFor(cache), ETAG);
         Instant stale = Instant.now().minus(LibraryRegistrySync.FRESH_FOR).minusSeconds(60);
         Files.setLastModifiedTime(cache, FileTime.from(stale));
-        LibraryRegistrySync.ensurePresent(false, uri, cache);
+        LibraryRegistrySync.ensurePresent(false, uri, new Http(), cache);
         assertThat(hits.get()).isEqualTo(1);
         assertThat(Files.readAllBytes(cache)).isEqualTo(BODY);
         // The 304 re-armed the window: an immediate second call stays off the network.
-        LibraryRegistrySync.ensurePresent(false, uri, cache);
+        LibraryRegistrySync.ensurePresent(false, uri, new Http(), cache);
         assertThat(hits.get()).isEqualTo(1);
     }
 
@@ -95,7 +96,7 @@ class LibraryRegistrySyncTest {
         // Cache deleted (user refetch / partial prune) but the sidecar survived: the server
         // would answer 304 to a conditional GET, which must not leave the file absent forever.
         Files.writeString(LibraryCatalog.etagFileFor(cache), ETAG);
-        LibraryRegistrySync.ensurePresent(false, uri, cache);
+        LibraryRegistrySync.ensurePresent(false, uri, new Http(), cache);
         assertThat(cache).exists();
         assertThat(Files.readAllBytes(cache)).isEqualTo(BODY);
         assertThat(hits.get()).isEqualTo(1);
@@ -104,7 +105,7 @@ class LibraryRegistrySyncTest {
     @Test
     void offline_never_hits_the_network(@TempDir Path tmp) {
         Path cache = tmp.resolve("libs.global.toml");
-        LibraryRegistrySync.ensurePresent(true, uri, cache);
+        LibraryRegistrySync.ensurePresent(true, uri, new Http(), cache);
         assertThat(hits.get()).isZero();
         assertThat(cache).doesNotExist();
     }

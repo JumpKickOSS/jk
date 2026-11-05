@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.compat.LibraryRegistryMirror;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
@@ -50,7 +51,9 @@ public final class StoreFeedRefresh implements AutoCloseable {
     private final Http http;
     private final Supplier<Path> librariesFile;
     private final Supplier<Path> jdksFile;
-    private final URI librariesSource;
+    /** The registry to read; null for the one the user's configuration names ({@link LibraryRegistryMirror}). */
+    private final @Nullable URI librariesSource;
+
     private final URI jdkFeed;
     /** Engine hook: queue idle-boundary cache GC (never blocks the tick on builds). */
     private final @Nullable Runnable afterTick;
@@ -73,7 +76,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
                 new Http(),
                 JkDirs::libraryRegistry,
                 JdkCatalogClient::defaultCachePath,
-                LibraryRegistryClient.DEFAULT_SOURCE,
+                null,
                 URI.create(JdkCatalogClient.DEFAULT_FEED_URL),
                 afterTick,
                 Clock.SYSTEM);
@@ -85,7 +88,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
             Http http,
             Supplier<Path> librariesFile,
             Supplier<Path> jdksFile,
-            URI librariesSource,
+            @Nullable URI librariesSource,
             URI jdkFeed,
             @Nullable Runnable afterTick) {
         this(log, http, librariesFile, jdksFile, librariesSource, jdkFeed, afterTick, Clock.SYSTEM);
@@ -97,7 +100,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
             Http http,
             Supplier<Path> librariesFile,
             Supplier<Path> jdksFile,
-            URI librariesSource,
+            @Nullable URI librariesSource,
             URI jdkFeed,
             @Nullable Runnable afterTick,
             Clock clock) {
@@ -105,7 +108,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
         this.http = Objects.requireNonNull(http, "http");
         this.librariesFile = Objects.requireNonNull(librariesFile, "librariesFile");
         this.jdksFile = Objects.requireNonNull(jdksFile, "jdksFile");
-        this.librariesSource = Objects.requireNonNull(librariesSource, "librariesSource");
+        this.librariesSource = librariesSource;
         this.jdkFeed = Objects.requireNonNull(jdkFeed, "jdkFeed");
         this.afterTick = afterTick;
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -159,8 +162,11 @@ public final class StoreFeedRefresh implements AutoCloseable {
         Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
         if (!needsRefresh(cacheFile, INTERVAL, clock)) return;
 
+        // Read per pass: a [mirrors] libraries added while the engine runs serves the next refresh.
+        LibraryRegistryMirror registry = LibraryRegistryMirror.current();
+        URI source = librariesSource != null ? librariesSource : registry.source();
         LibraryRegistryClient.Result result =
-                new LibraryRegistryClient(http).fetch(librariesSource, etagFile, cacheFile);
+                new LibraryRegistryClient(registry.authorized(http)).fetch(source, etagFile, cacheFile);
         if (result instanceof LibraryRegistryClient.Result.Unchanged) {
             touch(cacheFile, clock);
             return;

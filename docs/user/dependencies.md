@@ -411,6 +411,9 @@ jk library list
 jk library update          # refresh the global registry
 ```
 
+The registry is read from GitHub unless `[mirrors] libraries` names a copy:
+[Config § Tool mirrors](config.md#tool-mirrors).
+
 **Starters** are real Maven artifacts (`spring-boot-starter-web`, Quarkus extensions),
 usually versionless under a BOM — not catalog bundles. [Platforms](platforms.md),
 [Frameworks](frameworks.md).

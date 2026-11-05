@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.compat.LibraryRegistryMirror;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -36,6 +38,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
@@ -558,7 +561,12 @@ public final class LockPlans {
     public static LockScope lockScope(Path entryDir, FeatureSelection selection) throws IOException {
         // Ensure libs.global.toml exists before short-name expansion (closes race with the engine's
         // background StoreFeedRefresh on first start of a host).
-        LibraryRegistrySync.ensurePresent(SessionContext.current().offline());
+        LibraryRegistryMirror registry = LibraryRegistryMirror.current();
+        LibraryRegistrySync.ensurePresent(
+                SessionContext.current().offline(),
+                registry.source(),
+                registry.authorized(new Http()),
+                JkDirs.libraryRegistry());
         JkBuild root = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
         if (root.isWorkspaceRoot()) return workspaceScope(entryDir, root, selection);
         var rootOpt = WorkspaceLocator.findRoot(entryDir);

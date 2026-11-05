@@ -1284,10 +1284,6 @@ at     = "cc.jumpkick.http.RateLimitedException#message(Ljava/lang/String;Ljava/
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "shared/client-io"
-at     = "cc.jumpkick.repo.LibraryRegistrySync#fetchAndStore(Ljava/net/URI;Ljava/nio/file/Path;)V -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/client-io"
 at     = "cc.jumpkick.repo.LibraryRegistrySync#isFresh(Ljava/nio/file/Path;)Z -> java.time.Instant#now()Ljava/time/Instant;"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
