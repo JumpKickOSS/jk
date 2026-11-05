@@ -94,7 +94,7 @@ and, unless the suite opts in, HTTP disabled or
 bound on port {@code 0} so it cannot steal the host dashboard. `jk engine status` lists every
 resident engine this user owns. `jk engine stop` addresses the one this directory resolves to,
 `--all` stops **this home only** (nested tests must not kill the host engine running
-{@code jk build}), and `--pid <pid>` stops one by pid.
+{@code jk build}), and `--pid <pid>[,<pid>…]` stops engines by pid, of any home.
 
 Every form of stop confirms the engine went and reports what actually happened; an engine that said
 it was exiting and did not is hard-killed. A graceful stop never kills for silence alone: a drain

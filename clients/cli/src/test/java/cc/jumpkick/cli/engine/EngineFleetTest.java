@@ -211,4 +211,56 @@ class EngineFleetTest {
             dummy.waitFor();
         }
     }
+
+    @Test
+    void an_engine_of_another_home_is_listed_as_such_and_stop_all_leaves_it(@TempDir Path tmp) throws Exception {
+        Path otherHome = tmp.resolve("other-home");
+        Path heapDumps = otherHome.resolve("state").resolve("engine");
+        // The heap-dump flag goes last: its value runs to the next " -" or the end of the line.
+        Process foreign = SleepMain.spawn(30_000, "cc.jumpkick.engine.EngineMain", "-XX:HeapDumpPath=" + heapDumps);
+        try {
+            WindowsCommandLines.resetForTests();
+
+            var listed = EngineFleet.list(tmp.resolve("state"), "abcd1234").stream()
+                    .filter(m -> m.pid() == foreign.pid())
+                    .toList();
+            assertThat(listed).singleElement().satisfies(m -> {
+                assertThat(m.otherHome()).isTrue();
+                assertThat(m.home()).isEqualTo(otherHome.toAbsolutePath().normalize());
+            });
+            assertThat(EngineFleet.list(tmp.resolve("state"), "abcd1234", false))
+                    .extracting(EngineFleet.Member::pid)
+                    .doesNotContain(foreign.pid());
+
+            EngineFleet.FleetStop stop = EngineFleet.stopAll(listed, /* now= */ true);
+
+            assertThat(stop.results()).isEmpty();
+            assertThat(stop.otherHomes()).extracting(EngineFleet.Member::pid).containsExactly(foreign.pid());
+            assertThat(foreign.isAlive())
+                    .as("stop -A never touches another home's engine")
+                    .isTrue();
+        } finally {
+            foreign.destroyForcibly();
+            foreign.waitFor();
+        }
+    }
+
+    @Test
+    void an_engine_home_is_read_from_its_jar_or_its_state_dir(@TempDir Path tmp) {
+        Path one = tmp.resolve("one").toAbsolutePath().normalize();
+        Path two = tmp.resolve("two").toAbsolutePath().normalize();
+        Path custom = tmp.resolve("custom").toAbsolutePath().normalize();
+        String main = " cc.jumpkick.engine.EngineMain";
+
+        assertThat(EngineFleet.engineHome("java -cp " + one.resolve("lib/jk-engine/e.jar") + main))
+                .isEqualTo(one);
+        assertThat(EngineFleet.engineHome(
+                        "java -XX:HeapDumpPath=" + two.resolve("state/engine") + " -cp classes" + main))
+                .isEqualTo(two);
+        assertThat(EngineFleet.engineHome(
+                        "java -XX:HeapDumpPath=" + custom.resolve("st/engine") + " -cp classes" + main))
+                .as("a custom state dir names no home")
+                .isNull();
+        assertThat(EngineFleet.engineHome("java -cp classes" + main)).isNull();
+    }
 }

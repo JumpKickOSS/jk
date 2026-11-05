@@ -54,13 +54,29 @@ public final class EngineFleet {
      * one that still holds its socket but cannot reply — must still appear in the list, or
      * {@code stop --pid} would answer "no running engine with pid N" about a process that is
      * running. Verified against a SIGSTOP'd engine.
+     *
+     * <p>{@code otherHome} marks an engine that belongs to a different {@code JK_HOME} (a scratch
+     * install, a test suite's home): {@link #stopAll} leaves it running, so status must say so.
+     * {@code home} is that home when its spawn line names it, null when it does not.
      */
     public record Member(
             EnginePaths.@Nullable Paths paths,
             @Nullable Path socket,
             EngineProbe.@Nullable Status status,
             long pid,
-            boolean current) {
+            boolean current,
+            boolean otherHome,
+            @Nullable Path home) {
+
+        /** An engine of this home. */
+        public Member(
+                EnginePaths.@Nullable Paths paths,
+                @Nullable Path socket,
+                EngineProbe.@Nullable Status status,
+                long pid,
+                boolean current) {
+            this(paths, socket, status, pid, current, false, null);
+        }
 
         /**
          * Short, stable handle for a human to refer to: the identity hash, or a pid-derived label for an
@@ -93,6 +109,17 @@ public final class EngineFleet {
     public record StopResult(Member member, Outcome outcome) {}
 
     /**
+     * What {@link #stopAll} did: one result per engine of this home, and the engines of other homes
+     * it found and deliberately left running.
+     */
+    public record FleetStop(List<StopResult> results, List<Member> otherHomes) {
+        public FleetStop {
+            results = List.copyOf(results);
+            otherHomes = List.copyOf(otherHomes);
+        }
+    }
+
+    /**
      * Every engine this user is running. Disk pointers under this state dir come first; then any
      * other generation pid still alive; then every other resident {@code EngineMain} JVM we can
      * see. Liveness is the process, not the socket: a wedged or rebound engine answers nowhere and
@@ -104,8 +131,8 @@ public final class EngineFleet {
     }
 
     /**
-     * Engines that belong to this {@code JK_HOME} / state dir. {@link #stopAll} uses this so a
-     * nested test suite cannot kill the host engine running {@code jk build}.
+     * Engines that belong to this {@code JK_HOME} / state dir: exactly the members of {@link #list()}
+     * that are not {@link Member#otherHome()}, the set {@link #stopAll} stops.
      */
     public static List<Member> listThisHome() {
         return list(JkDirs.state(), EnginePaths.current().key(), false);
@@ -198,8 +225,9 @@ public final class EngineFleet {
                 if (!sameUser(me, h)) return;
                 String cmd = commandLineOf(h);
                 if (!isResidentEngineProcess(h, cmd)) return;
-                if (!allHomes && !belongsToThisHome(cmd, home, state)) return;
-                out.add(memberForProcess(pid, cmd));
+                boolean ours = belongsToThisHome(cmd, home, state);
+                if (!allHomes && !ours) return;
+                out.add(memberForProcess(pid, cmd, !ours));
             });
         } catch (RuntimeException e) {
             return List.of(); // process enumeration is best-effort; never fail a status over it
@@ -258,17 +286,32 @@ public final class EngineFleet {
         return inside ? opening + 1 : -1;
     }
 
-    private static Member memberForProcess(long pid, String cmd) {
+    private static Member memberForProcess(long pid, String cmd, boolean otherHome) {
+        Path home = otherHome ? engineHome(cmd) : null;
         for (Path state : candidateStateDirs(cmd)) {
             for (EnginePaths.Paths paths : EnginePaths.identitiesIn(state)) {
                 Path socket = EnginePaths.activeSocket(paths);
                 Optional<EngineProbe.Status> status = EngineProbe.status(socket);
                 if (status.isPresent() && status.get().pid() == pid) {
-                    return new Member(paths, socket, status.get(), pid, false);
+                    return new Member(paths, socket, status.get(), pid, false, otherHome, home);
                 }
             }
         }
-        return new Member(null, null, null, pid, false);
+        return new Member(null, null, null, pid, false, otherHome, home);
+    }
+
+    /**
+     * The home an engine runs for, read off its spawn line: the jar's {@code <home>/lib/jk-engine/},
+     * else the parent of a {@code <home>/state} heap-dump directory. Null when neither names one (an
+     * engine run from a classpath under a custom {@code JK_STATE_DIR}).
+     */
+    static @Nullable Path engineHome(String commandLine) {
+        Path fromJar = homeFromCommandLine(commandLine);
+        if (fromJar != null) return fromJar.toAbsolutePath().normalize();
+        Path state = stateFromCommandLine(commandLine);
+        if (state == null || state.getFileName() == null) return null;
+        if (!state.getFileName().toString().equals("state")) return null;
+        return state.getParent();
     }
 
     /**
@@ -467,15 +510,23 @@ public final class EngineFleet {
     }
 
     /**
-     * Stop every engine that belongs to this {@code JK_HOME} / state dir. Other homes stay up —
-     * {@code jk engine status} still lists them; {@code --pid} stops one explicitly.
+     * Stop every engine that belongs to this {@code JK_HOME} / state dir. Other homes stay up, so a
+     * nested test suite cannot kill the host engine running {@code jk build}; they come back in
+     * {@link FleetStop#otherHomes()} for the caller to name, and {@code --pid} stops them explicitly.
      */
-    public static List<StopResult> stopAll(boolean now) {
+    public static FleetStop stopAll(boolean now) {
+        return stopAll(list(), now);
+    }
+
+    /** As {@link #stopAll(boolean)}, over an explicit fleet. */
+    static FleetStop stopAll(List<Member> fleet, boolean now) {
         List<StopResult> results = new ArrayList<>();
-        for (Member m : listThisHome()) {
-            results.add(stop(m, now));
+        List<Member> others = new ArrayList<>();
+        for (Member m : fleet) {
+            if (m.otherHome()) others.add(m);
+            else results.add(stop(m, now));
         }
-        return List.copyOf(results);
+        return new FleetStop(results, others);
     }
 
     /**
@@ -529,10 +580,21 @@ public final class EngineFleet {
 
     /** Stop the engine with this pid, or empty when no running engine has it. */
     public static Optional<StopResult> stopByPid(long pid, boolean now) {
+        List<StopResult> results = stopByPids(List.of(pid), now);
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.getFirst());
+    }
+
+    /**
+     * Stop each running engine, of any home, whose pid is in {@code pids}, in the fleet's order. A
+     * pid no running engine has is absent from the result.
+     */
+    public static List<StopResult> stopByPids(List<Long> pids, boolean now) {
+        Set<Long> wanted = new HashSet<>(pids);
+        List<StopResult> results = new ArrayList<>();
         for (Member m : list()) {
-            if (m.pid() == pid) return Optional.of(stop(m, now));
+            if (wanted.remove(m.pid())) results.add(stop(m, now));
         }
-        return Optional.empty();
+        return List.copyOf(results);
     }
 
     /**

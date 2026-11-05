@@ -19,7 +19,9 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -44,14 +46,19 @@ public final class EngineStopCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Stop now (abandon jobs)", "-n", "--now"),
-                Opt.flag("Stop every engine (not only this dir's)", "-A", "--all"),
-                Opt.value("<pid>", "Stop the engine with this pid (see `jk engine status`).", "-p", "--pid"));
+                Opt.flag("Stop every engine of this home (not only this dir's)", "-A", "--all"),
+                Opt.value(
+                        "<pid>[,<pid>…]",
+                        "Stop the engines with these pids, of any home (see `jk engine status`).",
+                        "-p",
+                        "--pid"));
     }
 
     @Override
     public int run(Invocation in) {
         if (in.isSet("all")) {
-            return report(EngineFleet.stopAll(in.isSet("now")));
+            EngineFleet.FleetStop stop = EngineFleet.stopAll(in.isSet("now"));
+            return report(stop.results(), stop.otherHomes());
         }
         Optional<String> pidArg = in.value("pid");
         if (pidArg.isPresent()) {
@@ -217,26 +224,73 @@ public final class EngineStopCommand implements CliCommand {
     }
 
     /**
-     * Stop one engine by pid — the handle {@code jk engine status} prints.
+     * Stop engines by pid — the handle {@code jk engine status} prints — one or a comma-separated
+     * list, of this home or any other.
      *
      * <p>Exists so that clearing a stray engine never means reaching for {@code kill}. On Windows that
      * would mean identifying the right JVM in Task Manager, which is not a reasonable thing to ask.
+     * The list form is what {@code stop -A} and {@code status} print for the engines of other homes.
      *
      * <p>Package-private: the parse-failure branch is the only settle here a test can reach without a
      * live engine to stop.
      */
     int stopByPid(String raw, boolean now) {
-        long pid;
-        try {
-            pid = Long.parseLong(raw.trim());
-        } catch (NumberFormatException e) {
-            return settle(Exit.FAILURE, "not a pid: " + raw);
+        List<Long> pids = new ArrayList<>();
+        for (String part : raw.split(",", -1)) {
+            try {
+                pids.add(Long.parseLong(part.trim()));
+            } catch (NumberFormatException e) {
+                return settle(Exit.FAILURE, "not a pid: " + part.trim());
+            }
         }
-        Optional<EngineFleet.StopResult> result = EngineFleet.stopByPid(pid, now);
-        if (result.isEmpty()) {
-            return settle(Exit.FAILURE, "no running engine with pid " + pid);
+        List<EngineFleet.StopResult> results = EngineFleet.stopByPids(pids, now);
+        List<Long> missing = new ArrayList<>(pids);
+        for (EngineFleet.StopResult r : results) missing.remove(r.member().pid());
+        if (results.isEmpty()) return settle(Exit.FAILURE, "no running engine with pid " + joinPids(missing));
+        int exit = report(results, List.of());
+        if (missing.isEmpty()) return exit;
+        return settle(Exit.FAILURE, "no running engine with pid " + joinPids(missing));
+    }
+
+    /** {@code 101, 202}: pids for a sentence. */
+    private static String joinPids(List<Long> pids) {
+        List<String> out = new ArrayList<>();
+        for (long pid : pids) out.add(Long.toString(pid));
+        return String.join(", ", out);
+    }
+
+    /** {@code jk engine stop -p 101,202}: the command that stops exactly these engines. */
+    static String stopCommandFor(List<EngineFleet.Member> members) {
+        List<String> pids = new ArrayList<>();
+        for (EngineFleet.Member m : members) pids.add(Long.toString(m.pid()));
+        return "jk engine stop -p " + String.join(",", pids);
+    }
+
+    /**
+     * Where an engine of another home runs: its home, or {@code home unknown} when the spawn line
+     * names none.
+     */
+    static String homeLabel(EngineFleet.Member member) {
+        Path home = member.home();
+        return home == null ? "home unknown" : home.toString();
+    }
+
+    /**
+     * {@code left 2 engines of other homes running (/scratch/a: pid 101, 202); `jk engine stop -p
+     * 101,202` stops them} — what {@code -A} did not touch, grouped by home, and the command for it.
+     * Empty when every engine belonged to this home.
+     */
+    static String otherHomesNote(List<EngineFleet.Member> others) {
+        if (others.isEmpty()) return "";
+        Map<String, List<Long>> byHome = new LinkedHashMap<>();
+        for (EngineFleet.Member m : others) {
+            byHome.computeIfAbsent(homeLabel(m), k -> new ArrayList<>()).add(m.pid());
         }
-        return report(List.of(result.get()));
+        List<String> groups = new ArrayList<>();
+        byHome.forEach((home, pids) -> groups.add(home + ": pid " + joinPids(pids)));
+        return "left " + others.size() + (others.size() == 1 ? " engine of another home" : " engines of other homes")
+                + " running (" + String.join("; ", groups) + "); `" + stopCommandFor(others) + "` stops "
+                + (others.size() == 1 ? "it" : "them");
     }
 
     /**
@@ -250,9 +304,12 @@ public final class EngineStopCommand implements CliCommand {
      * <p>Package-private: a synthetic {@link EngineFleet.StopResult} is the only way to exercise the
      * survivor settle without a wedged engine on the machine running the test.
      */
-    int report(List<EngineFleet.StopResult> results) {
+    int report(List<EngineFleet.StopResult> results, List<EngineFleet.Member> otherHomes) {
+        String others = otherHomesNote(otherHomes);
         if (results.isEmpty()) {
-            return settle(Exit.SUCCESS, "no engines running");
+            return settle(
+                    Exit.SUCCESS,
+                    others.isEmpty() ? "no engines running" : "no engines of this home running; " + others);
         }
         int stopped = 0;
         int killed = 0;
@@ -291,6 +348,7 @@ public final class EngineStopCommand implements CliCommand {
                     .append(" did NOT exit: pid ")
                     .append(survived);
         }
+        if (!others.isEmpty()) msg.append("; ").append(others);
         return settle(survived.isEmpty() && leftAlone.isEmpty() ? Exit.SUCCESS : Exit.FAILURE, msg.toString());
     }
 

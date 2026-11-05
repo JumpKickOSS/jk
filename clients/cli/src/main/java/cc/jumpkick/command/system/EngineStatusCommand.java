@@ -286,10 +286,32 @@ public final class EngineStatusCommand implements CliCommand {
                 line.append("  unresponsive (alive, not answering)");
             }
             if (m.current()) line.append("   (this directory)");
+            if (m.otherHome())
+                line.append("   (other home: ")
+                        .append(EngineStopCommand.homeLabel(m))
+                        .append(")");
             CliOutput.out(line.toString());
         }
         CliOutput.out("");
-        CliOutput.out(" Stop this home with `jk engine stop -A`, or one engine with `jk engine stop -p <pid>`.");
+        CliOutput.out(" " + stopHint(fleet));
+    }
+
+    /**
+     * How to stop what the fleet lists. {@code stop -A} stops this home's engines only, so when
+     * other homes' engines are listed the hint names them and the per-pid command that stops them.
+     */
+    static String stopHint(List<EngineFleet.Member> fleet) {
+        List<EngineFleet.Member> others = new ArrayList<>();
+        for (EngineFleet.Member m : fleet) if (m.otherHome()) others.add(m);
+        int ours = fleet.size() - others.size();
+        if (others.isEmpty()) {
+            return "Stop this home's engines with `jk engine stop -A`, or one engine with `jk engine stop -p <pid>`.";
+        }
+        String theirs = (others.size() == 1 ? "The engine of another home stops" : "The engines of other homes stop")
+                + " with `" + EngineStopCommand.stopCommandFor(others) + "`.";
+        if (ours == 0) return "None of these belong to this home. " + theirs;
+        return "`jk engine stop -A` stops this home's " + ours + (ours == 1 ? " engine" : " engines")
+                + " and leaves the others. " + theirs;
     }
 
     /** The `-O jsonl` line for a directory with no engine of its own; the fleet says what else is alive. */
@@ -366,7 +388,12 @@ public final class EngineStatusCommand implements CliCommand {
                     .string("id", m.id())
                     .number("pid", m.pid())
                     .bool("current", m.current())
-                    .bool("responsive", m.responsive());
+                    .bool("responsive", m.responsive())
+                    .bool("otherHome", m.otherHome());
+            if (m.otherHome()) {
+                var home = m.home();
+                member.string("home", home == null ? null : home.toString());
+            }
             var st = m.status();
             if (m.responsive() && st != null) {
                 member.number("startedAt", st.startedAtMillis())

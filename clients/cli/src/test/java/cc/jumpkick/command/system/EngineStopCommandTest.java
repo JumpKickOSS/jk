@@ -167,8 +167,9 @@ class EngineStopCommandTest {
         EngineFleet.StopResult leftAlone = new EngineFleet.StopResult(
                 new EngineFleet.Member(null, null, null, 4242L, false), EngineFleet.Outcome.LEFT_ALONE);
 
-        Capture.Streams settled = NoAnsi.forced(() -> Capture.both(() ->
-                assertThat(new EngineStopCommand().report(List.of(leftAlone))).isEqualTo(Exit.FAILURE)));
+        Capture.Streams settled = NoAnsi.forced(
+                () -> Capture.both(() -> assertThat(new EngineStopCommand().report(List.of(leftAlone), List.of()))
+                        .isEqualTo(Exit.FAILURE)));
 
         assertThat(settled.err()).contains("left alone").contains("pid [4242]").contains("jk engine stop -n");
     }
@@ -209,8 +210,9 @@ class EngineStopCommandTest {
         EngineFleet.StopResult survivor = new EngineFleet.StopResult(
                 new EngineFleet.Member(null, null, null, 4242L, false), EngineFleet.Outcome.SURVIVED);
 
-        Capture.Streams settled = NoAnsi.forced(() -> Capture.both(() ->
-                assertThat(new EngineStopCommand().report(List.of(survivor))).isEqualTo(Exit.FAILURE)));
+        Capture.Streams settled = NoAnsi.forced(
+                () -> Capture.both(() -> assertThat(new EngineStopCommand().report(List.of(survivor), List.of()))
+                        .isEqualTo(Exit.FAILURE)));
 
         assertThat(settled.err()).contains("jk: ! Engine >").contains("did NOT exit: pid [4242]");
         // The green chip is the defect: a failure exit must not carry it on either stream.
