@@ -4,16 +4,22 @@ package cc.jumpkick.engine.http;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.engine.journal.SessionJournal;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.Fact;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.jsonl.MiniJson;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** {@code GET /api/sessions} and {@code /api/sessions/<id>}: bearer-gated, listed, paged. */
 class HttpSessionsApiTest extends HttpEngineServerHarness {
@@ -29,8 +35,7 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
         log = new SessionLog(
                 SessionJournal.under(testJournal().buildsRoot()),
                 () -> now[0],
-                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
-                () -> "devbox");
+                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
         server.setSessions(log);
         id = log.open("mcp", "claude-code", LABEL, "/ws/app");
         for (int i = 0; i < 3; i++) {
@@ -55,6 +60,7 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
         assertThat(session.get("id")).isEqualTo(id);
         assertThat(session.get("label")).isEqualTo(LABEL);
         assertThat(session.get("state")).isEqualTo("live");
+        assertThat(session.containsKey("host")).isFalse();
         assertThat(MiniJson.str(session.get("current"), "title")).isEqualTo("Exploring the code");
     }
 
@@ -74,6 +80,34 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
                 MiniJson.parse(get("/api/sessions/" + id + "?before=2&limit=2").body()));
         assertThat(MiniJson.list(older, "actions")).hasSize(1);
         assertThat(MiniJson.get(older, "next")).isNull();
+    }
+
+    @Test
+    void a_secret_in_a_summary_is_masked_on_disk_and_in_the_api_as_a_run_record_masks_it(@TempDir Path project)
+            throws Exception {
+        Files.writeString(project.resolve(".env"), "TOKEN=s3cret-in-a-question\n");
+        String dir = project.toString();
+        String summary = "query \"who reads s3cret-in-a-question\"";
+        log.action(
+                "mcp",
+                LABEL,
+                "claude-code",
+                Fact.action(now[0] + 10, 2, dir, Fact.Kind.GRAPH, true, "", 0),
+                "query",
+                summary,
+                "s3cret-in-a-question is read by Config.token");
+
+        String masked = EventRedaction.redactText(dir, summary);
+        assertThat(masked).isEqualTo("query \"who reads " + SecretRedactor.MASK + "\"");
+        Object body = requireNonNull(MiniJson.parse(get("/api/sessions/" + id).body()));
+        Map<?, ?> last = (Map<?, ?>) MiniJson.list(body, "actions").getLast();
+        assertThat(last.get("summary")).isEqualTo(masked);
+        assertThat(last.get("headline")).isEqualTo(SecretRedactor.MASK + " is read by Config.token");
+        try (Stream<Path> files = Files.walk(testJournal().buildsRoot())) {
+            for (Path f : files.filter(Files::isRegularFile).toList()) {
+                assertThat(Files.readString(f)).as("%s", f).doesNotContain("s3cret-in-a-question");
+            }
+        }
     }
 
     @Test

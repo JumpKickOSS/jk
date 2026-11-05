@@ -43,8 +43,6 @@ import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
@@ -389,27 +387,11 @@ public final class EngineServer implements AutoCloseable {
         SessionLog log = new SessionLog(
                 historyConfig.enabled() ? SessionJournal.under(journal.buildsRoot()) : null,
                 clockMillis,
-                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
-                EngineServer::hostName);
+                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
         HttpEvents hub = httpEvents;
         if (hub != null) log.events((type, payload) -> hub.publishDashboard(type, JsonOut.rawObject(payload)));
         return log;
     }
-
-    /** This machine's name, as sessions record it; asked once. */
-    private static String hostName() {
-        String name = HOST_NAME;
-        if (name != null) return name;
-        try {
-            name = InetAddress.getLocalHost().getHostName();
-        } catch (UnknownHostException | RuntimeException e) {
-            name = null;
-        }
-        HOST_NAME = name == null || name.isBlank() ? "localhost" : name;
-        return HOST_NAME;
-    }
-
-    private static volatile @Nullable String HOST_NAME;
 
     private DrainReporter newDrainReporter() {
         return new DrainReporter(

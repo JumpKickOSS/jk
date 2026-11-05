@@ -15,7 +15,6 @@ import org.jspecify.annotations.Nullable;
  *     null when it named nothing
  * @param label the session as a run record names it ({@code claude-code 3f9a}), or null for a
  *     surface with no session of its own (the shell, the dashboard)
- * @param host the machine the engine served it on
  * @param project the checkout its latest fact acted on, or null before its first
  * @param endedAt when its connection closed; 0 while it has not
  * @param state {@code live}, {@code idle} once it has been quiet for the idle gap, {@code ended}
@@ -26,7 +25,6 @@ public record SessionRecord(
         String origin,
         @Nullable String client,
         @Nullable String label,
-        String host,
         @Nullable String project,
         @Nullable String projectId,
         long startedAt,
@@ -47,7 +45,7 @@ public record SessionRecord(
 
     public SessionRecord withState(String state) {
         return new SessionRecord(
-                id, origin, client, label, host, project, projectId, startedAt, lastActiveAt, endedAt, state, episode);
+                id, origin, client, label, project, projectId, startedAt, lastActiveAt, endedAt, state, episode);
     }
 
     public Map<String, Object> toMap() {
@@ -56,7 +54,6 @@ public record SessionRecord(
         m.put("origin", origin);
         if (client != null) m.put("client", client);
         if (label != null) m.put("label", label);
-        m.put("host", host);
         if (project != null) m.put("project", project);
         if (projectId != null) m.put("projectId", projectId);
         m.put("startedAt", startedAt);
@@ -74,7 +71,6 @@ public record SessionRecord(
                 Episode.text(m, "origin"),
                 MiniJson.str(m, "client"),
                 MiniJson.str(m, "label"),
-                Episode.text(m, "host"),
                 MiniJson.str(m, "project"),
                 MiniJson.str(m, "projectId"),
                 Episode.num(m, "startedAt"),

@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.sessions;
 
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.jsonl.MiniJson;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
  * One thing a session did, in the compact form a timeline shows: one line of {@code actions.jsonl}
- * and the payload of the SSE {@code action} event.
+ * and the payload of the SSE {@code action} event. Its summary and headline are masked like a run
+ * record's free text before either is written.
  *
  * @param seq its place in the session, from 1
  * @param at when it started, epoch millis
@@ -38,8 +41,20 @@ public record ActionRecord(
     public static final String OK = "ok";
     public static final String ERROR = "error";
 
+    /** What ends a summary or headline clipped to fit a timeline line. */
+    public static final String CLIP = "…";
+
     public ActionRecord withSeq(long seq) {
         return new ActionRecord(seq, at, kind, summary, headline, outcome, millis, episode, project, buildNumber);
+    }
+
+    /** This action with its summary and headline masked as {@link EventRedaction} masks a run's free text. */
+    public ActionRecord redacted() {
+        String s = EventRedaction.redactClipped(project, summary, CLIP);
+        String h = headline == null ? null : EventRedaction.redactClipped(project, headline, CLIP);
+        return s.equals(summary) && Objects.equals(h, headline)
+                ? this
+                : new ActionRecord(seq, at, kind, s, h, outcome, millis, episode, project, buildNumber);
     }
 
     public Map<String, Object> toMap() {
