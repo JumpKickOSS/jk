@@ -394,6 +394,8 @@ password = "${cmd:aws codeartifact get-authorization-token --domain acme --domai
 - A helper runs again at most once per command. If the value it printed on that second run is
   refused too, every other repository and module that uses it fails at once, so an expired SSO login
   doesn't run the helper twice for every module of a lock. The next command runs the helper again.
+  The failure names the repository and the refusal, and says why no other value was sent: the
+  helper's re-run value was refused too, or the helper failed and what it said.
 - A plugin step whose own resolver runs in a separate process (the Quarkus augment's) is handed
   the credential once and cannot ask for it again. jk hands it a value the helper printed during
   this command, running the helper if the cached value came from an earlier one. The value must

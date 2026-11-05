@@ -206,8 +206,12 @@ class RepoCredentialHelperGroupTest {
         assertThatThrownBy(() -> gar.fetchPom(Coordinate.of("com.acme", "lib", "1.0")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("gar")
-                .hasMessageContaining("401");
+                .hasMessageContaining("401")
+                .hasMessageContaining("the value its credential helper printed when it ran again was refused too");
         assertThat(runs(tmp)).isEqualTo(2);
+        assertThat(gar.unreachableFault())
+                .as("the passed-over note carries the helper's side too")
+                .contains("was refused too");
     }
 
     @Test
@@ -243,6 +247,10 @@ class RepoCredentialHelperGroupTest {
         assertThat(runs(tmp)).isEqualTo(2);
         assertThat(failures).hasSize(3).allSatisfy(e -> assertThat(e).hasMessageContaining("gar"));
         assertThat(failures.getLast()).cause().hasMessageContaining("its helper already ran again in this command");
+        String rendered = String.valueOf(failures.getLast().getMessage());
+        assertThat(rendered.split("its helper already ran again in this command", -1))
+                .as("the refresher's explanation is in the failure's own message, once: %s", rendered)
+                .hasSize(2);
     }
 
     @Test

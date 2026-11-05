@@ -609,7 +609,11 @@ public final class MavenRepo {
             throw e;
         } catch (IOException e) {
             if (!refreshedAfter(e, used)) throw e;
-            return cache.fetch(uri, credential);
+            try {
+                return cache.fetch(uri, credential);
+            } catch (IOException again) {
+                throw refusedAgain(again);
+            }
         }
     }
 
@@ -729,7 +733,11 @@ public final class MavenRepo {
                 throw e;
             } catch (IOException e) {
                 if (!refreshedAfter(e, used)) throw e;
-                stored = download(coord, primary, uri, relativePath, vouch, leg, expectedSha256, abort);
+                try {
+                    stored = download(coord, primary, uri, relativePath, vouch, leg, expectedSha256, abort);
+                } catch (IOException again) {
+                    throw refusedAgain(again);
+                }
             }
             SessionContext.current().io().remoteDown(stored.size());
             misses.forget(uri);
@@ -787,10 +795,12 @@ public final class MavenRepo {
     /**
      * Whether a request refused with {@code used} may be sent once more: true when the credential
      * is now a fresh one — this call re-ran its helper, or a concurrent request already did — and
-     * false when there is nothing to refresh, the failure is not a refusal, or the one refresh this
-     * repository gets is spent. Runs before {@link #unreachableOr}, so a refused credential is
-     * refreshed before the refusal can put a passable repository out of the job, and {@link
-     * RepoMisses} records only absences, never refusals.
+     * false when there is nothing to refresh or the failure is not a refusal. Runs before {@link
+     * #unreachableOr}, so a refused credential is refreshed before the refusal can put a passable
+     * repository out of the job, and {@link RepoMisses} records only absences, never refusals.
+     *
+     * @throws CredentialNotRefreshedException when the helper could not supply another credential,
+     *     or the one its re-run printed is the one refused, so the failure says so
      */
     private boolean refreshedAfter(IOException failure, RepoCredential used) throws IOException {
         Supplier<RepoCredential> refresh = credentialRefresh;
@@ -799,21 +809,31 @@ public final class MavenRepo {
         if (refused == null) return false;
         synchronized (refreshLock) {
             if (credential != used) return true;
-            if (credentialRefreshed) return false;
+            // The refused credential is the one the helper's re-run printed.
+            if (credentialRefreshed) throw refusedAgain(failure);
             credentialRefreshed = true;
             RepoCredential fresh;
             try {
                 fresh = refresh.get();
             } catch (RuntimeException e) {
-                throw new IOException(
-                        name + " refused its credential (" + refused + "), and its credential helper could not"
-                                + " supply another: " + e.getMessage(),
-                        failure);
+                throw new CredentialNotRefreshedException(
+                        name, refused, "its credential helper could not supply another: " + e.getMessage(), failure);
             }
             credential = fresh;
             download.credential(fresh);
             return true;
         }
+    }
+
+    /**
+     * {@code failure} of a request sent with the credential a helper's re-run printed: when it is a
+     * refusal, the failure says the fresh value was refused too, since the helper ran again for it.
+     */
+    private IOException refusedAgain(IOException failure) {
+        String refused = refusal(failure);
+        if (refused == null || failure instanceof CredentialNotRefreshedException) return failure;
+        return new CredentialNotRefreshedException(
+                name, refused, "the value its credential helper printed when it ran again was refused too", failure);
     }
 
     /**
@@ -855,6 +875,8 @@ public final class MavenRepo {
         if (fault == null && answersMatter) fault = silence(transport);
         if (fault == null && answersMatter) fault = refusal(transport);
         if (fault == null) return transport;
+        String unrefreshed = notRefreshed(transport);
+        if (unrefreshed != null) fault = fault + "; " + unrefreshed;
         unreachable.compareAndSet(null, fault);
         return unreachableFailure(fault, transport);
     }
@@ -867,6 +889,17 @@ public final class MavenRepo {
                 String detail = met.getMessage();
                 return met.getClass().getSimpleName() + (detail == null || detail.isBlank() ? "" : ": " + detail);
             }
+        }
+        return null;
+    }
+
+    /**
+     * Why a refused credential was not replaced, from {@code failure}'s cause chain, or null: the
+     * credential helper's own explanation, which the fault alone ({@code HTTP 401}) does not give.
+     */
+    private static @Nullable String notRefreshed(Throwable failure) {
+        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof CredentialNotRefreshedException helper) return helper.why();
         }
         return null;
     }
@@ -1156,6 +1189,26 @@ public final class MavenRepo {
                             + " never bypassed, so " + repository + " is not asked at " + SafeUri.forMessage(url)
                             + " instead — fix or start the mirror, or remove it",
                     cause);
+        }
+    }
+
+    /**
+     * Thrown when a repository refused its credential and the credential helper behind it could
+     * not supply another: the helper failed, or the value it printed on its one re-run was refused
+     * too. {@link #why} is the helper's side of it, which a failure naming only the refusal leaves
+     * out.
+     */
+    public static final class CredentialNotRefreshedException extends IOException {
+        private final String why;
+
+        CredentialNotRefreshedException(String repository, String refused, String why, Throwable cause) {
+            super(repository + " refused its credential (" + refused + "), and " + why, cause);
+            this.why = why;
+        }
+
+        /** Why no other credential was sent, as a clause: what the helper did or said. */
+        public String why() {
+            return why;
         }
     }
 
