@@ -267,12 +267,14 @@ public final class EngineStopCommand implements CliCommand {
     }
 
     /**
-     * Where an engine of another home runs: its home, or {@code home unknown} when the spawn line
-     * names none.
+     * Where an engine of another home runs: its home; else {@code state <dir>} when its spawn line
+     * names only its state directory (a custom {@code JK_STATE_DIR}); else {@code home unknown}.
      */
     static String homeLabel(EngineFleet.Member member) {
         Path home = member.home();
-        return home == null ? "home unknown" : home.toString();
+        if (home != null) return home.toString();
+        Path stateDir = member.stateDir();
+        return stateDir == null ? "home unknown" : "state " + stateDir;
     }
 
     /**

@@ -57,7 +57,9 @@ public final class EngineFleet {
      *
      * <p>{@code otherHome} marks an engine that belongs to a different {@code JK_HOME} (a scratch
      * install, a test suite's home): {@link #stopAll} leaves it running, so status must say so.
-     * {@code home} is that home when its spawn line names it, null when it does not.
+     * {@code home} is that home when its spawn line names it, null when it does not; {@code
+     * stateDir} is that engine's state directory when its spawn line names one, which is what
+     * identifies an engine run under a custom {@code JK_STATE_DIR}.
      */
     public record Member(
             EnginePaths.@Nullable Paths paths,
@@ -66,7 +68,8 @@ public final class EngineFleet {
             long pid,
             boolean current,
             boolean otherHome,
-            @Nullable Path home) {
+            @Nullable Path home,
+            @Nullable Path stateDir) {
 
         /** An engine of this home. */
         public Member(
@@ -75,7 +78,7 @@ public final class EngineFleet {
                 EngineProbe.@Nullable Status status,
                 long pid,
                 boolean current) {
-            this(paths, socket, status, pid, current, false, null);
+            this(paths, socket, status, pid, current, false, null, null);
         }
 
         /**
@@ -236,24 +239,45 @@ public final class EngineFleet {
     }
 
     /**
-     * True when {@code commandLine} names this home or state dir (jar path, or the home
-     * inferred from the jar). A test JVM under {@code target/test-jk-home} must not match the
-     * developer's {@code ~/.jk} engine.
+     * True when {@code commandLine} names a path inside this home or state dir: the home inferred
+     * from the jar, the state dir read off the heap-dump flag, or any other path on the line. Paths
+     * compare by whole segments, so a test JVM under {@code target/test-jk-home} does not match the
+     * developer's {@code ~/.jk} engine, and {@code ~/.jk} does not claim {@code ~/.jk-other}'s.
      */
-    static boolean belongsToThisHome(String commandLine, Path homeDir, Path state) {
+    static boolean belongsToThisHome(String commandLine, Path homeDir, @Nullable Path state) {
         if (commandLine == null || commandLine.isBlank() || homeDir == null) return false;
-        String cmd = commandLine.replace('\\', '/');
-        String homeStr = homeDir.toAbsolutePath().normalize().toString().replace('\\', '/');
-        if (!homeStr.isEmpty() && cmd.contains(homeStr)) return true;
-        if (state != null) {
-            String stateStr = state.toAbsolutePath().normalize().toString().replace('\\', '/');
-            if (!stateStr.isEmpty() && cmd.contains(stateStr)) return true;
-        }
+        Path home = homeDir.toAbsolutePath().normalize();
+        Path ownState = state == null ? null : state.toAbsolutePath().normalize();
         Path inferred = homeFromCommandLine(commandLine);
-        return inferred != null
-                && inferred.toAbsolutePath()
-                        .normalize()
-                        .equals(homeDir.toAbsolutePath().normalize());
+        if (inferred != null && inferred.toAbsolutePath().normalize().equals(home)) return true;
+        Path engineState = stateFromCommandLine(commandLine);
+        if (engineState != null
+                && (engineState.startsWith(home) || (ownState != null && engineState.startsWith(ownState)))) {
+            return true;
+        }
+        return namesPathUnder(commandLine, home) || (ownState != null && namesPathUnder(commandLine, ownState));
+    }
+
+    /**
+     * Whether {@code dir}, or a path under it, appears on {@code commandLine} as a whole path: the
+     * match starts a token (or a classpath / flag value) and ends at a separator, so {@code /h/.jk}
+     * matches {@code /h/.jk/lib/x.jar} but not {@code /h/.jk-other/lib/x.jar}.
+     */
+    static boolean namesPathUnder(String commandLine, Path dir) {
+        String cmd = commandLine.replace('\\', '/');
+        String needle = dir.toString().replace('\\', '/');
+        if (needle.isEmpty()) return false;
+        for (int at = cmd.indexOf(needle); at >= 0; at = cmd.indexOf(needle, at + 1)) {
+            int end = at + needle.length();
+            boolean starts = at == 0 || isPathBoundary(cmd.charAt(at - 1));
+            boolean ends = end == cmd.length() || cmd.charAt(end) == '/' || isPathBoundary(cmd.charAt(end));
+            if (starts && ends) return true;
+        }
+        return false;
+    }
+
+    private static boolean isPathBoundary(char c) {
+        return Character.isWhitespace(c) || c == '"' || c == '\'' || c == '=' || c == ':' || c == ';' || c == ',';
     }
 
     /**
@@ -288,16 +312,17 @@ public final class EngineFleet {
 
     private static Member memberForProcess(long pid, String cmd, boolean otherHome) {
         Path home = otherHome ? engineHome(cmd) : null;
+        Path stateDir = otherHome ? stateFromCommandLine(cmd) : null;
         for (Path state : candidateStateDirs(cmd)) {
             for (EnginePaths.Paths paths : EnginePaths.identitiesIn(state)) {
                 Path socket = EnginePaths.activeSocket(paths);
                 Optional<EngineProbe.Status> status = EngineProbe.status(socket);
                 if (status.isPresent() && status.get().pid() == pid) {
-                    return new Member(paths, socket, status.get(), pid, false, otherHome, home);
+                    return new Member(paths, socket, status.get(), pid, false, otherHome, home, stateDir);
                 }
             }
         }
-        return new Member(null, null, null, pid, false, otherHome, home);
+        return new Member(null, null, null, pid, false, otherHome, home, stateDir);
     }
 
     /**

@@ -25,7 +25,7 @@ class EngineOtherHomesTest {
     }
 
     private static EngineFleet.Member other(long pid, @Nullable Path home) {
-        return new EngineFleet.Member(null, null, null, pid, false, true, home);
+        return new EngineFleet.Member(null, null, null, pid, false, true, home, null);
     }
 
     @Test
@@ -35,8 +35,9 @@ class EngineOtherHomesTest {
         assertThat(json)
                 .contains("\"pid\":1,\"current\":false,\"responsive\":false,\"otherHome\":false}")
                 .contains("\"pid\":2,\"current\":false,\"responsive\":false,\"otherHome\":true,\"home\":"
-                        + quoted(SCRATCH) + "}")
-                .contains("\"pid\":3,\"current\":false,\"responsive\":false,\"otherHome\":true,\"home\":null}");
+                        + quoted(SCRATCH) + ",\"stateDir\":null}")
+                .contains("\"pid\":3,\"current\":false,\"responsive\":false,\"otherHome\":true,\"home\":null,"
+                        + "\"stateDir\":null}");
     }
 
     @Test
@@ -83,6 +84,17 @@ class EngineOtherHomesTest {
                 assertThat(new EngineStopCommand().stopByPid("12, x", false)).isEqualTo(Exit.FAILURE)));
 
         assertThat(settled.err()).contains("not a pid: x");
+    }
+
+    @Test
+    void an_engine_with_no_readable_home_is_named_by_its_state_dir() {
+        Path state = Path.of("custom-state").toAbsolutePath();
+        var custom = new EngineFleet.Member(null, null, null, 5, false, true, null, state);
+
+        assertThat(EngineStopCommand.homeLabel(custom)).isEqualTo("state " + state);
+        assertThat(EngineStopCommand.homeLabel(other(6, null))).isEqualTo("home unknown");
+        assertThat(EngineStatusCommand.enginesJson(List.of(custom)))
+                .contains("\"otherHome\":true,\"home\":null,\"stateDir\":" + quoted(state) + "}");
     }
 
     private static String quoted(Path path) {

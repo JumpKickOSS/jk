@@ -392,7 +392,9 @@ public final class EngineStatusCommand implements CliCommand {
                     .bool("otherHome", m.otherHome());
             if (m.otherHome()) {
                 var home = m.home();
-                member.string("home", home == null ? null : home.toString());
+                var stateDir = m.stateDir();
+                member.string("home", home == null ? null : home.toString())
+                        .string("stateDir", stateDir == null ? null : stateDir.toString());
             }
             var st = m.status();
             if (m.responsive() && st != null) {
