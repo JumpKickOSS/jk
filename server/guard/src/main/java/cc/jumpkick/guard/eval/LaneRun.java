@@ -27,8 +27,19 @@ public final class LaneRun {
      * @param reports one per rule the lane owns, in id order
      * @param baseline the baseline after tightening (identical to the input when nothing tightened)
      * @param tightened how many entries were dropped or lowered
+     * @param uncompiled main source files with no class in the lane's view; non-empty only when a
+     *     rule would have tightened, which it then did not
      */
-    public record Result(Lane lane, List<RuleReport> reports, Baseline baseline, int tightened) {
+    public record Result(
+            Lane lane, List<RuleReport> reports, Baseline baseline, int tightened, List<String> uncompiled) {
+
+        public Result(Lane lane, List<RuleReport> reports, Baseline baseline, int tightened) {
+            this(lane, reports, baseline, tightened, List.of());
+        }
+
+        public Result {
+            uncompiled = List.copyOf(uncompiled);
+        }
 
         public boolean red() {
             for (RuleReport r : reports) if (r.red()) return true;
@@ -98,6 +109,7 @@ public final class LaneRun {
         List<RuleReport> reports = new ArrayList<>();
         Baseline current = baseline;
         int tightened = 0;
+        List<String> uncompiled = null;
         Map<String, Evaluation> evaluations = evaluate(rules, ctx);
         for (Rule rule : rules) {
             Evaluation ev = evaluations.getOrDefault(rule.id(), Evaluation.failed("the evaluator returned no result"));
@@ -109,6 +121,12 @@ public final class LaneRun {
                 String slice = sliceOf(lane, rule, ctx.module());
                 Reconciliation rec = Reconciliation.of(
                         rule.id(), before, ev.observations(), ev.population(), slice, Evaluators.toleranceOf(rule));
+                if (rec.tighteningNeeded() && ClassesView.readsClasses(lane)) {
+                    // A banked entry may be missing only because its class is: tighten from a view
+                    // that covers every source file, or not at all.
+                    if (uncompiled == null) uncompiled = ClassesView.uncompiled(ctx);
+                    if (!uncompiled.isEmpty()) rec = rec.withheld();
+                }
                 if (rec.scopeShrunk() != null) {
                     reports.add(
                             new RuleReport(rule, Outcome.SCOPE_SHRUNK, ev, rec, "scope-shrunk: " + rec.scopeShrunk()));
@@ -133,7 +151,7 @@ public final class LaneRun {
                 reports.add(new RuleReport(rule, ev.outcome(), ev, null, ev.note()));
             }
         }
-        return new Result(lane, reports, current, tightened);
+        return new Result(lane, reports, current, tightened, uncompiled == null ? List.of() : uncompiled);
     }
 
     /** Why a clean pass with no bite evidence is red, in the kind's own terms. */

@@ -133,6 +133,16 @@ public record Reconciliation(
         return before.withLane(lane, population, new ArrayList<>(byKey.values()));
     }
 
+    /**
+     * This verdict with the baseline left as it was: a lane whose view cannot prove an entry gone
+     * reports the same sites and writes nothing.
+     */
+    public Reconciliation withheld() {
+        if (!tighteningNeeded) return this;
+        return new Reconciliation(
+                ruleId, lane, fresh, baselined, stale, before, false, scopeShrunk, observedPopulation, before);
+    }
+
     public boolean red() {
         return !fresh.isEmpty() || scopeShrunk != null;
     }

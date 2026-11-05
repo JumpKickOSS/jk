@@ -744,6 +744,7 @@ final class PlannerGuards {
         for (Fault f : faults) ctx.error(f.code(), EngineValidations.render(f));
         boolean ci = Baselines.ciMode();
         String storedBaselineSha = tightenBaseline(ctx, g, baselineFile, result, ci, baselineSha);
+        if (!result.uncompiled().isEmpty()) ctx.warn("guards", GuardMessages.withheld(result.uncompiled()));
         writeJsonl(g.root(), taskId, result);
         // The machine view of the whole run, re-rendered from every lane's output: cheap, and always
         // current after the lane that just wrote.
