@@ -262,7 +262,9 @@ main source file has no class in the view (an interrupted compile, a module not 
 lane still reports what it sees but leaves the baseline alone, and says which file it is missing.
 The output lane does the same while a module has packaged nothing (a build scoped with `-m`, a
 module not built yet), and checks a POM's dependencies against the packaged set only once every
-module has packaged. A freeze writes the named rule's new entries and nothing else: stale entries, other
+module has packaged. Such a run still passes, and its report says so in one line —
+`W guard baseline not tightened: 51 modules unseen by this run (not built yet); …` — so a green
+scoped `jk test` is not read as a full guard pass. A freeze writes the named rule's new entries and nothing else: stale entries, other
 rules and other modules' slices wait for the engine's own tightening, so the diff is the sites you
 accepted. A
 `--retire` freeze drops the entries of a rule that no longer exists. A rule that examines under
