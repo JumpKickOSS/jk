@@ -196,4 +196,77 @@ class CyclesAndSplitPackageTest {
         Evaluation handWritten = Evaluators.forKind(split.kind()).evaluate(split, ws);
         assertThat(handWritten.observations()).extracting(Observation::key).containsExactly("p.x | a + b");
     }
+
+    @Test
+    void an_allow_is_judged_stale_only_once_every_module_whose_sources_hold_the_package_is_indexed(@TempDir Path dir)
+            throws Exception {
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\n\n[workspace]\nmodules = [\"a\", \"b\"]\n");
+        for (String m : List.of("a", "b")) {
+            Path module = Files.createDirectories(root.resolve(m));
+            Files.writeString(module.resolve("jk.toml"), "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\n");
+            Files.writeString(
+                    Files.createDirectories(module.resolve("src/main/java/p/shared"))
+                            .resolve(m.toUpperCase() + ".java"),
+                    "package p.shared;\n");
+        }
+        // a is built; b, the other half of the allowed split, is not yet compiled in this worktree
+        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root.resolve("a")), "main");
+        Files.createDirectories(idx.getParent());
+        FactsFormat.write(idx, index(cls("p/shared/A")));
+        List<Path> modules = List.of(root.resolve("a"), root.resolve("b"));
+        Rule allowed = rule(root, "split-package", "[[guards.r.allow]]\nin = \"p.shared\"\nreason = \"two halves\"\n");
+        Supplier<FactsIndex> merged = EvalContext.lazy(() -> WorkspaceFacts.merged(root, modules));
+        EvalContext ws = new EvalContext(Lane.WORKSPACE, root, "", null, modules, merged, () -> null, List::of);
+
+        Evaluation partial = Evaluators.forKind(allowed.kind()).evaluate(allowed, ws);
+        assertThat(partial.outcome())
+                .as("b's sources hold p.shared and no index of b was read: the lane cannot see the split")
+                .isEqualTo(Outcome.CLEAN);
+
+        // b is built and compiles no p.shared: now the allow is stale
+        Path bIdx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root.resolve("b")), "main");
+        Files.createDirectories(bIdx.getParent());
+        FactsFormat.write(bIdx, index(cls("p/b/B")));
+        Evaluation built = Evaluators.forKind(allowed.kind()).evaluate(allowed, ws);
+        assertThat(built.outcome()).isEqualTo(Outcome.STALE_ALLOW);
+    }
+
+    @Test
+    void an_unbuilt_module_leaves_an_allow_unjudged_only_when_its_sources_hold_a_package_the_allow_names(
+            @TempDir Path dir) throws Exception {
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\n\n[workspace]\nmodules = [\"a\", \"b\"]\n");
+        for (String m : List.of("a", "b")) {
+            Path module = Files.createDirectories(root.resolve(m));
+            Files.writeString(module.resolve("jk.toml"), "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\n");
+        }
+        Files.writeString(
+                Files.createDirectories(root.resolve("a/src/main/java/p/shared"))
+                        .resolve("A.java"),
+                "");
+        Files.writeString(
+                Files.createDirectories(root.resolve("b/src/main/java/p/b")).resolve("B.java"), "");
+        // a directory with no source file in it declares no package
+        Files.createDirectories(root.resolve("b/src/main/java/p/shared"));
+        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root.resolve("a")), "main");
+        Files.createDirectories(idx.getParent());
+        FactsFormat.write(idx, index(cls("p/shared/A")));
+        List<Path> modules = List.of(root.resolve("a"), root.resolve("b"));
+        Rule allowed = rule(root, "split-package", "[[guards.r.allow]]\nin = \"p.*\"\nreason = \"two halves\"\n");
+        Supplier<FactsIndex> merged = EvalContext.lazy(() -> WorkspaceFacts.merged(root, modules));
+        EvalContext ws = new EvalContext(Lane.WORKSPACE, root, "", null, modules, merged, () -> null, List::of);
+
+        assertThat(Evaluators.forKind(allowed.kind()).evaluate(allowed, ws).outcome())
+                .as("b is not indexed and its sources hold p.b, which the glob covers: the lane cannot tell")
+                .isEqualTo(Outcome.CLEAN);
+        Rule literal = rule(root, "split-package", "[[guards.r.allow]]\nin = \"p.shared\"\nreason = \"two halves\"\n");
+        assertThat(Evaluators.forKind(literal.kind()).evaluate(literal, ws).outcome())
+                .as("no unbuilt module's sources hold p.shared, so the one indexed owner proves it is not split")
+                .isEqualTo(Outcome.STALE_ALLOW);
+    }
 }
