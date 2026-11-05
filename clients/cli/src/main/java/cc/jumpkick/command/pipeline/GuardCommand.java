@@ -6,7 +6,6 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -157,7 +156,7 @@ public final class GuardCommand implements CliCommand {
             Path results = target.resolve(ProjectBuilds.RESULTS);
             List<String> lines =
                     Files.isRegularFile(results) ? Files.readAllLines(results, StandardCharsets.UTF_8) : List.of();
-            terminalLine(lines, exit).ifPresent(CliOutput::out);
+            terminalLine(lines, exit).ifPresent(CliOutput::verdict);
         }
         return exit;
     }
@@ -257,9 +256,6 @@ public final class GuardCommand implements CliCommand {
         SessionContext.install(SessionContext.current().withLanesOnly(true));
         int built = BuildVerbCommand.run(new PackageVerb("Guard"), compile, true);
         if (built != Exit.SUCCESS) return built;
-        // A green compile is not this command's answer: in agent mode the fixture verdict below is
-        // the output, not the build's run report.
-        WireStream.reportJob(new WireStream.LastJob(null, null));
         GuardTestAck ack;
         try {
             ack = EngineClient.guardTest(EnginePaths.current(), dir);
@@ -271,7 +267,7 @@ public final class GuardCommand implements CliCommand {
             CommandWedge.printFail("Guard", ack.error());
             return 1;
         }
-        CliOutput.out(ack.text().stripTrailing());
+        CliOutput.verdict(ack.text().stripTrailing());
         return ack.failures() == 0 ? 0 : 1;
     }
 

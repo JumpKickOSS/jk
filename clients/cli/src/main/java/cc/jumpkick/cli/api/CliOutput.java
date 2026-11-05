@@ -8,6 +8,8 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntSupplier;
 import org.jspecify.annotations.Nullable;
@@ -80,6 +82,12 @@ public final class CliOutput {
     /** When true, a child process owns the terminal and {@link #closeEnvelope} must stay quiet. */
     private static final AtomicBoolean TRAILING_BLANK_SKIPPED = new AtomicBoolean(false);
 
+    /**
+     * The command's own closing lines ({@link #verdict}), which outlast the agent-mode run report.
+     * Cleared by {@link #beginCommand} and drained by {@link #takeVerdicts}.
+     */
+    private static final List<String> VERDICTS = new CopyOnWriteArrayList<>();
+
     private CliOutput() {}
 
     /**
@@ -95,6 +103,25 @@ public final class CliOutput {
         LAST_WRITE_ON_ERR.set(false);
         TRAILING_BLANK_SKIPPED.set(false);
         SCRIPT_MODE.set(scriptMode);
+        VERDICTS.clear();
+    }
+
+    /**
+     * Print {@code line} to stdout as {@link #out} does, and keep it as this command's own verdict.
+     * In agent mode a command that ran a build answers with the build's run report in place of its
+     * stdout; a verdict line is written after that report, so what the command itself concluded
+     * — {@code Guards: clean}, the fixture proofs — is never replaced by the build it ran first.
+     */
+    public static void verdict(String line) {
+        VERDICTS.add(line);
+        out(line);
+    }
+
+    /** This command's {@link #verdict} lines, in order, and forget them. */
+    public static List<String> takeVerdicts() {
+        List<String> out = List.copyOf(VERDICTS);
+        VERDICTS.clear();
+        return out;
     }
 
     /** True when this invocation's stdout is machine-consumed (see {@link #beginCommand}). */
