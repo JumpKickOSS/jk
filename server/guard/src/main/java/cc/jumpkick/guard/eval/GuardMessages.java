@@ -171,6 +171,21 @@ public final class GuardMessages {
         return sb.append('}').toString();
     }
 
+    /** The notice for a lane that would have tightened from a classes view missing {@code uncompiled}. */
+    public static String withheld(List<String> uncompiled) {
+        StringBuilder sb = new StringBuilder("baseline not tightened: ")
+                .append(uncompiled.size())
+                .append(uncompiled.size() == 1 ? " source file has" : " source files have")
+                .append(" no class in this lane's view (");
+        for (int i = 0; i < Math.min(3, uncompiled.size()); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(uncompiled.get(i));
+        }
+        if (uncompiled.size() > 3)
+            sb.append(", +").append(uncompiled.size() - 3).append(" more");
+        return sb.append("); a build that compiles them tightens it").toString();
+    }
+
     /** The one-line summary of a lane run, for the task label and the results file. */
     public static String summary(LaneRun.Result result, int rules) {
         StringBuilder sb = new StringBuilder();

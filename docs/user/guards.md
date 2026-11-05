@@ -257,7 +257,9 @@ new ones. Landing is an explicit act: the first run reports today's sites red, w
 `Accept:` line naming `jk guard freeze <id> -W "…"`, and that freeze records them. The
 accepted sites live in **`jk-guards-baseline.toml`**, which only the engine writes: it tightens
 on its own as sites disappear, and grows only through a freeze, which records the reason beside
-the sites. A freeze writes the named rule's new entries and nothing else: stale entries, other
+the sites. A bytecode lane tightens only from a classes view that covers its sources: while a
+main source file has no class in the view (an interrupted compile, a module not built yet), the
+lane still reports what it sees but leaves the baseline alone, and says which file it is missing. A freeze writes the named rule's new entries and nothing else: stale entries, other
 rules and other modules' slices wait for the engine's own tightening, so the diff is the sites you
 accepted. A
 `--retire` freeze drops the entries of a rule that no longer exists. A rule that examines under
