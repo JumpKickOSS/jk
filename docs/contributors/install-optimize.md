@@ -40,7 +40,7 @@ quiet** (no retries). The next minute/12 h cycle or engine restart tries again.
 
 | Artifact | Notes |
 |----------|--------|
-| **host-metrics.toml `[calibration]`** | `HardwareProbe` multi-probe (JVM fork, javac, disk, hash, JUnit fork and run, resolve) for the cold ETA |
+| **host-metrics.toml `[calibration]`** | `HardwareProbe` multi-probe (JVM fork, javac, disk, hash, JUnit fork and run, resolve) for the cold ETA. The resolve probe asks Central where a resolve would (its `mirror-of` mirror, else Central) and sends no credential; a 401 or 403 from a mirror that wants one is still a timed round trip |
 | **worker jars in the artifact store** | The probe forks the java-compiler and test-runner workers, which `PluginJar.locate()` fetches into `<store>` |
 
 Every root the pass writes under is outside `JK_CACHE_DIR`, so `jk cache nuke` is not undone by the

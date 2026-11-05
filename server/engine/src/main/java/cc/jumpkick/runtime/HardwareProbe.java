@@ -6,6 +6,7 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.RepositorySpec;
@@ -563,22 +564,36 @@ final class HardwareProbe {
      * do not measure only a fully warm CDN path when the object is already popular — still network.
      */
     private static long measureResolve() {
+        String base = centralBase();
+        return base == null ? -1 : measureResolve(base);
+    }
+
+    /** The resolve timing against {@code base}, ending in {@code /}; -1 when no request was answered. */
+    static long measureResolve(String base) {
         try {
-            // Prefer timing a real download into a temp file (not the shared cache) so we always hit network.
-            String base = centralBase();
-            if (base == null) return -1;
-            String url = base + RESOLVE_PROBE_PATH + "?jk_calib=" + System.nanoTime();
+            Clock clock = Clock.SYSTEM;
+            String url = base + RESOLVE_PROBE_PATH + "?jk_calib=" + clock.nanos();
             List<Long> samples = new ArrayList<>();
             for (int i = 0; i < WARM_SAMPLES + 1; i++) {
-                long t0 = System.nanoTime();
-                byte[] body = httpGet(url);
-                long ms = (System.nanoTime() - t0) / 1_000_000;
-                if (body != null && body.length > 0 && ms >= 0) samples.add(ms);
+                long t0 = clock.nanos();
+                HttpResponse<byte[]> resp = HTTP.get(URI.create(url));
+                long ms = (clock.nanos() - t0) / 1_000_000;
+                if (isRoundTrip(resp.statusCode(), resp.body().length) && ms >= 0) samples.add(ms);
             }
             return maxWarm(samples);
         } catch (Exception e) {
             return -1;
         }
+    }
+
+    /**
+     * Whether an answer times a real round trip to the repository: a body, or a 401/403 from a
+     * mirror that wants a credential. The probe sends none (resolving one would run a {@code
+     * ${cmd:}} helper outside any request), and the refusal crosses the same network as a download.
+     */
+    static boolean isRoundTrip(int status, int bodyLength) {
+        if (status == 401 || status == 403) return true;
+        return status < 400 && bodyLength > 0;
     }
 
     /**
