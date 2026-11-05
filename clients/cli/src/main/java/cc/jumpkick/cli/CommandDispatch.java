@@ -351,6 +351,17 @@ public final class CommandDispatch {
         return Exit.CONFIG;
     }
 
+    /**
+     * {@link Exit#CONFIG} for a command that failed beside a {@code ~/.jk/config.toml} that does not
+     * parse, else {@code code}. The engine renders such a failure as a message wherever a verb meets
+     * it — a request-failed line, an ack's error, a report — and the message carries the position,
+     * but only a few of those shapes carry an exit code. Every command that fails on a broken file
+     * passes here, so the exit is decided once for every verb, hosted or not.
+     */
+    static int configExit(int code) {
+        return code == Exit.FAILURE && GlobalConfig.userConfigProblem().isPresent() ? Exit.CONFIG : code;
+    }
+
     private static @Nullable Integer runPluginCommand(Path dir, String command, List<String> args) {
         try {
             PluginCommandReport report;
@@ -529,6 +540,7 @@ public final class CommandDispatch {
             // print it themselves, and an exec handoff suppresses it outright.
             CliOutput.closeEnvelope();
         }
+        code = configExit(code);
         if (capture) {
             String verdict = thisRunReport();
             try {

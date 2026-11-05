@@ -63,7 +63,8 @@ terminal at all the wizard is skipped and the command's flags apply, as before.
 `~/.jk/config.toml` is never read as empty because of a syntax error: that would drop its
 mirrors, repositories, proxy and credentials, and send every request around them. Every command
 that resolves, fetches, downloads or authenticates fails instead, naming the file, line and
-column. That covers `[repositories]` (with `mirror-of`), `[mirrors]`, `[network]`, `[node]`,
+column, and exits 2, the configuration exit code. That covers `[repositories]` (with
+`mirror-of`), `[mirrors]`, `[network]`, `[node]`,
 `[templates]` and `[image]`. Local preferences (`nerd-font`, `[engine]`, `[cache]`, `[history]`,
 `[http]`) still fall back to their defaults, so `jk --version`, `jk help`, `jk engine stop`
 and `jk doctor` keep working. `jk doctor` reports the file as a failed `config` check with the
