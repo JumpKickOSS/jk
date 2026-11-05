@@ -413,8 +413,9 @@ class JavaCompilerHostPoolTest {
                 },
                 ForkedJavac::writeSpec,
                 (failed, heap) -> {
-                    retried.set(failed);
+                    // The heap is set first: the test waits on the item, then reads the heap.
                     retryHeap.set(heap);
+                    retried.set(failed);
                 });
         long heap = 512L << 20;
         CompileWork w = CompileWork.compile(request(dir, "a").withLabel("g:app compile-test"), heap);
