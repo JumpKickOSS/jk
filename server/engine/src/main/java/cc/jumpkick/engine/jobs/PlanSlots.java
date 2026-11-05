@@ -12,7 +12,10 @@ public interface PlanSlots {
     /** Give back a claimed slot for a job that never ran. */
     void abandonBuildPlanSlot();
 
-    /** Release a finished job's slot — before its request-finish event, so the count it carries is current. */
+    /**
+     * Release a finished job's slot: after its record is written, before its request-finish event,
+     * so the count that event carries is current.
+     */
     void noteBuildPlanFinished();
 
     boolean draining();

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;
@@ -34,10 +33,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>It also carries the session records' one writer across the hand-off: a displaced engine writes
  * no session record, so each run it finishes is {@link #finished queued} and sent in the next
- * {@code drain-status}, and the successor {@link #predecessorRuns folds} it into its episode. The
- * last run's record lands after its plan slot is released, so once the drain is over the loop keeps
- * reporting until {@code settled} says every finished run is queued, for at most {@link
- * #SETTLE_MS}.
+ * {@code drain-status}, and the successor {@link #predecessorRuns folds} it into its episode. A
+ * job's record is written before its plan slot is released, so when the drain is over every run is
+ * queued, and the last report carries whatever the ticks have not.
  *
  * <p><b>Reporting, never deciding.</b> Whether this engine is draining, and when it may exit, are
  * decided under the engine's lifecycle lock together with the plan-slot claim. This type reads that
@@ -51,9 +49,6 @@ final class DrainReporter {
 
     /** How often a draining engine re-reports to its successor. */
     static final long TICK_MS = 500;
-
-    /** The longest a drained engine waits for its last runs' records before it signs off. */
-    static final long SETTLE_MS = 5_000;
 
     /** One connection to the successor. An interface so the loop is testable without a socket. */
     interface Link extends AutoCloseable {
@@ -78,7 +73,6 @@ final class DrainReporter {
     private final Supplier<Path> successorSocket;
     private final BooleanSupplier stillDraining;
     private final IntSupplier activePlans;
-    private final BooleanSupplier settled;
     private final Connector connector;
     private final Consumer<String> log;
     private final long tickMillis;
@@ -102,7 +96,6 @@ final class DrainReporter {
             Supplier<Path> successorSocket,
             BooleanSupplier stillDraining,
             IntSupplier activePlans,
-            BooleanSupplier settled,
             Connector connector,
             Consumer<String> log,
             long tickMillis) {
@@ -111,7 +104,6 @@ final class DrainReporter {
         this.successorSocket = successorSocket;
         this.stillDraining = stillDraining;
         this.activePlans = activePlans;
-        this.settled = settled;
         this.connector = connector;
         this.log = log != null ? log : s -> {};
         this.tickMillis = tickMillis;
@@ -161,36 +153,21 @@ final class DrainReporter {
     /** The report loop. Package-private so a test can drive it on the calling thread. */
     void report() {
         Link link = null;
-        long settleBy = -1;
         try {
-            while (true) {
-                if (!stillDraining.getAsBoolean()) {
-                    if (settleBy < 0)
-                        settleBy = Clock.SYSTEM.nanos()
-                                + Duration.ofMillis(SETTLE_MS).toNanos();
-                    if (settled.getAsBoolean() || Clock.SYSTEM.nanos() - settleBy >= 0) break;
-                }
-                Path dest = successorSocket.get();
-                if (dest == null || !Files.exists(dest)) {
-                    Thread.sleep(tickMillis);
-                    continue;
-                }
-                try {
-                    if (link != null && !link.isOpen()) {
+            while (stillDraining.getAsBoolean()) {
+                link = reopened(link);
+                if (link != null) {
+                    try {
+                        send(link);
+                    } catch (IOException e) {
                         link.close();
                         link = null;
                     }
-                    if (link == null) {
-                        link = connector.connect(dest);
-                        link.send(ProtoLifecycle.hello(version, "probe"));
-                    }
-                    send(link);
-                } catch (IOException e) {
-                    if (link != null) link.close();
-                    link = null;
                 }
                 Thread.sleep(tickMillis);
             }
+            // A run the ticks never carried still goes out, over a first connection if need be.
+            if (hasUnreported()) link = reopened(link);
             if (link != null) {
                 if (hasUnreported()) send(link);
                 link.send(ProtoLifecycle.drainDone(pid));
@@ -201,6 +178,25 @@ final class DrainReporter {
             // successor gone — we still exit when jobs finish
         } finally {
             if (link != null) link.close();
+        }
+    }
+
+    /** {@code link} while it is open, else a freshly greeted one, or {@code null} when no successor listens. */
+    private @Nullable Link reopened(@Nullable Link link) {
+        if (link != null) {
+            if (link.isOpen()) return link;
+            link.close();
+        }
+        Path dest = successorSocket.get();
+        if (dest == null || !Files.exists(dest)) return null;
+        Link fresh = null;
+        try {
+            fresh = connector.connect(dest);
+            fresh.send(ProtoLifecycle.hello(version, "probe"));
+            return fresh;
+        } catch (IOException e) {
+            if (fresh != null) fresh.close();
+            return null;
         }
     }
 

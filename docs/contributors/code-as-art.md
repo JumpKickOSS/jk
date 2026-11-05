@@ -112,7 +112,7 @@ Load-bearing races — preserve the *invariant*, not the method shape:
 | Register the runner *before* `start`; reverse it and cancel is a no-op |
 | Teardown retires the session; late writes no-op |
 | EOF after a reported failure is not cancel |
-| Release the plan slot *before* `request-finish` |
+| Write the record, *then* release the plan slot, *then* `request-finish` |
 | SSE snapshot + attach is one critical section |
 | Peak connections is one metric across UDS + SSE |
 

@@ -12,10 +12,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Compute one job's final verdict and emit its terminal effects in the required order: the
- * cancelled-terminal safety net, the plan slot release, {@code request-finish} carrying the
- * post-release plan count, the journal write, {@code job-finish} in a {@code finally} so a throwing
- * journal cannot strand the client, then {@code clearProgress} and the idle boundary. Uses all four
- * ports because settlement is where every concern of a job meets.
+ * cancelled-terminal safety net, the journal write, then in a {@code finally} so a throwing journal
+ * cannot strand the client or the drain: the plan slot release, {@code request-finish} carrying the
+ * post-release plan count, {@code job-finish} and {@code clearProgress}; the idle boundary last.
+ * Uses all four ports because settlement is where every concern of a job meets.
  */
 final class JobSettlement {
 
@@ -63,9 +63,8 @@ final class JobSettlement {
             // their client loop only ends on plan-finish.
             WireWriter.sendQuiet(writer, LiveJobRegistry.cancelledTerminalLine(workspaceStream, dir));
         }
-        // Release the plan slot before request-finish so status SSE carries the post-finish
-        // activeBuildPlans count — Live activity finishes in the same frame.
-        if (plan) plans.noteBuildPlanFinished();
+        // Built before the journal write, which takes the accumulator the byte counters live on.
+        // activeBuildPlans is set again once the slot is released; the key keeps its place.
         JsonOut finishPayload = JsonOut.object()
                 .put("schema", 1)
                 .put("type", "request-finish")
@@ -79,14 +78,19 @@ final class JobSettlement {
                 .put("activeBuildPlans", plans.activeBuildPlans());
         String cancelReason = finishAcc != null ? finishAcc.cancelReason() : null;
         if (cancelled && cancelReason != null) finishPayload.put("cancelReason", cancelReason);
-        events.publishEvent("request-finish", events.withProgress(events.withIo(finishPayload, jid), jid));
-        // Journal first: clearProgress retires the JobSession (drops the accumulator).
-        // Writing after retire leaves a permanent running=true stub in jk jobs.
+        JsonOut finishEvent = events.withProgress(events.withIo(finishPayload, jid), jid);
         String warning = success && !cancelled ? configWarning(jid, dir) : null;
         String noop = null;
         try {
+            // The record is written while the job still holds its plan slot: a draining engine
+            // exits once no slot is held, so no jobs in flight means every record written.
             noop = journal.writeJournal(jid, cancelled, elapsedMillis, writer);
         } finally {
+            // Released before request-finish, so the event carries the post-finish count and Live
+            // activity settles in the same frame.
+            if (plan) plans.noteBuildPlanFinished();
+            finishEvent.put("activeBuildPlans", plans.activeBuildPlans());
+            events.publishEvent("request-finish", finishEvent);
             // Last write under the project's target/ is the journal's jk-results.md copy,
             // so this is the moment the engine is provably done with the tree. The client
             // blocks on this line rather than the plan terminal — otherwise `jk build`
@@ -94,7 +98,8 @@ final class JobSettlement {
             // In a finally so a throwing journal can never strand the client.
             // A no-op says so: its run has no directory, so the client keeps no transcript for it.
             if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(jid, noop, warning));
-            // Also in the finally: an MCP wait counts the job live until its session retires.
+            // After the journal: clearProgress retires the JobSession (drops the accumulator), and
+            // an MCP wait counts the job live until its session retires.
             events.clearProgress(jid);
         }
         // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.

@@ -90,8 +90,7 @@ class DrainReporterTest {
 
     private DrainReporter reporter(
             Path successor, BooleanSupplier stillDraining, int plans, DrainReporter.Connector connector) {
-        return new DrainReporter(
-                PID, VERSION, () -> successor, stillDraining, () -> plans, () -> true, connector, s -> {}, 0L);
+        return new DrainReporter(PID, VERSION, () -> successor, stillDraining, () -> plans, connector, s -> {}, 0L);
     }
 
     @Test
@@ -177,8 +176,8 @@ class DrainReporterTest {
                 return link;
             }
         };
-        DrainReporter reporter = new DrainReporter(
-                PID, VERSION, () -> successor, draining::get, () -> 1, () -> true, connector, s -> {}, 1L);
+        DrainReporter reporter =
+                new DrainReporter(PID, VERSION, () -> successor, draining::get, () -> 1, connector, s -> {}, 1L);
 
         reporter.start();
         reporter.start();
@@ -197,8 +196,8 @@ class DrainReporterTest {
     @Test
     void a_predecessor_is_announced_once_while_it_drains_and_once_when_it_finishes() {
         List<String> log = new ArrayList<>();
-        DrainReporter r = new DrainReporter(
-                PID, VERSION, () -> null, () -> false, () -> 0, () -> true, new FakeConnector(), log::add, 0L);
+        DrainReporter r =
+                new DrainReporter(PID, VERSION, () -> null, () -> false, () -> 0, new FakeConnector(), log::add, 0L);
 
         r.predecessorDraining(77, 2);
         r.predecessorDraining(77, 1);
@@ -213,8 +212,8 @@ class DrainReporterTest {
     @Test
     void a_report_carrying_no_pid_is_not_announced() {
         List<String> log = new ArrayList<>();
-        DrainReporter r = new DrainReporter(
-                PID, VERSION, () -> null, () -> false, () -> 0, () -> true, new FakeConnector(), log::add, 0L);
+        DrainReporter r =
+                new DrainReporter(PID, VERSION, () -> null, () -> false, () -> 0, new FakeConnector(), log::add, 0L);
 
         r.predecessorDraining(-1, 3);
         r.predecessorFinished(-1);
@@ -242,38 +241,24 @@ class DrainReporterTest {
     }
 
     /**
-     * The last job releases its plan slot before its record is written, so the drain is over before
-     * its run is. The reporter keeps reporting until that run is queued, and signs off after it.
+     * A job's record is written before its plan slot is released, so a run can be queued in the same
+     * breath the drain ends, before any tick reached the successor. It still goes out, in one last
+     * report on a first connection, before the sign-off.
      */
     @Test
-    void a_run_whose_record_lands_after_the_last_plan_is_reported_before_the_sign_off(@TempDir Path tmp)
-            throws Exception {
+    void a_run_queued_as_the_drain_ends_is_reported_before_the_sign_off(@TempDir Path tmp) throws Exception {
         Path successor = Files.createFile(tmp.resolve("successor.sock"));
         FakeConnector connector = new FakeConnector();
-        AtomicInteger polls = new AtomicInteger();
-        AtomicBoolean recorded = new AtomicBoolean();
-        DrainReporter[] self = new DrainReporter[1];
-        DrainReporter r = new DrainReporter(
-                PID,
-                VERSION,
-                () -> successor,
-                () -> false,
-                () -> 0,
-                () -> {
-                    if (polls.incrementAndGet() < 3) return false;
-                    if (recorded.compareAndSet(false, true)) self[0].finished(Map.of("episode", "s-1.2"));
-                    return true;
-                },
-                connector,
-                s -> {},
-                0L);
-        self[0] = r;
+        DrainReporter r = reporter(successor, () -> false, 0, connector);
+        r.finished(Map.of("episode", "s-1.2"));
 
         r.report();
 
         List<String> sent = connector.linesOn(0);
-        assertThat(EngineProtocol.typeOf(sent.getLast())).isEqualTo(EngineProtocol.DRAIN_DONE);
-        assertThat(DrainStatusFrame.decode(sent.get(sent.size() - 2)).runs())
+        assertThat(sent)
+                .extracting(EngineProtocol::typeOf)
+                .containsExactly(EngineProtocol.HELLO, EngineProtocol.DRAIN_STATUS, EngineProtocol.DRAIN_DONE);
+        assertThat(DrainStatusFrame.decode(sent.get(1)).runs())
                 .as("the late run goes out in one last report")
                 .singleElement()
                 .satisfies(run -> assertThat(run).contains("\"episode\":\"s-1.2\""));
@@ -283,8 +268,8 @@ class DrainReporterTest {
     void a_predecessors_runs_are_folded_here_and_its_count_is_announced() {
         List<String> log = new ArrayList<>();
         List<Map<String, Object>> folded = new ArrayList<>();
-        DrainReporter r = new DrainReporter(
-                PID, VERSION, () -> null, () -> false, () -> 0, () -> true, new FakeConnector(), log::add, 0L);
+        DrainReporter r =
+                new DrainReporter(PID, VERSION, () -> null, () -> false, () -> 0, new FakeConnector(), log::add, 0L);
         r.predecessorRuns(folded::add);
 
         r.predecessorReported(ProtoLifecycle.drainStatus(
