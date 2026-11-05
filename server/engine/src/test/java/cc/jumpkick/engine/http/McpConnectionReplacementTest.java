@@ -147,6 +147,35 @@ class McpConnectionReplacementTest {
         assertThat(specs.getLast().origin().session()).isEqualTo("claude-code " + stored);
     }
 
+    @Test
+    void a_run_after_a_404_and_a_new_initialize_is_in_the_session_its_connection_ends() {
+        SessionLog log = log();
+        McpHandler handler = handler(log);
+        assertThat(handler.handle(CALL, "beef", project.toString(), "2025-06-18", null)
+                        .status())
+                .isEqualTo(404);
+        assertThat(log.sessions(10)).as("a refused call opens nothing").isEmpty();
+
+        String id = requireNonNull(
+                handler.handle(HELLO, null, project.toString(), null, null).openedSessionId());
+        run(handler, id);
+        String label = requireNonNull(specs.getLast().origin().session());
+        String episode = requireNonNull(
+                log.placeRun("mcp", label, "build", specs.getLast().dir(), System.currentTimeMillis()));
+        Map<String, Object> open = log.sessions(10).getFirst();
+        assertThat(log.sessions(10))
+                .as("the run is in the session initialize opened, not one of its own")
+                .singleElement()
+                .satisfies(s -> assertThat(s).containsEntry("label", label).containsEntry("state", "live"));
+        assertThat(episode).startsWith(open.get("id") + ".");
+
+        assertThat(handler.closeConnection(id)).isTrue();
+        assertThat(log.sessions(10))
+                .as("closing the connection ends its session: nothing is left open")
+                .singleElement()
+                .satisfies(s -> assertThat(s).containsEntry("state", "ended"));
+    }
+
     private static final String CALL = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":"
             + "{\"name\":\"run\",\"arguments\":{\"kind\":\"build\",\"wait\":false}}}";
 

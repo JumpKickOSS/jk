@@ -174,14 +174,6 @@ public final class McpHandler {
         return closed;
     }
 
-    /** Open the session of a connection that just introduced itself, and store the connection with it. */
-    private void opened(McpConnection c) {
-        SessionLog log = ctx.sessions();
-        if (log == null) return;
-        log.open(ORIGIN, c.client(), c.label(), c.dir());
-        ctx.connections().save(c);
-    }
-
     /**
      * One HTTP body from an anonymous connection. Returns the JSON response body (object or array);
      * notifications ({@code id} absent) yield an empty string — caller should respond 202 with no
@@ -260,7 +252,6 @@ public final class McpHandler {
                         if ("initialize".equals(method)) {
                             McpConnection c = initialize(params, pin);
                             opened.set(c);
-                            opened(c);
                             String playbook = c.pinned() ? McpTools.PINNED_INSTRUCTIONS : McpTools.INSTRUCTIONS;
                             return McpRpc.initialize(c.revision().wire(), SERVER_NAME, ctx.version(), playbook);
                         }
@@ -297,11 +288,21 @@ public final class McpHandler {
         return new Reply(response, null, status);
     }
 
-    /** Open the connection an {@code initialize} asks for: its revision and its elicitation modes. */
+    /**
+     * Open the connection an {@code initialize} asks for (its revision and its elicitation modes)
+     * with its session, and store the connection with the session. The one place a connection
+     * opens, so every session has a connection that can end it.
+     */
     private McpConnection initialize(Map<String, Object> params, @Nullable String pin) {
         McpRevision revision = McpRevision.negotiate(params.get("protocolVersion"));
         McpElicitModes modes = McpElicitModes.declared(params.get("capabilities"), revision);
-        return ctx.connections().open(clientName(params), pin, revision, modes);
+        McpConnection c = ctx.connections().open(clientName(params), pin, revision, modes);
+        SessionLog log = ctx.sessions();
+        if (log != null) {
+            log.open(ORIGIN, c.client(), c.label(), c.dir());
+            ctx.connections().save(c);
+        }
+        return c;
     }
 
     /** The absolute project dir a {@code Jk-Project} header names. */
