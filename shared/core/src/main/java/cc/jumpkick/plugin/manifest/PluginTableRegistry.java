@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -199,7 +201,7 @@ public final class PluginTableRegistry {
                     .removeIf(existing -> existing.id().equals(manifest.id())
                             || existing.table().equals(manifest.table()));
             next.put(manifest.table(), manifest);
-            BY_TABLE = Map.copyOf(next);
+            BY_TABLE = byTableOrder(next);
         }
         if (archive != null) ARCHIVES.put(manifest.id(), archive);
     }
@@ -215,12 +217,20 @@ public final class PluginTableRegistry {
             if (!manifest.equals(BY_TABLE.get(manifest.table()))) return;
             Map<String, PluginDescriptor> next = new LinkedHashMap<>(BY_TABLE);
             next.remove(manifest.table());
-            BY_TABLE = Map.copyOf(next);
+            BY_TABLE = byTableOrder(next);
             ARCHIVES.remove(manifest.id());
         }
     }
 
     private PluginTableRegistry() {}
+
+    /**
+     * An immutable snapshot iterated in table-name order, so every listing of the installed
+     * plugins (error messages, {@link #manifests}) reads the same on every run.
+     */
+    private static Map<String, PluginDescriptor> byTableOrder(Map<String, PluginDescriptor> byTable) {
+        return Collections.unmodifiableSortedMap(new TreeMap<>(byTable));
+    }
 
     /**
      * Engine-registered hook that brings the user-config ({@code ~/.jk/config.toml [plugins]})
@@ -264,7 +274,7 @@ public final class PluginTableRegistry {
         return fetcher == null ? null : fetcher.apply(table);
     }
 
-    /** Every installed manifest, in registration order. */
+    /** Every installed manifest, ordered by table name. */
     public static List<PluginDescriptor> manifests() {
         return List.copyOf(BY_TABLE.values());
     }
@@ -577,7 +587,7 @@ public final class PluginTableRegistry {
             byTable.putAll(loadFromWorkspacePluginSources(discoverTestWorkspaceRoot()));
             byTable.putAll(loadFromPluginJarProperties());
         }
-        return byTable.isEmpty() ? Map.of() : Map.copyOf(byTable);
+        return byTableOrder(byTable);
     }
 
     /**

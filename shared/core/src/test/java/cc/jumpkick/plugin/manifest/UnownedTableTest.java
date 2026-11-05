@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class UnownedTableTest {
@@ -23,6 +24,35 @@ class UnownedTableTest {
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[not-a-real-plugin] is not owned by any installed plugin")
                 .hasMessageContaining("add it under [plugins]");
+    }
+
+    @Test
+    void unowned_table_error_lists_the_installed_tables_sorted_by_name() {
+        List<String> expected = PluginTableRegistry.manifests().stream()
+                .map(PluginDescriptor::table)
+                .sorted()
+                .map(table -> "[" + table + "]")
+                .toList();
+        assertThat(expected).hasSizeGreaterThan(1);
+
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                        name = "demo"
+                        group = "com.example"
+                        version = "1.0.0"
+
+                        [not-a-real-plugin]
+                        version = "4.0.0"
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("(plugin tables installed here: " + String.join(", ", expected) + ")");
+    }
+
+    @Test
+    void the_registry_lists_its_manifests_in_table_order() {
+        List<String> tables = PluginTableRegistry.manifests().stream()
+                .map(PluginDescriptor::table)
+                .toList();
+        assertThat(tables).isSorted();
     }
 
     @Test

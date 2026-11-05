@@ -43,6 +43,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
@@ -139,14 +140,16 @@ public final class ManifestBuild {
             // Project identity keys (and Cargo-style inherit tables like group = { workspace = true }).
             if (ManifestProject.PROJECT_KEYS.contains(key)) continue;
             if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof TomlArray)) continue;
-            StringBuilder known = new StringBuilder();
-            for (PluginDescriptor m : installed) {
-                if (known.length() > 0) known.append(", ");
-                known.append('[').append(m.table()).append(']');
-            }
+            // Sorted: [plugins] declarations come after the built-ins in `installed`, and the
+            // message must read the same on every run.
+            String known = installed.stream()
+                    .map(PluginDescriptor::table)
+                    .sorted()
+                    .map(table -> "[" + table + "]")
+                    .collect(Collectors.joining(", "));
             String fetchDetail = builtInFetchFailures.get(key);
             throw new JkBuildParseException("[" + key + "] is not owned by any installed plugin — add it under"
-                    + " [plugins] (plugin tables installed here: " + (known.length() == 0 ? "none" : known) + ")"
+                    + " [plugins] (plugin tables installed here: " + (known.isEmpty() ? "none" : known) + ")"
                     + (fetchDetail == null ? "" : "; fetching the built-in plugin failed: " + fetchDetail));
         }
     }
