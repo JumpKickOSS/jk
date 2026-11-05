@@ -16,7 +16,8 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | [Comments and Javadoc](comments.md) | Short by default; no ticket ids in source, tests, or these docs |
 | [Plugin authoring](plugins.md) | `jk-plugin.toml`, workers, private pins (first-party + vendored) |
 | [Code as Art](code-as-art.md) | Size budgets, Typed Envelope, JSpecify, fluent Lombok |
-| [TUI](tui.md) | CommandWedge, envelope, nerd/ansi/plain, script-mode allowlist |
+| [TUI](tui.md) | CommandWedge, envelope, nerd/ansi/plain, form widgets, script-mode allowlist |
+| [Forms](forms.md) | The form model every surface renders: kinds, conditions, `rev`, JSON, MCP flattening, the summary command |
 | [CLI terminal](../cli-terminal.md) | `:cli-terminal` TTY session, Style, Width, keys (no JLine) |
 | [HTTP server](http.md) | Engine HTTP lifetime, auth, REST, SSE |
 | [Web client](webclient.md) | Dashboard SPA (thin renderer over HTTP) |

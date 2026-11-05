@@ -310,6 +310,46 @@ answers re-print as `-> answer` where the ANSI path paints `➜ ` in italic gree
 validators are shared, so callers do not know which driver ran. Non-interactive (no live tty) still
 returns an empty result and the command falls back to flags.
 
+## Form widgets
+
+A form from the engine (`cc.jumpkick.form`, see [forms.md](forms.md)) is asked with the widgets in
+`cc.jumpkick.cli.tui.form`. Each is a `Question<T>`: a state machine that takes keys on a raw TTY and
+whole lines in plain mode, and paints only its body. `Asker` owns everything around it.
+
+| Widget | Kind | Raw TTY (nerd, ansi) | Plain (cooked lines) |
+|--------|------|----------------------|----------------------|
+| `LinePrompt` | `text` | typed line with a caret; the default as a dim placeholder, Enter takes it, Tab or → types it in; a pattern miss or an empty required line shows a red row and keeps asking | `Label [default]: `; the same checks re-ask |
+| `YesNo` | `bool` | `Yes` / `No` segments; `y` / `n` answer at once, ← / → / Tab move, Enter takes the focused one (the default, else No) | `Label [y/N]: ` (`[Y/n]`, `[y/n]` without a default) |
+| `ListSelect` | `choice` | up to five options that fit the width: one inline row moved with ← / →, the focused one a pill, its help under the row; more: a vertical radio list moved with ↑ / ↓, ten rows at a time with `n of m` | numbered menu; a position, an id, a label, or empty for the default |
+| `ToggleList` | `multi` | checkbox list; ↑ / ↓ move, Space toggles, `a` toggles all, Enter takes the ticks in option order | numbered checklist; `1 3`, `1,3`, ids, `all`, `none`, or empty for the defaults |
+| `Typeahead` | `search` | query line over the first eight matches from a callback, refreshed on every edit; ↑ / ↓ move, Enter takes the focused match, `no match` and a red row when there is none | a line is a query: an exact id or a single match answers, several are listed by number for the next line |
+| `PathPrompt` | `path` | typed line; Tab completes directories (one candidate fills in, several fill the common prefix and are listed); `~/` is the home directory, dot-directories only once a dot is typed | the line as typed, empty for the default; no completion |
+
+**Asker.** Under ANSI the question is a `RegionPainter` region (`Park.BELOW`) on stderr in
+`InputMode.PROMPT`: a `■  Label  help` row over the body, repainted cell by cell per key, then lifted
+and replaced by the settled row `□  Label ➜ answer`. Ctrl-C or Esc leaves `✘  Label` in red and an
+empty answer. Under plain mode it is append-only: the label, the menu if any, `cue: `, and
+`-> answer`; end of input is an empty answer. `Asker.interactive()` is `null` where nobody can answer
+(no TTY, `CI`, `JK_NONINTERACTIVE`), so the caller falls back to flags and defaults.
+
+**Modes.** Nerd and ANSI share the raw path and differ only where a pill is painted: the focused
+segment of an inline `ListSelect` or `YesNo` gets half-circle caps when `ctx.pill()` holds, a padded
+chip otherwise. Plain paints no escape byte. Colour means state, as everywhere: the active bullet and
+caret in the active-step colour, the focused row in the focus colour, ticks and settled bullets in
+the completed green, errors red, help and hints dark gray.
+
+**FormRenderer.** Walks a form step by step under a `≡ Form › Step` menu wedge. A field whose
+`when` is false is skipped and takes its default; an advanced field with a default takes it unasked;
+an answer given up front (from flags) is printed settled, not asked. A search field's callback gets
+its `source` with earlier answers filled in. The result is the map `Form.check` settles, or empty
+when the user backed out. `summary(command, form, values, flags)` prints the command that gives the
+same answers without asking (`FormCommand.render`). `FormSources` carries what the renderer needs
+from outside: derived defaults, search matches and directory completion.
+
+Tests drive each widget and the renderer through `Scripted`: keys into a `MemoryTerminal` for nerd
+and ANSI, with every flushed frame read back through `LiveRegionScreen`, and lines on a reader for
+plain mode.
+
 ## One-shot vs plan
 
 | Kind | Example | Pattern |
@@ -342,6 +382,7 @@ Under `-O jsonl`, suppress human chrome (no envelope, no wedge). See [machine-ou
 | Code | `SourceCode.java` / `JavaCode` / `KotlinCode` / `GroovyCode` |
 | Prompt | `Prompt.java`, `Confirmation.java` (`Confirm` façade) |
 | Wizard parts | `Wizard` (ANSI key loop), `CookedWizard` (plain line prompts), `WizardSection`, `TextInput`, `Checkbox`, `RadioButton`, `RadioButtonGroup` |
+| Form widgets | `cli/tui/form/` — `Question` (`LinePrompt`, `YesNo`, `ListSelect`, `ToggleList`, `Typeahead`, `PathPrompt`), `Asker` (raw region or cooked lines), `FormRenderer`, `FormSources` |
 | Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: stage changes, 30s heartbeat, `built`/`done`, `jk: ` prefix). Bar width is a parameter: `Progress.DEFAULT_SEGMENTS` 40, `NARROW_SEGMENTS` 32 where the caller does not control the trailing text |
 | Live one-row region | `cli/tui/LiveLine.java` — the only one-row live loop: animator, cursor, OSC taskbar (re-told every frame), in-place repaint, Ctrl-C settle, `LiveRegion` registration. Takes an already-clipped row per frame (`JkWedge.renderLiveLine`), so it never decides how anything looks. Splits silent (`--no-progress`, script mode) from plain (`--no-ansi`: no moving row; the animator calls the owner's heartbeat hook instead) from animating. Owners: `Spinner`, `ProgressRow` |
 | Tables | `cli/tui/Table.java`. Append snaps child rails to parent edges |
