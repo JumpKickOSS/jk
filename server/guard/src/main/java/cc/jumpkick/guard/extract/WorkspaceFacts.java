@@ -90,6 +90,21 @@ public final class WorkspaceFacts {
         return new FactsIndex(classes, Map.of(), "");
     }
 
+    /**
+     * One module's main index, brought up to date from its classes as {@link #merged} reads it; empty
+     * when the module has none (its compile failed or never ran) or it cannot be read.
+     */
+    public static FactsIndex module(Path root, Path module) {
+        Path idx = indexOf(root, module);
+        if (idx == null) return FactsIndex.EMPTY;
+        try {
+            return FactsFormat.read(idx);
+        } catch (IOException | RuntimeException unreadable) {
+            Log.debug("module: an index that cannot be read shows no class", unreadable);
+            return FactsIndex.EMPTY;
+        }
+    }
+
     /** Every workspace class's module directory, from the index names alone; the first index that holds a class owns it. */
     public static Map<String, Path> classModuleDirs(Path root, List<Path> modules) {
         Map<String, Path> out = new HashMap<>();

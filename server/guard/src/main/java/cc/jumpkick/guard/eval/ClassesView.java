@@ -48,30 +48,38 @@ final class ClassesView {
         if (modules.isEmpty()) return List.of();
         Set<String> compiled = compiledTails(ctx.facts());
         List<String> out = new ArrayList<>();
-        for (Path module : modules) {
-            String rel = WorkspaceModel.rel(ctx.root(), module);
-            for (Path root : SourcePaths.mainRoots(module, ModuleLayout.isCompact(module))) {
-                if (!Files.isDirectory(root)) continue;
-                try {
-                    PathUtil.forEachReadableFile(root, (file, attrs) -> {
-                        String tail = root.relativize(file)
-                                .toString()
-                                .replace(file.getFileSystem().getSeparator(), "/");
-                        if (isClassSource(file) && !compiled.contains(tail))
-                            out.add(SourcePaths.under(rel, module, root, tail));
-                    });
-                } catch (IOException unreadable) {
-                    // A root the lane cannot list cannot vouch for its classes either.
-                    out.add(SourcePaths.under(rel, module, root, ""));
-                }
-            }
-        }
+        for (Path module : modules) out.addAll(uncompiled(ctx.root(), module, compiled));
         out.sort(null);
         return out;
     }
 
+    /**
+     * The workspace-relative main source files of {@code module} with no class among {@code
+     * compiled} ({@link #compiledTails}), in walk order.
+     */
+    static List<String> uncompiled(Path workspace, Path module, Set<String> compiled) {
+        List<String> out = new ArrayList<>();
+        String rel = WorkspaceModel.rel(workspace, module);
+        for (Path root : SourcePaths.mainRoots(module, ModuleLayout.isCompact(module))) {
+            if (!Files.isDirectory(root)) continue;
+            try {
+                PathUtil.forEachReadableFile(root, (file, attrs) -> {
+                    String tail = root.relativize(file)
+                            .toString()
+                            .replace(file.getFileSystem().getSeparator(), "/");
+                    if (isClassSource(file) && !compiled.contains(tail))
+                        out.add(SourcePaths.under(rel, module, root, tail));
+                });
+            } catch (IOException unreadable) {
+                // A root the lane cannot list cannot vouch for its classes either.
+                out.add(SourcePaths.under(rel, module, root, ""));
+            }
+        }
+        return out;
+    }
+
     /** {@code pkg/SourceFile} of every class in {@code facts}. */
-    private static Set<String> compiledTails(FactsIndex facts) {
+    static Set<String> compiledTails(FactsIndex facts) {
         Set<String> out = new HashSet<>();
         for (ClassFacts c : facts.classes().values()) {
             String tail = SourcePaths.tail(c);

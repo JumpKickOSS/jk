@@ -9,14 +9,11 @@ import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Runs every rule a lane owns. Collected: one run reports every red rule. A throwing evaluator is
@@ -34,7 +31,8 @@ public final class LaneRun {
      * @param unseen what the lane's view lacks of what it counts ({@link #unseen(EvalContext)});
      *     non-empty only when a rule would have tightened or called its scope shrunk, which it then
      *     did not
-     * @param unseenModules how many modules {@code unseen} falls in: the modules the view lacks
+     * @param unseenModules how many of the lane's modules this run has not seen ({@link
+     *     UnseenModules}), counted only when {@code unseen} is non-empty
      */
     public record Result(
             Lane lane,
@@ -185,33 +183,10 @@ public final class LaneRun {
             }
         }
         List<String> missing = unseen == null ? List.of() : unseen;
-        return new Result(lane, reports, current, tightened, missing, modulesOf(ctx, missing));
-    }
-
-    /**
-     * How many modules {@code unseen} falls in: each entry is a module label for the output lane, a
-     * workspace-relative source file for a bytecode lane, owned by the innermost module above it.
-     */
-    static int modulesOf(EvalContext ctx, List<String> unseen) {
-        if (unseen.isEmpty()) return 0;
-        return switch (ctx.lane()) {
-            case OUTPUT -> unseen.size();
-            case MODULE -> 1;
-            default -> {
-                List<String> rels = new ArrayList<>();
-                for (Path module : ctx.modules()) rels.add(WorkspaceModel.rel(ctx.root(), module));
-                Set<String> owners = new HashSet<>();
-                for (String file : unseen) {
-                    String owner = null;
-                    for (String rel : rels) {
-                        boolean under = rel.isEmpty() || file.startsWith(rel + "/");
-                        if (under && (owner == null || rel.length() > owner.length())) owner = rel;
-                    }
-                    owners.add(owner == null ? file : owner);
-                }
-                yield owners.size();
-            }
-        };
+        int modules = missing.isEmpty()
+                ? 0
+                : UnseenModules.of(ctx.root(), ctx.modules()).size();
+        return new Result(lane, reports, current, tightened, missing, modules);
     }
 
     /** Why a clean pass with no bite evidence is red, in the kind's own terms. */
