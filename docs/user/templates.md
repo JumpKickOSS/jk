@@ -14,9 +14,11 @@ jk init -t hello
 `-t` / `--template` is exclusive with `--plugin`. Blank `jk new` (no `-t`) is the wizard /
 flag scaffolder for a plain library or `--executable` app.
 
-Standalone scaffolds write [jk's section of **`AGENTS.md`**](agents.md#jks-section-of-agentsmd)
-pointing coding agents at `jk skill` (into the template's own `AGENTS.md` when it shipped one).
-Workspace modules skip it — the root owns the file.
+A standalone template scaffold gets what a plain `jk new` gets: [jk's section of
+**`AGENTS.md`**](agents.md#jks-section-of-agentsmd) (into the template's own `AGENTS.md` when it
+shipped one), the files of each [agent in use](agents.md) and a first code graph, and jk's
+`.gitignore` unless the template ships its own. Workspace modules get none of these — the root
+owns them.
 
 Every library and framework version a scaffold writes is today's **current stable, as an exact
 pin** (`[spring-boot] version = "4.1.0"`, not `"latest"`). The committed file says what you

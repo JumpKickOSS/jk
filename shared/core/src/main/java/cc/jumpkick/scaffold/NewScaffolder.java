@@ -69,10 +69,7 @@ public final class NewScaffolder {
                 NewJkBuildRenderer.render(inputs, versions),
                 StandardCharsets.UTF_8);
 
-        if (standalone) {
-            writeGitignore(dir);
-            AgentsGuide.sync(dir);
-        }
+        if (standalone) finishStandalone(dir);
 
         createSourceTree(inputs);
 
@@ -92,10 +89,7 @@ public final class NewScaffolder {
                 dir.resolve(ManifestPaths.MANIFEST),
                 NewJkBuildRenderer.render(inputs, versions),
                 StandardCharsets.UTF_8);
-        if (standalone) {
-            writeGitignore(dir);
-            AgentsGuide.sync(dir);
-        }
+        if (standalone) finishStandalone(dir);
 
         String pkg = inputs.group();
         String pluginId = inputs.name();
@@ -361,6 +355,16 @@ public final class NewScaffolder {
             Files.createDirectories(dir.resolve("src").resolve("test").resolve(lang));
             Files.createDirectories(dir.resolve("src").resolve("test").resolve("resources"));
         }
+    }
+
+    /**
+     * What every standalone scaffold gets whatever wrote its tree (jk's renderer or a template): a
+     * seeded {@code .gitignore} unless one is already there, and jk's section of {@code AGENTS.md}.
+     * A workspace module gets neither; the workspace root owns both.
+     */
+    public static void finishStandalone(Path dir) throws IOException {
+        writeGitignore(dir);
+        AgentsGuide.sync(dir);
     }
 
     /**
