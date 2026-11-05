@@ -4,6 +4,7 @@ package cc.jumpkick.command.project;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.ScaffoldTestSupport;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
@@ -81,12 +82,16 @@ class VerifyBuildCommandTest {
                         TestCaches.dir("shared-cache").toString(),
                         "--skip-tests"))
                 .isEqualTo(0);
-        assertThat(run(
-                        "verify",
-                        "-C",
-                        tempDir.toString(),
-                        "--cache-dir",
-                        TestCaches.dir("shared-cache").toString()))
+        // What verify printed is the only record of why it judged the build stale; keep it with the failure.
+        int[] exit = new int[1];
+        Capture.Streams said = Capture.both(() -> exit[0] = run(
+                "verify",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                TestCaches.dir("shared-cache").toString()));
+        assertThat(exit[0])
+                .as("jk verify exit; stdout:%n%s%nstderr:%n%s", said.out(), said.err())
                 .isEqualTo(0);
     }
 
