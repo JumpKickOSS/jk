@@ -67,7 +67,7 @@ final class InitNode {
     static void addMembers(Path root, List<Path> members) throws IOException {
         for (Path m : members) {
             NodeShape.Proposal p = write(m, leaf(m), null);
-            NewNode.join(root, m);
+            NewCommand.registerModule(root, m);
             CliOutput.out(JkWedge.chipLine(
                     Glyphs.CHECK,
                     "Init",

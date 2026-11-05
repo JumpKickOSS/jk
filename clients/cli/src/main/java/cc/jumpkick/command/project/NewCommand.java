@@ -634,7 +634,7 @@ public final class NewCommand implements CliCommand {
     /**
      * Lists {@code moduleDir} in {@code root}'s {@code [workspace].modules}, promoting a plain
      * project into a workspace root (creating the {@code [workspace]} table) when this is its first
-     * module. Every {@code jk new} mode that lands inside a project registers through here. Returns
+     * module. Every {@code jk new} mode, and {@code jk init} adding node members, registers through here. Returns
      * the module's path relative to the root, as written.
      */
     static String registerModule(Path root, Path moduleDir) throws IOException {
