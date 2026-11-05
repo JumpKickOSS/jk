@@ -32,7 +32,10 @@ client-resolved Graal install used by `jk native` / `jk install`).
 
 [JLine]: https://github.com/jline/jline3
 
-## Tiers and guards
+## Tiers, null checking and guards
+
+Every package is `@NullMarked` and `[nullness]` checks it with NullAway at compile time: a type is
+non-null unless it says `@Nullable`.
 
 `jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
 tests tagged with that cost. No framework pack fits a plain CLI, so `jk-guards.toml` is a small house

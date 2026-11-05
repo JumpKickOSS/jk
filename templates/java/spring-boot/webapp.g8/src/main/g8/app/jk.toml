@@ -25,3 +25,7 @@ web = { workspace = true }
 
 [test-dependencies]
 starter-test = "org.springframework.boot:spring-boot-starter-test"
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
