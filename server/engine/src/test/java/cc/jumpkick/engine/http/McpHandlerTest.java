@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.mcp.McpHistoryViews;
+import cc.jumpkick.engine.http.mcp.McpRevision;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.jobs.JobRow;
 import cc.jumpkick.engine.jobs.JobSpec;
@@ -74,7 +75,7 @@ class McpHandlerTest {
         assertThat(resp.get("jsonrpc")).isEqualTo("2.0");
         assertThat(resp.get("id")).isEqualTo(1.0); // MiniJson numbers are doubles
         Map<String, Object> result = object(resp, "result");
-        assertThat(result.get("protocolVersion")).isEqualTo(McpHandler.PROTOCOL_VERSION);
+        assertThat(result.get("protocolVersion")).isEqualTo(McpRevision.LATEST.wire());
         Map<String, Object> info = object(result, "serverInfo");
         assertThat(info.get("name")).isEqualTo("jk-engine");
         Map<String, Object> caps = object(result, "capabilities");

@@ -30,18 +30,17 @@ public final class McpConnections {
         }
     };
 
-    /** Mint a connection for a client that just sent {@code initialize}. */
-    public synchronized McpConnection open(@Nullable String client) {
-        return open(client, null);
-    }
-
-    /** Mint a connection, pinned to {@code project} when it is non-null. */
-    public synchronized McpConnection open(@Nullable String client, @Nullable String project) {
+    /**
+     * Mint a connection for a client that just sent {@code initialize}, pinned to {@code project}
+     * when it is non-null.
+     */
+    public synchronized McpConnection open(
+            @Nullable String client, @Nullable String project, McpRevision revision, McpElicitModes elicitation) {
         String id;
         do {
             id = String.format("%0" + ID_HEX_DIGITS + "x", random.nextInt(1 << (4 * ID_HEX_DIGITS)));
         } while (live.containsKey(id));
-        McpConnection c = new McpConnection(id, client, project);
+        McpConnection c = new McpConnection(id, client, project, revision, elicitation);
         live.put(id, c);
         return c;
     }

@@ -2,18 +2,25 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.http.mcp.McpRevision;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.runtime.base.ProjectCard;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The MCP HTTP surface: the discovery document, JSON-RPC over {@code POST /mcp} with the request
- * body cap and a {@code 202} for notifications, the {@code Mcp-Session-Id} header both ways, and
- * the hand-off to the MCP-framed SSE stream. Reached only after {@link HttpTokenGate} has admitted
+ * body cap and a {@code 202} for notifications and responses, the {@code Mcp-Session-Id} header
+ * both ways, the {@code MCP-Protocol-Version} header in, a request's response turned into an event
+ * stream when its call sends the client a request of its own, and the hand-off to the MCP-framed
+ * SSE stream. Reached only after {@link HttpTokenGate} has admitted
  * the exchange — MCP is token-gated even on loopback.
  */
 final class McpFront {
@@ -23,6 +30,9 @@ final class McpFront {
 
     /** The project a single-project client ({@code jk mcp}) is for; its connection needs no {@code dir}. */
     static final String PROJECT_HEADER = "Jk-Project";
+
+    /** The revision the session negotiated, sent by the client on every request after {@code initialize}. */
+    static final String PROTOCOL_HEADER = "MCP-Protocol-Version";
 
     private final McpHandler mcp;
     private final SseEndpoint sse;
@@ -52,7 +62,7 @@ final class McpFront {
                     JsonOut.object()
                             .put("schema", 1)
                             .put("type", "mcp-discovery")
-                            .put("protocolVersion", McpHandler.PROTOCOL_VERSION)
+                            .put("protocolVersion", McpRevision.LATEST.wire())
                             .put("server", McpHandler.SERVER_NAME)
                             .put("version", engineVersion)
                             .put("endpoint", "POST /mcp")
@@ -81,23 +91,81 @@ final class McpFront {
             return;
         }
         String body = HttpRequests.body(exchange);
+        Stream stream = HttpAdmission.acceptsEventStream(exchange) ? new Stream(exchange) : null;
         McpHandler.Reply reply;
         try {
-            reply = mcp.handle(body, sessionId, exchange.getRequestHeaders().getFirst(PROJECT_HEADER));
+            reply = mcp.handle(
+                    body,
+                    sessionId,
+                    exchange.getRequestHeaders().getFirst(PROJECT_HEADER),
+                    exchange.getRequestHeaders().getFirst(PROTOCOL_HEADER),
+                    stream == null ? null : stream::send);
         } catch (IllegalArgumentException e) {
             HttpResponses.sendText(exchange, 400, e.getMessage() + "\n");
+            return;
+        }
+        String response = reply.body();
+        if (stream != null && stream.opened()) {
+            // The call sent the client a request first: its response is the stream's last event.
+            if (response != null && !response.isEmpty()) stream.event(response);
+            stream.close();
             return;
         }
         if (reply.openedSessionId() != null) {
             exchange.getResponseHeaders().set(SESSION_HEADER, reply.openedSessionId());
         }
-        String response = reply.body();
         if (response == null || response.isEmpty()) {
-            // JSON-RPC notification — accepted, no body.
+            // JSON-RPC notification or response — accepted, no body.
             exchange.sendResponseHeaders(202, -1);
             return;
         }
         HttpResponses.sendJson(exchange, 200, response);
+    }
+
+    /**
+     * A {@code POST /mcp} response that becomes an event stream on the first message the engine
+     * sends the client while the request is outstanding. Until then nothing is committed, and a
+     * request that sends nothing answers plain JSON.
+     */
+    private static final class Stream {
+
+        private final HttpExchange exchange;
+        private @Nullable OutputStream out;
+
+        Stream(HttpExchange exchange) {
+            this.exchange = exchange;
+        }
+
+        synchronized boolean opened() {
+            return out != null;
+        }
+
+        synchronized void send(Map<String, Object> message) throws IOException {
+            event(MiniJson.write(message));
+        }
+
+        synchronized void event(String json) throws IOException {
+            OutputStream o = out;
+            if (o == null) {
+                exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
+                exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+                exchange.sendResponseHeaders(200, 0);
+                o = exchange.getResponseBody();
+                out = o;
+            }
+            o.write(("event: message\ndata: " + json + "\n\n").getBytes(StandardCharsets.UTF_8));
+            o.flush();
+        }
+
+        synchronized void close() {
+            OutputStream o = out;
+            if (o == null) return;
+            try {
+                o.close();
+            } catch (IOException ignored) {
+                // The client hung up; the call's answer is lost with it.
+            }
+        }
     }
 
     /** Project metadata fallback for MCP {@code project} — one card, one parse path. */

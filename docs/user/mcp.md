@@ -38,7 +38,7 @@ Outside a project `jk mcp` still serves, and the tools take `dir` as over HTTP.
 | Live events | `GET {httpUrl}/mcp` with `Accept: text/event-stream` |
 | Auth | `Authorization: Bearer <token>` (**always** required) |
 | Session | `initialize` answers with an `Mcp-Session-Id` header; echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <id>`. `DELETE /mcp` with the header ends it |
-| Protocol | Advertised `protocolVersion` `2024-11-05` (Streamable-HTTP) |
+| Protocol | `2025-11-25`, `2025-06-18`, `2025-03-26` or `2024-11-05`, negotiated at `initialize` ([below](#protocol-revisions)); Streamable HTTP. Send `MCP-Protocol-Version` on every later request |
 | Server name | `jk-engine` |
 | Tool list | `tools/list` answers six tools (`run`, `diagnostics`, `deps`, `callers`, `rename`, `skill`); `run(kind=snapshot)` installs for a sibling project. `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
@@ -73,6 +73,32 @@ tools answer `structuredContent` (`schema` + `type`, like the rest of the machin
 It does not carry a dashboard link, a session id, or a trigger. The journal still records who
 asked; the human report is `target/jk-results.md` and [Web](web.md). `details` and
 `jk://runs/latest/*` answer for the bound `dir`, never a sibling worktree's run.
+
+## Protocol revisions
+
+`initialize` answers the `protocolVersion` the client asked for when jk speaks it, and
+`2025-11-25` otherwise. The session keeps the revision it negotiated:
+
+| Revision | What changes for the session |
+|---|---|
+| `2024-11-05`, `2025-03-26` | JSON-RPC batches are accepted. jk never asks the client anything |
+| `2025-06-18` | No batches (a batch is a `-32600` error). Form-mode elicitation when the client declares `elicitation` |
+| `2025-11-25` | As `2025-06-18`, plus URL-mode elicitation when the client declares `elicitation.url`. `"elicitation": {}` means form mode alone |
+
+Over HTTP, `MCP-Protocol-Version` names the session's revision; a value jk does not speak is a
+`400`. A request with neither the header nor a session is taken as `2025-03-26`. The handshake and
+the default `tools/list` are the same under every revision.
+
+**Elicitation.** A tool may ask the human behind the client a question while its call is
+outstanding, and only of a client that declared that mode (none of today's tools asks yet). Over
+HTTP, when the call's `POST` sent `Accept: text/event-stream`, its response becomes an event
+stream: the `elicitation/create` request comes first, and the call's own response is the last
+event. The client answers the request in a new `POST` on the same session, which is accepted with
+`202`. A question left unanswered past the tool's wait is withdrawn with `notifications/cancelled`.
+`jk mcp` carries both directions over stdio: the request is written to stdout while the call is
+outstanding, and the client's response on stdin goes back to the engine. When the engine restarted
+under it, `jk mcp` repeats the client's `initialize` on the new session, so the session still knows
+what the client declared.
 
 ## Verdict
 

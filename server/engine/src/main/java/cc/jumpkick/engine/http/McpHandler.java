@@ -4,11 +4,14 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.http.mcp.McpContext;
+import cc.jumpkick.engine.http.mcp.McpElicitModes;
 import cc.jumpkick.engine.http.mcp.McpError;
 import cc.jumpkick.engine.http.mcp.McpHistoryViews;
 import cc.jumpkick.engine.http.mcp.McpJobRuns;
+import cc.jumpkick.engine.http.mcp.McpOutbound;
 import cc.jumpkick.engine.http.mcp.McpPrompts;
 import cc.jumpkick.engine.http.mcp.McpResources;
+import cc.jumpkick.engine.http.mcp.McpRevision;
 import cc.jumpkick.engine.http.mcp.McpRpc;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import java.nio.file.Path;
@@ -45,13 +48,10 @@ import org.jspecify.annotations.Nullable;
  */
 public final class McpHandler {
 
-    /** MCP protocol version we advertise (Streamable-HTTP era baseline). */
-    public static final String PROTOCOL_VERSION = "2024-11-05";
-
     public static final String SERVER_NAME = "jk-engine";
 
     private final McpContext ctx;
-    private final McpTools tools = McpTools.standard();
+    private volatile McpTools tools = McpTools.standard();
 
     /** Which rows {@code tools/list} answers; the loop set unless the machine config opted into all. */
     private volatile McpTools.Surface surface = McpTools.Surface.LOOP;
@@ -114,6 +114,11 @@ public final class McpHandler {
         this.surface = surface;
     }
 
+    /** Serve another tool registry; tests only. */
+    void tools(McpTools tools) {
+        this.tools = tools;
+    }
+
     /** Shrink the journal-write settle budget; tests only. */
     public void journalSettleMs(long ms) {
         ctx.journalSettleMs(ms);
@@ -122,6 +127,12 @@ public final class McpHandler {
     /** Shrink one second of a wait's {@code timeout_s}; tests only. */
     void waitSecondMs(long ms) {
         ctx.waitSecondMs(ms);
+    }
+
+    /** The live connection behind {@code sessionId}, or null; test seam. */
+    @Nullable
+    McpConnection connection(@Nullable String sessionId) {
+        return ctx.connections().find(sessionId);
     }
 
     /** Forget a connection ({@code DELETE /mcp}). */
@@ -149,32 +160,72 @@ public final class McpHandler {
      * — null or unknown resolves to no connection, and the calls run anonymous.
      */
     public Reply handle(String body, @Nullable String sessionId) {
-        return handle(body, sessionId, null);
+        return handle(body, sessionId, null, null, null);
+    }
+
+    /** As {@link #handle(String, String)} for a client that names its project, with no way back to it. */
+    public Reply handle(String body, @Nullable String sessionId, @Nullable String project) {
+        return handle(body, sessionId, project, null, null);
     }
 
     /**
-     * As {@link #handle(String, String)} for a client that names its project ({@code jk mcp} sends
-     * the {@code Jk-Project} header). {@code initialize} opens a connection pinned to it; a call on
-     * no known connection opens one too and hands its id back, so a client that outlived an engine
-     * restart keeps its project.
+     * One HTTP body. {@code project} is the {@code Jk-Project} header ({@code jk mcp} sends it):
+     * {@code initialize} opens a connection pinned to it, and a call on no known connection opens
+     * one too and hands its id back, so a client that outlived an engine restart keeps its
+     * project. {@code protocolVersion} is the {@code MCP-Protocol-Version} header; one jk does not
+     * speak is an {@link IllegalArgumentException}. {@code outbound} is the way back to the client
+     * while this body's request is outstanding, or null when the transport has none.
      */
-    public Reply handle(String body, @Nullable String sessionId, @Nullable String project) {
+    public Reply handle(
+            String body,
+            @Nullable String sessionId,
+            @Nullable String project,
+            @Nullable String protocolVersion,
+            @Nullable McpOutbound outbound) {
+        McpRevision named = protocolVersion == null || protocolVersion.isBlank()
+                ? null
+                : McpRevision.parse(protocolVersion)
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "unsupported MCP-Protocol-Version: " + protocolVersion.strip()));
         String pin = project == null || project.isBlank() ? null : pinnedDir(project);
         McpConnection found = ctx.connections().find(sessionId);
         AtomicReference<McpConnection> opened = new AtomicReference<>();
-        if (found == null && pin != null) opened.set(ctx.connections().open("jk mcp", pin));
+        if (found == null && pin != null) {
+            McpRevision revision = named != null ? named : McpRevision.HTTP_DEFAULT;
+            opened.set(ctx.connections().open("jk mcp", pin, revision, McpElicitModes.NONE));
+        }
         McpConnection connection = found != null ? found : opened.get();
-        String response = McpRpc.handleBody(body, (method, params) -> {
-            if ("initialize".equals(method)) {
-                McpConnection c = ctx.connections().open(clientName(params), pin);
-                opened.set(c);
-                String playbook = c.pinned() ? McpTools.PINNED_INSTRUCTIONS : McpTools.INSTRUCTIONS;
-                return McpRpc.initialize(PROTOCOL_VERSION, SERVER_NAME, ctx.version(), playbook);
-            }
-            return route(method, params, connection);
-        });
+        McpRevision revision =
+                named != null ? named : connection != null ? connection.revision() : McpRevision.HTTP_DEFAULT;
+        String response = McpRpc.handleBody(
+                body,
+                new McpRpc.Router() {
+                    @Override
+                    public @Nullable Object call(String method, Map<String, Object> params) {
+                        if ("initialize".equals(method)) {
+                            McpConnection c = initialize(params, pin);
+                            opened.set(c);
+                            String playbook = c.pinned() ? McpTools.PINNED_INSTRUCTIONS : McpTools.INSTRUCTIONS;
+                            return McpRpc.initialize(c.revision().wire(), SERVER_NAME, ctx.version(), playbook);
+                        }
+                        return route(method, params, connection, outbound);
+                    }
+
+                    @Override
+                    public void answer(Map<String, Object> response) {
+                        if (connection != null) connection.answer(response);
+                    }
+                },
+                revision.batches());
         McpConnection c = opened.get();
         return new Reply(response, c == null ? null : c.id());
+    }
+
+    /** Open the connection an {@code initialize} asks for: its revision and its elicitation modes. */
+    private McpConnection initialize(Map<String, Object> params, @Nullable String pin) {
+        McpRevision revision = McpRevision.negotiate(params.get("protocolVersion"));
+        McpElicitModes modes = McpElicitModes.declared(params.get("capabilities"), revision);
+        return ctx.connections().open(clientName(params), pin, revision, modes);
     }
 
     /** The absolute project dir a {@code Jk-Project} header names. */
@@ -198,7 +249,11 @@ public final class McpHandler {
      * capabilities, and every capability there must have an arm here; {@code initialize} itself is
      * answered in {@link #handle}, where the connection is minted.
      */
-    private @Nullable Object route(String method, Map<String, Object> params, @Nullable McpConnection connection) {
+    private @Nullable Object route(
+            String method,
+            Map<String, Object> params,
+            @Nullable McpConnection connection,
+            @Nullable McpOutbound outbound) {
         return switch (method) {
             case "notifications/initialized", "initialized" -> null; // notification
             case "notifications/cancelled" -> {
@@ -207,7 +262,7 @@ public final class McpHandler {
             }
             case "ping" -> Map.of();
             case "tools/list" -> tools.listing(surface, params, connection != null && connection.pinned());
-            case "tools/call" -> tools.call(ctx, params, connection);
+            case "tools/call" -> tools.call(ctx, params, connection, outbound);
             case "resources/list" -> McpResources.list();
             case "resources/read" -> McpResources.read(ctx, params, connection);
             case "prompts/list" -> McpPrompts.list();

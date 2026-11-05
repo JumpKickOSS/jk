@@ -22,14 +22,21 @@ public final class McpRpc {
     public interface Router {
         @Nullable
         Object call(String method, Map<String, Object> params);
+
+        /**
+         * A JSON-RPC response from the client to a request the engine sent it. It gets no reply
+         * either way; one that answers nothing pending is dropped.
+         */
+        default void answer(Map<String, Object> response) {}
     }
 
     /**
-     * Handle one HTTP body (JSON-RPC request or batch). Returns the JSON response body (object or
-     * array). Notifications ({@code id} absent) yield an empty string — caller should respond 202
-     * with no body or {@code {}}.
+     * Handle one HTTP body (JSON-RPC request, notification, response or batch). Returns the JSON
+     * response body (object or array). Notifications and responses ({@code id} absent, or no
+     * {@code method}) yield an empty string — caller should respond 202 with no body. A batch is
+     * one {@code -32600} error when {@code batches} is false: MCP dropped them in 2025-06-18.
      */
-    public static String handleBody(@Nullable String body, Router router) {
+    public static String handleBody(@Nullable String body, Router router, boolean batches) {
         if (body == null || body.isBlank()) {
             return error(null, -32700, "parse error: empty body");
         }
@@ -40,6 +47,9 @@ public final class McpRpc {
             return error(null, -32700, "parse error: " + e.getMessage());
         }
         if (parsed instanceof List<?> batch) {
+            if (!batches) {
+                return error(null, -32600, "invalid request: this protocol revision has no JSON-RPC batches");
+            }
             // JSON-RPC 2.0 batch: [] is a single -32600 error object, non-object entries answer
             // per-item -32600 (id null), and an all-notifications batch has no response body.
             if (batch.isEmpty()) {
@@ -65,8 +75,19 @@ public final class McpRpc {
         return error(null, -32600, "invalid request: expected object or array");
     }
 
-    /** Null when the message was a notification (no response). */
+    /** A JSON-RPC response: an id, a result or an error, and no method. */
+    static boolean isResponse(Map<String, Object> message) {
+        return !message.containsKey("method")
+                && message.get("id") != null
+                && (message.containsKey("result") || message.containsKey("error"));
+    }
+
+    /** Null when the message was a notification or a response (no reply). */
     static @Nullable Object dispatchOne(Map<String, Object> req, Router router) {
+        if (isResponse(req)) {
+            router.answer(req);
+            return null;
+        }
         Object id = req.get("id");
         boolean notification = !req.containsKey("id");
         Object rawMethod = req.get("method");

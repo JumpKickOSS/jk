@@ -272,16 +272,20 @@ public final class McpTools {
 
     /** Dispatch one {@code tools/call} from an anonymous connection. */
     public Map<String, Object> call(McpContext ctx, Map<String, Object> params) {
-        return call(ctx, params, null);
+        return call(ctx, params, null, null);
     }
 
     /**
      * Dispatch one {@code tools/call}; {@code connection} is the caller's, or null when it sent no
-     * session id. An unbound connection whose call carries {@code dir} is bound to it. The reply is
-     * the tool's own result.
+     * session id, and {@code outbound} the way back to it while the call is outstanding. An unbound
+     * connection whose call carries {@code dir} is bound to it. The reply is the tool's own result.
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> call(McpContext ctx, Map<String, Object> params, @Nullable McpConnection connection) {
+    public Map<String, Object> call(
+            McpContext ctx,
+            Map<String, Object> params,
+            @Nullable McpConnection connection,
+            @Nullable McpOutbound outbound) {
         Object rawName = params.get("name");
         String name = rawName == null ? null : String.valueOf(rawName);
         if (name == null || name.isBlank()) throw new McpError(-32602, "tools/call requires name");
@@ -289,7 +293,7 @@ public final class McpTools {
         if (tool == null) throw new McpError(-32602, "unknown tool: " + name);
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
         if (!BIND.equals(name)) implicitBind(connection, args.get("dir"));
-        return tool.call(new McpCall(ctx, args, progressTokenOf(params), connection));
+        return tool.call(new McpCall(ctx, args, progressTokenOf(params), connection, outbound));
     }
 
     /** Bind an unbound connection to the call's {@code dir}. A connection that already has one is left alone. */

@@ -1,37 +1,58 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 
 /**
  * One MCP client connection: the {@code Mcp-Session-Id} the engine minted at {@code initialize},
- * the client name that handshake declared ({@code clientInfo.name}), and the project dir the
- * connection is bound to. {@link #label()} is what the journal records as the run's session —
- * {@code claude-code 3f9a} — so a supervisor can tell two agents on one project apart.
+ * the client name that handshake declared ({@code clientInfo.name}), the protocol revision it
+ * negotiated, the elicitation modes it declared, and the project dir the connection is bound to.
+ * {@link #label()} is what the journal records as the run's session — {@code claude-code 3f9a} —
+ * so a supervisor can tell two agents on one project apart.
  *
  * <p>The bind is per connection, so two agents on one engine never clobber each other's default
  * dir. It is set by {@code bind}, or implicitly by the first call that carries {@code dir}
  * while the connection is unbound. A {@link #pinned() pinned} connection was opened for one
  * project ({@code jk mcp}, the {@code Jk-Project} header): its tools take no {@code dir}.
+ *
+ * <p>The requests the engine has sent this client and not yet heard back on are kept here, by the
+ * JSON-RPC id the engine gave them, until the client's response arrives in a later message.
  */
 public final class McpConnection {
 
     private final String id;
     private final @Nullable String client;
     private final boolean pinned;
+    private final McpRevision revision;
+    private final McpElicitModes elicitation;
     private volatile @Nullable String dir;
 
+    private final AtomicLong requests = new AtomicLong();
+    private final Map<String, CompletableFuture<Map<String, Object>>> pending = new ConcurrentHashMap<>();
+
     public McpConnection(String id, @Nullable String client) {
-        this(id, client, null);
+        this(id, client, null, McpRevision.LATEST, McpElicitModes.NONE);
     }
 
     /** A connection pinned to {@code project} when it is non-null. */
-    public McpConnection(String id, @Nullable String client, @Nullable String project) {
+    public McpConnection(
+            String id,
+            @Nullable String client,
+            @Nullable String project,
+            McpRevision revision,
+            McpElicitModes elicitation) {
         if (id == null || id.isBlank()) throw new IllegalArgumentException("connection id is required");
         this.id = id;
         this.client = client == null || client.isBlank() ? null : client.trim();
         this.pinned = project != null && !project.isBlank();
         this.dir = pinned ? project : null;
+        this.revision = Objects.requireNonNull(revision);
+        this.elicitation = Objects.requireNonNull(elicitation);
     }
 
     /** Opened for one project: {@code tools/list} drops {@code dir} and every call defaults to it. */
@@ -45,6 +66,16 @@ public final class McpConnection {
 
     public @Nullable String client() {
         return client;
+    }
+
+    /** The protocol revision this connection's {@code initialize} negotiated. */
+    public McpRevision revision() {
+        return revision;
+    }
+
+    /** The elicitation modes the client declared, as far as {@link #revision()} carries them. */
+    public McpElicitModes elicitation() {
+        return elicitation;
     }
 
     /** The bound project dir (absolute), or null while this connection has not named one. */
@@ -61,4 +92,31 @@ public final class McpConnection {
     public String label() {
         return client == null ? id : client + " " + id;
     }
+
+    /** A fresh id for a request the engine sends this client, and the response it will complete. */
+    Expected expect() {
+        String requestId = "jk-" + id + "-" + requests.incrementAndGet();
+        CompletableFuture<Map<String, Object>> answer = new CompletableFuture<>();
+        pending.put(requestId, answer);
+        return new Expected(requestId, answer);
+    }
+
+    /** Stop waiting for {@code requestId}; a response that arrives later is dropped. */
+    void forget(String requestId) {
+        pending.remove(requestId);
+    }
+
+    /**
+     * A JSON-RPC response from the client: completes the request it answers. False when it answers
+     * nothing this connection is waiting for.
+     */
+    public boolean answer(Map<String, Object> response) {
+        Object rawId = response.get("id");
+        if (rawId == null) return false;
+        CompletableFuture<Map<String, Object>> answer = pending.remove(String.valueOf(rawId));
+        return answer != null && answer.complete(response);
+    }
+
+    /** One request the engine has sent and is waiting on. */
+    record Expected(String requestId, CompletableFuture<Map<String, Object>> answer) {}
 }
