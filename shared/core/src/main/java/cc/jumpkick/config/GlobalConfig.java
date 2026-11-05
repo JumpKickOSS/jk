@@ -192,6 +192,13 @@ public final class GlobalConfig {
     /**
      * {@code [credentials] store}: where {@code jk repo login} and {@code jk auth login} keep a
      * secret ({@code keychain} or {@code file}), as written. Empty when unset.
+     *
+     * <p>Strict, like every reader that decides what a request carries: a file that does not parse
+     * is a {@link UserConfigParseException}, never "unset". Read leniently, a broken file would turn
+     * {@code store = "keychain"} into the default and let a login write its secret to the file the
+     * user ruled out.
+     *
+     * @throws UserConfigParseException when the file exists and is not valid TOML
      */
     public static Optional<String> credentialsStore() {
         return credentialsStore(JkDirs.userConfigFile());
@@ -199,7 +206,11 @@ public final class GlobalConfig {
 
     /** As {@link #credentialsStore()} against an explicit config file. */
     public static Optional<String> credentialsStore(Path configFile) {
-        return stringFromGlobal(configFile, "credentials", "store");
+        return parseConfig(configFile)
+                .map(toml -> toml.get("credentials.store"))
+                .filter(String.class::isInstance)
+                .map(v -> ((String) v).strip())
+                .filter(v -> !v.isEmpty());
     }
 
     /** {@code [release] trusted-keys}: base64 RSA SPKI keys extending built-in release trust. */
