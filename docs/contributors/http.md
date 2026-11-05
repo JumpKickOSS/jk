@@ -411,8 +411,18 @@ it negotiated and the `McpElicitModes` the client declared.
 `connection.json` (id, client, pinned project, bound dir, revision, elicitation modes, created and
 last seen) once its session opens, again when its bind changes, and at most once a minute for
 last seen. A request whose `Mcp-Session-Id` the engine has not loaded (it started after the
-connection opened, or the connection fell off the table's 256-entry cap) is answered from the
-connection an open session holds, with the same id, label and session and no new `initialize`.
+connection opened, or the table unloaded it) is answered from the connection an open session
+holds, with the same id, label and session and no new `initialize`. A stored connection is pruned
+with its session's directory.
+
+The table holds at most `[mcp] max-sessions` connections (default 256) while any of them is idle:
+stored, with no request being served and none for 30 seconds. To load one more past that, it
+unloads the least recently used idle connection, storing it as it last stood. A connection
+reloading from its session is never refused, so the table can run over until connections go
+idle. Only when every loaded connection is active is a new `initialize` refused: **503** with
+`Retry-After` (the seconds until the first loaded connection with nothing being served could go
+idle) and a JSON-RPC `-32000` error naming the limit, the way `HttpAdmission` refuses a saturated
+lane. Requests on existing connections are never refused or cut off to make room.
 An id found nowhere (its session ended or was pruned, or it came from another machine's state) is
 gone, as the Streamable HTTP spec says: `POST`, the event-stream `GET` and `DELETE` answer **404**,
 the `POST` body a JSON-RPC error `-32001` per request, and nothing runs. The client starts a new

@@ -176,6 +176,39 @@ class McpConnectionReplacementTest {
                 .satisfies(s -> assertThat(s).containsEntry("state", "ended"));
     }
 
+    @Test
+    void initialize_at_a_full_table_of_active_connections_is_a_503_and_the_existing_one_still_works() throws Exception {
+        McpHandler handler = handler(log());
+        handler.maxSessions(1);
+        URI url = serve(handler);
+        HttpClient http = HttpClient.newHttpClient();
+        HttpResponse<String> first = http.send(hello(url), HttpResponse.BodyHandlers.ofString());
+        String id = first.headers().firstValue(McpFront.SESSION_HEADER).orElseThrow();
+
+        HttpResponse<String> refused = http.send(hello(url), HttpResponse.BodyHandlers.ofString());
+        assertThat(refused.statusCode()).isEqualTo(503);
+        assertThat(refused.headers().firstValue("Retry-After"))
+                .hasValueSatisfying(v -> assertThat(Long.parseLong(v)).isPositive());
+        assertThat(refused.headers().firstValue(McpFront.SESSION_HEADER)).isEmpty();
+        assertThat(refused.body())
+                .contains("\"id\":1")
+                .contains("MCP session limit")
+                .contains("[mcp] max-sessions")
+                .contains("JK_MCP_MAX_SESSIONS");
+
+        HttpResponse<String> served = http.send(post(url, id, CALL), HttpResponse.BodyHandlers.ofString());
+        assertThat(served.statusCode()).as(served.body()).isEqualTo(200);
+        assertThat(served.body()).contains("\"result\"");
+    }
+
+    private HttpRequest hello(URI url) {
+        return HttpRequest.newBuilder(url)
+                .header("Content-Type", "application/json")
+                .header(McpFront.PROJECT_HEADER, project.toString())
+                .POST(HttpRequest.BodyPublishers.ofString(HELLO))
+                .build();
+    }
+
     private static final String CALL = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":"
             + "{\"name\":\"run\",\"arguments\":{\"kind\":\"build\",\"wait\":false}}}";
 

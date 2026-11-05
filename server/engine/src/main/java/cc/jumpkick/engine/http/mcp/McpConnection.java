@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 
@@ -44,6 +45,7 @@ public final class McpConnection {
     private volatile Runnable changed = () -> {};
 
     private final AtomicLong requests = new AtomicLong();
+    private final AtomicInteger calls = new AtomicInteger();
     private final Map<String, CompletableFuture<Map<String, Object>>> pending = new ConcurrentHashMap<>();
 
     public McpConnection(String id, @Nullable String client) {
@@ -129,6 +131,21 @@ public final class McpConnection {
     /** A request named this connection at {@code now}. */
     void seen(long now) {
         if (now > lastSeenAt) lastSeenAt = now;
+    }
+
+    /** A request on this connection is being served; {@link #callEnded} follows it. */
+    public void callStarted() {
+        calls.incrementAndGet();
+    }
+
+    /** The request {@link #callStarted} announced has been answered. */
+    public void callEnded() {
+        calls.decrementAndGet();
+    }
+
+    /** Requests on this connection being served right now. */
+    int outstanding() {
+        return calls.get();
     }
 
     /** Run {@code changed} whenever the bind changes. */

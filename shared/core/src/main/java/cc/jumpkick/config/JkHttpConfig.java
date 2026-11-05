@@ -39,15 +39,23 @@ public record JkHttpConfig(
     /** Relative to the jk home root — i.e. {@code ~/.jk/state/web} by default. */
     public static final String DEFAULT_WEB_ROOT = "state/web";
 
+    /**
+     * {@code [mcp] max-sessions}: MCP connections the engine keeps loaded while any is idle; past it,
+     * a new {@code initialize} is refused only when every loaded one is active.
+     */
+    public static final int DEFAULT_MCP_MAX_SESSIONS = 256;
+
     /** {@code [mcp] tools}: the default {@code tools/list} is the fix-and-rerun loop set. */
     public static final String DEFAULT_MCP_TOOLS = "loop";
 
     /**
-     * The {@code [mcp]} table: surface toggle, its own SSE budget ({@code GET /mcp}), and which
-     * tool cards {@code tools/list} serves — {@code loop} (the default) or {@code all}.
+     * The {@code [mcp]} table: surface toggle, its own SSE budget ({@code GET /mcp}), how many
+     * connections it keeps loaded, and which tool cards {@code tools/list} serves — {@code loop}
+     * (the default) or {@code all}.
      */
-    public record Mcp(boolean enabled, int maxEventStreams, String tools) {
-        public static final Mcp DEFAULTS = new Mcp(true, DEFAULT_MAX_EVENT_STREAMS, DEFAULT_MCP_TOOLS);
+    public record Mcp(boolean enabled, int maxEventStreams, int maxSessions, String tools) {
+        public static final Mcp DEFAULTS =
+                new Mcp(true, DEFAULT_MAX_EVENT_STREAMS, DEFAULT_MCP_MAX_SESSIONS, DEFAULT_MCP_TOOLS);
     }
 
     public static final JkHttpConfig DEFAULTS = new JkHttpConfig(
@@ -74,6 +82,9 @@ public record JkHttpConfig(
     private static final MachineConfig<String> WEB_ROOT = MachineConfig.of(DEFAULT_WEB_ROOT);
 
     private static final MachineConfig<Boolean> MCP_ENABLED = MachineConfig.of(Mcp.DEFAULTS.enabled());
+
+    private static final MachineConfig<Integer> MCP_MAX_SESSIONS =
+            MachineConfig.of(DEFAULT_MCP_MAX_SESSIONS, m -> m >= 1);
 
     /** Anything but the two surfaces falls back to the loop set rather than serving nothing. */
     private static final MachineConfig<String> MCP_TOOLS =
@@ -116,6 +127,9 @@ public record JkHttpConfig(
                                 base.mcp.maxEventStreams(),
                                 EnvValues.intValue(env, "JK_MCP_MAX_EVENT_STREAMS")
                                         .orElse(null)),
+                        MCP_MAX_SESSIONS.layerOver(
+                                base.mcp.maxSessions(),
+                                EnvValues.intValue(env, "JK_MCP_MAX_SESSIONS").orElse(null)),
                         MCP_TOOLS.layerOver(
                                 base.mcp.tools(),
                                 EnvValues.string(env, "JK_MCP_TOOLS").orElse(null)))));
@@ -147,6 +161,7 @@ public record JkHttpConfig(
                 MCP_ENABLED.layer(TomlValues.optBoolean(mcp, "enabled").orElse(null)),
                 MAX_EVENT_STREAMS.layer(
                         TomlValues.optInt(mcp, "max-event-streams").orElse(null)),
+                MCP_MAX_SESSIONS.layer(TomlValues.optInt(mcp, "max-sessions").orElse(null)),
                 MCP_TOOLS.layer(TomlValues.optString(mcp, "tools").orElse(null)));
     }
 

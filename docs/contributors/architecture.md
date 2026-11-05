@@ -260,6 +260,7 @@ Only files present under the root are overridden; anything missing still falls t
 | `[http] max-event-streams` | `JK_HTTP_MAX_EVENT_STREAMS` | `16` (min `1`) | Web-UI SSE budget (`GET /api/events`) |
 | `[mcp] enabled` | `JK_MCP_ENABLED` | `true` | MCP surface toggle — `false` 404s `/mcp`; the HTTP server and dashboard stay up |
 | `[mcp] max-event-streams` | `JK_MCP_MAX_EVENT_STREAMS` | `16` (min `1`) | MCP SSE budget (`GET /mcp` event streams) |
+| `[mcp] max-sessions` | `JK_MCP_MAX_SESSIONS` | `256` (min `1`) | MCP connections kept loaded; the least recently used idle one unloads to make room, and `initialize` is a `503` only when every one is active |
 | `[mcp] tools` | `JK_MCP_TOOLS` | `loop` | Which cards `tools/list` serves by default: `loop` (six tools) or `all`. A client passes `extended: true` for every card. Every tool stays callable |
 
 `[http] enabled = false` still disables the whole server, MCP included.

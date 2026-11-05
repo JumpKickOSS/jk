@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.mcp.McpRevision;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
@@ -19,13 +23,17 @@ import org.jspecify.annotations.Nullable;
  * changes, and an id this table has not loaded is looked up there, so a connection outlives the
  * engine that opened it. An id found nowhere is gone: the transport answers it {@code 404}.
  *
- * <p>Bounded: a client that never sends {@code DELETE /mcp} leaves its entry behind, and the
- * oldest entries fall off past {@link #CAP} rather than growing with the engine's uptime; one that
- * fell off reloads from the store when its client returns.
+ * <p>Bounded by {@link #max(int)} ({@code [mcp] max-sessions}). To load one more past it, the table
+ * unloads the least recently used idle connection: a stored one with no request being served and
+ * none for {@link #QUIET_MILLIS}. It reloads from the store, the same id and session, when its
+ * client returns. A connection reloading is never refused, so the table may run over its bound
+ * until connections go idle; a new one is refused ({@link Full}) only when every loaded connection
+ * is active.
  */
 public final class McpConnections {
 
-    static final int CAP = 256;
+    /** How long a connection with no request being served must be quiet before it may unload. */
+    static final long QUIET_MILLIS = Duration.ofSeconds(30).toMillis();
 
     /** Four hex digits: short enough to read aloud beside the client name, unique among open ids. */
     private static final int ID_HEX_DIGITS = 4;
@@ -61,18 +69,37 @@ public final class McpConnections {
         };
     }
 
+    /**
+     * A new connection refused: every loaded connection is active. {@link #retryAfterSeconds} is
+     * when the first of them could go idle.
+     */
+    public static final class Full extends RuntimeException {
+
+        private static final long serialVersionUID = 1L;
+
+        private final long retryAfterSeconds;
+
+        Full(int max, long retryAfterSeconds) {
+            super("jk engine is at its MCP session limit: all " + max + " sessions are active. Close idle"
+                    + " agents, or raise [mcp] max-sessions (JK_MCP_MAX_SESSIONS) and restart the engine");
+            this.retryAfterSeconds = retryAfterSeconds;
+        }
+
+        public long retryAfterSeconds() {
+            return retryAfterSeconds;
+        }
+    }
+
     private final SecureRandom random = new SecureRandom();
     private final LongSupplier clock;
     private volatile Store store = Store.NONE;
-    private final Map<String, McpConnection> live = new LinkedHashMap<>(64, 0.75f, false) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, McpConnection> eldest) {
-            return size() > CAP;
-        }
-    };
+    private volatile int max = JkHttpConfig.DEFAULT_MCP_MAX_SESSIONS;
 
-    /** When each loaded connection's {@code lastSeenAt} was last stored. */
-    private final Map<String, Long> stored = new LinkedHashMap<>();
+    /** Least recently used first. */
+    private final Map<String, McpConnection> live = new LinkedHashMap<>(64, 0.75f, true);
+
+    /** When each loaded, stored connection's {@code lastSeenAt} was last stored. */
+    private final Map<String, Long> stored = new HashMap<>();
 
     public McpConnections() {
         this(Clock.SYSTEM::millis);
@@ -87,18 +114,36 @@ public final class McpConnections {
         this.store = store != null ? store : Store.NONE;
     }
 
+    /** Load at most {@code max} connections while any of them is idle. */
+    public void max(int max) {
+        if (max < 1) throw new IllegalArgumentException("max-sessions must be at least 1: " + max);
+        this.max = max;
+    }
+
     /**
      * Mint a connection for a client that just sent {@code initialize}, pinned to {@code project}
      * when it is non-null. It is not stored until {@link #save} is called, once its session is open.
+     *
+     * @throws Full when the table is full and every loaded connection is active
      */
-    public synchronized McpConnection open(
+    public McpConnection open(
             @Nullable String client, @Nullable String project, McpRevision revision, McpElicitModes elicitation) {
-        String id;
-        do {
-            id = String.format("%0" + ID_HEX_DIGITS + "x", random.nextInt(1 << (4 * ID_HEX_DIGITS)));
-        } while (live.containsKey(id) || store.holds(id));
-        McpConnection c = new McpConnection(id, client, project, revision, elicitation, clock.getAsLong());
-        load(c);
+        List<McpConnection> unloaded = new ArrayList<>();
+        McpConnection c;
+        try {
+            synchronized (this) {
+                long now = clock.getAsLong();
+                if (!makeRoom(now, unloaded)) throw new Full(max, retryAfterSeconds(now));
+                String id;
+                do {
+                    id = String.format("%0" + ID_HEX_DIGITS + "x", random.nextInt(1 << (4 * ID_HEX_DIGITS)));
+                } while (live.containsKey(id) || store.holds(id));
+                c = new McpConnection(id, client, project, revision, elicitation, now);
+                live.put(id, c);
+            }
+        } finally {
+            unloaded.forEach(store::save);
+        }
         return c;
     }
 
@@ -121,22 +166,27 @@ public final class McpConnections {
         McpConnection c;
         synchronized (this) {
             c = live.get(key);
+            if (c != null) c.seen(clock.getAsLong());
         }
         if (c == null) {
             McpConnection found = store.load(key);
             if (found == null) return null;
+            List<McpConnection> unloaded = new ArrayList<>();
             synchronized (this) {
                 c = live.get(key);
                 if (c == null) {
+                    // A returning connection is never refused: the table runs over until one idles.
+                    makeRoom(clock.getAsLong(), unloaded);
                     c = found;
-                    load(c);
+                    live.put(key, c);
                     c.onChange(() -> store.save(found));
                     stored.put(key, found.lastSeenAt());
                 }
+                c.seen(clock.getAsLong());
             }
+            unloaded.forEach(store::save);
         }
         long now = clock.getAsLong();
-        c.seen(now);
         boolean stale;
         synchronized (this) {
             Long at = stored.get(key);
@@ -154,12 +204,50 @@ public final class McpConnections {
         return live.remove(id.trim()) != null;
     }
 
+    /** Connections loaded right now. */
     public synchronized int size() {
         return live.size();
     }
 
-    private void load(McpConnection c) {
-        live.put(c.id(), c);
-        stored.keySet().retainAll(live.keySet());
+    /** True when {@code id} is loaded, not only stored. */
+    synchronized boolean loaded(String id) {
+        return live.containsKey(id);
+    }
+
+    /**
+     * Unload least recently used idle connections until one more fits, adding each to {@code
+     * unloaded} to be stored as it last stood. False when the table is still full.
+     */
+    private boolean makeRoom(long now, List<McpConnection> unloaded) {
+        while (live.size() >= max) {
+            McpConnection idle = null;
+            for (McpConnection c : live.values()) {
+                if (idle(c, now)) {
+                    idle = c;
+                    break;
+                }
+            }
+            if (idle == null) return false;
+            live.remove(idle.id());
+            stored.remove(idle.id());
+            unloaded.add(idle);
+        }
+        return true;
+    }
+
+    /** Stored, so it can reload; nothing being served; quiet for {@link #QUIET_MILLIS}. */
+    private boolean idle(McpConnection c, long now) {
+        return stored.containsKey(c.id()) && c.outstanding() == 0 && now - c.lastSeenAt() >= QUIET_MILLIS;
+    }
+
+    /** Seconds until the first stored connection with nothing being served goes quiet; at least one. */
+    private long retryAfterSeconds(long now) {
+        long soonest = QUIET_MILLIS;
+        for (McpConnection c : live.values()) {
+            if (stored.containsKey(c.id()) && c.outstanding() == 0) {
+                soonest = Math.min(soonest, c.lastSeenAt() + QUIET_MILLIS - now);
+            }
+        }
+        return Math.max(1, (soonest + 999) / 1000);
     }
 }
