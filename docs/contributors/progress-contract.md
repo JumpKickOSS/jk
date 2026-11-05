@@ -191,6 +191,9 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
       record.json
       details.jsonl
       metrics.toml
+  sessions/<session-id>/
+    session.json      # the session and its episodes, rewritten on each change
+    actions.jsonl     # one line per run or action, appended
 ```
 
 Per-class test walls are one table per package of a module in both files,

@@ -100,22 +100,25 @@ public final class JobAdmit {
         }
         long startedAt = host.nowMillis();
         String projectId = ProjectIds.refresh(canonDir != null ? canonDir : dir);
+        String episode =
+                host.episodeFor(requestId, trigger, session, kind, canonDir != null ? canonDir : dir, startedAt);
         String journalId = null;
         if (host.historyConfig().enabled() && canonDir != null && !canonDir.isBlank()) {
             // Deferred: a run over before the journal's stub delay (a no-op) never has its in-flight
             // entry written, and one that turns out a no-op leaves no directory at all.
             journalId = host.journal()
                     .beginLater(BuildRecord.running(
-                            buildNumber,
-                            kind,
-                            canonDir,
-                            coord,
-                            projectId,
-                            startedAt,
-                            host.version(),
-                            trigger,
-                            session,
-                            requestId));
+                                    buildNumber,
+                                    kind,
+                                    canonDir,
+                                    coord,
+                                    projectId,
+                                    startedAt,
+                                    host.version(),
+                                    trigger,
+                                    session,
+                                    requestId)
+                            .withEpisode(episode));
         }
         InFlightBuilds.Hold candidate = new InFlightBuilds.Hold(
                 requestId, buildNumber, fp, kind, dir, coord, startedAt, journalId, trigger, session);
@@ -135,7 +138,7 @@ public final class JobAdmit {
         } else {
             host.inFlight().tryAcquire(candidate);
         }
-        return AdmitResult.ok(buildNumber, journalId);
+        return AdmitResult.ok(buildNumber, journalId, episode);
     }
 
     /**

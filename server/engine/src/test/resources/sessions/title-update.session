@@ -1,0 +1,4 @@
+# An update names the episode ahead of a rename.
++0:00 rename app PricingRules.weekendUplift
++0:30 update app 14
+expect 1 working Updating 14 pins

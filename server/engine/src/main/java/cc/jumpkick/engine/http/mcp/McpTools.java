@@ -33,6 +33,8 @@ import cc.jumpkick.engine.http.mcp.tools.TriggerTool;
 import cc.jumpkick.engine.http.mcp.tools.UpdateTool;
 import cc.jumpkick.engine.http.mcp.tools.WhyTool;
 import cc.jumpkick.engine.http.mcp.tools.WorkspaceTool;
+import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -293,7 +295,25 @@ public final class McpTools {
         if (tool == null) throw new McpError(-32602, "unknown tool: " + name);
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
         if (!BIND.equals(name)) implicitBind(connection, args.get("dir"));
-        return tool.call(new McpCall(ctx, args, progressTokenOf(params), connection, outbound));
+        McpCall call = new McpCall(ctx, args, progressTokenOf(params), connection, outbound);
+        if (ctx.sessions() == null || !McpActions.LOGGED.contains(name)) return tool.call(call);
+        long at = Clock.SYSTEM.millis();
+        Map<String, Object> result = null;
+        try {
+            result = tool.call(call);
+            return result;
+        } finally {
+            logAction(name, call, result, at);
+        }
+    }
+
+    /** Log a finished call in its session's timeline; a log that fails never costs the call its answer. */
+    private static void logAction(String name, McpCall call, @Nullable Map<String, Object> result, long at) {
+        try {
+            McpActions.log(name, call, result, at, Clock.SYSTEM.millis() - at);
+        } catch (RuntimeException e) {
+            Log.debug("session action not logged: " + name, e);
+        }
     }
 
     /** Bind an unbound connection to the call's {@code dir}. A connection that already has one is left alone. */

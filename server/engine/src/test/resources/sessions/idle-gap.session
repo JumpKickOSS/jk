@@ -1,0 +1,8 @@
+# The idle gap is ten minutes, measured from when the last fact finished. Exactly ten minutes of
+# quiet keeps the episode; one second more starts the next. A long run's quiet starts at its end.
++0:00 run app green
++10:00 run app green
++20:01 run app green 600s
++39:00 run app green
+expect 1 green Working in app
+expect 2 working Working in app

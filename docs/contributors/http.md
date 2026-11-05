@@ -285,12 +285,42 @@ connect"). Every row carries `dir`, the checkout it ran in — several worktrees
 share a `projectId` and one build-number sequence, and `dir` is what tells their rows apart —
 plus `trigger` (`cli` / `mcp` / `web` / `bsp`, or a fixture trigger the
 list already hides) and, when the surface had one, `session` — the MCP connection's
-`<client> <id>` or the BSP client's `<displayName> <id>`; a CLI row has no `session` key. The
+`<client> <id>` or the BSP client's `<displayName> <id>`; a CLI row has no `session` key. A run a
+session owns also carries `episode`, the id of the episode it was admitted into (below). The
 dashboard's **By session** grouping and the project page's followed run read only these
 fields, so they show exactly what `jk-results.md` prints.
 A row's `record.json` carries a capped `diagnostics` list and names the rest in
 `diagnosticsSpill`, a file beside it; this list, `?id=` and the MCP history and diagnostics tools
 merge that file back, so every row carries its whole `diagnostics` and no `diagnosticsSpill`.
+
+### `GET /api/sessions`
+
+`GET /api/sessions[?limit=N]` (default 50, at most 200): `{ sessions: [...] }`, live and recent
+sessions, most recently active first. A session row is `{ id, origin, client?, label?, host,
+project?, projectId?, startedAt, lastActiveAt, endedAt?, state, episode?, current? }`: `origin` is
+the trigger (`mcp`, `bsp`, `web`, `cli`), `label` the run records' `session` (`claude-code 3f9a`;
+absent for the shell and the dashboard), `state` `live`, `idle` (quiet for the idle gap, ten
+minutes) or `ended`, `episode` the current episode's id and `current` that episode. An episode is
+`{ id, session, number, project, projectId?, title, titleSource, outcome, startedAt, lastAt, runs,
+actions }`: `id` is `<session>.<number>`, `titleSource` `inferred` or `goal`, `outcome` `working`,
+`green`, `red` or `abandoned`. What starts an episode and how its title is chosen:
+[web](../user/web.md#sessions-and-episodes); the rules are `EpisodeInference`.
+
+`GET /api/sessions/<id>[?before=<seq>&limit=N]`: `{ session, episodes, actions, next }` — every
+episode, oldest first, and up to `limit` (default 100, at most 1000) actions older than `before`
+(default: the newest), oldest first. `next` is the `before` that reads the page older than this
+one, `null` on the first page. An action is `{ seq, at, kind, summary, headline?, outcome, millis,
+episode, project?, buildNumber? }`: `kind` is `run` or the MCP tool (`query`, `callers`, `read`,
+`find`, `rename`, `deps`, `update`, `workspace`), `summary` one line of what it asked (`callers
+PricingRules.weekendUplift`), `headline` the first line of its answer (`3 callers`), `outcome`
+`ok`/`error` for an action and `green`/`red`/`cancelled` for a run. An id that is not one path
+segment of letters, digits, `.`, `-` and `_` is a **400**; an unknown one a **404**.
+
+Both are bearer-gated like every `/api/*`. The records live under the journal root,
+`sessions/<id>/session.json` (the session and its episodes) and `actions.jsonl` (one line per
+action), and are pruned with the runs under the same `[history]` age and disk budgets; a session
+that has not ended is never pruned. An engine ends the sessions a previous engine left open when
+it starts, leaving their open episodes `abandoned`.
 
 ### `GET /report/<token>/<id>/<path>`
 
@@ -384,6 +414,7 @@ progress/structure, and the freshest sample always survives); the engine skips w
 | --- | --- | --- |
 | **Inflicted** | `request-queued` / `request-start` / `plan` / `module-*` / `task-start` / `task-finish` / `label` / `progress` / `workspace-progress` / `eta` / `output` / `error` / `*-finish` / `request-finish` | As the plan mutates state. Structural events are immediate; hot ticks (`progress`/`tick-update`/`label`/`output`) ride the 500 ms wire coalescer — see "Live smoothness" below |
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
+| **Session log** | `session` / `episode` / `action` | As a session starts, goes idle, acts again, ends or changes its current episode; as an episode starts, is retitled or settles; once per non-run MCP action. Dashboard subscribers only |
 | **Sampled** (change-gated, IO) | `cache` | Safety-net tick (60 s) while subscribed, plus after request finish; snapshot walks are single-flight and TTL-memoized (30 s) engine-side; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
 **Which events each surface carries** is written in one place, `EventCatalog`
@@ -404,6 +435,17 @@ record gains reaches the dashboard and MCP as it reaches the CLI.
 The sampled `status`/`cache` frames are **dashboard-stream chrome**: MCP SSE subscriptions
 (`GET /mcp`) never receive them, and an MCP stream alone neither starts nor sustains the samplers
 — "while subscribed" above means dashboard (`/api/events`) subscribers.
+
+The session log's frames are dashboard-only too (`EventCatalog.DASHBOARD_ONLY`): an agent reads
+its own session through the tools it calls, not as a stream. Neither the engine wire nor console
+JSONL carries them. Each is `{ schema, type, … }` under its own name: `session` is `{ change,
+session }` with `change` one of `started`, `idle`, `live`, `ended`, `episode` (the current
+episode changed) and `session` the row `GET /api/sessions` lists; `episode` is `{ change, episode
+}` with `change` one of `started`, `title`, `outcome`; `action` is `{ session, action }`, one action
+as `GET /api/sessions/<id>` pages it. Runs are not `action` frames: `request-start` and
+`request-finish` already carry them, and the run's journal row names its `episode`. One step's
+changes to one episode are folded into one frame, so an episode a fact opens is announced once,
+as it stands after the fact.
 
 The `cache` storage walk never runs on a request thread: connect hydrate re-sends the last
 captured snapshot and never schedules a walk of its own; the post-build nudge is async. A
@@ -516,4 +558,5 @@ the TUI), never by `LiveVitals`.
 | `output` / `error` | step output / failures | Bounded diagnostics |
 | `buildplan-finish` | plan end | Module-level success |
 | `request-finish` | request finally | Always includes `success` + `cancelled` (CLI + HTTP) |
+| `session` / `episode` / `action` | `SessionLog` | The session log's frames (`publishDashboard`), described under "Live updates" above |
 | `run-snapshot` | `rehydrateLiveRunsOnSseConnect` | Connect-only, delivered to the joining subscription (never broadcast); payload documented under "Mid-build connect" above |

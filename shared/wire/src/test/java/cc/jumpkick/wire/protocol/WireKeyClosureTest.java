@@ -66,8 +66,6 @@ class WireKeyClosureTest {
             "aliases", "foreign format: jbang-catalog.json, read by JBangCatalog",
             "java-options", "foreign format: jbang-catalog.json",
             "script-ref", "foreign format: jbang-catalog.json",
-            // The dashboard SPA writes this one, in JavaScript, as a query param and a POST body field.
-            "project", "written by clients/web, not by Java: HttpProjectApi request field",
             // A POST /api/build body field an HTTP client sets; the engine only ever reads it.
             "deadlineMs", "written by HTTP clients, not by Java: the job's wall deadline on POST /api/build",
             // jk-import-model.init.gradle writes the xjc plugin's settings, in Groovy.

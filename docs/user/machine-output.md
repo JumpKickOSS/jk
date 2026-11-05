@@ -47,7 +47,8 @@ The header's second line names who asked: `trigger: cli`, or `trigger: mcp · se
 claude-code 3f9a` for an agent's connection (`bsp · IntelliJ-BSP 7b2c` for an IDE), then
 `commit:` and the jk version. The same `trigger`/`session` fields sit on the journal record
 (`jk history`, `GET /api/history`, `history`) and on the `session-start` line of
-`details.jsonl` — one vocabulary, every surface. [Web](web.md#who-asked). The line after it is
+`details.jsonl` — one vocabulary, every surface. [Web](web.md#who-asked). The journal record
+also names the session `episode` the run belongs to ([sessions and episodes](web.md#sessions-and-episodes)). The line after it is
 `tokens ≈ N`: the whole file's size at a fixed 3.6 characters per token, so an agent can decide
 between this file and `details.jsonl` before reading either.
 

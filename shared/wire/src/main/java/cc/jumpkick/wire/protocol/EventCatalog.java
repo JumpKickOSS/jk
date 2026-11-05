@@ -16,7 +16,8 @@ import org.jspecify.annotations.Nullable;
  * table, and the catalog tests drive each surface's real encoder and fail when it disagrees with
  * its row, or when an event the engine can stream has no row.
  *
- * <p>MCP subscribers receive every SSE frame but the dashboard's own ({@link #DASHBOARD_ONLY}),
+ * <p>MCP subscribers receive every SSE frame but the dashboard's own ({@link #DASHBOARD_ONLY}: its
+ * vitals and the session log's {@code session}, {@code episode} and {@code action}),
  * as {@code notifications/jk/event}; the CLI's MCP bridge folds their {@code progress}, {@code
  * task-start} and {@code label} into {@code notifications/progress}. So MCP's column follows SSE's
  * and is not written per row.
@@ -81,7 +82,8 @@ public final class EventCatalog {
                 case SSE -> sse;
                 case MCP ->
                     DASHBOARD_ONLY.contains(type)
-                            ? new Omitted("the dashboard's own vitals, published to dashboard subscribers alone")
+                            ? new Omitted("the dashboard's own frame, published to dashboard subscribers alone: an"
+                                    + " agent asks for its own session's facts, it is not streamed them")
                             : sse;
             };
         }
@@ -95,9 +97,13 @@ public final class EventCatalog {
     public static final String SSE_PLAN = "plan";
     public static final String SSE_STATUS = "status";
     public static final String SSE_CACHE = "cache";
+    public static final String SSE_SESSION = "session";
+    public static final String SSE_EPISODE = "episode";
+    public static final String SSE_ACTION = "action";
 
     /** SSE frames published to dashboard subscribers alone ({@code publishDashboard}): not sent to MCP. */
-    public static final Set<String> DASHBOARD_ONLY = Set.of(SSE_STATUS, SSE_CACHE);
+    public static final Set<String> DASHBOARD_ONLY =
+            Set.of(SSE_STATUS, SSE_CACHE, SSE_SESSION, SSE_EPISODE, SSE_ACTION);
 
     // Console JSONL record names that are not wire types.
     public static final String JSONL_WORKSPACE_START = "workspace-start";
@@ -314,6 +320,26 @@ public final class EventCatalog {
                     new Omitted("the dashboard's cache vitals"),
                     new Omitted("the dashboard's cache vitals"),
                     Carried.as(SSE_CACHE, "dashboard only, after a job settles (LiveVitals)")),
+            new Row(
+                    SSE_SESSION,
+                    new Omitted("the engine's session log; the CLI is one of its sessions, not a reader of them"),
+                    new Omitted("the engine's session log; -O jsonl prints one command's run"),
+                    Carried.as(
+                            SSE_SESSION,
+                            "dashboard only: started, idle, live again, ended, current episode changed"
+                                    + " (SessionLog)")),
+            new Row(
+                    SSE_EPISODE,
+                    new Omitted("the engine's session log; the CLI is one of its sessions, not a reader of them"),
+                    new Omitted("the engine's session log; -O jsonl prints one command's run"),
+                    Carried.as(SSE_EPISODE, "dashboard only: started, title changed, outcome changed (SessionLog)")),
+            new Row(
+                    SSE_ACTION,
+                    new Omitted("the engine's session log; the CLI is one of its sessions, not a reader of them"),
+                    new Omitted("the engine's session log; -O jsonl prints one command's run"),
+                    Carried.as(
+                            SSE_ACTION,
+                            "dashboard only: one non-run MCP action, in its compact display form" + " (SessionLog)")),
             new Row(
                     EngineProtocol.GUARD_EVENT,
                     new Omitted("written by the CLI from the guard's result"),

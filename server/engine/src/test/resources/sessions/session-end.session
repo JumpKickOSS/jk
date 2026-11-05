@@ -1,0 +1,9 @@
+# Ending the session closes its open episode, judged by its last run. The green run that ends the
+# first red streak closes episode 1, so the next green run opens episode 2.
++0:00 run app red QuoteTest#oneNightStay
++1:00 run app green
++1:30 run app green
++2:00 run app red
++2:30 end
+expect 1 green Fixing QuoteTest#oneNightStay
+expect 2 red Working in app

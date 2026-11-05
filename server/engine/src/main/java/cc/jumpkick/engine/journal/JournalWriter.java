@@ -68,6 +68,30 @@ public final class JournalWriter {
      */
     private final Map<String, String> reportedKind = new ConcurrentHashMap<>();
 
+    /** The session episode each request was admitted into, until its record is written. */
+    private final Map<Long, String> episodes = new ConcurrentHashMap<>();
+
+    /** Request {@code requestId}'s record carries {@code episode}; null places it in none. */
+    public void episode(long requestId, @Nullable String episode) {
+        if (episode != null) episodes.put(requestId, episode);
+    }
+
+    /** Hears every run this writer journals, once it has its verdict: the session log's fold. */
+    private volatile Consumer<BuildRecord> finished = r -> {};
+
+    /** Hand every finished run's record to {@code finished}; it must not throw. */
+    public void onFinished(Consumer<BuildRecord> finished) {
+        this.finished = finished != null ? finished : r -> {};
+    }
+
+    private void tellFinished(BuildRecord record) {
+        try {
+            finished.accept(record);
+        } catch (RuntimeException e) {
+            log.accept("jk engine: session fold skipped: " + e);
+        }
+    }
+
     public void register(
             long requestId,
             String kind,
@@ -226,6 +250,7 @@ public final class JournalWriter {
      */
     public @Nullable String write(long requestId, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         BuildAccumulator a = sessions.takeAccumulator(requestId);
+        String episode = episodes.remove(requestId);
         if (a == null) {
             // Usually means clearProgress/retire ran first — leaves a permanent running=true journal
             // stub (jk jobs "Building" forever). Surface it; do not silently drop.
@@ -240,11 +265,12 @@ public final class JournalWriter {
             }
             long finishedAt = clock.getAsLong();
             boolean cancelledEffective = cancelled || a.wasCancelled();
-            String noop = confirmNoop(a, cancelledEffective, finishedAt, millis);
+            String noop = confirmNoop(a, episode, cancelledEffective, finishedAt, millis);
             if (noop != null) return noop;
             String commit = gitCommit(a.dir());
             CacheBenefit.Result benefit = computeBenefit(a, millis);
-            BuildRecord record = a.toRecord(finishedAt, cancelledEffective, millis, version, commit, benefit);
+            BuildRecord record = a.toRecord(finishedAt, cancelledEffective, millis, version, commit, benefit)
+                    .withEpisode(episode);
             long buildNumber = a.buildNumber();
             if (buildNumber > 0) record = record.withBuildNumber(buildNumber);
             a.flushTimeline().ifPresent(path -> {
@@ -281,6 +307,7 @@ public final class JournalWriter {
                     runDir = journal.runDir(locator, record).orElse(null);
                 }
             }
+            tellFinished(record);
             Path latest = writesProjectTarget(record.kind()) ? latestPath(a.dir()) : null;
             BuildRecord previous = coverage.isEmpty() || !historyConfig.enabled()
                     ? null
@@ -329,13 +356,16 @@ public final class JournalWriter {
      * snapshot walk, no timeline, no report rewritten, no git probe. The agent verdict when it was,
      * else {@code null} and the caller journals the run in full.
      */
-    private @Nullable String confirmNoop(BuildAccumulator a, boolean cancelled, long finishedAt, long millis) {
+    private @Nullable String confirmNoop(
+            BuildAccumulator a, @Nullable String episode, boolean cancelled, long finishedAt, long millis) {
         if (cancelled || !historyConfig.enabled() || a.buildNumber() <= 0) return null;
         String jid = a.journalId();
         if (jid == null || jid.isBlank() || !a.kind().equals(reportedKind.get(a.dir())) || !a.isNoop()) return null;
-        BuildRecord record =
-                a.toRecord(finishedAt, false, millis, version, null).withBuildNumber(a.buildNumber());
+        BuildRecord record = a.toRecord(finishedAt, false, millis, version, null)
+                .withBuildNumber(a.buildNumber())
+                .withEpisode(episode);
         if (record.synthetic() || !record.success() || !journal.confirm(jid, record)) return null;
+        tellFinished(record);
         return JkResultsAgent.render(record).stripTrailing() + " · up to date\n";
     }
 

@@ -74,6 +74,7 @@ final class Json {
 
         o.put("trigger", r.trigger());
         if (r.session() != null) o.put("session", r.session());
+        if (r.episode() != null) o.put("episode", r.episode());
         o.put("commit", r.commit());
         o.put("running", r.running());
         if (r.requestId() > 0) o.put("requestId", r.requestId());
@@ -439,7 +440,8 @@ final class Json {
                 lng(o, "requestId"),
                 publish,
                 coverage,
-                readDelta(o));
+                readDelta(o),
+                str(o, "episode"));
     }
 
     /**

@@ -7,6 +7,7 @@ import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.ProgressTokenRegistry;
 import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.jsonl.MiniJson;
 import java.nio.file.Path;
 import java.util.List;
@@ -31,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * process-wide default two agents could overwrite for each other.
  *
  * <p>The {@code @Setter} fields are optional wiring the embedded server attaches after
- * construction ({@code cacheSnapshot}, {@code detailsFile}, {@code cacheGate}) or that only tests
+ * construction ({@code cacheSnapshot}, {@code detailsFile}, {@code cacheGate}, {@code sessions}) or that only tests
  * shorten ({@code journalSettleMs}, {@code waitSecondMs}). Everything else is required and final.
  */
 @Getter
@@ -106,6 +107,13 @@ public final class McpContext {
      */
     @Setter
     private volatile long journalSettleMs = 1_000;
+
+    /**
+     * Where a connection's lifecycle and its non-run actions are logged. {@code null} when no
+     * session log is wired: the calls are answered as ever and logged nowhere.
+     */
+    @Setter
+    private volatile @Nullable SessionLog sessions;
 
     /** How long one second of a wait's {@code timeout_s} lasts. Tests shrink it to expire a wait quickly. */
     @Setter

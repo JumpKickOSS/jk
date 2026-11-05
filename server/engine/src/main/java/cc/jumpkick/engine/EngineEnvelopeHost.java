@@ -11,6 +11,7 @@ import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
@@ -47,6 +48,15 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     private final String version;
     private final JkHistoryConfig historyConfig;
     private final BuildJournal journal;
+    private final SessionLog sessionLog;
+
+    @Override
+    public @Nullable String episodeFor(
+            long id, String trigger, @Nullable String session, String kind, String dir, long at) {
+        String episode = sessionLog.placeRun(trigger, session, kind, dir, at);
+        journalWriter.episode(id, episode);
+        return episode;
+    }
 
     @Override
     public boolean tryStartBuildPlan() {
