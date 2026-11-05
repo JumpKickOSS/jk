@@ -74,7 +74,8 @@ succeeds without a restart.
 fails every command that would load a user plugin (`jk build`, `jk test`, `jk run` and every
 other command that reads a `jk.toml`) rather than running the shipped plugin in place of the one
 you pinned. Commands that load no user plugin (`jk --version`, `jk help`, `jk doctor`, `jk engine`)
-are unaffected, and the engine still starts.
+are unaffected, and the engine still starts. A plugin command that jk cannot look up because the
+file does not parse names the file, line and column instead of showing the help.
 
 An engine command that reads nothing the file governs (no `jk.toml`, no resolve, no download)
 still succeeds, and prints one warning after its result naming the file, line and column, so you

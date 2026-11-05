@@ -88,6 +88,7 @@ import cc.jumpkick.command.toolchain.ToolRunCommand;
 import cc.jumpkick.command.toolchain.TrustCommand;
 import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -248,7 +249,8 @@ public final class CommandDispatch {
             // Not a jk command — a build plugin may declare it. Only when a project manifest is
             // present, and never by SPAWNING an engine for a typo: the hosted attempt requires a
             // live socket; the test seam runs in-process.
-            Integer pluginExit = tryPluginCommand(command, all.subList(commandAt + 1, all.size()));
+            Integer pluginExit = tryPluginCommand(
+                    Path.of("").toAbsolutePath().normalize(), command, all.subList(commandAt + 1, all.size()));
             if (pluginExit != null) return pluginExit;
             return null; // let the caller show top-level help
         }
@@ -321,13 +323,35 @@ public final class CommandDispatch {
     }
 
     /**
-     * Attempt {@code command} as a plugin-declared command. Returns the exit code when a plugin
-     * owned and ran it, else {@code null} (no jk.toml, no reachable engine, no owning plugin —
-     * the normal unknown-command help follows).
+     * Attempt {@code command} as a plugin-declared command of the project in {@code dir}. Returns
+     * the exit code when a plugin owned and ran it, else {@code null} (no jk.toml, no reachable
+     * engine, no owning plugin — the normal unknown-command help follows).
+     *
+     * <p>Beside a {@code ~/.jk/config.toml} that does not parse, an unanswered command is not shown
+     * the help: a {@code [plugins]} pin there may be what declares it, so the file and its position
+     * are named instead ({@link #unreadableUserConfig}).
      */
-    private static @Nullable Integer tryPluginCommand(String command, List<String> args) {
-        Path dir = Path.of("").toAbsolutePath().normalize();
+    static @Nullable Integer tryPluginCommand(Path dir, String command, List<String> args) {
         if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) return null;
+        Integer ran = runPluginCommand(dir, command, args);
+        return ran != null ? ran : unreadableUserConfig(command);
+    }
+
+    /**
+     * {@link Exit#CONFIG} with the file's position when {@code ~/.jk/config.toml} does not parse,
+     * else {@code null}.
+     */
+    private static @Nullable Integer unreadableUserConfig(String command) {
+        Optional<UserConfigParseException> problem = GlobalConfig.userConfigProblem();
+        if (problem.isEmpty()) return null;
+        CommandWedge.printFail(
+                command,
+                "not a jk command, and the plugins that may declare it cannot be read: "
+                        + problem.get().getMessage());
+        return Exit.CONFIG;
+    }
+
+    private static @Nullable Integer runPluginCommand(Path dir, String command, List<String> args) {
         try {
             PluginCommandReport report;
             var paths = EnginePaths.current();
@@ -352,7 +376,9 @@ public final class CommandDispatch {
                 CliOutput.closeEnvelope();
             }
         } catch (Exception e) {
-            return null; // best-effort — fall back to the normal help
+            // Best-effort: the caller falls back to the normal help, or names config.toml when
+            // that file is why the command could not be looked up.
+            return null;
         }
     }
 

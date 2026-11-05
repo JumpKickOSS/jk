@@ -66,6 +66,8 @@ public final class WorkspaceResolve {
             try {
                 // parseLocal for the root — parse() would re-enter applyWorkspace.
                 root = JkBuildParser.parseLocal(ManifestPaths.manifestIn(rootDir.get()));
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (JkBuildParseException e) {
                 if (module.project().inheritsFromWorkspace()
                         || module.project().requiresWorkspaceRoot()
@@ -86,6 +88,8 @@ public final class WorkspaceResolve {
             Collection<JkBuild> siblings;
             try {
                 siblings = WorkspaceLoader.loadModules(rootDir.get(), root).values();
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (JkBuildParseException e) {
                 // Identity is already resolved from the root above; only workspace:<name>
                 // placeholders still need the sibling list.

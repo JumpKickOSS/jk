@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.LanguageRuntimes;
 import cc.jumpkick.model.JkBuild;
@@ -196,6 +197,8 @@ final class ToolPins {
             String g = Interpolation.resolve(group, config, project, null, entry);
             String a = Interpolation.resolve(artifact, config, project, null, entry);
             return g.isBlank() || a.isBlank() ? null : g + ":" + a;
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (JkBuildParseException unset) {
             Log.debug("ToolPins.module: a head segment names a value the table leaves unset", unset);
             return null;

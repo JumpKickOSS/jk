@@ -519,6 +519,8 @@ public final class GlobalConfig {
         List<RepositorySpec> out = new ArrayList<>(repositories(file));
         try {
             for (RepositoryMirror mirror : repositoryMirrors(file)) out.add(mirror.declaration());
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (JkBuildParseException malformed) {
             // The resolve that uses the mirror fails on it, naming the table; a credential lookup is
             // not the place to say so.

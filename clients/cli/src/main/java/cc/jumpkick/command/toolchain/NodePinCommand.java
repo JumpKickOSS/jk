@@ -9,6 +9,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.NodePinEdit;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -100,6 +101,10 @@ public final class NodePinCommand implements CliCommand {
         String edited;
         try {
             edited = NodePinEdit.apply(text, value);
+        } catch (UserConfigParseException unparsed) {
+            // Not this edit's fault: config.toml is named with its position, not as a bad pin.
+            CommandWedge.printFail(NodeCli.WEDGE, unparsed.getMessage());
+            return Exit.CONFIG;
         } catch (JkBuildParseException | IllegalStateException e) {
             CommandWedge.printFail(NodeCli.WEDGE, "could not write node = " + value + ": " + e.getMessage());
             return Exit.CONFIG;
