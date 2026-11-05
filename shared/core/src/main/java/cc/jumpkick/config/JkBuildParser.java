@@ -209,6 +209,8 @@ public final class JkBuildParser {
         Objects.requireNonNull(file, "file");
         Path key = file.toAbsolutePath().normalize();
         PARSE_REQUESTS.incrementAndGet();
+        // Before the memo: a user pin that changed drops every memoized parse it validated.
+        PluginTableRegistry.syncUserPins();
         ManifestStamp stamp = ManifestStamp.of(key, JkBuildParser::readManifest);
         boolean[] provisional = new boolean[1];
         try {
