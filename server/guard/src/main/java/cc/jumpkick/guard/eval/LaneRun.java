@@ -8,6 +8,7 @@ import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -27,18 +28,18 @@ public final class LaneRun {
      * @param reports one per rule the lane owns, in id order
      * @param baseline the baseline after tightening (identical to the input when nothing tightened)
      * @param tightened how many entries were dropped or lowered
-     * @param uncompiled main source files with no class in the lane's view; non-empty only when a
-     *     rule would have tightened, which it then did not
+     * @param unseen what the lane's view lacks of what it counts ({@link #unseen(EvalContext)});
+     *     non-empty only when a rule would have tightened or called its scope shrunk, which it then
+     *     did not
      */
-    public record Result(
-            Lane lane, List<RuleReport> reports, Baseline baseline, int tightened, List<String> uncompiled) {
+    public record Result(Lane lane, List<RuleReport> reports, Baseline baseline, int tightened, List<String> unseen) {
 
         public Result(Lane lane, List<RuleReport> reports, Baseline baseline, int tightened) {
             this(lane, reports, baseline, tightened, List.of());
         }
 
         public Result {
-            uncompiled = List.copyOf(uncompiled);
+            unseen = List.copyOf(unseen);
         }
 
         public boolean red() {
@@ -83,6 +84,27 @@ public final class LaneRun {
         }
     }
 
+    /**
+     * What the lane's view lacks of what its rules count, sorted as the lane reports it: main
+     * source files with no class for a bytecode lane, modules with no packaged artefact for the
+     * output lane; empty for a lane that sees the tree itself. A view that cannot be read lacks
+     * everything it would have shown.
+     */
+    static List<String> unseen(EvalContext ctx) {
+        return switch (ctx.lane()) {
+            case MODULE, WORKSPACE -> ClassesView.uncompiled(ctx);
+            case OUTPUT -> {
+                try {
+                    yield OutputArtifacts.unbuilt(OutputArtifacts.of(
+                            ctx.root(), ctx.modules(), ctx.rules().config().coverageReport()));
+                } catch (IOException unreadable) {
+                    yield List.of("root");
+                }
+            }
+            default -> List.of();
+        };
+    }
+
     /** The rules of {@code set} this lane owns for {@code module} ({@code ""} at the root). */
     public static List<Rule> rulesFor(Lane lane, RuleSet set, String module) {
         List<Rule> out = new ArrayList<>();
@@ -109,7 +131,7 @@ public final class LaneRun {
         List<RuleReport> reports = new ArrayList<>();
         Baseline current = baseline;
         int tightened = 0;
-        List<String> uncompiled = null;
+        List<String> unseen = null;
         Map<String, Evaluation> evaluations = evaluate(rules, ctx);
         for (Rule rule : rules) {
             Evaluation ev = evaluations.getOrDefault(rule.id(), Evaluation.failed("the evaluator returned no result"));
@@ -121,11 +143,12 @@ public final class LaneRun {
                 String slice = sliceOf(lane, rule, ctx.module());
                 Reconciliation rec = Reconciliation.of(
                         rule.id(), before, ev.observations(), ev.population(), slice, Evaluators.toleranceOf(rule));
-                if (rec.tighteningNeeded() && ClassesView.readsClasses(lane)) {
-                    // A banked entry may be missing only because its class is: tighten from a view
-                    // that covers every source file, or not at all.
-                    if (uncompiled == null) uncompiled = ClassesView.uncompiled(ctx);
-                    if (!uncompiled.isEmpty()) rec = rec.withheld();
+                if (rec.tighteningNeeded() || rec.scopeShrunk() != null) {
+                    // A banked entry may be missing, or the population smaller, only because the
+                    // lane's view is: tighten and judge the floor from a view that covers
+                    // everything it counts, or not at all.
+                    if (unseen == null) unseen = unseen(ctx);
+                    if (!unseen.isEmpty()) rec = rec.withheld();
                 }
                 if (rec.scopeShrunk() != null) {
                     reports.add(
@@ -151,7 +174,7 @@ public final class LaneRun {
                 reports.add(new RuleReport(rule, ev.outcome(), ev, null, ev.note()));
             }
         }
-        return new Result(lane, reports, current, tightened, uncompiled == null ? List.of() : uncompiled);
+        return new Result(lane, reports, current, tightened, unseen == null ? List.of() : unseen);
     }
 
     /** Why a clean pass with no bite evidence is red, in the kind's own terms. */

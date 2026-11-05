@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 
@@ -171,19 +172,27 @@ public final class GuardMessages {
         return sb.append('}').toString();
     }
 
-    /** The notice for a lane that would have tightened from a classes view missing {@code uncompiled}. */
-    public static String withheld(List<String> uncompiled) {
+    /**
+     * The notice for a lane that would have tightened, or called a scope shrunk, from a view
+     * missing {@code unseen}: source files with no class, or for the output lane modules that
+     * packaged nothing.
+     */
+    public static String withheld(Lane lane, List<String> unseen) {
+        boolean output = lane == Lane.OUTPUT;
+        String one = output ? " module has" : " source file has";
+        String many = output ? " modules have" : " source files have";
         StringBuilder sb = new StringBuilder("baseline not tightened: ")
-                .append(uncompiled.size())
-                .append(uncompiled.size() == 1 ? " source file has" : " source files have")
-                .append(" no class in this lane's view (");
-        for (int i = 0; i < Math.min(3, uncompiled.size()); i++) {
+                .append(unseen.size())
+                .append(unseen.size() == 1 ? one : many)
+                .append(output ? " no packaged artefact in this lane's view (" : " no class in this lane's view (");
+        for (int i = 0; i < Math.min(3, unseen.size()); i++) {
             if (i > 0) sb.append(", ");
-            sb.append(uncompiled.get(i));
+            sb.append(unseen.get(i));
         }
-        if (uncompiled.size() > 3)
-            sb.append(", +").append(uncompiled.size() - 3).append(" more");
-        return sb.append("); a build that compiles them tightens it").toString();
+        if (unseen.size() > 3) sb.append(", +").append(unseen.size() - 3).append(" more");
+        return sb.append(output ? "); a build that packages them" : "); a build that compiles them")
+                .append(" tightens it and judges its scope")
+                .toString();
     }
 
     /** The one-line summary of a lane run, for the task label and the results file. */

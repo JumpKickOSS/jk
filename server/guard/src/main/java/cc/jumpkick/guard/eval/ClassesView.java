@@ -3,7 +3,6 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
-import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.ModuleLayout;
 import java.io.IOException;
@@ -69,11 +68,6 @@ final class ClassesView {
         }
         out.sort(null);
         return out;
-    }
-
-    /** Whether the lane reads a class index whose coverage decides if it may tighten. */
-    static boolean readsClasses(Lane lane) {
-        return lane == Lane.MODULE || lane == Lane.WORKSPACE;
     }
 
     /** {@code pkg/SourceFile} of every class in {@code facts}. */

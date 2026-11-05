@@ -259,12 +259,17 @@ accepted sites live in **`jk-guards-baseline.toml`**, which only the engine writ
 on its own as sites disappear, and grows only through a freeze, which records the reason beside
 the sites. A bytecode lane tightens only from a classes view that covers its sources: while a
 main source file has no class in the view (an interrupted compile, a module not built yet), the
-lane still reports what it sees but leaves the baseline alone, and says which file it is missing. A freeze writes the named rule's new entries and nothing else: stale entries, other
+lane still reports what it sees but leaves the baseline alone, and says which file it is missing.
+The output lane does the same while a module has packaged nothing (a build scoped with `-m`, a
+module not built yet), and checks a POM's dependencies against the packaged set only once every
+module has packaged. A freeze writes the named rule's new entries and nothing else: stale entries, other
 rules and other modules' slices wait for the engine's own tightening, so the diff is the sites you
 accepted. A
 `--retire` freeze drops the entries of a rule that no longer exists. A rule that examines under
 80 % of the population its baseline recorded is `scope-shrunk`: red, and the baseline is left
-alone, because a shrink is a question, not a fact. When the answer is that the corpus legitimately
+alone, because a shrink is a question, not a fact. Only a lane whose view covers everything it
+counts asks it: a view missing classes or packaged modules cannot tell a smaller corpus from an
+unbuilt one. When the answer is that the corpus legitimately
 shrank — a build definition left the tree, a population was re-seeded — `jk guard freeze <id>
 --accept-scope --reason "…"` records the smaller population as the floor, with the reason beside
 it as `scope-reason` in the baseline; a plain freeze refuses under a shrink and names that
