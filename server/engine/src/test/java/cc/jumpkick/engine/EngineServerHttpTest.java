@@ -81,6 +81,56 @@ class EngineServerHttpTest extends EngineServerHarness {
         assertThat(Files.exists(p.httpToken())).isTrue();
     }
 
+    /** The MCP session limit and the connection counts reach {@code /api/status} and the socket status alike. */
+    @Test
+    void status_reports_the_mcp_session_limit_and_the_loaded_and_active_connections() throws Exception {
+        Path stateDir = shortTempDir();
+        EnginePaths.Paths p = paths(stateDir);
+        Path web = Files.createDirectories(stateDir.resolve("web"));
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, httpOnEphemeralPort(web), "1.0", null);
+        Thread serverThread = runInBackground(server);
+        try {
+            waitUntil(Duration.ofSeconds(5), () -> hasContent(p.http()) && hasContent(p.httpToken()));
+            String url = Files.readString(p.http());
+            String token = Files.readString(p.httpToken()).trim();
+            var http = HttpClient.newHttpClient();
+            var hello = http.send(
+                    HttpRequest.newBuilder(URI.create(url + "mcp"))
+                            .header("Authorization", "Bearer " + token)
+                            .header("Content-Type", "application/json")
+                            .header("Accept", "application/json, text/event-stream")
+                            .POST(HttpRequest.BodyPublishers.ofString(
+                                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":"
+                                            + "{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},"
+                                            + "\"clientInfo\":{\"name\":\"probe\",\"version\":\"1\"}}}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(hello.statusCode()).as(hello.body()).isEqualTo(200);
+
+            String status = http.send(
+                            HttpRequest.newBuilder(URI.create(url + "api/status"))
+                                    .header("Authorization", "Bearer " + token)
+                                    .build(),
+                            HttpResponse.BodyHandlers.ofString())
+                    .body();
+            assertThat(Jsonl.intValue(status, "mcpMaxSessions", -1)).isEqualTo(JkHttpConfig.DEFAULT_MCP_MAX_SESSIONS);
+            assertThat(Jsonl.intValue(status, "mcpLoadedConnections", -1)).isEqualTo(1);
+            assertThat(Jsonl.intValue(status, "mcpActiveConnections", -1))
+                    .as("just initialized: active")
+                    .isEqualTo(1);
+
+            try (Client c = new Client(EnginePaths.activeSocket(p))) {
+                String ack = c.send(ProtoLifecycle.statusRequest());
+                assertThat(Jsonl.intValue(ack, "mcpMaxSessions", -1)).isEqualTo(JkHttpConfig.DEFAULT_MCP_MAX_SESSIONS);
+                assertThat(Jsonl.intValue(ack, "mcpLoadedConnections", -1)).isEqualTo(1);
+                assertThat(Jsonl.intValue(ack, "mcpActiveConnections", -1)).isEqualTo(1);
+            }
+        } finally {
+            server.close();
+            serverThread.join(5_000);
+        }
+    }
+
     @Test
     void http_bind_failure_is_advisory_not_fatal() throws Exception {
         Path stateDir = shortTempDir();

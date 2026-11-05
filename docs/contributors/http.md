@@ -433,6 +433,8 @@ idle. Only when every loaded connection is active is a new `initialize` refused:
 `Retry-After` (the seconds until the first loaded connection with nothing being served could go
 idle) and a JSON-RPC `-32000` error naming the limit, the way `HttpAdmission` refuses a saturated
 lane. Requests on existing connections are never refused or cut off to make room.
+`GET /api/status`, the SSE `status` frame and `jk engine status` report the limit and how many
+connections are loaded and active ([`event: status`](#event-status)).
 An id found nowhere (its session ended or was pruned, or it came from another machine's state) is
 gone, as the Streamable HTTP spec says: `POST`, the event-stream `GET` and `DELETE` answer **404**,
 the `POST` body a JSON-RPC error `-32001` per request, and nothing runs. The client starts a new
@@ -562,7 +564,11 @@ Core engine/host vitals (same facts as `GET /api/status` heap/load/plans fields)
 `workerBudgetSource`, `workerLeasedBytes`, `workerOverbookedBytes`, `workerQueued`,
 `workerRunningJvms`, `workerCpuCap`, `overbookingOff`, `workerWaiting` (what the head of the lease
 queue needs and who holds the memory; `""` when nothing is queued), and `workerOverLease` (workers
-far over their lease, largest first; `""` when none is). Config knobs (`httpUrl`, `maxConcurrentRequests`, …) stay REST-only;
+far over their lease, largest first; `""` when none is). So is the MCP connection table:
+`mcpMaxSessions` (`[mcp] max-sessions`), `mcpLoadedConnections` (connections loaded now) and
+`mcpActiveConnections` (loaded ones serving a request, quiet for under 30 seconds, or not yet
+stored, which a new connection cannot unload); all three are `0` when the engine serves no MCP. The
+socket `status-ack` behind `jk engine status` carries the same three. Config knobs (`httpUrl`, `maxConcurrentRequests`, …) stay REST-only;
 the SPA merges SSE into the last REST hydrate.
 
 ### Engine generation (`engineEpoch`)

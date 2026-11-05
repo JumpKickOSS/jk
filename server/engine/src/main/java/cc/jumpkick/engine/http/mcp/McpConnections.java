@@ -209,6 +209,21 @@ public final class McpConnections {
         return live.size();
     }
 
+    /**
+     * How close the table is to its bound: {@code max} ({@code [mcp] max-sessions}), the
+     * connections {@code loaded}, and how many of them are {@code active}, which no new connection
+     * may unload.
+     */
+    public record Counts(int max, int loaded, int active) {}
+
+    /** The table's {@link Counts} right now. */
+    public synchronized Counts counts() {
+        long now = clock.getAsLong();
+        int active = 0;
+        for (McpConnection c : live.values()) if (!idle(c, now)) active++;
+        return new Counts(max, live.size(), active);
+    }
+
     /** True when {@code id} is loaded, not only stored. */
     synchronized boolean loaded(String id) {
         return live.containsKey(id);

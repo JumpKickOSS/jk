@@ -126,6 +126,11 @@ public final class McpHandler {
         ctx.connections().max(max);
     }
 
+    /** The connection table's limit and how many connections are loaded and active. */
+    public McpConnections.Counts connectionCounts() {
+        return ctx.connections().counts();
+    }
+
     /** Serve another tool registry; tests only. */
     void tools(McpTools tools) {
         this.tools = tools;

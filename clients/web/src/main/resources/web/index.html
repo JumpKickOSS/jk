@@ -508,6 +508,7 @@
           <div class="tile"><span class="lbl">uptime</span><span class="kpi">{{ uptime() }}</span></div>
           <div class="tile"><span class="lbl" data-tip="Live CLI (UDS/TCP) sockets + dashboard/MCP SSE streams">connections</span><span class="kpi">{{ status.activeRequests }}</span></div>
           <div class="tile"><span class="lbl" data-tip="In-flight build/test/lock jobs right now — not lifetime build count">builds running</span><span class="kpi" :class="{ ok: status.activeBuildPlans > 0 }">{{ status.activeBuildPlans }}</span></div>
+          <div v-if="status.mcpMaxSessions > 0" class="tile" data-tip="MCP connections loaded, of [mcp] max-sessions. Active ones (a call running, or a request in the last 30 s) are never set aside to make room; initialize is refused only when every one is active"><span class="lbl">mcp sessions</span><span class="kpi">{{ status.mcpLoadedConnections }}<span class="kpi-sm"> / {{ status.mcpMaxSessions }} · {{ status.mcpActiveConnections }} active</span></span></div>
         </div>
 
         <div class="panels">

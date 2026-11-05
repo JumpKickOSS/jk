@@ -56,17 +56,18 @@ class CommandJsonFrozenBytesTest {
                 "/home/me/src/jk",
                 List.of());
         assertThat(EngineStatusCommand.runningJson(s, 60, List.of(), "auto"))
-                .isEqualTo("{\"running\":true,\"pid\":4242,\"version\":\"0.13.0\",\"startedAt\":1700000000000,"
-                        + "\"uptimeSeconds\":60,\"activeRequests\":2,\"draining\":false,\"drainDeadline\":-1,\"idleDropped\":3,\"queuedBuildPlans\":2,\"jobs\":[],\"heapUsedBytes\":100,\"heapCommittedBytes\":200,"
-                        + "\"heapMaxBytes\":300,\"rssBytes\":400,\"cores\":8,\"totalMemoryBytes\":32000,"
-                        + "\"availableMemoryBytes\":16000,\"systemCpuLoad\":0.25,\"systemLoadAverage\":1.5,"
-                        + "\"engineEpoch\":\"epoch-1\",\"logBytes\":40960,\"logRolledAt\":1700000000500,"
-                        + "\"ignoredSignals\":\"\",\"installSource\":\"/home/me/src/jk\",\"selfUpdate\":\"auto\","
-                        + "\"containment\":null,\"containmentReason\":null,\"workerMemoryMax\":-1,\"workerCap\":-1,"
-                        + "\"workerBudgetBytes\":-1,\"workerLeasedBytes\":-1,\"workerOverbookedBytes\":0,\"workerQueued\":0,"
-                        + "\"workerBudgetSource\":null,\"workerRunningJvms\":-1,\"workerCpuCap\":-1,\"overbookingOff\":false,\"workerWaiting\":null,\"workerOverLease\":null,"
-                        + "\"httpUrl\":\"http://127.0.0.1:8910/\",\"httpError\":null,"
-                        + "\"mcpUrl\":\"http://127.0.0.1:8910/mcp\",\"engines\":[]}");
+                .isEqualTo(
+                        "{\"running\":true,\"pid\":4242,\"version\":\"0.13.0\",\"startedAt\":1700000000000,"
+                                + "\"uptimeSeconds\":60,\"activeRequests\":2,\"draining\":false,\"drainDeadline\":-1,\"idleDropped\":3,\"queuedBuildPlans\":2,\"jobs\":[],\"heapUsedBytes\":100,\"heapCommittedBytes\":200,"
+                                + "\"heapMaxBytes\":300,\"rssBytes\":400,\"cores\":8,\"totalMemoryBytes\":32000,"
+                                + "\"availableMemoryBytes\":16000,\"systemCpuLoad\":0.25,\"systemLoadAverage\":1.5,"
+                                + "\"engineEpoch\":\"epoch-1\",\"logBytes\":40960,\"logRolledAt\":1700000000500,"
+                                + "\"ignoredSignals\":\"\",\"installSource\":\"/home/me/src/jk\",\"selfUpdate\":\"auto\","
+                                + "\"containment\":null,\"containmentReason\":null,\"workerMemoryMax\":-1,\"workerCap\":-1,"
+                                + "\"workerBudgetBytes\":-1,\"workerLeasedBytes\":-1,\"workerOverbookedBytes\":0,\"workerQueued\":0,"
+                                + "\"workerBudgetSource\":null,\"workerRunningJvms\":-1,\"workerCpuCap\":-1,\"overbookingOff\":false,\"workerWaiting\":null,\"workerOverLease\":null,"
+                                + "\"httpUrl\":\"http://127.0.0.1:8910/\",\"httpError\":null,"
+                                + "\"mcpUrl\":\"http://127.0.0.1:8910/mcp\",\"mcpMaxSessions\":0,\"mcpLoadedConnections\":0,\"mcpActiveConnections\":0,\"engines\":[]}");
         EngineProbe.Status withVfs = new EngineProbe.Status(
                 "0.13.0",
                 1,
@@ -97,7 +98,7 @@ class CommandJsonFrozenBytesTest {
                 List.of());
         assertThat(EngineStatusCommand.runningJson(withVfs, 0, List.of(), "auto"))
                 .contains(
-                        "\"httpUrl\":null,\"httpError\":\"refused\",\"mcpUrl\":null,\"vfs\":{\"files\":3},\"engines\":[]}");
+                        "\"httpUrl\":null,\"httpError\":\"refused\",\"mcpUrl\":null,\"mcpMaxSessions\":0,\"mcpLoadedConnections\":0,\"mcpActiveConnections\":0,\"vfs\":{\"files\":3},\"engines\":[]}");
         assertThat(EngineStatusCommand.notRunningJson(0, List.of())).isEqualTo("{\"running\":false,\"engines\":[]}");
         assertThat(EngineStatusCommand.notRunningJson(777, List.of()))
                 .isEqualTo("{\"running\":false,\"unresponsivePid\":777,\"engines\":[]}");

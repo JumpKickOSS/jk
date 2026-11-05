@@ -222,7 +222,7 @@ public final class LiveVitals implements AutoCloseable {
 
     /**
      * Quantized status for equality — available/heap to 1 MiB, CPU load to 1 percentage point,
-     * load average to 0.1, counters and the job rows exact. Keeps "still 5.0 GiB available" from
+     * load average to 0.1, counters (MCP connections among them) and the job rows exact. Keeps "still 5.0 GiB available" from
      * spamming the wire while a job admitted, queued or ticking its last event is a frame at once.
      */
     record PresentStatus(
@@ -247,6 +247,9 @@ public final class LiveVitals implements AutoCloseable {
             boolean overbookingOff,
             String workerWaiting,
             String workerOverLease,
+            int mcpMaxSessions,
+            int mcpLoadedConnections,
+            int mcpActiveConnections,
             List<Map<String, Object>> jobs) {
 
         static PresentStatus of(StatusSnapshot s) {
@@ -274,6 +277,9 @@ public final class LiveVitals implements AutoCloseable {
                     s.overbookingOff(),
                     s.workerWaiting() == null ? "" : s.workerWaiting(),
                     s.workerOverLease() == null ? "" : s.workerOverLease(),
+                    s.mcpMaxSessions(),
+                    s.mcpLoadedConnections(),
+                    s.mcpActiveConnections(),
                     s.jobs());
         }
 

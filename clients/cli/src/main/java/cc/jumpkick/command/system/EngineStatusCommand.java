@@ -156,10 +156,17 @@ public final class EngineStatusCommand implements CliCommand {
         detail("Web UI", webUi);
         if (s.mcpUrl() != null) {
             detail("MCP", s.mcpUrl() + "  (POST JSON-RPC; Bearer token)");
+            if (s.mcpMaxSessions() > 0) detail("Sessions", describeMcpSessions(s));
         }
         List<EngineFleet.Member> fleet = EngineFleet.list();
         if (fleet.size() > 1) printFleet(fleet);
         return Exit.SUCCESS;
+    }
+
+    /** {@code 3 loaded of 256, 1 active}: how close the MCP connection table is to {@code [mcp] max-sessions}. */
+    static String describeMcpSessions(EngineProbe.Status s) {
+        return s.mcpLoadedConnections() + " loaded of " + s.mcpMaxSessions() + ", " + s.mcpActiveConnections()
+                + " active";
     }
 
     /**
@@ -369,7 +376,10 @@ public final class EngineStatusCommand implements CliCommand {
                 .string("workerOverLease", s.workerOverLease())
                 .string("httpUrl", s.httpUrl())
                 .string("httpError", s.httpError())
-                .string("mcpUrl", s.mcpUrl());
+                .string("mcpUrl", s.mcpUrl())
+                .number("mcpMaxSessions", s.mcpMaxSessions())
+                .number("mcpLoadedConnections", s.mcpLoadedConnections())
+                .number("mcpActiveConnections", s.mcpActiveConnections());
         if (s.vfsJson() != null) json.token("vfs", s.vfsJson());
         return json.token("engines", enginesJson(fleet)).finish();
     }

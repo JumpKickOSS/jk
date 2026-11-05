@@ -41,7 +41,7 @@ Outside a project `jk mcp` still serves, and the tools take `dir` as over HTTP.
 | Protocol | `2025-11-25`, `2025-06-18`, `2025-03-26` or `2024-11-05`, negotiated at `initialize` ([below](#protocol-revisions)); Streamable HTTP. Send `MCP-Protocol-Version` on every later request |
 | Server name | `jk-engine` |
 | Tool list | `tools/list` answers six tools (`run`, `diagnostics`, `deps`, `callers`, `rename`, `skill`); `run(kind=snapshot)` installs for a sibling project. `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
-| CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
+| CLI | `jk engine status` shows **MCP** and a **Sessions** row (`3 loaded of 256, 1 active`); JSON includes `mcpUrl`, `mcpMaxSessions`, `mcpLoadedConnections` and `mcpActiveConnections` |
 
 Token: `jk engine status` / `jk web` URL fragment, or the file under the state directory
 (`~/.jk/state/engine/<key>.http-token`). Same token as the dashboard.
@@ -66,7 +66,8 @@ Session limit: `[mcp] max-sessions` / `JK_MCP_MAX_SESSIONS` (default **256**) MC
 loaded in the engine. Past it, the engine sets aside the connection that has been quiet the
 longest (no call outstanding, no request for 30 seconds); its client notices nothing, and the
 connection comes back with the same session on its next request. Only when every connection is
-busy does a new `initialize` get `503` with `Retry-After` and an error naming the limit: close idle
+busy does a new `initialize` get `503` with `Retry-After` and an error naming the limit (the
+**Sessions** row of `jk engine status` and the dashboard's **MCP sessions** tile say how close it is): close idle
 agents, or raise `max-sessions` and restart the engine. Calls on connections already open are
 never refused.
 
