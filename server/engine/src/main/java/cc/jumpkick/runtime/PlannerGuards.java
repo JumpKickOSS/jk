@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static cc.jumpkick.guard.eval.GuardMessages.WITHHELD;
+import static cc.jumpkick.guard.eval.GuardMessages.withheldNotice;
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
@@ -747,11 +749,8 @@ final class PlannerGuards {
         for (Fault f : faults) ctx.error(f.code(), EngineValidations.render(f));
         boolean ci = Baselines.ciMode();
         String storedBaselineSha = tightenBaseline(ctx, g, baselineFile, result, ci, baselineSha);
-        if (!result.unseen().isEmpty()) {
-            ctx.warn(
-                    GuardMessages.WITHHELD,
-                    GuardMessages.withheldNotice(lane, result.unseen(), result.unseenModules()));
-        }
+        if (!result.unseen().isEmpty())
+            ctx.warn(WITHHELD, withheldNotice(lane, result.unseen(), result.unseenModules()));
         writeJsonl(g.root(), taskId, result);
         // The machine view of the whole run, re-rendered from every lane's output: cheap, and always
         // current after the lane that just wrote.
