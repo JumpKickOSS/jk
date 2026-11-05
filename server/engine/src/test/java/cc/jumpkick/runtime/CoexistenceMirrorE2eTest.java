@@ -77,6 +77,7 @@ class CoexistenceMirrorE2eTest {
     private final Nexus nexus = new Nexus();
 
     private @Nullable String priorSettings;
+    private @Nullable String priorM2;
 
     @BeforeAll
     static void engineShadowSource() {
@@ -92,6 +93,10 @@ class CoexistenceMirrorE2eTest {
         RepoGroup.clearProcessVersionsCache();
         Files.createDirectories(CACHE);
         TestStoreSeed.seed(CACHE);
+        // The tier's local repository is the Central tree every sandbox shares: an artifact found there
+        // would answer without reaching the mirror, and the one only the mirror hosts would land there.
+        priorM2 = System.getProperty("jk.m2.local");
+        System.setProperty("jk.m2.local", CACHE.resolve("m2").toAbsolutePath().toString());
         nexus.start();
     }
 
@@ -100,6 +105,8 @@ class CoexistenceMirrorE2eTest {
         nexus.stop();
         if (priorSettings == null) System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
         else System.setProperty(MavenSettings.SETTINGS_PROPERTY, priorSettings);
+        if (priorM2 == null) System.clearProperty("jk.m2.local");
+        else System.setProperty("jk.m2.local", priorM2);
         SessionContext.reset();
     }
 
