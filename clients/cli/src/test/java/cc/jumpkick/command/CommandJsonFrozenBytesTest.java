@@ -104,8 +104,10 @@ class CommandJsonFrozenBytesTest {
         EngineFleet.Member silent = new EngineFleet.Member(null, null, null, 99, false);
         EngineFleet.Member live = new EngineFleet.Member(null, null, withVfs, 1, true);
         assertThat(EngineStatusCommand.enginesJson(List.of(silent, live)))
-                .isEqualTo("[{\"id\":\"untracked-99\",\"pid\":99,\"current\":false,\"responsive\":false},"
-                        + "{\"id\":\"untracked-1\",\"pid\":1,\"current\":true,\"responsive\":true,\"startedAt\":2,"
+                .isEqualTo("[{\"id\":\"untracked-99\",\"pid\":99,\"current\":false,\"responsive\":false,"
+                        + "\"otherHome\":false},"
+                        + "{\"id\":\"untracked-1\",\"pid\":1,\"current\":true,\"responsive\":true,"
+                        + "\"otherHome\":false,\"startedAt\":2,"
                         + "\"activeBuildPlans\":0,\"draining\":false,\"drainDeadline\":-1,\"version\":\"0.13.0\"}]");
     }
 

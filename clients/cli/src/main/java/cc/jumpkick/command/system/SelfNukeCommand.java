@@ -400,7 +400,7 @@ public final class SelfNukeCommand implements CliCommand {
      */
     private static void stopFleet() {
         try {
-            for (EngineFleet.StopResult r : EngineFleet.stopAll(true)) {
+            for (EngineFleet.StopResult r : EngineFleet.stopAll(true).results()) {
                 if (r.outcome() == EngineFleet.Outcome.SURVIVED) {
                     Theme t = Theme.active();
                     CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())

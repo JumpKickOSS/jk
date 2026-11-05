@@ -89,7 +89,8 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
   engines: `jk engine status` lists every resident engine this user owns (including other
   `JK_HOME`s and draining/ghost pids). `jk engine stop -A` stops **this home only** so a
-  nested test suite cannot kill the host engine. `--pid` stops one explicitly.
+  nested test suite cannot kill the host engine; status marks other homes' engines and `-A` names the
+  ones it left. `--pid` takes one pid or a comma-separated list, of any home.
 - **Versioning** — one live engine under `~/.jk/lib/jk-engine/`, with the live pointer in
   `jk-engine.toml` beside the jars, paired with
   the PATH `jk`. One engine is hosted at a time, so there is no per-version directory tree. An upgrade

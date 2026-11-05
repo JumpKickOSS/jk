@@ -146,6 +146,35 @@ memory alive forever. At the deadline the engine cancels what is still running �
 with an error naming the drain deadline — kills those jobs' workers and exits. `0` waits without
 bound. `jk engine stop -n` stops a draining engine immediately.
 
+### Several engines
+
+One machine can run several engines: one per state directory and store pair under this home
+(`JK_STORE_DIR` gives a second one), a draining predecessor, and engines of **other homes** — a
+scratch `JK_HOME`, a test suite's home, a build run from another checkout. When there is more
+than one, `jk engine status` lists them all, `*` marking the one this directory's commands reach,
+and marks each engine of another home with that home (`home unknown` when its command line names
+none):
+
+```
+ Engines (3):
+ * 3f9a01c2  pid 41200  up 0h 12m 4s  jobs 0   (this directory)
+   untracked-52211  pid 52211  up 22h 3m 9s  jobs 0   (other home: /home/me/scratch/jk-home)
+   untracked-52390  pid 52390  unresponsive (alive, not answering)   (other home: home unknown)
+```
+
+`-O jsonl` carries the same marks on each `engines` entry: `otherHome`, and `home` for an engine
+of another home (`null` when unknown).
+
+| Command | Stops |
+|---------|-------|
+| `jk engine stop` | this directory's engine |
+| `jk engine stop -A` | every engine of **this home**; never another home's |
+| `jk engine stop -p 52211,52390` | the engines with these pids, of any home |
+
+`-A` stays inside this home so a test suite running under its own `JK_HOME` can never stop the
+engine that runs the build around it. When it leaves engines of other homes running it says how
+many, groups their pids by home, and prints the `jk engine stop -p …` command that stops them.
+
 ### A silent engine
 
 A client that connects to the engine's socket and gets no handshake within two seconds does not
