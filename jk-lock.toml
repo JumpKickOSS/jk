@@ -1,10 +1,10 @@
 version = 1
-generated-by = "jk 0.50.2"
-generated-by-build = "cb17db83b069"
-generated-by-build-time = "2026-11-04T22:33:39Z"
+generated-by = "jk 0.50.3-SNAPSHOT"
+generated-by-build = "f6148ef12323"
+generated-by-build-time = "2026-11-05T01:44:59Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "47f8eac306a43c9f97fcb4bc497209491b3f95f32077243b8eccf8e6a76a9728"
+manifests-sha256 = "79a44fd61927112c61e68456e4cc3449fb59bbf7da228a6e4723c40eb2c9912c"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -183,7 +183,7 @@ checksum = "sha256:8a9b54d3506a3b92ee46b217bcee79196b21ca6d52dc2967c686a205fb2f9
 scopes   = ["processor"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
   "org.checkerframework:checker-qual:jar:@4.2.3",
 ]
 
@@ -279,7 +279,7 @@ deps = [
   "com.google.auth:google-auth-library-credentials:jar:@1.10.0",
   "com.google.auto.value:auto-value-annotations:jar:@1.9",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.http-client:google-http-client-gson:jar:@2.2.0",
   "com.google.http-client:google-http-client:jar:@2.2.0",
 ]
@@ -308,7 +308,7 @@ checksum = "sha256:f50b1ce8a41fad31a8a819c052f8ffa362ea0a3dbe9ef8f7c7dc9a36d4738
 scopes   = ["processor"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
 ]
 
 [[artifact]]
@@ -331,7 +331,7 @@ deps = [
   "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.4",
   "com.google.auth:google-auth-library-oauth2-http:jar:@1.10.0",
   "com.google.cloud.tools:jib-build-plan:jar:@0.4.0",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.http-client:google-http-client-apache-v2:jar:@1.42.2",
   "com.google.http-client:google-http-client:jar:@2.2.0",
   "org.apache.commons:commons-compress:jar:@1.28.0",
@@ -366,7 +366,7 @@ checksum = "sha256:2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c
 scopes   = ["main", "provided", "test"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
 ]
 
 [[artifact]]
@@ -386,7 +386,7 @@ checksum = "sha256:aa9b67a3aa3418b366e26594e1ae35d100ad3369cd1010ae7d4782d984ea9
 scopes   = ["processor"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
 ]
 
 [[artifact]]
@@ -409,9 +409,9 @@ members  = ["clients/maven-spy"]
 
 [[artifact]]
 name     = "com.google.errorprone:error_prone_annotations:jar:"
-version  = "2.50.0"
+version  = "2.52.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:4667724877f1d37a689202da191e23efa7657c62eef93ccdac406eccfe5cdd0a"
+checksum = "sha256:24822b246a2da324006fc5a1c940b1d2cf9cd716e530155c39fea695d5ab01c4"
 scopes   = ["main", "provided", "test", "processor"]
 licenses = ["Apache-2.0"]
 
@@ -427,7 +427,7 @@ deps = [
   "com.github.kevinstern:software-and-algorithms:jar:@1.0",
   "com.google.auto.value:auto-value-annotations:jar:@1.9",
   "com.google.errorprone:error_prone_annotation:jar:@2.50.0",
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
   "io.github.eisop:dataflow-errorprone:jar:@3.41.0-eisop1",
   "io.github.java-diff-utils:java-diff-utils:jar:@4.12",
   "javax.inject:javax.inject:jar:@1",
@@ -446,10 +446,10 @@ deps = [
   "com.google.auto.value:auto-value-annotations:jar:@1.9",
   "com.google.auto:auto-common:jar:@1.2.2",
   "com.google.errorprone:error_prone_annotation:jar:@2.50.0",
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
   "com.google.errorprone:error_prone_check_api:jar:@2.50.0",
   "com.google.googlejavaformat:google-java-format:jar:@1.35.0",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.protobuf:protobuf-java:jar:@4.35.1",
   "io.github.eisop:dataflow-errorprone:jar:@3.41.0-eisop1",
   "javax.inject:javax.inject:jar:@1",
@@ -465,7 +465,7 @@ checksum = "sha256:b2a52e363d51dd86b3b38d1a8dd51538541b42ff1048769684681c676550f
 scopes   = ["processor"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
 ]
 
 [[artifact]]
@@ -488,14 +488,14 @@ licenses = ["Apache-2.0"]
 
 [[artifact]]
 name     = "com.google.guava:guava:jar:"
-version  = "33.6.0-android"
+version  = "33.8.0-jre"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:9532ca9ba8aceb4cd2067171f981c799988b7f5844e3e274811a3bb757034bc4"
-scopes   = ["main"]
+checksum = "sha256:97b79ec3f2c0a6313a0c2df51ce1abdf8907e6531803467b81efcaaf99b35161"
+pinned-by = "jk.toml:guava"
+scopes   = ["main", "provided", "test", "processor"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/publisher"]
 deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
   "com.google.guava:failureaccess:jar:@1.0.3",
   "com.google.guava:listenablefuture:jar:@9999.0-empty-to-avoid-conflict-with-guava",
   "com.google.j2objc:j2objc-annotations:jar:@3.1",
@@ -504,30 +504,10 @@ deps = [
 
 [[artifact]]
 name     = "com.google.guava:guava:jar:"
-version  = "33.6.0-jre"
+version  = "33.8.0-jre"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:dc573e1fca4fd5454f4a5fd3d7da2df03002876a4175bafc14a95980dd7713b3"
-pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.1.1"
-scopes   = ["provided", "processor"]
-licenses = ["Apache-2.0"]
-members  = ["plugins/quarkus"]
-deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.41.0",
-  "com.google.guava:failureaccess:jar:@1.0.1",
-  "org.jspecify:jspecify:jar:@1.0.1",
-]
-excluded-by = [
-  "com.google.errorprone:error_prone_annotations <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
-  "com.google.guava:failureaccess <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
-  "com.google.guava:listenablefuture <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
-  "com.google.j2objc:j2objc-annotations <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
-]
-
-[[artifact]]
-name     = "com.google.guava:guava:jar:"
-version  = "33.7.1-jre"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:796d8e28ac64e83a47c4c5935a8fecc4682650a04bbdead738ef0f5a3a0e6c46"
+checksum = "sha256:97b79ec3f2c0a6313a0c2df51ce1abdf8907e6531803467b81efcaaf99b35161"
+pinned-by = "jk.toml:guava"
 scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
 members  = ["clients/maven-spy"]
@@ -545,33 +525,23 @@ excluded-by = [
 
 [[artifact]]
 name     = "com.google.guava:guava:jar:"
-version  = "33.7.1-jre"
+version  = "33.8.0-jre"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:796d8e28ac64e83a47c4c5935a8fecc4682650a04bbdead738ef0f5a3a0e6c46"
-scopes   = ["test"]
+checksum = "sha256:97b79ec3f2c0a6313a0c2df51ce1abdf8907e6531803467b81efcaaf99b35161"
+pinned-by = "jk.toml:guava"
+scopes   = ["provided", "processor"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/lint"]
+members  = ["plugins/quarkus"]
 deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:failureaccess:jar:@1.0.3",
-  "com.google.guava:listenablefuture:jar:@9999.0-empty-to-avoid-conflict-with-guava",
-  "com.google.j2objc:j2objc-annotations:jar:@3.1",
+  "com.google.errorprone:error_prone_annotations:jar:@2.41.0",
+  "com.google.guava:failureaccess:jar:@1.0.1",
   "org.jspecify:jspecify:jar:@1.0.1",
 ]
-
-[[artifact]]
-name     = "com.google.guava:guava:jar:"
-version  = "33.7.2-jre"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:b530942257fb935f8b2cfaa5f8eb5bd59c555fd8e8d01b8ce98912e077ea606c"
-scopes   = ["main", "provided", "test", "processor"]
-licenses = ["Apache-2.0"]
-deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:failureaccess:jar:@1.0.3",
-  "com.google.guava:listenablefuture:jar:@9999.0-empty-to-avoid-conflict-with-guava",
-  "com.google.j2objc:j2objc-annotations:jar:@3.1",
-  "org.jspecify:jspecify:jar:@1.0.1",
+excluded-by = [
+  "com.google.errorprone:error_prone_annotations <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+  "com.google.guava:failureaccess <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+  "com.google.guava:listenablefuture <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+  "com.google.j2objc:j2objc-annotations <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
 ]
 
 [[artifact]]
@@ -603,7 +573,7 @@ checksum = "sha256:30175271ea9bf3465db1e108851db1846febd0f7dd43b9be32e6a57665b48
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.http-client:google-http-client:jar:@2.2.0",
   "org.apache.httpcomponents.client5:httpclient5:jar:@5.6.5",
   "org.apache.httpcomponents.core5:httpcore5:jar:@5.4.4",
@@ -644,7 +614,7 @@ licenses = ["Apache-2.0"]
 members  = ["plugins/image-builder"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.j2objc:j2objc-annotations:jar:@3.1",
   "io.opencensus:opencensus-api:jar:@0.31.1",
   "io.opencensus:opencensus-contrib-http-util:jar:@0.31.1",
@@ -661,8 +631,8 @@ scopes   = ["main"]
 licenses = ["Apache-2.0"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.j2objc:j2objc-annotations:jar:@3.1",
   "io.grpc:grpc-context:jar:@1.84.0",
   "io.opencensus:opencensus-api:jar:@0.31.1",
@@ -680,7 +650,7 @@ scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
 deps = [
   "aopalliance:aopalliance:jar:@1.0",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "javax.inject:javax.inject:jar:@1",
 ]
 excluded-by = [
@@ -737,7 +707,7 @@ checksum = "sha256:27fc61ee2d526e33d31350b5ea383091c0879345e261f9b2e6fcc97a20c86
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.http-client:google-http-client-gson:jar:@2.2.0",
   "com.google.http-client:google-http-client:jar:@2.2.0",
 ]
@@ -752,7 +722,7 @@ licenses = ["BSD-3-Clause"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.code.gson:gson:jar:@2.14.0",
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
   "com.google.protobuf:protobuf-java:jar:@4.35.1",
 ]
 
@@ -813,7 +783,7 @@ checksum = "sha256:131555de8f1621b3058249c782982f201adca22372cdecc96b8b1f5435d91
 scopes   = ["test"]
 licenses = ["LGPL-2.1-or-later"]
 deps = [
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "commons-beanutils:commons-beanutils:jar:@1.11.0",
   "commons-logging:commons-logging:jar:@1.4.0",
   "info.picocli:picocli:jar:@4.7.7",
@@ -894,7 +864,7 @@ checksum = "sha256:eb02eb2da5ee30bcac4621a259a84153b20690078dc47ef920589b8371f45
 scopes   = ["processor"]
 licenses = ["MIT"]
 deps = [
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "org.checkerframework:dataflow-nullaway:jar:@4.2.3",
   "org.jspecify:jspecify:jar:@1.0.1",
 ]
@@ -1081,8 +1051,8 @@ licenses = ["Apache-2.0"]
 members  = ["plugins/publisher"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.6.0-android",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
+  "com.google.guava:guava:jar:@33.8.0-jre",
 ]
 
 [[artifact]]
@@ -1094,8 +1064,8 @@ scopes   = ["main"]
 licenses = ["Apache-2.0"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
+  "com.google.guava:guava:jar:@33.8.0-jre",
 ]
 
 [[artifact]]
@@ -1140,8 +1110,8 @@ licenses = ["Apache-2.0"]
 deps = [
   "com.google.android:annotations:jar:@4.1.1.4",
   "com.google.code.gson:gson:jar:@2.14.0",
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "io.grpc:grpc-api:jar:@1.84.0",
   "io.grpc:grpc-context:jar:@1.84.0",
   "io.perfmark:perfmark-api:jar:@0.27.0",
@@ -1156,8 +1126,8 @@ checksum = "sha256:fc7a54cca004df57d8d416f335e851d53b188926b598151c5714498ff60dc
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "io.grpc:grpc-api:jar:@1.84.0",
   "io.grpc:grpc-core:jar:@1.83.1",
   "io.grpc:grpc-util:jar:@1.83.1",
@@ -1174,7 +1144,7 @@ scopes   = ["main"]
 licenses = ["Apache-2.0"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "io.grpc:grpc-api:jar:@1.84.0",
 ]
 excluded-by = [
@@ -1191,7 +1161,7 @@ licenses = ["Apache-2.0"]
 deps = [
   "com.google.api.grpc:proto-google-common-protos:jar:@2.74.0",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.protobuf:protobuf-java:jar:@4.35.1",
   "io.grpc:grpc-api:jar:@1.84.0",
   "io.grpc:grpc-protobuf-lite:jar:@1.83.1",
@@ -1205,8 +1175,8 @@ checksum = "sha256:431c1280d85dd34c93f2ede7cc192c591b660a1becb6053da1423b0a6526c
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "io.grpc:grpc-api:jar:@1.84.0",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
 ]
@@ -1219,7 +1189,7 @@ checksum = "sha256:4e722bf41a8d305e0436f16e69f7787ce5a227dc0dac45be06e8c197f0827
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "io.grpc:grpc-api:jar:@1.84.0",
   "io.grpc:grpc-core:jar:@1.83.1",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
@@ -1244,7 +1214,7 @@ checksum = "sha256:3ea995b55a4068be22989b70cc29a4d788c2d328d1d50613a7a9afd13fdd2
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "io.opencensus:opencensus-api:jar:@0.31.1",
 ]
 
@@ -2548,7 +2518,7 @@ scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
 deps = [
   "com.google.guava:failureaccess:jar:@1.0.3",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.inject:guice:jar:classes@5.1.0",
   "javax.inject:javax.inject:jar:@1",
   "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.24",
@@ -2585,7 +2555,7 @@ licenses = ["Apache-2.0"]
 members  = ["plugins/quarkus"]
 deps = [
   "com.google.guava:failureaccess:jar:@1.0.1",
-  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.inject:guice:jar:classes@5.1.0",
   "javax.inject:javax.inject:jar:@1",
   "org.apache.maven.resolver:maven-resolver-api:jar:@1.9.27",
@@ -2626,7 +2596,7 @@ scopes   = ["provided"]
 licenses = ["Apache-2.0"]
 deps = [
   "com.google.guava:failureaccess:jar:@1.0.3",
-  "com.google.guava:guava:jar:@33.7.2-jre",
+  "com.google.guava:guava:jar:@33.8.0-jre",
   "com.google.inject:guice:jar:classes@5.1.0",
   "commons-cli:commons-cli:jar:@1.11.0",
   "javax.annotation:javax.annotation-api:jar:@1.3.2",
