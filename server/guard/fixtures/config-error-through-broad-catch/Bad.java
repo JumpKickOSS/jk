@@ -14,6 +14,11 @@ class Bad {
 }
 
 final class JkBuildParser {
+    /**
+     * The project's name.
+     *
+     * @throws UserConfigParseException when the user's config.toml does not parse
+     */
     static String parse(Path manifest) throws IOException {
         return manifest.toString();
     }

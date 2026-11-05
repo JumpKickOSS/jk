@@ -2,6 +2,7 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.model.JkBuild;
@@ -32,6 +33,8 @@ public final class LockfileModules {
     public static Lockfile stamp(Lockfile lock, Path projectDir) {
         try {
             return lock.withModules(capture(projectDir));
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return lock;
         }

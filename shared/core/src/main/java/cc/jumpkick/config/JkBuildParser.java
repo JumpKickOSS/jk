@@ -189,6 +189,9 @@ public final class JkBuildParser {
     /**
      * Parse {@code jk.toml} and resolve workspace inheritance / sibling placeholders for the module
      * directory that owns the file. Prefer this for build, publish, status, etc.
+     *
+     * @throws UserConfigParseException when {@code ~/.jk/config.toml} does not parse: the parse folds
+     *     its {@code [plugins]} pins in
      */
     public static JkBuild parse(Path file) throws IOException {
         Path abs = file.toAbsolutePath().normalize();
@@ -204,6 +207,9 @@ public final class JkBuildParser {
      * Parse {@code jk.toml} as written — no workspace inheritance or sibling-coordinate rewrite.
      * Used by {@link WorkspaceLoader} / {@link WorkspaceResolve} to avoid recursive resolve while
      * assembling the workspace.
+     *
+     * @throws UserConfigParseException when {@code ~/.jk/config.toml} does not parse: a resident engine
+     *     syncs its {@code [plugins]} pins first
      */
     public static JkBuild parseLocal(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
@@ -336,12 +342,23 @@ public final class JkBuildParser {
         return PARSE_CACHE.retain(key -> key.startsWith(keep)) + DOC_CACHE.retain(key -> key.startsWith(keep));
     }
 
+    /**
+     * Drop the memo for {@code file} and parse it again, as {@link #parse(Path)}.
+     *
+     * @throws UserConfigParseException when {@code ~/.jk/config.toml} does not parse: the parse folds
+     *     its {@code [plugins]} pins in
+     */
     public static JkBuild reparse(Path file) throws IOException {
         forget(file);
         return parse(file);
     }
 
-    /** Drop memo and re-parse without workspace resolution. */
+    /**
+     * Drop memo and re-parse without workspace resolution.
+     *
+     * @throws UserConfigParseException when {@code ~/.jk/config.toml} does not parse, as {@link
+     *     #parseLocal(Path)}
+     */
     public static @Nullable JkBuild reparseLocal(Path file) throws IOException {
         forget(file);
         return parseLocal(file);

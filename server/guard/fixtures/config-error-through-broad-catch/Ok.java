@@ -21,9 +21,28 @@ class Ok {
             return Errors.text(e);
         }
     }
+
+    static String wrappedOrNull(Path manifest) {
+        try {
+            return load(manifest);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed;
+        } catch (RuntimeException | IOException e) {
+            return null;
+        }
+    }
+
+    static String load(Path manifest) throws IOException {
+        return JkBuildParser.parse(manifest).strip();
+    }
 }
 
 final class JkBuildParser {
+    /**
+     * The project's name.
+     *
+     * @throws UserConfigParseException when the user's config.toml does not parse
+     */
     static String parse(Path manifest) throws IOException {
         return manifest.toString();
     }
