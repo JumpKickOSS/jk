@@ -104,16 +104,15 @@ class McpConnectionTest {
     }
 
     @Test
-    void an_unknown_or_closed_session_id_is_anonymous() {
+    void a_closed_session_id_is_a_404() {
         String id = initialize(null);
         run(id);
         assertThat(specs.getLast().origin().session()).isEqualTo(id); // no client name: the bare id
         assertThat(mcp.closeConnection(id)).isTrue();
         assertThat(mcp.closeConnection(id)).isFalse();
-        run(id);
-        assertThat(specs.getLast().origin().session()).isNull();
-        run("ffff");
-        assertThat(specs.getLast().origin().session()).isNull();
+        McpHandler.Reply reply = mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}", id);
+        assertThat(reply.status()).isEqualTo(404);
+        assertThat(specs).hasSize(1);
     }
 
     @Test
@@ -262,18 +261,33 @@ class McpConnectionTest {
     }
 
     @Test
-    void a_project_call_on_an_unknown_session_reopens_a_pinned_connection() {
+    void an_unknown_session_is_a_404_and_runs_nothing() {
+        int before = specs.size();
         McpHandler.Reply reply = mcp.handle(
                 "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"run\","
                         + "\"arguments\":{\"wait\":false}}}",
                 "dead",
                 "/ws");
-        assertThat(reply.openedSessionId()).isNotNull().isNotEqualTo("dead");
-        assertThat(specs.getLast().dir()).isEqualTo("/ws");
-        String listing = mcp.handle(
-                        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}", reply.openedSessionId(), "/ws")
-                .body();
-        assertThat(listing).doesNotContain("\"dir\"");
+        assertThat(reply.status()).isEqualTo(404);
+        assertThat(reply.openedSessionId()).isNull();
+        assertThat(reply.body()).contains("\"id\":2").contains("-32001").contains("send initialize");
+        assertThat(specs).hasSize(before);
+        assertThat(mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}", "dead")
+                        .status())
+                .as("an unpinned client too")
+                .isEqualTo(404);
+    }
+
+    @Test
+    void a_project_call_without_a_session_is_a_400_until_it_initializes() {
+        McpHandler.Reply reply = mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}", null, "/ws");
+        assertThat(reply.status()).isEqualTo(400);
+        assertThat(reply.openedSessionId()).isNull();
+        assertThat(reply.body()).contains("send initialize first");
+        McpHandler.Reply init =
+                mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}", null, "/ws");
+        assertThat(init.status()).isEqualTo(200);
+        assertThat(init.openedSessionId()).isNotNull();
     }
 
     private String initialize(@Nullable String client) {

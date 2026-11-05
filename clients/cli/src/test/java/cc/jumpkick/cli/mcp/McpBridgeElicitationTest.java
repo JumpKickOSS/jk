@@ -81,7 +81,11 @@ class McpBridgeElicitationTest {
             exchange.close();
             return;
         }
-        if (sent != null && !sent.equals(session)) exchange.getResponseHeaders().set(McpBridge.SESSION_HEADER, session);
+        if (sent != null && !sent.equals(session)) {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+            return;
+        }
         Map<String, Object> params = m.get("params") instanceof Map<?, ?> p ? (Map<String, Object>) p : Map.of();
         if (!"ask".equals(params.get("name"))) {
             json(exchange, "{\"jsonrpc\":\"2.0\",\"id\":" + id(m) + ",\"result\":{}}");
@@ -171,7 +175,7 @@ class McpBridgeElicitationTest {
     }
 
     @Test
-    void a_new_session_from_a_restarted_engine_hears_the_clients_initialize_again() throws Exception {
+    void an_engine_that_forgot_the_session_hears_the_clients_initialize_again_then_the_call() throws Exception {
         PipedOutputStream client = new PipedOutputStream();
         PipedInputStream stdin = new PipedInputStream(client, 1 << 16);
         BlockingQueue<String> stdout = new LinkedBlockingQueue<>();

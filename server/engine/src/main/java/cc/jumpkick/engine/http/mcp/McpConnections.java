@@ -17,8 +17,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A cache over the {@link Store}: each connection is stored with its session when it opens or
  * changes, and an id this table has not loaded is looked up there, so a connection outlives the
- * engine that opened it. A call whose id is found nowhere resolves to no connection, and its runs
- * journal as {@code mcp} with no session.
+ * engine that opened it. An id found nowhere is gone: the transport answers it {@code 404}.
  *
  * <p>Bounded: a client that never sends {@code DELETE /mcp} leaves its entry behind, and the
  * oldest entries fall off past {@link #CAP} rather than growing with the engine's uptime; one that

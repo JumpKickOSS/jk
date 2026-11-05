@@ -413,10 +413,14 @@ last seen) once its session opens, again when its bind changes, and at most once
 last seen. A request whose `Mcp-Session-Id` the engine has not loaded (it started after the
 connection opened, or the connection fell off the table's 256-entry cap) is answered from the
 connection an open session holds, with the same id, label and session and no new `initialize`.
-An id found nowhere resolves to no connection: a call from `jk mcp` (it sends `Jk-Project`)
-opens a new pinned connection and hands its id back, and the bridge repeats the client's
-`initialize` on it; any other client's calls run with no session. A new connection never takes an
-id an open session still holds. The revision decides what the session
+An id found nowhere (its session ended or was pruned, or it came from another machine's state) is
+gone, as the Streamable HTTP spec says: `POST`, the event-stream `GET` and `DELETE` answer **404**,
+the `POST` body a JSON-RPC error `-32001` per request, and nothing runs. The client starts a new
+session with `initialize`; `jk mcp` (`McpBridge`) repeats the client's own `initialize` without a
+session, sends `notifications/initialized`, and sends the refused request once more on the new
+session, so the host sees only that answer. A request from `jk mcp` (it sends `Jk-Project`) with no
+session that is not an `initialize` is a **400**. Only `initialize` opens a connection, and it opens
+the connection's session with it. A new connection never takes an id an open session still holds. The revision decides what the session
 may use (batches before `2025-06-18`, form elicitation from it, URL mode from `2025-11-25`), so a
 new rule that depends on the revision reads it there rather than comparing strings.
 
