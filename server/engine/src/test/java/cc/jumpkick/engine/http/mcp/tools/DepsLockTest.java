@@ -30,7 +30,7 @@ class DepsLockTest {
     void remove_relocks_so_the_lock_matches_the_manifest(@TempDir Path tmp) throws Exception {
         Path dir = project(tmp);
         LockFlow.Result first = LockFlow.run(dir, dir.resolve("cache"), List.of(), false, null);
-        assertThat(first.status()).isZero();
+        assertThat(first.status()).as("the first lock: %s", first.error()).isZero();
         assertThat(LockFreshness.needsRefresh(dir)).isFalse();
 
         Map<String, Object> added =
