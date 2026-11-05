@@ -36,7 +36,10 @@ final class NewTemplate {
     /**
      * The flags this mode seeds its parameter map from.
      *
-     * @param standalone true when no enclosing project was detected (writes a lockfile)
+     * @param standalone true when no enclosing project was detected: the project gets jk's seeded
+     *     {@code .gitignore} (unless the template ships one), {@code AGENTS.md}, the files of each
+     *     agent in use and a first code graph, as a plain {@code jk new} does. A workspace module
+     *     gets none of these; the workspace root owns them.
      */
     record Args(
             String ref,
@@ -127,6 +130,7 @@ final class NewTemplate {
                         NewNode.replaceFrontend(target.resolve("web"), args.frontend(), List.of(), args.offline());
                 if (swapped != Exit.SUCCESS) return swapped;
             }
+            if (args.standalone()) AgentWiring.report(target);
             CommandWedge.envelopeStart();
             CliOutput.out(JkWedge.chipLine(
                     Glyphs.CHECK,

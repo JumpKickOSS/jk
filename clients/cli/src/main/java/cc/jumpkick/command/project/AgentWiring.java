@@ -16,6 +16,8 @@ import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.UnaryOperator;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What a new or imported project gets for its coding agents: {@link AgentSetup}'s files for the
@@ -24,7 +26,17 @@ import java.util.Set;
  */
 public final class AgentWiring {
 
+    /**
+     * Where {@code JK_AGENTS}, {@code CLAUDECODE} and {@code PATH} are read: the process environment
+     * unless a caller bound another (tests stand an agent up without changing the JVM's environment).
+     */
+    static final ScopedValue<UnaryOperator<@Nullable String>> ENV = ScopedValue.newInstance();
+
     private AgentWiring() {}
+
+    private static @Nullable String env(String name) {
+        return ENV.isBound() ? ENV.get().apply(name) : System.getenv(name);
+    }
 
     /** Wire {@code dir} and report what was written on stderr. */
     public static void report(Path dir) throws IOException {
@@ -36,7 +48,7 @@ public final class AgentWiring {
      * failure to seed the graph never fails the caller.
      */
     public static List<String> run(Path dir) throws IOException {
-        return run(dir, AgentSetup.Mode.parse(System.getenv("JK_AGENTS")));
+        return run(dir, AgentSetup.Mode.parse(env("JK_AGENTS")));
     }
 
     /** As {@link #run(Path)} for an explicit {@code mode}. */
@@ -59,9 +71,9 @@ public final class AgentWiring {
     /** The agents on this machine: Claude Code's shell, and every agent CLI on {@code PATH}. */
     static Set<AgentSetup.Host> hosts() {
         Set<AgentSetup.Host> found = EnumSet.noneOf(AgentSetup.Host.class);
-        String claudeCode = System.getenv("CLAUDECODE");
+        String claudeCode = env("CLAUDECODE");
         if (claudeCode != null && !claudeCode.isEmpty()) found.add(AgentSetup.Host.CLAUDE);
-        List<String> entries = SearchPath.entries(System.getenv("PATH"));
+        List<String> entries = SearchPath.entries(env("PATH"));
         for (AgentSetup.Host host : AgentSetup.Host.values()) {
             for (String entry : entries) {
                 Path dir = SearchPath.path(entry);
