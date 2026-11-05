@@ -18,8 +18,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code ~/.jk/config.toml}, a project {@code jk.toml} and Maven's {@code settings.xml} read their
- * {@code ${...}} through one tokenizer, {@link ConfigReference}, under two grammars. The readers
- * of those files are pinned to it: none of them carries its own {@code ${} scanner.
+ * {@code ${...}} through one tokenizer, {@link ConfigReference}, under two grammars, and so does
+ * Maven's {@code toolchains.xml}. The readers of those files are pinned to it: none of them carries
+ * its own {@code ${} scanner.
  */
 class OneReferenceTokenizerTest {
 
@@ -27,11 +28,12 @@ class OneReferenceTokenizerTest {
     private static final Pattern SCANNER =
             Pattern.compile("\\\\\\\\\\$\\\\\\\\\\{|(?:indexOf|contains|startsWith|split)\\(\"\\$\\{\"");
 
-    /** The packages that read config.toml, jk.toml and settings.xml values. */
+    /** The packages that read config.toml, jk.toml, settings.xml and toolchains.xml values. */
     private static final List<String> READERS = List.of(
             "shared/core/src/main/java/cc/jumpkick/config",
             "shared/client-io/src/main/java/cc/jumpkick/m2",
-            "shared/client-io/src/main/java/cc/jumpkick/repo");
+            "shared/client-io/src/main/java/cc/jumpkick/repo",
+            "shared/toolchain-jdk/src/main/java/cc/jumpkick/discovery");
 
     @Test
     void only_config_reference_scans_for_a_reference() throws IOException {

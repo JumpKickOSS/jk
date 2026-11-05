@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.config.ConfigReference;
 import cc.jumpkick.util.MinimalXml;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -9,8 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -20,7 +19,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class MavenToolchains {
 
-    private static final Pattern ENV_REF = Pattern.compile("\\$\\{env\\.([^}]+)}");
+    private static final String ENV_PREFIX = "env.";
 
     private MavenToolchains() {}
 
@@ -58,16 +57,19 @@ public final class MavenToolchains {
         return homes;
     }
 
-    /** {@code raw} with every {@code ${env.NAME}} replaced, or null when a named variable is unset. */
+    /**
+     * {@code raw} with every {@code ${env.NAME}} replaced, or null when a named variable is unset.
+     * Read through {@link ConfigReference}'s Maven grammar, the one {@code settings.xml} uses; an
+     * expression other than {@code env.NAME} stays as written.
+     */
     static @Nullable String expand(String raw, Function<String, @Nullable String> env) {
-        Matcher m = ENV_REF.matcher(raw);
-        StringBuilder out = new StringBuilder();
-        while (m.find()) {
-            String value = env.apply(m.group(1));
-            if (value == null || value.isEmpty()) return null;
-            m.appendReplacement(out, Matcher.quoteReplacement(value));
-        }
-        m.appendTail(out);
-        return out.toString();
+        boolean[] unset = {false};
+        String expanded = ConfigReference.expand(raw, ConfigReference::mavenExpression, expression -> {
+            if (!expression.startsWith(ENV_PREFIX)) return null;
+            String value = env.apply(expression.substring(ENV_PREFIX.length()));
+            if (value == null || value.isEmpty()) unset[0] = true;
+            return value;
+        });
+        return unset[0] ? null : expanded;
     }
 }
