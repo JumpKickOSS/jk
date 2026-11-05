@@ -51,6 +51,23 @@ class GuardCommandParseTest {
     }
 
     @Test
+    void test_builds_what_guard_builds_with_the_lanes_off() throws Exception {
+        GuardCommand guard = new GuardCommand();
+        Invocation in = parse("test", "--profile", "ci");
+
+        Invocation compile = guard.guardBuild(in, false, false);
+        Invocation lanes = guard.guardBuild(in, true, false);
+
+        assertThat(compile.isSet("skip-tests")).isTrue();
+        assertThat(compile.isSet("guard"))
+                .as("the suites compile; no lane runs")
+                .isFalse();
+        assertThat(compile.value("profile")).contains("ci");
+        assertThat(lanes.isSet("guard")).isTrue();
+        assertThat(lanes.value("profile")).isEqualTo(compile.value("profile"));
+    }
+
+    @Test
     void commit_msg_takes_the_file_and_hooks_takes_install_with_replace() throws Exception {
         assertThat(parse("commit-msg", ".git/COMMIT_EDITMSG").positionals())
                 .containsExactly("commit-msg", ".git/COMMIT_EDITMSG");

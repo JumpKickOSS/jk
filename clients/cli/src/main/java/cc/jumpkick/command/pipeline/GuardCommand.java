@@ -6,6 +6,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -94,7 +95,7 @@ public final class GuardCommand implements CliCommand {
             return freeze(in, dir, positionals);
         }
         if (!positionals.isEmpty() && "test".equals(positionals.get(0))) {
-            return test(dir);
+            return test(in, dir);
         }
         if (!positionals.isEmpty() && "commit-msg".equals(positionals.get(0))) {
             return commitMsg(dir, positionals);
@@ -119,16 +120,7 @@ public final class GuardCommand implements CliCommand {
         // Every lane, cache-aware: the build with tests skipped and the guard flag on.
         String output = in.value("output").orElse("").trim();
         boolean sarif = output.equalsIgnoreCase("sarif");
-        Invocation.Builder b = Invocation.builder();
-        for (Opt opt : build.options()) BuildVerbCommand.copy(in, opt, b);
-        for (Opt opt : GlobalOptions.globalOpts()) {
-            if (sarif && opt.canonicalName().equals("output")) continue; // the build runs in text mode, quietly
-            BuildVerbCommand.copy(in, opt, b);
-        }
-        if (sarif) b.flag("quiet", true);
-        b.flag("skip-tests", true);
-        b.flag("guard", true);
-        Invocation run = b.build();
+        Invocation run = guardBuild(in, true, sarif);
         // The lanes read classes and packaged jars, never a delivery artifact beside them.
         SessionContext.install(SessionContext.current().withLanesOnly(true));
         int exit;
@@ -168,6 +160,25 @@ public final class GuardCommand implements CliCommand {
             terminalLine(lines, exit).ifPresent(CliOutput::out);
         }
         return exit;
+    }
+
+    /**
+     * The build {@code jk guard} runs: the caller's build and global options, tests skipped, and
+     * {@code lanes} deciding whether the guard lanes run. {@code jk guard test} runs it without them,
+     * so every {@code src/guard} suite compiles from source through the same steps before a fixture
+     * is judged against it.
+     */
+    Invocation guardBuild(Invocation in, boolean lanes, boolean sarif) {
+        Invocation.Builder b = Invocation.builder();
+        for (Opt opt : build.options()) BuildVerbCommand.copy(in, opt, b);
+        for (Opt opt : GlobalOptions.globalOpts()) {
+            if (sarif && opt.canonicalName().equals("output")) continue; // the build runs in text mode, quietly
+            BuildVerbCommand.copy(in, opt, b);
+        }
+        if (sarif) b.flag("quiet", true);
+        b.flag("skip-tests", true);
+        if (lanes) b.flag("guard", true);
+        return b.build();
     }
 
     /**
@@ -236,10 +247,19 @@ public final class GuardCommand implements CliCommand {
 
     /**
      * {@code jk guard test}: compile every fixture directory once per owning module and prove each
-     * fixture-bearing rule and guard test bites — {@code Bad} fires, {@code Ok} stays quiet. Non-zero
-     * when any rule is not proven or the rules do not load.
+     * fixture-bearing rule and guard test bites — {@code Bad} fires, {@code Ok} stays quiet. The
+     * guard suites compile first, through {@code jk guard}'s own build with its lanes off, so a
+     * fixture is never judged against a suite older than its source. Non-zero when the suites do
+     * not compile, any rule is not proven, or the rules do not load.
      */
-    private int test(Path dir) {
+    private int test(Invocation in, Path dir) throws Exception {
+        Invocation compile = guardBuild(in, false, false);
+        SessionContext.install(SessionContext.current().withLanesOnly(true));
+        int built = BuildVerbCommand.run(new PackageVerb("Guard"), compile, true);
+        if (built != Exit.SUCCESS) return built;
+        // A green compile is not this command's answer: in agent mode the fixture verdict below is
+        // the output, not the build's run report.
+        WireStream.reportJob(new WireStream.LastJob(null, null));
         GuardTestAck ack;
         try {
             ack = EngineClient.guardTest(EnginePaths.current(), dir);

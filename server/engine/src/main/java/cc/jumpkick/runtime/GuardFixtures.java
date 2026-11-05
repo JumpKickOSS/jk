@@ -90,6 +90,7 @@ public final class GuardFixtures {
         LoadResult load = GuardRules.load(root, cfg);
         List<String> loadErrors = new ArrayList<>();
         for (LoadError e : load.errors()) loadErrors.add(e.render());
+        indexSuites(root);
         Map<String, GuardSuites.Located> guards = GuardSuites.declaredAcrossWorkspace(root);
         loadErrors.addAll(unindexedSuites(root));
         List<GuardSuites.Declared> declared = new ArrayList<>();
@@ -202,6 +203,22 @@ public final class GuardFixtures {
         PathUtil.forEachRegularFile(c.dir(), (f, attrs) -> files.add(f));
         files.sort(null);
         return files;
+    }
+
+    /**
+     * Bring each compiled suite's index up to date with its classes, as the module lane does before
+     * it reads the suite: guard tests and their fixtures are discovered from the index, and an index
+     * older than the classes would name guards the suite no longer has.
+     */
+    static void indexSuites(Path root) throws IOException {
+        List<Path> modules = new ArrayList<>();
+        modules.add(root);
+        for (Path m : WorkspaceModules.of(root)) if (!modules.contains(m)) modules.add(m);
+        for (Path m : modules) {
+            Path classes = BuildLayout.guardClassesDir(m);
+            if (Files.isDirectory(classes))
+                FactsIndexing.ensure(classes, FactsIndexing.indexPath(BuildLayout.moduleTargetDir(m), "guard"));
+        }
     }
 
     /**
