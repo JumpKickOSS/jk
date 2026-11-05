@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.JkBuild;
@@ -13,12 +14,15 @@ import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.task.IoLedger;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -184,6 +188,77 @@ class PluginRepositoriesTest {
             assertThat(route.url()).isEqualTo(corp);
             assertThat(route.secret()).isEqualTo("corp-secret");
         });
+    }
+
+    /**
+     * The worker hands its routes to a forked resolver that cannot ask for a credential again. A
+     * {@code ${cmd:}} value cached by an earlier command could be most of its time to live old when
+     * the fork starts; the fork is handed one this command's run printed instead.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_fork_is_handed_a_helper_value_printed_during_this_command(@TempDir Path tmp) throws Exception {
+        Path count = tmp.resolve("count");
+        Path helper = tmp.resolve("helper.sh");
+        Files.writeString(helper, """
+                #!/bin/sh
+                n=0
+                [ -f '%1$s' ] && read n < '%1$s'
+                n=$((n + 1))
+                echo "$n" > '%1$s'
+                echo "token-$n"
+                """.formatted(count));
+        assertThat(helper.toFile().setExecutable(true)).isTrue();
+        Files.writeString(tmp.resolve("config.toml"), """
+                [repositories.corp]
+                url = "https://artifactory.acme.test/maven-virtual/"
+                mirror-of = ["*"]
+                token = "${cmd:%s}"
+                """.formatted(helper));
+        System.setProperty("jk.env.JK_HOME", tmp.toString());
+        try {
+            // An earlier command resolved the credential; the value is cached for its time to live.
+            inRequest(() -> assertThat(secrets(routes(tmp).forHandOff())).containsOnly("token-1"));
+
+            inRequest(() -> {
+                PluginRepositories routed = routes(tmp);
+                assertThat(secrets(routed.routes()))
+                        .as("the step's own plan reads the cached value")
+                        .containsOnly("token-1");
+                assertThat(secrets(routed.forHandOff()))
+                        .as("the fork is handed a fresh one")
+                        .containsOnly("token-2");
+                assertThat(secrets(routes(tmp).forHandOff()))
+                        .as("a second fork in the same command shares that run")
+                        .containsOnly("token-2");
+            });
+            assertThat(Files.readString(count).strip()).isEqualTo("2");
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
+    }
+
+    private static PluginRepositories routes(Path tmp) {
+        return PluginRepositories.forInputs(
+                List.of(In.repositories().wireName()),
+                JkBuild.of(new Project("com.example", "app", "1.0", 25)),
+                new Cas(tmp.resolve("cache")),
+                name -> null);
+    }
+
+    private static List<String> secrets(List<RepositoryRoute> routes) {
+        return routes.stream().map(route -> String.valueOf(route.secret())).toList();
+    }
+
+    /** {@code body} as one command: its own request scope, released after. */
+    private static void inRequest(Runnable body) {
+        IoLedger.open(new IoLedger());
+        try {
+            body.run();
+        } finally {
+            RequestScope.release();
+            IoLedger.close();
+        }
     }
 
     @Test

@@ -51,6 +51,11 @@ import org.jspecify.annotations.Nullable;
  * {@link #forget} says so, and the repository fails at once. Every module of a lock builds its own
  * repositories, so without this an always-refused helper (an expired SSO login) would run twice per
  * module. The next request runs it again, so a user who logs in again is not kept waiting.
+ *
+ * <p><b>Handing a value off.</b> A process jk cannot refresh (a plugin step's forked resolver)
+ * holds the value it was given for as long as it runs. {@link #renewForHandOff} drops a cached
+ * value that no run of this request printed, so what the process receives is at most as old as
+ * the request, not as old as the time to live.
  */
 public final class CredentialHelpers {
 
@@ -77,6 +82,9 @@ public final class CredentialHelpers {
 
     /** The request-scope key of the helpers re-run during the request. */
     private static final Object RERUNS = new Object();
+
+    /** The request-scope key of every helper run during the request. */
+    private static final Object RUNS = new Object();
 
     /** One helper's argv and its time to live, as a reference body spells them. */
     public record Command(List<String> argv, Duration ttl) {
@@ -164,7 +172,10 @@ public final class CredentialHelpers {
                 slot.rerunAsked = false;
                 slot.rerun = rerun;
                 slot.ranAtNanos = now;
-                if (rerun && RequestScope.hasRequest()) rerunsThisRequest().add(key);
+                if (RequestScope.hasRequest()) {
+                    runsThisRequest().add(key);
+                    if (rerun) rerunsThisRequest().add(key);
+                }
             }
             // Filed on every answer, cached or not: each workspace that uses it masks it.
             ResolvedSecrets.record(value);
@@ -212,6 +223,35 @@ public final class CredentialHelpers {
             }
         }
         return dropped || !spent;
+    }
+
+    /**
+     * Before {@code value} is handed to a process that cannot ask for it again: drop it from every
+     * slot whose helper did not print it during the current request (off a request: every slot), so
+     * the next resolve runs the helper and the process holds a value printed for this command. Not a
+     * refusal: the run it causes is an ordinary one. True when a value was dropped.
+     */
+    public static boolean renewForHandOff(@Nullable String value) {
+        if (value == null) return false;
+        boolean dropped = false;
+        for (Map.Entry<Key, Slot> entry : SLOTS.entrySet()) {
+            Slot slot = entry.getValue();
+            slot.lock.lock();
+            try {
+                if (!value.equals(slot.value)) continue;
+                if (RequestScope.hasRequest() && runsThisRequest().contains(entry.getKey())) continue;
+                slot.value = null;
+                dropped = true;
+            } finally {
+                slot.lock.unlock();
+            }
+        }
+        return dropped;
+    }
+
+    /** The helpers run during the current request; the set ends with the request. */
+    private static Set<Key> runsThisRequest() {
+        return RequestScope.current().get(RUNS, k -> ConcurrentHashMap.newKeySet());
     }
 
     /** True when {@code slot}'s re-run happened in the current request, or off a request within the window. */

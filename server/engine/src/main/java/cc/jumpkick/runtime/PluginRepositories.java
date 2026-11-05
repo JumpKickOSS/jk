@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.CredentialHelpers;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.CentralMirror;
@@ -15,6 +16,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
@@ -28,13 +30,36 @@ import org.jspecify.annotations.Nullable;
  * routing or a credential: a mirror window opening or a token rotating re-runs nothing, a
  * repository added to {@code [repositories]} does.
  *
- * @param routes what the worker receives
+ * <p>The worker hands the routes to a forked resolver that cannot ask jk for a credential again,
+ * so a fork is given {@link #forHandOff()}: a {@code ${cmd:}} helper's value printed during this
+ * command, not one cached from an earlier one.
+ *
+ * @param routes what the step's key and its plan read
  * @param token the declared set's identity for the action key
+ * @param rebuild the routes resolved again, or null when they were built from a group in hand
  */
-record PluginRepositories(List<RepositoryRoute> routes, String token) {
+record PluginRepositories(
+        List<RepositoryRoute> routes,
+        String token,
+        @Nullable Supplier<List<RepositoryRoute>> rebuild) {
 
     /** A step that declared no {@code repositories} input. */
-    static final PluginRepositories NONE = new PluginRepositories(List.of(), "none");
+    static final PluginRepositories NONE = new PluginRepositories(List.of(), "none", null);
+
+    /**
+     * The routes a forked worker receives: {@link #routes} again, unless a credential among them is
+     * a helper's value that no run of this request printed. That value is dropped, the helper runs,
+     * and the routes are resolved again with what it prints, so the fork holds a value as young as
+     * the command rather than one up to its time to live old.
+     */
+    List<RepositoryRoute> forHandOff() {
+        if (rebuild == null) return routes;
+        boolean renewed = false;
+        for (RepositoryRoute route : routes) {
+            if (CredentialHelpers.renewForHandOff(route.secret())) renewed = true;
+        }
+        return renewed ? rebuild.get() : routes;
+    }
 
     /**
      * The routes for {@code inputs}: built from the module's repository group when the input is
@@ -44,10 +69,14 @@ record PluginRepositories(List<RepositoryRoute> routes, String token) {
             List<String> inputs, JkBuild project, Cas cas, Function<String, @Nullable String> env) {
         if (!inputs.contains(In.repositories().wireName())) return NONE;
         ProxyEnvironment proxies = ProxyEnvironment.ambient();
-        return of(
-                RepoGroupBuilder.buildFor(project, null, cas, env),
-                CentralMirror.standard()::route,
-                url -> proxies.proxyUrl(url).map(URI::create).orElse(null));
+        Function<URI, @Nullable URI> proxyFor =
+                url -> proxies.proxyUrl(url).map(URI::create).orElse(null);
+        PluginRepositories built =
+                of(RepoGroupBuilder.buildFor(project, null, cas, env), CentralMirror.standard()::route, proxyFor);
+        Supplier<List<RepositoryRoute>> rebuild =
+                () -> of(RepoGroupBuilder.buildFor(project, null, cas, env), CentralMirror.standard()::route, proxyFor)
+                        .routes();
+        return new PluginRepositories(built.routes(), built.token(), rebuild);
     }
 
     /** As below, every route going direct. */
@@ -71,7 +100,7 @@ record PluginRepositories(List<RepositoryRoute> routes, String token) {
             routes.add(route(repo, url).through(proxyFor.apply(url)));
             declared.append(repo.name()).append('|').append(repo.baseUrl()).append('\n');
         }
-        return new PluginRepositories(List.copyOf(routes), Hashing.sha256Hex(declared.toString()));
+        return new PluginRepositories(List.copyOf(routes), Hashing.sha256Hex(declared.toString()), null);
     }
 
     /**

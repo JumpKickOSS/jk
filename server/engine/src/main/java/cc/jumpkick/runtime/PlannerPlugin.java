@@ -242,7 +242,7 @@ public final class PlannerPlugin {
             specWriter.extra(tool.getKey(), tool.getValue());
         }
         writeChainedInputs(specWriter, step, paths.layout(), src.siblingFiles());
-        for (RepositoryRoute route : src.repositories().routes()) specWriter.repository(route);
+        for (RepositoryRoute route : src.repositories().forHandOff()) specWriter.repository(route);
         return specWriter.writeTempSpec();
     }
 
@@ -797,7 +797,7 @@ public final class PlannerPlugin {
         }
         for (var e : extras.entrySet()) spec.extra(e.getKey(), e.getValue());
         for (var e : secrets.entrySet()) spec.secret(e.getKey(), e.getValue());
-        for (RepositoryRoute route : packaging.repositories().routes()) spec.repository(route);
+        for (RepositoryRoute route : packaging.repositories().forHandOff()) spec.repository(route);
         spec.extra("sbom", sbomFile);
         for (TaskDecl step : decls.steps()) {
             Path scratch = PluginBuild.taskScratch(layout, step.name());

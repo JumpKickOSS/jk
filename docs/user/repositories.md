@@ -394,6 +394,11 @@ password = "${cmd:aws codeartifact get-authorization-token --domain acme --domai
 - A helper runs again at most once per command. If the value it printed on that second run is
   refused too, every other repository and module that uses it fails at once, so an expired SSO login
   doesn't run the helper twice for every module of a lock. The next command runs the helper again.
+- A plugin step whose own resolver runs in a separate process (the Quarkus augment's) is handed
+  the credential once and cannot ask for it again. jk hands it a value the helper printed during
+  this command, running the helper if the cached value came from an earlier one. The value must
+  stay valid for as long as that step runs; a token that expires mid-step fails the step with a
+  401, and the next command hands it a fresh one.
 - jk masks what the helper prints, as it masks every other credential.
 
 `${cmd:…}` works only in `~/.jk/config.toml`. Anywhere else it is a parse error, not a warning:
