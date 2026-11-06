@@ -2,23 +2,95 @@
 package cc.jumpkick.config;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.tomlj.Toml;
+import org.tomlj.TomlParseResult;
+import org.tomlj.TomlTable;
 
 /**
  * Minimal merge editor for {@code ~/.jk/config.toml}. Preserves unknown keys; only touches the
- * root-level {@code nerd-font} and {@code self-update}.
+ * root-level {@code nerd-font} and {@code self-update}, and appends {@code [repositories.<id>]}
+ * tables.
  */
 public final class UserConfigEditor {
 
     private static final Pattern TABLE_HEADER = Pattern.compile("(?m)^[ \\t]*\\[");
 
     private UserConfigEditor() {}
+
+    /**
+     * A {@code [repositories.<name>]} table: {@code credential} maps {@code token}, {@code
+     * username} or {@code password} to its value, a {@code ${VAR}} reference for a secret.
+     */
+    public record RepositoryTable(String name, URI url, List<String> groups, Map<String, String> credential) {
+        public RepositoryTable {
+            groups = List.copyOf(groups);
+            credential = Collections.unmodifiableMap(new LinkedHashMap<>(credential));
+        }
+    }
+
+    /**
+     * Append {@code table} to {@code configFile}, creating the file as needed. Answers false, and
+     * leaves the file as it is, when it already declares a repository of that name.
+     */
+    public static boolean addRepository(Path configFile, RepositoryTable table) throws IOException {
+        String text = Files.isRegularFile(configFile) ? Files.readString(configFile, StandardCharsets.UTF_8) : "";
+        if (declaresRepository(text, table.name())) return false;
+        Path parent = configFile.getParent();
+        if (parent != null) Files.createDirectories(parent);
+        Files.writeString(configFile, appendRepository(text, table), StandardCharsets.UTF_8);
+        return true;
+    }
+
+    /**
+     * Whether {@code toml} declares a repository named {@code name}. A file that does not parse is
+     * refused rather than appended to, naming the file's own error.
+     */
+    static boolean declaresRepository(String toml, String name) throws IOException {
+        TomlParseResult parsed = Toml.parse(toml);
+        if (parsed.hasErrors()) {
+            throw new IOException(
+                    "~/.jk/config.toml does not parse: " + parsed.errors().getFirst());
+        }
+        TomlTable repositories = parsed.getTable("repositories");
+        return repositories != null && repositories.keySet().contains(name);
+    }
+
+    /** Pure text transform for tests: {@code toml} with {@code table} appended. */
+    static String appendRepository(String toml, RepositoryTable table) {
+        StringBuilder sb = new StringBuilder(toml);
+        if (!toml.isEmpty()) {
+            if (!toml.endsWith("\n")) sb.append('\n');
+            sb.append('\n');
+        }
+        sb.append("[repositories.").append(table.name()).append("]\n");
+        sb.append("url = ").append(quote(table.url().toString())).append('\n');
+        if (!table.groups().isEmpty()) {
+            sb.append("groups = [");
+            for (int i = 0; i < table.groups().size(); i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(quote(table.groups().get(i)));
+            }
+            sb.append("]\n");
+        }
+        table.credential()
+                .forEach((k, v) -> sb.append(k).append(" = ").append(quote(v)).append('\n'));
+        return sb.toString();
+    }
+
+    private static String quote(String s) {
+        return '"' + s.replace("\\", "\\\\").replace("\"", "\\\"") + '"';
+    }
 
     /**
      * Set root-level {@code nerd-font}, creating the file as needed. Returns the path written.

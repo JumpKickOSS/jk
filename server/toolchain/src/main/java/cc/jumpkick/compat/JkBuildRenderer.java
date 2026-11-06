@@ -636,11 +636,16 @@ public final class JkBuildRenderer {
         sb.append("[repositories]\n");
         for (RepositorySpec r : repos) {
             sb.append(safeKey(r.name())).append(" = ");
-            if (r.releases() && r.snapshots() && !r.blocked() && !r.optional()) {
+            if (r.releases()
+                    && r.snapshots()
+                    && !r.blocked()
+                    && !r.optional()
+                    && r.groups().isEmpty()) {
                 sb.append(quote(r.url().toString()));
             } else {
-                // A policy other than Maven's default, a block or an optional repository needs the table form.
+                // Groups, a policy other than Maven's default, a block or an optional repository need the table form.
                 sb.append("{ url = ").append(quote(r.url().toString()));
+                if (!r.groups().isEmpty()) sb.append(", groups = ").append(list(r.groups()));
                 if (!r.releases()) sb.append(", releases = false");
                 if (!r.snapshots()) sb.append(", snapshots = false");
                 if (r.blocked()) sb.append(", blocked = true");
@@ -681,11 +686,16 @@ public final class JkBuildRenderer {
 
     /**
      * The rows of one scope table. {@code [platform-dependencies]} is ordered — the first BOM
-     * that manages a module wins — so it keeps declaration order; every other table sorts by the
+     * that manages a module wins — so it keeps declaration order and the first row of a key, as a
+     * BOM declared twice (once per Gradle configuration) is one BOM; every other table sorts by the
      * manifest key.
      */
     private static Collection<Dependency> ordered(Scope scope, List<Dependency> deps) {
-        if (scope == Scope.PLATFORM) return deps;
+        if (scope == Scope.PLATFORM) {
+            Map<String, Dependency> first = new LinkedHashMap<>();
+            for (Dependency d : deps) first.putIfAbsent(d.library(), d);
+            return first.values();
+        }
         Map<String, Dependency> sorted = new TreeMap<>();
         for (Dependency d : deps) sorted.put(d.library(), d);
         return sorted.values();

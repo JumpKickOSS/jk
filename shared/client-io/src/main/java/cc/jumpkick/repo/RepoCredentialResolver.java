@@ -183,12 +183,14 @@ public final class RepoCredentialResolver {
     }
 
     private RepoCredential select(@Nullable String repoId, @Nullable URI url, Optional<RepoCredential> inline) {
-        // 1. inline — expanding ${VAR} here rather than at parse time, because this is where the
-        // request's environment is in scope. Doing it during the parse made the parse
-        // environment-dependent, so a memoized result served the first caller's values to everyone,
-        // and inside the engine it read the daemon's environment instead of the caller's.
-        Optional<RepoCredential> fromInline =
-                inline.flatMap(c -> inlineCredential(repoId, url, c)).filter(c -> !c.isAnonymous());
+        // 1. inline: the user's own declaration of this id at this origin, whatever the project
+        // wrote (the resolver sees one merged declaration per id, a project's beating the user's),
+        // else the project's. ${VAR} expands here, where the request's environment is in scope.
+        Optional<RepoCredential> own = userDeclaration(repoId, url).flatMap(RepositorySpec::credentialOpt);
+        Optional<RepoCredential> fromInline = (own.isPresent()
+                        ? own.map(c -> expand(repoId, c, ReferenceResolver.Origin.USER_CONFIG))
+                        : inline.flatMap(c -> inlineCredential(repoId, url, c)))
+                .filter(c -> !c.isAnonymous());
         if (fromInline.isPresent()) return fromInline.get();
 
         // Sources 2–4 are keyed by repo id; skip them when there's no declared
@@ -243,25 +245,19 @@ public final class RepoCredentialResolver {
     }
 
     /**
-     * The credential an inline declaration contributes, expanded — or empty when its {@code ${VAR}}
-     * references may not be read for this repository, in which case the name-keyed sources get
-     * their turn.
+     * The credential a project's inline declaration contributes, expanded — or empty when its
+     * {@code ${VAR}} references may not be read for this repository, in which case the name-keyed
+     * sources get their turn. Asked only when the user's own declaration carries no credential.
      *
-     * <p>The resolver sees one merged declaration per id (a project's beats the user's on a name
-     * clash), so provenance is recovered from the user's own list: a user-config declaration of
-     * this repository at this origin is the user's word, and its credential is the one used
-     * whatever the project wrote. Without one, the reference is the project's, and a project may
-     * read only the repository's own {@code JK_REPO_<ID>_*} variables — the ones a user exports for
-     * exactly this purpose — and only when something binds the name to the origin, because
-     * {@code ${JK_REPO_NEXUS_TOKEN}} written beside an attacker's URL is the very redirect the
-     * binding rule exists for.
+     * <p>A project may read only the repository's own {@code JK_REPO_<ID>_*} variables — the ones a
+     * user exports for exactly this purpose — and only when something binds the name to the
+     * origin, because {@code ${JK_REPO_NEXUS_TOKEN}} written beside an attacker's URL is the very
+     * redirect the binding rule exists for.
      */
     private Optional<RepoCredential> inlineCredential(
             @Nullable String repoId, @Nullable URI url, RepoCredential declared) {
         List<ConfigReference> references = referencesIn(declared);
         if (references.isEmpty()) return Optional.of(declared);
-        Optional<RepoCredential> own = userDeclaration(repoId, url).flatMap(RepositorySpec::credentialOpt);
-        if (own.isPresent()) return Optional.of(expand(repoId, own.get(), ReferenceResolver.Origin.USER_CONFIG));
         if (!projectMayRead(repoId, url, references)) return Optional.empty();
         return Optional.of(expand(repoId, declared, ReferenceResolver.Origin.PROJECT));
     }

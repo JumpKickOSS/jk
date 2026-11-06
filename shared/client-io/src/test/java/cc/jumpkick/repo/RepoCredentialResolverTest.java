@@ -504,6 +504,16 @@ class RepoCredentialResolverTest {
         assertThat(warnings).isEmpty();
     }
 
+    /** A project table with no credential at all still gets the user's own declaration's credential. */
+    @Test
+    void the_users_own_declaration_supplies_the_credential_the_project_table_lacks(@TempDir Path dir) {
+        var r = userConfigured(dir, Map.of("CORP_TOKEN", "corp-secret"), new RepoCredential.Bearer("${CORP_TOKEN}"));
+
+        var resolved = r.resolve("internal", INTERNAL, Optional.empty());
+
+        assertThat(resolved).isEqualTo(new RepoCredential.Bearer("corp-secret"));
+    }
+
     /**
      * Project and user both declare the id at one origin: the merged declaration the resolver is
      * handed is the project's, and the credential that goes out is the user's own.

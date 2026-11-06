@@ -3,8 +3,11 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -112,5 +115,44 @@ class UserConfigEditorTest {
         int n = 0;
         for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + 1)) n++;
         return n;
+    }
+
+    private static final UserConfigEditor.RepositoryTable GITLAB = new UserConfigEditor.RepositoryTable(
+            "gitlab",
+            URI.create("https://gitlab.example/api/v4/projects/7/packages/maven/"),
+            List.of("com.acme"),
+            Map.of("token", "${ACME_PULL_TOKEN}"));
+
+    @Test
+    void a_repository_table_is_appended_after_what_the_file_holds() throws Exception {
+        String out = UserConfigEditor.appendRepository("nerd-font = true", GITLAB);
+
+        assertThat(out).isEqualTo("""
+                nerd-font = true
+
+                [repositories.gitlab]
+                url = "https://gitlab.example/api/v4/projects/7/packages/maven/"
+                groups = ["com.acme"]
+                token = "${ACME_PULL_TOKEN}"
+                """);
+        assertThat(UserConfigEditor.declaresRepository(out, "gitlab")).isTrue();
+    }
+
+    /** A repository the file already declares, as a table or as a key of [repositories], is left alone. */
+    @Test
+    void a_repository_the_file_declares_is_left_as_it_is(@TempDir Path home) throws Exception {
+        Path config = home.resolve("config.toml");
+        Files.writeString(config, "[repositories]\ngitlab = \"https://elsewhere.example/\"\n");
+
+        assertThat(UserConfigEditor.addRepository(config, GITLAB)).isFalse();
+        assertThat(Files.readString(config)).isEqualTo("[repositories]\ngitlab = \"https://elsewhere.example/\"\n");
+    }
+
+    @Test
+    void a_missing_file_is_created_with_the_table(@TempDir Path home) throws Exception {
+        Path config = home.resolve("jk").resolve("config.toml");
+
+        assertThat(UserConfigEditor.addRepository(config, GITLAB)).isTrue();
+        assertThat(Files.readString(config)).startsWith("[repositories.gitlab]\n");
     }
 }

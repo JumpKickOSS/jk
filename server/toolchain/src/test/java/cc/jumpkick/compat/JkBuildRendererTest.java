@@ -692,6 +692,43 @@ class JkBuildRendererTest {
                 .containsExactly("spring-boot-dependencies", "knife4j-dependencies");
     }
 
+    /** A BOM listed twice (two Gradle configurations import it) renders once, so the manifest parses. */
+    @Test
+    void a_platform_listed_twice_renders_once() {
+        Dependency bom =
+                Dependency.of("jackson-bom", "com.fasterxml.jackson:jackson-bom", VersionSelector.parse("2.22.1"));
+        Dependency junit = Dependency.of("junit-bom", "org.junit:junit-bom", VersionSelector.parse("6.1.3"));
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.PLATFORM, List.of(bom, junit, bom));
+        JkBuild model =
+                new JkBuild(new Project("com.example", "widget", "1.0.0", 25), new JkBuild.Dependencies(byScope));
+
+        String out = JkBuildRenderer.render(model);
+
+        assertThat(JkBuildParser.parse(out).dependencies().of(Scope.PLATFORM))
+                .extracting(Dependency::library)
+                .containsExactly("jackson-bom", "junit-bom");
+    }
+
+    @Test
+    void a_repository_with_groups_renders_them_and_round_trips() {
+        JkBuild model = new JkBuild(
+                new Project("com.example", "widget", "1.0.0", 25),
+                JkBuild.Dependencies.empty(),
+                List.of(new RepositorySpec(
+                        "gitlab",
+                        URI.create("https://gitlab.example/api/v4/projects/7/packages/maven/"),
+                        null,
+                        null,
+                        List.of("com.acme", "com.acme.*"))));
+
+        String out = JkBuildRenderer.render(model);
+
+        assertThat(out).contains("groups = [\"com.acme\", \"com.acme.*\"]");
+        assertThat(JkBuildParser.parse(out).repositories()).singleElement().satisfies(r -> assertThat(r.groups())
+                .containsExactly("com.acme", "com.acme.*"));
+    }
+
     @Test
     void output_round_trips_through_the_parser() {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);

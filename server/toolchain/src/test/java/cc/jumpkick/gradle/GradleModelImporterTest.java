@@ -25,7 +25,7 @@ class GradleModelImporterTest {
 
     /** A three-module build whose dependencies came through a version catalog, as Gradle reports them. */
     private static final String THREE_MODULES = """
-            {"gradle":"9.5.1","rootName":"shop","settingsRepositories":["https://repo.maven.apache.org/maven2/"],
+            {"gradle":"9.5.1","rootName":"shop","settingsRepositories":[{"url":"https://repo.maven.apache.org/maven2/","name":"MavenRepo"}],
              "projects":[
               {"path":":","projectName":"shop","dir":"","group":"com.acme","version":"1.2.0","plugins":[],"pluginClasses":[],
                "pluginVersions":{},"bootBuildInfo":false,"repositories":[],"configurations":[],
@@ -33,7 +33,7 @@ class GradleModelImporterTest {
               {"path":":api","projectName":"api","dir":"api","group":"com.acme","version":"1.2.0",
                "plugins":["java","java-library"],"pluginClasses":[],"pluginVersions":{},
                "java":{"toolchain":21,"sourceCompatibility":"21","targetCompatibility":"21","release":17},"bootBuildInfo":false,
-               "repositories":["https://repo.maven.apache.org/maven2/","https://maven.acme.example/releases/","file:/home/dev/.m2/repository/"],
+               "repositories":[{"url":"https://repo.maven.apache.org/maven2/","name":"MavenRepo"},{"url":"https://maven.acme.example/releases/","name":"maven"},{"url":"file:/home/dev/.m2/repository/","name":"MavenLocal"}],
                "sourceSets":[{"name":"main","java":["src/main/java"],"resources":["src/main/resources"],"kotlin":[]}],
                "configurations":[
                  {"name":"api","dependencies":[{"kind":"module","group":"com.google.guava","artifact":"guava","version":"33.4.8-jre","excludes":["com.google.code.findbugs:jsr305"]}],"constraints":[]},
@@ -154,8 +154,71 @@ class GradleModelImporterTest {
         assertThat(result.root().repositories())
                 .extracting(r -> r.url().toString())
                 .containsExactly("https://maven.acme.example/releases/");
+        assertThat(result.root().repositories().getFirst().name()).isEqualTo("repo1");
         assertThat(module(result, "api").repositories()).isEmpty();
         assertThat(messages(result.report())).anySatisfy(m -> assertThat(m).contains("mavenLocal()"));
+        assertThat(result.machineRepositories()).isEmpty();
+    }
+
+    /**
+     * A named repository keeps its name, its {@code content { includeGroup }} filter is its
+     * {@code groups}, and a credential the build reads from an environment variable is a
+     * {@code ~/.jk/config.toml} table naming the variable.
+     */
+    @Test
+    void a_named_repository_keeps_its_name_groups_and_the_variable_its_credential_reads() {
+        String model = THREE_MODULES.replace(
+                "{\"url\":\"https://maven.acme.example/releases/\",\"name\":\"maven\"}",
+                "{\"url\":\"https://gitlab.example/api/v4/projects/7/packages/maven\",\"name\":\"GitLab\","
+                        + "\"groups\":[\"com.acme.internal\"],\"unmappedContent\":[\"com.other:lib\"],"
+                        + "\"credential\":{\"kind\":\"header\",\"secretEnv\":\"ACME_PULL_TOKEN\"}}");
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
+
+        assertThat(result.root().repositories()).singleElement().satisfies(r -> {
+            assertThat(r.name()).isEqualTo("gitlab");
+            assertThat(r.url()).hasToString("https://gitlab.example/api/v4/projects/7/packages/maven/");
+            assertThat(r.groups()).containsExactly("com.acme.internal");
+            assertThat(r.credentialOpt()).isEmpty();
+        });
+        assertThat(result.machineRepositories()).singleElement().satisfies(t -> {
+            assertThat(t.name()).isEqualTo("gitlab");
+            assertThat(t.groups()).containsExactly("com.acme.internal");
+            assertThat(t.credential()).containsExactly(Map.entry("token", "${ACME_PULL_TOKEN}"));
+        });
+        assertThat(messages(result.report()))
+                .anySatisfy(m -> assertThat(m).contains("${ACME_PULL_TOKEN}").contains("JK_REPO_GITLAB_HOST="))
+                .anySatisfy(m -> assertThat(m).contains("com.other:lib"));
+    }
+
+    /** A credential no environment variable holds is a row asking for a login, and nothing is written for it. */
+    @Test
+    void a_credential_no_variable_holds_is_a_row_not_a_table() {
+        String model = THREE_MODULES.replace(
+                "{\"url\":\"https://maven.acme.example/releases/\",\"name\":\"maven\"}",
+                "{\"url\":\"https://maven.acme.example/releases/\",\"name\":\"acme\","
+                        + "\"credential\":{\"kind\":\"password\",\"username\":\"ci\"}}");
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
+
+        assertThat(result.machineRepositories()).isEmpty();
+        assertThat(messages(result.report())).anySatisfy(m -> assertThat(m).contains("jk repo login acme"));
+    }
+
+    /** A BOM two configurations import is one platform row: jk's platform table serves every scope. */
+    @Test
+    void a_platform_two_configurations_import_is_one_row() {
+        String model = THREE_MODULES.replace(
+                "{\"name\":\"testImplementation\",\"dependencies\":[",
+                "{\"name\":\"testImplementation\",\"dependencies\":[{\"kind\":\"module\",\"group\":\"org.junit\","
+                        + "\"artifact\":\"junit-bom\",\"version\":\"6.1.3\",\"category\":\"platform\",\"excludes\":[]},");
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
+
+        assertThat(only(module(result, "core"), Scope.PLATFORM).module()).isEqualTo("org.junit:junit-bom");
     }
 
     /** A module on a Kotlin below jk's floor imports at the floor, with a row saying so. */

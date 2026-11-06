@@ -536,7 +536,18 @@ The evaluated build imports as a workspace: the root `jk.toml` names every compi
 nothing is not a module, a `java-platform` project is a row — `jk export bom` writes a BOM), each
 member's manifest carries its own coordinates, `project(":sibling")` is a workspace edge on the
 sibling (two projects sharing a name are each named by their path, with a row), and every
-repository other than Central is hoisted onto the root. Configurations land in the table that
+repository other than Central is hoisted onto the root under its Gradle `name` (`repoN` for
+Gradle's generated `maven`, `maven2`, …), the groups its `content { includeGroup … }` filter
+includes as its `groups` (`includeGroupAndSubgroups` adds `g.*`; a filter narrower than a group is
+a row). A repository credential the build reads from an environment variable
+(`System.getenv("GITLAB_TOKEN")`, as header or password credentials) is never written into the
+project: a project's `jk.toml` may read no variable but the repository's own `JK_REPO_<ID>_*`
+([Who may write a `${VAR}` reference](repositories.md#who-may-write-a-var-reference)). The import
+appends the repository to `~/.jk/config.toml` instead, with `groups` and a `${VAR}` reference to
+that variable (`token = "${GITLAB_TOKEN}"`), so it is sent from this machine and the group is asked
+of nothing else; a table of that name already there is left alone, with a row. A row names the CI
+recipe (`JK_REPO_<ID>_TOKEN` with `JK_REPO_<ID>_HOST`), and a credential no variable holds asks for
+`jk repo login <id>`. Configurations land in the table that
 means the same thing: `implementation` and `api` in `[dependencies]`, `compileOnly` and
 `compileOnlyApi` in `[provided-dependencies]`, `runtimeOnly` in `[runtime-dependencies]`,
 `testImplementation` and `testRuntimeOnly` in `[test-dependencies]` — `testCompileOnly` too, with

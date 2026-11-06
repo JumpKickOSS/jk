@@ -5,6 +5,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ImportedKotlin;
 import cc.jumpkick.compat.NodeImportMapping;
 import cc.jumpkick.compat.RelocationRules;
+import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.model.BuildBlock;
@@ -27,6 +28,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -147,6 +149,8 @@ final class GradleModelImporter {
     private final Map<String, String> namesByPath = new LinkedHashMap<>();
 
     private final Map<String, RepositorySpec> repositories = new LinkedHashMap<>();
+    /** The {@code ~/.jk/config.toml} tables that carry the credentials the build reads from the environment. */
+    private final List<UserConfigEditor.RepositoryTable> machineRepositories = new ArrayList<>();
     /** Whether the {@code mavenLocal()} row was written; one row however many projects declare it. */
     private boolean mavenLocal;
 
@@ -196,11 +200,11 @@ final class GradleModelImporter {
                     + " no JVM plugin and declare" + (skipped.size() == 1 ? "s" : "")
                     + " nothing; not workspace modules.");
         }
-        for (String url : model.settingsRepositories()) repository(url);
+        for (GradleModel.Repository r : model.settingsRepositories()) repository(r);
         if (members.isEmpty()) {
-            for (String url : root.repositories()) repository(url);
+            for (GradleModel.Repository r : root.repositories()) repository(r);
             JkBuild single = memberBuild(root, root.name(), "", new ArrayList<>(repositories.values()));
-            return new GradleBuildImport.Result(single, Map.of(), finish());
+            return new GradleBuildImport.Result(single, Map.of(), finish(), machineRepositories);
         }
         nameMembers(members);
         Map<String, JkBuild> modules = new LinkedHashMap<>();
@@ -215,14 +219,14 @@ final class GradleModelImporter {
         }
         reportPlugins(root, new LinkedHashSet<>(root.plugins()), rootRows);
         reportTasks(root, rootRows);
-        for (String url : root.repositories()) repository(url);
+        for (GradleModel.Repository r : root.repositories()) repository(r);
         rows.addAll("", rootRows.build());
         JkBuild rootBuild = JkBuild.builder(rootProject(root, members))
                 .workspace(new Workspace(
                         members.stream().map(GradleModel.Project::dir).toList()))
                 .repositories(new ArrayList<>(repositories.values()))
                 .build();
-        return new GradleBuildImport.Result(rootBuild, modules, finish());
+        return new GradleBuildImport.Result(rootBuild, modules, finish(), machineRepositories);
     }
 
     private ImportReport finish() {
@@ -303,7 +307,7 @@ final class GradleModelImporter {
         Map<Scope, List<Dependency>> deps = new EnumMap<>(Scope.class);
         boolean platformed = bomPlatforms(p, applied, deps, local);
         for (GradleModel.Configuration c : p.configurations()) mapConfiguration(p, c, deps, local, platformed);
-        for (String url : p.repositories()) repository(url);
+        for (GradleModel.Repository r : p.repositories()) repository(r);
         List<PluginConfig> plugins =
                 new ArrayList<>(GradleImporter.mapPluginTables(applied, p.pluginVersions(), importRules, local));
         GradleModel.Xjc xjc = p.xjc();
@@ -608,6 +612,10 @@ final class GradleModelImporter {
         }
         Scope target = d.isPlatform() ? Scope.PLATFORM : scope;
         String module = d.module();
+        // jk has one platform table for every scope: a BOM each configuration imports is one row.
+        if (target == Scope.PLATFORM
+                && deps.getOrDefault(Scope.PLATFORM, List.of()).stream()
+                        .anyMatch(e -> e.module().equals(module))) return;
         String shortName = shortNames.of(module).orElse(d.artifact());
         String version = d.effectiveVersion();
         Dependency dep;
@@ -737,7 +745,14 @@ final class GradleModelImporter {
         }
     }
 
-    private void repository(String url) {
+    /**
+     * A repository the build declares, under its Gradle name: the groups its {@code content { }}
+     * filter includes are its {@code groups}, and a credential the build reads from environment
+     * variables becomes a {@code ~/.jk/config.toml} table naming them, since a project manifest may
+     * read no variable but the repository's own {@code JK_REPO_<ID>_*}.
+     */
+    private void repository(GradleModel.Repository repo) {
+        String url = repo.url();
         if (url.isBlank() || GradleImporter.isCentral(url)) return;
         if (url.startsWith("file:") && url.replace('\\', '/').matches(".*/\\.m2/repository/?")) {
             if (mavenLocal) return;
@@ -747,11 +762,75 @@ final class GradleModelImporter {
         }
         String normalized = url.endsWith("/") ? url : url + "/";
         if (repositories.containsKey(normalized)) return;
+        URI uri;
         try {
-            String name = "repo" + (repositories.size() + 1);
-            repositories.put(normalized, new RepositorySpec(name, RepositorySpec.normalizedUrl(new URI(normalized))));
+            uri = RepositorySpec.normalizedUrl(new URI(normalized));
         } catch (URISyntaxException e) {
             report.warning("repository URL `" + url + "` is not a valid URI; skipped.");
+            return;
         }
+        String name = repositoryName(repo.name());
+        repositories.put(normalized, new RepositorySpec(name, uri, null, null, repo.groups()));
+        if (!repo.unmappedContent().isEmpty()) {
+            report.warning(
+                    "repository `" + name + "` filters its content by " + String.join(", ", repo.unmappedContent())
+                            + "; jk binds whole groups to a repository (`groups`), so these filters are not written.");
+        }
+        GradleModel.Credential credential = repo.credential();
+        if (credential != null) credential(name, uri, repo.groups(), credential);
     }
+
+    private void credential(String name, URI url, List<String> groups, GradleModel.Credential credential) {
+        String secretEnv = credential.secretEnv();
+        Map<String, String> keys = new LinkedHashMap<>();
+        switch (credential.kind()) {
+            case "header" -> {
+                if (secretEnv != null) keys.put("token", "${" + secretEnv + "}");
+            }
+            case "password" -> {
+                String username = credential.usernameEnv() != null
+                        ? "${" + credential.usernameEnv() + "}"
+                        : credential.username();
+                if (secretEnv != null && username != null) {
+                    keys.put("username", username);
+                    keys.put("password", "${" + secretEnv + "}");
+                }
+            }
+            default -> {}
+        }
+        String prefix = "JK_REPO_" + name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_") + "_";
+        String ci = " Where that table is not (CI), export " + prefix + "TOKEN (or " + prefix + "USERNAME + " + prefix
+                + "PASSWORD) with " + prefix + "HOST=" + url.getHost() + ".";
+        if (keys.isEmpty()) {
+            report.warning("repository `" + name + "` takes a credential (" + credential.kind() + ") the build reads"
+                    + " from no environment variable jk can name; run `jk repo login " + name + "`." + ci);
+            return;
+        }
+        machineRepositories.add(new UserConfigEditor.RepositoryTable(name, url, groups, keys));
+        report.warning("repository `" + name + "` takes the credential the build reads from "
+                + String.join(" and ", keys.values()) + ": a project's jk.toml may not read that variable, so"
+                + " jk import declares [repositories." + name + "] at the same URL with the reference in"
+                + " ~/.jk/config.toml." + ci);
+    }
+
+    /**
+     * The jk name of a repository Gradle names {@code gradleName}: lower-case, {@code -} for
+     * anything else; {@code repoN} for Gradle's generated {@code maven}, {@code maven2}, … and for a
+     * name jk reserves or another repository already took.
+     */
+    private String repositoryName(String gradleName) {
+        String name = gradleName
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-+|-+$", "");
+        boolean taken = repositories.values().stream().anyMatch(r -> r.name().equals(name));
+        if (name.isEmpty() || name.matches("maven\\d*") || RESERVED_REPOSITORY_NAMES.contains(name) || taken) {
+            return "repo" + (repositories.size() + 1);
+        }
+        return name;
+    }
+
+    /** Repository names jk gives its own remotes and store. */
+    private static final Set<String> RESERVED_REPOSITORY_NAMES = Set.of(
+            RepositorySpec.CENTRAL, RepositorySpec.GOOGLE, RepositorySpec.JUMPKICK_NAME, RepositorySpec.JK_LOCAL);
 }

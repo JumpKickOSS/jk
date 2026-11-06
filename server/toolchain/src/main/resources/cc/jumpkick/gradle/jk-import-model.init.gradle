@@ -56,7 +56,7 @@ gradle.rootProject { Project root ->
             try {
                 settingsRepos = gradle.settings.dependencyResolutionManagement.repositories
                         .findAll { it instanceof MavenArtifactRepository }
-                        .collect { it.url.toString() }
+                        .collect { repositoryModel(it) }
             } catch (Throwable ignored) {
             }
             def model = [
@@ -97,6 +97,67 @@ gradle.rootProject { Project root ->
 def projectFile(Project p) {
     def out = new File(gradle.startParameter.projectProperties['jk.import.out'])
     return new File(out.parentFile, 'project' + p.path.replace(':', '_') + '.json')
+}
+
+// A Maven repository: its URL and name, the groups its `content { }` filter includes, and for a
+// credential the environment variables whose value it is. Never the credential itself: only the
+// names of the variables that hold it.
+def repositoryModel(MavenArtifactRepository repo) {
+    def r = [url: repo.url.toString(), name: repo.name]
+    try {
+        def descriptor = privateField(repo, 'repositoryContentDescriptor')
+        def groups = []
+        def unmapped = []
+        for (def spec : (privateField(descriptor, 'includeSpecs') ?: [])) {
+            def kind = privateField(spec, 'matcherKind')?.toString()
+            def group = privateField(spec, 'group')
+            if (group != null && privateField(spec, 'module') == null && privateField(spec, 'version') == null
+                    && kind == 'SIMPLE') {
+                groups << group
+            } else if (group != null && kind == 'GROUP_AND_SUBGROUPS') {
+                groups << group
+                groups << group + '.*'
+            } else {
+                unmapped << [group, privateField(spec, 'module'), privateField(spec, 'version')].findAll { it != null }.join(':')
+            }
+        }
+        if (groups) r.groups = groups.unique()
+        if (unmapped) r.unmappedContent = unmapped
+    } catch (Throwable ignored) {
+    }
+    try {
+        def credentials = repo.configuredCredentials.orNull
+        if (credentials instanceof org.gradle.api.credentials.HttpHeaderCredentials) {
+            r.credential = [kind: 'header', secretEnv: envHolding(credentials.value)]
+        } else if (credentials instanceof org.gradle.api.credentials.PasswordCredentials) {
+            def userEnv = envHolding(credentials.username)
+            r.credential = [kind: 'password', secretEnv: envHolding(credentials.password), usernameEnv: userEnv]
+            if (userEnv == null && credentials.username) r.credential.username = credentials.username
+        } else if (credentials != null) {
+            r.credential = [kind: credentials.class.simpleName.replace('_Decorated', '')]
+        }
+    } catch (Throwable ignored) {
+    }
+    return r
+}
+
+// The first environment variable, by name, whose value is `value`; null when none is, or when the
+// value is too short to tell one variable from another.
+def envHolding(String value) {
+    if (value == null || value.length() < 8) return null
+    return System.getenv().findAll { k, v -> v == value }.keySet().sort().find { true }
+}
+
+def privateField(Object target, String name) {
+    if (target == null) return null
+    for (def c = target.class; c != null; c = c.superclass) {
+        def f = c.declaredFields.find { it.name == name }
+        if (f != null) {
+            f.accessible = true
+            return f.get(target)
+        }
+    }
+    return null
 }
 
 // Every module version the project's classpaths resolve, as `group:artifact@version`.
@@ -195,7 +256,7 @@ def describeProject(Project p, Project root, List<String> probeIds) {
         if (jar != null) m.manifest = jar.manifest.attributes.collectEntries { k, v -> [k.toString(), v.toString()] }
     } catch (Throwable ignored) {
     }
-    m.repositories = p.repositories.findAll { it instanceof MavenArtifactRepository }.collect { it.url.toString() }
+    m.repositories = p.repositories.findAll { it instanceof MavenArtifactRepository }.collect { repositoryModel(it) }
     def sourceSets = p.extensions.findByName('sourceSets')
     if (sourceSets != null) {
         m.sourceSets = sourceSets.collect { s ->
