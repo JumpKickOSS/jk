@@ -29,6 +29,8 @@ import cc.jumpkick.wire.protocol.NewProjectFormRequest;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import cc.jumpkick.wire.protocol.TemplateLintAck;
+import cc.jumpkick.wire.protocol.TemplateLintRequest;
 import cc.jumpkick.wire.protocol.WhyReport;
 import cc.jumpkick.wire.runtime.BuildForecast;
 import cc.jumpkick.wire.runtime.ExplainPlan;
@@ -146,6 +148,11 @@ public final class EngineClient {
     public static NewProjectFormAck newProjectForm(EnginePaths.Paths paths, NewProjectFormRequest req)
             throws IOException {
         return EngineReads.newProjectForm(paths, req);
+    }
+
+    /** {@code jk template lint}: the catalogue lint over template directories; one sync round trip. */
+    public static TemplateLintAck templateLint(EnginePaths.Paths paths, TemplateLintRequest req) throws IOException {
+        return EngineReads.templateLint(paths, req);
     }
 
     /** Module DAG for {@code jk explain -U}. */

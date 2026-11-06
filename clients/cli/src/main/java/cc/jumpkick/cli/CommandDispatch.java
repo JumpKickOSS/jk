@@ -48,6 +48,7 @@ import cc.jumpkick.command.project.LockCommand;
 import cc.jumpkick.command.project.NewCommand;
 import cc.jumpkick.command.project.OutdatedCommand;
 import cc.jumpkick.command.project.RemoveCommand;
+import cc.jumpkick.command.project.TemplateCommand;
 import cc.jumpkick.command.project.TreeCommand;
 import cc.jumpkick.command.project.UpdateCommand;
 import cc.jumpkick.command.project.VerifyBuildCommand;
@@ -207,6 +208,7 @@ public final class CommandDispatch {
             new CompletionCommand(CommandDispatch::commands),
             new NewCommand(),
             new InitCommand(),
+            new TemplateCommand(),
             new WebCommand());
 
     private static final Map<String, CliCommand> BY_NAME = index();

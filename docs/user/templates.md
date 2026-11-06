@@ -216,7 +216,7 @@ advanced = true
 | `default` | a string, a boolean (`bool`) or a list of ids (`multi`); without one the ask is required |
 | `required` | defaults to `true` exactly when there is no `default` |
 | `pattern` | a regex a `text` answer must match |
-| `when` | a condition on earlier asks (`==`, `!=`, `in [...]`, `&&`, `\|\|`, `!`); a hidden ask takes its default |
+| `when` | a condition on earlier asks (`==`, `!=`, `in [...]`, `&&`, `\|\|`, `!`); a hidden ask takes its default, or is unset without one |
 | `advanced` | not prompted; its default applies unless `-p` sets it |
 
 `-p key=value` answers an ask: `true`/`false` (or `yes`/`no`) for a `bool`, comma-separated ids for
@@ -229,7 +229,9 @@ rest (`database_postgres`); for a `multi`, the same for each selected option, wi
 itself the selected ids joined by commas; a `bool` is `yes` or `no`. A character an option id may
 hold but a property name may not (`-`, `.`) becomes `_`: option `commons-lang` binds
 `deps_commons_lang`. Templates write `$if(database_postgres.truthy)$` and keep no logic of their
-own.
+own. An ask left with no value (hidden by its `when`, or `required = false`, with no `default`) is
+unset: `$if(key)$` is false, and each of its `<key>_<option>` bindings is `no`. Read it only inside
+`$if(key)$ … $endif$`.
 
 **Catalogue lint.** The engine checks every template it loads, and refuses one that fails with a
 message naming the property; a refused template is left out of the catalogue and is not applied:
@@ -238,7 +240,22 @@ message naming the property; a refused template is left out of the catalogue and
 - an ask is not a reserved key, and a value `default.properties` also gives it equals its default;
 - every `internal` entry is set in `default.properties`, and is neither reserved nor asked;
 - every `when` names earlier asks only, and every `default` is one of its `options`;
-- no `<key>_<option>` binding names another property.
+- no `<key>_<option>` binding names another property;
+- an ask that can be left unset (hidden by its `when`, or not required) and has no `default` is
+  used only as `$if(key)$` or inside that branch, in every rendered file, path and
+  `default.properties` value; elsewhere it would render nothing, and `$key.truthy$` would fail the
+  scaffold.
+
+**`jk template lint [<dir>…]`** runs the same lint before a template ships: on a template directory,
+or on every `.jk-template.toml` under a tree (default `.`). A template at
+`<lang>/<framework>/<name>.g8` must also declare that language, framework and name, or the
+catalogue leaves it out. Each failure prints as one line naming the file and the property, and the
+command exits non-zero on any failure, so a template repository's CI can run it on every change:
+
+```bash
+jk template lint .                      # every template under the working directory
+jk template lint java/none/app.g8       # one template
+```
 
 Reserved properties are jk's own: the keys of jk's step (`lang`, `template`, `name`, `group`,
 `layout`) and what the apply sets (`organization`, `package`, `java`, `jk_languages`, `jk_layout`,

@@ -244,6 +244,65 @@ class JkTemplateTomlTest {
         assertThat(JkTemplateToml.load(temp)).isEmpty();
     }
 
+    private static final String HIDEABLE = """
+
+            [[ask]]
+            key = "database"
+            label = "Database"
+            kind = "choice"
+            options = ["none", "postgres"]
+            default = "postgres"
+
+            [[ask]]
+            key = "db_name"
+            label = "Database name"
+            kind = "text"
+            when = "database != 'none'"
+            """;
+
+    @Test
+    void load_refuses_an_ask_its_when_can_hide_with_no_default_used_unguarded(@TempDir Path temp) throws Exception {
+        Path g8 = temp.resolve("webmvc.g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve(JkTemplateToml.FILE_NAME), HEAD + HIDEABLE);
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name = \"$name$\"\n");
+        Files.writeString(g8.resolve("src/main/g8/application.properties"), "db = $db_name$\n");
+        assertThatThrownBy(() -> JkTemplateToml.load(g8))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("[[ask]] 'db_name' can be left unset (its when can hide it) and has no default")
+                .hasMessageContaining("src/main/g8/application.properties uses $db_name$ outside $if(db_name)$");
+        assertThat(JkTemplateToml.loadOrRefuse(g8)).isEmpty();
+
+        Files.writeString(g8.resolve("src/main/g8/application.properties"), "$if(db_name)$db = $db_name$\n$endif$");
+        assertThat(JkTemplateToml.load(g8)).isPresent();
+
+        Files.writeString(g8.resolve("src/main/g8/$db_name$.sql"), "");
+        assertThatThrownBy(() -> JkTemplateToml.load(g8)).hasMessageContaining("src/main/g8/$db_name$.sql uses");
+        Files.delete(g8.resolve("src/main/g8/$db_name$.sql"));
+
+        Files.writeString(g8.resolve(JkTemplateToml.FILE_NAME), HEAD + HIDEABLE + "default = \"app\"\n");
+        Files.writeString(g8.resolve("src/main/g8/application.properties"), "db = $db_name$\n");
+        assertThat(JkTemplateToml.load(g8)).isPresent();
+    }
+
+    @Test
+    void load_refuses_an_optional_ask_with_no_default_used_unguarded(@TempDir Path temp) throws Exception {
+        Path g8 = temp.resolve("webmvc.g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve(JkTemplateToml.FILE_NAME), HEAD + """
+
+                [[ask]]
+                key = "motto"
+                label = "Motto"
+                kind = "text"
+                required = false
+                """);
+        Files.writeString(g8.resolve("src/main/g8/README.md"), "# $name$\n\n$motto$\n");
+        assertThatThrownBy(() -> JkTemplateToml.load(g8))
+                .hasMessageContaining("[[ask]] 'motto' can be left unset (it is not required)")
+                .hasMessageContaining("src/main/g8/README.md uses $motto$");
+    }
+
     /**
      * The catalogue lint over every template this checkout ships: the official catalogue's tree
      * ({@code templates/}, which the public catalogue mirrors) and every plugin's bundled templates.

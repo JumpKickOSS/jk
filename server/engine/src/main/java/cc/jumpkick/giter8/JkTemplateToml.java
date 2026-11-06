@@ -38,7 +38,8 @@ import org.tomlj.TomlTable;
  * <p>Each {@code [[ask]]} is one field of the template's form step, in order. {@code internal}
  * names the {@code default.properties} entries that are not questions. {@link #load} also runs the
  * catalogue lint: every property is reserved, asked or internal, so a template cannot carry an
- * untyped knob no surface knows how to ask for.
+ * untyped knob no surface knows how to ask for. It also reads the template's source for an ask
+ * that can be left unset and is used outside its {@code $if(key)$} guard ({@link TemplateReferences}).
  */
 public final class JkTemplateToml {
 
@@ -136,7 +137,9 @@ public final class JkTemplateToml {
         Path f = file(templateRoot);
         if (!Files.isRegularFile(f)) return Optional.empty();
         Meta meta = parse(Files.readString(f, StandardCharsets.UTF_8), f.toString());
-        lint(meta, defaultProperties(templateRoot), f.toString());
+        Map<String, String> properties = defaultProperties(templateRoot);
+        lint(meta, properties, f.toString());
+        TemplateReferences.lint(meta, templateRoot, properties, f.toString());
         return Optional.of(meta);
     }
 

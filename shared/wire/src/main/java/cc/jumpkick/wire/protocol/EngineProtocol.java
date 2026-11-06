@@ -413,6 +413,12 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #NEW_PROJECT_FORM_REQUEST}. */
     public static final String NEW_PROJECT_FORM_ACK = "new-project-form-ack";
 
+    /** Client → server: lint template directories ({@code jk template lint}); one {@link #TEMPLATE_LINT_ACK}. */
+    public static final String TEMPLATE_LINT_REQUEST = "template-lint-request";
+
+    /** Server → client, terminal for {@link #TEMPLATE_LINT_REQUEST}. */
+    public static final String TEMPLATE_LINT_ACK = "template-lint-ack";
+
     /** Client → server: plugin-declared command; one {@link #PLUGIN_VERB_ACK}. */
     public static final String PLUGIN_VERB_REQUEST = "plugin-command-request";
 

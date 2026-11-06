@@ -232,7 +232,7 @@ public final class NewProjectOps {
             params.putIfAbsent(Giter8ShortNames.LAYOUT_SIMPLE, "yes");
         }
         try {
-            Map<String, String> bound;
+            Map<String, @Nullable String> bound;
             try {
                 // The catalogue lint again, for a template reached by path or URL rather than
                 // through the index; then the asks settle and bind.

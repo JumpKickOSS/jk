@@ -31,12 +31,20 @@ public final class Giter8Apply {
 
     private Giter8Apply() {}
 
-    public static int apply(Path templateRoot, Path dest, Map<String, String> overrides) throws IOException {
+    /**
+     * Renders the template into {@code dest}. A {@code null} override is a property with no value:
+     * {@code $if(key)$} is false where the template reads it.
+     */
+    public static int apply(Path templateRoot, Path dest, Map<String, ? extends @Nullable String> overrides)
+            throws IOException {
         return apply(templateRoot, dest, overrides, null);
     }
 
     public static int apply(
-            Path templateRoot, Path dest, Map<String, String> overrides, @Nullable MavenVersionLookup maven)
+            Path templateRoot,
+            Path dest,
+            Map<String, ? extends @Nullable String> overrides,
+            @Nullable MavenVersionLookup maven)
             throws IOException {
         Path root = templateRoot.toAbsolutePath().normalize();
         if (!Files.isDirectory(root)) {
@@ -44,7 +52,7 @@ public final class Giter8Apply {
         }
         Path g8 = root.resolve("src/main/g8");
         Path contentRoot = Files.isDirectory(g8) ? g8 : root;
-        Map<String, String> props = loadProperties(root, contentRoot, overrides, maven);
+        Map<String, @Nullable String> props = loadProperties(root, contentRoot, overrides, maven);
         List<Pattern> verbatim = verbatimPatterns(props.get("verbatim"));
 
         Files.createDirectories(dest);
@@ -126,10 +134,13 @@ public final class Giter8Apply {
         }
     }
 
-    static Map<String, String> loadProperties(
-            Path root, Path contentRoot, Map<String, String> overrides, @Nullable MavenVersionLookup maven)
+    static Map<String, @Nullable String> loadProperties(
+            Path root,
+            Path contentRoot,
+            Map<String, ? extends @Nullable String> overrides,
+            @Nullable MavenVersionLookup maven)
             throws IOException {
-        Map<String, String> props = new LinkedHashMap<>();
+        Map<String, @Nullable String> props = new LinkedHashMap<>();
         Path propsFile = Files.isRegularFile(root.resolve("default.properties"))
                 ? root.resolve("default.properties")
                 : contentRoot.resolve("default.properties");
@@ -149,22 +160,22 @@ public final class Giter8Apply {
         props.putIfAbsent(Giter8ShortNames.LAYOUT_SIMPLE, "no");
         // The jk that scaffolds: a template pins first-party coordinates (rule packs) to it.
         props.putIfAbsent("jk_version", JkVersion.VERSION);
-        for (Map.Entry<String, String> e : new ArrayList<>(props.entrySet())) {
-            if (Giter8Maven.isMavenExpr(e.getValue())) {
-                props.put(e.getKey(), Giter8Maven.resolveExpr(e.getValue(), maven));
+        for (Map.Entry<String, @Nullable String> e : new ArrayList<>(props.entrySet())) {
+            String value = e.getValue();
+            if (value != null && Giter8Maven.isMavenExpr(value)) {
+                props.put(e.getKey(), Giter8Maven.resolveExpr(value, maven));
             }
         }
         interpolateProps(props);
-        if (props.containsKey("name")) {
-            props.putIfAbsent("name_normalized", Giter8Formats.normalize(props.get("name")));
-        }
+        String name = props.get("name");
+        if (name != null) props.putIfAbsent("name_normalized", Giter8Formats.normalize(name));
         return props;
     }
 
-    private static void interpolateProps(Map<String, String> props) throws IOException {
+    private static void interpolateProps(Map<String, @Nullable String> props) throws IOException {
         for (int round = 0; round < 12; round++) {
             boolean changed = false;
-            for (Map.Entry<String, String> e : new ArrayList<>(props.entrySet())) {
+            for (Map.Entry<String, @Nullable String> e : new ArrayList<>(props.entrySet())) {
                 String v = e.getValue();
                 if (v == null || !v.contains("$")) continue;
                 String next = Giter8Render.content(v, props);
@@ -182,7 +193,7 @@ public final class Giter8Apply {
      * byte-for-byte. A lossy decode here silently corrupted non-UTF-8 text (ISO-8859-1 READMEs)
      * with replacement characters in every generated project.
      */
-    private static @Nullable String decodeText(byte[] raw) {
+    static @Nullable String decodeText(byte[] raw) {
         for (byte b : raw) {
             if (b == 0) return null;
         }
@@ -198,7 +209,7 @@ public final class Giter8Apply {
         }
     }
 
-    private static List<Pattern> verbatimPatterns(@Nullable String verbatim) {
+    static List<Pattern> verbatimPatterns(@Nullable String verbatim) {
         if (verbatim == null || verbatim.isBlank()) return List.of();
         List<Pattern> out = new ArrayList<>();
         for (String raw : verbatim.strip().split("\\s+")) {
@@ -225,7 +236,7 @@ public final class Giter8Apply {
         return Pattern.compile(sb.toString(), Pattern.CASE_INSENSITIVE);
     }
 
-    private static boolean matchesVerbatim(String rel, String fileName, List<Pattern> patterns) {
+    static boolean matchesVerbatim(String rel, String fileName, List<Pattern> patterns) {
         for (Pattern p : patterns) {
             if (p.matcher(fileName).matches() || p.matcher(rel).matches()) return true;
         }
