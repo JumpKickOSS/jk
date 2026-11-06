@@ -8,7 +8,6 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
-import cc.jumpkick.run.TaskNames;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -22,12 +21,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntSupplier;
 import java.util.function.LongPredicate;
 import java.util.function.LongSupplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,10 +41,12 @@ import org.jspecify.annotations.Nullable;
  * compiler or test worker also holds metaspace and a code cache that empty probe did not; 160 MiB
  * covers that, and 12% covers the measured GC fraction with margin. A lease bigger than the whole
  * budget still runs, alone: a heap jk planned is lowered so it fits, and a heap the user pinned
- * keeps its flags and leases the whole budget. A lease that does not fit yet waits, first in line
- * first. On Linux it may instead be granted past the budget while {@link OverbookSignals} say the
- * host has room; {@code CI} and {@code JK_OVERBOOK=0} turn that off. A running fork is never killed
- * to make the room.
+ * keeps its flags and leases the whole budget. A pin past {@link #OVERBOOK_CAP_FACTOR} times the
+ * budget is refused at once with {@link LeaseRefused}. A lease that does not fit yet waits, first in
+ * line first, for at most {@link #WAIT_AT_MOST}, then fails naming what it needed and who held it.
+ * On Linux it may instead be granted past the budget while {@link OverbookSignals} say the host has
+ * room, never past {@link #OVERBOOK_CAP_FACTOR} times the budget; {@code CI} and {@code
+ * JK_OVERBOOK=0} turn that off. A running fork is never killed to make the room.
  *
  * <p>The lease is an estimate. Every {@link WorkerRss#SAMPLE_EVERY} the engine ledger reads each live
  * worker's resident set and charges the larger of the two, so a worker whose native memory
@@ -65,6 +65,9 @@ import org.jspecify.annotations.Nullable;
  * the budget is granted only when {@link OverbookSignals#live()} says the host has room.
  */
 public final class WorkerLeases {
+
+    /** How long a lease that could fit waits before it fails. */
+    public static final Duration WAIT_AT_MOST = Duration.ofMinutes(10);
 
     /** One mebibyte. */
     public static final long MIB = 1L << 20;
@@ -106,16 +109,11 @@ public final class WorkerLeases {
      */
     public static final int OVERBOOK_CAP_FACTOR = 2;
 
-    private static final Pattern XMX = Pattern.compile("^(?<prefix>-J)?-Xmx(?<size>\\d+[kKmMgGtT]?)$");
-    private static final Pattern XMS = Pattern.compile("^(?<prefix>-J)?-Xms(?<size>\\d+[kKmMgGtT]?)$");
-    private static final Pattern XX_HEAP = Pattern.compile(
-            "^(?<prefix>-J)?-XX:(?<name>MaxHeapSize|MinHeapSize|InitialHeapSize|SoftMaxHeapSize)=(?<size>\\d+[kKmMgGtT]?)$");
-
     /**
      * This process's ledger. Capacity is re-read from {@link WorkerContainment#budgetBytes()} at
      * most every two seconds; that read honors {@code JK_WORKER_BUDGET_MB}.
      */
-    private static final Ledger ENGINE = new Ledger(
+    private static final Ledger PROCESS = new Ledger(
                     new ProcessBudget(),
                     WorkerLeases::forkCpuCap,
                     JobWorkers::ended,
@@ -123,11 +121,19 @@ public final class WorkerLeases {
                     MemoryProbe::rssBytes)
             .sampleEvery(WorkerRss.SAMPLE_EVERY);
 
+    private static volatile @Nullable Ledger replaced;
+
     private WorkerLeases() {}
 
     /** The ledger {@link JobWorkers}, the compiler host, and {@code jk engine status} share. */
     public static Ledger engine() {
-        return ENGINE;
+        Ledger r = replaced;
+        return r != null ? r : PROCESS;
+    }
+
+    /** Test seam: {@link #engine()} answers {@code ledger}, or this process's own when {@code null}. */
+    public static void engineForTests(@Nullable Ledger ledger) {
+        replaced = ledger;
     }
 
     /**
@@ -218,138 +224,6 @@ public final class WorkerLeases {
     }
 
     /**
-     * Command line with {@code -Xmx} / {@code -Xms} / soft-max brought down to {@code xmxBytes}
-     * where they were higher. A JVM command that named no heap gains an {@code -Xmx} after its
-     * executable; a native-image command a {@code -J-Xmx}, the builder's.
-     */
-    public static List<String> rewriteHeap(List<String> command, long xmxBytes) {
-        long xmx = Math.max(MIB, xmxBytes);
-        List<String> out = new ArrayList<>(command.size() + 1);
-        boolean sawXmx = false;
-        for (String arg : command) {
-            Matcher max = XMX.matcher(arg);
-            Matcher xx = XX_HEAP.matcher(arg);
-            Matcher min = XMS.matcher(arg);
-            if (max.matches()) {
-                sawXmx = true;
-                out.add(prefix(max) + "-Xmx" + mib(xmx) + "m");
-            } else if (xx.matches() && "MaxHeapSize".equals(xx.group("name"))) {
-                sawXmx = true;
-                out.add(prefix(xx) + "-XX:MaxHeapSize=" + mib(xmx) + "m");
-            } else if (min.matches()) {
-                long size = parseSize(min.group("size"));
-                out.add(size > xmx ? prefix(min) + "-Xms" + mib(xmx) + "m" : arg);
-            } else if (xx.matches()) {
-                long size = parseSize(xx.group("size"));
-                String name = xx.group("name");
-                if (size > xmx
-                        && ("MinHeapSize".equals(name)
-                                || "InitialHeapSize".equals(name)
-                                || "SoftMaxHeapSize".equals(name))) {
-                    out.add(prefix(xx) + "-XX:" + name + "=" + mib(xmx) + "m");
-                } else out.add(arg);
-            } else out.add(arg);
-        }
-        if (!sawXmx && !out.isEmpty()) {
-            int at = command.size() > 1 && setsid(command.get(0)) ? 2 : 1;
-            out.add(Math.min(at, out.size()), (nativeImageCommand(command) ? "-J" : "") + "-Xmx" + mib(xmx) + "m");
-        }
-        return List.copyOf(out);
-    }
-
-    /** The {@code -Xmx} the command asks for, or {@code -1} when it names none. The last flag wins. */
-    /** Whether {@code arg} sizes the heap: {@code -Xmx}, {@code -Xms} or an {@code -XX:} heap size. */
-    public static boolean heapFlag(String arg) {
-        return XMX.matcher(arg).matches()
-                || XMS.matcher(arg).matches()
-                || XX_HEAP.matcher(arg).matches();
-    }
-
-    public static long parseXmx(List<String> command) {
-        long found = -1;
-        for (String arg : command) {
-            Matcher max = XMX.matcher(arg);
-            if (max.matches()) {
-                long size = parseSize(max.group("size"));
-                if (size > 0) found = size;
-                continue;
-            }
-            Matcher xx = XX_HEAP.matcher(arg);
-            if (xx.matches() && "MaxHeapSize".equals(xx.group("name"))) {
-                long size = parseSize(xx.group("size"));
-                if (size > 0) found = size;
-            }
-        }
-        return found;
-    }
-
-    static boolean jvmExecutable(String arg) {
-        String name = arg;
-        int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
-        if (slash >= 0) name = name.substring(slash + 1);
-        name = name.toLowerCase(Locale.ROOT);
-        if (name.endsWith(".exe")) name = name.substring(0, name.length() - 4);
-        return name.equals("java") || name.equals("javaw") || name.equals(TaskNames.NATIVE_IMAGE);
-    }
-
-    /** A HotSpot size token ({@code 512m}, {@code 1g}); {@code -1} when it is not one. */
-    static long parseSize(String token) {
-        if (token == null || token.isEmpty()) return -1;
-        char last = token.charAt(token.length() - 1);
-        long mul = 1;
-        String digits = token;
-        if (last == 'k' || last == 'K') {
-            mul = 1024;
-            digits = token.substring(0, token.length() - 1);
-        } else if (last == 'm' || last == 'M') {
-            mul = MIB;
-            digits = token.substring(0, token.length() - 1);
-        } else if (last == 'g' || last == 'G') {
-            mul = GIB;
-            digits = token.substring(0, token.length() - 1);
-        } else if (last == 't' || last == 'T') {
-            mul = GIB * 1024;
-            digits = token.substring(0, token.length() - 1);
-        }
-        try {
-            return Long.parseLong(digits) * mul;
-        } catch (NumberFormatException e) {
-            return -1;
-        }
-    }
-
-    /** The program {@code command} execs, looking past a leading {@code setsid}. */
-    static String executable(List<String> command) {
-        if (command.isEmpty()) return "";
-        if (command.size() > 1 && setsid(command.get(0))) return command.get(1);
-        return command.get(0);
-    }
-
-    private static boolean setsid(String arg) {
-        int slash = Math.max(arg.lastIndexOf('/'), arg.lastIndexOf('\\'));
-        String name = slash >= 0 ? arg.substring(slash + 1) : arg;
-        return name.equals("setsid");
-    }
-
-    static boolean jvmCommand(List<String> command) {
-        return !command.isEmpty() && jvmExecutable(executable(command));
-    }
-
-    /** Whether {@code command} runs the GraalVM {@code native-image} driver. */
-    public static boolean nativeImageCommand(List<String> command) {
-        String exe = executable(command);
-        return jvmExecutable(exe) && exe.toLowerCase(Locale.ROOT).contains(TaskNames.NATIVE_IMAGE);
-    }
-
-    private static String prefix(Matcher matcher) {
-        return matcher.group("prefix") == null ? "" : "-J";
-    }
-
-    private static long mib(long bytes) {
-        return Math.max(1, bytes / MIB);
-    }
-
-    /**
      * What {@code jk engine status} prints. {@code leasedBytes} charges each worker the larger of its
      * lease and its last measured resident set. {@code overbookedBytes} is the part of {@code
      * leasedBytes} above {@code budgetBytes}, or {@code 0} when the charged total fits. {@code
@@ -408,6 +282,7 @@ public final class WorkerLeases {
         private int overLeaseCount;
 
         private int jvmRunning;
+        private Duration waitAtMost = WAIT_AT_MOST;
         private @Nullable Duration sampleEvery;
         private boolean sampling;
 
@@ -452,6 +327,14 @@ public final class WorkerLeases {
         Ledger sampleEvery(Duration every) {
             synchronized (lock) {
                 this.sampleEvery = every;
+            }
+            return this;
+        }
+
+        /** Fail a lease that has waited {@code most} without being granted. */
+        public Ledger waitAtMost(Duration most) {
+            synchronized (lock) {
+                this.waitAtMost = Objects.requireNonNull(most, "most");
             }
             return this;
         }
@@ -562,10 +445,13 @@ public final class WorkerLeases {
             @Nullable Long requestId = waiter.requestId;
             long arrived = Clock.SYSTEM.nanos();
             boolean queued = false;
+            long deadlineNanos;
             synchronized (lock) {
+                refuseIfItNeverFits(waiter);
                 if (grantIfHead(waiter)) return finish(waiter, 0, false);
                 queue.addLast(waiter);
                 queued = true;
+                deadlineNanos = waitAtMost.toNanos();
             }
             if (queued) {
                 long free;
@@ -589,9 +475,16 @@ public final class WorkerLeases {
                         }
                         grantQueued();
                         granted = waiter.granted;
+                        if (!granted) {
+                            long left = deadlineNanos - (Clock.SYSTEM.nanos() - arrived);
+                            if (left <= 0) giveUp(waiter, deadlineNanos);
+                            else {
+                                refuseIfItNeverFits(waiter);
+                                lock.wait(Math.max(1, Math.min(250, TimeUnit.NANOSECONDS.toMillis(left))));
+                            }
+                        }
                         need = waiter.demand.bytes;
                         free = Math.max(0, capacityBytes() - charged());
-                        if (!granted) lock.wait(250);
                     }
                     if (granted) break;
                     long now = Clock.SYSTEM.nanos();
@@ -600,7 +493,7 @@ public final class WorkerLeases {
                         lastReport = now;
                     }
                 }
-            } catch (InterruptedException e) {
+            } catch (InterruptedException | LeaseRefused e) {
                 synchronized (lock) {
                     queue.remove(waiter);
                     if (waiter.granted) release(waiter);
@@ -619,6 +512,32 @@ public final class WorkerLeases {
             }
             if (queued) noteGranted(waiter, waitedNanos);
             return new Grant(this, waiter);
+        }
+
+        /**
+         * Under the lock: refuse a lease whose worst case is past {@link #OVERBOOK_CAP_FACTOR} times
+         * the budget. No state of this ledger can grant it, so waiting would never end.
+         */
+        private void refuseIfItNeverFits(Waiter waiter) {
+            long cap = capacityBytes();
+            long most = overbookCeiling(cap);
+            if (waiter.demand.worstBytes <= most) return;
+            String what = waiter.demand.pin.isEmpty()
+                    ? ownerOf(waiter) + " needs " + format(waiter.demand.worstBytes)
+                    : "the pinned " + waiter.demand.pin + " needs " + format(waiter.demand.worstBytes)
+                            + " with its overhead";
+            throw new LeaseRefused(what + "; the "
+                    + format(cap) + " worker budget never leases more than " + format(most)
+                    + " (twice the budget). Lower the heap, or raise " + WorkerContainment.BUDGET_ENV + ".");
+        }
+
+        /** Under the lock: {@code waiter} reached its deadline. */
+        private void giveUp(Waiter waiter, long deadlineNanos) {
+            long budget = capacityBytes();
+            boolean slot = waiter.demand.cpuSlot && jvmRunning >= cpuCap();
+            String phrase = waitedPhrase(deadlineNanos);
+            if (slot) phrase = phrase.replace("for memory", "for a JVM slot");
+            throw new LeaseRefused(ownerOf(waiter) + " " + phrase + " and gave up: " + waitLine(waiter, budget, true));
         }
 
         /** Under the lock: grant {@code candidate} when it is the only waiter and it fits. */
@@ -697,7 +616,15 @@ public final class WorkerLeases {
                 }
             }
             if (head == null) return "";
-            StringBuilder line = new StringBuilder(ownerOf(head)).append(" needs ");
+            return ownerOf(head) + " " + waitLine(head, budget, false);
+        }
+
+        /**
+         * Under the lock: {@code needs 2.0 GiB (1.0 GiB free); held by job #3 3.0 GiB}. {@code
+         * nameBudget} writes {@code free of the 4.0 GiB worker budget}.
+         */
+        private String waitLine(Waiter head, long budget, boolean nameBudget) {
+            StringBuilder line = new StringBuilder("needs ");
             if (head.demand.cpuSlot && jvmRunning >= cpuCap()) {
                 line.append("a JVM slot (")
                         .append(jvmRunning)
@@ -708,7 +635,9 @@ public final class WorkerLeases {
                 line.append(format(head.demand.bytes))
                         .append(" (")
                         .append(format(Math.max(0, budget - charged())))
-                        .append(" free)");
+                        .append(" free");
+                if (nameBudget) line.append(" of the ").append(format(budget)).append(" worker budget");
+                line.append(')');
             }
             Map<String, Holder> holders = new LinkedHashMap<>();
             for (Waiter w : held) {
@@ -751,8 +680,7 @@ public final class WorkerLeases {
         private boolean overbook(Waiter waiter, long cap) {
             if (cap <= 0) return false;
             long bytes = waiter.demand.bytes;
-            long ceiling =
-                    cap > Long.MAX_VALUE / OVERBOOK_CAP_FACTOR ? Long.MAX_VALUE : cap * (long) OVERBOOK_CAP_FACTOR;
+            long ceiling = overbookCeiling(cap);
             if (overLeaseCount > 0) return false;
             long charged = charged();
             if (bytes > ceiling || charged > ceiling - bytes) return false;
@@ -918,9 +846,9 @@ public final class WorkerLeases {
 
         private Demand demand(List<String> command, JvmOptions.HeapChoice choice) {
             long cap = Math.max(1, capacityBytes());
-            long requested = parseXmx(command);
+            long requested = HeapFlags.parseXmx(command);
             if (requested <= 0 && choice.xmxBytes() > 0) requested = choice.xmxBytes();
-            boolean jvm = requested > 0 || jvmCommand(command);
+            boolean jvm = requested > 0 || HeapFlags.jvmCommand(command);
             if (!jvm) {
                 long bytes = Math.min(TOOL_BYTES, cap);
                 return new Demand(bytes, 0, false, bytes < TOOL_BYTES, false, false);
@@ -929,7 +857,9 @@ public final class WorkerLeases {
             if (choice.userPinned()) {
                 long natural = jvmLease(xmx);
                 long bytes = Math.min(cap, natural);
-                return new Demand(bytes, requested > 0 ? requested : 0, true, false, true, natural > cap);
+                String pin = choice.label().isEmpty() ? "heap" : choice.label();
+                return new Demand(
+                        bytes, requested > 0 ? requested : 0, true, false, true, natural > cap, true, natural, pin);
             }
             long fitted = clampXmx(xmx, cap);
             long bytes = Math.min(cap, jvmLease(fitted));
@@ -962,14 +892,20 @@ public final class WorkerLeases {
         if (ctx != null) ctx.output(line);
     }
 
-    /** The engine-log line for one overbooked grant, after the bytes have been taken. */
+    /**
+     * The engine-log line for one overbooked grant, after the bytes have been taken: what is leased
+     * against the budget and its cap, and the sample that allowed it.
+     */
     static String overbookedLine(long grantBytes, long leasedBytes, long budgetBytes, OverbookSignals.Reading reading) {
-        long over = Math.max(0, leasedBytes - Math.max(0, budgetBytes));
+        long budget = Math.max(0, budgetBytes);
+        long over = Math.max(0, leasedBytes - budget);
         return "overbooked " + format(grantBytes)
-                + " (leased " + format(leasedBytes)
-                + " of " + format(budgetBytes)
-                + ", " + format(over) + " over the budget, free " + format(Math.max(0, reading.freeBytes()))
-                + ", psi some " + String.format(Locale.ROOT, "%.2f", reading.someAvg10())
+                + ": leased " + format(leasedBytes)
+                + " of the " + format(budget) + " budget, " + format(over) + " over, inside the "
+                + format(overbookCeiling(budget)) + " cap (twice the budget); allowed because free "
+                + format(Math.max(0, reading.freeBytes())) + " covers the lease plus "
+                + format(headroomBytes(budget)) + " headroom and pressure is low (psi some "
+                + String.format(Locale.ROOT, "%.2f", reading.someAvg10())
                 + " full " + String.format(Locale.ROOT, "%.2f", reading.fullAvg10()) + ")";
     }
 
@@ -993,7 +929,11 @@ public final class WorkerLeases {
         MemoryNotes.add(ctx, waitedNanos);
     }
 
-    /** {@code cpuSlot}: counts against the running-JVM cap; a resident helper between requests does not. */
+    /**
+     * {@code cpuSlot}: counts against the running-JVM cap; a resident helper between requests does
+     * not. {@code worstBytes} is what the process may use: {@code bytes}, or a pin's whole lease when
+     * {@code bytes} is the budget it was cut to. {@code pin} names that pin, {@code ""} otherwise.
+     */
     private record Demand(
             long bytes,
             long xmxBytes,
@@ -1001,14 +941,22 @@ public final class WorkerLeases {
             boolean clamped,
             boolean userPinned,
             boolean overBudget,
-            boolean cpuSlot) {
+            boolean cpuSlot,
+            long worstBytes,
+            String pin) {
         Demand(long bytes, long xmxBytes, boolean jvm, boolean clamped, boolean userPinned, boolean overBudget) {
-            this(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, jvm);
+            this(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, jvm, bytes, "");
         }
 
         Demand resident() {
-            return new Demand(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, false);
+            return new Demand(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, false, worstBytes, pin);
         }
+    }
+
+    /** {@link #OVERBOOK_CAP_FACTOR} times {@code cap}, saturating. */
+    static long overbookCeiling(long cap) {
+        long budget = Math.max(0, cap);
+        return budget > Long.MAX_VALUE / OVERBOOK_CAP_FACTOR ? Long.MAX_VALUE : budget * OVERBOOK_CAP_FACTOR;
     }
 
     /** One owner's held leases, as {@link Snapshot#waiting()} names them. */
@@ -1088,6 +1036,13 @@ public final class WorkerLeases {
             if (resident == null && requestId != null)
                 out.append(" (").append(owner).append(')');
             return out.toString();
+        }
+    }
+
+    /** A lease the ledger will not grant: larger than it can ever hold, or not granted in time. */
+    public static final class LeaseRefused extends RuntimeException {
+        LeaseRefused(String message) {
+            super(message);
         }
     }
 

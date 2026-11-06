@@ -106,7 +106,7 @@ public final class WorkerGc {
             List<String> next = new ArrayList<>(command.size() + 1);
             next.addAll(command.subList(0, javaAt + 1));
             // native-image hands -J flags to its builder JVM, whose heap is the one learned.
-            next.add((WorkerLeases.nativeImageCommand(command) ? "-J" : "") + flag(log));
+            next.add((HeapFlags.nativeImageCommand(command) ? "-J" : "") + flag(log));
             next.addAll(command.subList(javaAt + 1, command.size()));
             return new Watch(List.copyOf(next), log, key, heaps);
         } catch (IOException e) {
@@ -119,7 +119,7 @@ public final class WorkerGc {
     private static int javaIndex(List<String> command) {
         if (command == null) return -1;
         for (int i = 0; i < command.size(); i++) {
-            if (WorkerLeases.jvmExecutable(command.get(i))) return i;
+            if (HeapFlags.jvmExecutable(command.get(i))) return i;
         }
         return -1;
     }

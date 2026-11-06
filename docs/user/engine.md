@@ -334,7 +334,10 @@ so the worker still fits, and the engine log says so. A heap you pinned — `[jv
 `-XX:MaxRAM*` you passed — is left as you wrote it. That worker leases the whole budget
 and runs once the others have finished — or sooner, when overbooking below has room for
 its worst case — and the engine log names the pin and the budget.
-If the JVM cannot reserve the pin, its own refusal is the result.
+If the JVM cannot reserve the pin, its own refusal is the result. A pin whose lease would be
+more than twice the budget is refused before the fork, since no state of the ledger could hold
+it: `the pinned -Xmx64g needs 71.7 GiB with its overhead; the 13.5 GiB worker budget never
+leases more than 27.0 GiB (twice the budget). Lower the heap, or raise JK_WORKER_BUDGET_MB.`
 
 A lease is an estimate of the heap and the memory around it. Every two seconds the engine
 reads each running worker's resident set (`VmRSS`, Linux) and charges it the larger of its
@@ -357,7 +360,9 @@ one line. `target/jk-results.md` and the agent report each carry it, and they ca
 `retried with 1.0 GiB heap after running out of 512 MiB` when a planned heap was retried.
 A workspace names the module on both lines.
 When the budget is an override, the wait line names it:
-`waited 12s for memory (JK_WORKER_BUDGET_MB)`. Nothing fails for lack of a lease.
+`waited 12s for memory (JK_WORKER_BUDGET_MB)`. A wait lasts at most ten minutes. A lease
+still queued then fails its step, naming what it needed and who held the memory:
+`job #7 waited 600s for memory and gave up: needs 3.4 GiB (2.9 GiB free of the 13.5 GiB worker budget); held by job #3 6.1 GiB in 9 forks`.
 
 On Linux that same lease may start anyway, past the reservation, when the host still has
 room. It does not when this engine was started with `CI` set, or with `JK_OVERBOOK` set to
@@ -372,7 +377,11 @@ workers group's `memory.pressure` when that file is present. The reserved total,
 the new lease, stays at or under twice the budget, so a run of grants between samples cannot
 grow without a bound. The sample is reused for 250 ms. When the pressure rises or the free
 memory falls short, further leases wait in the same queue. A running fork is never killed to
-make room. The engine log records each grant that started past the budget. `JK_OVERBOOK` is
+make room. The engine log records each grant that started past the budget, with the cap and
+the sample that allowed it:
+`overbooked 2.2 GiB: leased 32.0 GiB of the 27.4 GiB budget, 4.6 GiB over, inside the 54.8 GiB cap (twice the budget); allowed because free 25.3 GiB covers the lease plus 2.7 GiB headroom and pressure is low (psi some 0.00 full 0.00)`.
+The leased total there charges each worker its resident set when that is larger than its
+lease, so it can pass the cap by what running workers grew; no grant is made while it does. `JK_OVERBOOK` is
 read from the engine process, the same way as `JK_WORKER_BUDGET_MB`: `jk engine stop`, then
 start the next command with the variable set. `CI` is inherited by that process for the same
 reason; a worker does not see it unless the module inherits the engine's whole environment.

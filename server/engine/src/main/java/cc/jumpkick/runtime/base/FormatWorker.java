@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapPlan;
@@ -11,7 +12,6 @@ import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.run.BuildPlanKey;
@@ -122,7 +122,7 @@ public final class FormatWorker {
      */
     static List<String> atHeap(List<String> command, @Nullable Long heapBytes) {
         if (heapBytes == null) return command;
-        List<String> sized = WorkerLeases.rewriteHeap(command, heapBytes);
+        List<String> sized = HeapFlags.rewriteHeap(command, heapBytes);
         JvmOptions.notePlannedCommand(sized);
         return sized;
     }

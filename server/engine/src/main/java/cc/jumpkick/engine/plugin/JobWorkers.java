@@ -320,6 +320,9 @@ public final class JobWorkers {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("cancelled while waiting for memory");
+        } catch (WorkerLeases.LeaseRefused e) {
+            Log.warn("jk engine: " + e.getMessage());
+            throw new IOException(e.getMessage(), e);
         }
         List<String> sized = launchCommand(pb.command(), grant);
         if (sized != pb.command() && grant.clamped()) {
@@ -365,8 +368,8 @@ public final class JobWorkers {
      */
     static List<String> launchCommand(List<String> command, WorkerLeases.Grant grant) {
         if (grant.userPinned() || !grant.jvm()) return command;
-        boolean unsizedBuilder = WorkerLeases.nativeImageCommand(command) && WorkerLeases.parseXmx(command) <= 0;
-        if (grant.clamped() || unsizedBuilder) return WorkerLeases.rewriteHeap(command, grant.xmxBytes());
+        boolean unsizedBuilder = HeapFlags.nativeImageCommand(command) && HeapFlags.parseXmx(command) <= 0;
+        if (grant.clamped() || unsizedBuilder) return HeapFlags.rewriteHeap(command, grant.xmxBytes());
         return command;
     }
 

@@ -46,8 +46,9 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   (3) concurrency via
   **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=effective cores via
   cgroup quota when present else `availableProcessors()`, `1`=serial, `N`=cap),
-  still limited by the worker lease ledger (`WorkerLeases`: FIFO, which on Linux may grant past
-  that budget while free memory and PSI pressure stay low, and which asks a resident helper such
+  still limited by the worker lease ledger (`WorkerLeases`: FIFO with a ten-minute deadline per
+  wait, which refuses at once a lease past twice the budget, which on Linux may grant past
+  that budget while free memory and PSI pressure stay low but never past twice it, and which asks a resident helper such
   as the build-script host to exit when the head of the queue would fit without its lease, so
   the head waits only on forks doing work; every two seconds it reads each live worker's
   resident set and charges the larger of lease and RSS, names a worker far over its lease in

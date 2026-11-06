@@ -125,7 +125,7 @@ class WorkerBudgetJobsTest {
             Process process = JobWorkers.start(pb, ledger);
             try {
                 assertThat(pb.command()).doesNotContain("-Xmx2g");
-                assertThat(WorkerLeases.jvmLease(WorkerLeases.parseXmx(pb.command())))
+                assertThat(WorkerLeases.jvmLease(HeapFlags.parseXmx(pb.command())))
                         .isLessThanOrEqualTo(ledger.capacityBytes());
                 assertThat(process.waitFor(15, TimeUnit.SECONDS)).isTrue();
                 assertThat(process.exitValue()).isZero();

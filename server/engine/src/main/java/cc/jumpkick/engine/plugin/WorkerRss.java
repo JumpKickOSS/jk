@@ -80,8 +80,8 @@ public final class WorkerRss {
         for (String arg : command) {
             if (arg.startsWith(PLUGIN_CLASS_FLAG) && arg.endsWith(".TestRunner")) return TEST_JVM;
         }
-        if (WorkerLeases.jvmCommand(command)) return "worker JVM";
-        String exe = WorkerLeases.executable(command);
+        if (HeapFlags.jvmCommand(command)) return "worker JVM";
+        String exe = HeapFlags.executable(command);
         int slash = Math.max(exe.lastIndexOf('/'), exe.lastIndexOf('\\'));
         String name = slash >= 0 ? exe.substring(slash + 1) : exe;
         return name.isEmpty() ? "worker" : name;

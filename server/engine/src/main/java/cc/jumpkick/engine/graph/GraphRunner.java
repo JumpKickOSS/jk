@@ -12,6 +12,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
@@ -24,7 +25,6 @@ import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
@@ -357,10 +357,10 @@ public final class GraphRunner {
                     spec,
                     progress);
             if (a.ack() != null) {
-                if (!ranOut.isEmpty()) heaps.good(key, WorkerLeases.parseXmx(attemptCommand));
+                if (!ranOut.isEmpty()) heaps.good(key, HeapFlags.parseXmx(attemptCommand));
                 return a.ack();
             }
-            long heap = WorkerLeases.parseXmx(attemptCommand);
+            long heap = HeapFlags.parseXmx(attemptCommand);
             if (!WorkerFate.heapExhausted(a.exit(), a.tail()) || heap <= 0) {
                 return GraphAck.error("graph worker exited " + a.exit() + " without an answer"
                         + (a.tail().isEmpty() ? "" : ": " + a.tail()));
@@ -373,7 +373,7 @@ public final class GraphRunner {
                         "graph worker " + HeapLadder.ranOut(ranOut) + "; raise it with [jvm] args = [\"-Xmx...\"]");
             }
             HeapNotes.note(HeapNotes.line(bigger, heap, false));
-            command = WorkerLeases.rewriteHeap(attemptCommand, bigger);
+            command = HeapFlags.rewriteHeap(attemptCommand, bigger);
         }
     }
 

@@ -2,13 +2,13 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerFate;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Path;
@@ -53,10 +53,10 @@ final class SuiteRetry {
      */
     static List<String> tune(
             List<String> flags, Path project, String module, int jdk, @Nullable Long override, LearnedHeaps heaps) {
-        long current = WorkerLeases.parseXmx(flags);
+        long current = HeapFlags.parseXmx(flags);
         long chosen = override != null ? override : heaps.choose(project, module, HeapScope.TEST, jdk, current);
         if (chosen <= 0 || chosen == current) return flags;
-        List<String> rewritten = new ArrayList<>(WorkerLeases.rewriteHeap(flags, chosen));
+        List<String> rewritten = new ArrayList<>(HeapFlags.rewriteHeap(flags, chosen));
         JvmOptions.notePlannedCommand(rewritten);
         return rewritten;
     }

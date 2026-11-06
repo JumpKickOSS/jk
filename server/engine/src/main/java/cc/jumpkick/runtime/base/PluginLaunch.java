@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -84,11 +84,11 @@ public final class PluginLaunch {
         if (key == null || !HeapScope.PLUGIN.equals(key.kind()) || JvmOptions.userPinnedHeap(command)) {
             return command;
         }
-        long current = WorkerLeases.parseXmx(command);
+        long current = HeapFlags.parseXmx(command);
         if (current <= 0) return command;
         long chosen = LearnedHeaps.engine().choose(key.project(), key.module(), key.kind(), key.jdk(), current);
         if (chosen <= 0 || chosen == current) return command;
-        List<String> rewritten = new ArrayList<>(WorkerLeases.rewriteHeap(command, chosen));
+        List<String> rewritten = new ArrayList<>(HeapFlags.rewriteHeap(command, chosen));
         JvmOptions.notePlannedCommand(rewritten);
         return rewritten;
     }

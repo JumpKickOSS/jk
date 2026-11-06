@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
@@ -14,7 +15,6 @@ import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -830,7 +830,7 @@ public final class JUnitLauncher {
             TestProgressListener listener,
             boolean killed,
             @Nullable TestSummary first) {
-        long heap = WorkerLeases.parseXmx(flags);
+        long heap = HeapFlags.parseXmx(flags);
         try {
             if (killed) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
