@@ -87,10 +87,12 @@ public final class TestStorePool {
     static final long REAP_EVERY_MILLIS = 60L * 60 * 1000;
 
     /**
-     * Bytes the pool may hold before the least recently used units go: about what the
-     * integration, slow and network tiers fetch together. {@link #MAX_MB_PROPERTY} overrides it.
+     * Bytes the pool may hold before the least recently used units go: about twice what the
+     * integration, slow and network tiers fetch together, so a full run fits beside the last one
+     * instead of evicting what the next run needs. {@link #UNUSED_MILLIS}, not the cap, keeps the
+     * pool from becoming an archive. {@link #MAX_MB_PROPERTY} overrides it.
      */
-    static final long DEFAULT_MAX_BYTES = 2L << 30;
+    static final long DEFAULT_MAX_BYTES = 4L << 30;
 
     /** The default on CI, where one runner serves many branches and a cold fetch costs the most. */
     static final long CI_MAX_BYTES = 8L << 30;
