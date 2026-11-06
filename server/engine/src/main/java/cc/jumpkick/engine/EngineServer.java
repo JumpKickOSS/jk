@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
@@ -394,12 +395,11 @@ public final class EngineServer implements AutoCloseable {
                 historyConfig.enabled() ? SessionJournal.under(journal.buildsRoot()) : null,
                 clockMillis,
                 EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
-                (httpConfig != null ? httpConfig.mcp().sessionExpiry() : JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY)
-                        .toMillis());
+                SessionExpiry.resolve(userConfig, ProcessEnv::get).toMillis());
         HttpEvents hub = httpEvents;
         if (hub != null) log.events((type, payload) -> hub.publishDashboard(type, JsonOut.rawObject(payload)));
         // One writer: once a successor holds the endpoint, the runs this engine finishes go to it.
-        log.writeWhile(this::primary, run -> drain.finished(run.toMap()));
+        log.writeWhile(() -> state().writesSessions(), run -> drain.finished(run.toMap()));
         log.adoptAfter(() -> election.stopPredecessorSessions(displaced));
         return log;
     }
@@ -423,9 +423,16 @@ public final class EngineServer implements AutoCloseable {
                 DrainReporter.TICK_MS);
     }
 
-    /** Whether this engine still writes the session records: it has not started, or the endpoint names it. */
-    private boolean primary() {
-        return serverChannel == null || election.endpointNamesThisEngine();
+    /**
+     * This engine's {@link EngineState}. A pointer or pid file that cannot be read is no evidence of
+     * a successor, so it reads as primary until the next read.
+     */
+    private EngineState state() {
+        try {
+            return election.state();
+        } catch (IOException e) {
+            return EngineState.PRIMARY;
+        }
     }
 
     /** A run a displaced predecessor finished: fold it here, as if it had finished on this engine. */
@@ -598,7 +605,7 @@ public final class EngineServer implements AutoCloseable {
                         () -> draining,
                         () -> drainDeadlineMillis,
                         drain,
-                        this::primary,
+                        this::state,
                         sessionLog::stopWriting,
                         this::handleShutdown,
                         this::noteIdleDropped),

@@ -4,8 +4,8 @@ package cc.jumpkick.engine.http;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.sessions.EpisodeInference;
@@ -37,7 +37,7 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
                 SessionJournal.under(testJournal().buildsRoot()),
                 () -> now[0],
                 EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
-                JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis());
+                SessionExpiry.DEFAULT.toMillis());
         server.setSessions(log);
         id = log.open("mcp", "claude-code", LABEL, "/ws/app");
         for (int i = 0; i < 3; i++) {

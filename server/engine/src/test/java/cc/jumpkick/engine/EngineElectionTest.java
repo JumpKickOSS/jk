@@ -4,7 +4,7 @@ package cc.jumpkick.engine;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.SessionLog;
@@ -181,8 +181,7 @@ class EngineElectionTest {
         assertThat(Files.readString(EnginePaths.endpoint(p)).trim())
                 .isEqualTo(gen1.socket().getFileName().toString());
         assertThat(e.endpointNamesThisEngine()).isTrue();
-        assertThat(e.endpointMissing()).isFalse();
-        assertThat(e.displacedBySuccessor()).isFalse();
+        assertThat(e.state()).isEqualTo(EngineState.PRIMARY);
     }
 
     @Test
@@ -288,7 +287,7 @@ class EngineElectionTest {
 
         Files.writeString(EnginePaths.endpoint(p), p.key() + ".gen999.sock");
 
-        assertThat(e.displacedBySuccessor()).isTrue();
+        assertThat(e.state()).isEqualTo(EngineState.DISPLACED);
         assertThat(e.endpointNamesThisEngine()).isFalse();
     }
 
@@ -302,7 +301,7 @@ class EngineElectionTest {
 
         Files.writeString(won.active().pid(), "1\n");
 
-        assertThat(e.displacedBySuccessor()).isTrue();
+        assertThat(e.state()).isEqualTo(EngineState.DISPLACED);
     }
 
     @Test
@@ -313,10 +312,9 @@ class EngineElectionTest {
 
         Files.delete(EnginePaths.endpoint(p));
 
-        assertThat(e.endpointMissing()).isTrue();
-        assertThat(e.displacedBySuccessor())
+        assertThat(e.state())
                 .as("nobody else claimed the name — this engine is orphaned, not displaced")
-                .isFalse();
+                .isEqualTo(EngineState.ORPHANED);
     }
 
     @Test
@@ -555,13 +553,10 @@ class EngineElectionTest {
                         journal,
                         () -> 1_000L,
                         EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
-                        JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis())
+                        SessionExpiry.DEFAULT.toMillis())
                 .open("mcp", "client", "client 3f9a", "/ws/app");
         SessionLog successor = new SessionLog(
-                journal,
-                () -> 2_000L,
-                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
-                JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis());
+                journal, () -> 2_000L, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, SessionExpiry.DEFAULT.toMillis());
         successor.adoptAfter(() -> e.stopPredecessorSessions(predecessor));
         long stoppedMs = EngineElection.sessionsStoppedMs;
         EngineElection.sessionsStoppedMs = 200;

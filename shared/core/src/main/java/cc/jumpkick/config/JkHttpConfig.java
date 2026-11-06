@@ -5,12 +5,8 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
@@ -53,19 +49,14 @@ public record JkHttpConfig(
     public static final String DEFAULT_MCP_TOOLS = "loop";
 
     /**
-     * The {@code [mcp]} table: surface toggle, its own SSE budget ({@code GET /mcp}), how many
-     * connections it keeps loaded, how long a quiet session lasts, and which tool cards {@code
-     * tools/list} serves — {@code loop} (the default) or {@code all}.
+     * The {@code [mcp]} table's server keys: surface toggle, its own SSE budget ({@code GET /mcp}),
+     * how many connections it keeps loaded, and which tool cards {@code tools/list} serves — {@code
+     * loop} (the default) or {@code all}. {@code session-expiry} governs every session, so {@link
+     * SessionExpiry} reads it whether or not the server is on.
      */
-    public record Mcp(boolean enabled, int maxEventStreams, int maxSessions, Duration sessionExpiry, String tools) {
-        /**
-         * {@code [mcp] session-expiry}: a session with no activity for this long ends, and its MCP
-         * connection is forgotten. Applies to every session, MCP or not.
-         */
-        public static final Duration DEFAULT_SESSION_EXPIRY = Duration.ofHours(24);
-
-        public static final Mcp DEFAULTS = new Mcp(
-                true, DEFAULT_MAX_EVENT_STREAMS, DEFAULT_MCP_MAX_SESSIONS, DEFAULT_SESSION_EXPIRY, DEFAULT_MCP_TOOLS);
+    public record Mcp(boolean enabled, int maxEventStreams, int maxSessions, String tools) {
+        public static final Mcp DEFAULTS =
+                new Mcp(true, DEFAULT_MAX_EVENT_STREAMS, DEFAULT_MCP_MAX_SESSIONS, DEFAULT_MCP_TOOLS);
     }
 
     public static final JkHttpConfig DEFAULTS = new JkHttpConfig(
@@ -95,9 +86,6 @@ public record JkHttpConfig(
 
     private static final MachineConfig<Integer> MCP_MAX_SESSIONS =
             MachineConfig.of(DEFAULT_MCP_MAX_SESSIONS, m -> m >= 1);
-
-    private static final MachineConfig<Duration> MCP_SESSION_EXPIRY =
-            MachineConfig.of(Mcp.DEFAULT_SESSION_EXPIRY, d -> d.isPositive());
 
     /** Anything but the two surfaces falls back to the loop set rather than serving nothing. */
     private static final MachineConfig<String> MCP_TOOLS =
@@ -143,10 +131,6 @@ public record JkHttpConfig(
                         MCP_MAX_SESSIONS.layerOver(
                                 base.mcp.maxSessions(),
                                 EnvValues.intValue(env, "JK_MCP_MAX_SESSIONS").orElse(null)),
-                        MCP_SESSION_EXPIRY.layerOver(
-                                base.mcp.sessionExpiry(),
-                                duration(EnvValues.string(env, "JK_MCP_SESSION_EXPIRY")
-                                        .orElse(null))),
                         MCP_TOOLS.layerOver(
                                 base.mcp.tools(),
                                 EnvValues.string(env, "JK_MCP_TOOLS").orElse(null)))));
@@ -179,47 +163,7 @@ public record JkHttpConfig(
                 MAX_EVENT_STREAMS.layer(
                         TomlValues.optInt(mcp, "max-event-streams").orElse(null)),
                 MCP_MAX_SESSIONS.layer(TomlValues.optInt(mcp, "max-sessions").orElse(null)),
-                MCP_SESSION_EXPIRY.layer(duration(mcp == null ? null : mcp.get(List.of("session-expiry")))),
                 MCP_TOOLS.layer(TomlValues.optString(mcp, "tools").orElse(null)));
-    }
-
-    private static final Pattern DURATION = Pattern.compile("(\\d+)\\s*([smhd])?");
-
-    /**
-     * {@code "30m"}, {@code "24h"}, {@code "7d"}, {@code "90s"}, or a number of seconds; null when
-     * {@code value} is none of them.
-     */
-    static @Nullable Duration duration(@Nullable Object value) {
-        if (value instanceof Long seconds) return Duration.ofSeconds(seconds);
-        if (!(value instanceof String s)) return null;
-        Matcher m = DURATION.matcher(s.trim());
-        if (!m.matches()) return null;
-        long n;
-        try {
-            n = Long.parseLong(m.group(1));
-        } catch (NumberFormatException e) {
-            return null;
-        }
-        String unit = m.group(2) == null ? "s" : m.group(2);
-        try {
-            return switch (unit) {
-                case "m" -> Duration.ofMinutes(n);
-                case "h" -> Duration.ofHours(n);
-                case "d" -> Duration.ofDays(n);
-                default -> Duration.ofSeconds(n);
-            };
-        } catch (ArithmeticException e) {
-            return null;
-        }
-    }
-
-    /** {@code d} as {@link #duration} reads it: whole days past one day, else hours, minutes or seconds. */
-    public static String spell(Duration d) {
-        long s = d.toSeconds();
-        if (s % 86_400 == 0 && s > 86_400) return s / 86_400 + "d";
-        if (s % 3_600 == 0) return s / 3_600 + "h";
-        if (s % 60 == 0) return s / 60 + "m";
-        return s + "s";
     }
 
     /** The admission-semaphore size: the configured cap, or the container-aware core count for 0. */

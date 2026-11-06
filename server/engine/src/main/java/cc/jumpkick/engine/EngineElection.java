@@ -299,18 +299,29 @@ final class EngineElection {
     }
 
     /**
-     * True when this process is no longer the named primary: the endpoint points at another
-     * generation, the pid file names another process, or the socket path answers as another pid
-     * (state-dir deleted and rebound onto this generation name).
+     * This engine's {@link EngineState}: displaced when another engine is named, orphaned when no
+     * endpoint pointer exists, else primary. Before {@link #win} it has no generation to be
+     * displaced from, and reads as primary.
      */
-    boolean displacedBySuccessor() throws IOException {
-        if (active == null) return false;
+    EngineState state() throws IOException {
+        EnginePaths.Paths gen = active;
+        if (gen == null) return EngineState.PRIMARY;
+        if (displacedBySuccessor(gen)) return EngineState.DISPLACED;
+        return Files.exists(EnginePaths.endpoint(paths)) ? EngineState.PRIMARY : EngineState.ORPHANED;
+    }
+
+    /**
+     * True when another engine is named: the endpoint points at another generation, the pid file
+     * names another process, or the socket path answers as another pid (state dir deleted and
+     * rebound onto this generation name).
+     */
+    private boolean displacedBySuccessor(EnginePaths.Paths gen) throws IOException {
         Path ep = EnginePaths.endpoint(paths);
-        String mine = active.socket().getFileName().toString();
+        String mine = gen.socket().getFileName().toString();
         if (Files.isRegularFile(ep) && !mine.equals(Files.readString(ep).trim())) {
             return true;
         }
-        long named = readPidFile(active.pid());
+        long named = readPidFile(gen.pid());
         if (named > 0 && named != pid) {
             return true;
         }
@@ -335,11 +346,6 @@ final class EngineElection {
         } catch (IOException e) {
             return false;
         }
-    }
-
-    /** True when no endpoint pointer exists at all — nobody names this engine, and nobody succeeded it. */
-    boolean endpointMissing() {
-        return !Files.exists(EnginePaths.endpoint(paths));
     }
 
     /**

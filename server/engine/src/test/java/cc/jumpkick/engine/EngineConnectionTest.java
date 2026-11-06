@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The refusal rules of one accepted connection, over a real socket: a newer protocol is refused and
  * closed; garbage and an unknown type are refused and the loop continues; a guarded verb meets the
- * lock's floor before it meets the registry; the primary refuses {@code stop-sessions}. Every
+ * lock's floor before it meets the registry; only a displaced engine honours {@code stop-sessions}. Every
  * refusal is typed — never silence.
  */
 @Tag("integration")
@@ -178,6 +178,42 @@ class EngineConnectionTest extends EngineServerHarness {
         }
     }
 
+    /**
+     * An engine no endpoint names, and that nobody succeeded, is orphaned: it refuses {@code
+     * stop-sessions} and keeps writing its own sessions.
+     */
+    @Test
+    void an_orphaned_engine_refuses_stop_sessions_and_keeps_writing_sessions() throws Exception {
+        EnginePaths.Paths p = paths(shortTempDir());
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        runInBackground(server);
+        try {
+            waitUntil(Duration.ofSeconds(10), () -> Files.exists(EnginePaths.endpoint(p)));
+            // An orphan exits once unused; a held plan slot keeps it serving for the test.
+            assertThat(server.claimPlanSlotForTests()).isTrue();
+            SessionLog log = server.sessionsForTests();
+            String label = "client " + Long.toHexString(System.nanoTime());
+            String dir = p.dir().toString();
+            String id = log.open("mcp", "client", label, dir);
+            Path own = EnginePaths.activeSocket(p);
+            Files.delete(EnginePaths.endpoint(p));
+            try (Client c = new Client(own)) {
+                String reply = c.send(ProtoLifecycle.stopSessions());
+                assertThat(EngineProtocol.typeOf(reply)).isEqualTo(EngineProtocol.ERROR);
+                assertThat(Jsonl.str(reply, "code")).isEqualTo(EngineProtocol.ERR_REQUEST_FAILED);
+                assertThat(Jsonl.str(reply, "message")).contains("orphaned");
+            }
+            log.goal("mcp", label, dir, "Fix the weekend uplift");
+            assertThat(episodes(id))
+                    .as("the goal after the refusal was written")
+                    .singleElement()
+                    .satisfies(e -> assertThat(((Map<?, ?>) e).get("title")).isEqualTo("Fix the weekend uplift"));
+            server.releasePlanSlotForTests();
+        } finally {
+            server.close();
+        }
+    }
+
     /** An engine the endpoint no longer names stops writing sessions and says so. */
     @Test
     void a_displaced_engine_stops_writing_sessions_and_acknowledges() throws Exception {
@@ -186,6 +222,10 @@ class EngineConnectionTest extends EngineServerHarness {
         runInBackground(server);
         try {
             waitUntil(Duration.ofSeconds(10), () -> Files.exists(EnginePaths.endpoint(p)));
+            SessionLog log = server.sessionsForTests();
+            String label = "client " + Long.toHexString(System.nanoTime());
+            String dir = p.dir().toString();
+            String id = log.open("mcp", "client", label, dir);
             Path own = EnginePaths.activeSocket(p);
             Files.writeString(EnginePaths.endpoint(p), "successor.gen9.sock");
             try (Client c = new Client(own)) {
@@ -194,9 +234,20 @@ class EngineConnectionTest extends EngineServerHarness {
                 assertThat(Jsonl.longValue(reply, "pid", -1))
                         .isEqualTo(ProcessHandle.current().pid());
             }
+            log.goal("mcp", label, dir, "Fix the weekend uplift");
+            assertThat(episodes(id)).as("nothing is written after the ack").isEmpty();
         } finally {
             server.close();
         }
+    }
+
+    private static List<?> episodes(String sessionId) {
+        Map<String, Object> stored = Objects.requireNonNull(
+                SessionJournal.under(BuildJournal.current().buildsRoot())
+                        .read(sessionId)
+                        .orElse(null));
+        Object episodes = stored.get("episodes");
+        return episodes == null ? List.of() : (List<?>) episodes;
     }
 
     private EnginePaths.Paths start() throws Exception {

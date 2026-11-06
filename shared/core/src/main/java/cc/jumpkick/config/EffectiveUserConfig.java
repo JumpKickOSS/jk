@@ -117,8 +117,8 @@ public final class EffectiveUserConfig {
         add(
                 out,
                 "mcp.session-expiry",
-                JkHttpConfig.spell(d.mcp().sessionExpiry()),
-                JkHttpConfig.spell(e.mcp().sessionExpiry()));
+                SessionExpiry.spell(SessionExpiry.DEFAULT),
+                SessionExpiry.spell(SessionExpiry.resolve(file, env)));
         add(out, "mcp.tools", d.mcp().tools(), e.mcp().tools());
     }
 
