@@ -32,7 +32,7 @@ note() {
 
 # Relative paths of every file under $1, skipping the catalog's own files and git metadata.
 files_under() {
-  (cd "$1" && find . -type f ! -path './.git/*' ! -path './README.md' ! -path './LICENSE' | sed 's|^\./||' | LC_ALL=C sort)
+  (cd "$1" && find . -type f ! -path './.git' ! -path './.git/*' ! -path './README.md' ! -path './LICENSE' | sed 's|^\./||' | LC_ALL=C sort)
 }
 
 src_list="$(files_under "$SRC")"
