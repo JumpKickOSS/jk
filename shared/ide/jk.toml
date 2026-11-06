@@ -30,6 +30,11 @@ options = [
   "-XepOpt:NullAway:KnownInitializers=cc.jumpkick.model.command.CliCommand.run",
 ]
 
+[test]
+# Set only to re-capture the IDE goldens (IdeGoldenFilesTest): the resources directory they are
+# written under. Unset, the test compares and writes nothing.
+env = ["IDE_GOLDEN_CAPTURE"]
+
 [test-dependencies]
 jk-host = { workspace = true, fixtures = true }
 assertj-core = "3.27.7"

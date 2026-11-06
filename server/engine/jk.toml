@@ -125,4 +125,11 @@ env = [
   # Set only to re-capture the new-project corpus's snapshots (NewProjectCorpusTest): the directory
   # they are written to. Unset, the corpus compares and writes nothing.
   "NEW_PROJECT_CORPUS_CAPTURE",
+  # The GraalVM the AOT-cache end-to-end test may link with (TrainAotCacheE2eTest, slow tier), when
+  # the shell running jk names one.
+  "GRAALVM_HOME",
+  # The opt-in switch and clone path of the Now-in-Android sweep (NiaScratchTest, slow tier); unset,
+  # the sweep is disabled.
+  "JK_NIA_SCRATCH",
+  "JK_NIA_ROOT",
 ]

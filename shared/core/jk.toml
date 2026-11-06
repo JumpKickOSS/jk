@@ -41,3 +41,6 @@ junit-jupiter = "6.1.3"
 [test]
 # SessionBoundary lives here: compile-test-fixtures, never a main jar.
 fixtures = true
+# Extra lockfiles for the row-parser parity test (LockRowParserTest), a path-separator list, when
+# the shell running jk names any; unset, it reads this checkout's locks alone.
+env = ["JK_LOCK_CORPUS"]

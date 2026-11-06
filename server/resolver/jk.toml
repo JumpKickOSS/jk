@@ -42,3 +42,6 @@ fixtures = true
 # Normal `jk test` should finish in 5 min or less.
 # Run everything (all suites, tags included) with `jk build --all` / `jk test --all`.
 exclude-tags = ["integration", "slow", "bench", "network"]
+# A local nowinandroid overlay for the warm-lock timing harness (NiaWarmLockTimingTest, network
+# tier), when the shell running jk names one; unset, that test skips by assumption.
+env = ["JK_NIA_OVERLAY"]
