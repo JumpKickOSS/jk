@@ -18,8 +18,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The engine's half of a graph question's compile step: a {@code compile} job for the modules whose
- * main sources moved since their classes, submitted as any other job is (admission, the checkout's
- * build slot, memory leases, a row in the history, a graph refresh when it passes) and awaited.
+ * main sources moved since their classes or were never compiled, submitted as any other job is
+ * (admission, the checkout's build slot, memory leases, a row in the history, a graph refresh when
+ * it passes) and awaited.
  */
 public final class GraphCompiles implements GraphRunner.Compiler {
 

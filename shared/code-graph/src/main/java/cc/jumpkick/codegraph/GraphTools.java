@@ -32,6 +32,7 @@ public final class GraphTools {
     private final CodeGraph graph;
     private final Scope scope;
     private final Function<String, @Nullable String> files;
+    private final boolean complete;
     private final Map<String, @Nullable List<String>> read = new HashMap<>();
 
     public GraphTools(CodeGraph graph) {
@@ -40,18 +41,20 @@ public final class GraphTools {
 
     /** Tools whose names resolve, and whose connections and rankings list, inside {@code scope} first. */
     public GraphTools(CodeGraph graph, Scope scope) {
-        this(graph, scope, rel -> null);
+        this(graph, scope, rel -> null, true);
     }
 
     /**
      * Tools that also quote each edge's source lines, read through {@code files} (a workspace-relative
      * path to its text, {@code null} when unreadable): an agent edits a call site from the answer
-     * without reading the file to find it.
+     * without reading the file to find it. {@code complete} is false when a module with main sources
+     * has no compiled classes, so a callers answer is missing the calls made there.
      */
-    public GraphTools(CodeGraph graph, Scope scope, Function<String, @Nullable String> files) {
+    public GraphTools(CodeGraph graph, Scope scope, Function<String, @Nullable String> files, boolean complete) {
         this.graph = graph;
         this.scope = scope;
         this.files = files;
+        this.complete = complete;
     }
 
     /** A resolved node id, or the message explaining why there is none. */
@@ -212,8 +215,10 @@ public final class GraphTools {
                                 ? ", stopped at " + depth + " hops: more lie beyond, raise max_hops (-L) for them."
                                 : ", every one: the chain ends after " + deepest
                                         + (deepest == 1 ? " hop." : " hops.")));
-        lines.add("Complete from the compiled classes; no search needed unless a note below says otherwise. Every"
-                + " method listed reaches it, its receiver typed by the compiler whatever the variable is called: a"
+        lines.add((complete
+                        ? "Complete from the compiled classes; no search needed unless a note below says otherwise."
+                        : "Not complete: the note below names the modules with no compiled classes.")
+                + " Every method listed reaches it, its receiver typed by the compiler whatever the variable is called: a"
                 + " lambda's call counts for its method, and one marked through calls a supertype method that"
                 + " dispatches to it.");
         for (List<Caller> set : List.of(main, test)) {

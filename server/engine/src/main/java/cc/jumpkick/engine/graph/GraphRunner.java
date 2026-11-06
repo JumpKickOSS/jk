@@ -28,6 +28,7 @@ import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -125,14 +126,17 @@ public final class GraphRunner {
             } catch (IOException | RuntimeException refused) {
                 return GraphAck.error(String.valueOf(refused.getMessage()));
             }
-            String skipped = req.noRefresh() || !compile ? null : compileStale(root);
+            Compiled compiled = req.noRefresh() || !compile ? Compiled.NOTHING : compileStale(root);
             ClassIndexes indexes = req.noRefresh() ? ClassIndexes.NONE : classIndexes(root);
             List<String> modules = req.noRefresh() ? List.of() : moduleRows(root);
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
-            Path spec = spec(root, req, indexes.rows(), modules, prefixes, scripts);
+            Path spec = spec(root, req, indexes, modules, prefixes, scripts);
             try {
                 GraphAck ack = withNote(forkWithHeap(root, spec, progress), indexes.leftOut(), indexes.edited());
-                return skipped == null ? ack : withLine(ack, skipped);
+                String skipped = compiled.line();
+                if (skipped != null) ack = withLine(ack, skipped);
+                String uncompiled = compiled.uncompiledLine(indexes.uncompiled());
+                return uncompiled == null ? ack : withLine(ack, uncompiled);
             } finally {
                 Files.deleteIfExists(spec);
             }
@@ -143,8 +147,9 @@ public final class GraphRunner {
 
     /**
      * Brings stale classes up to their sources before a question reads them: what a graph question
-     * runs when a module's main sources moved since its classes. {@code null} means nothing to do or
-     * done; otherwise one line, why not ({@code the code does not compile (…)}, a build running).
+     * runs when a module's main sources moved since its classes, or it has none. {@code null} means
+     * nothing to do or done; otherwise one line, why not ({@code the code does not compile (…)}, a
+     * build running).
      */
     public interface Compiler {
         @Nullable
@@ -159,30 +164,82 @@ public final class GraphRunner {
     }
 
     /**
-     * Compile the modules whose main sources were edited since their classes, so the calls and
-     * overrides an answer reads are the code's as it stands. An unchanged tree costs the check that
-     * finds nothing stale. Test sources are not compiled here ({@code compile} builds main classes):
-     * an edited test keeps the edited-files note. {@code null}, or the line saying why it did not.
+     * What the compile step did: why it did not run ({@code null} when it ran or had nothing to do),
+     * and whether a module it was for had classes from an earlier build to answer from.
      */
-    static @Nullable String compileStale(Path root) throws InterruptedException {
+    record Compiled(@Nullable String skipped, boolean earlierClasses) {
+        static final Compiled NOTHING = new Compiled(null, false);
+
+        /** The line an answer from the last build's classes carries, else {@code null}. */
+        @Nullable
+        String line() {
+            return skipped == null || !earlierClasses
+                    ? null
+                    : "compile skipped: " + skipped + "; answering from the last build's classes";
+        }
+
+        /**
+         * The line naming {@code uncompiled}, the modules still without main classes, else {@code
+         * null}; it carries why the compile did not run unless {@link #line} already does.
+         */
+        @Nullable
+        String uncompiledLine(List<String> uncompiled) {
+            if (uncompiled.isEmpty()) return null;
+            boolean one = uncompiled.size() == 1;
+            String why = skipped == null || earlierClasses ? "" : "compile skipped: " + skipped + "; ";
+            return why + String.join(", ", uncompiled) + (one ? " has" : " have")
+                    + " no compiled classes, so the calls made there are missing: search " + (one ? "it" : "them")
+                    + " for calls too";
+        }
+    }
+
+    /**
+     * Compile the modules whose main sources were edited since their classes, or that have main
+     * sources and were never compiled, so the calls and overrides an answer reads are the code's as
+     * it stands. An unchanged tree costs the check that finds nothing stale. Test sources are not
+     * compiled here ({@code compile} builds main classes): an edited test keeps the edited-files note.
+     */
+    static Compiled compileStale(Path root) throws InterruptedException {
         Compiler c = compiler;
-        if (c == null) return null;
+        if (c == null) return Compiled.NOTHING;
         Map<Path, JkBuild> all = modules(root);
         List<String> stale = new ArrayList<>();
+        boolean earlierClasses = false;
         for (Map.Entry<Path, JkBuild> module : all.entrySet()) {
             BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
-            if (!Files.isDirectory(layout.classesDir())) continue;
+            String arg =
+                    moduleArg(root, module.getKey(), module.getValue().project().name());
+            if (!Files.isDirectory(layout.classesDir())) {
+                if (hasMainSources(module.getKey())) stale.add(arg);
+                continue;
+            }
             Set<String> edited = ModuleInputProvenance.staleSources(root, module.getKey(), module.getValue());
             boolean compact = ModuleLayout.isCompact(module.getKey());
             if (edited == null || edited.stream().anyMatch(rel -> mainSource(rel, compact))) {
-                stale.add(moduleArg(
-                        root, module.getKey(), module.getValue().project().name()));
+                stale.add(arg);
+                earlierClasses = true;
             }
         }
-        if (stale.isEmpty()) return null;
+        if (stale.isEmpty()) return Compiled.NOTHING;
         // One module is the whole project: no filter, so its name need not match how -m spells it.
-        String why = c.compile(root, all.size() == 1 ? List.of() : stale);
-        return why == null ? null : "compile skipped: " + why + "; answering from the last build's classes";
+        return new Compiled(c.compile(root, all.size() == 1 ? List.of() : stale), earlierClasses);
+    }
+
+    /** Whether the module at {@code dir} has a JVM source among its main sources: one a compile makes classes of. */
+    static boolean hasMainSources(Path dir) {
+        boolean compact = ModuleLayout.isCompact(dir);
+        Path src = compact ? dir.resolve("src") : dir.resolve("src").resolve("main");
+        try {
+            return PathUtil.anyRegularFile(src, d -> false, GraphRunner::jvmSource);
+        } catch (IOException | RuntimeException unreadable) {
+            Log.debug("graph: cannot list the sources under " + src, unreadable);
+            return false;
+        }
+    }
+
+    private static boolean jvmSource(Path file) {
+        String name = file.getFileName().toString();
+        return name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy");
     }
 
     /**
@@ -432,7 +489,7 @@ public final class GraphRunner {
     private static Path spec(
             Path root,
             GraphRequest r,
-            List<String> indexes,
+            ClassIndexes indexes,
             List<String> modules,
             List<String> prefixes,
             GraphScripts.@Nullable Tools scripts)
@@ -441,8 +498,9 @@ public final class GraphRunner {
                 ? GraphRules.rows(root, relative(root, r.args().getFirst()), allModulePrefixes(root))
                 : List.of();
         boolean apis = "read".equals(r.op()) || "find".equals(r.op());
-        return specWriter(root, r, indexes, modules, scripts)
+        return specWriter(root, r, indexes.rows(), modules, scripts)
                 .configString("cache", JkDirs.cache().toString())
+                .configList("uncompiled", indexes.uncompiled())
                 .configList("rules", rules)
                 .configList("libraries", apis ? libraryRows(root) : List.of())
                 .configString("apiCache", apis ? JkStores.resolve("graph-api").toString() : null)
@@ -490,10 +548,11 @@ public final class GraphRunner {
      * stale \t compileKeys}, one per module's main and test classes, {@code stale} the
      * workspace-relative sources edited since the build and {@code compileKeys} the action keys the
      * compiles stamped on the classes, each joined by {@link #STALE_SEPARATOR}), the modules whose
-     * classes it does not read, and the edited sources whose own classes it skips.
+     * classes it does not read, the edited sources whose own classes it skips, and the modules with
+     * main sources and no main classes.
      */
-    record ClassIndexes(List<String> rows, List<String> leftOut, List<String> edited) {
-        static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of(), List.of());
+    record ClassIndexes(List<String> rows, List<String> leftOut, List<String> edited, List<String> uncompiled) {
+        static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of(), List.of(), List.of());
     }
 
     /** Between the entries of a row's stale and compile-key fields: a character no path or key holds. */
@@ -506,17 +565,20 @@ public final class GraphRunner {
      * ({@link ModuleInputProvenance#staleSources}) contributes what it says; every other class of
      * the module keeps its compiled facts, so one edit does not take its neighbours' calls with it.
      * A call, an override or a line read off a class older than its own source would be a false
-     * answer, so the answer names what it skipped.
+     * answer, so the answer names what it skipped, and the modules with main sources it has no
+     * classes of.
      */
     static ClassIndexes classIndexes(Path root) {
         List<String> out = new ArrayList<>();
         List<String> leftOut = new ArrayList<>();
         List<String> edited = new ArrayList<>();
+        List<String> uncompiled = new ArrayList<>();
         for (Map.Entry<Path, JkBuild> module : modules(root).entrySet()) {
             BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
             String rel = root.relativize(module.getKey()).toString().replace('\\', '/');
             String prefix = rel.isEmpty() ? "" : rel + "/";
             String name = rel.isEmpty() ? String.valueOf(module.getKey().getFileName()) : rel;
+            if (!Files.isDirectory(layout.classesDir()) && hasMainSources(module.getKey())) uncompiled.add(name);
             boolean compiled = Files.isDirectory(layout.classesDir()) || Files.isDirectory(layout.testClassesDir());
             if (!compiled) continue;
             Set<String> stale = ModuleInputProvenance.staleSources(root, module.getKey(), module.getValue());
@@ -547,7 +609,7 @@ public final class GraphRunner {
             out.addAll(rows);
             edited.addAll(staleRel);
         }
-        return new ClassIndexes(out, leftOut, edited);
+        return new ClassIndexes(out, leftOut, edited, uncompiled);
     }
 
     /** The action keys of the compiles whose output {@code classes} is, from the stamps they left in it. */

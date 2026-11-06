@@ -112,7 +112,75 @@ class GraphRunnerTest {
                 .contains("OrderService.java");
     }
 
+    /**
+     * A fresh checkout has no classes: a callers question compiles the module first and answers
+     * complete from what that compile wrote. Before it, the answer would have been complete with
+     * no compiled call behind it.
+     */
+    @Test
+    void aQuestionOnACheckoutThatWasNeverCompiledCompilesItFirst(@TempDir Path tmp) throws Exception {
+        Path root = sources(tmp);
+        Javac javac = new Javac();
+        GraphRunner.compiler(javac);
+        GraphAck ack = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        assertThat(ack.error()).isNull();
+        assertThat(javac.runs).as("the never-compiled module is compiled").hasSize(1);
+        assertThat(ack.text()).contains("OrderService.total()").contains("Complete from the compiled classes");
+        assertThat(String.valueOf(ack.note())).doesNotContain("no compiled classes", "compile skipped");
+
+        GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        assertThat(javac.runs)
+                .as("compiled once: the next question finds classes")
+                .hasSize(1);
+    }
+
+    /**
+     * A never-compiled module whose code does not compile is answered from its sources, says why in
+     * one line naming the module, and is never called complete.
+     */
+    @Test
+    void aNeverCompiledModuleThatDoesNotCompileIsNamedAndTheAnswerIsNotComplete(@TempDir Path tmp) throws Exception {
+        Path root = sources(tmp);
+        Path order = root.resolve("src/main/java/com/acme/shop/OrderService.java");
+        Files.writeString(order, Files.readString(order).replace("return calculator.sum(a, b);", "return nope(;"));
+        Javac javac = new Javac();
+        GraphRunner.compiler(javac);
+        GraphAck ack = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        assertThat(ack.error())
+                .as("code that does not compile never fails the question")
+                .isNull();
+        assertThat(javac.runs).hasSize(1);
+        assertThat(ack.text()).doesNotContain("Complete").contains("Not complete");
+        assertThat(ack.note())
+                .isEqualTo("compile skipped: the code does not compile; " + root.getFileName()
+                        + " has no compiled classes, so the calls made there are missing: search it for calls too");
+    }
+
     private static Path workspace(Path dir) throws Exception {
+        sources(dir);
+        Path pkg = dir.resolve("src/main/java/com/acme/shop");
+        Path classes = Files.createDirectories(dir.resolve("target/classes"));
+        int exit = ToolProvider.getSystemJavaCompiler()
+                .run(
+                        null,
+                        null,
+                        null,
+                        "-g",
+                        "-d",
+                        classes.toString(),
+                        pkg.resolve("PriceCalculator.java").toString(),
+                        pkg.resolve("OrderService.java").toString());
+        assertThat(exit).isZero();
+        // What a successful build leaves beside its classes: the record the graph reads them by.
+        BuildGraph.Result graph =
+                BuildGraph.resolve(dir, JkBuildParser.parse(Files.readString(dir.resolve("jk.toml"))));
+        ModuleInputProvenance.recordClasses(
+                dir, graph, Set.of(dir.toAbsolutePath().normalize()));
+        return dir;
+    }
+
+    /** A one-module project as a fresh checkout has it: sources, nothing compiled. */
+    private static Path sources(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "com.acme"
                 name = "shop"
@@ -141,23 +209,6 @@ class GraphRunnerTest {
                 }
                 """);
         Files.writeString(dir.resolve("README.md"), "# Shop\n\nSee `OrderService`.\n");
-        Path classes = Files.createDirectories(dir.resolve("target/classes"));
-        int exit = ToolProvider.getSystemJavaCompiler()
-                .run(
-                        null,
-                        null,
-                        null,
-                        "-g",
-                        "-d",
-                        classes.toString(),
-                        pkg.resolve("PriceCalculator.java").toString(),
-                        pkg.resolve("OrderService.java").toString());
-        assertThat(exit).isZero();
-        // What a successful build leaves beside its classes: the record the graph reads them by.
-        BuildGraph.Result graph =
-                BuildGraph.resolve(dir, JkBuildParser.parse(Files.readString(dir.resolve("jk.toml"))));
-        ModuleInputProvenance.recordClasses(
-                dir, graph, Set.of(dir.toAbsolutePath().normalize()));
         return dir;
     }
 

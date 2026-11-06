@@ -74,12 +74,12 @@ class GraphToolsTest {
 
         StringBuilder source = new StringBuilder();
         for (int i = 1; i <= 30; i++) source.append(i == 9 || i == 21 ? "    worker(" + i + ");\n" : "\n");
-        String quoted = new GraphTools(g, Scope.ALL, rel -> rel.equals("src/S.java") ? source.toString() : null)
+        String quoted = new GraphTools(g, Scope.ALL, rel -> rel.equals("src/S.java") ? source.toString() : null, true)
                 .neighbors("worker", "calls", 2000);
         assertThat(quoted)
                 .as("each site's own line, so the call is edited without reading the file")
                 .contains("  src/S.java:21,9\n      L21| worker(21);\n      L9| worker(9);");
-        assertThat(new GraphTools(g, Scope.ALL, rel -> null).neighbors("worker", "calls", 2000))
+        assertThat(new GraphTools(g, Scope.ALL, rel -> null, true).neighbors("worker", "calls", 2000))
                 .doesNotContain("L21|");
     }
 
@@ -164,6 +164,16 @@ class GraphToolsTest {
         assertThat(new GraphTools(release()).callers("Info.name(String)", 1, 2000))
                 .as("the parameter list rename takes names the same method")
                 .isEqualTo(out);
+    }
+
+    @Test
+    void callers_are_not_said_to_be_complete_when_a_module_has_no_compiled_classes() {
+        String out = new GraphTools(release(), Scope.ALL, rel -> null, false).callers("Info.name", 1, 2000);
+        assertThat(out)
+                .contains("\nNot complete: the note below names the modules with no compiled classes. Every method")
+                .doesNotContain("Complete from");
+        assertThat(new GraphTools(release(), Scope.ALL, rel -> null, false).callers("Info.name", 8, 2000))
+                .doesNotContain("Complete from");
     }
 
     @Test

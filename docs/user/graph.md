@@ -62,16 +62,18 @@ What each file declares is kept in the [action cache](cache.md), keyed by the fi
 hash and the extractor's version, so another worktree, branch or fresh clone on the machine reads
 none of the files the first already read. A module's compiled facts are kept there too, keyed by the
 compile that produced its classes, which covers its classpath: a checkout takes them only for
-classes that compile would give it, never from a compile against other dependencies. A checkout
-that has not compiled a module answers for it from what the sources declare until it does.
+classes that compile would give it, never from a compile against other dependencies.
 
 A class's compiled facts (calls, overrides, exact lines) are read only while its source is the one
 the module's last successful build compiled. A question asked after an edit to a module's main
-sources compiles that module first (a `compile` job, in the history like any other; a second or
-two on a typical module), so its calls and overrides are the code's as edited, with no `jk build`.
-When the edit does not compile yet, or a build of the checkout is running, the question is answered
-without it and says why in one line: an edited source contributes what its text declares, and every
-other file of the module keeps its compiled facts, so the callers of the method being changed are
+sources, or while a module's main sources have never been compiled (a fresh checkout), compiles
+that module first (a `compile` job, in the history like any other; a second or two on a typical
+module, a restore when the action cache holds it), so its calls and overrides are the code's as it
+stands, with no `jk build`. When that compile cannot run (the code does not compile yet, or a build
+of the checkout is running), the question is answered without it and says why in one line. A module
+with no compiled classes then contributes what its sources declare, the line names it, and a
+callers answer does not say it is complete. After an edit, an edited source contributes what its
+text declares, and every other file of the module keeps its compiled facts, so the callers of the method being changed are
 still there mid-edit; the answer names the edited files. Test sources are not compiled for a
 question; an edited test is named the same way. A module whose class
 files the build did not write, or that is being built while the graph refreshes, contributes what

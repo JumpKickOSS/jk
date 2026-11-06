@@ -97,8 +97,9 @@ public final class GraphService {
      * What the engine knows about the workspace: its root, where this checkout keeps its linked
      * graph ({@code out}) and the cache root whose action index holds the fragments ({@code cache}), every module's
      * class facts index, its modules, the script reader, the {@code [graph.aliases]} (term → outside words), for {@code rules} the guard rules
-     * the engine matched to the file (one JSON object each), and for {@code read} and {@code find} the
-     * locked jars and where their API indexes are kept.
+     * the engine matched to the file (one JSON object each), for {@code read} and {@code find} the
+     * locked jars and where their API indexes are kept, and the modules with main sources the engine
+     * has no compiled classes of ({@code uncompiled}), whose calls no answer holds.
      */
     public record Workspace(
             Path root,
@@ -110,10 +111,12 @@ public final class GraphService {
             Map<String, List<String>> aliases,
             List<String> guardRules,
             List<LibraryApi.Jar> libraries,
-            @Nullable Path apiCache) {
+            @Nullable Path apiCache,
+            List<String> uncompiled) {
 
         public Workspace {
             indexes = List.copyOf(indexes);
+            uncompiled = List.copyOf(uncompiled);
             aliases = Map.copyOf(aliases);
             guardRules = List.copyOf(guardRules);
             libraries = List.copyOf(libraries);
@@ -164,7 +167,8 @@ public final class GraphService {
     static String text(Workspace w, GraphBuild.Result build, Request r) throws IOException {
         CodeGraph g = build.graph();
         Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
-        GraphTools tools = new GraphTools(g, scope, rel -> source(w.root(), rel));
+        GraphTools tools = new GraphTools(
+                g, scope, rel -> source(w.root(), rel), w.uncompiled().isEmpty());
         List<String> a = r.args();
         return switch (r.op()) {
             case "build" -> "";
