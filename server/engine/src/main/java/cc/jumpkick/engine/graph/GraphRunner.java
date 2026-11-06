@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.graph;
 
 import cc.jumpkick.builds.GraphRefreshSlot;
+import cc.jumpkick.cache.GraphCacheKeys;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.GraphConfig;
@@ -59,6 +60,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -127,21 +129,43 @@ public final class GraphRunner {
                 return GraphAck.error(String.valueOf(refused.getMessage()));
             }
             Compiled compiled = req.noRefresh() || !compile ? Compiled.NOTHING : compileStale(root);
-            ClassIndexes indexes = req.noRefresh() ? ClassIndexes.NONE : classIndexes(root);
+            Path cache = JkDirs.cache();
+            // A rename reads every class set's index, and -r maps every set again.
+            boolean index = "rename".equals(req.op()) || req.rebuild();
+            ClassIndexes indexes = req.noRefresh() ? ClassIndexes.NONE : classIndexes(root, cache, index);
             List<String> modules = req.noRefresh() ? List.of() : moduleRows(root);
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
-            Path spec = spec(root, req, indexes, modules, prefixes, scripts);
-            try {
-                GraphAck ack = withNote(forkWithHeap(root, spec, progress), indexes.leftOut(), indexes.edited());
-                String skipped = compiled.line();
-                if (skipped != null) ack = withLine(ack, skipped);
-                String uncompiled = compiled.uncompiledLine(indexes.uncompiled());
-                return uncompiled == null ? ack : withLine(ack, uncompiled);
-            } finally {
-                Files.deleteIfExists(spec);
+            GraphAck ack = ask(root, req, cache, indexes, modules, prefixes, scripts, progress);
+            if (!ack.ok() && GraphCacheKeys.GONE.equals(ack.error()) && !index) {
+                indexes = classIndexes(root, cache, true);
+                ack = ask(root, req, cache, indexes, modules, prefixes, scripts, progress);
             }
+            ack = withNote(ack, indexes.leftOut(), indexes.edited());
+            String skipped = compiled.line();
+            if (skipped != null) ack = withLine(ack, skipped);
+            String uncompiled = compiled.uncompiledLine(indexes.uncompiled());
+            return uncompiled == null ? ack : withLine(ack, uncompiled);
         } finally {
             lock.unlock();
+        }
+    }
+
+    /** One answer from the graph worker over {@code indexes}. */
+    private static GraphAck ask(
+            Path root,
+            GraphRequest req,
+            Path cache,
+            ClassIndexes indexes,
+            List<String> modules,
+            List<String> prefixes,
+            GraphScripts.@Nullable Tools scripts,
+            Consumer<GraphProgress> progress)
+            throws IOException, InterruptedException {
+        Path spec = spec(root, req, cache, indexes, modules, prefixes, scripts);
+        try {
+            return forkWithHeap(root, spec, progress);
+        } finally {
+            Files.deleteIfExists(spec);
         }
     }
 
@@ -489,6 +513,7 @@ public final class GraphRunner {
     private static Path spec(
             Path root,
             GraphRequest r,
+            Path cache,
             ClassIndexes indexes,
             List<String> modules,
             List<String> prefixes,
@@ -499,7 +524,7 @@ public final class GraphRunner {
                 : List.of();
         boolean apis = "read".equals(r.op()) || "find".equals(r.op());
         return specWriter(root, r, indexes.rows(), modules, scripts)
-                .configString("cache", JkDirs.cache().toString())
+                .configString("cache", cache.toString())
                 .configList("uncompiled", indexes.uncompiled())
                 .configList("rules", rules)
                 .configList("libraries", apis ? libraryRows(root) : List.of())
@@ -544,10 +569,12 @@ public final class GraphRunner {
     }
 
     /**
-     * The facts-index rows the graph reads ({@code index \t modulePrefix \t digest \t classes \t
-     * stale \t compileKeys}, one per module's main and test classes, {@code stale} the
-     * workspace-relative sources edited since the build and {@code compileKeys} the action keys the
-     * compiles stamped on the classes, each joined by {@link #STALE_SEPARATOR}), the modules whose
+     * The facts-index rows the graph reads ({@code index \t modulePrefix \t sourceSet \t digest \t
+     * classes \t stale \t compileKeys}, one per module's main and test classes, {@code index} empty
+     * for a set left unindexed because the cache holds its facts, {@code digest} the set's cache key
+     * when a compile stamped it, {@code stale} the workspace-relative sources edited since the build
+     * and {@code compileKeys} the action keys the compiles stamped on the classes, each joined by
+     * {@link #STALE_SEPARATOR}), the modules whose
      * classes it does not read, the edited sources whose own classes it skips, and the modules with
      * main sources and no main classes.
      */
@@ -566,9 +593,10 @@ public final class GraphRunner {
      * the module keeps its compiled facts, so one edit does not take its neighbours' calls with it.
      * A call, an override or a line read off a class older than its own source would be a false
      * answer, so the answer names what it skipped, and the modules with main sources it has no
-     * classes of.
+     * classes of. A set whose compiled facts the cache at {@code cache} holds under its compile keys
+     * is not indexed, unless {@code index}: the graph worker reads those facts from the cache.
      */
-    static ClassIndexes classIndexes(Path root) {
+    static ClassIndexes classIndexes(Path root, Path cache, boolean index) {
         List<String> out = new ArrayList<>();
         List<String> leftOut = new ArrayList<>();
         List<String> edited = new ArrayList<>();
@@ -593,10 +621,19 @@ public final class GraphRunner {
                 for (String set : List.of("main", "test")) {
                     Path classes = set.equals("main") ? layout.classesDir() : layout.testClassesDir();
                     if (!Files.isDirectory(classes)) continue;
+                    List<String> keys = compileKeys(classes);
+                    String key = GraphCacheKeys.classes(prefix, set, keys);
+                    String tail = staleField + "\t" + String.join(STALE_SEPARATOR, keys);
+                    OptionalInt held =
+                            key == null || index ? OptionalInt.empty() : GraphCacheKeys.heldClasses(cache, key);
+                    if (key != null && held.isPresent()) {
+                        rows.add("\t" + prefix + "\t" + set + "\t" + key + "\t" + held.getAsInt() + "\t" + tail);
+                        continue;
+                    }
                     FactsIndexing.Ensured e =
                             FactsIndexing.ensure(classes, FactsIndexing.indexPath(layout.buildDir(), set));
-                    rows.add(e.index() + "\t" + prefix + "\t" + e.bodyDigest() + "\t" + e.classes() + "\t" + staleField
-                            + "\t" + String.join(STALE_SEPARATOR, compileKeys(classes)));
+                    rows.add(e.index() + "\t" + prefix + "\t" + set + "\t" + (key == null ? e.bodyDigest() : key) + "\t"
+                            + e.classes() + "\t" + tail);
                 }
             } catch (IOException | RuntimeException unreadable) {
                 leftOut.add(name);

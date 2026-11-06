@@ -328,7 +328,8 @@ class GraphRenameTest {
                 root,
                 root.resolve("target/graph"),
                 root.resolve("target/jk-cache"),
-                List.of(new GraphBuild.ClassIndex(e.index(), "", e.bodyDigest(), e.classes(), stale, List.of())),
+                List.of(new GraphBuild.ClassIndex(
+                        e.index(), "", "main", e.bodyDigest(), e.classes(), stale, List.of())),
                 Modules.NONE,
                 new ScriptReader(null, null),
                 Map.of(),

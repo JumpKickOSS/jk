@@ -112,8 +112,9 @@ public final class CacheCommand extends GroupCommand {
      * {@code JK_STORE_DIR} and survive a nuke, so adding them to a figure printed under a heading
      * that says "Cache" is how a 235&nbsp;MB reading preceded a nuke that freed 115.
      *
-     * <p>"Actions Cached" counts {@link ActionTree#KEYS} and nothing else, because that tree holds
-     * exactly one file per cached action. The whole {@code actions/} tree read 315 on the live
+     * <p>"Actions + Graph" counts {@link ActionTree#KEYS} and nothing else, because that tree holds
+     * exactly one file per cached action or code-graph fragment, and its label says it holds both.
+     * The whole {@code actions/} tree read 315 on the live
      * dogfood cache where 123 actions were cached — 123 key records, 106 task pointers and 86
      * files of Zinc analysis, three populations summed under one heading. The footprint above is
      * deliberately the opposite choice: a size is honest as a superset, a count is not.
@@ -211,7 +212,7 @@ public final class CacheCommand extends GroupCommand {
      * other tier plus whatever the retention sweep has yet to reclaim. Summing rows is the shape
      * this record had when it silently dropped a tier.
      *
-     * @param actionKeys one entry per cached action ({@link ActionTree#KEYS}), not the whole
+     * @param actionKeys one entry per cached action or graph fragment ({@link ActionTree#KEYS}), not the whole
      *     {@code actions/} tree, which also holds task pointers and Zinc analysis
      */
     record SectionStats(Stats cacheCas, Stats actionKeys, Stats root) {}

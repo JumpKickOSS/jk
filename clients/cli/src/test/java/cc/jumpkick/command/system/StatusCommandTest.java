@@ -31,6 +31,12 @@ class StatusCommandTest {
         assertThat(StatusCommand.dottedLabel("Language", 18)).isEqualTo("Language.........:");
     }
 
+    /** The key-record count holds the code graph's fragments too, and its row says so. */
+    @Test
+    void the_key_record_row_names_the_graph_it_counts() {
+        assertThat(StatusCommand.dottedLabel(StatusCommand.ACTION_RECORDS, 18)).isEqualTo("Actions + Graph..:");
+    }
+
     @Test
     void sameBaseDir_matches_dirty_count_shapes() {
         assertThat(StatusCommand.sameBaseDir("/home/u/src/proj", "/home/u/src/proj"))

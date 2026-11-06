@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.graph;
 
+import cc.jumpkick.cache.GraphCacheKeys;
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.GraphEdge;
@@ -37,6 +38,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -68,13 +70,21 @@ public final class GraphBuild {
     }
 
     /**
-     * One module's class set: its facts index, the module's path prefix, the index's digest and
-     * class count, the workspace-relative sources edited since those classes were built, whose own
-     * classes are skipped (their source scan answers for them), and the action keys of the compiles
-     * whose output the set is (none when no jk compile stamped it).
+     * One module's class set: its facts index ({@code null} when the engine left it unindexed because
+     * the cache holds the set's facts), the module's path prefix, its source set ({@code main} or
+     * {@code test}), the digest a graph is linked from and the class count, the workspace-relative
+     * sources edited since those classes were built, whose own classes are skipped (their source scan
+     * answers for them), and the action keys of the compiles whose output the set is (none when no jk
+     * compile stamped it).
      */
     public record ClassIndex(
-            Path index, String modulePrefix, String digest, int classes, Set<String> stale, List<String> compileKeys) {
+            @Nullable Path index,
+            String modulePrefix,
+            String sourceSet,
+            String digest,
+            int classes,
+            Set<String> stale,
+            List<String> compileKeys) {
         public ClassIndex {
             stale = Set.copyOf(stale);
             compileKeys = List.copyOf(compileKeys);
@@ -91,6 +101,13 @@ public final class GraphBuild {
             long millis,
             boolean changed,
             @Nullable String commit) {}
+
+    /** A class set the engine left unindexed for its cached facts is no longer in the cache. */
+    static final class FactsGone extends IllegalStateException {
+        FactsGone() {
+            super(GraphCacheKeys.GONE);
+        }
+    }
 
     /**
      * Refreshes {@code root}'s graph into {@code out}; {@code cache} is the cache root whose action
@@ -161,7 +178,7 @@ public final class GraphBuild {
         }
         String classDigest = classDigest(indexes, modules);
         String commit = GitHead.read(base);
-        String extractors = Extractors.VERSION + (scripts.active() ? "+oxc" : "");
+        String extractors = GraphCacheKeys.VERSION + (scripts.active() ? "+oxc" : "");
         String inputs = inputs(shas);
         GraphSnapshot.Key key = new GraphSnapshot.Key(extractors, sources.size(), classDigest, inputs, commit);
         boolean sameFiles = changed.isEmpty() && unreadable.isEmpty() && stats.size() == sources.size();
@@ -185,8 +202,7 @@ public final class GraphBuild {
                     && ScriptReader.handles(s.rel())
                     && (rebuild
                             || fragmentCache.declarations(
-                                            FragmentCache.declarationsKey(s.rel(), sha, scripts.flavor(s.rel())),
-                                            s.rel())
+                                            GraphCacheKeys.declarations(s.rel(), sha, scripts.flavor(s.rel())), s.rel())
                                     == null)) {
                 unread.add(s.rel());
             }
@@ -200,14 +216,14 @@ public final class GraphBuild {
             String sha = shas.get(s.rel());
             if (sha == null) return;
             String flavor = scripts.flavor(s.rel());
-            String k = FragmentCache.declarationsKey(s.rel(), sha, flavor);
+            String k = GraphCacheKeys.declarations(s.rel(), sha, flavor);
             Fragment stored = rebuild ? null : fragmentCache.declarations(k, s.rel());
             Fragment read = oxc.get(s.rel());
             Fragment f = stored != null ? stored : read != null ? read : extract(s, changed.get(s.rel()));
             if (stored == null) {
                 if (read == null && !flavor.isEmpty()) {
                     flavor = "";
-                    k = FragmentCache.declarationsKey(s.rel(), sha, flavor);
+                    k = GraphCacheKeys.declarations(s.rel(), sha, flavor);
                 }
                 fragmentCache.putDeclarations(k, s.rel(), sha, flavor, f);
                 extracted.incrementAndGet();
@@ -224,7 +240,7 @@ public final class GraphBuild {
         progress.phase("map compiled classes");
         Map<String, Fragment> built = new HashMap<>();
         Set<String> classKeys = new HashSet<>();
-        mapClasses(sources, indexes, fragmentCache, rebuild, classKeys, built);
+        mapClasses(sources, indexes, modules, fragmentCache, rebuild, classKeys, built);
         for (GraphSources.Source s : sources) {
             Fragment compiled = built.get(s.rel());
             if (compiled != null && shas.containsKey(s.rel())) all.add(compiled);
@@ -332,11 +348,16 @@ public final class GraphBuild {
      * Puts each class set's compiled facts into {@code bySource}, one fragment per source file the
      * classes came from, leaving out the sources edited since the build. A set a compile stamped is
      * read from the cache under its compile keys, or mapped from its facts index and cached there
-     * (unless {@code rebuild}, which maps every set again); its cache key goes into {@code used}.
+     * (unless {@code rebuild}, which maps every set again); its cache key goes into {@code used}. A
+     * class maps only to a source of its own module and source set, the sources its compile keys
+     * cover, so a cached mapping holds wherever the key does.
+     *
+     * @throws FactsGone when a set the engine left unindexed is no longer in the cache
      */
     private static void mapClasses(
             List<GraphSources.Source> sources,
             List<ClassIndex> indexes,
+            Modules modules,
             FragmentCache cache,
             boolean rebuild,
             Set<String> used,
@@ -352,14 +373,17 @@ public final class GraphBuild {
             String key = FragmentCache.classesKey(c);
             Map<String, Fragment> byFile = key == null || rebuild ? null : cache.classes(key);
             if (byFile == null) {
+                Path index = c.index();
+                if (index == null) throw new FactsGone();
+                Predicate<String> own = own(modules, c.modulePrefix(), c.sourceSet());
                 try {
-                    var index = FactsFormat.read(c.index());
-                    byFile = split(JvmFacts.map(index, (pkg, file) -> find(byName, c.modulePrefix(), pkg, file)));
+                    var facts = FactsFormat.read(index);
+                    byFile = split(JvmFacts.map(facts, (pkg, file) -> find(byName, own, pkg, file)));
                 } catch (IOException | RuntimeException unreadable) {
-                    Log.debug("graph: class facts unreadable at " + c.index(), unreadable);
+                    Log.debug("graph: class facts unreadable at " + index, unreadable);
                     continue;
                 }
-                if (key != null) cache.putClasses(key, c.compileKeys(), byFile);
+                if (key != null) cache.putClasses(key, c, byFile);
             }
             if (key != null) used.add(key);
             byFile.forEach((rel, f) -> {
@@ -425,22 +449,31 @@ public final class GraphBuild {
     private static String classDigest(List<ClassIndex> indexes, Modules modules) {
         List<String> parts = new ArrayList<>();
         for (ClassIndex c : indexes)
-            parts.add(c.modulePrefix() + "\t" + c.index().getFileName() + "\t" + c.digest() + "\t"
+            parts.add(c.modulePrefix() + "\t" + c.sourceSet() + "\t" + c.digest() + "\t"
                     + String.join(",", new TreeSet<>(c.stale())));
         for (Modules.Module m : modules.list()) parts.add("module\t" + m.prefix() + "\t" + m.compact());
         parts.sort(null);
         return Hashing.sha256Hex(String.join("\n", parts));
     }
 
+    /** Whether a workspace-relative source is one of module {@code prefix}'s {@code sourceSet} sources. */
+    static Predicate<String> own(Modules modules, String prefix, String sourceSet) {
+        Modules.SourceSet set = "test".equals(sourceSet) ? Modules.SourceSet.TEST : Modules.SourceSet.MAIN;
+        return rel -> {
+            Modules.Module m = modules.of(rel);
+            return (m == null ? "" : m.prefix()).equals(prefix) && modules.sourceSet(rel) == set;
+        };
+    }
+
     /**
-     * The source a class came from: under the module, in its package directory. A Java source must
-     * sit there; a Kotlin or Groovy one may sit anywhere, so the lone source of that name under the
-     * module answers for it — never a Java file of another package, whose facts it would take on.
+     * The source a class came from, among those {@code own} accepts (its module's, of its source
+     * set): in its package directory. A Java source must sit there; a Kotlin or Groovy one may sit
+     * anywhere, so the lone such source of that name answers for it — never a Java file of another
+     * package, whose facts it would take on.
      */
-    static @Nullable String find(Map<String, List<String>> byName, String prefix, String pkg, String file) {
-        List<String> candidates = byName.getOrDefault(file, List.of()).stream()
-                .filter(r -> r.startsWith(prefix))
-                .toList();
+    static @Nullable String find(Map<String, List<String>> byName, Predicate<String> own, String pkg, String file) {
+        List<String> candidates =
+                byName.getOrDefault(file, List.of()).stream().filter(own).toList();
         String suffix = pkg.isEmpty() ? "/" + file : "/" + pkg + "/" + file;
         for (String c : candidates) {
             if (("/" + c).endsWith(suffix)) return c;

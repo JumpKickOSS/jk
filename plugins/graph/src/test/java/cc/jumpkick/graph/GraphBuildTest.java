@@ -148,7 +148,8 @@ import java.util.List;
         Path classes = root.resolve("target/classes");
         FactsIndexing.Ensured e =
                 FactsIndexing.ensure(classes, FactsIndexing.indexPath(root.resolve("target"), "main"));
-        return List.of(new GraphBuild.ClassIndex(e.index(), "", e.bodyDigest(), e.classes(), stale, compileKeys));
+        return List.of(
+                new GraphBuild.ClassIndex(e.index(), "", "main", e.bodyDigest(), e.classes(), stale, compileKeys));
     }
 
     /** A workspace's own cache root, where the walk does not reach. */
@@ -484,14 +485,13 @@ import java.util.List;
                         .extra())
                 .doesNotContainKey(Linker.DESCRIPTORS);
 
-        // Its compile hits the same key: the facts come from the cache, not from its index.
+        // Its compile hits the same key: the facts come from the cache, with no index at all.
         GraphMemory.clear();
         GraphBuild.Result restored = GraphBuild.refresh(
                 fresh,
                 fresh.resolve("target/graph"),
                 shared,
-                List.of(new GraphBuild.ClassIndex(
-                        fresh.resolve("target/no-index"), "", "digest", 7, Set.of(), List.of("compile-key-1"))),
+                List.of(new GraphBuild.ClassIndex(null, "", "main", "digest", 7, Set.of(), List.of("compile-key-1"))),
                 Modules.NONE,
                 NO_NODE,
                 false,
@@ -504,6 +504,22 @@ import java.util.List;
                 .isEqualTo(compiled.extra().get(Linker.DESCRIPTORS));
         assertThat(edge(restored.graph(), "orderservice_audit", "baseservice_log", "calls"))
                 .isTrue();
+
+        // A set left unindexed whose facts the cache no longer holds is said to be gone, never
+        // answered without its calls.
+        GraphMemory.clear();
+        assertThatThrownBy(() -> GraphBuild.refresh(
+                        fresh,
+                        fresh.resolve("target/graph"),
+                        shared,
+                        List.of(new GraphBuild.ClassIndex(
+                                null, "", "main", "digest-2", 7, Set.of(), List.of("compile-key-2"))),
+                        Modules.NONE,
+                        NO_NODE,
+                        false,
+                        GraphBuild.Progress.NONE,
+                        LATER))
+                .isInstanceOf(GraphBuild.FactsGone.class);
     }
 
     /**
@@ -616,9 +632,28 @@ import java.util.List;
     @Test
     void aJavaClassNeverTakesASameNamedFileInAnotherPackage() {
         Map<String, List<String>> byName = Map.of("Util.java", List.of("src/main/java/com/other/Util.java"));
-        assertThat(GraphBuild.find(byName, "", "com/acme", "Util.java")).isNull();
+        assertThat(GraphBuild.find(byName, rel -> true, "com/acme", "Util.java"))
+                .isNull();
         Map<String, List<String>> kotlin = Map.of("Util.kt", List.of("src/main/kotlin/Util.kt"));
-        assertThat(GraphBuild.find(kotlin, "", "com/acme", "Util.kt")).isEqualTo("src/main/kotlin/Util.kt");
+        assertThat(GraphBuild.find(kotlin, rel -> true, "com/acme", "Util.kt")).isEqualTo("src/main/kotlin/Util.kt");
+    }
+
+    /**
+     * A Kotlin class's lone same-named source is looked for among its own set's sources only: those
+     * its compile key covers. A test file of that name neither hides the main one nor, cached under
+     * the main compile's key, follows it to a checkout without that test.
+     */
+    @Test
+    void aKotlinClassMapsToTheLoneSourceOfItsOwnSourceSet() {
+        Map<String, List<String>> byName =
+                Map.of("Util.kt", List.of("src/main/kotlin/Util.kt", "src/test/kotlin/Util.kt"));
+        Modules modules = Modules.NONE;
+        assertThat(GraphBuild.find(
+                        byName, rel -> modules.sourceSet(rel) == Modules.SourceSet.MAIN, "com/acme", "Util.kt"))
+                .isEqualTo("src/main/kotlin/Util.kt");
+        assertThat(GraphBuild.find(
+                        byName, rel -> modules.sourceSet(rel) == Modules.SourceSet.TEST, "com/acme", "Util.kt"))
+                .isEqualTo("src/test/kotlin/Util.kt");
     }
 
     /** A file that will not read contributes nothing, and the fragment it had goes with it. */

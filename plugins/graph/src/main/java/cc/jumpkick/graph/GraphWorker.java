@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.graph;
 
+import cc.jumpkick.cache.GraphCacheKeys;
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.MiniJson;
@@ -59,6 +60,9 @@ public final class GraphWorker implements Plugin {
         } catch (IllegalArgumentException refused) {
             out.emit(MiniJson.write(Map.of("t", "error", "msg", Errors.text(refused))));
             return Exit.USAGE;
+        } catch (GraphBuild.FactsGone gone) {
+            out.emit(MiniJson.write(Map.of("t", "error", "msg", GraphCacheKeys.GONE)));
+            return Exit.FAILURE;
         }
     }
 
@@ -92,17 +96,24 @@ public final class GraphWorker implements Plugin {
     }
 
     /**
-     * {@code index \t modulePrefix \t digest \t classes \t stale \t compileKeys}, one per class set;
-     * {@code stale} is the workspace-relative sources edited since the build and {@code compileKeys}
-     * the action keys of the compiles that wrote the set, each joined by {@code U+001F}.
+     * {@code index \t modulePrefix \t sourceSet \t digest \t classes \t stale \t compileKeys}, one
+     * per class set; {@code index} is empty when the engine left the set unindexed for its cached
+     * facts, {@code stale} is the workspace-relative sources edited since the build and {@code
+     * compileKeys} the action keys of the compiles that wrote the set, each joined by {@code U+001F}.
      */
     static List<GraphBuild.ClassIndex> indexes(PluginConfig c) {
         List<GraphBuild.ClassIndex> out = new ArrayList<>();
         for (String row : c.stringList("classIndexes")) {
             String[] f = row.split("\t", -1);
-            if (f.length != 6) continue;
+            if (f.length != 7) continue;
             out.add(new GraphBuild.ClassIndex(
-                    Path.of(f[0]), f[1], f[2], Integer.parseInt(f[3]), joined(f[4]), List.copyOf(joined(f[5]))));
+                    f[0].isEmpty() ? null : Path.of(f[0]),
+                    f[1],
+                    f[2],
+                    f[3],
+                    Integer.parseInt(f[4]),
+                    joined(f[5]),
+                    List.copyOf(joined(f[6]))));
         }
         return out;
     }
