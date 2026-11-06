@@ -21,8 +21,6 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -49,14 +47,11 @@ class SidePathMirrorsTest {
     /** Fresh per run, so neither the process memos nor a warm store can answer for the stub. */
     private final String version = MavenStub.freshVersion();
 
-    private @Nullable String priorSettings;
-
     @TempDir
     Path tmp;
 
     @BeforeEach
     void isolate() throws Exception {
-        priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
         Path home = Files.createDirectories(tmp.resolve("home"));
         Files.writeString(home.resolve("config.toml"), "");
         System.setProperty("jk.env.JK_HOME", home.toString());
@@ -64,12 +59,6 @@ class SidePathMirrorsTest {
         RepoGroup.clearProcessVersionsCache();
         RunNotices.clear();
         stub.leaf(GROUP, ARTIFACT, version);
-    }
-
-    @AfterEach
-    void restore() {
-        if (priorSettings == null) System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
-        else System.setProperty(MavenSettings.SETTINGS_PROPERTY, priorSettings);
     }
 
     private void mirrorEverythingToTheStub() throws Exception {

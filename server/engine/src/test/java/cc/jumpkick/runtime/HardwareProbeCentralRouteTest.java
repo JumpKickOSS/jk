@@ -12,8 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,12 +25,10 @@ class HardwareProbeCentralRouteTest {
     @TempDir
     Path tmp;
 
-    private @Nullable String priorSettings;
     private Path config = Path.of("config.toml");
 
     @BeforeEach
     void isolate() throws Exception {
-        priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
         Path home = Files.createDirectories(tmp.resolve("home"));
         config = home.resolve("config.toml");
         Files.writeString(config, "");
@@ -40,12 +36,6 @@ class HardwareProbeCentralRouteTest {
         System.setProperty(
                 MavenSettings.SETTINGS_PROPERTY,
                 tmp.resolve("absent-settings.xml").toString());
-    }
-
-    @AfterEach
-    void restore() {
-        if (priorSettings == null) System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
-        else System.setProperty(MavenSettings.SETTINGS_PROPERTY, priorSettings);
     }
 
     @Test

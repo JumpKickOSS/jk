@@ -12,8 +12,6 @@ import cc.jumpkick.testing.MavenStub;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -36,14 +34,11 @@ class AddPingProbeTest {
     /** Fresh per run, so neither the process memos nor a warm store can answer for the stub. */
     private final String version = MavenStub.freshVersion();
 
-    private @Nullable String priorSettings;
-
     @TempDir
     Path tmp;
 
     @BeforeEach
     void isolate() throws Exception {
-        priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
         Path home = Files.createDirectories(tmp.resolve("home"));
         Files.writeString(home.resolve("config.toml"), """
                 [repositories.corp]
@@ -58,16 +53,6 @@ class AddPingProbeTest {
         RepoGroup.clearProcessVersionsCache();
         RunNotices.clear();
         new MavenStub(http).leaf(GROUP, ARTIFACT, version);
-    }
-
-    @AfterEach
-    void restore() {
-        restore(MavenSettings.SETTINGS_PROPERTY, priorSettings);
-    }
-
-    private static void restore(String property, @Nullable String prior) {
-        if (prior == null) System.clearProperty(property);
-        else System.setProperty(property, prior);
     }
 
     @Test

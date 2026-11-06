@@ -34,7 +34,6 @@ class SettingsExpansionTest {
     @AfterEach
     void clear() {
         System.clearProperty(PROPERTY);
-        System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
         RunNotices.clear();
     }
 

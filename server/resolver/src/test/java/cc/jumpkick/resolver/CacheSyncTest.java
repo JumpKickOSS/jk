@@ -29,7 +29,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -98,11 +97,6 @@ class CacheSyncTest {
                 </settings>
                 """.formatted(http.base()));
         System.setProperty(MavenSettings.SETTINGS_PROPERTY, xml.toString());
-    }
-
-    @AfterEach
-    void forgetSettings() {
-        System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
     }
 
     private static Path m2Jar() {
