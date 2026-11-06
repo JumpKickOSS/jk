@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.jdk.JdkFingerprint;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@link CliOutput#handOffTerminal} is the one place a CLI command gives this terminal to a child
@@ -55,5 +58,35 @@ class TerminalHandoffTest {
         assertThat(child.waitFor()).isZero();
         assertThat(pb.directory()).isEqualTo(cwd.toFile());
         assertThat(pb.redirectInput().file()).isNull(); // INHERIT, not a file redirect
+    }
+
+    /**
+     * A child given the terminal under test reads end-of-input, so a REPL or a prompt ends instead
+     * of waiting on the test JVM's stdin. The child reads one byte and exits 0 only on EOF; it is
+     * stopped at the deadline when its read blocks.
+     */
+    @Test
+    void a_child_that_reads_the_handed_off_stdin_finishes_under_test(@TempDir Path dir) throws Exception {
+        Path java = JdkFingerprint.tool(Path.of(System.getProperty("java.home")), "java");
+        Path source = dir.resolve("ReadsStdin.java");
+        Files.writeString(source, """
+                class ReadsStdin {
+                    public static void main(String[] args) throws Exception {
+                        System.exit(System.in.read() == -1 ? 0 : 3);
+                    }
+                }
+                """);
+
+        Process child = CliOutput.handOffTerminal(new ProcessBuilder(java.toString(), source.toString()));
+        try {
+            assertThat(child.waitFor(60, TimeUnit.SECONDS))
+                    .describedAs("the child is still waiting for input on the test JVM's stdin")
+                    .isTrue();
+            assertThat(child.exitValue())
+                    .describedAs("the child read input, not end-of-input")
+                    .isZero();
+        } finally {
+            child.destroyForcibly();
+        }
     }
 }

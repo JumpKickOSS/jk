@@ -41,7 +41,9 @@ class TestRunnerPullModeTest {
     }
 
     private static TestRunner.Args args(Path dir) {
-        return TestRunner.Args.parse(new String[] {"--pull", "--worker=7", "--scan-classpath=" + dir});
+        return TestRunner.Args.parse(
+                new String[] {"--pull", "--worker=7", "--scan-classpath=" + dir, "--commands=127.0.0.1:1", "--token=t"
+                });
     }
 
     private static BufferedReader reader(String stdin) {

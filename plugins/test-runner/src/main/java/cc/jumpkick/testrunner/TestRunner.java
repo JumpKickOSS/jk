@@ -7,10 +7,14 @@ import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.junit.platform.launcher.Launcher;
 import org.junit.platform.launcher.core.LauncherFactory;
@@ -38,7 +42,7 @@ public final class TestRunner implements Plugin {
         } catch (IllegalArgumentException e) {
             System.err.println("jk-test-runner: " + e.getMessage());
             System.err.println("usage: jk-test-runner --scan-classpath=<dir> "
-                    + "[--list-only] [--pull --worker=<id>] [--filter=<regex>] "
+                    + "[--list-only] [--pull --worker=<id> --commands=<host>:<port> --token=<hex>] [--filter=<regex>] "
                     + "[--method=<class regex>#<method>]... [--include-tags=a,b] [--exclude-tags=c,d]");
             return Exit.USAGE;
         }
@@ -116,9 +120,23 @@ public final class TestRunner implements Plugin {
                 writer);
     }
 
+    /**
+     * Pull mode reads its commands from the parent's loopback socket, not stdin: the parent closes
+     * this JVM's stdin at start, so a test that reads {@code System.in}, or a child it gives this
+     * JVM's stdin to, gets end-of-input instead of the command stream.
+     */
     private static int runPullMode(Args args, EventWriter writer) throws Exception {
-        try (var stdin = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
-            return runPullMode(args, writer, stdin);
+        String commands = Objects.requireNonNull(args.commands);
+        int colon = commands.lastIndexOf(':');
+        String host = commands.substring(0, colon).replace("[", "").replace("]", "");
+        int port = Integer.parseInt(commands.substring(colon + 1));
+        try (var socket = new Socket(InetAddress.getByName(host), port)) {
+            var hello = new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.US_ASCII);
+            hello.write(Objects.requireNonNull(args.token) + "\n");
+            hello.flush();
+            try (var in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
+                return runPullMode(args, writer, in);
+            }
         }
     }
 
@@ -132,11 +150,11 @@ public final class TestRunner implements Plugin {
      * that ends before it was told {@code DONE}, whatever its exit: a test that calls {@code
      * System.exit(0)} mid-class owes that class and every class still queued.
      */
-    static int runPullMode(Args args, EventWriter writer, BufferedReader stdin) throws Exception {
+    static int runPullMode(Args args, EventWriter writer, BufferedReader commands) throws Exception {
         LauncherPath.emitReady(writer, args.workerId);
         Launcher launcher = LauncherFactory.create();
         String line;
-        while ((line = stdin.readLine()) != null) {
+        while ((line = commands.readLine()) != null) {
             if (line.equals("DONE")) return 0;
             if (!line.startsWith("RUN ")) {
                 System.err.println("jk-test-runner: ignoring unknown command: " + line);
@@ -147,7 +165,7 @@ public final class TestRunner implements Plugin {
                     launcher, className, args.methods, args.includeTags, args.excludeTags, args.workerId, writer);
             LauncherPath.emitReady(writer, args.workerId);
         }
-        System.err.println("jk-test-runner: stdin closed before DONE");
+        System.err.println("jk-test-runner: the command channel closed before DONE");
         return 1;
     }
 
@@ -171,7 +189,9 @@ public final class TestRunner implements Plugin {
             boolean pull,
             int workerId,
             List<String> includeTags,
-            List<String> excludeTags) {
+            List<String> excludeTags,
+            @Nullable String commands,
+            @Nullable String token) {
 
         static Args parse(String[] argv) {
             Path scan = null;
@@ -182,6 +202,8 @@ public final class TestRunner implements Plugin {
             int workerId = 0;
             List<String> includeTags = new ArrayList<>();
             List<String> excludeTags = new ArrayList<>();
+            String commands = null;
+            String token = null;
             for (var a : argv) {
                 if (a.startsWith("--scan-classpath=")) {
                     scan = Path.of(a.substring("--scan-classpath=".length()));
@@ -193,6 +215,10 @@ public final class TestRunner implements Plugin {
                     listOnly = true;
                 } else if (a.equals("--pull")) {
                     pull = true;
+                } else if (a.startsWith("--commands=")) {
+                    commands = a.substring("--commands=".length());
+                } else if (a.startsWith("--token=")) {
+                    token = a.substring("--token=".length());
                 } else if (a.startsWith("--worker=")) {
                     workerId = Integer.parseInt(a.substring("--worker=".length()));
                 } else if (a.startsWith("--include-tags=")) {
@@ -215,6 +241,9 @@ public final class TestRunner implements Plugin {
             if (listOnly && pull) {
                 throw new IllegalArgumentException("--list-only and --pull are mutually exclusive");
             }
+            if (pull && (commands == null || token == null)) {
+                throw new IllegalArgumentException("--pull needs --commands=<host>:<port> and --token=<hex>");
+            }
             return new Args(
                     scan,
                     filter,
@@ -223,7 +252,9 @@ public final class TestRunner implements Plugin {
                     pull,
                     workerId,
                     List.copyOf(includeTags),
-                    List.copyOf(excludeTags));
+                    List.copyOf(excludeTags),
+                    commands,
+                    token);
         }
 
         private static void splitCsv(String csv, List<String> out) {

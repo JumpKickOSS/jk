@@ -39,7 +39,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Forks {@code TestRunner} child JVM(s): one-shot when {@code workers=1}, else discovery + N
- * pull-queue workers (RUN/DONE on stdin). Protocol lines are {@code ##JKT:}-prefixed JSONL.
+ * pull-queue workers (RUN/DONE over {@link PullCommands}). Every test JVM starts with its stdin
+ * closed. Protocol lines are {@code ##JKT:}-prefixed JSONL.
  */
 public final class JUnitLauncher {
 

@@ -807,6 +807,10 @@ and `createTempFile` — is `~/.jk/test-homes/<key>/tmp`, one per module of each
 outside the project, as Surefire's is, spelled as its real path, emptied at the start of every
 run and removed by `jk clean`. Declare `TMPDIR` in `[test] env` to put it elsewhere.
 
+A test JVM's stdin is closed. `System.in` reads end-of-input at once, and so does every child the
+test gives that stdin to (`inheritIO()`, a REPL, `jk run` driven in-process): a prompt sees no
+answer, it does not wait for one. Feed input through the child's own pipe.
+
 **You still must avoid:**
 
 - Fixed ports shared across tests or modules — allocate free ports, or pin `workers = 1`

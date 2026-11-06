@@ -65,12 +65,11 @@ class JUnitLauncherPoolRetryTest {
      * logging that filter to {@code selections}, and runs nothing the filter leaves out.
      */
     private static Path fakeJdk(Path dir) throws Exception {
-        assumeTrue(Files.isExecutable(Path.of("/bin/sh")), "POSIX shell required");
+        assumeTrue(Files.isExecutable(Path.of("/bin/bash")), "bash required");
         Path home = dir.resolve("jdk");
         Path bin = Files.createDirectories(home.resolve("bin"));
         Path java = bin.resolve("java");
-        String script = """
-                #!/bin/sh
+        String script = FakePullWorker.SHEBANG + "\n" + """
                 e() { printf '%s\\n' "##JKT:$1"; }
                 t() { e "{\\"event\\":\\"finished\\",\\"type\\":\\"TEST\\",\\"status\\":\\"SUCCESSFUL\\",\\"uniqueId\\":\\"[engine:junit-jupiter]/[class:$1]/[method:t()]\\",\\"testClass\\":\\"$1\\",\\"testMethod\\":\\"t()\\",\\"duration_ms\\":1}"; }
                 mx=""
@@ -87,11 +86,12 @@ class JUnitLauncherPoolRetryTest {
                     e '{"event":"discovery_total","classes":6,"tests":6}'
                     exit 0 ;;
                   *" --pull "*)
+                    @CONNECT@
                     e '{"event":"ready"}'
-                    read -r line
+                    read -r line <&3
                     t "${line#RUN }"
                     e '{"event":"ready"}'
-                    read -r line
+                    read -r line <&3
                     echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
                     exit 3 ;;
                 esac
@@ -101,7 +101,7 @@ class JUnitLauncherPoolRetryTest {
                 done
                 e '{"event":"plan_finished","duration_ms":1,"failed":false}'
                 exit 0
-                """;
+                """.replace("@CONNECT@", FakePullWorker.CONNECT);
         Files.writeString(java, script);
         Files.setPosixFilePermissions(
                 java,
