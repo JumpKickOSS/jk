@@ -22,7 +22,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Unified template picker and resolver. Scans {@code <lang>/<framework>/<name>.g8} trees that
- * carry {@code .jk-template.toml}. Plugin jar trees overlay disk on id collision.
+ * carry {@code .jk-template.toml}. Disk wins on id collision, then plugin jars, then the templates
+ * jk ships ({@link ShippedTemplates}).
  */
 public final class Giter8TemplateIndex {
 
@@ -49,8 +50,9 @@ public final class Giter8TemplateIndex {
 
     /**
      * Disk always wins on id collision — {@code putIfAbsent} in root order ($JK_TEMPLATES,
-     * {@link JkDirs#templates()}, dogfood), plugin-bundled rows last. One uniform local-wins
-     * rule: a user's copy of {@code java/spring-boot/hello} overrides the plugin's bundled one.
+     * {@link JkDirs#templates()}, dogfood), plugin-bundled rows next, jk's shipped rows last. One
+     * uniform local-wins rule: a user's copy of {@code java/spring-boot/hello} overrides the
+     * plugin's bundled one, and a catalogue clone's {@code java/none/app} the shipped one.
      * The returned list is sorted by id (language/framework/name) so every surface — CLI picker,
      * HTTP, MCP, web — lists templates in the same order on every filesystem.
      */
@@ -68,6 +70,9 @@ public final class Giter8TemplateIndex {
         }
         for (TemplateSpec p : PluginTemplates.list()) {
             byId.putIfAbsent(p.id(), p);
+        }
+        for (TemplateSpec s : ShippedTemplates.list()) {
+            byId.putIfAbsent(s.id(), s);
         }
         List<TemplateSpec> specs = byId.values().stream()
                 .sorted(Comparator.comparing(TemplateSpec::id))

@@ -14,6 +14,7 @@ import cc.jumpkick.giter8.Giter8ShortNames;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.giter8.JkTemplateToml;
 import cc.jumpkick.giter8.PluginTemplates;
+import cc.jumpkick.giter8.ShippedTemplates;
 import cc.jumpkick.giter8.TemplateAnswers;
 import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.Log;
@@ -204,10 +205,8 @@ public final class NewProjectOps {
         // language, so a kotlin-only template is reached without --lang.
         String langName = prep.lang();
         var spec = resolveIndexed(prep.template(), langName, prep.parent());
-        if (spec.isPresent() && TemplateSpec.SOURCE_PLUGIN.equals(spec.get().source())) {
-            var s = spec.get();
-            extracted = PluginTemplates.materialize(
-                    Objects.requireNonNull(s.pluginId(), "pluginId"), s.language(), s.framework(), s.name());
+        if (spec.isPresent() && inJar(spec.get())) {
+            extracted = extract(spec.get());
             templateRoot = extracted;
         } else if (spec.isPresent() && spec.get().root() != null) {
             templateRoot = spec.get().root();
@@ -334,17 +333,15 @@ public final class NewProjectOps {
 
     /**
      * Resolves {@code ref} as a create would, reads its descriptor (the catalogue lint included)
-     * and its default layout. Writes nothing; a plugin template is extracted and removed again.
+     * and its default layout. Writes nothing; a template in a jar is extracted and removed again.
      */
     public static TemplateForm templateForm(String ref, @Nullable String lang, Path cwd) throws IOException {
         String langName = lang == null || lang.isBlank() ? null : parseLang(lang);
         Optional<TemplateSpec> spec = resolveIndexed(ref, langName, cwd);
         Path root;
         Path extracted = null;
-        if (spec.isPresent() && TemplateSpec.SOURCE_PLUGIN.equals(spec.get().source())) {
-            var s = spec.get();
-            extracted = PluginTemplates.materialize(
-                    Objects.requireNonNull(s.pluginId(), "pluginId"), s.language(), s.framework(), s.name());
+        if (spec.isPresent() && inJar(spec.get())) {
+            extracted = extract(spec.get());
             root = extracted;
         } else if (spec.isPresent() && spec.get().root() != null) {
             root = Objects.requireNonNull(spec.get().root());
@@ -362,6 +359,18 @@ public final class NewProjectOps {
         } finally {
             if (extracted != null) PathUtil.deleteRecursivelyOrThrow(extracted);
         }
+    }
+
+    /** A template a jar holds (a plugin's, or one jk ships), which is extracted before it is read. */
+    private static boolean inJar(TemplateSpec spec) {
+        return TemplateSpec.SOURCE_PLUGIN.equals(spec.source()) || TemplateSpec.SOURCE_SHIPPED.equals(spec.source());
+    }
+
+    /** {@code spec}'s tree in a temp dir under {@link JkDirs#tmp()}; the caller deletes it. */
+    private static Path extract(TemplateSpec spec) throws IOException {
+        if (TemplateSpec.SOURCE_SHIPPED.equals(spec.source())) return ShippedTemplates.materialize(spec);
+        return PluginTemplates.materialize(
+                Objects.requireNonNull(spec.pluginId(), "pluginId"), spec.language(), spec.framework(), spec.name());
     }
 
     private static Optional<TemplateSpec> resolveIndexed(@Nullable String ref, @Nullable String lang, Path cwd) {
