@@ -111,6 +111,16 @@ public final class MavenStub {
         }
     }
 
+    /**
+     * A release version no earlier call in this process has returned, so neither a process memo nor
+     * a warm store can answer for the stub. Digits only: a letter after the numeric core can read as
+     * a qualifier, and {@code 1.5m3…} sorts as a milestone, which a lookup for the newest stable
+     * release skips.
+     */
+    public static String freshVersion() {
+        return "1." + System.nanoTime();
+    }
+
     /** {@code /g/r/o/u/p/artifact/version/artifact-version<suffix>}. */
     public static String path(String group, String artifact, String version, String suffix) {
         return "/" + group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + suffix;

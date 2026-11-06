@@ -35,7 +35,7 @@ class BrokenUserConfigLockTest {
     final LoopbackHttp http = new LoopbackHttp();
 
     /** Fresh per run, so neither the process memos nor a warm store can answer for the stub. */
-    private final String version = "1." + Long.toString(System.nanoTime(), 36);
+    private final String version = MavenStub.freshVersion();
 
     private @Nullable String priorSettings;
     private @Nullable String priorM2;
