@@ -375,6 +375,52 @@ class GraphRunnerTest {
     }
 
     /**
+     * A question compiles neither the guard suite nor reads it until {@code jk guard} compiles it
+     * into its own classes: before that callers names its directory and is not complete; after,
+     * its call is listed, and both callers and a rename are complete.
+     */
+    @Test
+    void aGuardSuitesCallIsListedOnceJkGuardCompiledIt(@TempDir Path tmp) throws Exception {
+        Path root = calcGuard(Files.createDirectories(tmp.resolve("fresh")));
+        GraphRunner.compiler(new Javac());
+        GraphAck callers = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        assertThat(callers.error()).isNull();
+        assertThat(callers.text()).contains("0 in main sources, 0 in tests").contains("Not complete");
+        assertThat(callers.note())
+                .isEqualTo("src/guard has no compiled classes, so the calls made there are missing: search it for"
+                        + " calls too");
+
+        Path guard = root.resolve("src/guard/java/demo");
+        Path guardClasses = Files.createDirectories(root.resolve("target/guard/classes"));
+        int exit = ToolProvider.getSystemJavaCompiler()
+                .run(
+                        null,
+                        OutputStream.nullOutputStream(),
+                        OutputStream.nullOutputStream(),
+                        "-g",
+                        "-d",
+                        guardClasses.toString(),
+                        "-cp",
+                        root.resolve("target/classes").toString(),
+                        guard.resolve("CalcRules.java").toString());
+        assertThat(exit).isZero();
+        BuildGraph.Result graph =
+                BuildGraph.resolve(root, JkBuildParser.parse(Files.readString(root.resolve("jk.toml"))));
+        ModuleInputProvenance.recordClasses(
+                root, graph, Set.of(root.toAbsolutePath().normalize()));
+        GraphAck compiled = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        assertThat(compiled.error()).isNull();
+        assertThat(compiled.text())
+                .contains("CalcRules.doubledReturnsTwiceTheValue()")
+                .contains("Complete from the compiled classes");
+        assertThat(compiled.note()).isNull();
+        assertThat(compiled.uncompiled()).isEmpty();
+        GraphAck done = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
+        assertThat(done.text()).contains("1 call").contains("the task is done");
+        assertThat(guard.resolve("CalcRules.java")).content().contains("new Calc().twice(2)");
+    }
+
+    /**
      * Compiled facts the engine finds cached but the worker cannot read by the time it asks are
      * indexed and asked again: the answer still holds the calls.
      */
@@ -499,6 +545,17 @@ class GraphRunnerTest {
         Path it = Files.createDirectories(dir.resolve("src/integration/java/demo"));
         Path test = dir.resolve("src/test/java/demo/CalcTest.java");
         Files.writeString(it.resolve("CalcIT.java"), Files.readString(test).replace("CalcTest", "CalcIT"));
+        Files.writeString(test, "package demo;\n\nclass CalcTest {}\n");
+        return dir;
+    }
+
+    /** {@link #calc} with its only caller in the guard suite; the default suite's test calls nothing. */
+    private static Path calcGuard(Path dir) throws Exception {
+        calc(dir);
+        Path guard = Files.createDirectories(dir.resolve("src/guard/java/demo"));
+        Path test = dir.resolve("src/test/java/demo/CalcTest.java");
+        Files.writeString(
+                guard.resolve("CalcRules.java"), Files.readString(test).replace("CalcTest", "CalcRules"));
         Files.writeString(test, "package demo;\n\nclass CalcTest {}\n");
         return dir;
     }

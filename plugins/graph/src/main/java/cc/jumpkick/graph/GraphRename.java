@@ -547,12 +547,12 @@ final class GraphRename {
         for (GraphNode n : graph.nodes()) {
             String rel = n.sourceFile();
             if (rel.isEmpty() || !Extractors.isJvmSource(rel) || rel.contains("/resources/")) continue;
-            Modules.SourceSet set = modules.sourceSet(rel);
-            if (set == Modules.SourceSet.OTHER) continue;
+            String set = ClassSources.set(modules, rel);
+            if (set == null) continue;
             Modules.Module m = modules.of(rel);
             String prefix = m == null ? "" : m.prefix();
             if (reaching != null && !reaching.contains(prefix)) continue;
-            String key = prefix + " " + (set == Modules.SourceSet.TEST ? "test" : "main");
+            String key = prefix + " " + set;
             if (!have.contains(key)) missing.add(key);
         }
         return List.copyOf(missing);
@@ -572,9 +572,7 @@ final class GraphRename {
 
     private static boolean inModule(Modules modules, String rel, String prefix, String set) {
         Modules.Module m = modules.of(rel);
-        if (!(m == null ? "" : m.prefix()).equals(prefix)) return false;
-        Modules.SourceSet s = modules.sourceSet(rel);
-        return s != Modules.SourceSet.OTHER && (s == Modules.SourceSet.TEST ? "test" : "main").equals(set);
+        return (m == null ? "" : m.prefix()).equals(prefix) && set.equals(ClassSources.set(modules, rel));
     }
 
     /**

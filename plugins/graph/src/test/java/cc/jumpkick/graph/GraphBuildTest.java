@@ -657,6 +657,30 @@ import java.util.List;
                 .isEqualTo("src/test/kotlin/Util.kt");
     }
 
+    /**
+     * The guard suite compiles into classes of its own, so its sources are its own set's: a guard
+     * class never maps to a same-named test source, nor a test class to a guard one.
+     */
+    @Test
+    void theGuardSuiteIsAClassSetOfItsOwn() {
+        Modules modules = new Modules(List.of(new Modules.Module("core/", false), new Modules.Module("tool/", true)));
+        assertThat(ClassSources.set(modules, "core/src/main/java/a/A.java")).isEqualTo("main");
+        assertThat(ClassSources.set(modules, "core/src/test/java/a/ATest.java")).isEqualTo("test");
+        assertThat(ClassSources.set(modules, "core/src/integration/java/a/AIT.java"))
+                .isEqualTo("test");
+        assertThat(ClassSources.set(modules, "core/src/guard/java/a/ARules.java"))
+                .isEqualTo("guard");
+        assertThat(ClassSources.set(modules, "tool/guard/src/a/ARules.java")).isEqualTo("guard");
+        assertThat(ClassSources.set(modules, "tool/test/src/a/ATest.java")).isEqualTo("test");
+        assertThat(ClassSources.set(modules, "core/jk.toml")).isNull();
+        Map<String, List<String>> byName =
+                Map.of("Rules.kt", List.of("core/src/test/kotlin/Rules.kt", "core/src/guard/kotlin/Rules.kt"));
+        assertThat(ClassSources.find(byName, ClassSources.own(modules, "core/", "guard"), "a", "Rules.kt"))
+                .isEqualTo("core/src/guard/kotlin/Rules.kt");
+        assertThat(ClassSources.find(byName, ClassSources.own(modules, "core/", "test"), "a", "Rules.kt"))
+                .isEqualTo("core/src/test/kotlin/Rules.kt");
+    }
+
     /** A file that will not read contributes nothing, and the fragment it had goes with it. */
     @Test
     void anUnreadableFileDropsItsEarlierFragment(@TempDir Path dir) throws Exception {

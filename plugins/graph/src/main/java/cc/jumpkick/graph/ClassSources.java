@@ -93,11 +93,27 @@ final class ClassSources {
 
     /** Whether a workspace-relative source is one of module {@code prefix}'s {@code sourceSet} sources. */
     static Predicate<String> own(Modules modules, String prefix, String sourceSet) {
-        Modules.SourceSet set = "test".equals(sourceSet) ? Modules.SourceSet.TEST : Modules.SourceSet.MAIN;
         return rel -> {
             Modules.Module m = modules.of(rel);
-            return (m == null ? "" : m.prefix()).equals(prefix) && modules.sourceSet(rel) == set;
+            return (m == null ? "" : m.prefix()).equals(prefix) && sourceSet.equals(set(modules, rel));
         };
+    }
+
+    /**
+     * The class set a workspace-relative source compiles into: {@code main}, {@code guard} for the
+     * guard suite ({@code src/guard/}, a compact module's {@code guard/src/}), whose classes sit
+     * apart, {@code test} for every other test suite; {@code null} for a file of no source set.
+     */
+    static @Nullable String set(Modules modules, String rel) {
+        Modules.SourceSet s = modules.sourceSet(rel);
+        if (s == Modules.SourceSet.OTHER) return null;
+        if (s == Modules.SourceSet.MAIN) return "main";
+        Modules.Module m = modules.of(rel);
+        String inside = m == null
+                ? rel.substring(Math.max(0, rel.indexOf("src/")))
+                : rel.substring(m.prefix().length());
+        boolean compact = m != null && m.compact();
+        return inside.startsWith(compact ? "guard/src/" : "src/guard/") ? "guard" : "test";
     }
 
     /**
