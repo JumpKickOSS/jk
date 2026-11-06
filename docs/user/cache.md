@@ -247,7 +247,8 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
   `jk storage nuke` removes everything on purpose.
 - **Test sandboxes** (`test-homes`, `test-store`): a green `jk test` deletes its module's
   sandbox as it finishes; a red one keeps it for two days to look at. The shared download pool
-  drops a unit unused for a week and is held to 2 GiB (8 GiB on CI).
+  drops a unit unused for a week and is held to 4 GiB, about twice what jk's own heaviest test
+  tiers fetch (8 GiB on CI).
 - **Container images** live once. A tarball is recorded by size, mtime and sha256 and a daemon
   image by the ID Docker or Podman reported, in a small record in the action cache — never as a
   second copy. `jk image` skips the build when the tarball is unchanged or the daemon still
