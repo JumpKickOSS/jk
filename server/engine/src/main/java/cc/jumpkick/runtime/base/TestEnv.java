@@ -2,10 +2,12 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.SearchCeiling;
 import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
@@ -86,6 +88,9 @@ public final class TestEnv {
     static final String TMP = "TMP";
 
     static final String TEMP = "TEMP";
+
+    /** The directory under the user home that jk's own suites root their {@code @TempDir}s in. */
+    static final String SHORT_TEMP_DIR = ".jk-test-tmp";
 
     private TestEnv() {}
 
@@ -196,6 +201,19 @@ public final class TestEnv {
                 moduleDir,
                 target,
                 new TestEnvValues.Mode.Launch(buildEnv::apply)));
+        out.putIfAbsent(SearchCeiling.ENV, ceilings(out.get(TMPDIR)));
         return WorkerEnv.policy(policy).with(out);
+    }
+
+    /**
+     * The search ceilings a test JVM gets unless the module names its own: the temp root it ended up
+     * with, and the short {@code @TempDir} root jk's own suites use ({@code ~/.jk-test-tmp}, see
+     * {@code cc.jumpkick.testing.ShortTempDirs}). A fixture project a test builds in a temp directory
+     * then never joins whatever project lies above that directory — the project under test, when a
+     * module points its temp root into its own tree, or a workspace in the developer's home.
+     */
+    static String ceilings(@Nullable String tmp) {
+        Path shortTmp = Path.of(System.getProperty("user.home"), SHORT_TEMP_DIR);
+        return tmp == null || tmp.isBlank() ? shortTmp.toString() : SearchPath.prepend(tmp, shortTmp.toString());
     }
 }

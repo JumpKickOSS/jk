@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.engine.IsolatedState;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -29,9 +32,18 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class NewCommandTest {
 
+    /**
+     * Its own state root, so no default JDK is recorded: the app's {@code java} is the template's own,
+     * whatever default the shared test home's inventory holds.
+     */
     @Test
+    @IsolatedState
     void with_no_terminal_and_no_template_jk_new_scaffolds_the_app_template_with_its_defaults(@TempDir Path tempDir)
             throws IOException {
+        JdkInventory inventory = new JdkInventory(JkDirs.jdks(), JkDirs.state().resolve(JdkInventory.FILE_NAME));
+        assertThat(inventory.defaultId())
+                .as("no default JDK in this state root")
+                .isEmpty();
         Path target = tempDir.resolve("widget");
         Run run = jk("new", "--group", "com.example", "--no-module", target.toString());
         assertThat(run.exit()).as(run.err()).isZero();

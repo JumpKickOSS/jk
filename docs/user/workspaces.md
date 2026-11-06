@@ -45,6 +45,28 @@ and the dependency tables are each member's own and never inherit.
 
 `jk new path/to/mod` and `jk add ./path` register modules for you.
 
+## Where jk looks for the workspace
+
+A command finds its project by climbing from its directory (`-C`, else the working directory) to
+the nearest `jk.toml`, and its workspace by climbing on to the root whose `modules` list that
+directory. `jk new` and `jk add` climb the same way to the project they register a module in.
+
+`JK_CEILING_DIRECTORIES` stops every one of those climbs, as Git's `GIT_CEILING_DIRECTORIES` does:
+a list of absolute paths, separated by `:` (`;` on Windows). A search examines the directory it
+starts in, then each parent until the next one would be a ceiling, so a ceiling and everything above
+it are out of reach:
+
+```bash
+export JK_CEILING_DIRECTORIES=/work/scratch
+cd /work/scratch/demo && jk new app   # standalone, though /work/jk.toml is a workspace
+```
+
+A search that starts outside every ceiling climbs as it would without one; relative entries are
+ignored. The engine reads the variable from the environment it was started in, so export it in the
+shell profile, or run `jk engine stop` after changing it. jk sets it in every test JVM, at the
+suite's temp roots, so a fixture project a test builds in a temp directory never joins the project
+under test.
+
 ## One name in two groups
 
 Two members may carry the same `name` when their `group` differs, the shape Maven's reactor

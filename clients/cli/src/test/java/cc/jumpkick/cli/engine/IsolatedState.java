@@ -8,8 +8,9 @@ import java.lang.annotation.Target;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
- * Gives every test method in the class its own fresh state root — the {@link IsolatedStore} twin
- * for {@code <JK_HOME>/state} rather than {@code <JK_HOME>/store}.
+ * Gives every test method in the class, or the one method annotated, its own fresh state root — the
+ * {@link IsolatedStore} twin for {@code <JK_HOME>/state} rather than {@code <JK_HOME>/store}. On one
+ * method it spares the rest of the class an engine per method.
  *
  * <p>The tier's {@code JK_HOME} ({@code JK_HOME} (out-of-tree; see {@code JkLayoutPaths.testHomeFor})) is shared by every one of
  * the task's parallel forks <em>and</em> by every previous run — no task cleans it. So {@code
@@ -27,7 +28,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * dedicated engine; it is force-stopped after each test before the overlay is cleared and the temp
  * root deleted.
  */
-@Target(ElementType.TYPE)
+@Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 @ExtendWith(IsolatedRootsExtension.class)
 public @interface IsolatedState {}

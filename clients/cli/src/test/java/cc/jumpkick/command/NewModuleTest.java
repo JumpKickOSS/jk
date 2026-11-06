@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.command.project.NewCommand;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SearchCeiling;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Workspace;
 import java.io.IOException;
@@ -24,6 +25,9 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @Tag("integration")
 class NewModuleTest {
+
+    /** The in-process spelling of {@code JK_CEILING_DIRECTORIES}. */
+    private static final String CEILING = "jk.env." + SearchCeiling.ENV;
 
     private static final String PLAIN_PROJECT = """
             group    = "com.acme"
@@ -155,6 +159,57 @@ class NewModuleTest {
         Files.createDirectories(start);
         // Walking up hits repo/.git before the project above — standalone.
         assertThat(NewCommand.detectParentDir(start, null, false)).isEmpty();
+    }
+
+    @Test
+    void detect_stops_at_the_git_file_of_a_worktree(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("jk.toml"), PLAIN_PROJECT); // project above the worktree
+        Path worktree = Files.createDirectories(dir.resolve("worktree"));
+        Files.writeString(worktree.resolve(".git"), "gitdir: /elsewhere/.git/worktrees/worktree\n");
+        Path start = Files.createDirectories(worktree.resolve("sub"));
+        assertThat(NewCommand.detectParentDir(start, null, false)).isEmpty();
+    }
+
+    @Test
+    void detect_stops_below_a_search_ceiling(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("jk.toml"), PLAIN_PROJECT);
+        Path start = Files.createDirectories(dir.resolve("fence/sub"));
+        System.setProperty(CEILING, dir.resolve("fence").toString());
+        try {
+            assertThat(NewCommand.detectParentDir(start, null, false)).isEmpty();
+        } finally {
+            System.clearProperty(CEILING);
+        }
+        assertThat(NewCommand.detectParentDir(start, null, false)).contains(dir);
+    }
+
+    @Test
+    void new_does_not_join_a_workspace_above_the_search_ceiling(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.acme"
+                name     = "root"
+                version  = "0.1.0"
+
+                [workspace]
+                modules = []
+                """);
+        String rootBefore = Files.readString(tempDir.resolve("jk.toml"));
+        Path fence = Files.createDirectories(tempDir.resolve("fence"));
+        Path app = Files.createDirectories(fence.resolve("inner")).resolve("app");
+
+        System.setProperty(CEILING, fence.toString());
+        try {
+            int exit = Jk.execute("new", "--group", "com.solo", app.toString());
+            assertThat(exit).isZero();
+        } finally {
+            System.clearProperty(CEILING);
+        }
+
+        // A standalone project: its own identity, and the workspace above the ceiling untouched.
+        JkBuild built = JkBuildParser.parse(app.resolve("jk.toml"));
+        assertThat(built.project().group()).isEqualTo("com.solo");
+        assertThat(built.project().version()).isEqualTo("0.1.0");
+        assertThat(Files.readString(tempDir.resolve("jk.toml"))).isEqualTo(rootBefore);
     }
 
     @Test

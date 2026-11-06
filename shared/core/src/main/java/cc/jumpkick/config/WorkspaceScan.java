@@ -54,15 +54,17 @@ public final class WorkspaceScan {
     }
 
     /**
-     * The nearest strict ancestor whose {@code jk.toml} declares workspace modules, or empty.
+     * The nearest strict ancestor below any {@link SearchCeiling} whose {@code jk.toml} declares
+     * workspace modules, or empty.
      * Mirrors {@link WorkspaceLocator#findEnclosingWorkspace} (no membership requirement — used
      * by commands about to create/register a module, which is why only a {@code jk.toml} root
      * counts: a POM-built root has no manifest to register the module in).
      */
     public static Optional<Path> findEnclosingWorkspace(Path dir) {
+        SearchCeiling ceiling = SearchCeiling.current();
         Path candidate = dir.toAbsolutePath().normalize();
         for (int depth = 0; depth < MAX_DEPTH; depth++) {
-            Path parent = candidate.getParent();
+            Path parent = ceiling.above(candidate);
             if (parent == null) break;
             if (declaresTomlModules(parent)) return Optional.of(parent);
             candidate = parent;
@@ -73,13 +75,15 @@ public final class WorkspaceScan {
     /**
      * The workspace root that owns {@code moduleDir}, or empty: the nearest ancestor whose {@code
      * jk.toml} lists it in {@code workspace.modules}, else the outermost POM-built ancestor whose
-     * reactor lists it. Mirrors {@link WorkspaceLocator#findRoot}.
+     * reactor lists it, neither of them at or above a {@link SearchCeiling}. Mirrors {@link
+     * WorkspaceLocator#findRoot}.
      */
     public static Optional<Path> findRoot(Path moduleDir) {
+        SearchCeiling ceiling = SearchCeiling.current();
         Path normalized = moduleDir.toAbsolutePath().normalize();
         Path candidate = normalized;
         for (int depth = 0; depth < MAX_DEPTH; depth++) {
-            Path parent = candidate.getParent();
+            Path parent = ceiling.above(candidate);
             if (parent == null) break;
             Path rootJkToml = parent.resolve(ManifestPaths.MANIFEST);
             if (Files.exists(rootJkToml)) {
