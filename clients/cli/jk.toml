@@ -146,4 +146,7 @@ env = [
   # `sun_path` budget, so no sandbox path can be too long to bind; and Windows stops being the only
   # platform that exercises this lane.
   { JK_ENGINE_TRANSPORT = "tcp" },
+  # The GraalVM a native end-to-end test links with (TemplateCatalogE2eTest, slow tier), when the
+  # shell running jk names one; unset, that test skips by assumption.
+  "GRAALVM_HOME",
 ]

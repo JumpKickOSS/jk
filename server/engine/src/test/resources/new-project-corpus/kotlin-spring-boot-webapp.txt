@@ -1,0 +1,57 @@
+# The new-project corpus of kotlin/spring-boot/webapp: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+--- files
+.gitignore
+AGENTS.md
+README.md
+app/jk.toml
+app/src/main/kotlin/com/acme/Application.kt
+app/src/main/kotlin/com/acme/api/HelloController.kt
+app/src/main/kotlin/com/acme/spa/SpaFallback.kt
+app/src/main/resources/application.properties
+app/src/test/kotlin/com/acme/ApplicationTest.kt
+jk-guards.toml
+jk.toml
+web/index.html
+web/jk.toml
+web/package-lock.json
+web/package.json
+web/src/App.tsx
+web/src/main.tsx
+web/tsconfig.json
+web/vite.config.ts
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+kotlin = "…"
+
+# `web` is the SPA bundle as a resource jar; `app` is the service that depends on it.
+[workspace]
+modules = ["web", "app"]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"

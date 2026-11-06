@@ -122,4 +122,7 @@ env = [
   # The JDK probe chain is the machine's unless narrowed. A jdk verb under test would otherwise
   # list, default to, write pointers at or uninstall the developer's own sdkman/mise/OS installs.
   { JK_JDK_PROBES = "java-home,jk" },
+  # Set only to re-capture the new-project corpus's snapshots (NewProjectCorpusTest): the directory
+  # they are written to. Unset, the corpus compares and writes nothing.
+  "NEW_PROJECT_CORPUS_CAPTURE",
 ]

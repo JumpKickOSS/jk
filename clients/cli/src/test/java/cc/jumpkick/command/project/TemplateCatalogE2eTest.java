@@ -2,14 +2,17 @@
 package cc.jumpkick.command.project;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.PublishedSdk;
-import cc.jumpkick.form.Field;
-import cc.jumpkick.form.Option;
-import cc.jumpkick.giter8.JkTemplateToml;
+import cc.jumpkick.engine.runtime.NewProjectForm;
+import cc.jumpkick.engine.runtime.NewProjectOps;
+import cc.jumpkick.form.Form;
+import cc.jumpkick.form.Values;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.scaffold.testing.AnswerVectors;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -17,10 +20,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DynamicTest;
@@ -30,27 +32,33 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Every template under the repository's {@code templates/} (the tree the public catalog mirrors) is
- * scaffolded with {@code jk new -t <path>} in each layout it declares, and the project it writes
- * passes {@code jk build}, {@code jk test} and {@code jk guard} with no edits — the contract the
- * catalog's README promises. A template that asks questions is scaffolded once more with every
- * option on, so a binding only a non-default answer reaches is built too. A plugin template builds
- * against the SDK this checkout publishes, and its jar is checked for a plugin's shape. A template
- * that stops compiling, fails NullAway or its own rule pack, or ships a red sample test fails here
- * under its own id and layout, with the command's console.
+ * scaffolded with {@code jk new -t <path>} once per answer vector of the new-project corpus, and the
+ * project it writes passes {@code jk build}, {@code jk test} and {@code jk guard} with no edits — the
+ * contract the catalog's README promises. The vectors are the corpus's ({@link AnswerVectors}, the
+ * ones {@code NewProjectCorpusTest} snapshots): the defaults, then a pairwise set in which every
+ * layout the template declares and every option it asks appears, so a binding only a non-default
+ * answer reaches is built too, and an option added to a template is built as soon as it is asked.
+ * A plugin template builds against the SDK this checkout publishes, and its jar is checked for a
+ * plugin's shape. A template that asks for a native binary is also linked with {@code jk native},
+ * once, where a GraalVM is available ({@code GRAALVM_HOME} with {@code native-image}); elsewhere
+ * that test is skipped by assumption. A template that stops compiling, fails NullAway or its own
+ * rule pack, or ships a red sample test fails here under its own id and vector, with the command's
+ * console.
  *
  * <p>Slow tier: each scaffold resolves its framework's closure (Spring Boot, Ktor, JLine, Error
  * Prone) and builds and tests a whole project, minutes in all — framework end to end that breaks
  * when a template's pins move, the same cost and cadence as the other framework e2e suites, and
- * too long for the integration push gate.
+ * too long for the integration push gate. The snapshot comparison of the same vectors is the fast
+ * tier's.
  */
 @Tag("slow")
 class TemplateCatalogE2eTest {
 
-    private static final Pattern LAYOUTS = Pattern.compile("(?m)^layouts\\s*=\\s*\\[([^]]*)]");
-    private static final Pattern QUOTED = Pattern.compile("\"([^\"]+)\"");
-
     /** The SDK pin a plugin template writes: this jk's own version. */
     private static final String SDK_PIN = "cc.jumpkick:jk-plugin-sdk:" + JkVersion.VERSION + "\"";
+
+    /** The ask a template offers a GraalVM native executable with. */
+    private static final String NATIVE = "native";
 
     @TempDir
     Path scratch;
@@ -58,7 +66,8 @@ class TemplateCatalogE2eTest {
     private @Nullable String sdkRepo;
 
     @TestFactory
-    Stream<DynamicTest> every_template_scaffolds_builds_tests_and_guards_clean_in_each_layout() throws IOException {
+    Stream<DynamicTest> every_template_scaffolds_builds_tests_and_guards_clean_for_each_answer_vector()
+            throws IOException {
         Path root = RepoRoot.find(TemplateCatalogE2eTest.class).resolve("templates");
         List<Path> templates;
         try (Stream<Path> walk =
@@ -72,17 +81,19 @@ class TemplateCatalogE2eTest {
         for (Path template : templates) {
             readEveryFile(template);
             String id = root.relativize(template).toString().replace('\\', '/').replaceAll("\\.g8$", "");
-            List<String> layouts = layouts(template.resolve(".jk-template.toml"));
-            for (String layout : layouts) {
-                tests.add(DynamicTest.dynamicTest(
-                        id + " (" + layout + ")", () -> scaffoldAndCheck(template, id, layout, List.of())));
-            }
-            List<String> everyOption = everyOption(template);
-            if (!everyOption.isEmpty()) {
-                String layout = layouts.getFirst();
-                tests.add(DynamicTest.dynamicTest(
-                        id + " (" + layout + ", every option)",
-                        () -> scaffoldAndCheck(template, id, layout, everyOption)));
+            Form form = NewProjectForm.of(NewProjectOps.templateForm(template.toString(), null, template));
+            int n = 0;
+            boolean linked = false;
+            for (AnswerVectors.Vector v : AnswerVectors.of(NewProjectForm.templateFields(form))) {
+                String dir = id.replace('/', '-') + "-" + n++;
+                List<String> flags = flags(v.answers());
+                String name = id + " (" + v.label() + ")";
+                tests.add(DynamicTest.dynamicTest(name, () -> scaffoldAndCheck(template, name, dir, flags)));
+                if (!linked && Boolean.TRUE.equals(v.answers().get(NATIVE))) {
+                    linked = true;
+                    tests.add(DynamicTest.dynamicTest(
+                            name + " links with jk native", () -> scaffoldAndLink(template, name, dir, flags)));
+                }
             }
         }
         return tests.stream();
@@ -102,52 +113,55 @@ class TemplateCatalogE2eTest {
         }
     }
 
-    /** The layouts a template declares; one with none declared is scaffolded in the default layout. */
-    static List<String> layouts(Path descriptor) throws IOException {
-        Matcher list = LAYOUTS.matcher(Files.readString(descriptor));
-        if (!list.find()) return List.of("traditional");
-        List<String> layouts = new ArrayList<>();
-        Matcher name = QUOTED.matcher(list.group(1));
-        while (name.find()) layouts.add(name.group(1));
-        return layouts.isEmpty() ? List.of("traditional") : layouts;
-    }
-
     /**
-     * The {@code -p} flags that turn on every option the template asks for, beside the defaults the
-     * plain scaffold takes: each bool on, each multi with all its options, each choice its last
-     * option. A binding no default reaches still has to render a project that builds.
+     * The {@code jk new} flags that give a vector's answers: {@code -L} for the layout, {@code -p
+     * key=value} for each of the template's asks. The defaults vector gives none, so the template's
+     * own defaults are what is built.
      */
-    static List<String> everyOption(Path template) throws IOException {
-        JkTemplateToml.Meta meta = JkTemplateToml.load(template).orElseThrow();
+    static List<String> flags(Map<String, Object> answers) {
         List<String> flags = new ArrayList<>();
-        for (Field f : meta.asks()) {
-            String value =
-                    switch (f.kind()) {
-                        case BOOL -> "true";
-                        case MULTI ->
-                            String.join(
-                                    ",", f.options().stream().map(Option::id).toList());
-                        case CHOICE -> f.options().getLast().id();
-                        default -> null;
-                    };
-            if (value == null) continue;
-            flags.add("-p");
-            flags.add(f.key() + "=" + value);
+        for (var e : answers.entrySet()) {
+            if (e.getKey().equals("layout")) {
+                flags.addAll(List.of("-L", String.valueOf(e.getValue())));
+            } else {
+                flags.addAll(List.of("-p", e.getKey() + "=" + Values.text(e.getValue())));
+            }
         }
         return flags;
     }
 
-    private void scaffoldAndCheck(Path template, String id, String layout, List<String> params) throws IOException {
-        Path project = scratch.resolve(id.replace('/', '-') + "-" + layout + (params.isEmpty() ? "" : "-options"));
-        // The layout is passed explicitly: what the scaffold is checked in is the template's own
-        // declaration, not whichever default `jk new` picks.
-        List<String> args = new ArrayList<>(List.of("new", "-t", template.toString(), "-L", layout, "-N"));
-        args.addAll(params);
+    /** Scaffolds {@code template} with {@code flags} into {@code scratch/<dir>}; the project's path. */
+    private Path scaffold(Path template, String name, String dir, List<String> flags) {
+        Path project = scratch.resolve(dir);
+        List<String> args = new ArrayList<>(List.of("new", "-t", template.toString(), "-N"));
+        args.addAll(flags);
         args.addAll(List.of("--name", "demo", project.toString()));
-        jk(id, layout, args.toArray(String[]::new));
+        jk(name, args.toArray(String[]::new));
         assertThat(project.resolve("jk.toml"))
-                .as("%s (%s) writes a jk.toml at the project root", id, layout)
+                .as("%s writes a jk.toml at the project root", name)
                 .exists();
+        return project;
+    }
+
+    /**
+     * A native vector's project linked by {@code jk native} with the GraalVM {@code GRAALVM_HOME}
+     * names, into an executable at {@code target/demo}.
+     */
+    private void scaffoldAndLink(Path template, String name, String dir, List<String> flags) {
+        String graal = System.getenv("GRAALVM_HOME");
+        assumeTrue(
+                graal != null && Files.isExecutable(Path.of(graal, "bin", "native-image")),
+                "jk native needs GRAALVM_HOME naming a GraalVM with native-image");
+        Path project = scaffold(template, name, dir + "-native", flags);
+        jk(name, "-C", project.toString(), "native");
+        Path exe = project.resolve("target/demo");
+        assertThat(Files.isExecutable(exe))
+                .as("%s: jk native writes an executable at target/demo", name)
+                .isTrue();
+    }
+
+    private void scaffoldAndCheck(Path template, String name, String dir, List<String> flags) throws IOException {
+        Path project = scaffold(template, name, dir, flags);
         boolean pinsSdk = Files.readString(project.resolve("jk.toml")).contains(SDK_PIN);
         Path userConfig = JkDirs.userConfigFile();
         String priorConfig = Files.isRegularFile(userConfig) ? Files.readString(userConfig) : null;
@@ -161,7 +175,7 @@ class TemplateCatalogE2eTest {
         }
         try {
             for (String verb : List.of("build", "test", "guard")) {
-                jk(id, layout, "-C", project.toString(), verb);
+                jk(name, "-C", project.toString(), verb);
             }
         } finally {
             if (pinsSdk) {
@@ -170,7 +184,7 @@ class TemplateCatalogE2eTest {
             }
         }
         if (Files.isRegularFile(project.resolve("src/main/resources/jk-plugin.toml"))) {
-            assertPluginJar(project, id, layout);
+            assertPluginJar(project, name);
         }
     }
 
@@ -187,37 +201,37 @@ class TemplateCatalogE2eTest {
     }
 
     /** A plugin scaffold's jar is a plugin: the manifest at its root, the service file, the SDK's worker host. */
-    private static void assertPluginJar(Path project, String id, String layout) throws IOException {
+    private static void assertPluginJar(Path project, String name) throws IOException {
         Path jar;
         try (Stream<Path> jars = Files.list(project.resolve("target"))) {
             jar = jars.filter(p -> p.getFileName().toString().matches("demo-[0-9.]+\\.jar"))
                     .findFirst()
-                    .orElseThrow(() -> new AssertionError(id + " (" + layout + ") builds no jar under target/"));
+                    .orElseThrow(() -> new AssertionError(name + " builds no jar under target/"));
         }
         try (JarFile jf = new JarFile(jar.toFile())) {
             assertThat(jf.getEntry("jk-plugin.toml"))
-                    .as("%s (%s): jk-plugin.toml at the jar root", id, layout)
+                    .as("%s: jk-plugin.toml at the jar root", name)
                     .isNotNull();
             assertThat(jf.getEntry("META-INF/services/cc.jumpkick.plugin.Plugin"))
-                    .as("%s (%s): the service file", id, layout)
+                    .as("%s: the service file", name)
                     .isNotNull();
             Manifest manifest = jf.getManifest();
             assertThat(manifest == null ? null : manifest.getMainAttributes().getValue("Main-Class"))
-                    .as("%s (%s): a plugin jar's entry is the SDK's worker host", id, layout)
+                    .as("%s: a plugin jar's entry is the SDK's worker host", name)
                     .isEqualTo("cc.jumpkick.plugin.process.PluginMain");
         }
     }
 
-    /** Runs one in-process jk command; a non-zero exit fails naming the template, layout and command. */
-    private static void jk(String id, String layout, String... args) {
+    /** Runs one in-process jk command; a non-zero exit fails naming the template, vector and command. */
+    private static void jk(String name, String... args) {
         String[] all = Stream.concat(Stream.of("--no-ansi", "--no-progress"), Stream.of(args))
                 .toArray(String[]::new);
         int[] exit = {0};
         Capture.Streams console = Capture.both(() -> exit[0] = Jk.execute(all));
         assertThat(exit[0])
                 .as(
-                        "template %s (%s): jk %s exited %d%n%s%s",
-                        id, layout, String.join(" ", args), exit[0], console.out(), console.err())
+                        "template %s: jk %s exited %d%n%s%s",
+                        name, String.join(" ", args), exit[0], console.out(), console.err())
                 .isZero();
     }
 }
