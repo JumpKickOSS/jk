@@ -579,7 +579,19 @@ below the one Gradle resolves — a dependency of the graph asks for more — is
 resolved version with a row; a declared version below the one its `dependencyManagement` BOM
 manages (a plugin's own default, say) is written `managed`, since a jk pin below the platform's
 version does not resolve with the rest of it. The language level is `--release`, else Kotlin's
-`jvmTarget`, else source/target compatibility; a Kotlin or Groovy module with Java sources gets
+`jvmTarget`, else source/target compatibility, else the toolchain's; a `java.toolchain` is a `jdk`
+pin only when the host JDK cannot compile to it (a newer major) or it names a vendor, since jk
+compiles any older level with `--release`. A member does not repeat the `java` or `jdk` the root
+declares, which it inherits. A module is named by the artifact it publishes: its one
+`MavenPublication`'s `artifactId`, else `base.archivesName` (sibling edges follow), with the POM's
+`name` and `url` as `[publish]` and its `description` as the module's. What `compileJava` hands
+javac — its `compilerArgs` and what plugins add to them — is `[javac] args`, and
+`compileTestJava`'s is `[javac.test] args` where it differs; `--release`, `-encoding` and the
+path flags are jk's to pass. The `net.ltgt.errorprone` plugin running NullAway alone becomes
+`[nullness]`, as a POM's does (`OnlyNullMarked` is `include = []`, NullAway on `compileJava`
+alone leaves `tests` off); Error Prone running other checks keeps its `-Xplugin:ErrorProne` argument
+and its `errorprone` jars under `[processor-dependencies]`. The `test` task's `jvmArgs` and
+system properties are `[test] jvm-args` and `system-properties`. A Kotlin or Groovy module with Java sources gets
 `java = N` so its Java compiles, as Gradle's does. The `groovy` plugin writes `groovy =` at the
 Groovy the classpath resolves — beside Kotlin it is a row instead, since a jk module compiles one
 of the two. The xjc plugin (`com.github.bjornvester.xjc`) is `[jaxb]`: `xsdDir` is `src`,

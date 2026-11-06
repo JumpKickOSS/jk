@@ -10,14 +10,18 @@ import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.PomMetadata;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.mvn.ModuleRows;
+import cc.jumpkick.mvn.NullnessImport;
 import cc.jumpkick.version.Versions;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -151,6 +155,11 @@ final class GradleModelImporter {
     private final Map<String, RepositorySpec> repositories = new LinkedHashMap<>();
     /** The {@code ~/.jk/config.toml} tables that carry the credentials the build reads from the environment. */
     private final List<UserConfigEditor.RepositoryTable> machineRepositories = new ArrayList<>();
+    /** The workspace root's {@code java} and {@code jdk}, which a member inherits rather than repeats; 0 for none. */
+    private int rootJava;
+
+    private int rootJdk;
+
     /** Whether the {@code mavenLocal()} row was written; one row however many projects declare it. */
     private boolean mavenLocal;
 
@@ -203,10 +212,13 @@ final class GradleModelImporter {
         for (GradleModel.Repository r : model.settingsRepositories()) repository(r);
         if (members.isEmpty()) {
             for (GradleModel.Repository r : root.repositories()) repository(r);
-            JkBuild single = memberBuild(root, root.name(), "", new ArrayList<>(repositories.values()));
+            JkBuild single = memberBuild(root, artifactName(root, report), "", new ArrayList<>(repositories.values()));
             return new GradleBuildImport.Result(single, Map.of(), finish(), machineRepositories);
         }
         nameMembers(members);
+        Project rootProject = rootProject(root, members);
+        rootJava = rootProject.java();
+        rootJdk = rootProject.jdkMajor();
         Map<String, JkBuild> modules = new LinkedHashMap<>();
         for (GradleModel.Project p : members) {
             String name = Objects.requireNonNull(namesByPath.get(p.path()), p.path());
@@ -221,7 +233,7 @@ final class GradleModelImporter {
         reportTasks(root, rootRows);
         for (GradleModel.Repository r : root.repositories()) repository(r);
         rows.addAll("", rootRows.build());
-        JkBuild rootBuild = JkBuild.builder(rootProject(root, members))
+        JkBuild rootBuild = JkBuild.builder(rootProject)
                 .workspace(new Workspace(
                         members.stream().map(GradleModel.Project::dir).toList()))
                 .repositories(new ArrayList<>(repositories.values()))
@@ -241,7 +253,8 @@ final class GradleModelImporter {
     private void nameMembers(List<GradleModel.Project> members) {
         Map<String, List<GradleModel.Project>> byName = new TreeMap<>();
         for (GradleModel.Project p : members)
-            byName.computeIfAbsent(p.name(), k -> new ArrayList<>()).add(p);
+            byName.computeIfAbsent(artifactName(p, report), k -> new ArrayList<>())
+                    .add(p);
         for (Map.Entry<String, List<GradleModel.Project>> e : byName.entrySet()) {
             List<GradleModel.Project> carriers = e.getValue();
             if (carriers.size() == 1) {
@@ -261,6 +274,26 @@ final class GradleModelImporter {
                     + "` all carry the name `" + e.getKey() + "`; each module is named by its path instead ("
                     + String.join(", ", renamed) + ").");
         }
+    }
+
+    /**
+     * The artifact id the build publishes {@code p} under: its one {@code MavenPublication}'s
+     * {@code artifactId}, else {@code base.archivesName}, else the project name. Several
+     * publications are a row, and the project keeps its archives name.
+     */
+    private static String artifactName(GradleModel.Project p, ImportReport.Builder report) {
+        List<String> ids = p.publications().stream()
+                .map(GradleModel.Publication::artifactId)
+                .filter(id -> !id.isBlank())
+                .distinct()
+                .toList();
+        if (ids.size() == 1) return ids.getFirst();
+        if (ids.size() > 1) {
+            report.warning("`" + p.path() + "` publishes " + ids.size() + " artifacts (" + String.join(", ", ids)
+                    + "); a jk module publishes one, so it is named after its archives and the rest are not written.");
+        }
+        String archives = p.archivesName();
+        return archives == null || archives.isBlank() ? p.name() : archives;
     }
 
     /** The root's coordinates, filled from the members where Gradle left the root's blank or {@code unspecified}. */
@@ -328,17 +361,16 @@ final class GradleModelImporter {
                         versionOf(p.version()) == null ? "0.1.0" : p.version())
                 .kotlin(kotlin == null ? null : ImportedKotlin.floored(VersionSelector.parse(kotlin), local))
                 .groovy(groovy == null ? null : VersionSelector.parse(groovy))
-                .description(p.description());
-        // A toolchain is a JDK the build asks for; source, target and --release are language levels
-        // the host JDK compiles to, so only the former is a `jdk` pin. A Kotlin or Groovy module
-        // compiles Java only when `java` is declared, as Gradle compiles its src/*/java: written
-        // when the module has Java sources, at the level of the JDK compiling when Gradle names none.
-        if (toolchain > 0) project.jdkMajor(toolchain);
-        if (kotlin == null && groovy == null) {
-            if (java > 0) project.java(java);
-        } else if (hasJavaSources(p)) {
-            project.java(java > 0 ? java : Runtime.version().feature());
-        }
+                .description(p.description() != null ? p.description() : pomDescription(p));
+        // Only a toolchain the host JDK cannot stand in for is a `jdk` pin (see toolchainMajor). A
+        // Kotlin or Groovy module compiles Java only when `java` is declared, as Gradle compiles its
+        // src/*/java: written when the module has Java sources, at the level of the JDK compiling
+        // when Gradle names none. A member does not repeat the level or the JDK its root declares.
+        if (toolchain > 0 && toolchain != rootJdk) project.jdkMajor(toolchain);
+        int level = kotlin == null && groovy == null
+                ? java
+                : hasJavaSources(p) ? (java > 0 ? java : Runtime.version().feature()) : 0;
+        if (level > 0 && level != rootJava) project.java(level);
         Map<String, String> manifest = new LinkedHashMap<>(p.manifest());
         manifest.remove("Manifest-Version");
         String mainClass = p.mainClass() != null ? p.mainClass() : manifest.remove("Main-Class");
@@ -375,6 +407,9 @@ final class GradleModelImporter {
         for (PluginConfig config : plugins) builder.pluginConfig(config);
         JkBuild jkBuild = builder.build();
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
+        jkBuild = compilerArgs(p, jkBuild, local);
+        jkBuild = testJvm(p, jkBuild);
+        jkBuild = publication(p, jkBuild);
         Path projectDir = buildRoot.resolve(p.dir());
         NodeImportMapping.Mapped node = GradleNodeImport.map(projectDir, applied, local);
         if (node == null) node = NodeImportMapping.quinoa(projectDir, local);
@@ -383,10 +418,114 @@ final class GradleModelImporter {
         return jkBuild;
     }
 
-    /** The JDK the project's {@code java.toolchain} asks for; {@code 0} when it asks for none. */
+    /**
+     * {@code compileJava}'s javac arguments as {@code [javac] args}, with a {@code [javac.test]}
+     * table when {@code compileTestJava}'s differ; arguments jk sets itself are left out. An Error
+     * Prone plugin argument brings the {@code errorprone} configuration onto the processor path, and
+     * NullAway run alone through it becomes {@code [nullness]}, as a POM's does.
+     */
+    private static JkBuild compilerArgs(GradleModel.Project p, JkBuild build, ImportReport.Builder local) {
+        List<String> main = p.mainCompilerArgs() == null ? List.of() : ownedByJk(p.mainCompilerArgs());
+        List<String> test = p.testCompilerArgs() == null ? main : ownedByJk(p.testCompilerArgs());
+        if (main.isEmpty() && test.isEmpty()) return build;
+        JavacConfig javac = main.equals(test)
+                ? new JavacConfig(Map.of(), main)
+                : new JavacConfig(Map.of(), main, new JavacConfig(Map.of(), test));
+        build = build.withBuild(build.build().withJavac(javac));
+        boolean errorProne = main.stream().anyMatch(a -> a.startsWith(ERROR_PRONE_PLUGIN))
+                || test.stream().anyMatch(a -> a.startsWith(ERROR_PRONE_PLUGIN));
+        if (!errorProne) return build;
+        List<Dependency> tools = new ArrayList<>();
+        for (GradleModel.Configuration c : p.configurations()) {
+            if (!c.name().equals("errorprone")) continue;
+            for (GradleModel.Dependency d : c.dependencies()) {
+                if (!d.kind().equals("module") || d.effectiveVersion().isBlank()) continue;
+                tools.add(Dependency.of(d.artifact(), d.module(), VersionSelector.parse(d.effectiveVersion())));
+            }
+        }
+        if (!tools.isEmpty()) {
+            EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+            build.dependencies().byScope().forEach(byScope::put);
+            List<Dependency> processor = new ArrayList<>(byScope.getOrDefault(Scope.PROCESSOR, List.of()));
+            for (Dependency tool : tools) {
+                if (processor.stream().noneMatch(d -> d.module().equals(tool.module()))) processor.add(tool);
+            }
+            byScope.put(Scope.PROCESSOR, processor);
+            build = build.withDependencies(new JkBuild.Dependencies(byScope));
+        }
+        return NullnessImport.map(build, local);
+    }
+
+    private static final String ERROR_PRONE_PLUGIN = "-Xplugin:ErrorProne";
+
+    /** Arguments that take the next one as their value, and that jk passes itself. */
+    private static final Set<String> JK_OWNED_WITH_VALUE = Set.of(
+            "--release",
+            "-source",
+            "--source",
+            "-target",
+            "--target",
+            "-encoding",
+            "-d",
+            "-s",
+            "-h",
+            "-classpath",
+            "-cp",
+            "--class-path",
+            "-processorpath",
+            "--processor-path",
+            "--module-path",
+            "-p",
+            "--processor-module-path",
+            "-sourcepath",
+            "--source-path");
+
+    /** {@code args} without what jk sets itself: the level, the encoding, the paths and output directories. */
+    private static List<String> ownedByJk(List<String> args) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < args.size(); i++) {
+            String a = args.get(i);
+            if (JK_OWNED_WITH_VALUE.contains(a)) {
+                i++;
+            } else if (!a.startsWith("--release=") && !a.startsWith("-Xlint:-options")) {
+                out.add(a);
+            }
+        }
+        return out;
+    }
+
+    /** The {@code test} task's JVM arguments and system properties as {@code [test] jvm-args} and {@code system-properties}. */
+    private static JkBuild testJvm(GradleModel.Project p, JkBuild build) {
+        GradleModel.TestTask test = p.test();
+        if (test == null || test.jvmArgs().isEmpty() && test.systemProperties().isEmpty()) return build;
+        Map<String, String> properties = new TreeMap<>(test.systemProperties());
+        return build.withBuild(build.build().withTestJvm(new TestJvm(test.jvmArgs(), properties)));
+    }
+
+    /** The one publication's POM description; null with none or several. */
+    private static @Nullable String pomDescription(GradleModel.Project p) {
+        return p.publications().size() == 1 ? p.publications().getFirst().pomDescription() : null;
+    }
+
+    /** The one publication's POM name and url as {@code [publish]}. */
+    private static JkBuild publication(GradleModel.Project p, JkBuild build) {
+        if (p.publications().size() != 1) return build;
+        GradleModel.Publication pub = p.publications().getFirst();
+        if (pub.pomName() == null && pub.pomUrl() == null) return build;
+        return build.withPublish(
+                new PomMetadata(pub.pomName(), null, pub.pomUrl(), List.of(), List.of(), null, null, false, null));
+    }
+
+    /**
+     * The JDK the project's {@code java.toolchain} pins; {@code 0} when it asks for none, or for a
+     * major the host JDK compiles to with {@code --release} and names no vendor — a language level,
+     * which {@code java} already says.
+     */
     private static int toolchainMajor(GradleModel.Project p) {
         GradleModel.Java java = p.java();
-        return java == null ? 0 : java.toolchain();
+        if (java == null || java.toolchain() == 0) return 0;
+        if (java.vendor() == null && java.toolchain() <= Runtime.version().feature()) return 0;
+        return java.toolchain();
     }
 
     /**

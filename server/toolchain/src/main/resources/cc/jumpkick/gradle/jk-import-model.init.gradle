@@ -202,6 +202,10 @@ def describeProject(Project p, Project root, List<String> probeIds) {
     if (javaExt != null) {
         def j = [:]
         try { def lv = javaExt.toolchain.languageVersion.orNull; if (lv != null) j.toolchain = lv.asInt() } catch (Throwable ignored) { }
+        try {
+            def vendor = javaExt.toolchain.vendor.orNull?.toString()
+            if (vendor && !vendor.equalsIgnoreCase('any')) j.vendor = vendor
+        } catch (Throwable ignored) { }
         try { j.sourceCompatibility = javaExt.sourceCompatibility.majorVersion } catch (Throwable ignored) { }
         try { j.targetCompatibility = javaExt.targetCompatibility.majorVersion } catch (Throwable ignored) { }
         try { def r = p.tasks.findByName('compileJava')?.options?.release?.orNull; if (r != null) j.release = r } catch (Throwable ignored) { }
@@ -254,6 +258,46 @@ def describeProject(Project p, Project root, List<String> probeIds) {
     try {
         def jar = p.tasks.findByName('jar')
         if (jar != null) m.manifest = jar.manifest.attributes.collectEntries { k, v -> [k.toString(), v.toString()] }
+    } catch (Throwable ignored) {
+    }
+    // The arguments each compile hands javac, argument providers (the errorprone plugin's) included.
+    def compilerArgs = [:]
+    for (String task : ['compileJava', 'compileTestJava']) {
+        try {
+            def t = p.tasks.findByName(task)
+            if (t != null) compilerArgs[task] = t.options.allCompilerArgs.collect { it.toString() }
+        } catch (Throwable ignored) {
+        }
+    }
+    if (compilerArgs) m.compilerArgs = compilerArgs
+    // The test task's own system properties (string values) and JVM arguments.
+    try {
+        def test = p.tasks.findByName('test')
+        if (test != null && test.hasProperty('systemProperties')) {
+            m.test = [
+                systemProperties: test.systemProperties.findAll { k, v -> v instanceof CharSequence || v instanceof Number || v instanceof Boolean }
+                        .collectEntries { k, v -> [(k.toString()): v.toString()] },
+                jvmArgs: (test.jvmArgs ?: []).collect { it.toString() },
+            ]
+        }
+    } catch (Throwable ignored) {
+    }
+    try {
+        def base = p.extensions.findByName('base')
+        if (base != null) m.archivesName = base.archivesName.orNull
+    } catch (Throwable ignored) {
+    }
+    try {
+        def publishing = p.extensions.findByName('publishing')
+        if (publishing != null) {
+            m.publications = publishing.publications.findAll { it.hasProperty('artifactId') }.collect { pub ->
+                def r = [name: pub.name, groupId: pub.groupId, artifactId: pub.artifactId]
+                try { if (pub.pom.name.orNull) r.pomName = pub.pom.name.orNull } catch (Throwable ignored) { }
+                try { if (pub.pom.description.orNull) r.pomDescription = pub.pom.description.orNull } catch (Throwable ignored) { }
+                try { if (pub.pom.url.orNull) r.pomUrl = pub.pom.url.orNull } catch (Throwable ignored) { }
+                r
+            }
+        }
     } catch (Throwable ignored) {
     }
     m.repositories = p.repositories.findAll { it instanceof MavenArtifactRepository }.collect { repositoryModel(it) }

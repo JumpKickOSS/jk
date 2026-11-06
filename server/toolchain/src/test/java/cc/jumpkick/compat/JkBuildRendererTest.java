@@ -20,6 +20,7 @@ import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.PomMetadata;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
@@ -727,6 +728,27 @@ class JkBuildRendererTest {
         assertThat(out).contains("groups = [\"com.acme\", \"com.acme.*\"]");
         assertThat(JkBuildParser.parse(out).repositories()).singleElement().satisfies(r -> assertThat(r.groups())
                 .containsExactly("com.acme", "com.acme.*"));
+    }
+
+    @Test
+    void the_publish_table_renders_and_round_trips() {
+        PomMetadata publish = new PomMetadata(
+                "Widget",
+                null,
+                "https://example.com/widget",
+                List.of(new PomMetadata.License("Apache-2.0", "https://www.apache.org/licenses/LICENSE-2.0")),
+                List.of(new PomMetadata.Developer("ada", "Ada Lovelace", null)),
+                new PomMetadata.Scm("https://github.com/example/widget", null, null),
+                "releases",
+                true,
+                null);
+        JkBuild model = new JkBuild(new Project("com.example", "widget", "1.0.0", 25), JkBuild.Dependencies.empty())
+                .withPublish(publish);
+
+        PomMetadata reparsed =
+                JkBuildParser.parse(JkBuildRenderer.render(model)).publish();
+
+        assertThat(reparsed).isEqualTo(publish);
     }
 
     @Test

@@ -18,19 +18,24 @@ import org.jspecify.annotations.Nullable;
  * {@code [nullness]} table: the plugin argument, its two companion flags and the two processor jars
  * are what the table brings. A POM that runs other Error Prone checks keeps its wiring as written.
  */
-final class NullnessImport {
+public final class NullnessImport {
 
     private NullnessImport() {}
 
     private static final String PLUGIN_ARG = "-Xplugin:" + NullnessConfig.PLUGIN;
     private static final String OPTION = "-XepOpt:NullAway:";
-    private static final List<String> DROPPED_ARGS =
-            List.of("-XDcompilePolicy=simple", "--should-stop=ifError=FLOW", "-XDshould-stop.ifError=FLOW");
+    /** The companion flags the table passes, and {@code -XDaddTypeAnnotationsToSymbol}, which only JDKs before 22 need. */
+    private static final List<String> DROPPED_ARGS = List.of(
+            "-XDcompilePolicy=simple",
+            "--should-stop=ifError=FLOW",
+            "-XDshould-stop.ifError=FLOW",
+            "-XDaddTypeAnnotationsToSymbol=true");
+
     private static final List<String> TOOLS =
             List.of("com.google.errorprone:error_prone_core", "com.uber.nullaway:nullaway");
 
     /** {@code build} with its NullAway wiring as {@code [nullness]}, or {@code build} when it has none to map. */
-    static JkBuild map(JkBuild build, ImportReport.Builder report) {
+    public static JkBuild map(JkBuild build, ImportReport.Builder report) {
         List<Dependency> processor = build.dependencies().of(Scope.PROCESSOR);
         if (processor.stream().noneMatch(d -> "com.uber.nullaway:nullaway".equals(d.module()))) return build;
         JavacConfig javac = build.build().javac();
@@ -46,6 +51,13 @@ final class NullnessImport {
                 ? null
                 : new JavacConfig(
                         declaredTest.plugins(), withoutWiring(declaredTest.args()), null, declaredTest.release());
+        // A test table left saying what the main one says is no table.
+        if (test != null
+                && test.release() == null
+                && test.plugins().equals(javac.plugins())
+                && test.args().equals(withoutWiring(javac.args()))) {
+            test = null;
+        }
         JavacConfig rest = new JavacConfig(javac.plugins(), withoutWiring(javac.args()), test, null);
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         build.dependencies().byScope().forEach(byScope::put);

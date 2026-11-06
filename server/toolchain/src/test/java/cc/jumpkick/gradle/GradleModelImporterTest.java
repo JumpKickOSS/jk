@@ -7,6 +7,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.Scope;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -124,7 +125,9 @@ class GradleModelImporterTest {
                 GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
 
         JkBuild api = module(result, "api");
-        assertThat(api.project().jdkMajor()).isEqualTo(21);
+        // A toolchain the host JDK compiles to with --release is a language level, not a JDK pin.
+        assertThat(api.project().jdkMajor()).isZero();
+        assertThat(result.root().project().jdkMajor()).isZero();
         assertThat(api.project().java()).isEqualTo(17);
         JkBuild core = module(result, "core");
         assertThat(Objects.requireNonNull(core.project().kotlin()).raw()).isEqualTo("2.4.10");
@@ -219,6 +222,128 @@ class GradleModelImporterTest {
                 GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
 
         assertThat(only(module(result, "core"), Scope.PLATFORM).module()).isEqualTo("org.junit:junit-bom");
+    }
+
+    /** A toolchain above the host JDK, or one naming a vendor, is a JDK the build needs: a `jdk` pin. */
+    @Test
+    void a_toolchain_the_host_cannot_stand_in_for_is_a_jdk_pin() {
+        int above = Runtime.version().feature() + 1;
+        String model = THREE_MODULES.replace("\"toolchain\":21,", "\"toolchain\":" + above + ",");
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
+        assertThat(result.root().project().jdkMajor()).isEqualTo(above);
+        assertThat(module(result, "api").project().jdkMajor())
+                .as("inherited from the root")
+                .isZero();
+
+        String vendor = THREE_MODULES.replace("\"toolchain\":21,", "\"toolchain\":21,\"vendor\":\"GRAAL_VM\",");
+        GradleBuildImport.Result graal =
+                GradleModelImporter.importModel(vendor, Path.of("/tmp/shop"), RefreshVersions.NONE);
+        assertThat(graal.root().project().jdkMajor()).isEqualTo(21);
+    }
+
+    /** A member does not repeat the `java` its workspace root declares. */
+    @Test
+    void a_member_inherits_the_roots_java_level() {
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
+
+        assertThat(result.root().project().java()).isEqualTo(21);
+        assertThat(module(result, "app").project().java()).isZero();
+        assertThat(module(result, "api").project().java()).isEqualTo(17);
+    }
+
+    /** The errorprone plugin's NullAway wiring, as Gradle hands it to javac. */
+    private static final String NULLAWAY_ARGS = """
+            "compilerArgs":{"compileJava":["-parameters","-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:ERROR -XepOpt:NullAway:OnlyNullMarked=true -XepOpt:NullAway:JSpecifyMode=true","-XDcompilePolicy=simple","--should-stop=ifError=FLOW","-XDaddTypeAnnotationsToSymbol=true","--release","17"],
+                            "compileTestJava":["-parameters"]},
+            """;
+
+    private static final String ERRORPRONE_CONFIGURATION = """
+            {"name":"errorprone","dependencies":[{"kind":"module","group":"com.google.errorprone","artifact":"error_prone_core","version":"2.50.0","excludes":[]},{"kind":"module","group":"com.uber.nullaway","artifact":"nullaway","version":"0.14.2","excludes":[]}],"constraints":[]},
+            """;
+
+    /** javac arguments land in [javac] args, and NullAway run alone through Error Prone becomes [nullness]. */
+    @Test
+    void compiler_args_are_javac_args_and_nullaway_through_error_prone_is_nullness() {
+        String model = THREE_MODULES
+                .replace(
+                        "\"repositories\":[{\"url\":\"https://repo.maven.apache.org",
+                        NULLAWAY_ARGS.strip() + "\"repositories\":[{\"url\":\"https://repo.maven.apache.org")
+                .replace("{\"name\":\"api\",", ERRORPRONE_CONFIGURATION.strip() + "{\"name\":\"api\",");
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
+        JkBuild api = module(result, "api");
+
+        assertThat(api.build().javac().args()).containsExactly("-parameters");
+        assertThat(api.build().javac().test())
+                .as("compile-test runs the same args once the wiring is gone")
+                .isNull();
+        NullnessConfig nullness = Objects.requireNonNull(api.build().nullness());
+        assertThat(nullness.include()).isEmpty();
+        assertThat(nullness.severity()).isEqualTo(NullnessConfig.Severity.ERROR);
+        assertThat(nullness.tests()).isFalse();
+        assertThat(api.dependencies().of(Scope.PROCESSOR))
+                .extracting(Dependency::module)
+                .containsExactly("org.projectlombok:lombok");
+    }
+
+    /** Without the errorprone plugin the arguments are only [javac] args, and the tool jars stay out. */
+    @Test
+    void compiler_args_without_error_prone_are_only_javac_args() {
+        String model = THREE_MODULES.replace(
+                "\"repositories\":[{\"url\":\"https://repo.maven.apache.org",
+                "\"compilerArgs\":{\"compileJava\":[\"-parameters\",\"-Xlint:all\"],\"compileTestJava\":[\"-parameters\"]},"
+                        + "\"repositories\":[{\"url\":\"https://repo.maven.apache.org");
+
+        JkBuild api = module(GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE), "api");
+
+        assertThat(api.build().javac().args()).containsExactly("-parameters", "-Xlint:all");
+        assertThat(Objects.requireNonNull(api.build().javac().test()).args()).containsExactly("-parameters");
+        assertThat(api.build().nullness()).isNull();
+    }
+
+    /** The test task's JVM arguments and system properties are [test] jvm-args and system-properties. */
+    @Test
+    void the_test_tasks_jvm_settings_are_the_test_jvm() {
+        String model = THREE_MODULES.replace(
+                "\"repositories\":[{\"url\":\"https://repo.maven.apache.org",
+                "\"test\":{\"systemProperties\":{\"user.timezone\":\"America/Denver\"},"
+                        + "\"jvmArgs\":[\"--enable-native-access=ALL-UNNAMED\"]},"
+                        + "\"repositories\":[{\"url\":\"https://repo.maven.apache.org");
+
+        JkBuild api = module(GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE), "api");
+
+        assertThat(api.build().testJvm().jvmArgs()).containsExactly("--enable-native-access=ALL-UNNAMED");
+        assertThat(api.build().testJvm().systemProperties())
+                .containsExactly(Map.entry("user.timezone", "America/Denver"));
+    }
+
+    /** A module is named by the artifact it publishes, siblings follow, and the POM's name and description come along. */
+    @Test
+    void a_module_is_named_by_its_published_artifact_id() {
+        String model = THREE_MODULES.replace(
+                "\"repositories\":[{\"url\":\"https://repo.maven.apache.org",
+                "\"archivesName\":\"shop-api\",\"publications\":[{\"name\":\"library\",\"groupId\":\"com.acme\","
+                        + "\"artifactId\":\"shop-api\",\"pomName\":\"Shop API\",\"pomDescription\":\"The shop's API.\"}],"
+                        + "\"repositories\":[{\"url\":\"https://repo.maven.apache.org");
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
+        JkBuild api = module(result, "api");
+
+        assertThat(api.project().name()).isEqualTo("shop-api");
+        assertThat(api.project().description()).isEqualTo("The shop's API.");
+        assertThat(Objects.requireNonNull(api.publish()).name()).isEqualTo("Shop API");
+        assertThat(module(result, "core")
+                        .dependencies()
+                        .of(Scope.MAIN)
+                        .getFirst()
+                        .library())
+                .isEqualTo("shop-api");
+        assertThat(Objects.requireNonNull(result.root().workspace()).modules()).containsExactly("api", "app", "core");
     }
 
     /** A module on a Kotlin below jk's floor imports at the floor, with a row saying so. */
