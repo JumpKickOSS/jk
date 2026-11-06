@@ -632,10 +632,11 @@ import java.util.List;
     @Test
     void aJavaClassNeverTakesASameNamedFileInAnotherPackage() {
         Map<String, List<String>> byName = Map.of("Util.java", List.of("src/main/java/com/other/Util.java"));
-        assertThat(GraphBuild.find(byName, rel -> true, "com/acme", "Util.java"))
+        assertThat(ClassSources.find(byName, rel -> true, "com/acme", "Util.java"))
                 .isNull();
         Map<String, List<String>> kotlin = Map.of("Util.kt", List.of("src/main/kotlin/Util.kt"));
-        assertThat(GraphBuild.find(kotlin, rel -> true, "com/acme", "Util.kt")).isEqualTo("src/main/kotlin/Util.kt");
+        assertThat(ClassSources.find(kotlin, rel -> true, "com/acme", "Util.kt"))
+                .isEqualTo("src/main/kotlin/Util.kt");
     }
 
     /**
@@ -648,10 +649,10 @@ import java.util.List;
         Map<String, List<String>> byName =
                 Map.of("Util.kt", List.of("src/main/kotlin/Util.kt", "src/test/kotlin/Util.kt"));
         Modules modules = Modules.NONE;
-        assertThat(GraphBuild.find(
+        assertThat(ClassSources.find(
                         byName, rel -> modules.sourceSet(rel) == Modules.SourceSet.MAIN, "com/acme", "Util.kt"))
                 .isEqualTo("src/main/kotlin/Util.kt");
-        assertThat(GraphBuild.find(
+        assertThat(ClassSources.find(
                         byName, rel -> modules.sourceSet(rel) == Modules.SourceSet.TEST, "com/acme", "Util.kt"))
                 .isEqualTo("src/test/kotlin/Util.kt");
     }

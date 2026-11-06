@@ -30,7 +30,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,7 +37,6 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -348,9 +346,8 @@ public final class GraphBuild {
      * Puts each class set's compiled facts into {@code bySource}, one fragment per source file the
      * classes came from, leaving out the sources edited since the build. A set a compile stamped is
      * read from the cache under its compile keys, or mapped from its facts index and cached there
-     * (unless {@code rebuild}, which maps every set again); its cache key goes into {@code used}. A
-     * class maps only to a source of its own module and source set, the sources its compile keys
-     * cover, so a cached mapping holds wherever the key does.
+     * (unless {@code rebuild}, which maps every set again; {@link ClassSources} maps one); its cache
+     * key goes into {@code used}.
      *
      * @throws FactsGone when a set the engine left unindexed is no longer in the cache
      */
@@ -362,23 +359,15 @@ public final class GraphBuild {
             boolean rebuild,
             Set<String> used,
             Map<String, Fragment> bySource) {
-        Map<String, List<String>> byName = new HashMap<>();
-        for (GraphSources.Source s : sources) {
-            if (Extractors.isJvmSource(s.rel())) {
-                byName.computeIfAbsent(s.rel().substring(s.rel().lastIndexOf('/') + 1), k -> new ArrayList<>())
-                        .add(s.rel());
-            }
-        }
+        Map<String, List<String>> byName = ClassSources.byName(sources);
         for (ClassIndex c : indexes) {
             String key = FragmentCache.classesKey(c);
             Map<String, Fragment> byFile = key == null || rebuild ? null : cache.classes(key);
             if (byFile == null) {
                 Path index = c.index();
                 if (index == null) throw new FactsGone();
-                Predicate<String> own = own(modules, c.modulePrefix(), c.sourceSet());
                 try {
-                    var facts = FactsFormat.read(index);
-                    byFile = split(JvmFacts.map(facts, (pkg, file) -> find(byName, own, pkg, file)));
+                    byFile = ClassSources.map(FactsFormat.read(index), byName, modules, c);
                 } catch (IOException | RuntimeException unreadable) {
                     Log.debug("graph: class facts unreadable at " + index, unreadable);
                     continue;
@@ -390,45 +379,6 @@ public final class GraphBuild {
                 if (!c.stale().contains(rel)) bySource.merge(rel, f, GraphBuild::concat);
             });
         }
-    }
-
-    /**
-     * {@code f} cut into one fragment per source file: a node and an edge by the file they name, a
-     * mention by the file of the node it comes from.
-     */
-    static Map<String, Fragment> split(Fragment f) {
-        Map<String, String> fileOf = new HashMap<>();
-        Map<String, List<GraphNode>> nodes = new LinkedHashMap<>();
-        Map<String, List<GraphEdge>> edges = new HashMap<>();
-        Map<String, List<Mention>> mentions = new HashMap<>();
-        for (GraphNode n : f.nodes()) {
-            fileOf.put(n.id(), n.sourceFile());
-            nodes.computeIfAbsent(n.sourceFile(), k -> new ArrayList<>()).add(n);
-        }
-        for (GraphEdge e : f.edges()) {
-            edges.computeIfAbsent(e.sourceFile(), k -> new ArrayList<>()).add(e);
-        }
-        for (Mention m : f.mentions()) {
-            String file = fileOf.get(m.source());
-            if (file == null) {
-                Log.debug("graph: a compiled mention from " + m.source() + " names no file; left out");
-                continue;
-            }
-            mentions.computeIfAbsent(file, k -> new ArrayList<>()).add(m);
-        }
-        Set<String> files = new TreeSet<>(nodes.keySet());
-        files.addAll(edges.keySet());
-        files.addAll(mentions.keySet());
-        Map<String, Fragment> out = new LinkedHashMap<>();
-        for (String file : files) {
-            out.put(
-                    file,
-                    new Fragment(
-                            nodes.getOrDefault(file, List.of()),
-                            edges.getOrDefault(file, List.of()),
-                            mentions.getOrDefault(file, List.of())));
-        }
-        return out;
     }
 
     private static Fragment concat(Fragment a, Fragment b) {
@@ -454,31 +404,5 @@ public final class GraphBuild {
         for (Modules.Module m : modules.list()) parts.add("module\t" + m.prefix() + "\t" + m.compact());
         parts.sort(null);
         return Hashing.sha256Hex(String.join("\n", parts));
-    }
-
-    /** Whether a workspace-relative source is one of module {@code prefix}'s {@code sourceSet} sources. */
-    static Predicate<String> own(Modules modules, String prefix, String sourceSet) {
-        Modules.SourceSet set = "test".equals(sourceSet) ? Modules.SourceSet.TEST : Modules.SourceSet.MAIN;
-        return rel -> {
-            Modules.Module m = modules.of(rel);
-            return (m == null ? "" : m.prefix()).equals(prefix) && modules.sourceSet(rel) == set;
-        };
-    }
-
-    /**
-     * The source a class came from, among those {@code own} accepts (its module's, of its source
-     * set): in its package directory. A Java source must sit there; a Kotlin or Groovy one may sit
-     * anywhere, so the lone such source of that name answers for it — never a Java file of another
-     * package, whose facts it would take on.
-     */
-    static @Nullable String find(Map<String, List<String>> byName, Predicate<String> own, String pkg, String file) {
-        List<String> candidates =
-                byName.getOrDefault(file, List.of()).stream().filter(own).toList();
-        String suffix = pkg.isEmpty() ? "/" + file : "/" + pkg + "/" + file;
-        for (String c : candidates) {
-            if (("/" + c).endsWith(suffix)) return c;
-        }
-        if (file.endsWith(".java")) return null;
-        return candidates.size() == 1 ? candidates.getFirst() : null;
     }
 }
