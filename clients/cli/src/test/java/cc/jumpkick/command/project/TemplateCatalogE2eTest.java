@@ -75,15 +75,10 @@ class TemplateCatalogE2eTest {
      */
     private static final Map<String, String> KNOWN_DEFECTS = Map.of(
             "kotlin/micronaut/hello",
-                    "its sample test fails: micronaut-inject-java on the processor path does not"
-                            + " process Kotlin sources, so @MicronautTest finds no bean definition",
-            "kotlin/quarkus/hello",
-                    "its sample test fails: Quarkus boot fails while creating resteasy-reactive's"
-                            + " ApplicationCoroutineScope bean (ExceptionInInitializerError)",
-            "java/spring-boot/webmvc",
-                    "with no default JDK the template's own java = 26 stands, and the build compiles"
-                            + " with JDK 25 instead of provisioning 26 (javac: release version 26 not"
-                            + " supported)");
+            "its sample test fails: micronaut-inject-kotlin's KSP round writes the bean definitions as"
+                    + " classes and resources under target/ksp/, which join neither the module's classes"
+                    + " nor its jar, and no KSP round runs over test sources, so @MicronautTest finds no"
+                    + " bean definition for the test class");
 
     @TempDir
     Path scratch;
