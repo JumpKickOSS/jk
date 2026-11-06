@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -28,13 +29,28 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>The home is an {@link IsolatedHome} whose catalogue is left at its origin on github.com, and
  * whose {@code [network] proxy} is a {@link RecordingProxy}, which refuses every connection: the
  * catalogue's clone fails, and so would any download; the test itself runs {@code --offline},
- * against the repository trees the tier's store already holds.
+ * against the repository trees the tier's store holds. Those trees are links into the host's test
+ * pool, which may be cold, so the class first builds the same template once in the tier's own home,
+ * with the network, and so puts what the app's build needs into them.
  */
 @Tag("integration")
 class NewOfflineFreshHomeTest {
 
     @RegisterExtension
     final RecordingProxy proxy = new RecordingProxy();
+
+    /**
+     * Scaffolds {@code app} in the tier's home, whose catalogue is the checkout's {@code templates/}
+     * and so the same template jk ships, and runs its tests there with the network: Error Prone,
+     * NullAway, JSpecify, the JUnit artifacts and their version lists land in the tier's store, where
+     * the offline home reads them.
+     */
+    @BeforeAll
+    static void fetchTheAppBuildIntoTheTierStore(@TempDir Path dir) {
+        Path warm = dir.resolve("warm");
+        jk("new", warm.toString());
+        jk("-C", warm.toString(), "test");
+    }
 
     @Test
     @IsolatedHome(officialCatalogFromOrigin = true)
@@ -64,8 +80,9 @@ class NewOfflineFreshHomeTest {
 
     /**
      * The home's store reads the tier's repository trees and version lists, as every sandbox store
-     * does ({@code TestEnv}): what the project's test needs is on disk, so it resolves offline. The
-     * catalogue clone the tier's store may hold is not shared.
+     * does ({@code TestEnv}): what the project's test needs is on disk ({@link
+     * #fetchTheAppBuildIntoTheTierStore}), so it resolves offline. The catalogue clone the tier's
+     * store may hold is not shared.
      */
     private static void shareTierRepositories() throws IOException {
         Path tier = Path.of(Objects.requireNonNull(System.getenv("JK_STORE_DIR"), "the tier's store"));
