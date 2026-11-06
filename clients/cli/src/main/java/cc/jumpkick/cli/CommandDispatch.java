@@ -374,32 +374,40 @@ public final class CommandDispatch {
 
     private static @Nullable Integer runPluginCommand(Path dir, String command, List<String> args) {
         try {
-            PluginCommandReport report;
             var paths = EnginePaths.current();
             if (!EngineProbe.ping(EnginePaths.activeSocket(paths))) return null;
-            report = EngineClient.pluginCommand(paths, dir, JkDirs.cache(), command, args);
+            PluginCommandReport report = EngineClient.pluginCommand(paths, dir, JkDirs.cache(), command, args);
 
             if (!report.found()) return null;
-            // A plugin command is a leaf command: same envelope, same close after the failure
-            // wedge, so its output is spaced like every other command's. Its raw args are
-            // forwarded to the engine unparsed, so honor -O/--output (and JK_OUTPUT) here the
-            // way registry commands do at dispatch — machine consumers of a plugin command must
-            // not get the envelope or the PlainAscii rewrite.
-            CliOutput.beginCommand(pluginArgsAskJson(args));
-            try {
-                for (String line : report.output()) CliOutput.out(line);
-                if (report.error() != null) {
-                    CommandWedge.printFail(command, report.error());
-                    return report.exit() != 0 ? report.exit() : 1;
-                }
-                return report.exit();
-            } finally {
-                CliOutput.closeEnvelope();
-            }
+            return printPluginReport(command, args, report);
         } catch (Exception e) {
             // Best-effort: the caller falls back to the normal help, or names config.toml when
             // that file is why the command could not be looked up.
             return null;
+        }
+    }
+
+    /**
+     * Prints a plugin command's answer and returns its exit: the command's output lines first, then
+     * the failure when it failed, exiting with the plugin's own code — or 1 when a failed run
+     * reports 0, so a failure never exits clean.
+     */
+    static int printPluginReport(String command, List<String> args, PluginCommandReport report) {
+        // A plugin command is a leaf command: same envelope, same close after the failure
+        // wedge, so its output is spaced like every other command's. Its raw args are
+        // forwarded to the engine unparsed, so honor -O/--output (and JK_OUTPUT) here the
+        // way registry commands do at dispatch — machine consumers of a plugin command must
+        // not get the envelope or the PlainAscii rewrite.
+        CliOutput.beginCommand(pluginArgsAskJson(args));
+        try {
+            for (String line : report.output()) CliOutput.out(line);
+            if (report.error() != null) {
+                CommandWedge.printFail(command, report.error());
+                return report.exit() != 0 ? report.exit() : 1;
+            }
+            return report.exit();
+        } finally {
+            CliOutput.closeEnvelope();
         }
     }
 
