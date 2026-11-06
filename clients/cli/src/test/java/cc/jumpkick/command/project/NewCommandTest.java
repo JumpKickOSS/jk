@@ -231,7 +231,7 @@ class NewCommandTest {
         assertThat(JkBuildParser.parse(sc.resolve("jk.toml")).project().isScala())
                 .isTrue();
         assertThat(sc.resolve("src/main/scala/com/example/Main.scala")).isRegularFile();
-        assertThat(sc.resolve("src/main/java/com/example/package-info.java")).isRegularFile();
+        assertThat(sc.resolve("src/main/scala/com/example/package-info.java")).isRegularFile();
 
         Run clojure = jk(
                 "new",
