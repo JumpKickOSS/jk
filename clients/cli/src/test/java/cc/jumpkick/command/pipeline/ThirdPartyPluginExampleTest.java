@@ -33,8 +33,10 @@ import org.junit.jupiter.api.io.TempDir;
  * has its {@code [hello]} table validated by the plugin's schema, builds with the plugin's
  * javac contribution and its trusted code layer, and runs the plugin's {@code jk hello} command.
  *
- * <p>The SDK bytes are the ones this checkout's own build packaged, so the test needs a prior
- * {@code jk build} and skips without one rather than inventing an SDK.
+ * <p>The SDK is published from this checkout's own {@code shared/host} and {@code shared/plugin-sdk}
+ * sources, not a released one. {@code jk publish} runs in the publisher worker, which
+ * {@code clients/cli}'s {@code test-plugin-jars} names: the run-tests step builds that worker first
+ * and hands its jar to the test JVM, so the test needs no prior {@code jk build}.
  */
 @Tag("integration")
 @SysProps.TempRoots("jk.m2.local")
