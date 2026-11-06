@@ -66,6 +66,14 @@ public record Term(String pkg, VersionSet versions, boolean positive) {
         return effectiveVersions().isEmpty();
     }
 
+    /**
+     * True iff every assignment satisfies this term: {@code ¬p ∅}. A negative term over every
+     * version is not one: it says the package is absent.
+     */
+    public boolean alwaysHolds() {
+        return !positive && versions.isEmpty();
+    }
+
     /** Per PubGrub paper §3: relationship between this term and another. */
     public Relation relation(Term other) {
         if (!pkg.equals(other.pkg)) {

@@ -37,6 +37,16 @@ class TermTest {
     }
 
     @Test
+    void only_a_negative_term_over_no_versions_always_holds() {
+        assertThat(Term.negative("a", VersionSet.EMPTY).alwaysHolds()).isTrue();
+        Term absent = Term.negative("a", VersionSet.exact("1.0")).intersect(Term.negative("a", VersionSet.ALL));
+        assertThat(absent.isEmpty()).isTrue();
+        assertThat(absent.alwaysHolds()).as("absent is a constraint").isFalse();
+        assertThat(Term.positive("a", VersionSet.ALL).alwaysHolds()).isFalse();
+        assertThat(Term.positive("a", VersionSet.EMPTY).alwaysHolds()).isFalse();
+    }
+
+    @Test
     void relation_satisfies_when_this_implies_other() {
         Term tighter = Term.positive("a", VersionSet.exact("1.5"));
         Term wider = Term.positive("a", VersionSet.between("1.0", true, "2.0", false));

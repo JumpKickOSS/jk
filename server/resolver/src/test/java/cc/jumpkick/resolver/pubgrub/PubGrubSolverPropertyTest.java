@@ -203,6 +203,46 @@ class PubGrubSolverPropertyTest {
         }
     }
 
+    /**
+     * A universe the generator found whose only solution is {@code p0 3.0-rc1, p1 1.1, p2 3.0, p3
+     * 1.0}. Ruling out {@code p0 1.0} resolves {@code p2 1.0 → p3 1.0} against {@code p2 3.0 → p3 *}
+     * into "p2 selected, p3 absent"; learning "p2 selected" alone left no {@code p0} and no solution.
+     */
+    @Example
+    void resolution_keeps_a_term_that_says_a_package_is_absent() throws Exception {
+        Map<String, Map<String, Map<String, VersionSet>>> table = new LinkedHashMap<>();
+        table.put("p0", new LinkedHashMap<>());
+        table.get("p0")
+                .put("2.0", ordered("p2", VersionSet.exact("3.0-rc1"), "p3", VersionSet.lessThan("3.0-rc2", false)));
+        table.get("p0").put("1.0", Map.of());
+        table.get("p0").put("3.0-rc1", Map.of("p3", VersionSet.lessThan("2.0", false)));
+        table.put("p1", new LinkedHashMap<>());
+        table.get("p1").put("3.0-rc1", ordered("p3", VersionSet.exact("2.0"), "p0", VersionSet.atLeast("1.1", true)));
+        table.get("p1").put("1.1", ordered("p0", VersionSet.atLeast("1.1", true), "p2", VersionSet.ALL));
+        table.put("p2", new LinkedHashMap<>());
+        table.get("p2").put("3.0", Map.of("p3", VersionSet.ALL));
+        table.get("p2").put("1.0", Map.of("p3", VersionSet.exact("1.0")));
+        table.put("p3", new LinkedHashMap<>());
+        table.get("p3").put("1.0", Map.of("p1", VersionSet.exact("1.1")));
+        table.get("p3").put("1.1", Map.of("p0", VersionSet.exact("1.1")));
+        Universe u = new Universe(
+                table,
+                List.of(
+                        Term.positive("p0", VersionSet.lessThan("3.0-rc2", false)),
+                        Term.positive("p2", VersionSet.atLeast("1.0", true))));
+        Map<String, String> expected = Map.of("p0", "3.0-rc1", "p1", "1.1", "p2", "3.0", "p3", "1.0");
+        assertThat(u.isValidSolution(expected)).isTrue();
+        assertThat(u.satisfiableByBruteForce()).isTrue();
+
+        for (int seed = 0; seed < 64; seed++) {
+            Map<String, String> solution = solveOrNull(u, new Random(seed));
+            assertThat(solution).as("input order %d", seed).isNotNull();
+            assertThat(u.isValidSolution(requireNonNull(solution)))
+                    .as("input order %d", seed)
+                    .isTrue();
+        }
+    }
+
     private static Map<String, VersionSet> ordered(String a, VersionSet aSet, String b, VersionSet bSet) {
         Map<String, VersionSet> m = new LinkedHashMap<>();
         m.put(a, aSet);
