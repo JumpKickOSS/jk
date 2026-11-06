@@ -124,7 +124,8 @@ public final class GraphWorker implements Plugin {
                 aliases(c.stringList("aliases")),
                 c.stringList("rules"),
                 LibraryApi.jars(c.stringList("libraries")),
-                c.stringOpt("apiCache").map(Path::of).orElse(null));
+                c.stringOpt("apiCache").map(Path::of).orElse(null),
+                c.stringList("uncompiled"));
     }
 
     /** {@code term \t word \t word …}, one per term. */

@@ -80,6 +80,49 @@ class GraphClassFactsCurrencyTest {
                 .contains("compiled facts left out");
     }
 
+    @Test
+    void a_module_with_main_sources_and_no_classes_is_named_uncompiled(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "t"
+                name = "app"
+                version = "0.1.0"
+                java = 25
+                """);
+        assertThat(GraphRunner.classIndexes(tmp).uncompiled())
+                .as("no main sources: nothing a compile would make classes of")
+                .isEmpty();
+        Path dir = Files.createDirectories(tmp.resolve("src/main/java/demo"));
+        Files.writeString(dir.resolve("App.java"), "package demo; public class App {}\n");
+        GraphRunner.ClassIndexes fresh = GraphRunner.classIndexes(tmp);
+        assertThat(fresh.uncompiled()).containsExactly(String.valueOf(tmp.getFileName()));
+        assertThat(fresh.rows()).isEmpty();
+        assertThat(fresh.leftOut()).isEmpty();
+
+        Files.createDirectories(BuildLayout.moduleTargetDir(tmp).resolve("classes"));
+        assertThat(GraphRunner.classIndexes(tmp).uncompiled()).isEmpty();
+    }
+
+    @Test
+    void the_compile_step_says_why_once_and_names_the_modules_without_classes() {
+        GraphRunner.Compiled fresh = new GraphRunner.Compiled("a build of this checkout is running", false);
+        assertThat(fresh.line())
+                .as("there are no last build's classes to answer from")
+                .isNull();
+        assertThat(fresh.uncompiledLine(List.of("core")))
+                .isEqualTo("compile skipped: a build of this checkout is running; core has no compiled classes, so"
+                        + " the calls made there are missing: search it for calls too");
+
+        GraphRunner.Compiled mixed = new GraphRunner.Compiled("the code does not compile", true);
+        assertThat(mixed.line())
+                .isEqualTo("compile skipped: the code does not compile; answering from the last build's classes");
+        assertThat(mixed.uncompiledLine(List.of("core", "rest")))
+                .isEqualTo("core, rest have no compiled classes, so the calls made there are missing: search them"
+                        + " for calls too");
+
+        assertThat(GraphRunner.Compiled.NOTHING.line()).isNull();
+        assertThat(GraphRunner.Compiled.NOTHING.uncompiledLine(List.of())).isNull();
+    }
+
     private static GraphAck ack() {
         return new GraphAck(null, "", 0, 0, 0, 0, 0, 0, "", null);
     }
