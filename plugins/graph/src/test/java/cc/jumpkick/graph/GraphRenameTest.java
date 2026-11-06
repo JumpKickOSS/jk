@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.host.Hashing;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -341,7 +342,8 @@ class GraphRenameTest {
                 List.of(),
                 List.of(),
                 null,
-                uncompiled);
+                uncompiled,
+                ModuleReach.UNKNOWN);
     }
 
     private static GraphService.Request request(String address, String to) {
@@ -350,27 +352,134 @@ class GraphRenameTest {
     }
 
     @Test
-    void theModulesThatCanCallAreReadPastPluginTablesNoInstalledPluginOwns(@TempDir Path root) throws IOException {
-        manifest(root, "core", "name = \"core\"\n\n[intellij]\nplugin-id = \"x\"\n");
-        manifest(
-                root,
-                "app",
-                "name = \"app\"\n\n[dependencies]\ncore.workspace = true\n\n[intellij]\nplugin-id = \"y\"\n");
-        manifest(root, "tool", "name = \"tool\"\n\n[test-dependencies]\napp.workspace = true\n");
-        manifest(root, "other", "name = \"other\"\n");
+    void theModulesThatCanCallAreThoseThatSeeTheDeclaringOneThroughTheEnginesEdges() {
         Modules modules = new Modules(List.of(
                 new Modules.Module("app/", false),
                 new Modules.Module("core/", false),
                 new Modules.Module("other/", false),
-                new Modules.Module("tool/", false)));
-        assertThat(GraphRename.reaching(root, modules, "core/src/main/java/a/Core.java"))
-                .as("core, what depends on it, and what depends on that; never an unrelated module")
-                .containsExactlyInAnyOrder("core/", "app/", "tool/");
+                new Modules.Module("tool/", false),
+                new Modules.Module("loose/", false)));
+        ModuleReach reach = ModuleReach.of(List.of("app/\tcore/", "core/", "other/", "tool/\tapp/"));
+        assertThat(reach.reaching(Set.of("core/"), modules))
+                .as("core, what sees it, what sees that, and a module the edges do not name; never other")
+                .containsExactlyInAnyOrder("core/", "app/", "tool/", "loose/");
+        assertThat(ModuleReach.UNKNOWN.reaching(Set.of("core/"), modules))
+                .as("no edges: every module counts")
+                .isNull();
     }
 
-    private static void manifest(Path root, String module, String toml) throws IOException {
-        Files.createDirectories(root.resolve(module));
-        Files.writeString(root.resolve(module).resolve("jk.toml"), toml);
+    /** A JDK supertype is asked what it declares; any other type outside the workspace may declare anything. */
+    @Test
+    void aSupertypeOutsideTheWorkspaceMayDeclareTheMethodUnlessTheJdkSaysItDoesNot() {
+        assertThat(ModuleReach.outsideMayDeclare("java/lang/Object", "doubled")).isFalse();
+        assertThat(ModuleReach.outsideMayDeclare("java/lang/Object", "toString"))
+                .isTrue();
+        assertThat(ModuleReach.outsideMayDeclare("java/lang/Runnable", "run")).isTrue();
+        assertThat(ModuleReach.outsideMayDeclare("java/util/ArrayList", "size"))
+                .as("inherited from a supertype")
+                .isTrue();
+        assertThat(ModuleReach.outsideMayDeclare("com/elsewhere/Base", "doubled"))
+                .isTrue();
+    }
+
+    /**
+     * A call through a supertype runs the override, so a module that sees only the supertype's
+     * module can call the renamed method: with no compiled classes, its uses are quoted. A module
+     * that sees neither is left alone.
+     */
+    @Test
+    void aModuleThatSeesOnlyTheSupertypesModuleCanCallTheOverride(@TempDir Path root) throws IOException {
+        Path shapes = javaModule(root, "shapes", Map.of("Shape.java", """
+                package com.acme.shapes;
+
+                public interface Shape {
+                    int area();
+                }
+                """));
+        Path squares = javaModule(root, "squares", Map.of("Square.java", """
+                package com.acme.squares;
+
+                public class Square implements com.acme.shapes.Shape {
+                    public int area() {
+                        return 4;
+                    }
+                }
+                """));
+        String user = """
+                package com.acme.%s;
+
+                class Report {
+                    int total(com.acme.shapes.Shape s) {
+                        return s.area();
+                    }
+                }
+                """;
+        sourceOnly(root, "report", "Report.java", user.formatted("report"));
+        sourceOnly(root, "other", "Report.java", user.formatted("other"));
+        compile(shapes, List.of());
+        compile(squares, List.of(shapes.resolve("target/classes")));
+        Modules modules = new Modules(List.of(
+                new Modules.Module("", false),
+                new Modules.Module("shapes/", false),
+                new Modules.Module("squares/", false),
+                new Modules.Module("report/", false),
+                new Modules.Module("other/", false)));
+        ModuleReach reach = ModuleReach.of(List.of("", "shapes/", "squares/\tshapes/", "report/\tshapes/", "other/"));
+        GraphService.Workspace w = new GraphService.Workspace(
+                root,
+                root.resolve("target/graph"),
+                root.resolve("target/jk-cache"),
+                List.of(index(shapes, "shapes/"), index(squares, "squares/")),
+                modules,
+                new ScriptReader(null, null),
+                Map.of(),
+                List.of(),
+                List.of(),
+                null,
+                List.of("report", "other"),
+                reach);
+        String answer = GraphService.run(w, request("Square.area", "size"), GraphBuild.Progress.NONE)
+                .text();
+        assertThat(answer)
+                .contains("Not checked: these modules may call it but have no compiled classes.")
+                .contains("report/src/main/java/com/acme/report/Report.java", "L5| return s.area();")
+                .doesNotContain("other/src/main/java");
+    }
+
+    private static Path javaModule(Path root, String name, Map<String, String> sources) throws IOException {
+        Path dir = root.resolve(name);
+        for (Map.Entry<String, String> e : sources.entrySet()) sourceOnly(root, name, e.getKey(), e.getValue());
+        return dir;
+    }
+
+    private static void sourceOnly(Path root, String module, String file, String text) throws IOException {
+        String pkg = text.substring("package ".length(), text.indexOf(';')).replace('.', '/');
+        Path at = Files.createDirectories(
+                root.resolve(module).resolve("src/main/java").resolve(pkg));
+        Files.writeString(at.resolve(file), text);
+        Path manifest = root.resolve(module).resolve("jk.toml");
+        if (!Files.exists(manifest)) Files.writeString(manifest, "name = \"" + module + "\"\n");
+    }
+
+    private static void compile(Path module, List<Path> classpath) throws IOException {
+        Path classes = Files.createDirectories(module.resolve("target/classes"));
+        List<String> args = new ArrayList<>(List.of("-g", "-d", classes.toString()));
+        if (!classpath.isEmpty()) {
+            args.add("-cp");
+            args.add(String.join(
+                    File.pathSeparator, classpath.stream().map(Path::toString).toList()));
+        }
+        try (var files = Files.walk(module.resolve("src/main/java"))) {
+            files.filter(f -> f.toString().endsWith(".java")).forEach(f -> args.add(f.toString()));
+        }
+        assertThat(ToolProvider.getSystemJavaCompiler().run(null, null, null, args.toArray(String[]::new)))
+                .isZero();
+    }
+
+    private static GraphBuild.ClassIndex index(Path module, String prefix) throws IOException {
+        FactsIndexing.Ensured e = FactsIndexing.ensure(
+                module.resolve("target/classes"), FactsIndexing.indexPath(module.resolve("target"), "main"));
+        return new GraphBuild.ClassIndex(e.index(), prefix, "main", e.bodyDigest(), e.classes(), Set.of(), List.of());
     }
 
     /**

@@ -873,7 +873,8 @@ import java.util.List;
                 List.of(),
                 List.of(),
                 null,
-                List.of());
+                List.of(),
+                ModuleReach.UNKNOWN);
     }
 
     private static GraphService.Request request(String op, String... args) {

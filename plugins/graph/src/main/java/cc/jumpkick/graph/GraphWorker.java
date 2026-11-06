@@ -136,7 +136,8 @@ public final class GraphWorker implements Plugin {
                 c.stringList("rules"),
                 LibraryApi.jars(c.stringList("libraries")),
                 c.stringOpt("apiCache").map(Path::of).orElse(null),
-                c.stringList("uncompiled"));
+                c.stringList("uncompiled"),
+                ModuleReach.of(c.stringList("moduleEdges")));
     }
 
     /** {@code term \t word \t word …}, one per term. */

@@ -629,6 +629,7 @@ public final class GraphRunner {
                 .configString("apiCache", apis ? JkStores.resolve("graph-api").toString() : null)
                 .configList("modulePrefixes", prefixes)
                 .configList("aliases", aliasRows(graphConfig(root)))
+                .configList("moduleEdges", "rename".equals(r.op()) ? GraphModuleEdges.rows(root) : List.of())
                 .writeTempSpec();
     }
 

@@ -98,8 +98,9 @@ public final class GraphService {
      * graph ({@code out}) and the cache root whose action index holds the fragments ({@code cache}), every module's
      * class facts index, its modules, the script reader, the {@code [graph.aliases]} (term → outside words), for {@code rules} the guard rules
      * the engine matched to the file (one JSON object each), for {@code read} and {@code find} the
-     * locked jars and where their API indexes are kept, and the modules with main sources the engine
-     * has no compiled classes of ({@code uncompiled}), whose calls no answer holds.
+     * locked jars and where their API indexes are kept, the modules with main sources the engine
+     * has no compiled classes of ({@code uncompiled}), whose calls no answer holds, and for a rename
+     * which modules see which ({@code reach}).
      */
     public record Workspace(
             Path root,
@@ -112,7 +113,8 @@ public final class GraphService {
             List<String> guardRules,
             List<LibraryApi.Jar> libraries,
             @Nullable Path apiCache,
-            List<String> uncompiled) {
+            List<String> uncompiled,
+            ModuleReach reach) {
 
         public Workspace {
             indexes = List.copyOf(indexes);
