@@ -202,11 +202,13 @@ public final class RepoGroup {
         this.blocked = List.copyOf(blocked);
         // Bindings and the priority prefix change which repos are eligible for a coordinate, so
         // they are part of the question every memo answers — two groups with the same URLs but
-        // different bindings must never share memo entries.
+        // different bindings must never share memo entries. Each repository is named by the URL its
+        // requests open, the mirror's when one answers for it: a settings.xml edit that routes it
+        // elsewhere asks a new question, which the old mirror's answers must not settle.
         StringBuilder id = new StringBuilder();
         for (int i = 0; i < this.repos.size(); i++) {
             if (i > 0) id.append(',');
-            id.append(this.repos.get(i).baseUrl());
+            id.append(this.repos.get(i).fetchBase());
             List<String> excl = this.exclusiveGroups.get(i);
             if (!excl.isEmpty()) id.append('!').append(String.join(";", excl));
             List<String> routed = this.routedGroups.get(i);
@@ -334,8 +336,9 @@ public final class RepoGroup {
     }
 
     /**
-     * Stable identity of the repositories this group asks. Part of every process-wide fetch /
-     * versions / effective-POM memo key so one group's answer cannot stand in for another's.
+     * Stable identity of the repositories this group asks, each by the URL its requests open. Part of
+     * every process-wide fetch / versions / effective-POM memo key so one group's answer cannot stand
+     * in for another's.
      */
     public String processIdentity() {
         return repoIdentity;
@@ -619,10 +622,14 @@ public final class RepoGroup {
         }
     }
 
-    /** True when every repository here is one whose answers the process memos may keep; see {@link RepoMisses#memoizes}. */
+    /**
+     * True when every repository here is one whose answers the process memos may keep, judged by the
+     * URL its requests open: a loopback mirror of a remote repository answers for whoever holds the
+     * port. See {@link RepoMisses#memoizes}.
+     */
     private boolean memoizesEveryRepo() {
         for (MavenRepo repo : repos) {
-            if (!RepoMisses.memoizes(repo.baseUrl())) return false;
+            if (!RepoMisses.memoizes(repo.fetchBase())) return false;
         }
         return true;
     }
