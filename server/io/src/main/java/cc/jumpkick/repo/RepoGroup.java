@@ -522,10 +522,10 @@ public final class RepoGroup {
      */
     public List<String> availableVersions(Coordinate coord, Set<String> wanted, boolean snapshots)
             throws IOException, InterruptedException {
-        // The session's offline flag changes what MavenRepo.availableVersions even measures
-        // (local store listing vs remote metadata), so it is part of the question: an --offline
-        // session's [] must not poison an online session for the TTL, nor may network-derived
-        // lists leak into offline resolves.
+        // The session's offline flag changes what MavenRepo.availableVersions even measures for a
+        // remote repository (local store listing vs remote metadata), so it is part of the question:
+        // an --offline session's [] must not poison an online session for the TTL, nor may
+        // network-derived lists leak into offline resolves.
         boolean offline = SessionContext.current().config().offlineOr(false);
         String key = (offline ? "offline|" : "online|") + (snapshots ? "snapshots|" : "") + repoIdentity + "|"
                 + coord.group() + ":" + coord.artifact();

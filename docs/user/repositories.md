@@ -153,6 +153,17 @@ each repository at its mirror's URL with the mirror's credential. `[mirrors]` in
 a different table: it points the *tool downloads* (Node, Kotlin, Gradle, Maven, JDKs) elsewhere —
 see [Config § Tool mirrors](config.md#tool-mirrors).
 
+### Offline
+
+`--offline` (or `offline = true`, `JK_OFFLINE`) means no network, not no repositories. A
+repository or mirror whose URL is `file:` is a directory on this disk and is read offline exactly
+as it is online: an air-gapped mirror (`mirror-of = ["*"]` at `file:///srv/maven/`) answers an
+offline `jk lock` or `jk sync`, POMs, artifacts and version lists alike, and what it serves lands
+in the mirrored repository's store as it would online. A repository or mirror reached over
+`http`, `https`, `s3` or `gs` is asked nothing offline; what the store already holds from it
+answers instead, and a coordinate it never served is not found. Offline, a `file:` repository's
+version list is its own and what the store holds from it, together.
+
 ## Exclusive groups (your internals)
 
 When you declare an **internal** repository next to a public one, bind *your* Maven

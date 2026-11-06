@@ -39,6 +39,12 @@ coding-agent CLI sets on commands it spawns. A pipe or a CI log without that var
 today's output. `-O jsonl` stays the live event stream unless `--agent` or `JK_AGENT=1`
 is set.
 
+**`offline`:** no network, not no repositories. An offline run reads the store and every
+repository or mirror whose URL is `file:` — a directory on this disk, such as an air-gapped mirror
+or a Maven local repository — as it reads them online; a repository or mirror reached over the
+network is asked nothing, and what the store already holds from it answers instead. See
+[Repositories § Offline](repositories.md#offline).
+
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
 elapsed time is ≥ 1 minute; `always`/`true` always; `never`/`false` never.
 `--no-progress` and `--no-osc` also suppress notifications.

@@ -14,11 +14,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
@@ -237,6 +240,86 @@ class UserConfigMirrorTest {
         assertNoRepositoryDialed();
     }
 
+    @Test
+    void a_file_mirror_answers_an_offline_lock_of_exact_pins(@TempDir Path dir) throws Exception {
+        Path disk = publishTo(dir.resolve("mirror"));
+        Path project = Files.createDirectories(dir.resolve("project"));
+        exactManifest(project);
+        userConfig(origins() + mirrorOf("*", disk.toUri().toString()));
+
+        assertThat(run("lock", "--offline", "-C", project.toString()))
+                .as("an offline lock read from the mirror on disk")
+                .isZero();
+        assertThat(project.resolve("jk-lock.toml")).content().contains("central-lib");
+
+        // The store loses its copy; the offline gate fetches it again from the mirror on disk
+        // rather than calling the locked artifact missing.
+        List<Path> stored = storedCopies("central-lib-1.0.jar");
+        assertThat(stored).isNotEmpty();
+        for (Path copy : stored) Files.delete(copy);
+        assertThat(run("lock", "--offline", "-C", project.toString()))
+                .as("an offline lock whose store lacks a pinned jar the mirror on disk holds")
+                .isZero();
+        assertThat(storedCopies("central-lib-1.0.jar")).isNotEmpty();
+        assertThat(origins.requested()).isEmpty();
+        assertNoRepositoryDialed();
+    }
+
+    @Test
+    void an_https_mirror_is_asked_nothing_offline_and_the_lock_fails(@TempDir Path dir) throws Exception {
+        Path project = Files.createDirectories(dir.resolve("project"));
+        exactManifest(project);
+        userConfig(origins() + mirrorOf("*", "https://mirror.example.invalid/maven2/"));
+
+        int[] exit = {-1};
+        String out = output(() -> exit[0] = run("lock", "--offline", "-C", project.toString()));
+
+        assertThat(exit[0]).as(out).isNotZero();
+        assertThat(out).contains("central-lib");
+        assertThat(origins.requested()).isEmpty();
+        assertThat(proxy.hosts()).doesNotContain("mirror.example.invalid");
+        assertNoRepositoryDialed();
+    }
+
+    /** Every library {@link #exactManifest} needs, with the JUnit defaults, as a repository tree under {@code disk}. */
+    private static Path publishTo(Path disk) throws IOException {
+        Map<String, byte[]> served = new LinkedHashMap<>();
+        new MavenStub(served)
+                .leaf(CENTRAL_LIB, "central-lib", "1.0")
+                .leaf("org.junit.jupiter", "junit-jupiter", DefaultTestDepsFixture.JUNIT_VERSION)
+                .leaf("org.junit.platform", "junit-platform-launcher", DefaultTestDepsFixture.JUNIT_VERSION)
+                .leaf(GOOGLE_LIB, "google-lib", "1.0")
+                .leaf(JUMPKICK_LIB, "jk-lib", "1.0");
+        for (Map.Entry<String, byte[]> file : served.entrySet()) {
+            Path target = disk.resolve(file.getKey().substring(1));
+            Files.createDirectories(target.getParent());
+            Files.write(target, file.getValue());
+        }
+        return disk;
+    }
+
+    /** As {@link #manifest}, every dependency pinned exactly. */
+    private static void exactManifest(Path dir) throws IOException {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "mirrored"
+                version = "0.1.0"
+                java = 25
+
+                [dependencies]
+                central-lib = { group = "%s", name = "central-lib", version = "1.0" }
+                google-lib = { group = "%s", name = "google-lib", version = "1.0" }
+                jk-lib = { group = "%s", name = "jk-lib", version = "1.0" }
+                """.formatted(CENTRAL_LIB, GOOGLE_LIB, JUMPKICK_LIB));
+    }
+
+    /** The files named {@code name} under the isolated home, where its store lies. */
+    private static List<Path> storedCopies(String name) throws IOException {
+        try (Stream<Path> files = Files.walk(JkDirs.home())) {
+            return files.filter(f -> f.getFileName().toString().equals(name)).toList();
+        }
+    }
+
     /** A jar whose {@code Main-Class} prints nothing and exits 0. */
     private static byte[] helloJar(Path dir) throws IOException {
         Path src = Files.createDirectories(dir.resolve("hello-src/e2e"));
@@ -323,12 +406,16 @@ class UserConfigMirrorTest {
     }
 
     String mirrorOf(String pattern) {
+        return mirrorOf(pattern, mirror.baseUrl());
+    }
+
+    static String mirrorOf(String pattern, String url) {
         return """
 
                 [repositories.corp]
                 url = "%s"
                 mirror-of = ["%s"]
-                """.formatted(mirror.baseUrl(), pattern);
+                """.formatted(url, pattern);
     }
 
     /** The isolated home's starting {@code config.toml}, read before the first rewrite. */

@@ -50,6 +50,7 @@ import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenMetadataCache;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
@@ -914,6 +915,7 @@ public final class LockPipeline {
             }
         }
         ArtifactLocator locator = offlineLocator(lock, cas);
+        LocalRepositories local = new LocalRepositories(cas);
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             String checksum = pkg.checksum();
             if (checksum == null) {
@@ -927,11 +929,47 @@ public final class LockPipeline {
                 continue;
             }
             String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
-            if (locator.locate(pkg).isEmpty()) {
+            if (locator.locate(pkg).isEmpty() && !local.serve(pkg, hex)) {
                 throw new IllegalStateException("offline: " + pkg.name() + ":" + pkg.version()
                         + " is locked but its artifact isn't cached"
                         + mirrorMismatchHint(cas, pkg, hex)
                         + "; run `jk sync` online first");
+            }
+        }
+    }
+
+    /**
+     * The project's repositories that offline still reads, those on this machine's disk ({@link
+     * MavenRepo#local}): a locked artifact the store lacks is fetched from one of them, under its
+     * pin, before the offline gate calls it missing. The group is built on the first miss only.
+     */
+    private final class LocalRepositories {
+        private final Cas cas;
+        private @Nullable RepoGroup group;
+        private boolean any = true;
+
+        LocalRepositories(Cas cas) {
+            this.cas = cas;
+        }
+
+        /** True once {@code pkg}'s pinned bytes are in the store, fetched from a local repository. */
+        boolean serve(Lockfile.Artifact pkg, String sha256Hex) {
+            if (!any || pkg.name().indexOf(':') < 0) return false;
+            try {
+                RepoGroup repos = group;
+                if (repos == null) {
+                    repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas, BuildEnv.forModule(lockDir));
+                    group = repos;
+                    any = repos.repos().stream().anyMatch(MavenRepo::local);
+                    if (!any) return false;
+                }
+                return repos.tryFetchArtifact(pkg.coordinate(), sha256Hex).isPresent();
+            } catch (IOException | RuntimeException e) {
+                Log.debug("offline gate: no local repository serves " + pkg.name() + ":" + pkg.version(), e);
+                return false;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
             }
         }
     }

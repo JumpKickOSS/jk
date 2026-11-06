@@ -183,7 +183,7 @@ Exit code is always `0` on a successful report. There is no `--fail-if-outdated`
 changes stay intentional. For CI “fail if drift”, `-O jsonl` is a non-empty array exactly
 when something can move.
 
-`--offline` uses only local cache / repo mirrors. Unreachable remotes look empty on
+`--offline` reads only the store and `file:` repositories and mirrors. Unreachable remotes look empty on
 Compatible/Latest — the CLI prints a note so that is not mistaken for “everything is current.”
 
 JSON is an **array** of row objects (`module`, `dependency`, `display`, `scope`, `current`,

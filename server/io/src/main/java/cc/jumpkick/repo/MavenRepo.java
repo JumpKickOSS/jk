@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -37,8 +38,10 @@ import org.jspecify.annotations.Nullable;
  * declares, {@code repos/<id>/} for the rest ({@link M2Backing}). A file already in the local
  * repository is used where it is, with no download, once its bytes verify as the lock's pin or,
  * unpinned, as the checksum the repository publishes; one the repository disowns is evicted
- * (removed only if jk put it there) and downloaded again. Offline serves from the store
- * ({@link ArtifactNotFoundException} on miss).
+ * (removed only if jk put it there) and downloaded again. Offline means no network, not no
+ * repositories: a repository whose requests open on this machine's disk ({@code file:}, itself or
+ * through its mirror) is read as it is online; any other serves from the store ({@link
+ * ArtifactNotFoundException} on miss).
  */
 public final class MavenRepo {
 
@@ -319,6 +322,20 @@ public final class MavenRepo {
     }
 
     /**
+     * True when this repository's requests open on this machine's disk: a {@code file:} URL, its own
+     * or its mirror's. Such a repository needs no network, so an offline session reads it as it
+     * reads the store.
+     */
+    public boolean local() {
+        return "file".equalsIgnoreCase(fetchBase.getScheme());
+    }
+
+    /** True when the session is offline and this repository needs the network to answer. */
+    private boolean offlineRemote() {
+        return SessionContext.current().config().offlineOr(false) && !local();
+    }
+
+    /**
      * Field-setting constructor. {@code httpOrNull} is the HTTP client when the repo is http(s)
      * (enabling the metadata cache), or {@code null} for a non-HTTP transport. {@code m2integration}
      * is the resolving project's {@code m2integration} value; {@code allowUnverified} is the
@@ -580,12 +597,21 @@ public final class MavenRepo {
     /**
      * Versions of this coordinate's {@code group:artifact} available here: online from {@code
      * maven-metadata.xml} through the {@link MavenMetadataCache} for HTTP repos, offline from what
-     * the store holds. A missing artifact is an empty list, so {@link RepoGroup} can union across repos.
+     * the store holds. A {@linkplain #local local} repository is read offline too, and the versions
+     * the store already holds from it stay candidates. A missing artifact is an empty list, so
+     * {@link RepoGroup} can union across repos.
      */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
-        if (SessionContext.current().config().offlineOr(false)) {
-            return repoStore.versions(coord.group(), coord.artifact());
-        }
+        if (!SessionContext.current().config().offlineOr(false)) return listedVersions(coord);
+        List<String> stored = repoStore.versions(coord.group(), coord.artifact());
+        if (!local()) return stored;
+        LinkedHashSet<String> union = new LinkedHashSet<>(listedVersions(coord));
+        union.addAll(stored);
+        return List.copyOf(union);
+    }
+
+    /** The versions this repository itself lists for {@code coord}'s {@code group:artifact}. */
+    private List<String> listedVersions(Coordinate coord) throws IOException, InterruptedException {
         refuseIfUnreachable();
         try {
             byte[] xml = metadataCache != null
@@ -646,7 +672,7 @@ public final class MavenRepo {
             BooleanSupplier abort,
             @Nullable String expectedSha256)
             throws IOException, InterruptedException {
-        if (SessionContext.current().config().offlineOr(false)) {
+        if (offlineRemote()) {
             return fetchOffline(coord, relativePath, expectedSha256);
         }
         // warm re-lock — serve immutable GAV paths from repos/<name>/ without re-HTTP.
@@ -986,9 +1012,9 @@ public final class MavenRepo {
      * write, a jar copied in by hand, an artifact upstream republished — is not what a fresh lock
      * pins. A disowned copy is evicted and the fetch goes on to the network with a note; a copy the
      * repository publishes no checksum for follows the download's {@code allow-unverified} rule, so
-     * a refused one falls through to the download that refuses it by name. Offline, under an abort
-     * (the lock has already failed and pins nothing) or with the repository unreachable the store
-     * answers as it stands.
+     * a refused one falls through to the download that refuses it by name. Offline (for a repository
+     * that is not {@linkplain #local local}), under an abort (the lock has already failed and pins
+     * nothing) or with the repository unreachable the store answers as it stands.
      */
     private Optional<Fetched> confirmed(
             Coordinate coord,
@@ -998,7 +1024,7 @@ public final class MavenRepo {
             BooleanSupplier abort,
             boolean requirePublished)
             throws IOException, InterruptedException {
-        if (SessionContext.current().config().offlineOr(false) || abort.getAsBoolean() || unreachable.get() != null) {
+        if (offlineRemote() || abort.getAsBoolean() || unreachable.get() != null) {
             return Optional.of(local);
         }
         try {
