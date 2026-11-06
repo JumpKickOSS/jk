@@ -111,14 +111,22 @@ public final class NodeCatalog {
         return out;
     }
 
+    /**
+     * How long ago {@code cache} was written, never negative: a file stamped after the clock's
+     * millisecond reading (nanosecond mtimes, a clock step) is as old as one written now, so a zero
+     * TTL always asks the network.
+     */
+    private static Duration age(Path cache) throws IOException {
+        Duration age = Duration.between(Files.getLastModifiedTime(cache).toInstant(), Clock.SYSTEM.instant());
+        return age.isNegative() ? Duration.ZERO : age;
+    }
+
     private byte[] indexBody(boolean refresh) throws IOException, InterruptedException {
         Path cache = storeDir.resolve("node-index.json");
         boolean fresh = !refresh
                 && Files.isRegularFile(cache)
                 && Files.size(cache) > 0
-                && Duration.between(Files.getLastModifiedTime(cache).toInstant(), Clock.SYSTEM.instant())
-                                .compareTo(ttl)
-                        < 0;
+                && age(cache).compareTo(ttl) < 0;
         if (fresh) return Files.readAllBytes(cache);
         URI uri = distBase.resolve("index.json");
         try {

@@ -11,7 +11,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -94,7 +96,21 @@ class NodeCatalogTest {
 
         NodeCatalog stale = new NodeCatalog(new Http(), http.base(), store, Duration.ZERO).onWarning(warnings::add);
         assertThat(stale.releases()).hasSize(5);
-        assertThat(warnings).singleElement().asString().contains("Node index unreachable");
+        assertThat(warnings).as("%s", warnings).singleElement().asString().contains("Node index unreachable");
+    }
+
+    /** A cache stamped after the clock's reading is not younger than a zero TTL: the network is asked. */
+    @Test
+    void a_cache_stamped_in_the_future_is_still_stale_under_a_zero_ttl(@TempDir Path store) throws Exception {
+        serveIndex();
+        assertThat(new NodeCatalog(new Http(), http.base(), store, Duration.ofHours(12)).releases())
+                .hasSize(5);
+        Files.setLastModifiedTime(
+                store.resolve("node-index.json"), FileTime.from(Instant.now().plus(Duration.ofMinutes(5))));
+
+        new NodeCatalog(new Http(), http.base(), store, Duration.ZERO).releases();
+
+        assertThat(http.requestsFor("/index.json")).isEqualTo(2);
     }
 
     @Test
