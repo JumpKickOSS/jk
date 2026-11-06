@@ -21,6 +21,7 @@ cp -R "$TREE/templates/." "$CAT/"
 printf '# catalog\n\n| Name |\n|------|\n| \140cli\140 | none |\n' >"$CAT/README.md"
 printf 'license\n' >"$CAT/LICENSE"
 mkdir -p "$CAT/.git" && printf 'ref\n' >"$CAT/.git/HEAD"
+mkdir -p "$CAT/.github/workflows" && printf 'on: push\n' >"$CAT/.github/workflows/lint.yml"
 
 sync() { "$TREE/scripts/templates-sync.sh" "$@" >"$WORK/last.log" 2>&1; }
 
@@ -56,6 +57,7 @@ passes_check "a synced removal"
 
 grep -qx 'license' "$CAT/LICENSE" || { echo "test-templates-sync: LICENSE was touched" >&2; exit 1; }
 [ -f "$CAT/.git/HEAD" ] || { echo "test-templates-sync: .git was touched" >&2; exit 1; }
+[ -f "$CAT/.github/workflows/lint.yml" ] || { echo "test-templates-sync: the catalog's .github was removed" >&2; exit 1; }
 
 # A worktree checkout of the catalog has a .git file, not a directory: a sync leaves it alone too.
 WT="$WORK/worktree"
