@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Mirror this tree's templates/ into a checkout of the published catalog (JumpKickOSS/jk-templates),
-# or with --check report where the two differ. The catalog owns only its README.md and LICENSE; every
-# other path is templates/'s, so a template removed here is removed there. The README's catalog table
-# is hand-written (its rule-pack column is not template metadata), so the script checks that every
-# template has a row and no row names a template that is gone, and leaves the wording to a person.
+# or with --check report where the two differ. The catalog owns only its README.md, LICENSE and
+# .github/; every other path is templates/'s, so a template removed here is removed there. The
+# README's catalog table is hand-written (its rule-pack column is not template metadata), so the
+# script checks that every template has a row and no row names a template that is gone, and leaves
+# the wording to a person.
 # Never commits or pushes. Exit 1 on drift under --check, 2 on a usage error.
 #
 #   scripts/templates-sync.sh [--check] [catalog-dir]     # catalog-dir defaults to ../jk-templates
@@ -32,7 +33,7 @@ note() {
 
 # Relative paths of every file under $1, skipping the catalog's own files and git metadata.
 files_under() {
-  (cd "$1" && find . -type f ! -path './.git' ! -path './.git/*' ! -path './README.md' ! -path './LICENSE' | sed 's|^\./||' | LC_ALL=C sort)
+  (cd "$1" && find . -type f ! -path './.git' ! -path './.git/*' ! -path './README.md' ! -path './LICENSE' ! -path './.github/*' | sed 's|^\./||' | LC_ALL=C sort)
 }
 
 src_list="$(files_under "$SRC")"
