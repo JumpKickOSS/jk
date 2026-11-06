@@ -13,6 +13,7 @@ import cc.jumpkick.giter8.Giter8Maven;
 import cc.jumpkick.giter8.Giter8ShortNames;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.giter8.JkTemplateToml;
+import cc.jumpkick.giter8.MavenVersionLookup;
 import cc.jumpkick.giter8.PluginTemplates;
 import cc.jumpkick.giter8.ShippedTemplates;
 import cc.jumpkick.giter8.TemplateAnswers;
@@ -56,6 +57,17 @@ public final class NewProjectOps {
     static final Pattern GROUP = NewProjectStep.GROUP;
 
     private NewProjectOps() {}
+
+    /** What answers a template's {@code maven()} properties in place of the repositories; unset in production. */
+    private static volatile @Nullable MavenVersionLookup versionLookup;
+
+    /**
+     * Test seam: {@code lookup} answers every template's {@code maven()} properties, so a scaffold
+     * reaches no repository; {@code null} restores the repositories.
+     */
+    static void versionLookup(@Nullable MavenVersionLookup lookup) {
+        versionLookup = lookup;
+    }
 
     /** The template parameter (and {@code default.properties} key) naming a template's layout. */
     static final String TEMPLATE_LAYOUT_PARAM = "jk_layout";
@@ -241,11 +253,15 @@ public final class NewProjectOps {
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("template " + prep.template() + ": " + e.getMessage(), e);
             }
+            MavenVersionLookup lookup = versionLookup;
             Giter8Apply.apply(
                     templateRoot,
                     target,
                     bound,
-                    Giter8Maven.fromRepositories(() -> RepoGroupBuilder.buildDefault(JkStores.storeCas()), offline));
+                    lookup != null
+                            ? lookup
+                            : Giter8Maven.fromRepositories(
+                                    () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()), offline));
         } catch (IOException e) {
             throw new IOException(
                     "applying template " + prep.template() + " lang=" + langName + ": " + e.getMessage(), e);

@@ -1,0 +1,41 @@
+# The new-project corpus of groovy/grails/hello: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+--- files
+.gitignore
+AGENTS.md
+README.md
+grails-app/conf/application.yml
+grails-app/controllers/com/acme/NoteController.groovy
+grails-app/domain/com/acme/Note.groovy
+grails-app/init/com/acme/Application.groovy
+grails-app/init/com/acme/BootStrap.groovy
+jk.toml
+--- jk.toml
+name = "demo"
+group = "com.acme"
+version = "…"
+java = 25
+groovy = "…"
+
+[application]
+main = "com.acme.Application"
+
+[grails]
+version = "…"
+
+# grails-bom manages every version below. url-mappings/databinding carry plugin
+# descriptors the web chain depends on (absent ⇒ every route 404s); Grails apps
+# declare their own servlet container, logging provider, and connection pool.
+[dependencies]
+grails-core = { group = "org.apache.grails", name = "grails-core" }
+grails-web-boot = { group = "org.apache.grails", name = "grails-web-boot" }
+grails-url-mappings = { group = "org.apache.grails", name = "grails-url-mappings" }
+grails-databinding = { group = "org.apache.grails", name = "grails-databinding" }
+grails-rest-transforms = { group = "org.apache.grails", name = "grails-rest-transforms" }
+grails-data-hibernate7 = { group = "org.apache.grails", name = "grails-data-hibernate7" }
+grails-logging = { group = "org.apache.grails", name = "grails-logging" }
+starter-tomcat = { group = "org.springframework.boot", name = "spring-boot-starter-tomcat" }
+logback-classic = { group = "ch.qos.logback", name = "logback-classic" }
+h2 = { group = "com.h2database", name = "h2" }
+hikaricp = { group = "com.zaxxer", name = "HikariCP" }

@@ -1,0 +1,57 @@
+# The new-project corpus of java/spring-boot/hello: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+layout = traditional
+--- files
+.gitignore
+AGENTS.md
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/Application.java
+src/main/resources/application.properties
+src/test/java/com/acme/ApplicationTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+
+[application]
+main = "com.acme.Application"
+
+[spring-boot]
+version = "…"
+
+[dependencies]
+starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+
+[dev-dependencies]
+devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }
+
+=== layout=simple
+layout = simple
+--- files
+.gitignore
+AGENTS.md
+jk-guards.toml
+jk.toml
+resources/application.properties
+src/com/acme/Application.java
+test/src/com/acme/ApplicationTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+
+[application]
+main = "com.acme.Application"
+
+[spring-boot]
+version = "…"
+
+[dependencies]
+starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+
+[dev-dependencies]
+devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }

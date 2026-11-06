@@ -100,12 +100,20 @@ test-plugin-jars = [
   "kotlin-compiler",
   "groovy-compiler",
   "spring-boot",
+  # The plugins whose jars bundle templates: TemplateCatalogE2eTest scaffolds and builds each through
+  # the jar this build produced.
+  "grails",
+  "cc.jumpkick:jk-quarkus",
+  "micronaut",
+  "cc.jumpkick:jk-android",
   # jk publish, which stages this checkout's plugin SDK in a file repository for a plugin build
   # (TemplateCatalogE2eTest's plugin template, ThirdPartyPluginExampleTest).
   "publisher",
-  # Rule packs the templates/ catalog declares: staged into the test sandbox store, where a
-  # scaffolded project's lock looks for a first-party pack (TemplateCatalogE2eTest).
+  # Rule packs the templates declare, templates/ and the plugins': staged into the test sandbox
+  # store, where a scaffolded project's lock looks for a first-party pack (TemplateCatalogE2eTest).
   "cc.jumpkick.guards:spring",
+  "cc.jumpkick.guards:quarkus",
+  "cc.jumpkick.guards:android",
   "cc.jumpkick.guards:library",
   "cc.jumpkick.guards:monorepo",
 ]

@@ -1,0 +1,42 @@
+# The new-project corpus of kotlin/android/compose: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/AndroidManifest.xml
+src/main/kotlin/com/acme/Counter.kt
+src/main/kotlin/com/acme/MainActivity.kt
+src/test/kotlin/com/acme/CounterTest.kt
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Language level 21: d8 desugars 21-bytecode today; the host JDK 25 cross-compiles it.
+java = 21
+kotlin = "…"
+
+[android]
+namespace   = "com.acme"
+compile-sdk = 36
+min-sdk     = 24
+compose     = true
+
+[platform-dependencies]
+compose-bom = { group = "androidx.compose", name = "compose-bom", version = "…" }
+
+[dependencies]
+# activity-compose is androidx.activity's group — the Compose BOM does not manage it.
+activity-compose = "androidx.activity:activity-compose:…"
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+
+[test-dependencies]
+junit-jupiter = "…"
+
+[repositories]
+central = "https://repo.maven.apache.org/maven2/"
+google  = "https://dl.google.com/dl/android/maven2/"

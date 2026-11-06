@@ -1,0 +1,65 @@
+# The new-project corpus of kotlin/spring-boot/webmvc: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+layout = traditional
+--- files
+.gitignore
+AGENTS.md
+README.md
+client/jk.toml
+client/src/main/resources/static/index.html
+data/jk.toml
+data/src/main/kotlin/com/acme/data/note/Note.kt
+data/src/main/kotlin/com/acme/data/note/NoteRepository.kt
+data/src/main/resources/db/migration/V1__notes.sql
+jk-guards.toml
+jk.toml
+server/jk.toml
+server/src/main/kotlin/com/acme/server/Application.kt
+server/src/main/kotlin/com/acme/server/SecurityConfig.kt
+server/src/main/kotlin/com/acme/server/note/NoteController.kt
+server/src/main/kotlin/com/acme/server/note/NoteDto.kt
+server/src/main/kotlin/com/acme/server/note/NoteService.kt
+server/src/main/resources/application.properties
+server/src/test/kotlin/com/acme/server/NoteApiTest.kt
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+kotlin = "…"
+
+[workspace]
+modules = ["data", "client", "server"]
+
+=== layout=simple
+layout = simple
+--- files
+.gitignore
+AGENTS.md
+README.md
+client/jk.toml
+client/resources/static/index.html
+data/jk.toml
+data/resources/db/migration/V1__notes.sql
+data/src/com/acme/data/note/Note.kt
+data/src/com/acme/data/note/NoteRepository.kt
+jk-guards.toml
+jk.toml
+server/jk.toml
+server/resources/application.properties
+server/src/com/acme/server/Application.kt
+server/src/com/acme/server/SecurityConfig.kt
+server/src/com/acme/server/note/NoteController.kt
+server/src/com/acme/server/note/NoteDto.kt
+server/src/com/acme/server/note/NoteService.kt
+server/test/src/com/acme/server/NoteApiTest.kt
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+kotlin = "…"
+
+[workspace]
+modules = ["data", "client", "server"]

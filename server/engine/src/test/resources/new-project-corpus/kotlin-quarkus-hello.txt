@@ -1,0 +1,65 @@
+# The new-project corpus of kotlin/quarkus/hello: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+layout = traditional
+--- files
+.gitignore
+AGENTS.md
+jk-guards.toml
+jk.toml
+src/main/kotlin/com/acme/Application.kt
+src/main/kotlin/com/acme/GreetingResource.kt
+src/main/resources/application.properties
+src/test/kotlin/com/acme/GreetingResourceTest.kt
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+kotlin = "…"
+
+[application]
+main = "com.acme.Application"
+
+[quarkus]
+version = "…"
+
+[dependencies]
+quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }
+quarkus-arc = { group = "io.quarkus", name = "quarkus-arc" }
+quarkus-kotlin = { group = "io.quarkus", name = "quarkus-kotlin" }
+
+[test-dependencies]
+quarkus-junit5 = { group = "io.quarkus", name = "quarkus-junit5" }
+rest-assured = { group = "io.rest-assured", name = "rest-assured" }
+
+=== layout=simple
+layout = simple
+--- files
+.gitignore
+AGENTS.md
+jk-guards.toml
+jk.toml
+resources/application.properties
+src/com/acme/Application.kt
+src/com/acme/GreetingResource.kt
+test/src/com/acme/GreetingResourceTest.kt
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+kotlin = "…"
+
+[application]
+main = "com.acme.Application"
+
+[quarkus]
+version = "…"
+
+[dependencies]
+quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }
+quarkus-arc = { group = "io.quarkus", name = "quarkus-arc" }
+quarkus-kotlin = { group = "io.quarkus", name = "quarkus-kotlin" }
+
+[test-dependencies]
+quarkus-junit5 = { group = "io.quarkus", name = "quarkus-junit5" }
+rest-assured = { group = "io.rest-assured", name = "rest-assured" }

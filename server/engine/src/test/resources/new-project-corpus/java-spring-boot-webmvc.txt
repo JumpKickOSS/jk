@@ -1,0 +1,63 @@
+# The new-project corpus of java/spring-boot/webmvc: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+layout = traditional
+--- files
+.gitignore
+AGENTS.md
+README.md
+client/jk.toml
+client/src/main/resources/static/index.html
+data/jk.toml
+data/src/main/java/com/acme/data/note/Note.java
+data/src/main/java/com/acme/data/note/NoteRepository.java
+data/src/main/resources/db/migration/V1__notes.sql
+jk-guards.toml
+jk.toml
+server/jk.toml
+server/src/main/java/com/acme/server/Application.java
+server/src/main/java/com/acme/server/SecurityConfig.java
+server/src/main/java/com/acme/server/note/NoteController.java
+server/src/main/java/com/acme/server/note/NoteDto.java
+server/src/main/java/com/acme/server/note/NoteService.java
+server/src/main/resources/application.properties
+server/src/test/java/com/acme/server/NoteApiTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+
+[workspace]
+modules = ["data", "client", "server"]
+
+=== layout=simple
+layout = simple
+--- files
+.gitignore
+AGENTS.md
+README.md
+client/jk.toml
+client/resources/static/index.html
+data/jk.toml
+data/resources/db/migration/V1__notes.sql
+data/src/com/acme/data/note/Note.java
+data/src/com/acme/data/note/NoteRepository.java
+jk-guards.toml
+jk.toml
+server/jk.toml
+server/resources/application.properties
+server/src/com/acme/server/Application.java
+server/src/com/acme/server/SecurityConfig.java
+server/src/com/acme/server/note/NoteController.java
+server/src/com/acme/server/note/NoteDto.java
+server/src/com/acme/server/note/NoteService.java
+server/test/src/com/acme/server/NoteApiTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+
+[workspace]
+modules = ["data", "client", "server"]

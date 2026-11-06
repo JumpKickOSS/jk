@@ -122,19 +122,23 @@ the default template.
 
 ### How the catalogue and the surfaces are tested
 
-- **Golden corpus** (`NewProjectCorpusTest`, engine, fast tier). Every template under `templates/`
-  is scaffolded through `NewProjectOps` once per answer vector, and its file list and `jk.toml` are
-  compared with `server/engine/src/test/resources/new-project-corpus/<lang>-<framework>-<name>.txt`.
+- **Golden corpus** (`NewProjectCorpusTest`, engine, fast tier). Every template under `templates/`,
+  and every template a first-party plugin bundles (`plugins/<plugin>/src/main/resources/templates/`,
+  reached by its id through the jar `test-plugin-jars` hands the test JVM), is scaffolded through
+  `NewProjectOps` once per answer vector, and its file list and `jk.toml` are compared with `server/engine/src/test/resources/new-project-corpus/<lang>-<framework>-<name>.txt`.
   The vectors come from the form (`AnswerVectors`, `:core` test fixtures): the defaults, then a
   pairwise set in which every layout and every option of every ask appears. A new option therefore
   makes a new vector, and the corpus fails until its snapshot is re-captured:
   `NEW_PROJECT_CORPUS_CAPTURE=$PWD/server/engine/src/test/resources/new-project-corpus jk test -m
   server/engine --class cc.jumpkick.engine.runtime.NewProjectCorpusTest`, then review the diff.
-  Snapshots fix the name, group and default JDK and write every version `…`, so `jk update` and a
-  release leave them alone.
+  Snapshots fix the name, group and default JDK, answer a `maven()` property with a fixed version
+  instead of a repository, and write every version `…`, so `jk update` and a release leave them
+  alone.
 - **Build, test, guard and native** (`TemplateCatalogE2eTest`, CLI, slow tier). The same vectors
   through `jk new -t`, each built, tested and guarded clean; a template that asks `native` is linked
-  once with `jk native` when `GRAALVM_HOME` names a GraalVM, and skipped otherwise.
+  once with `jk native` when `GRAALVM_HOME` names a GraalVM, and skipped otherwise. An Android
+  template builds only where an Android SDK has its licenses accepted, and is skipped otherwise; a
+  template with a known defect (`KNOWN_DEFECTS`, each with its reason) is scaffolded but not built.
 - **Conformance** (`NewProjectConformanceTest`, CLI, fast tier). One scripted answer set through
   the terminal walk and through MCP form elicitation with a fake client: the posted answers and
   the scaffolded trees must be identical. The web wizard joins as a third surface when it exists.
