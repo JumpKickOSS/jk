@@ -82,7 +82,8 @@ public final class EngineVitals {
                 workers.leasedBytes(),
                 workers.overbookedBytes(),
                 workers.queued(),
-                budget.source().wire(),
+                (workers.budgetBytes() == budget.bytes() ? budget.source() : WorkerContainment.BudgetSource.SHARED)
+                        .wire(),
                 workers.runningJvms(),
                 workers.cpuCap(),
                 OverbookSignals.policyOff(),

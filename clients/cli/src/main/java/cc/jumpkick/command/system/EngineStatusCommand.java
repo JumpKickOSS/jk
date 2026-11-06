@@ -509,13 +509,17 @@ public final class EngineStatusCommand implements CliCommand {
         return line.toString();
     }
 
-    /** {@code (host)}, {@code (cgroup)}, or {@code (override JK_WORKER_BUDGET_MB)}. Empty when unknown. */
+    /**
+     * {@code (host)}, {@code (cgroup)}, {@code (override JK_WORKER_BUDGET_MB)}, or {@code (another
+     * engine's)}. Empty when unknown.
+     */
     private static String sourcePhrase(@Nullable String source) {
         if (source == null || source.isBlank()) return "";
         return switch (source) {
             case "host" -> "(host)";
             case "cgroup" -> "(cgroup)";
             case "override" -> "(override JK_WORKER_BUDGET_MB)";
+            case "shared" -> "(another engine's)";
             default -> "(" + source + ")";
         };
     }

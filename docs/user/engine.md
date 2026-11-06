@@ -297,7 +297,8 @@ same number written to the workers cgroup `memory.max`: host memory, or the encl
 cgroup limit when that is lower, minus the larger of 2 GiB and 10%. `jk engine status`
 prints one Workers line naming that budget and where it came from — `(host)` when host
 memory set it, `(cgroup)` when the enclosing cgroup's `memory.max` was the tighter input,
-or `(override JK_WORKER_BUDGET_MB)` when that variable replaced the number — then the
+`(override JK_WORKER_BUDGET_MB)` when that variable replaced the number, or `(another
+engine's)` when another engine of the host recorded the budget first (below) — then the
 bytes leased, how much of the lease sits past the budget, how many forks are queued, and
 how many JVMs are running against the CPU cap:
 `13.5 GiB budget (cgroup), 6.2 GiB leased, 700 MiB overbooked, 2 queued, 4/16 JVMs`.
@@ -308,23 +309,32 @@ line needs and who holds the memory, largest first:
 While a worker is far over its lease (below), an Over lease line names it, largest first:
 `test JVM pid 4242 (job #7) using 12.2 GiB, leased 6.7 GiB`. A resident engine keeps the environment it was started with, so
 that is how a stale override shows up. `-O jsonl` carries the same facts as
-`workerBudgetBytes`, `workerBudgetSource` (`host`, `cgroup`, or `override`),
+`workerBudgetBytes`, `workerBudgetSource` (`host`, `cgroup`, `override`, or `shared` when another engine's budget is the one leased against),
 `workerLeasedBytes`, `workerOverbookedBytes`, `workerQueued`, `workerRunningJvms`,
 `workerCpuCap`, `overbookingOff`, `workerWaiting` (the Waiting line, `""` when nothing
 is queued), and `workerOverLease` (the Over lease line, `""` when no worker is). The
 dashboard's Admin page shows the same line.
 
-The budget is one per host: every engine of one state directory leases from it together,
-so an engine still draining after `jk engine stop` and the engine that took over never
-hold more between them than one engine could alone. Each engine records what it holds in
-`<state>/engine/worker-leases` and counts the others' lines before it grants a lease; the
-leased total on the Workers line and the Waiting line's `held by other engines 3.0 GiB` include
-them. A line whose engine is gone — it crashed, or was killed — is dropped by the next
-engine that reads the file, so a dead engine's leases never hold the host back. Each engine
-compares that one total with its own budget, so an engine started with a different
-`JK_WORKER_BUDGET_MB` still counts the others. A test JVM's in-process engine keeps its own
-ledger, and a nested engine under `jk test` has its own state directory, so neither
-shares the host's budget.
+The worker limits are one per host: every engine of one state directory leases from them
+together, so an engine still draining after `jk engine stop` and the engine that took over
+never hold more between them than one engine could alone. Host-wide are the budget, its
+twice-the-budget overbooking cap, the running-JVM cap, the compiler lane count, and the free
+memory overbooking reads. Each engine records its line in `<state>/engine/worker-leases` —
+its budget, the bytes it holds, its running JVMs, and the pid of each worker it forked — and
+counts the others' lines before it grants a lease or starts a lane; the leased total and the
+JVM count on the Workers line, and the Waiting line's `held by other engines 3.0 GiB`,
+include them. The budget is the one the engine that was there first recorded: an engine
+started with a different `JK_WORKER_BUDGET_MB` says so once in the engine log, shows
+`(another engine's)`, and uses the recorded budget until that engine is gone. A line whose
+engine is gone — it crashed, or was killed — is dropped by the next engine that reads the
+file, and the workers it names that still run are killed, with what they started: nothing
+can read their output, and their memory would otherwise be counted by nobody. A worker is
+killed only when its pid still names the process that started when the line says. The
+engine log records both:
+`reclaimed 3.0 GiB of worker leases held by engine pid 4242, which is gone; stopped 2 workers it left running`.
+The file costs each fork a few file-locked rewrites of a few hundred bytes, a fraction of a
+millisecond each. A test JVM's in-process engine keeps its own ledger, and a nested engine
+under `jk test` has its own state directory, so neither shares the host's limits.
 
 A JVM leases its `-Xmx` plus overhead of `max(160 MiB, 12% of -Xmx)`. The 12% is the
 resident cost of GC and thread structures measured above a filled heap; 160 MiB covers
@@ -379,9 +389,9 @@ still queued then fails its step, naming what it needed and who held the memory:
 On Linux that same lease may start anyway, past the reservation, when the host still has
 room. It does not when this engine was started with `CI` set, or with `JK_OVERBOOK` set to
 `0` (`false`, `no` and `off` count too; anything else, including leaving it unset, leaves
-overbooking on). In cgroup mode the free memory is the workers group's `memory.max` minus
-`memory.current`. Otherwise it is host `MemAvailable`, which requires `/proc/pressure/memory`
-to be readable as well. That free memory has to cover the new lease's full worst case plus
+overbooking on). The free memory is host `MemAvailable`, which sees every engine's workers;
+in cgroup mode it is no more than the workers group's `memory.max` minus `memory.current`.
+Without a cgroup, `/proc/pressure/memory` has to be readable as well. That free memory has to cover the new lease's full worst case plus
 a headroom of the larger of 1 GiB and 10% of the budget. Forks already running count at the
 usage in that sample, not at the reservation they hold. Pressure has to be low:
 `some` `avg10` below 5 and `full` `avg10` below 1, on `/proc/pressure/memory` and on the
@@ -401,12 +411,14 @@ reason; a worker does not see it unless the module inherits the engine's whole e
 An idle compiler lane holds its lease only while nothing else is waiting. When a fork is
 queued, or another job needs a lane and the lane budget is full, the idle lane exits and
 the next compile starts a new one. Lanes are one budget for the whole engine, shared by
-every job: the core count, and how many lane leases fit. A job on its own still gets
-every lane that fits. `JK_COMPILE_LANES` pins the count for measurement.
+every job: the cores the other engines of the host leave free of their running JVMs, and how
+many lane leases fit in what they leave of the budget, never fewer than one. A job on its own
+still gets every lane that fits. `JK_COMPILE_LANES` pins the count for measurement.
 
 Forked JVMs that are actually running are also capped at the machine's online processors,
 or at the cgroup CPU quota when that quota is finite, separate from the memory lease, so
-several jobs cannot start one JVM per core each and thrash. A process's
+several jobs cannot start one JVM per core each and thrash. The cap counts every engine's
+running JVMs, so a draining engine and its successor share it. A process's
 `-XX:ActiveProcessorCount` is its own share of the machine and does not lower this cap.
 jk's compiler and plugin workers run ParallelGC with `-XX:ActiveProcessorCount` set to their
 share of the cores; a worker whose collector is left to the JVM (`[jvm] gc = "default"`) gets

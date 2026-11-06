@@ -212,8 +212,9 @@ public final class JavaCompilerHost {
     }
 
     /**
-     * Lanes the engine may run at once, shared by every job: the core count, and how many leases of
-     * one lane's heap fit in the worker budget. A job alone can use all of them. {@code
+     * Lanes the engine may run at once, shared by every job: the cores the other engines of this
+     * host leave free of their JVMs, and how many leases of one lane's heap fit in what they leave of
+     * the worker budget; never fewer than one. A job alone can use all of them. {@code
      * JK_COMPILE_LANES} overrides for measurement.
      */
     static int laneBudget() {
@@ -224,11 +225,12 @@ public final class JavaCompilerHost {
     static int laneBudget(WorkerLeases.Ledger leases) {
         int override = laneBudgetForTests > 0 ? laneBudgetForTests : envLanes();
         if (override > 0) return override;
-        int cores = Math.max(1, AvailableCpus.count());
+        int cores = Math.max(1, AvailableCpus.count() - leases.otherEnginesJvms());
         HeapPlan.Plan plan = JvmOptions.processHeapPlan();
         long xmx = plan != null && plan.xmxBytes() > 0 ? plan.xmxBytes() : WorkerHeap.BASE_BYTES;
         long lease = Math.max(1, WorkerLeases.jvmLease(xmx));
-        int byMemory = (int) Math.max(1, leases.capacityBytes() / lease);
+        long free = Math.max(0, leases.capacityBytes() - leases.otherEnginesBytes());
+        int byMemory = (int) Math.max(1, Math.min(Integer.MAX_VALUE, free / lease));
         return Math.max(1, Math.min(cores, byMemory));
     }
 

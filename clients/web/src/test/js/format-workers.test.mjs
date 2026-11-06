@@ -48,6 +48,18 @@ test('the workers row names the budget source, the lease, and overbooking', () =
   );
   assert.equal(
     workerBudgetLine({
+      workerBudgetBytes: 4 * GIB,
+      workerLeasedBytes: GIB,
+      workerOverbookedBytes: 0,
+      workerQueued: 0,
+      workerBudgetSource: 'shared',
+      workerRunningJvms: 1,
+      workerCpuCap: 8,
+    }),
+    "4.0 GiB budget (another engine's), 1.0 GiB leased, 0 MiB overbooked, 0 queued, 1/8 JVMs",
+  );
+  assert.equal(
+    workerBudgetLine({
       workerBudgetBytes: 13 * GIB,
       workerLeasedBytes: GIB,
       workerOverbookedBytes: 0,
