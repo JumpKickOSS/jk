@@ -74,8 +74,11 @@ of the checkout is running), the question is answered without it and says why in
 with no compiled classes then contributes what its sources declare, the line names it, and a
 callers answer does not say it is complete. After an edit, an edited source contributes what its
 text declares, and every other file of the module keeps its compiled facts, so the callers of the method being changed are
-still there mid-edit; the answer names the edited files. Test sources are not compiled for a
-question; an edited test is named the same way. A module whose class
+still there mid-edit; the answer names the edited files. A module's tests that were never
+compiled are compiled the same way, in a job of their own after the main sources (in the history
+as a `compile`), so a fresh checkout's callers include its tests; when that compile cannot run, the
+line names their directory (`core/src/test`). An edited test is not compiled for a question: it is
+named with the edited files. A module whose class
 files the build did not write, or that is being built while the graph refreshes, contributes what
 its sources declare, and the answer says which modules those are. `jk build` brings the compiled
 facts back. An unchanged tree answers from

@@ -38,6 +38,7 @@ class HostedVerbDecodeJobTest {
                         "test",
                         "guard",
                         "compile",
+                        "test-compile",
                         "image",
                         "install",
                         "snapshot",
@@ -63,6 +64,15 @@ class HostedVerbDecodeJobTest {
         // every surface.
         assertThat(verb.toJobRequest(test).verb()).isEqualTo("test");
         assertThat(verb.toJobRequest(build).verb()).isEqualTo("build");
+
+        String testCompile = verb.decodeJob(JobSpec.of("test-compile", dir.toString()));
+        assertThat(Jsonl.str(testCompile, "workspaceTarget")).isEqualTo("test_compile");
+        assertThat(Jsonl.bool(testCompile, "skipTests", false))
+                .as("its tests compile")
+                .isFalse();
+        assertThat(verb.toJobRequest(testCompile).verb())
+                .as("journaled as a compile")
+                .isEqualTo("compile");
     }
 
     @Test

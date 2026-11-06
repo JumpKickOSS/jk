@@ -63,20 +63,29 @@ class GraphRunnerTest {
     }
 
     /**
-     * What a compile job leaves: every main source compiled into target/classes and the record of
-     * which sources those classes are of. Counts its runs; a source that does not compile is refused
-     * the way the engine's job reports it.
+     * What a compile job leaves: every main source compiled into target/classes, or for a test
+     * compile every test source into target/test-classes, and the record of which sources those
+     * classes are of. Counts its runs; a source that does not compile is refused the way the
+     * engine's job reports it.
      */
     private static final class Javac implements GraphRunner.Compiler {
         final List<List<String>> runs = new ArrayList<>();
+        final List<Boolean> tests = new ArrayList<>();
 
         @Override
-        public @Nullable String compile(Path root, List<String> modules) {
+        public @Nullable String compile(Path root, List<String> modules, boolean tests) {
             runs.add(modules);
+            this.tests.add(tests);
             try {
-                List<String> args = new ArrayList<>(
-                        List.of("-g", "-d", root.resolve("target/classes").toString()));
-                PathUtil.forEachRegularFile(root.resolve("src/main/java"), (f, attrs) -> {
+                Path classes = root.resolve("target/classes");
+                List<String> args = new ArrayList<>(List.of(
+                        "-g",
+                        "-d",
+                        root.resolve(tests ? "target/test-classes" : "target/classes")
+                                .toString(),
+                        "-cp",
+                        classes.toString()));
+                PathUtil.forEachRegularFile(root.resolve(tests ? "src/test/java" : "src/main/java"), (f, attrs) -> {
                     if (f.toString().endsWith(".java")) args.add(f.toString());
                 });
                 int exit = ToolProvider.getSystemJavaCompiler()
@@ -177,6 +186,54 @@ class GraphRunnerTest {
     }
 
     /**
+     * A fresh checkout's tests never compiled either: the question compiles the main sources, then
+     * the tests in a job of their own, and the test that calls the method is among its callers.
+     * Before it, the answer said "0 in tests" under "Complete" with that caller missing.
+     */
+    @Test
+    void aFreshCheckoutsTestsAreCompiledFirstSoATestCallerIsListed(@TempDir Path tmp) throws Exception {
+        Path root = calc(tmp);
+        Javac javac = new Javac();
+        GraphRunner.compiler(javac);
+        GraphAck ack = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        assertThat(ack.error()).isNull();
+        assertThat(javac.tests).as("the main sources, then the tests").containsExactly(false, true);
+        assertThat(ack.text())
+                .contains("CalcTest.doubledReturnsTwiceTheValue()")
+                .contains("Complete from the compiled classes");
+        assertThat(String.valueOf(ack.note())).doesNotContain("no compiled classes", "compile skipped");
+
+        GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        assertThat(javac.runs).as("compiled once").hasSize(2);
+
+        Path test = root.resolve("src/test/java/demo/CalcTest.java");
+        Files.writeString(test, Files.readString(test) + "// edited\n");
+        GraphAck edited = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        assertThat(javac.runs).as("an edited test is named, not compiled").hasSize(2);
+        assertThat(edited.note()).contains("1 source edited since the build (src/test/java/demo/CalcTest.java)");
+    }
+
+    /**
+     * Tests that never compiled and do not compile now are named in one line with why, and the
+     * answer is not complete: their calls are missing.
+     */
+    @Test
+    void testsThatDoNotCompileAreNamedAndTheAnswerIsNotComplete(@TempDir Path tmp) throws Exception {
+        Path root = calc(tmp);
+        Path test = root.resolve("src/test/java/demo/CalcTest.java");
+        Files.writeString(test, Files.readString(test).replace("return", "return nope(;"));
+        Javac javac = new Javac();
+        GraphRunner.compiler(javac);
+        GraphAck ack = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        assertThat(ack.error()).isNull();
+        assertThat(javac.tests).containsExactly(false, true);
+        assertThat(ack.text()).doesNotContain("Complete").contains("Not complete");
+        assertThat(ack.note())
+                .isEqualTo("compile skipped: the code does not compile; src/test has no compiled classes, so the calls"
+                        + " made there are missing: search it for calls too");
+    }
+
+    /**
      * Compiled facts the engine finds cached but the worker cannot read by the time it asks are
      * indexed and asked again: the answer still holds the calls.
      */
@@ -261,6 +318,37 @@ class GraphRunnerTest {
                 }
                 """);
         Files.writeString(dir.resolve("README.md"), "# Shop\n\nSee `OrderService`.\n");
+        return dir;
+    }
+
+    /** The fresh checkout of a project whose only caller of {@code Calc.doubled} is its test. */
+    private static Path calc(Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "demo"
+                name = "calc"
+                version = "1.0.0"
+                java = 25
+                """);
+        Path main = Files.createDirectories(dir.resolve("src/main/java/demo"));
+        Files.writeString(main.resolve("Calc.java"), """
+                package demo;
+
+                public class Calc {
+                    public int doubled(int n) {
+                        return n * 2;
+                    }
+                }
+                """);
+        Path test = Files.createDirectories(dir.resolve("src/test/java/demo"));
+        Files.writeString(test.resolve("CalcTest.java"), """
+                package demo;
+
+                class CalcTest {
+                    boolean doubledReturnsTwiceTheValue() {
+                        return new Calc().doubled(2) == 4;
+                    }
+                }
+                """);
         return dir;
     }
 

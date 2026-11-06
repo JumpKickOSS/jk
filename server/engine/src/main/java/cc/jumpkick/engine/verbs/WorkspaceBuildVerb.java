@@ -97,6 +97,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                 "test",
                 "guard",
                 "compile",
+                "test-compile",
                 "image",
                 "install",
                 "snapshot",
@@ -107,7 +108,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     }
 
     /**
-     * A dashboard or agent job. Image and native jobs deliver an artifact and skip tests; a publish
+     * A dashboard, agent or graph job. Image and native jobs deliver an artifact and skip tests; a
+     * {@code test-compile} job, a graph question's, compiles the tests and runs none; a publish
      * job is a dry run; an {@code upload} job sends the release to the repository {@code [publish]} names.
      */
     @Override
@@ -119,6 +121,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                 switch (kind) {
                     case "test" -> WorkspaceTarget.TEST;
                     case "compile" -> WorkspaceTarget.COMPILE;
+                    case "test-compile" -> WorkspaceTarget.TEST_COMPILE;
                     case "image" -> WorkspaceTarget.IMAGE;
                     case "install", "snapshot" -> WorkspaceTarget.INSTALL;
                     case "native" -> WorkspaceTarget.NATIVE;
@@ -325,7 +328,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     /** True for a goal whose tail applies to the modules the request selects, not to every module. */
     private static boolean selectsByModule(WorkspaceTarget target) {
         return switch (target) {
-            case COMPILE, NATIVE, IMAGE, INSTALL, RESHELVE, TRAIN, PUBLISH -> true;
+            case COMPILE, TEST_COMPILE, NATIVE, IMAGE, INSTALL, RESHELVE, TRAIN, PUBLISH -> true;
             case PACKAGE, TEST, RUN, SYNC -> false;
         };
     }

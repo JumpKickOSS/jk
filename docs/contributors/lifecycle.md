@@ -23,7 +23,7 @@ the install, `jk publish` is `jk build` plus the upload.
 | Piece | Where | What it owns |
 |-------|-------|--------------|
 | The SYNC phase | `WorkspaceSyncPhase` (`runtime.workspace`) | `SyncPlans.syncBuildPlan`, the plan `jk sync` runs, once per build: locked artifacts, plugins, tools and the JDK on disk before any module plans. A module's `resolve-deps` only derives its classpaths from them |
-| The goal table | `WorkspaceTarget` (`shared/wire`) | each goal's last phase (`COMPILE`, `TEST`, `PACKAGE`) and test policy (`ALWAYS`, `UNLESS_SKIPPED`, `NOT_RUN`) |
+| The goal table | `WorkspaceTarget` (`shared/wire`) | each goal's last phase (`COMPILE`, `TEST`, `PACKAGE`) and test policy (`ALWAYS`, `UNLESS_SKIPPED`, `NOT_RUN`, `COMPILED`: the tests compile and none runs, the `TEST_COMPILE` goal a graph question submits for tests that never compiled) |
 | The planner | `ModulePipeline` (`server/engine`, `runtime.workspace`) | the module's `BuildPlanner.Inputs`, the core through the goal's phase, the PACKAGE phase's declared deliveries and test join, then the tail |
 | A tail | `Tail` (`runtime`); `InstallPlans.tail`, `NativePlans.tail`, `ImagePlans.tail`, `TrainPlans.tail`, `PublishTail` | the goal's own steps, appended with `BuildPlan.Builder.extend` |
 | The client verb | `BuildVerb` (`clients/cli`, `command.pipeline`) | declares its `WorkspaceTarget`; its shared options and `BuildRun.skipTests()` follow from the target's policy |

@@ -132,6 +132,21 @@ class LifecycleParityTest {
         }
     }
 
+    /** The test compile goal is {@code jk compile} plus {@code jk test}'s test compile, and runs nothing. */
+    @Test
+    void the_test_compile_goal_is_the_compile_and_the_test_compile() throws Exception {
+        for (BuildGraph.BuildUnit unit : units) {
+            if (unit.coord().equals("ex:ws")) continue; // the coordinator root compiles nothing
+            Set<String> expected = new TreeSet<>(steps(unit, WorkspaceTarget.COMPILE, false));
+            expected.add(TaskNames.COMPILE_TEST);
+            Set<String> goal = steps(unit, WorkspaceTarget.TEST_COMPILE, false);
+            assertThat(goal).as("test-compile on " + unit.coord()).isEqualTo(expected);
+            goal.remove("compile-join");
+            assertThat(goal).isSubsetOf(steps(unit, WorkspaceTarget.TEST, false));
+            assertThat(goal).doesNotContain(TaskNames.RUN_TESTS, TaskNames.PACKAGE_JAR);
+        }
+    }
+
     @Test
     void a_tail_runs_after_every_phase_it_shares() throws Exception {
         BuildGraph.BuildUnit app = units.getLast();

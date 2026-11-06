@@ -141,7 +141,8 @@ public final class ModulePipeline {
                 yield PublishTail.of(a);
             }
             case PACKAGE, RUN -> Tail.NONE;
-            case COMPILE, TEST, RESHELVE, SYNC -> throw new IllegalStateException(target + " does not package");
+            case COMPILE, TEST_COMPILE, TEST, RESHELVE, SYNC ->
+                throw new IllegalStateException(target + " does not package");
         };
     }
 
@@ -214,6 +215,7 @@ public final class ModulePipeline {
                         request.verbose(),
                         moduleDirs,
                         testOnly,
-                        target.compileOnly()));
+                        target.compileOnly()))
+                .withCompileTests(target.tests() == WorkspaceTarget.Tests.COMPILED);
     }
 }

@@ -18,9 +18,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The engine's half of a graph question's compile step: a {@code compile} job for the modules whose
- * main sources moved since their classes or were never compiled, submitted as any other job is
- * (admission, the checkout's build slot, memory leases, a row in the history, a graph refresh when
- * it passes) and awaited.
+ * main sources moved since their classes or were never compiled, or a {@code test-compile} job for
+ * those whose tests never compiled, submitted as any other job is (admission, the checkout's build
+ * slot, memory leases, a row in the history, a graph refresh when it passes) and awaited.
  */
 public final class GraphCompiles implements GraphRunner.Compiler {
 
@@ -61,12 +61,12 @@ public final class GraphCompiles implements GraphRunner.Compiler {
     }
 
     @Override
-    public @Nullable String compile(Path root, List<String> modules) throws InterruptedException {
+    public @Nullable String compile(Path root, List<String> modules, boolean tests) throws InterruptedException {
         if (!waitWhileBuilding(root)) return "a build of this checkout is running";
         long jid;
         try {
             jid = submit.applyAsLong(new JobSpec(
-                    "compile",
+                    tests ? "test-compile" : "compile",
                     root.toString(),
                     modules,
                     List.of(),

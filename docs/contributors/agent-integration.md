@@ -38,8 +38,8 @@ changelog. Errors are short and say what to pass (`Did you mean a.b.Type.m?`), n
 
 **Answers are final.** A graph answer says it is complete from the compiled classes, so an agent does
 not re-read the files it names. Keep that sentence on every graph answer, and make it true: a
-question compiles a module that has no classes first, and only when that compile cannot run does the
-answer drop the sentence and name the module.
+question compiles a module, or a module's tests, that has no classes first, and only when that
+compile cannot run does the answer drop the sentence and name the module or the tests' directory.
 
 **One number per job.** An MCP reply names a job by its `jid` only, and `run(jid=N)`, `run(run=N)` and a
 duplicate `run(kind=…)` all wait on that job. Two numbers for one job send agents chasing the wrong one.
