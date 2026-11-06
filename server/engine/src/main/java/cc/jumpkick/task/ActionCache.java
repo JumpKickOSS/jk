@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.ActionTree;
@@ -29,7 +30,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -906,76 +906,17 @@ public final class ActionCache {
     }
 
     private static String render(ActionRecord record) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("TASK ").append(record.taskId()).append('\n');
-        sb.append("KEY ").append(record.actionKey()).append('\n');
-        for (Map.Entry<String, String> e : new TreeMap<>(record.inputs()).entrySet()) {
-            sb.append("INPUT ")
-                    .append(encodeValue(e.getValue()))
-                    .append(' ')
-                    .append(e.getKey())
-                    .append('\n');
-        }
-        for (Map.Entry<String, String> e : new TreeMap<>(record.outputs()).entrySet()) {
-            sb.append("OUTPUT ")
-                    .append(encodeValue(e.getValue()))
-                    .append(' ')
-                    .append(e.getKey())
-                    .append('\n');
-        }
-        // EXEC <relPath> — the output was executable when stored.
-        for (String rel : new TreeSet<>(record.executables())) {
-            sb.append("EXEC ").append(rel).append('\n');
-        }
-        return sb.toString();
-    }
-
-    /**
-     * A record line is {@code INPUT <value> <key>} split at the first space, so a value carries no
-     * space of its own: {@code %} and space are percent-encoded on the way out and decoded on the
-     * way back. A content sha, the usual value, passes through untouched; a packaging token bag
-     * whose args carry spaces round-trips instead of coming back as an empty map.
-     */
-    static String encodeValue(String value) {
-        if (value.indexOf(' ') < 0 && value.indexOf('%') < 0) return value;
-        return value.replace("%", "%25").replace(" ", "%20");
-    }
-
-    static String decodeValue(String value) {
-        if (value.indexOf('%') < 0) return value;
-        return value.replace("%20", " ").replace("%25", "%");
+        return ActionRecordText.render(
+                Objects.requireNonNull(record.taskId()),
+                Objects.requireNonNull(record.actionKey()),
+                record.inputs(),
+                record.outputs(),
+                record.executables());
     }
 
     private static ActionRecord parse(String content) {
-        String taskId = null;
-        String actionKey = null;
-        Map<String, String> inputs = new LinkedHashMap<>();
-        Map<String, String> outputs = new LinkedHashMap<>();
-        Set<String> executables = new LinkedHashSet<>();
-        for (String line : content.split("\n")) {
-            if (line.isBlank()) continue;
-            if (line.startsWith("TASK ")) {
-                taskId = line.substring("TASK ".length()).trim();
-            } else if (line.startsWith("KEY ")) {
-                actionKey = line.substring("KEY ".length()).trim();
-            } else if (line.startsWith("INPUT ")) {
-                String body = line.substring("INPUT ".length());
-                int sp = body.indexOf(' ');
-                inputs.put(body.substring(sp + 1), decodeValue(body.substring(0, sp)));
-            } else if (line.startsWith("OUTPUT ")) {
-                String body = line.substring("OUTPUT ".length());
-                int sp = body.indexOf(' ');
-                outputs.put(body.substring(sp + 1), decodeValue(body.substring(0, sp)));
-            } else if (line.startsWith("EXEC ")) {
-                executables.add(line.substring("EXEC ".length()).trim());
-            }
-        }
-        return new ActionRecord(
-                Objects.requireNonNull(taskId, "taskId in record"),
-                Objects.requireNonNull(actionKey, "actionKey in record"),
-                inputs,
-                outputs,
-                executables);
+        ActionRecordText.Parsed p = ActionRecordText.parse(content);
+        return new ActionRecord(p.taskId(), p.actionKey(), p.inputs(), p.outputs(), p.executables());
     }
 
     private Path keysDir() {

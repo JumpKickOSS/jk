@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.Hashing;
@@ -164,8 +165,9 @@ class ActionCacheTest {
 
         var record = cache.lookup("spaced").orElseThrow();
         assertThat(record.inputs()).containsExactly(Map.entry("inputs", bag));
-        assertThat(ActionCache.encodeValue("abc123")).isEqualTo("abc123");
-        assertThat(ActionCache.decodeValue(ActionCache.encodeValue("a b%c"))).isEqualTo("a b%c");
+        assertThat(ActionRecordText.encodeValue("abc123")).isEqualTo("abc123");
+        assertThat(ActionRecordText.decodeValue(ActionRecordText.encodeValue("a b%c")))
+                .isEqualTo("a b%c");
     }
 
     @Test
