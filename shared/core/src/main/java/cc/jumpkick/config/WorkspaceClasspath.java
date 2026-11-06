@@ -388,8 +388,10 @@ public final class WorkspaceClasspath {
      */
     private static Closure substitutedMembers(
             Path root, JkBuild project, Set<Scope> scopes, Closure closure, Siblings sib) {
+        List<Dependency> declared = new ArrayList<>();
+        for (Scope scope : scopes) declared.addAll(project.dependencies().of(scope));
         Set<String> behind = PomSubstitution.membersBehindPublishedEdges(
-                root, project, scopes, sib.jarByModule().keySet());
+                root, declared, sib.jarByModule().keySet());
         if (behind.isEmpty()) return closure;
         LinkedHashSet<String> visited = new LinkedHashSet<>(closure.visited());
         Queue<String> members = new ArrayDeque<>();

@@ -5,8 +5,6 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Dependency;
-import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,15 +31,15 @@ public final class PomSubstitution {
     private PomSubstitution() {}
 
     /**
-     * Member coordinates {@code module} reaches through the lock's published rows, walking from
-     * its own non-workspace dependencies. Empty when the workspace has no lock, the lock will not
-     * read, or nothing published points at a member.
+     * Member coordinates a module reaches through the lock's published rows, walking from {@code
+     * declared}, its dependencies, past the workspace, git and path ones. Empty when the workspace
+     * has no lock, the lock will not read, or nothing published points at a member.
      *
      * @param root the workspace root holding {@code jk-lock.toml}
      * @param memberCoords every {@code group:artifact} the workspace builds
      */
     public static Set<String> membersBehindPublishedEdges(
-            Path root, JkBuild module, Collection<Scope> scopes, Set<String> memberCoords) {
+            Path root, Collection<Dependency> declared, Set<String> memberCoords) {
         if (memberCoords.isEmpty()) return Set.of();
         Lockfile lock = readLock(root);
         if (lock == null) return Set.of();
@@ -55,11 +53,9 @@ public final class PomSubstitution {
 
         Queue<String> artifacts = new ArrayDeque<>();
         Set<String> seen = new HashSet<>();
-        for (Scope scope : scopes) {
-            for (Dependency dep : module.dependencies().of(scope)) {
-                if (dep.isWorkspace() || dep.isGit() || dep.isPath()) continue;
-                if (seen.add(dep.module())) artifacts.add(dep.module());
-            }
+        for (Dependency dep : declared) {
+            if (dep.isWorkspace() || dep.isGit() || dep.isPath()) continue;
+            if (seen.add(dep.module())) artifacts.add(dep.module());
         }
         Set<String> members = new LinkedHashSet<>();
         while (!artifacts.isEmpty()) {

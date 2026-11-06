@@ -8,7 +8,6 @@ import cc.jumpkick.model.Scope;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -64,6 +63,44 @@ class ModuleOrderSubstitutedPrereqsTest {
     }
 
     @Test
+    void a_member_behind_a_published_edge_only_a_variant_value_declares_is_built_first() throws Exception {
+        Path app = module("app", """
+                [variants.tier]
+                default = "free"
+                [variants.tier.free]
+                [variants.tier.paid]
+                [variants.tier.paid.dependencies]
+                middle = "com.foo:middle:1.0"
+                """);
+        Path lib = module("lib", """
+                [dependencies]
+                """);
+        Files.writeString(tmp.resolve("jk-lock.toml"), """
+                version = 1
+                generated-by = "test"
+                resolution-algorithm = "pubgrub-v1"
+
+                [[artifact]]
+                name     = "com.foo:middle:jar:"
+                version  = "1.0"
+                source   = "central+https://repo.maven.apache.org/maven2/"
+                checksum = "sha256:00"
+                scopes   = ["main"]
+                deps = [
+                  "cc.jumpkick:lib:jar:@1.0",
+                ]
+                """);
+
+        Map<Path, JkBuild> modules = new LinkedHashMap<>();
+        modules.put(app, JkBuildParser.parse(app.resolve("jk.toml")));
+        modules.put(lib, JkBuildParser.parse(lib.resolve("jk.toml")));
+
+        assertThat(ModuleOrder.orderModules(tmp, modules))
+                .as("the value a build does not select by default still orders lib first")
+                .containsExactly(lib, app);
+    }
+
+    @Test
     void a_lock_that_names_no_member_leaves_the_order_alone() throws Exception {
         Path app = module("app", """
                 [dependencies]
@@ -94,7 +131,7 @@ class ModuleOrderSubstitutedPrereqsTest {
 
         assertThat(ModuleOrder.orderModules(tmp, modules)).containsExactly(app, lib);
         assertThat(PomSubstitution.membersBehindPublishedEdges(
-                        tmp, modules.get(app), List.of(Scope.values()), Set.of("cc.jumpkick:lib")))
+                        tmp, modules.get(app).dependencies().of(Scope.MAIN), Set.of("cc.jumpkick:lib")))
                 .isEmpty();
     }
 
