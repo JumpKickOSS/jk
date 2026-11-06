@@ -287,6 +287,53 @@ class WarmWorkersTest {
         assertThat(WarmWorkers.idleCount()).isZero();
     }
 
+    /**
+     * A step that reads {@code System.in} reads end-of-input: its commands come over the channel, so
+     * it neither waits on the engine nor eats the next command, which reaches the same worker intact.
+     */
+    @Test
+    void a_step_that_reads_stdin_reads_its_end_and_the_next_run_reaches_the_worker() throws Exception {
+        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
+        Seen reader = run(launch("a"), "stdin", out);
+        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(5, false));
+        assertThat(reader.output).contains("stdin gave 0 bytes");
+
+        Seen next = run(launch("a"), "ok", out);
+        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(2, false));
+        assertThat(next.pid).isEqualTo(reader.pid);
+        assertThat(next.output).contains("chatter for ok");
+    }
+
+    /** As for a step, so for a child it starts with {@code inheritIO()}: the stdin it inherits is at its end. */
+    @Test
+    void a_child_that_inherits_the_workers_stdin_reads_its_end_and_the_next_run_reaches_the_worker() throws Exception {
+        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
+        Seen parent = run(launch("a"), "child", out);
+        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(5, false));
+        assertThat(parent.output).contains("child stdin gave 0 bytes", "child exited 0");
+
+        Seen next = run(launch("a"), "ok", out);
+        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(2, false));
+        assertThat(next.pid).isEqualTo(parent.pid);
+    }
+
+    /** A worker that exits before it connects ends its run at once, with what it printed, not at the connect wait. */
+    @Test
+    void a_worker_that_dies_before_it_connects_ends_the_run_with_its_output() throws Exception {
+        WarmWorkers.Launch broken = launch("a");
+        List<String> command = new ArrayList<>(broken.command());
+        command.set(command.indexOf(ServeFixture.class.getName()), "no.such.Main");
+        broken = new WarmWorkers.Launch(broken.name(), command, broken.env(), broken.prefix(), broken.heapKey());
+
+        long start = System.nanoTime();
+        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
+        Seen seen = run(broken, "ok", out);
+        assertThat(out[0].died()).isTrue();
+        assertThat(String.join("\n", seen.output)).contains("no.such.Main");
+        // LIVENESS, not performance: the connect wait is a minute; this is a hang detector.
+        assertThat(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - start)).isLessThan(30);
+    }
+
     @Test
     void the_spec_is_sealed_with_the_network_policy_before_the_worker_reads_it() throws Exception {
         Path spec = Files.createTempFile(dir, "spec", ".txt");

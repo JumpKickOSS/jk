@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
@@ -85,6 +86,8 @@ public final class BuildLogicGroovyHost {
             pb.redirectErrorStream(true);
             pb.directory(projectDir.toFile());
             Process p = JobWorkers.start(pb);
+            // A script that reads System.in reads end-of-input rather than waiting on an open pipe.
+            PluginProcess.closeStdin(p);
             // Drained on a thread of its own so this one can watch the cancel probe between
             // polls; a blocking read would see the cancel only once the script chose to exit.
             ByteArrayOutputStream captured = new ByteArrayOutputStream();

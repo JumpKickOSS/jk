@@ -18,8 +18,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Drives {@link PluginProcess} against a real forked JVM ({@link EchoPluginMain}) — the first
- * end-to-end coverage of the fork + read-loop and the two-way stdin conversation the test-runner's
- * pull mode relies on.
+ * end-to-end coverage of the fork + read-loop and the two-way conversation over the command channel
+ * the test-runner's pull mode relies on.
  */
 @Tag("integration")
 class PluginProcessTest {
@@ -63,7 +63,7 @@ class PluginProcessTest {
     }
 
     @Test
-    void converse_drives_a_pull_queue_over_stdin() throws Exception {
+    void converse_drives_a_pull_queue_over_the_command_channel() throws Exception {
         var queue = new ArrayDeque<>(List.of("alpha", "beta", "gamma"));
         var ran = new ArrayList<String>();
         var chatter = new ArrayList<String>();

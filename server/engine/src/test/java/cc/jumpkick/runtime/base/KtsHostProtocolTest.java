@@ -4,15 +4,17 @@ package cc.jumpkick.runtime.base;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.plugin.HostPressure;
+import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.engine.plugin.WorkerCommands;
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -135,39 +137,86 @@ class KtsHostProtocolTest {
         Path outA = Files.createDirectories(dir.resolve("a"));
         Path outB = Files.createDirectories(dir.resolve("b"));
 
-        Process host = KtsSession.hostProcess().start();
-        try (BufferedWriter toHost =
-                        new BufferedWriter(new OutputStreamWriter(host.getOutputStream(), StandardCharsets.UTF_8));
+        ProcessBuilder pb = KtsSession.hostProcess();
+        try (WorkerCommands toHost = WorkerCommands.open()) {
+            List<String> command = new ArrayList<>(pb.command());
+            command.addAll(toHost.args());
+            Process host = pb.command(command).start();
+            PluginProcess.closeStdin(host);
+            try {
                 BufferedReader fromHost =
-                        new BufferedReader(new InputStreamReader(host.getInputStream(), StandardCharsets.UTF_8))) {
-            assertThat(fromHost.readLine()).isEqualTo("READY");
-            toHost.write("RUN\t" + slow + "\t" + project + "\t" + outA + "\n");
-            toHost.flush();
-            awaitFile(outA.resolve("started"));
+                        new BufferedReader(new InputStreamReader(host.getInputStream(), StandardCharsets.UTF_8));
+                assertThat(fromHost.readLine()).isEqualTo("READY");
+                toHost.send("RUN\t" + slow + "\t" + project + "\t" + outA);
+                awaitFile(outA.resolve("started"));
 
-            toHost.write("RUN\t" + quick + "\t" + project + "\t" + outB + "\n");
-            toHost.flush();
-            String reply = fromHost.readLine();
-            assertThat(reply).as("the second RUN is refused, not dropped").startsWith("BUSY ");
-            String detail =
-                    new String(Base64.getDecoder().decode(reply.substring(5).strip()), StandardCharsets.UTF_8);
-            assertThat(detail).contains("slow.kts").contains("quick.kts");
-            assertThat(outB.resolve("quick.txt"))
-                    .as("the refused script did not run")
-                    .doesNotExist();
+                toHost.send("RUN\t" + quick + "\t" + project + "\t" + outB);
+                String reply = fromHost.readLine();
+                assertThat(reply).as("the second RUN is refused, not dropped").startsWith("BUSY ");
+                String detail =
+                        new String(Base64.getDecoder().decode(reply.substring(5).strip()), StandardCharsets.UTF_8);
+                assertThat(detail).contains("slow.kts").contains("quick.kts");
+                assertThat(outB.resolve("quick.txt"))
+                        .as("the refused script did not run")
+                        .doesNotExist();
 
-            toHost.write("CANCEL\n");
-            toHost.flush();
-            assertThat(fromHost.readLine())
-                    .as("the running script is still the one in flight")
-                    .isEqualTo("CANCELLED");
-            assertThat(outA.resolve("done")).doesNotExist();
-            toHost.write("EXIT\n");
-            toHost.flush();
-            assertThat(host.waitFor(10, TimeUnit.SECONDS)).isTrue();
-        } finally {
-            host.destroyForcibly();
+                toHost.send("CANCEL");
+                assertThat(fromHost.readLine())
+                        .as("the running script is still the one in flight")
+                        .isEqualTo("CANCELLED");
+                assertThat(outA.resolve("done")).doesNotExist();
+                toHost.send("EXIT");
+                assertThat(host.waitFor(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                host.destroyForcibly();
+            }
         }
+    }
+
+    /**
+     * The host's requests come over its command channel and its stdin is closed: a script that reads
+     * {@code System.in}, and one whose {@code inheritIO()} child reads it, both read end-of-input and
+     * finish, and the next script's request reaches the same host intact.
+     */
+    @Test
+    void scripts_that_read_stdin_finish_and_the_next_request_reaches_the_host(@TempDir Path dir) throws Exception {
+        Path reads = dir.resolve("reads.kts");
+        Files.writeString(
+                reads, "Files.writeString(outDir.resolve(\"read.txt\"), System.`in`.readBytes().size.toString())\n");
+        Path child = dir.resolve("StdinChild.java");
+        Files.writeString(child, """
+                class StdinChild {
+                    public static void main(String[] args) throws Exception {
+                        System.exit(System.in.readAllBytes().length);
+                    }
+                }
+                """);
+        String java = Path.of(System.getProperty("java.home"), "bin", "java")
+                .toString()
+                .replace("\\", "/");
+        Path forks = dir.resolve("forks.kts");
+        Files.writeString(forks, """
+                val child = ProcessBuilder("%s", "%s").inheritIO().start()
+                Files.writeString(outDir.resolve("child.txt"), child.waitFor().toString())
+                """.formatted(java, child.toString().replace("\\", "/")));
+        Path quick = dir.resolve("quick.kts");
+        Files.writeString(quick, "Files.writeString(outDir.resolve(\"quick.txt\"), \"1\")\n");
+        Path project = Files.createDirectories(dir.resolve("p"));
+        Path out = Files.createDirectories(dir.resolve("out"));
+
+        KtsSession.run(reads, project, out, () -> false);
+        long pid = KtsSession.hostPid();
+        KtsSession.run(forks, project, out, () -> false);
+        KtsSession.run(quick, project, out, () -> false);
+
+        assertThat(out.resolve("read.txt")).as("System.in was at its end").hasContent("0");
+        assertThat(out.resolve("child.txt"))
+                .as("the child's inherited stdin was at its end")
+                .hasContent("0");
+        assertThat(out.resolve("quick.txt"))
+                .as("the next request reached the host")
+                .exists();
+        assertThat(KtsSession.hostPid()).as("one host served all three").isEqualTo(pid);
     }
 
     private static void awaitFile(Path file) throws Exception {

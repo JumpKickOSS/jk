@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.FakeWorkerShell;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.run.TestSummary;
@@ -69,7 +70,7 @@ class JUnitLauncherPoolRetryTest {
         Path home = dir.resolve("jdk");
         Path bin = Files.createDirectories(home.resolve("bin"));
         Path java = bin.resolve("java");
-        String script = FakePullWorker.SHEBANG + "\n" + """
+        String script = FakeWorkerShell.SHEBANG + "\n" + """
                 e() { printf '%s\\n' "##JKT:$1"; }
                 t() { e "{\\"event\\":\\"finished\\",\\"type\\":\\"TEST\\",\\"status\\":\\"SUCCESSFUL\\",\\"uniqueId\\":\\"[engine:junit-jupiter]/[class:$1]/[method:t()]\\",\\"testClass\\":\\"$1\\",\\"testMethod\\":\\"t()\\",\\"duration_ms\\":1}"; }
                 mx=""
@@ -101,7 +102,7 @@ class JUnitLauncherPoolRetryTest {
                 done
                 e '{"event":"plan_finished","duration_ms":1,"failed":false}'
                 exit 0
-                """.replace("@CONNECT@", FakePullWorker.CONNECT);
+                """.replace("@CONNECT@", FakeWorkerShell.CONNECT);
         Files.writeString(java, script);
         Files.setPosixFilePermissions(
                 java,

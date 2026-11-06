@@ -35,7 +35,6 @@ class PluginProcessWatchdogTest {
                 "##JKT:",
                 (json, convo) -> {},
                 null,
-                false,
                 400L);
 
         assertThat(exit).isNotZero();
@@ -86,7 +85,6 @@ class PluginProcessWatchdogTest {
                 "##JKT:",
                 (json, convo) -> {},
                 null,
-                false,
                 600L);
 
         assertThat(exit).isZero();

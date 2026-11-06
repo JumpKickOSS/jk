@@ -6,10 +6,8 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -48,6 +46,10 @@ import org.jspecify.annotations.Nullable;
  * launch with at least the heap a run asks for serves it, whether or not it mapped a cache, and one
  * that a bigger idle sibling covers exits instead of idling, so a tool settles on one warm worker
  * at the largest heap it needed.
+ *
+ * <p>A worker takes its {@code RUN}/{@code DONE} commands over a {@link WorkerCommands} channel and
+ * starts with its stdin closed, so a step that reads {@code System.in}, or a child it starts with an
+ * inherited stdin, reads end-of-input and cannot block on, or swallow, the next command.
  *
  * <p>The worker's output is read on a platform thread, for the reason {@code KtsSession} gives: an
  * idle worker is silent for as long as the linger, and a virtual thread parked on that pipe would
@@ -260,7 +262,10 @@ public final class WarmWorkers {
     }
 
     private static Worker start(Launch launch, String key) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder(WorkerSession.detached(launch.command())).redirectErrorStream(true);
+        WorkerCommands commands = WorkerCommands.open();
+        List<String> command = new ArrayList<>(launch.command());
+        command.addAll(commands.args());
+        ProcessBuilder pb = new ProcessBuilder(WorkerSession.detached(command)).redirectErrorStream(true);
         pb.environment().clear();
         pb.environment().putAll(launch.env().environment());
         YieldHook hook = new YieldHook();
@@ -270,10 +275,14 @@ public final class WarmWorkers {
         Process process;
         try {
             process = JobWorkers.startResident(pb, new WorkerLeases.Resident(launch.name(), hook));
+        } catch (IOException | RuntimeException e) {
+            commands.close();
+            throw e;
         } finally {
             HeapScope.restore(previous);
         }
-        Worker w = new Worker(launch.name(), key, launch.heap(), process);
+        PluginProcess.closeStdin(process);
+        Worker w = new Worker(launch.name(), key, launch.heap(), process, commands);
         LIVE.add(w);
         hook.bind(w::yieldLease);
         registerShutdownHook();
@@ -332,7 +341,7 @@ public final class WarmWorkers {
         final long heap;
 
         final Process process;
-        private final BufferedWriter stdin;
+        private final WorkerCommands commands;
         private final BlockingQueue<String> lines = new LinkedBlockingQueue<>();
 
         /** When its last run ended, on the monotonic clock. Guarded by {@link #IDLE}. */
@@ -346,12 +355,12 @@ public final class WarmWorkers {
 
         private @Nullable Thread reaper;
 
-        Worker(String name, String key, long heap, Process process) {
+        Worker(String name, String key, long heap, Process process, WorkerCommands commands) {
             this.name = name;
             this.key = key;
             this.heap = heap;
             this.process = process;
-            this.stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
+            this.commands = commands;
             BoundedLineReader out =
                     new BoundedLineReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
             Thread.ofPlatform().daemon().name("jk-warm-worker-reader").start(() -> {
@@ -369,9 +378,10 @@ public final class WarmWorkers {
         Outcome request(Path spec, String prefix, Listener listener, BooleanSupplier cancelled)
                 throws InterruptedException {
             try {
-                stdin.write("RUN " + spec.toAbsolutePath() + "\n");
-                stdin.flush();
+                // A worker that dies before it connects still has its last words read below.
+                if (awaitConnection(cancelled)) commands.send("RUN " + spec.toAbsolutePath());
             } catch (IOException e) {
+                kill();
                 return died();
             }
             try {
@@ -410,6 +420,27 @@ public final class WarmWorkers {
                 kill();
                 throw e;
             }
+        }
+
+        /**
+         * Wait for a new worker to connect to its channel, watching its life and {@code cancelled}.
+         * False when it will not: it exited, it was stopped for the cancel, or it never connected
+         * within {@link WorkerCommands#CONNECT_WAIT} and was stopped.
+         */
+        private boolean awaitConnection(BooleanSupplier cancelled) throws IOException, InterruptedException {
+            long deadline = CLOCK.nanos() + WorkerCommands.CONNECT_WAIT.toNanos();
+            while (!commands.connect(POLL)) {
+                if (Thread.interrupted()) {
+                    kill();
+                    throw new InterruptedException();
+                }
+                if (!process.isAlive()) return false;
+                if (cancelled.getAsBoolean() || CLOCK.nanos() - deadline > 0) {
+                    kill();
+                    return false;
+                }
+            }
+            return true;
         }
 
         /** The worker is gone or going: its exit status, once it has one. */
@@ -472,15 +503,18 @@ public final class WarmWorkers {
             LATEST.remove(name, this);
             Thread t = reaper;
             if (t != null && t != Thread.currentThread()) t.interrupt();
-            try {
-                stdin.write("DONE\n");
-                stdin.flush();
-                if (!process.waitFor(5, TimeUnit.SECONDS)) kill();
-            } catch (IOException e) {
+            if (!commands.connected()) {
                 kill();
+                return;
+            }
+            commands.send("DONE");
+            try {
+                if (!process.waitFor(5, TimeUnit.SECONDS)) kill();
             } catch (InterruptedException e) {
                 kill();
                 Thread.currentThread().interrupt();
+            } finally {
+                commands.close();
             }
         }
 
@@ -488,6 +522,7 @@ public final class WarmWorkers {
             LIVE.remove(this);
             LATEST.remove(name, this);
             process.destroyForcibly();
+            commands.close();
             try {
                 process.waitFor(5, TimeUnit.SECONDS);
             } catch (InterruptedException e) {

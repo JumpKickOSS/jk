@@ -135,8 +135,6 @@ public final class PluginLoader {
             @Nullable Consumer<String> onPassthrough,
             LearnedHeaps heaps)
             throws IOException, InterruptedException {
-        // One-shot: close the child's stdin immediately so suite tests that hit Confirm /
-        // System.in.readLine() see EOF instead of hanging on an open protocol pipe.
         return PluginProcess.run(
                 command(javaHome, classpath, jvmFlags, args),
                 env.withJavaHome(javaHome),
@@ -150,7 +148,7 @@ public final class PluginLoader {
     /**
      * As {@link #run}, but drives a two-way conversation (pull protocol): each protocol line arrives
      * with a {@link PluginProcess.Conversation} the caller can use to send commands back to the
-     * plugin's stdin.
+     * plugin over its {@link WorkerCommands} channel.
      */
     public static int converse(
             Path javaHome,
@@ -201,8 +199,7 @@ public final class PluginLoader {
 
     /**
      * As {@link #converse} with an inactivity watchdog (see {@link PluginProcess#converse}),
-     * recording learned peaks on {@code heaps}. {@code closeStdinImmediately} gives the child an
-     * already-closed stdin, for a caller that talks to it over a channel of its own.
+     * recording learned peaks on {@code heaps}.
      */
     public static int converse(
             Path javaHome,
@@ -214,7 +211,6 @@ public final class PluginLoader {
             @Nullable Path workDir,
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough,
-            boolean closeStdinImmediately,
             long idleTimeoutMs,
             LearnedHeaps heaps)
             throws IOException, InterruptedException {
@@ -225,7 +221,6 @@ public final class PluginLoader {
                 prefix,
                 onProtocol,
                 onPassthrough,
-                closeStdinImmediately,
                 idleTimeoutMs,
                 heaps);
     }

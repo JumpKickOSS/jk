@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.FakeWorkerShell;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
@@ -99,7 +100,7 @@ class JUnitLauncherExitZeroTest {
         Path home = dir.resolve("jdk");
         Path bin = Files.createDirectories(home.resolve("bin"));
         Path java = bin.resolve("java");
-        String script = FakePullWorker.SHEBANG + "\n" + """
+        String script = FakeWorkerShell.SHEBANG + "\n" + """
                 e() { printf '%s\\n' "##JKT:$1"; }
                 t() { e "{\\"event\\":\\"finished\\",\\"type\\":\\"TEST\\",\\"status\\":\\"SUCCESSFUL\\",\\"uniqueId\\":\\"[engine:junit-jupiter]/[class:$1]/[method:t()]\\",\\"testClass\\":\\"$1\\",\\"testMethod\\":\\"t()\\",\\"duration_ms\\":1}"; }
                 case " $* " in
@@ -121,7 +122,7 @@ class JUnitLauncherExitZeroTest {
                     t demo.B
                     exit 0 ;;
                 esac
-                """.replace("@CONNECT@", FakePullWorker.CONNECT);
+                """.replace("@CONNECT@", FakeWorkerShell.CONNECT);
         Files.writeString(java, script);
         Files.setPosixFilePermissions(
                 java,

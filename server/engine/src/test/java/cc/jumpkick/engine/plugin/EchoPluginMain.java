@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.plugin.process.CommandChannel;
 import java.io.BufferedReader;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * A cooperating subprocess used by {@link PluginProcessTest} to exercise {@link PluginProcess}
@@ -23,7 +24,7 @@ import java.nio.charset.StandardCharsets;
  *   <li>{@code burst N} — emit {@code N} numbered protocol events as fast as stdout takes them and
  *       exit at once, the way a test fork writes its last results and dies.
  *   <li>(default) <b>pull</b> — emit a passthrough line and an initial {@code ready}, then loop on
- *       stdin: {@code RUN <x>} echoes a {@code ran} event for {@code x} followed by another {@code
+ *       the command channel its arguments name: {@code RUN <x>} echoes a {@code ran} event for {@code x} followed by another {@code
  *       ready}; {@code DONE} or EOF exits. Drives {@link PluginProcess#converse}.
  * </ul>
  *
@@ -76,7 +77,7 @@ public final class EchoPluginMain {
         // pull mode
         out.println("plain chatter line");
         out.println("##T:{\"e\":\"ready\"}");
-        try (BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
+        try (BufferedReader in = CommandChannel.connect(List.of(args))) {
             String line;
             while ((line = in.readLine()) != null) {
                 if (line.equals("DONE")) break;

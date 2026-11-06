@@ -13,7 +13,6 @@ import java.io.BufferedReader;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -69,14 +68,15 @@ public final class PluginMain {
         // A download the plugin makes itself, or a JVM it forks makes, reaches the run's board.
         Transfers.install(writer::emit);
 
-        if (args.length == 1 && PluginProtocol.SERVE.equals(args[0])) {
-            try {
-                System.exit(serve(
-                        plugin, writer, new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))));
-            } catch (IOException e) {
-                Log.error(plugin.manifest().id() + ": stdin: " + e.getMessage(), e);
-                System.exit(Exit.FAILURE);
+        if (args.length > 0 && PluginProtocol.SERVE.equals(args[0])) {
+            int exit;
+            try (BufferedReader commands = CommandChannel.connect(List.of(args))) {
+                exit = serve(plugin, writer, commands);
+            } catch (IOException | IllegalArgumentException e) {
+                Log.error(plugin.manifest().id() + ": command channel: " + e.getMessage(), e);
+                exit = Exit.FAILURE;
             }
+            System.exit(exit);
             return;
         }
         try {
@@ -88,10 +88,10 @@ public final class PluginMain {
     }
 
     /**
-     * The {@link PluginProtocol#SERVE} loop: {@code READY}, then one {@code RUN <spec-file>} at a
-     * time, each answered {@link PluginReply#exited} with the run's exit code, until {@code DONE},
-     * end of input, or a run after which the plugin is no longer {@linkplain Plugin#reusable
-     * reusable}. A run that throws is that run's {@link Exit#FAILURE}; the worker stays up. An
+     * The {@link PluginProtocol#SERVE} loop over the engine's {@link CommandChannel}: {@code READY},
+     * then one {@code RUN <spec-file>} at a time, each answered {@link PluginReply#exited} with the
+     * run's exit code, until {@code DONE}, end of input, or a run after which the plugin is no longer
+     * {@linkplain Plugin#reusable reusable}. A run that throws is that run's {@link Exit#FAILURE}; the worker stays up. An
      * {@link Error} is not caught: the worker dies with it, as a one-shot worker would.
      */
     static int serve(Plugin plugin, ProtocolWriter out, BufferedReader in) throws IOException {

@@ -704,8 +704,9 @@ only `.jk/scripts/` next to a module's `jk.toml` is build logic (overridable via
 `before-compile.groovy` / `.kts` and sibling stems. Scripts left at the top of `.jk/` do not run;
 the build names them once (`BuildLogicToml.strayScripts`).
 `.kts` wins a same-stem `.groovy`. Groovy scripts fork one process per script. Every `.kts`
-runs in one resident child JVM per engine (`KtsSession` ↔ `JkKtsHost.kt`, a line protocol on
-its stdin/stdout): requests are serialised on one lock, a script compiles once into
+runs in one resident child JVM per engine (`KtsSession` ↔ `JkKtsHost.kt`, a line protocol:
+requests over a `WorkerCommands` loopback socket, replies on the host's stdout; its stdin is
+closed, so a script that reads `System.in` reads end-of-input): requests are serialised on one lock, a script compiles once into
 `cache/kts/` keyed by its bytes, an idle reaper ends the host after ten minutes, and the
 engine's shutdown hook drains it. The host's stdout is read on a platform thread — a pipe read
 blocks natively for as long as the host is silent, and a virtual reader would hold a carrier

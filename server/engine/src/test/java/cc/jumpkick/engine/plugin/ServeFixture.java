@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.plugin.process.CommandChannel;
 import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
- * A served worker for {@link WarmWorkersTest}: the {@code --serve} protocol with no plugin behind
- * it. A spec's first line says what the run does: {@code ok}, {@code retire}, {@code oom} (dies the
- * way {@code ExitOnOutOfMemoryError} does) or {@code hang}.
+ * A served worker for {@link WarmWorkersTest}: the {@code --serve} protocol over the command channel,
+ * with no plugin behind it. A spec's first line says what the run does: {@code ok}, {@code retire},
+ * {@code oom} (dies the way {@code ExitOnOutOfMemoryError} does), {@code hang}, {@code stdin} (reads
+ * {@code System.in} to its end) or {@code child} (runs a child JVM that inherits this one's stdin
+ * and reads it to its end).
  */
 public final class ServeFixture {
 
@@ -19,7 +22,7 @@ public final class ServeFixture {
     private ServeFixture() {}
 
     public static void main(String[] args) throws Exception {
-        BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        BufferedReader in = CommandChannel.connect(List.of(args));
         while (true) {
             emit("{\"t\":\"ready\"}");
             String line = in.readLine();
@@ -35,9 +38,36 @@ public final class ServeFixture {
                     System.exit(3);
                 }
                 case "hang" -> Thread.sleep(Long.MAX_VALUE);
+                case "stdin" -> System.out.println("stdin gave " + drainStdin() + " bytes");
+                case "child" -> {
+                    Process child = new ProcessBuilder(
+                                    Path.of(System.getProperty("java.home"), "bin", "java")
+                                            .toString(),
+                                    "-cp",
+                                    System.getProperty("java.class.path"),
+                                    StdinChild.class.getName())
+                            .inheritIO()
+                            .start();
+                    System.out.println("child exited " + child.waitFor());
+                }
                 default -> {}
             }
             emit("{\"t\":\"exited\",\"code\":" + what.length() + ",\"retire\":" + what.equals("retire") + "}");
+        }
+    }
+
+    private static long drainStdin() throws IOException {
+        long n = 0;
+        while (System.in.read() >= 0) n++;
+        return n;
+    }
+
+    /** A child that reads the stdin it inherited to its end and says how much it got. */
+    public static final class StdinChild {
+        private StdinChild() {}
+
+        public static void main(String[] args) throws IOException {
+            System.out.println("child stdin gave " + drainStdin() + " bytes");
         }
     }
 
