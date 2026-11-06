@@ -216,7 +216,7 @@ class NewCommandTest {
     }
 
     @Test
-    void groovy_lang_scaffolds_the_groovy_app_and_a_language_with_no_template_is_refused(@TempDir Path tempDir)
+    void groovy_and_scala_langs_scaffold_their_app_and_a_language_with_no_template_is_refused(@TempDir Path tempDir)
             throws IOException {
         Path target = tempDir.resolve("gv");
         Run run = jk("new", "--group", "com.example", "--lang", "groovy", "--no-module", target.toString());
@@ -225,10 +225,22 @@ class NewCommandTest {
                 .isTrue();
         assertThat(target.resolve("src/main/groovy/com/example/Main.groovy")).isRegularFile();
 
-        Run scala = jk(
-                "new", "--lang", "scala", "--no-module", tempDir.resolve("sc").toString());
-        assertThat(scala.exit()).isEqualTo(Exit.USAGE);
-        assertThat(scala.err()).contains("jk new: lang must be one of java, kotlin, groovy; got 'scala'");
+        Path sc = tempDir.resolve("sc");
+        run = jk("new", "--group", "com.example", "--lang", "scala", "--no-module", sc.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(JkBuildParser.parse(sc.resolve("jk.toml")).project().isScala())
+                .isTrue();
+        assertThat(sc.resolve("src/main/scala/com/example/Main.scala")).isRegularFile();
+        assertThat(sc.resolve("src/main/java/com/example/package-info.java")).isRegularFile();
+
+        Run clojure = jk(
+                "new",
+                "--lang",
+                "clojure",
+                "--no-module",
+                tempDir.resolve("clj").toString());
+        assertThat(clojure.exit()).isEqualTo(Exit.USAGE);
+        assertThat(clojure.err()).contains("jk new: lang must be one of java, kotlin, groovy, scala; got 'clojure'");
     }
 
     @Test

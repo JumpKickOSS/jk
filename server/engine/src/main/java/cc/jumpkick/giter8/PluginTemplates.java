@@ -5,6 +5,7 @@ import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.scaffold.NewProjectStep;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
@@ -60,7 +61,7 @@ public final class PluginTemplates {
         try (FileSystem fs = zipfs(jar)) {
             Path templates = fs.getPath("templates");
             if (!Files.isDirectory(templates)) return List.of();
-            for (String lang : List.of("java", "kotlin", "groovy")) {
+            for (String lang : NewProjectStep.LANGS) {
                 Path langDir = templates.resolve(lang);
                 if (!Files.isDirectory(langDir)) continue;
                 try (var frameworks = Files.list(langDir)) {

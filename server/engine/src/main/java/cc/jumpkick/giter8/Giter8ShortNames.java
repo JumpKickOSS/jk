@@ -2,12 +2,15 @@
 package cc.jumpkick.giter8;
 
 import cc.jumpkick.model.Layout;
+import cc.jumpkick.scaffold.NewProjectStep;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Layout names and language-default order shared by the template index and blank scaffolder.
+ * Layout names and language-default order shared by the template index and the catalogue loader.
  * The catalog itself is scanned from {@code .jk-template.toml} trees — not hardcoded here.
  */
 public final class Giter8ShortNames {
@@ -19,23 +22,14 @@ public final class Giter8ShortNames {
 
     private Giter8ShortNames() {}
 
-    /** Language default among existing dirs: java, else kotlin, else groovy. */
+    /** Language default among existing dirs: the first of java, kotlin, groovy, scala present. */
     public static Optional<String> defaultLang(Iterable<String> langs) {
         if (langs == null) return Optional.empty();
-        boolean java = false, kotlin = false, groovy = false;
+        Set<String> present = new HashSet<>();
         for (String l : langs) {
-            if (l == null) continue;
-            switch (l.strip().toLowerCase(Locale.ROOT)) {
-                case "java" -> java = true;
-                case "kotlin" -> kotlin = true;
-                case "groovy" -> groovy = true;
-                default -> {}
-            }
+            if (l != null) present.add(l.strip().toLowerCase(Locale.ROOT));
         }
-        if (java) return Optional.of("java");
-        if (kotlin) return Optional.of("kotlin");
-        if (groovy) return Optional.of("groovy");
-        return Optional.empty();
+        return NewProjectStep.LANGS.stream().filter(present::contains).findFirst();
     }
 
     public static String normalizeLayout(@Nullable String layout) {

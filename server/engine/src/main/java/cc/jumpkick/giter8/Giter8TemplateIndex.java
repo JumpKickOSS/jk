@@ -3,6 +3,7 @@ package cc.jumpkick.giter8;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.scaffold.NewProjectStep;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -25,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Giter8TemplateIndex {
 
-    private static final List<String> LANGS = List.of("java", "kotlin", "groovy");
+    private static final List<String> LANGS = NewProjectStep.LANGS;
 
     private Giter8TemplateIndex() {}
 
@@ -80,9 +81,9 @@ public final class Giter8TemplateIndex {
      *
      * <ul>
      *   <li>{@code lang/framework/name} — exact
-     *   <li>{@code framework/name} — requested lang first, then java → kotlin → groovy
+     *   <li>{@code framework/name} — requested lang first, then java → kotlin → groovy → scala
      *   <li>bare {@code name} — framework {@code none} first, then any framework; requested lang only
-     *       when set, else the first of java → kotlin → groovy that has it
+     *       when set, else the first of java → kotlin → groovy → scala that has it
      * </ul>
      *
      * @throws IllegalArgumentException when {@code ref} names a framework rather than a template
@@ -125,7 +126,7 @@ public final class Giter8TemplateIndex {
                     + under.getFirst()
                     + ")");
         }
-        // Bare name under frameworks: the requested lang, else the first of java → kotlin → groovy
+        // Bare name under frameworks: the requested lang, else the first of java → kotlin → groovy → scala
         // that has it; several frameworks within that one language is ambiguous.
         List<String> order = new ArrayList<>();
         if (lang != null && !lang.isBlank()) order.add(lang.strip().toLowerCase(Locale.ROOT));

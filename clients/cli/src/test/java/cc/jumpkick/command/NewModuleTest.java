@@ -97,6 +97,23 @@ class NewModuleTest {
     }
 
     @Test
+    void module_inherits_scala_language(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.acme"
+                name     = "root"
+                version  = "0.1.0"
+                java     = 25
+                scala    = "3.10.0"
+                """);
+        Path module = tempDir.resolve("s");
+
+        assertThat(Jk.execute("new", module.toString())).isZero();
+        assertThat(JkBuildParser.parse(module.resolve("jk.toml")).project().isScala())
+                .isTrue();
+        assertThat(module.resolve("src/main/scala/com/acme/Main.scala")).isRegularFile();
+    }
+
+    @Test
     void no_module_creates_a_standalone_project_inside_a_project(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), PLAIN_PROJECT);
         Path sub = tempDir.resolve("widget");
