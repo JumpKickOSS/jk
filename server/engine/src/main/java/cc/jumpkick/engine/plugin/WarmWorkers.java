@@ -75,7 +75,7 @@ public final class WarmWorkers {
         String key() {
             StringBuilder sb = new StringBuilder();
             for (String arg : command) {
-                if (!WorkerLeases.heapFlag(arg) && !WorkerAotCache.mappingFlag(arg))
+                if (!HeapFlags.heapFlag(arg) && !WorkerAotCache.mappingFlag(arg))
                     sb.append(arg).append('\u0000');
             }
             sb.append('\u0001').append(new TreeMap<>(env.environment()));
@@ -84,7 +84,7 @@ public final class WarmWorkers {
 
         /** The {@code -Xmx} asked for, or {@code -1} when the command names none. */
         long heap() {
-            return WorkerLeases.parseXmx(command);
+            return HeapFlags.parseXmx(command);
         }
     }
 

@@ -57,13 +57,13 @@ class WorkerLeasesTest {
         SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
             long budget = 200L << 20;
             WorkerLeases.Ledger ledger = ledger(budget, 4);
-            List<String> command = List.of("java", "-Xmx1000000g", "-version");
+            List<String> command = List.of("java", "-Xmx200m", "-version");
             assertThat(JvmOptions.userPinnedHeap(command)).isTrue();
             assertThat(JvmOptions.userPinnedHeap(List.of("javac", "-J-Xmx1000000g")))
                     .isTrue();
             assertThat(JvmOptions.userPinnedHeap(List.of("java", "-XX:MaxRAMPercentage=95")))
                     .isTrue();
-            assertThat(JvmOptions.HeapChoice.inspect(command).label()).isEqualTo("-Xmx1000000g");
+            assertThat(JvmOptions.HeapChoice.inspect(command).label()).isEqualTo("-Xmx200m");
             try (WorkerLeases.Grant held = ledger.acquireBytes(budget / 2, false, null)) {
                 CompletableFuture<WorkerLeases.Grant> waiting = new CompletableFuture<>();
                 Thread.ofVirtual().start(() -> {
@@ -108,11 +108,11 @@ class WorkerLeasesTest {
                 try (WorkerLeases.Grant grant = ledger.acquire(command, null)) {
                     assertThat(grant.userPinned()).isFalse();
                     assertThat(grant.clamped()).isTrue();
-                    assertThat(grant.xmxBytes()).isLessThan(WorkerLeases.parseXmx(command));
+                    assertThat(grant.xmxBytes()).isLessThan(HeapFlags.parseXmx(command));
                     assertThat(WorkerLeases.jvmLease(grant.xmxBytes())).isLessThanOrEqualTo(budget);
                     assertThat(grant.bytes()).isLessThanOrEqualTo(budget);
                     List<String> launched = JobWorkers.launchCommand(command, grant);
-                    assertThat(WorkerLeases.parseXmx(launched)).isEqualTo(grant.xmxBytes());
+                    assertThat(HeapFlags.parseXmx(launched)).isEqualTo(grant.xmxBytes());
                     assertThat(launched).doesNotContain("-Xmx1000001m");
                 }
             } finally {
@@ -141,7 +141,7 @@ class WorkerLeasesTest {
                     List<String> launched = JobWorkers.launchCommand(command, grant);
                     int exe = command.indexOf("/opt/graal/bin/native-image");
                     assertThat(launched.get(exe + 1)).isEqualTo("-J-Xmx" + (share >> 20) + "m");
-                    assertThat(WorkerLeases.parseXmx(launched)).isEqualTo(share >> 20 << 20);
+                    assertThat(HeapFlags.parseXmx(launched)).isEqualTo(share >> 20 << 20);
                 }
             }
             List<String> sized = List.of("/opt/graal/bin/native-image", "-J-Xmx2g", "-cp", "app.jar", "app.Main");
@@ -160,8 +160,8 @@ class WorkerLeasesTest {
         assertThat(fitted).isLessThan(2L << 30);
         assertThat(WorkerLeases.jvmLease(fitted)).isLessThanOrEqualTo(budget);
         List<String> rewritten =
-                WorkerLeases.rewriteHeap(List.of("java", "-Xmx2g", "-Xms1g", "-XX:SoftMaxHeapSize=1500m"), fitted);
-        assertThat(WorkerLeases.parseXmx(rewritten)).isLessThanOrEqualTo(fitted);
+                HeapFlags.rewriteHeap(List.of("java", "-Xmx2g", "-Xms1g", "-XX:SoftMaxHeapSize=1500m"), fitted);
+        assertThat(HeapFlags.parseXmx(rewritten)).isLessThanOrEqualTo(fitted);
         assertThat(rewritten).noneMatch(arg -> arg.contains("1500m") || arg.contains("-Xms1g"));
     }
 

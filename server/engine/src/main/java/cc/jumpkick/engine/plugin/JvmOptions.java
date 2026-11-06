@@ -408,7 +408,7 @@ public final class JvmOptions {
 
         /** {@code command} as jk is about to run it, argfile shorten not yet applied. */
         public static HeapChoice inspect(List<String> command) {
-            long xmx = WorkerLeases.parseXmx(command);
+            long xmx = HeapFlags.parseXmx(command);
             if (!userPinnedHeap(command)) return new HeapChoice(false, xmx, "");
             return new HeapChoice(true, xmx, userPinLabel(command));
         }

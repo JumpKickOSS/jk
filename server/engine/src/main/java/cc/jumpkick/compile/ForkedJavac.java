@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
@@ -13,7 +14,6 @@ import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.jdk.JavaHomes;
@@ -637,7 +637,7 @@ public final class ForkedJavac {
         if (heapBytes != null) {
             // The plan's -Xms and SoftMaxHeapSize can sit above a learned -Xmx; HotSpot refuses that.
             flags.add("-Xmx" + WorkerHeap.mib(heapBytes) + "m");
-            flags = new ArrayList<>(WorkerLeases.rewriteHeap(flags, heapBytes));
+            flags = new ArrayList<>(HeapFlags.rewriteHeap(flags, heapBytes));
             JvmOptions.notePlannedCommand(flags);
         }
         for (String flag : module) {

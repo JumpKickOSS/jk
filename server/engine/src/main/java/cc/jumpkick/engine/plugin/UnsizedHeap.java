@@ -33,7 +33,7 @@ final class UnsizedHeap {
 
     /** The heap {@code command} is leased under a budget of {@code capacityBytes}. */
     static long lease(List<String> command, long capacityBytes) {
-        if (WorkerLeases.nativeImageCommand(command)) return NativeHeap.generous(capacityBytes);
+        if (HeapFlags.nativeImageCommand(command)) return NativeHeap.generous(capacityBytes);
         HeapScope.Key key = HeapScope.get();
         long peak = key == null ? 0 : LearnedHeaps.engine().peak(key);
         boolean node = nodeCommand(command);

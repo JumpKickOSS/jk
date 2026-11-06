@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
@@ -13,7 +14,6 @@ import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
@@ -204,16 +204,16 @@ public final class WorkerCompileDriver {
         List<String> cmd = JvmOptions.javaCommand(hostJavaHome, 1, assembled.subList(1, assembled.size()));
         boolean planned = JvmOptions.autoHeapEnabled() && !JvmOptions.userPinnedHeap(cmd);
         HeapScope.Key key = HeapScope.get();
-        long xmx = WorkerLeases.parseXmx(cmd);
+        long xmx = HeapFlags.parseXmx(cmd);
         if (planned && overrideXmx != null && overrideXmx > 0) {
             xmx = overrideXmx;
-            cmd = WorkerLeases.rewriteHeap(cmd, xmx);
+            cmd = HeapFlags.rewriteHeap(cmd, xmx);
             JvmOptions.notePlannedCommand(cmd);
         } else if (planned && key != null && xmx > 0) {
             long chosen = LearnedHeaps.engine().choose(key.project(), key.module(), key.kind(), key.jdk(), xmx);
             if (chosen > 0 && chosen != xmx) {
                 xmx = chosen;
-                cmd = WorkerLeases.rewriteHeap(cmd, xmx);
+                cmd = HeapFlags.rewriteHeap(cmd, xmx);
                 JvmOptions.notePlannedCommand(cmd);
             }
         }

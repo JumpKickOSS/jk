@@ -4,7 +4,9 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -133,6 +135,42 @@ class WorkerLeasesOverbookTest {
         } finally {
             for (WorkerLeases.Grant grant : held) grant.close();
         }
+    }
+
+    @Test
+    void two_workspaces_requesting_at_once_never_hold_more_than_twice_the_budget() throws Exception {
+        long budget = 4 * GIB;
+        long cap = budget * WorkerLeases.OVERBOOK_CAP_FACTOR;
+        WorkerLeases.Ledger ledger = ledger(budget, 64, healthy());
+        AtomicLong most = new AtomicLong();
+        AtomicLong overbooked = new AtomicLong();
+        List<Thread> threads = new ArrayList<>();
+        List<Throwable> errors = Collections.synchronizedList(new ArrayList<>());
+        for (int t = 0; t < 16; t++) {
+            long workspace = 1 + (t % 2);
+            long bytes = (256L << 20) * (1 + t % 8);
+            threads.add(Thread.ofVirtual().start(() -> {
+                try {
+                    for (int i = 0; i < 40; i++) {
+                        try (WorkerLeases.Grant grant = ledger.acquireBytes(bytes, true, workspace)) {
+                            most.accumulateAndGet(ledger.snapshot().leasedBytes(), Math::max);
+                            if (grant.overbooked()) overbooked.incrementAndGet();
+                            Thread.sleep(1);
+                        }
+                    }
+                } catch (InterruptedException | RuntimeException e) {
+                    errors.add(e);
+                }
+            }));
+        }
+        for (Thread thread : threads)
+            assertThat(thread.join(Duration.ofSeconds(30))).isTrue();
+        assertThat(errors).isEmpty();
+        assertThat(overbooked.get())
+                .as("the healthy sample let grants pass the budget")
+                .isPositive();
+        assertThat(most.get()).isGreaterThan(budget).isLessThanOrEqualTo(cap);
+        assertThat(ledger.snapshot().leasedBytes()).isZero();
     }
 
     @Test
@@ -287,8 +325,10 @@ class WorkerLeasesOverbookTest {
                 14 * GIB + (700L << 20),
                 13 * GIB + GIB / 2,
                 new OverbookSignals.Reading(true, 9 * GIB, 0.4, 0));
-        assertThat(line).startsWith("overbooked 672 MiB");
-        assertThat(line).contains("over the budget").contains("psi some 0.40").contains("full 0.00");
+        assertThat(line)
+                .isEqualTo("overbooked 672 MiB: leased 14.7 GiB of the 13.5 GiB budget, 1.2 GiB over, inside the"
+                        + " 27.0 GiB cap (twice the budget); allowed because free 9.0 GiB covers the lease plus"
+                        + " 1.3 GiB headroom and pressure is low (psi some 0.40 full 0.00)");
     }
 
     private static boolean allowed(
