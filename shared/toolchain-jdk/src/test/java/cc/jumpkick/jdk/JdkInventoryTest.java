@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -245,6 +246,48 @@ class JdkInventoryTest {
         }
         assertThat(Files.getPosixFilePermissions(JkDirs.state()))
                 .isEqualTo(PosixFilePermissions.fromString("rwx------"));
+    }
+
+    /**
+     * The shared inventory follows the state root: two roots over one set of trees, each recording
+     * its own default, and {@link JdkInventory#current()} under each answers that root's default.
+     */
+    @Test
+    void current_reads_the_inventory_of_the_state_root_in_effect(@TempDir Path tmp) throws IOException {
+        String jdksProperty = "jk.env.JK_JDKS_DIR";
+        String savedState = System.getProperty(STATE_PROPERTY);
+        String savedJdks = System.getProperty(jdksProperty);
+        try {
+            Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+            Path seventeen = fakeJdk(jdks.resolve("temurin-17.0.12"), "17.0.12", "Eclipse Adoptium");
+            Path twentyFive = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium");
+            System.setProperty(jdksProperty, jdks.toString());
+
+            System.setProperty(STATE_PROPERTY, tmp.resolve("state-a").toString());
+            JdkInventory first = JdkInventory.current();
+            first.setDefault(new InstalledJdk("temurin-17.0.12", seventeen));
+
+            System.setProperty(STATE_PROPERTY, tmp.resolve("state-b").toString());
+            JdkInventory second = JdkInventory.current();
+            assertThat(second.file()).isEqualTo(tmp.resolve("state-b").resolve(JdkInventory.FILE_NAME));
+            assertThat(second.defaultId())
+                    .as("a fresh state root records no default")
+                    .isEmpty();
+            second.setDefault(new InstalledJdk("temurin-25.0.4", twentyFive));
+            assertThat(JdkInventory.current().defaultId()).contains("temurin-25.0.4");
+
+            System.setProperty(STATE_PROPERTY, tmp.resolve("state-a").toString());
+            assertThat(JdkInventory.current().defaultId()).contains("temurin-17.0.12");
+            assertThat(JdkInventory.current()).isSameAs(first);
+        } finally {
+            restore(STATE_PROPERTY, savedState);
+            restore(jdksProperty, savedJdks);
+        }
+    }
+
+    private static void restore(String property, @Nullable String value) {
+        if (value == null) System.clearProperty(property);
+        else System.setProperty(property, value);
     }
 
     private static Path fakeJdk(Path home, String version, String implementor) throws IOException {
