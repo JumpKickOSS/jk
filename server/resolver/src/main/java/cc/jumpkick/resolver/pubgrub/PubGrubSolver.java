@@ -562,6 +562,9 @@ public class PubGrubSolver {
      * {@code ¬(satisfier ∩ ¬pivot)}. Dropping the pivot outright there learns a clause that holds
      * only under the versions the satisfier ruled out, and the solver then excludes candidates the
      * conflict never touched.
+     *
+     * <p>Only a term that always holds is dropped. {@code ¬p *} has no versions, but it says {@code p}
+     * is absent, and dropping it would claim the other terms conflict on their own.
      */
     private Incompatibility resolveIncompatibilities(Incompatibility a, Incompatibility b, Term pivot, Term satisfier) {
         LinkedHashMap<String, Term> merged = new LinkedHashMap<>();
@@ -573,11 +576,11 @@ public class PubGrubSolver {
         }
         if (!coversInUniverse(satisfier, pivot)) {
             Term residual = satisfier.intersect(pivot.invert()).invert();
-            if (!residual.isEmpty()) merged.merge(pivot.pkg(), residual, Term::intersect);
+            merged.merge(pivot.pkg(), residual, Term::intersect);
         }
         List<Term> survivors = new ArrayList<>();
         for (Term t : merged.values()) {
-            if (!t.effectiveVersions().isEmpty()) survivors.add(t);
+            if (!t.alwaysHolds()) survivors.add(t);
         }
         if (survivors.isEmpty()) {
             survivors = List.of(Term.positive(root(), VersionSet.EMPTY));
