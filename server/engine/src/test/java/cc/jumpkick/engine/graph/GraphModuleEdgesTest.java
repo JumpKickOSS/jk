@@ -63,7 +63,7 @@ class GraphModuleEdgesTest {
         assertThat(GraphModuleEdges.rows(root)).contains("app/\tcore/");
     }
 
-    /** A variant value's dependencies are applied by the plan, not the build graph; every value counts. */
+    /** Every variant value counts, whichever one a build selects. */
     @Test
     void aVariantValuesDependencyOnAMemberIsAnEdge(@TempDir Path root) throws IOException {
         workspace(root, "core", "app");
@@ -75,20 +75,54 @@ class GraphModuleEdgesTest {
                 core = { workspace = true }
                 """);
         assertThat(buildGraphSees(root, "app", "core"))
-                .as("the build graph leaves it to the plan")
-                .isFalse();
+                .as("the edge that orders the build")
+                .isTrue();
         assertThat(GraphModuleEdges.rows(root)).contains("app/\tcore/");
     }
 
+    /** A member names another with {@code workspace = true}; a path to one fails the build graph, so no edges. */
     @Test
-    void aPathDependencyOnAMembersDirectoryIsAnEdge(@TempDir Path root) throws IOException {
+    void aPathDependencyOnAMembersDirectoryLeavesNoEdges(@TempDir Path root) throws IOException {
         workspace(root, "core", "app");
         member(root, "core", "");
         member(root, "app", "[dependencies]\ncore = \"../core\"\n");
-        assertThat(buildGraphSees(root, "app", "core"))
-                .as("the build graph draws no edge")
-                .isFalse();
-        assertThat(GraphModuleEdges.rows(root)).contains("app/\tcore/");
+        assertThat(graph(root).errors()).singleElement().asString().contains("names workspace member t:core");
+        assertThat(GraphModuleEdges.rows(root))
+                .as("the worker counts every module")
+                .isEmpty();
+    }
+
+    /** Every row is a unit of the build graph and its prereqs, and nothing else. */
+    @Test
+    void theRowsAreTheBuildGraphsEdges(@TempDir Path root) throws IOException {
+        workspace(root, "core", "app", "lib", "other");
+        member(root, "core", "");
+        member(root, "app", "[test-dependencies]\ncore = { workspace = true }\n");
+        member(root, "lib", """
+                [build]
+                order-after = ["other"]
+
+                [variants.tier.free]
+                [variants.tier.paid]
+                [variants.tier.paid.dependencies]
+                app = { workspace = true }
+                """);
+        member(root, "other", "");
+        BuildGraph.Result graph = graph(root);
+        Path base = BuildGraph.canonicalPath(root);
+        List<String> expected = graph.topoOrder().stream()
+                .map(unit -> {
+                    StringBuilder row = new StringBuilder(base.relativize(unit.dir()) + "/");
+                    graph.edges().getOrDefault(unit.dir(), Set.of()).stream()
+                            .map(dir -> base.relativize(dir) + "/")
+                            .sorted()
+                            .forEach(p -> row.append('\t').append(p));
+                    return row.toString();
+                })
+                .toList();
+        assertThat(GraphModuleEdges.rows(root))
+                .containsExactlyElementsOf(expected)
+                .contains("app/\tcore/", "lib/\tapp/\tother/");
     }
 
     /**
@@ -133,8 +167,12 @@ class GraphModuleEdgesTest {
                 .isEmpty();
     }
 
+    private static BuildGraph.Result graph(Path root) throws IOException {
+        return BuildGraph.resolve(root, JkBuildParser.parse(root.resolve("jk.toml")));
+    }
+
     private static boolean buildGraphSees(Path root, String from, String to) throws IOException {
-        BuildGraph.Result graph = BuildGraph.resolve(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        BuildGraph.Result graph = graph(root);
         Path dir = BuildGraph.canonicalPath(root.resolve(from));
         return graph.edges().getOrDefault(dir, Set.of()).contains(BuildGraph.canonicalPath(root.resolve(to)));
     }

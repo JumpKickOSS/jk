@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.Variants;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -107,7 +108,8 @@ public final class ModuleOrder {
 
     /**
      * Sibling-dep + {@code [build].order-after} prereqs (self-refs dropped). All scopes — the
-     * default workspace build-order edge.
+     * default workspace build-order edge. A {@code [variants]} value's dependencies count whichever
+     * value a build selects.
      */
     public static Set<Path> modulePrereqs(
             Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
@@ -126,7 +128,7 @@ public final class ModuleOrder {
             Collection<Scope> scopes) {
         Set<Path> prereqs = new LinkedHashSet<>();
         for (Scope scope : scopes) {
-            for (Dependency d : m.dependencies().of(scope)) {
+            for (Dependency d : declared(m, scope)) {
                 Path depDir = resolveSibling(d, dirByCoord, dirByName);
                 if (depDir != null && !depDir.equals(moduleDir)) prereqs.add(depDir);
             }
@@ -143,6 +145,17 @@ public final class ModuleOrder {
             if (depDir != null && !depDir.equals(moduleDir)) prereqs.add(depDir);
         }
         return prereqs;
+    }
+
+    /** {@code m}'s dependencies in {@code scope}: its own table's, then every variant value's. */
+    public static List<Dependency> declared(JkBuild m, Scope scope) {
+        List<Dependency> out = new ArrayList<>(m.dependencies().of(scope));
+        for (Variants.Dimension dimension : m.variants().dimensions()) {
+            for (Variants.Value value : dimension.values().values()) {
+                out.addAll(value.dependencies().getOrDefault(scope, List.of()));
+            }
+        }
+        return out;
     }
 
     /**

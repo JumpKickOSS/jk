@@ -272,4 +272,79 @@ class BuildGraphTest {
         assertThat(r.errors()).anyMatch(e -> e.contains("cycle"));
         assertThat(r.topoOrder()).isEmpty();
     }
+
+    @Test
+    void a_variant_values_dependency_on_a_member_orders_it_first(@TempDir Path tmp) throws Exception {
+        twoMembers(tmp, """
+                [variants.tier]
+                default = "paid"
+                [variants.tier.free]
+                [variants.tier.paid]
+                [variants.tier.paid.dependencies]
+                core = { workspace = true }
+                """);
+
+        BuildGraph.Result r = resolve(tmp);
+
+        assertThat(r.errors()).isEmpty();
+        assertThat(coords(r)).containsExactly("com.example:core", "com.example:app");
+        assertThat(r.edges().get(BuildGraph.canonicalPath(tmp.resolve("app"))))
+                .containsExactly(BuildGraph.canonicalPath(tmp.resolve("core")));
+    }
+
+    @Test
+    void a_path_dependency_on_a_member_is_reported(@TempDir Path tmp) throws Exception {
+        twoMembers(tmp, """
+                [dependencies]
+                core = { path = "../core" }
+                """);
+
+        BuildGraph.Result r = resolve(tmp);
+
+        assertThat(r.errors())
+                .containsExactly("app: `core = { path = \"../core\" }` names workspace member com.example:core;"
+                        + " write `core = { workspace = true }`");
+        assertThat(r.topoOrder()).isEmpty();
+    }
+
+    @Test
+    void a_path_dependency_outside_the_workspace_is_no_edge(@TempDir Path tmp) throws Exception {
+        twoMembers(tmp, """
+                [dependencies]
+                ext = { path = "../../ext" }
+                """);
+
+        BuildGraph.Result r = resolve(tmp);
+
+        assertThat(r.errors()).isEmpty();
+        assertThat(r.edges().get(BuildGraph.canonicalPath(tmp.resolve("app")))).isEmpty();
+    }
+
+    /** A workspace of {@code core} and {@code app}, app's manifest ending in {@code appExtra}. */
+    private static void twoMembers(Path tmp, String appExtra) throws IOException {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "root"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["core", "app"]
+                """);
+        Files.createDirectories(tmp.resolve("core"));
+        Files.writeString(tmp.resolve("core/jk.toml"), """
+                group = "com.example"
+                name  = "core"
+                version = "1.0.0"
+                java = 25
+                """);
+        Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(tmp.resolve("app/jk.toml"), """
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                """ + appExtra);
+    }
 }

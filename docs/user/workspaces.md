@@ -79,6 +79,10 @@ jackson-databind.workspace = true   # shared external from [workspace.dependenci
 widget-core.workspace = true        # sibling module (matches name)
 ```
 
+A sibling is always a workspace edge. A `path` dependency on a member's directory is refused before
+anything builds, naming the member and the `workspace = true` entry to write instead. A sibling a
+`[variants]` value's dependencies name builds before the module whichever value is selected.
+
 A shared entry in the root's `[workspace.dependencies]` is a catalog short name with a version
 (`jackson-databind = "2.22.2"`), a `group:artifact:version` coordinate, or an inline table with
 `version` (plus `group` / `name` when the key is not a catalog name) or `git` (with `group`). An
