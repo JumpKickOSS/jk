@@ -19,30 +19,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link StatusSnapshot#toJson} is the serializer for engine vitals.
- *
- * <p>Before this, {@code GET /api/status} and the dashboard's SSE {@code status} frame each built
- * the same nineteen-field object from the same accessors, nineteen lines apart in two files. They
- * happened to agree; nothing made them. A field added to the record reached whichever surface the
- * author remembered.
- *
- * <p>Two surfaces still do not go through the owner and are outside this ticket's file scope. Both
- * are measured here rather than described, because "MCP drops some fields" was filed as five and is
- * eight:
- *
- * <ul>
- *   <li>{@code McpVitals.statusPayload} — the MCP {@code status} envelope, 10 of the record's 18
- *       components. Omits {@code totalMemoryBytes},
- *       {@code availableMemoryBytes}, {@code systemCpuLoad}, {@code systemLoadAverage},
- *       {@code engineEpoch}, {@code peakActiveRequests}, {@code peakActiveBuildPlans} — so an agent
- *       reading {@code status} cannot see host memory headroom, host load, or the epoch that
- *       tells it the engine was replaced under it.
- *   <li>{@code ProtoLifecycle.statusAck}, fed positionally by {@code EngineServer} — the CLI socket
- *       {@code status-ack}, 12 of 18. Omits {@code cores}, {@code totalMemoryBytes},
- *       {@code availableMemoryBytes}, {@code systemCpuLoad}, {@code systemLoadAverage},
- *       {@code engineEpoch}, and adds five socket-only fields ({@code proto}, {@code draining},
- *       {@code httpUrl}, {@code httpError}, {@code mcpUrl}).
- * </ul>
+ * {@link StatusSnapshot#vitals} and {@link StatusSnapshot#toJson} emit every one of the record's 41
+ * components with the snapshot's own values, and no engine source renders the vitals as JSON
+ * without going through them.
  */
 class StatusSnapshotJsonTest {
 
@@ -76,11 +55,7 @@ class StatusSnapshotJsonTest {
      */
     private static final Map<String, String> RENAMED = Map.of("startedAtMillis", "startedAt");
 
-    /**
-     * Every component reaches the wire. This is the assertion the two duplicated builders could not
-     * make: with one serializer, a field added to the record and forgotten here fails immediately,
-     * where before it silently reached one surface and not the other.
-     */
+    /** Every component reaches the wire, so a component added to the record and left out of the serializer fails here. */
     @Test
     void to_json_serializes_every_component_of_the_record() {
         String body = SNAPSHOT.toJson().toString();
@@ -93,7 +68,7 @@ class StatusSnapshotJsonTest {
 
         assertThat(StatusSnapshot.class.getRecordComponents())
                 .as("the record's components — an empty reflection result would pass the loop above")
-                .hasSizeGreaterThanOrEqualTo(18);
+                .hasSize(41);
         assertThat(missing)
                 .as("StatusSnapshot components that toJson() does not emit: %s", body)
                 .isEmpty();
@@ -101,7 +76,7 @@ class StatusSnapshotJsonTest {
         assertThat(body).contains("\"uptimeSeconds\":");
     }
 
-    /** Every component is a key of {@code vitals()} — the check the two other surfaces inherit by starting from it. */
+    /** Every component is a key of {@code vitals()}, the map every surface renders from. */
     @Test
     void vitals_carries_every_component_of_the_record() {
         Map<String, Object> vitals = SNAPSHOT.vitals();
@@ -142,14 +117,10 @@ class StatusSnapshotJsonTest {
     }
 
     /**
-     * The ownership arm, in the shape the campaign uses for closure: a tree scan, not an assertion
-     * about the file this test happens to know. A production file "renders vitals" when it reads
-     * four or more of the record's accessors <em>and</em> writes JSON keys — the second half is what
-     * keeps {@code LiveVitals.PresentStatus}, which reads thirteen accessors to build a change-gate
-     * fingerprint and serializes nothing, out of the result.
-     *
-     * <p>The expectation is empty: every renderer starts from {@code vitals()} and reads no accessor
-     * of its own.
+     * A tree scan of the engine's production sources: a file renders vitals when it reads four or
+     * more of the record's accessors <em>and</em> writes JSON keys. The second half keeps {@code
+     * LiveVitals.PresentStatus}, which reads accessors for a change-gate fingerprint and serializes
+     * nothing, out. The expectation is empty: every renderer starts from {@code vitals()}.
      */
     @Test
     void no_file_renders_engine_vitals_without_the_owner() throws IOException {

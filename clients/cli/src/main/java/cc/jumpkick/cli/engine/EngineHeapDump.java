@@ -20,8 +20,11 @@ import java.util.Optional;
  */
 public final class EngineHeapDump {
 
-    /** What to do about it, worded the same everywhere it is shown. */
-    public static final String REMEDY = "raise `[engine] max-heap-mb` or run `jk cache prune`";
+    /**
+     * What to do about it, worded the same everywhere it is shown. The engine sizes its work to its
+     * heap, so an exit on OutOfMemoryError is a defect to report, not a limit to raise.
+     */
+    public static final String REMEDY = "run `jk cache clean`, and report the heap dump as a jk bug";
 
     /** The JVM writes the dump before {@code -XX:+ExitOnOutOfMemoryError} ends the process, so its report is last. */
     private static final int TAIL_BYTES = 16 * 1024;

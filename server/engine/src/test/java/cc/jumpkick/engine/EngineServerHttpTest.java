@@ -81,7 +81,10 @@ class EngineServerHttpTest extends EngineServerHarness {
         assertThat(Files.exists(p.httpToken())).isTrue();
     }
 
-    /** The MCP session limit and the connection counts reach {@code /api/status} and the socket status alike. */
+    /**
+     * The MCP session limit and the connection counts reach {@code /api/status}, the socket status
+     * and the MCP {@code status} tool alike.
+     */
     @Test
     void status_reports_the_mcp_session_limit_and_the_loaded_and_active_connections() throws Exception {
         Path stateDir = shortTempDir();
@@ -125,6 +128,25 @@ class EngineServerHttpTest extends EngineServerHarness {
                 assertThat(Jsonl.intValue(ack, "mcpLoadedConnections", -1)).isEqualTo(1);
                 assertThat(Jsonl.intValue(ack, "mcpActiveConnections", -1)).isEqualTo(1);
             }
+
+            String session = hello.headers().firstValue("Mcp-Session-Id").orElseThrow();
+            var call = http.send(
+                    HttpRequest.newBuilder(URI.create(url + "mcp"))
+                            .header("Authorization", "Bearer " + token)
+                            .header("Mcp-Session-Id", session)
+                            .header("Content-Type", "application/json")
+                            .header("Accept", "application/json, text/event-stream")
+                            .POST(HttpRequest.BodyPublishers.ofString(
+                                    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
+                                            + "\"params\":{\"name\":\"status\",\"arguments\":{}}}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(call.statusCode()).as(call.body()).isEqualTo(200);
+            assertThat(call.body())
+                    .as("the MCP status tool")
+                    .contains("\"mcpMaxSessions\":" + JkHttpConfig.DEFAULT_MCP_MAX_SESSIONS)
+                    .contains("\"mcpLoadedConnections\":1")
+                    .contains("\"mcpActiveConnections\":1");
         } finally {
             server.close();
             serverThread.join(5_000);

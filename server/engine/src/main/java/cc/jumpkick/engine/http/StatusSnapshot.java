@@ -322,8 +322,8 @@ public record StatusSnapshot(
      * These vitals as JSON — <strong>the</strong> serializer, so a field added to the record
      * cannot reach one surface and miss another. {@code GET /api/status} chains its REST-only
      * knobs (URLs, config limits, web root) onto the object this returns; the dashboard's SSE
-     * {@code status} frame publishes it unchanged. Field order is part of the answer: the two
-     * surfaces were byte-identical before this became one method and stay so after.
+     * {@code status} frame publishes it unchanged. Field order is part of the answer, so both
+     * surfaces render the same bytes.
      *
      * <p>{@code uptimeSeconds} is derived rather than stored, because it is a function of the
      * snapshot's {@code startedAtMillis} and the clock at render time, and a reader that computed

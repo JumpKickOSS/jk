@@ -258,7 +258,7 @@ public final class EngineStatusCommand implements CliCommand {
      * — is what a client waits for rather than displaces, and the line says so; anything else is
      * the wedge {@code stop --now} clears.
      */
-    private static String strayHeadline(long stray) {
+    static String strayHeadline(long stray) {
         var life = SilentPeer.Life.of(stray, Clock.SYSTEM);
         if (life.isPresent()
                 && (life.get().workers() > 0 || life.get().youngerThan(SilentPeer.Grace.DEFAULT.startup()))) {
