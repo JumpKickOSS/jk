@@ -55,6 +55,7 @@ public final class GraphWorker implements Plugin {
             event.put("classes", b.classes());
             event.put("millis", b.millis());
             event.put("dir", b.dir().toString());
+            event.put("uncompiled", answer.uncompiled());
             out.emit(MiniJson.write(event));
             return 0;
         } catch (IllegalArgumentException refused) {
@@ -136,8 +137,18 @@ public final class GraphWorker implements Plugin {
                 c.stringList("rules"),
                 LibraryApi.jars(c.stringList("libraries")),
                 c.stringOpt("apiCache").map(Path::of).orElse(null),
-                c.stringList("uncompiled"),
+                uncompiled(c.stringList("uncompiled")),
                 ModuleReach.of(c.stringList("moduleEdges")));
+    }
+
+    /** {@code prefix \t dir \t name}, one per module source set with no compiled classes. */
+    static List<GraphService.Uncompiled> uncompiled(List<String> rows) {
+        List<GraphService.Uncompiled> out = new ArrayList<>();
+        for (String row : rows) {
+            String[] f = row.split("\t", -1);
+            if (f.length == 3) out.add(new GraphService.Uncompiled(f[0], f[1], f[2]));
+        }
+        return out;
     }
 
     /** {@code term \t word \t word …}, one per term. */

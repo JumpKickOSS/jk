@@ -10,7 +10,8 @@ import org.jspecify.annotations.Nullable;
  * graph it was answered from. {@code files} files were walked and {@code extracted} of them read
  * again; {@code dir} is where the graph was written; {@code note} is what the user should see about
  * the answer, such as compiled facts left out of it; {@code uncompiled} names the modules and test
- * directories with sources and no compiled classes, whose calls the answer is missing. {@code error}
+ * directories with sources and no compiled classes whose calls the answer may be missing (for a
+ * rename, those of the modules that can reach the method). {@code error}
  * is set, and nothing else is meaningful, when the request failed.
  */
 public record GraphAck(

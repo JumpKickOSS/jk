@@ -25,7 +25,9 @@ changes code does its own check and says so. MCP `rename` renames, runs the test
 guard over the same modules within the caller's wait, and ends `Checked by jk: OK test …; OK guard ….
 The task is done: no other build, test or search is needed.` (`McpRenameCheck`). That one sentence took
 every agent's rename to a single tool call, so it is said only when it is true: while a module or
-test set has no compiled classes, the last sentence names them to search instead.
+test set that can call the method has no compiled classes, the last sentence names them to search
+instead. One that cannot (it sees no module declaring the method or one it overrides, by the
+engine's build graph) is not named: sending an agent to search it costs turns and finds nothing.
 
 **Name the exact scope.** `rename` names the test classes it edited (`classes=`), not the modules'
 whole suites: a rename changes no behaviour, every test source still compiles, and the tests that call

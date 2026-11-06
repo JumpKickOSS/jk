@@ -160,9 +160,10 @@ public final class GraphRunner {
             ack = withNote(ack, indexes.leftOut(), indexes.edited());
             String skipped = compiled.line();
             if (skipped != null) ack = withLine(ack, skipped);
-            String uncompiled = compiled.uncompiledLine(indexes.uncompiled());
-            if (uncompiled != null) ack = withLine(ack, uncompiled);
-            return withUncompiled(ack, indexes.uncompiled());
+            // The worker names the sets the answer may be missing calls from: a rename, only those
+            // of the modules that can reach the method.
+            String uncompiled = compiled.uncompiledLine(ack.uncompiled());
+            return uncompiled == null ? ack : withLine(ack, uncompiled);
         } finally {
             lock.unlock();
         }
@@ -379,23 +380,6 @@ public final class GraphRunner {
                 ack.uncompiled());
     }
 
-    /** {@code ack} naming {@code uncompiled}, the modules and test sets it has no compiled classes of. */
-    static GraphAck withUncompiled(GraphAck ack, List<String> uncompiled) {
-        if (!ack.ok() || uncompiled.isEmpty()) return ack;
-        return new GraphAck(
-                null,
-                ack.text(),
-                ack.nodes(),
-                ack.edges(),
-                ack.files(),
-                ack.extracted(),
-                ack.classes(),
-                ack.millis(),
-                ack.dir(),
-                ack.note(),
-                uncompiled);
-    }
-
     /**
      * Refresh the workspace's graph when it has one, after a build that succeeded: the graph an
      * agent reads next is the tree the build just compiled, not the one before it. A workspace with no graph gets none: the first graph question makes
@@ -605,7 +589,7 @@ public final class GraphRunner {
                 Jsonl.longValue(json, "millis", 0),
                 dir == null ? "" : dir,
                 null,
-                List.of());
+                Jsonl.strArray(json, "uncompiled"));
     }
 
     private static Path spec(
@@ -623,7 +607,9 @@ public final class GraphRunner {
         boolean apis = "read".equals(r.op()) || "find".equals(r.op());
         return specWriter(root, r, indexes.rows(), modules, scripts)
                 .configString("cache", cache.toString())
-                .configList("uncompiled", indexes.uncompiled())
+                .configList(
+                        "uncompiled",
+                        indexes.uncompiled().stream().map(Uncompiled::row).toList())
                 .configList("rules", rules)
                 .configList("libraries", apis ? libraryRows(root) : List.of())
                 .configString("apiCache", apis ? JkStores.resolve("graph-api").toString() : null)
@@ -677,8 +663,25 @@ public final class GraphRunner {
      * classes it does not read, the edited sources whose own classes it skips, and the modules with
      * main sources and no main classes and the test suites ({@link #testSet}) with no classes.
      */
-    record ClassIndexes(List<String> rows, List<String> leftOut, List<String> edited, List<String> uncompiled) {
+    record ClassIndexes(List<String> rows, List<String> leftOut, List<String> edited, List<Uncompiled> uncompiled) {
         static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of(), List.of(), List.of());
+
+        /** How answers name the {@link #uncompiled} sets. */
+        List<String> uncompiledNames() {
+            return uncompiled.stream().map(Uncompiled::name).toList();
+        }
+    }
+
+    /**
+     * A module's source set with sources and no compiled classes the graph reads: the module at
+     * {@code prefix} ({@code ""} for the root, else ending in {@code /}), the directory under it its
+     * sources sit in, ending in {@code /}, and the name an answer gives it.
+     */
+    record Uncompiled(String prefix, String dir, String name) {
+        /** {@code prefix \t dir \t name}, as the graph worker reads it. */
+        String row() {
+            return prefix + "\t" + dir + "\t" + name;
+        }
     }
 
     /** Between the entries of a row's stale and compile-key fields: a character no path or key holds. */
@@ -699,16 +702,19 @@ public final class GraphRunner {
         List<String> out = new ArrayList<>();
         List<String> leftOut = new ArrayList<>();
         List<String> edited = new ArrayList<>();
-        List<String> uncompiled = new ArrayList<>();
+        List<Uncompiled> uncompiled = new ArrayList<>();
         for (Map.Entry<Path, JkBuild> module : modules(root).entrySet()) {
             BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
             String rel = root.relativize(module.getKey()).toString().replace('\\', '/');
             String prefix = rel.isEmpty() ? "" : rel + "/";
             String name = rel.isEmpty() ? String.valueOf(module.getKey().getFileName()) : rel;
-            if (!hasClasses(layout.classesDir()) && hasMainSources(module.getKey())) uncompiled.add(name);
             boolean compact = ModuleLayout.isCompact(module.getKey());
+            if (!hasClasses(layout.classesDir()) && hasMainSources(module.getKey())) {
+                uncompiled.add(new Uncompiled(prefix, compact ? "src/" : "src/main/", name));
+            }
             for (String suite : uncompiledSuites(module.getKey(), layout)) {
-                uncompiled.add(testSet(rel, compact, suite));
+                String dir = compact ? suite + "/" : "src/" + suite + "/";
+                uncompiled.add(new Uncompiled(prefix, dir, testSet(rel, compact, suite)));
             }
             Map<String, Path> sets = classSets(layout);
             if (sets.values().stream().noneMatch(Files::isDirectory)) continue;

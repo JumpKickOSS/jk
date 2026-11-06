@@ -12,8 +12,10 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.GraphLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleInputProvenance;
+import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphProgress;
@@ -314,8 +316,8 @@ class GraphRunnerTest {
     /**
      * A question compiles the default test suite only, so the integration suite of a fresh checkout
      * stays uncompiled: callers names its directory and is not complete, and a rename does not
-     * claim done. Once a compile that selected the suite leaves its classes, its call is listed and
-     * renamed, and both are complete.
+     * claim done: it quotes the suite's uses of the name instead. Once a compile that selected the
+     * suite leaves its classes, its call is listed and renamed, and both are complete.
      */
     @Test
     void anIntegrationSuiteWithNoClassesIsNamedAndOnceCompiledItsCallsCount(@TempDir Path tmp) throws Exception {
@@ -338,7 +340,8 @@ class GraphRunnerTest {
         GraphAck renamed = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
         assertThat(renamed.error()).isNull();
         assertThat(renamed.text())
-                .contains("Not complete: the note below names the modules with no compiled classes.")
+                .contains("Not checked: these modules may call it but have no compiled classes.")
+                .contains("src/integration/java/demo/CalcIT.java", "return new Calc().doubled(2) == 4;")
                 .doesNotContain("no search needed", "the task is done");
         assertThat(renamed.uncompiled()).containsExactly("src/integration");
 
@@ -418,6 +421,100 @@ class GraphRunnerTest {
         GraphAck done = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
         assertThat(done.text()).contains("1 call").contains("the task is done");
         assertThat(guard.resolve("CalcRules.java")).content().contains("new Calc().twice(2)");
+    }
+
+    /**
+     * A module whose only way to see the method's module is a dependency that a Maven profile
+     * active here declares can call it: while it has no compiled classes the rename is not complete
+     * and names it, while an uncompiled module that sees neither is not named.
+     */
+    @Test
+    void anUncompiledModuleThatSeesTheMethodOnlyThroughAProfileKeepsARenameNotComplete(@TempDir Path tmp)
+            throws Exception {
+        ShadowManifests.install(dir -> List.of());
+        try {
+            Path root = Files.createDirectories(tmp.resolve("reactor"));
+            Files.writeString(root.resolve("pom.xml"), """
+                    <project>
+                      <modelVersion>4.0.0</modelVersion>
+                      <groupId>demo</groupId><artifactId>parent</artifactId><version>1.0</version>
+                      <packaging>pom</packaging>
+                      <properties><maven.compiler.release>25</maven.compiler.release></properties>
+                      <modules><module>core</module><module>app</module><module>other</module></modules>
+                    </project>
+                    """);
+            pomModule(root, "core", "", "Calc", """
+                    public class Calc {
+                        public int doubled(int n) {
+                            return n * 2;
+                        }
+                    }
+                    """);
+            pomModule(root, "app", """
+                      <profiles>
+                        <profile>
+                          <id>with-core</id>
+                          <activation><activeByDefault>true</activeByDefault></activation>
+                          <dependencies>
+                            <dependency><groupId>demo</groupId><artifactId>core</artifactId><version>1.0</version></dependency>
+                          </dependencies>
+                        </profile>
+                      </profiles>
+                    """, "App", """
+                    class App {
+                        int six() {
+                            return new Calc().doubled(3);
+                        }
+                    }
+                    """);
+            pomModule(root, "other", "", "Other", """
+                    class Other {
+                        int doubled() {
+                            return 2;
+                        }
+                    }
+                    """);
+            Path core = root.resolve("core");
+            Path classes = Files.createDirectories(core.resolve("target/classes"));
+            int exit = ToolProvider.getSystemJavaCompiler()
+                    .run(
+                            null,
+                            OutputStream.nullOutputStream(),
+                            OutputStream.nullOutputStream(),
+                            "-g",
+                            "-d",
+                            classes.toString(),
+                            core.resolve("src/main/java/demo/Calc.java").toString());
+            assertThat(exit).isZero();
+            BuildGraph.Result graph = BuildGraph.resolve(root, JkBuildParser.parse(ManifestPaths.manifestIn(root)));
+            ModuleInputProvenance.recordClasses(
+                    root, graph, Set.of(core.toAbsolutePath().normalize()));
+
+            GraphAck renamed = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
+            assertThat(renamed.error()).isNull();
+            assertThat(renamed.text())
+                    .contains("Not checked: these modules may call it but have no compiled classes.")
+                    .contains("app/src/main/java/demo/App.java", "return new Calc().doubled(3);")
+                    .doesNotContain("other/src/main/java", "no search needed", "the task is done");
+            assertThat(renamed.uncompiled()).containsExactly("app");
+            assertThat(renamed.note())
+                    .isEqualTo("app has no compiled classes, so the calls made there are missing: search it for calls"
+                            + " too");
+        } finally {
+            ShadowManifests.install(dir -> List.of());
+        }
+    }
+
+    private static void pomModule(Path root, String name, String extra, String type, String body) throws IOException {
+        Path dir = Files.createDirectories(root.resolve(name).resolve("src/main/java/demo"));
+        Files.writeString(dir.resolve(type + ".java"), "package demo;\n\n" + body);
+        Files.writeString(root.resolve(name).resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent><groupId>demo</groupId><artifactId>parent</artifactId><version>1.0</version></parent>
+                  <artifactId>%s</artifactId>
+                %s</project>
+                """.formatted(name, extra));
     }
 
     /**

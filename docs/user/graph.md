@@ -276,7 +276,9 @@ member serves. A supertype outside the workspace that may declare the method mak
 A rename compiles a never-compiled module, and its tests, first, as a question does; when that
 compile cannot run, or a suite a question does not compile has no classes, the answer says it is
 not complete, never that the task is done, and the note names the modules and test directories
-whose calls it could not see.
+whose calls it could not see. Only a module that may call the method, as above, counts; one that
+cannot leaves the rename complete and is not named. `callers` is not narrowed this way: it names
+every module and test directory with no compiled classes.
 
 It refuses, changing nothing, when a source was edited since the build (build first), when a
 related type already declares the new name with the same parameters, or when the method overrides

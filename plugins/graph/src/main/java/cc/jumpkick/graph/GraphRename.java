@@ -140,15 +140,16 @@ final class GraphRename {
     /**
      * Renames {@code address} ({@code Type.method}, every overload, or {@code Type.method(int,
      * String)} for one) to {@code to} under the workspace's root; returns the answer, complete only
-     * when no module or test set lacks the compiled classes that find its calls.
+     * when no module or test set that can reach the method lacks the compiled classes that find its
+     * calls, and the sets it names.
      */
-    static String rename(GraphService.Workspace w, CodeGraph graph, String address, String to, int budget)
+    static GraphService.Reply rename(GraphService.Workspace w, CodeGraph graph, String address, String to, int budget)
             throws IOException {
         Path root = w.root();
         List<GraphBuild.ClassIndex> indexes = w.indexes();
         if (!identifier(to)) throw new IllegalArgumentException("'" + to + "' is not a method name");
         String refused = edited(indexes);
-        if (refused != null) return refused;
+        if (refused != null) return GraphService.Reply.of(w, refused);
         Map<String, Loaded> classes = new LinkedHashMap<>();
         for (GraphBuild.ClassIndex c : indexes) {
             // The engine indexes every set for a rename: its compiled classes are what find every use.
@@ -159,22 +160,29 @@ final class GraphRename {
         }
         Hierarchy h = new Hierarchy(classes);
         Target target = target(classes, address);
-        if (target.error() != null) return RenameHints.withUnbuilt(target.error(), unbuilt(graph, indexes, null));
-        if (target.name().equals(to)) return "'" + address + "' is already named " + to + ".";
+        if (target.error() != null) {
+            return GraphService.Reply.of(
+                    w, RenameHints.withUnbuilt(target.error(), RenameReach.unbuilt(graph, indexes, null)));
+        }
+        if (target.name().equals(to)) return GraphService.Reply.of(w, "'" + address + "' is already named " + to + ".");
         Map<String, Set<String>> family = family(classes, h, target);
         String clash = clash(classes, h, family, target.name(), to);
-        if (clash != null) return clash;
+        if (clash != null) return GraphService.Reply.of(w, clash);
         Run run = new Run(root, graph, classes, h, target, family, to);
         run.tally();
-        run.unchecked(indexes, w.reach());
+        run.unchecked(indexes, w.uncompiled(), w.reach());
         run.edit();
         if (run.annotated > run.overriding) {
-            return "Not renamed: " + display(target) + " overrides a method outside the workspace (@Override with no"
-                    + " supertype here declaring it), so renaming it would break that override.";
+            return GraphService.Reply.of(
+                    w,
+                    "Not renamed: " + display(target) + " overrides a method outside the workspace (@Override with"
+                            + " no supertype here declaring it), so renaming it would break that override.");
         }
         if (run.edited.isEmpty() && run.unsettled.isEmpty() && run.unchecked.isEmpty()) {
-            return "Nothing renamed: the compiled classes record no declaration of " + display(target) + " in a source"
-                    + " file.";
+            return GraphService.Reply.of(
+                    w,
+                    "Nothing renamed: the compiled classes record no declaration of " + display(target)
+                            + " in a source file.");
         }
         run.docLinks();
         run.prose = RenameMentions.renameAll(
@@ -183,7 +191,9 @@ final class GraphRename {
         for (Map.Entry<String, String> e : run.edited.entrySet()) {
             Files.writeString(root.resolve(e.getKey()), e.getValue(), StandardCharsets.UTF_8);
         }
-        return Budget.lines(run.answer(w.uncompiled().isEmpty()), budget, "Raise the budget for every line");
+        List<String> unseen = GraphService.names(run.unseen);
+        return new GraphService.Reply(
+                Budget.lines(run.answer(unseen.isEmpty()), budget, "Raise the budget for every line"), unseen);
     }
 
     /** One rename's working state: what the classes record per file, and the edits chosen from it. */
@@ -202,6 +212,9 @@ final class GraphRename {
         final Map<String, Tally> tallies = new TreeMap<>();
         final Set<String> unplaced = new TreeSet<>();
         final Map<String, List<String>> unchecked = new TreeMap<>();
+        /** The sets with no compiled classes among the modules that can reach the method. */
+        final List<GraphService.Uncompiled> unseen = new ArrayList<>();
+
         final Map<String, String> edited = new TreeMap<>();
         final Map<String, List<Integer>> changedLines = new TreeMap<>();
         final Map<String, List<String>> unsettled = new TreeMap<>();
@@ -298,22 +311,31 @@ final class GraphRename {
             }
         }
 
-        /** Quotes the uses of the name in modules that may call the method but have no compiled classes. */
-        void unchecked(List<GraphBuild.ClassIndex> indexes, ModuleReach modules) {
-            for (String module : unbuilt(graph, indexes, reach(modules))) {
-                String prefix = module.substring(0, module.lastIndexOf(' '));
-                String set = module.substring(module.lastIndexOf(' ') + 1);
-                for (String rel : jvmFiles) {
-                    if (!inModule(graph.modules(), rel, prefix, set)) continue;
-                    String text = read(root, rel);
-                    if (text == null || !text.contains(old)) continue;
-                    JvmTokens tokens = JvmTokens.of(text);
-                    boolean namesFamily = familyTypes.stream().anyMatch(tokens::has);
-                    List<Integer> uses = tokens.uses(old).stream()
-                            .filter(i -> mayCall(tokens, i, familyTypes, namesFamily))
-                            .toList();
-                    if (!uses.isEmpty()) unchecked.put(rel, quote(text, tokens, uses));
-                }
+        /**
+         * Keeps the {@code uncompiled} sets of the modules that can call the method ({@link #reach}),
+         * and quotes the uses of the name in those sets and in the modules among them that have no
+         * class index.
+         */
+        void unchecked(
+                List<GraphBuild.ClassIndex> indexes, List<GraphService.Uncompiled> uncompiled, ModuleReach edges) {
+            Set<String> reaching = reach(edges);
+            for (GraphService.Uncompiled u : uncompiled) {
+                if (reaching == null || reaching.contains(u.prefix())) unseen.add(u);
+            }
+            List<String> unbuilt = RenameReach.unbuilt(graph, indexes, reaching);
+            Modules modules = graph.modules();
+            for (String rel : jvmFiles) {
+                boolean unread = unseen.stream().anyMatch(u -> u.holds(modules, rel))
+                        || unbuilt.stream().anyMatch(set -> RenameReach.inModule(modules, rel, set));
+                if (!unread) continue;
+                String text = read(root, rel);
+                if (text == null || !text.contains(old)) continue;
+                JvmTokens tokens = JvmTokens.of(text);
+                boolean namesFamily = familyTypes.stream().anyMatch(tokens::has);
+                List<Integer> uses = tokens.uses(old).stream()
+                        .filter(i -> mayCall(tokens, i, familyTypes, namesFamily))
+                        .toList();
+                if (!uses.isEmpty()) unchecked.put(rel, quote(text, tokens, uses));
             }
         }
 
@@ -551,32 +573,6 @@ final class GraphRename {
     }
 
     /**
-     * The module source sets ({@code prefix set}) that hold JVM sources but no compiled classes,
-     * among {@code reaching} (module prefixes; {@code null} for every module).
-     */
-    private static List<String> unbuilt(
-            CodeGraph graph, List<GraphBuild.ClassIndex> indexes, @Nullable Set<String> reaching) {
-        Set<String> have = new TreeSet<>();
-        for (GraphBuild.ClassIndex c : indexes) {
-            have.add(c.modulePrefix() + " " + c.sourceSet());
-        }
-        Modules modules = graph.modules();
-        Set<String> missing = new TreeSet<>();
-        for (GraphNode n : graph.nodes()) {
-            String rel = n.sourceFile();
-            if (rel.isEmpty() || !Extractors.isJvmSource(rel) || rel.contains("/resources/")) continue;
-            String set = ClassSources.set(modules, rel);
-            if (set == null) continue;
-            Modules.Module m = modules.of(rel);
-            String prefix = m == null ? "" : m.prefix();
-            if (reaching != null && !reaching.contains(prefix)) continue;
-            String key = prefix + " " + set;
-            if (!have.contains(key)) missing.add(key);
-        }
-        return List.copyOf(missing);
-    }
-
-    /**
      * True when the use at {@code token}, in a file with no compiled classes, may be the family's: a
      * call through a type that is not one of {@code familyTypes} cannot be, and a declaration or an
      * unqualified call can only be in a file that names one of them.
@@ -586,11 +582,6 @@ final class GraphRename {
         if (qualifier == null || tokens.declares(token)) return namesFamily;
         boolean typeName = !qualifier.isEmpty() && Character.isUpperCase(qualifier.charAt(0));
         return !typeName || familyTypes.contains(qualifier);
-    }
-
-    private static boolean inModule(Modules modules, String rel, String prefix, String set) {
-        Modules.Module m = modules.of(rel);
-        return (m == null ? "" : m.prefix()).equals(prefix) && set.equals(ClassSources.set(modules, rel));
     }
 
     /** The method an address names, or why there is none. */
