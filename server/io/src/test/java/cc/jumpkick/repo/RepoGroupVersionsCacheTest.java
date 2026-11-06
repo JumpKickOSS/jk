@@ -6,9 +6,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -16,9 +19,18 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 class RepoGroupVersionsCacheTest {
+
+    /** A settings.xml mirror of the remote below. */
+    @RegisterExtension
+    final LoopbackHttp mirrorA = new LoopbackHttp();
+
+    /** The mirror the settings.xml names after an edit. */
+    @RegisterExtension
+    final LoopbackHttp mirrorB = new LoopbackHttp();
 
     @BeforeEach
     void clear() {
@@ -51,6 +63,48 @@ class RepoGroupVersionsCacheTest {
 
         RepoGroup.clearProcessVersionsCache();
         assertThat(group.availableVersions(coord)).isEmpty();
+    }
+
+    /**
+     * A settings.xml edit that points a repository at another mirror is seen on the next lookup, not
+     * after the memo's TTL: the version list is the one the new mirror serves. The resident engine
+     * builds a new group from the edited settings, but the repository's own URL is unchanged, so a
+     * memo keyed or admitted by that URL would answer with what the old mirror listed.
+     */
+    @Test
+    void a_repository_routed_to_another_mirror_lists_what_that_mirror_serves(@TempDir Path tmp) throws Exception {
+        String old = MavenStub.freshVersion();
+        String added = MavenStub.freshVersion();
+        new MavenStub(mirrorA).metadata("com.example", "mirrored", old);
+        new MavenStub(mirrorB).metadata("com.example", "mirrored", old, added);
+        MavenRepo central = new RemoteStub("central.example.test").repo(tmp, "central");
+        Coordinate coord = Coordinate.of("com.example", "mirrored", "0");
+
+        RepoGroup before = RepoGroup.of(central.mirroredThrough(
+                new MavenRepo.Mirror("a", mirrorA.base(), RepoCredential.ANONYMOUS, "mirror `a`")));
+        assertThat(before.availableVersions(coord)).containsExactly(old);
+
+        RepoGroup after = RepoGroup.of(central.mirroredThrough(
+                new MavenRepo.Mirror("b", mirrorB.base(), RepoCredential.ANONYMOUS, "mirror `b`")));
+        assertThat(after.availableVersions(coord)).containsExactlyInAnyOrder(old, added);
+    }
+
+    /**
+     * Every process memo is keyed by the URLs a group's requests open: the same repository behind
+     * two mirrors is two questions, and the same repository unmirrored a third.
+     */
+    @Test
+    void the_process_identity_names_the_mirror_each_repository_is_reached_through(@TempDir Path tmp) {
+        MavenRepo central = new RemoteStub("central.example.test").repo(tmp, "central");
+        RepoGroup direct = RepoGroup.of(central);
+        RepoGroup viaA = RepoGroup.of(central.mirroredThrough(new MavenRepo.Mirror(
+                "a", URI.create("https://a.example.test/maven2/"), RepoCredential.ANONYMOUS, "mirror `a`")));
+        RepoGroup viaB = RepoGroup.of(central.mirroredThrough(new MavenRepo.Mirror(
+                "b", URI.create("https://b.example.test/maven2/"), RepoCredential.ANONYMOUS, "mirror `b`")));
+
+        assertThat(List.of(direct.processIdentity(), viaA.processIdentity(), viaB.processIdentity()))
+                .doesNotHaveDuplicates();
+        assertThat(viaA.processIdentity()).contains("a.example.test");
     }
 
     @Test
