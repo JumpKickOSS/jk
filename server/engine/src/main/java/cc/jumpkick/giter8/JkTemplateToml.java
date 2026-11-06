@@ -51,6 +51,9 @@ public final class JkTemplateToml {
      * may not ask for one, and needs no {@code internal} entry to default one.
      */
     public static final Set<String> RESERVED = Set.of(
+            "lang",
+            "template",
+            "layout",
             "name",
             "organization",
             "package",

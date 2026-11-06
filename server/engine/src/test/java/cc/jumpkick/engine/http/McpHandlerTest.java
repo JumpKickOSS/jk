@@ -566,7 +566,7 @@ class McpHandlerTest {
     void new_templates_and_preview_write_nothing(@TempDir Path parent) throws Exception {
         String templates = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":26,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"new\",\"arguments\":{\"action\":\"templates\"}}}");
-        assertThat(templates).contains("builtinLayouts");
+        assertThat(templates).contains("\"templates\"").doesNotContain("builtinLayouts");
 
         String preview = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":27,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"new\",\"arguments\":{\"name\":\"demo\",\"parentDir\":"

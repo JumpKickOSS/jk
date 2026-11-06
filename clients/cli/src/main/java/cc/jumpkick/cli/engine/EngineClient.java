@@ -24,6 +24,8 @@ import cc.jumpkick.wire.protocol.GuardTestAck;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
 import cc.jumpkick.wire.protocol.NewProjectAck;
+import cc.jumpkick.wire.protocol.NewProjectFormAck;
+import cc.jumpkick.wire.protocol.NewProjectFormRequest;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
 import cc.jumpkick.wire.protocol.ProjectInfo;
@@ -138,6 +140,12 @@ public final class EngineClient {
     public static NewProjectAck newProject(EnginePaths.Paths paths, EngineRequests.NewProjectRequest req)
             throws IOException {
         return EngineReads.newProject(paths, req);
+    }
+
+    /** The new-project form: jk's step, and the template's when {@code req} names one. */
+    public static NewProjectFormAck newProjectForm(EnginePaths.Paths paths, NewProjectFormRequest req)
+            throws IOException {
+        return EngineReads.newProjectForm(paths, req);
     }
 
     /** Module DAG for {@code jk explain -U}. */

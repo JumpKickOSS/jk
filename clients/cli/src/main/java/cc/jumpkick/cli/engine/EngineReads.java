@@ -42,6 +42,8 @@ import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
 import cc.jumpkick.wire.protocol.ModuleGraphRequest;
 import cc.jumpkick.wire.protocol.NewProjectAck;
+import cc.jumpkick.wire.protocol.NewProjectFormAck;
+import cc.jumpkick.wire.protocol.NewProjectFormRequest;
 import cc.jumpkick.wire.protocol.NewProjectRequest;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
 import cc.jumpkick.wire.protocol.PluginCommandRequest;
@@ -408,6 +410,15 @@ final class EngineReads {
                 EngineProtocol.NEW_PROJECT_ACK,
                 "new-project request",
                 NewProjectAck::decode);
+    }
+
+    static NewProjectFormAck newProjectForm(EnginePaths.Paths paths, NewProjectFormRequest req) throws IOException {
+        return request(
+                paths,
+                req.encode(),
+                EngineProtocol.NEW_PROJECT_FORM_ACK,
+                "new-project-form request",
+                NewProjectFormAck::decode);
     }
 
     /** One engine-hosted generator run: file payloads back, guards/writes stay client-side. */

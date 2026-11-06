@@ -109,7 +109,8 @@ Over HTTP, `MCP-Protocol-Version` names the session's revision; a value jk does 
 the default `tools/list` are the same under every revision.
 
 **Elicitation.** A tool may ask the human behind the client a question while its call is
-outstanding, and only of a client that declared that mode (none of today's tools asks yet). Over
+outstanding, and only of a client that declared that mode ([`new`](#new) asks for a template's
+missing answers). Over
 HTTP, when the call's `POST` sent `Accept: text/event-stream`, its response becomes an event
 stream: the `elicitation/create` request comes first, and the call's own response is the last
 event. The client answers the request in a new `POST` on the same session, which is accepted with
@@ -227,7 +228,7 @@ The whole registry:
 | **`jdk`** | List / install / uninstall (`confirm=true` for uninstall) |
 | **`node`** | Node.js: `list` (installs, jk's and other managers'), `list-remote` (`lts`, `major`), `install` (`spec`), `uninstall` (`spec` = exact version, `confirm=true`), `which` (`dir`: the project's Node.js), `pin` (`dir`, optional `spec`: writes `jk.toml` and relocks) |
 | **`doctor`** | Host health snapshot |
-| **`new`** | Scaffold; `action=templates` lists ids; `preview=true` does not write |
+| **`new`** | Scaffold, as `jk new` does: `action=templates` lists templates, `action=form` one template's questions, `params` answers them, `preview=true` does not write ([below](#new)) |
 | **`publish`** | Validate the publish bundle (dry-run). `upload=true` uploads it to the repository `[publish] repository` names, with the credential `jk repo login` / `JK_REPO_<ID>_*` holds and signing from `[publish]` (`JK_GPG_PASSPHRASE`). An agent never names a URL; a project with no `[publish] repository`, or with `central`, is refused with the fix — Central uploads stay on `jk publish` |
 | **`snapshot`** | The inner-loop install, used as a Maven `-SNAPSHOT` is: the project goes into the local Maven repo as `<version>-SNAPSHOT` and is replaced on each run; a sibling project that must see your edits depends on `g:a:<version>-SNAPSHOT` |
 | **`install`** | Install a release of the project into the local Maven repo (a version is installed once); `action=list` shows jkx tools (tool installs stay CLI-side) |
@@ -243,6 +244,32 @@ The whole registry:
 
 Start with **`run`**. The reply is the verdict. **`diagnostics`** is the detail past its cap. Do not dump full journal records. A tool
 outside the default list is called by name once `tools/list` with `extended: true` has named it. `tools/call` accepts it either way; the bind and the session are the same.
+
+### `new`
+
+`new` scaffolds with the same scaffolder and the same [template questions](templates.md#template-questions-jk-templatetoml)
+as `jk new`.
+
+- `action=templates` lists `{id, language, framework, description}` per template, and nothing
+  else: the questions would be paid for on every listing.
+- `action=form, template=<id>` lists that template's questions, one line each, as
+  [`jk new --help`](templates.md) prints them: `database: none|postgres|mysql = postgres  # Database`.
+  `layout` is there when the template renders more than one.
+- `new(template, name, params={…})` scaffolds. `params` answers the template's questions (a
+  string, or a boolean for a bool, a list of ids for a multi); `name`, `group`, `lang` and
+  `layout` are arguments of their own. `preview=true` returns the file set and writes nothing.
+
+A question the call leaves out takes its default; only a required question with no default holds
+the call up, and an agent that passes every answer is never asked anything. What happens to one
+depends on the client:
+
+| The client declared | The call |
+|---|---|
+| Form elicitation | asks the human for exactly the missing fields, one step at a time (the name, then the template's questions; a question whose condition names one being asked comes in the next round), then scaffolds. Declining creates nothing and says so |
+| No elicitation | fails (`-32602`) with one line per missing question and the values it takes, so the agent can fill them in `params` and call again rather than guess |
+
+A misfit answer (`database=oracle`) fails at once with the values the question takes, whatever the
+client declared. URL elicitation into the web wizard is not offered yet.
 
 Token, loopback bind, and how to report a hole in that gate: [Security](security.md).
 

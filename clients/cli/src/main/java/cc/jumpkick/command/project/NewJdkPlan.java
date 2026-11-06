@@ -3,14 +3,10 @@ package cc.jumpkick.command.project;
 
 import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.model.Project;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 /**
- * Pure JDK selection for {@code jk new}: parse {@code -J}, decide whether to prompt, pick an
- * auto candidate. Wizard pins are always bare majors.
+ * Parses {@code jk new --jdk}: the feature major and the pin {@code jk.toml} gets.
  */
 final class NewJdkPlan {
 
@@ -47,65 +43,5 @@ final class NewJdkPlan {
             return new Spec(major, vendor + "-" + major);
         }
         return new Spec(major, Integer.toString(major));
-    }
-
-    /** Installed candidates that can compile the chosen Java level (major ≥ floor). */
-    static List<NewJdkCandidate> eligibleInstalled(List<NewJdkCandidate> candidates, int floor) {
-        return candidates.stream()
-                .filter(NewJdkCandidate::installed)
-                .filter(c -> c.major() >= floor)
-                .toList();
-    }
-
-    /**
-     * Whether the wizard must prompt for a JDK. We only ask when the user hasn't pinned one another
-     * way ({@code module} inherits the parent; {@code hasDefault} uses the global default)
-     * <em>and</em> there's a real choice — more than one eligible installed JDK for the chosen Java
-     * level.
-     */
-    static boolean shouldPrompt(boolean module, boolean hasDefault, List<NewJdkCandidate> candidates, int floor) {
-        if (module || hasDefault) return false;
-        return eligibleInstalled(candidates, floor).size() > 1;
-    }
-
-    /**
-     * The candidate to use when not prompting:
-     *
-     * <ol>
-     *   <li>a JDK matching {@code preferredMajor} (parent's / the global default's major) — installed
-     *       first, then an installable row;
-     *   <li>else the sole eligible installed JDK;
-     *   <li>else nothing installed is eligible — fall back to {@code lts} (or the newest candidate
-     *       when the chosen Java level exceeds {@code lts}), to be installed like {@code jk jdk
-     *       install lts}.
-     * </ol>
-     */
-    static Optional<NewJdkCandidate> autoCandidate(
-            List<NewJdkCandidate> candidates, int floor, int preferredMajor, int lts) {
-        if (preferredMajor > 0) {
-            Optional<NewJdkCandidate> installedPref = candidates.stream()
-                    .filter(NewJdkCandidate::installed)
-                    .filter(c -> c.major() == preferredMajor)
-                    .findFirst();
-            if (installedPref.isPresent()) return installedPref;
-            Optional<NewJdkCandidate> anyPref =
-                    candidates.stream().filter(c -> c.major() == preferredMajor).findFirst();
-            if (anyPref.isPresent()) return anyPref;
-        }
-        List<NewJdkCandidate> eligible = eligibleInstalled(candidates, floor);
-        if (!eligible.isEmpty()) return Optional.of(eligible.get(0));
-
-        int target = floor > lts ? latestMajor(candidates) : lts;
-        Optional<NewJdkCandidate> atTarget =
-                candidates.stream().filter(c -> c.major() == target).findFirst();
-        if (atTarget.isPresent()) return atTarget;
-        return candidates.stream()
-                .filter(c -> c.major() >= floor)
-                .max(Comparator.comparingInt(NewJdkCandidate::major))
-                .or(() -> candidates.stream().findFirst());
-    }
-
-    private static int latestMajor(List<NewJdkCandidate> candidates) {
-        return candidates.stream().mapToInt(NewJdkCandidate::major).max().orElse(0);
     }
 }

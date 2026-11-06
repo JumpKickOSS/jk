@@ -21,7 +21,7 @@ class VerbRegistryTest {
     @Test
     void standard_serves_every_build_like_goal_through_one_verb() {
         VerbRegistry reg = VerbRegistry.standard(new FakeHost());
-        assertThat(reg.all()).hasSize(41);
+        assertThat(reg.all()).hasSize(42);
         HostedVerb build = verb(reg, EngineProtocol.BUILD_REQUEST);
         assertThat(build).isInstanceOf(WorkspaceBuildVerb.class);
         assertThat(build.jobKinds())

@@ -76,7 +76,7 @@ public final class FormCommand {
     }
 
     /** A POSIX shell word: bare when safe, else single-quoted. */
-    static String quote(String word) {
+    public static String quote(String word) {
         if (BARE.matcher(word).matches()) return word;
         return "'" + word.replace("'", "'\\''") + "'";
     }

@@ -1712,7 +1712,7 @@ Direct JLine imports (must be gone after 5a for `org.jline.utils`, after 5b for 
 
 Theme return-type cascade (no `org.jline` import, still break when getters return `Style`):
 `ExplainCommand` (`crossedOut`), `AuthLoginCommand`, `JdkRender`,
-`NewWizard`, `WhyCommand`, plus any `Theme.colorize` / `.bold()` / `.italic()` site
+`WhyCommand`, plus any `Theme.colorize` / `.bold()` / `.italic()` site
 `rg 'Theme\.active\(\)|AttributedStyle' clients/cli` finds.
 
 New `:cli` type: `cc.jumpkick.cli.api.Osc`. DrainView must lose `terminal.close()`.

@@ -72,6 +72,15 @@ public interface CliCommand extends Command {
     }
 
     /**
+     * Help that depends on this invocation's arguments, printed after the command's own help (the
+     * questions a chosen template adds, say); empty for none. Runs only for {@code --help}, and may
+     * ask the engine.
+     */
+    default String helpFor(List<String> args) {
+        return "";
+    }
+
+    /**
      * Execute with the parsed arguments; return the process exit code (0 = success). Parent commands
      * typically print help and return a usage exit code when invoked without a subcommand.
      */

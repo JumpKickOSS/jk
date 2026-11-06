@@ -20,8 +20,8 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk new -t <local-path|short-name|git-uri|owner/repo>} — the third mode of
- * {@code jk new}, beside the wizard and the flag path.
+ * {@code jk new -t <local-path|short-name|git-uri|owner/repo>}, and where the new-project form
+ * ends: one engine call scaffolds the template from the settled answers.
  *
  * <p>It is a mode, not a variation: the giter8 parameter map <em>is</em> the project definition, so
  * the flags this mode reads ({@code --name}, {@code --group}, {@code --lang}, {@code --layout}) are
@@ -66,16 +66,9 @@ final class NewTemplate {
             CommandWedge.printFail("New", "--template cannot be combined with --plugin");
             return Exit.USAGE;
         }
-        Map<String, String> params = new LinkedHashMap<>();
-        for (String p : args.params()) {
-            int eq = p.indexOf('=');
-            if (eq <= 0) {
-                CommandWedge.printFail("New", "--param expects key=value, got: " + p);
-                return Exit.USAGE;
-            }
-            params.put(p.substring(0, eq), p.substring(eq + 1));
-        }
-        var presetName = NewWizard.wizardPresetName(args.directory(), args.cwd());
+        Map<String, String> params = params(args.params());
+        if (params == null) return Exit.USAGE;
+        var presetName = NewArgs.presetName(args.directory(), args.cwd());
         String fileBase = Path.of(args.ref()).getFileName().toString();
         if (fileBase.endsWith(".g8")) fileBase = fileBase.substring(0, fileBase.length() - 3);
         String name = args.name();
@@ -91,7 +84,7 @@ final class NewTemplate {
         // Only an explicit --lang goes on the wire: template resolution searches every language
         // for a bare name, and hardcoding java here made kotlin-only templates unreachable.
         String resolvedLang = (args.lang() != null && !args.lang().isBlank()) ? args.lang() : null;
-        Path target = NewWizard.resolveTarget(args.directory(), args.cwd(), resolvedName);
+        Path target = NewArgs.resolveTarget(args.directory(), args.cwd(), resolvedName);
         Path parentDir = target.getParent() == null ? args.cwd() : target.getParent();
         if (officialShortName(args.ref())) {
             EngineCatalogFreshen.freshenCatalog(EnginePaths.current(), "templates", args.offline(), null, null);
@@ -158,6 +151,20 @@ final class NewTemplate {
             CommandWedge.printFail("New", e.getMessage());
             return Exit.SOFTWARE;
         }
+    }
+
+    /** {@code -p key=value} pairs in order; {@code null}, the failure printed, for one without a key. */
+    static @Nullable Map<String, String> params(List<String> pairs) {
+        Map<String, String> params = new LinkedHashMap<>();
+        for (String p : pairs) {
+            int eq = p.indexOf('=');
+            if (eq <= 0) {
+                CommandWedge.printFail("New", "--param expects key=value, got: " + p);
+                return null;
+            }
+            params.put(p.substring(0, eq), p.substring(eq + 1));
+        }
+        return params;
     }
 
     /** Short-name shaped refs: the engine owns the catalog and freshen. */
