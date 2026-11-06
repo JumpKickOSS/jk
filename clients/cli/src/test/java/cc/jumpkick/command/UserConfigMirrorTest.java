@@ -281,6 +281,56 @@ class UserConfigMirrorTest {
         assertNoRepositoryDialed();
     }
 
+    @Test
+    void latest_and_a_range_resolve_through_a_file_mirror_with_no_catalog(@TempDir Path dir) throws Exception {
+        Path disk = dir.resolve("mirror");
+        Map<String, byte[]> served = new LinkedHashMap<>();
+        MavenStub stub = new MavenStub(served)
+                .leaf("org.junit.jupiter", "junit-jupiter", DefaultTestDepsFixture.JUNIT_VERSION)
+                .leaf("org.junit.platform", "junit-platform-launcher", DefaultTestDepsFixture.JUNIT_VERSION);
+        for (String v : List.of("1.0", "1.2", "1.10")) {
+            stub.pom(CENTRAL_LIB, "central-lib", v, MavenStub.emptyPom(CENTRAL_LIB, "central-lib", v));
+        }
+        for (String v : List.of("1.0", "1.5", "2.0")) {
+            stub.pom(GOOGLE_LIB, "google-lib", v, MavenStub.emptyPom(GOOGLE_LIB, "google-lib", v));
+        }
+        // A jar without its POM is no version, and neither is a snapshot to a release selector.
+        stub.jar(CENTRAL_LIB, "central-lib", "9.0");
+        stub.pom(
+                CENTRAL_LIB,
+                "central-lib",
+                "11.0-SNAPSHOT",
+                MavenStub.emptyPom(CENTRAL_LIB, "central-lib", "11.0-SNAPSHOT"));
+        served.keySet().removeIf(path -> path.contains("maven-metadata"));
+        write(disk, served);
+        Path project = Files.createDirectories(dir.resolve("project"));
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "mirrored"
+                version = "0.1.0"
+                java = 25
+
+                [dependencies]
+                central-lib = { group = "%s", name = "central-lib", version = "latest" }
+                google-lib = { group = "%s", name = "google-lib", version = "[1.0,2.0)" }
+                """.formatted(CENTRAL_LIB, GOOGLE_LIB));
+        userConfig(origins() + mirrorOf("*", disk.toUri().toString()));
+
+        int[] exit = {-1};
+        String out = output(() -> exit[0] = run("lock", "-C", project.toString()));
+
+        assertThat(exit[0]).as(out).isZero();
+        String lock = Files.readString(project.resolve("jk-lock.toml"));
+        assertThat(lock)
+                .as("the newest version holding a POM")
+                .containsPattern("central-lib:jar:\"\\s*\nversion\\s*= \"1\\.10\"")
+                .containsPattern("google-lib:jar:\"\\s*\nversion\\s*= \"1\\.5\"")
+                .doesNotContainPattern("version\\s*= \"9\\.0\"")
+                .doesNotContain("SNAPSHOT");
+        assertThat(origins.requested()).isEmpty();
+        assertNoRepositoryDialed();
+    }
+
     /** Every library {@link #exactManifest} needs, with the JUnit defaults, as a repository tree under {@code disk}. */
     private static Path publishTo(Path disk) throws IOException {
         Map<String, byte[]> served = new LinkedHashMap<>();
@@ -290,12 +340,17 @@ class UserConfigMirrorTest {
                 .leaf("org.junit.platform", "junit-platform-launcher", DefaultTestDepsFixture.JUNIT_VERSION)
                 .leaf(GOOGLE_LIB, "google-lib", "1.0")
                 .leaf(JUMPKICK_LIB, "jk-lib", "1.0");
+        write(disk, served);
+        return disk;
+    }
+
+    /** {@code served}, each path a file under {@code disk}. */
+    private static void write(Path disk, Map<String, byte[]> served) throws IOException {
         for (Map.Entry<String, byte[]> file : served.entrySet()) {
             Path target = disk.resolve(file.getKey().substring(1));
             Files.createDirectories(target.getParent());
             Files.write(target, file.getValue());
         }
-        return disk;
     }
 
     /** As {@link #manifest}, every dependency pinned exactly. */
