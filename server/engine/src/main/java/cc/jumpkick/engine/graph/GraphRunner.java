@@ -108,14 +108,29 @@ public final class GraphRunner {
         return GraphLayout.built(root);
     }
 
+    /**
+     * One graph operation. A question answered from compiled facts (callers, a rename, …) compiles
+     * what is stale or never compiled first; building the graph ({@code jk graph build}, the first
+     * graph {@code jk new} writes) reads the classes as they are.
+     */
     public static GraphAck run(GraphRequest req, Consumer<GraphProgress> progress)
             throws IOException, InterruptedException {
-        return run(req, progress, true);
+        return run(req, progress, readsCompiledFacts(String.valueOf(req.op())));
+    }
+
+    /**
+     * Whether operation {@code op} answers from compiled facts, so its classes must be the code's
+     * as it stands: every question but {@code rules}, which answers from the guard rules alone.
+     * {@code build} asks nothing.
+     */
+    static boolean readsCompiledFacts(String op) {
+        return !"build".equals(op) && !"rules".equals(op);
     }
 
     /**
      * As {@link #run(GraphRequest, Consumer)}; {@code compile} false reads the classes as they
-     * are, which is what the refresh after a build wants (see {@link #refreshExisting}).
+     * are, which is what building the graph and the refresh after a build want (see {@link
+     * #refreshExisting}).
      */
     private static GraphAck run(GraphRequest req, Consumer<GraphProgress> progress, boolean compile)
             throws IOException, InterruptedException {

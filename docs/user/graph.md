@@ -69,7 +69,8 @@ the module's last successful build compiled. A question asked after an edit to a
 sources, or while a module's main sources have never been compiled (a fresh checkout), compiles
 that module first (a `compile` job, in the history like any other; a second or two on a typical
 module, a restore when the action cache holds it), so its calls and overrides are the code's as it
-stands, with no `jk build`. When that compile cannot run (the code does not compile yet, or a build
+stands, with no `jk build`. Building the graph asks no question and compiles nothing: the graph
+`jk new` writes, `jk graph build`, and the refresh after a build read the classes as they are. When a question's compile cannot run (the code does not compile yet, or a build
 of the checkout is running), the question is answered without it and says why in one line. A module
 with no compiled classes then contributes what its sources declare, the line names it, and a
 callers answer does not say it is complete. After an edit, an edited source contributes what its

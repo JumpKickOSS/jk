@@ -214,6 +214,29 @@ class GraphRunnerTest {
     }
 
     /**
+     * Building the graph asks no question: the first graph {@code jk new} writes, or {@code jk graph
+     * build}, compiles nothing and leaves no classes, and the first question after it compiles first.
+     */
+    @Test
+    void buildingTheGraphCompilesNothingAndTheFirstQuestionCompilesFirst(@TempDir Path tmp) throws Exception {
+        Path root = calc(tmp);
+        Javac javac = new Javac();
+        GraphRunner.compiler(javac);
+        GraphAck built = GraphRunner.run(request(root, "build", List.of()), p -> {});
+        assertThat(built.error()).isNull();
+        assertThat(javac.runs).as("no compile job").isEmpty();
+        assertThat(root.resolve("target/classes")).doesNotExist();
+        assertThat(root.resolve("target/test-classes")).doesNotExist();
+        assertThat(GraphRunner.hasGraph(root)).isTrue();
+
+        GraphAck asked = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        assertThat(javac.tests).containsExactly(false, true);
+        assertThat(asked.text()).contains("CalcTest.doubledReturnsTwiceTheValue()");
+        assertThat(GraphRunner.readsCompiledFacts("rules")).isFalse();
+        assertThat(GraphRunner.readsCompiledFacts("rename")).isTrue();
+    }
+
+    /**
      * Tests that never compiled and do not compile now are named in one line with why, and the
      * answer is not complete: their calls are missing.
      */
