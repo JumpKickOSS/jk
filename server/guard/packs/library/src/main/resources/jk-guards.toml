@@ -9,14 +9,16 @@ instead    = "the overload that takes a Locale or a Charset, spelled out"
 why        = "a library runs on machines it did not choose; a default locale or charset is a bug that ships"
 fixture    = "guard-fixtures/no-unsafe-defaults"
 
-# A Kotlin class carries its nullness in its types, so a package of Kotlin classes alone is out of
-# scope; a package with a Java class in it is marked like any other.
+# JSpecify nullness is Java's: NullAway checks only what javac compiles, Kotlin carries nullness in
+# its types, and Scala and Groovy are left to their own. A package is in scope when it holds a class
+# compiled from Java, so a package of Kotlin, Scala or Groovy alone needs no package-info, and a
+# package that mixes in one Java class is marked like any other.
 [guards.null-marked-packages]
 kind     = "annotate"
 require  = "org.jspecify.annotations.NullMarked"
 on       = "package"
-matching = { annotated-with = "!kotlin.Metadata" }
-why      = "a library's nullness is part of its API; an unmarked package leaves every caller guessing"
+matching = { source-language = "java" }
+why      = "a Java library's nullness is part of its API; an unmarked package with Java in it leaves every caller guessing"
 
 [guards.no-snapshot-versions]
 kind        = "depend"

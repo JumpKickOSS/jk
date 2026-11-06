@@ -92,7 +92,10 @@ final class KindSchemas {
                                 "field",
                                 "parameter",
                                 "test-class"),
-                        optional("matching", TABLE, "a classes-style predicate narrowing the elements"),
+                        optional(
+                                "matching",
+                                TABLE,
+                                "a classes-style predicate narrowing the elements, e.g. { source-language = \"java\" }"),
                         optional("with-value", STRING, "an attribute value the annotation must carry")),
                 List.of(new KeyGroup(List.of("require", "forbid"), true)),
                 """
