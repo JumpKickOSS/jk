@@ -31,4 +31,23 @@ class CompileSupportScalaTest {
                 .extracting(p -> p.getFileName().toString())
                 .containsExactlyInAnyOrder("Hello.scala", "Stray.scala");
     }
+
+    @Test
+    void java_under_the_scala_root_is_collected_traditional(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("src/main/scala/p"));
+        Files.writeString(tmp.resolve("src/main/scala/p/package-info.java"), "package p;");
+        Files.writeString(tmp.resolve("src/main/scala/p/Hello.scala"), "package p\nobject Hello");
+        Files.createDirectories(tmp.resolve("src/main/java"));
+        Files.writeString(tmp.resolve("src/main/java/Plain.java"), "class Plain {}");
+        assertThat(CompileSupport.collectJavaInScalaRoot(tmp, false))
+                .extracting(p -> p.getFileName().toString())
+                .containsExactly("package-info.java");
+    }
+
+    @Test
+    void java_in_scala_root_is_empty_for_simple_layout(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("src"));
+        Files.writeString(tmp.resolve("src/Main.java"), "class Main {}");
+        assertThat(CompileSupport.collectJavaInScalaRoot(tmp, true)).isEmpty();
+    }
 }

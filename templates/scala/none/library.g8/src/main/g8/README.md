@@ -11,7 +11,7 @@ jk publish       # dry-run by default; see `jk skill`
 ```
 
 Every package is `@NullMarked` (JSpecify): Scala cannot annotate a package, so its
-`package-info.java` sits in `src/main/java`.
+`package-info.java` sits beside the Scala in `src/main/scala`, which compiles it with the Scala.
 
 `jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
 tests tagged with that cost.

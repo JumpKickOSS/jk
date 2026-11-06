@@ -285,7 +285,9 @@ public final class ModuleOutputs {
                             .isEmpty()
                     || !PlannerCompile.mainGroovySources(build, moduleDir, compact)
                             .isEmpty()
-                    || !CompileSupport.collectScalaSources(moduleDir, compact).isEmpty();
+                    || !CompileSupport.collectScalaSources(moduleDir, compact).isEmpty()
+                    || !CompileSupport.collectJavaInScalaRoot(moduleDir, compact)
+                            .isEmpty();
         } catch (Exception e) {
             return true; // fail safe: treat as sourced so missing classes counts
         }

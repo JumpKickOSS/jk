@@ -99,21 +99,22 @@ public final class PlannerCompile {
     /**
      * What {@code BuildPlanner.JAVA_SOURCES} holds: the module's {@code .java} plus the extra-src
      * overlay, plus <em>every</em> {@code .scala} (a mixed Java+Scala module compiles through one
-     * Zinc session, so the Scala sources are javac's inputs too). {@code javaSeed} is the
-     * caller's already-walked {@code .java} list, so the common path does not walk twice.
+     * Zinc session, so the Scala sources are javac's inputs too) and the {@code .java} under
+     * {@code src/main/scala}. {@code javaSeed} is the caller's already-walked {@code .java} list,
+     * so the common path does not walk twice.
      */
     public static List<Path> javaAndScalaSources(
             JkBuild project, Path moduleDir, boolean compact, @Nullable List<Path> javaSeed) throws IOException {
         List<Path> extraSrcDirs = extraSourceDirs(project, moduleDir);
-        List<Path> java = javaSeed;
+        List<Path> java = CompileSupport.concatDistinct(
+                javaSeed == null ? List.of() : javaSeed, CompileSupport.collectJavaInScalaRoot(moduleDir, compact));
         List<Path> scala = CompileSupport.collectScalaSources(moduleDir, compact);
         if (!extraSrcDirs.isEmpty()) {
             java = CompileSupport.withExtraSources(java, extraSrcDirs, ".java");
             scala = CompileSupport.withExtraSources(scala, extraSrcDirs, ".scala");
         }
-        List<Path> javaSources = java == null ? List.of() : java;
-        if (scala.isEmpty()) return javaSources;
-        List<Path> withScala = new ArrayList<>(javaSources);
+        if (scala.isEmpty()) return java;
+        List<Path> withScala = new ArrayList<>(java);
         withScala.addAll(scala);
         return withScala;
     }

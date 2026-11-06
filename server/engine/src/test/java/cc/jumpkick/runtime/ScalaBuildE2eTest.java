@@ -9,6 +9,9 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.TestCaches;
+import java.lang.classfile.Attributes;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -156,6 +159,56 @@ class ScalaBuildE2eTest {
         assertThat(result.success()).isTrue();
         assertThat(project.resolve("target/classes/A.class")).exists();
         assertThat(project.resolve("target/classes/B.class")).exists();
+    }
+
+    @Test
+    void java_under_the_scala_root_compiles_jointly(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("jointroot"));
+        Files.writeString(project.resolve("jk.toml"), """
+                name    = "jointroot"
+                group   = "com.example"
+                version = "1.0.0"
+                java    = 25
+                scala   = "3.8.4"
+
+                [dependencies]
+                jspecify = { group = "org.jspecify", name = "jspecify", version = "1.0.0" }
+
+                """ + REPOS);
+        Path src = Files.createDirectories(project.resolve("src/main/scala/p"));
+        Files.writeString(src.resolve("package-info.java"), """
+                @NullMarked
+                package p;
+
+                import org.jspecify.annotations.NullMarked;
+                """);
+        Files.writeString(src.resolve("Helper.java"), """
+                package p;
+
+                public class Helper {
+                  public static String greet(Greeter g) { return g.hello(); }
+                }
+                """);
+        Files.writeString(src.resolve("Greeter.scala"), """
+                package p
+
+                class Greeter:
+                  def hello: String = "hi"
+                  def viaJava: String = Helper.greet(this)
+                """);
+
+        BuildPlanResult result = build(project, cache());
+        assertThat(result.errors()).as("errors=%s", result.errors()).isEmpty();
+        assertThat(project.resolve("target/classes/p/Helper.class")).exists();
+        assertThat(project.resolve("target/classes/p/Greeter.class")).exists();
+        Path packageInfo = project.resolve("target/classes/p/package-info.class");
+        assertThat(packageInfo).exists();
+        ClassModel model = ClassFile.of().parse(Files.readAllBytes(packageInfo));
+        List<String> annotations = model.findAttribute(Attributes.runtimeVisibleAnnotations()).stream()
+                .flatMap(a -> a.annotations().stream())
+                .map(a -> a.classSymbol().descriptorString())
+                .toList();
+        assertThat(annotations).contains("Lorg/jspecify/annotations/NullMarked;");
     }
 
     @Test

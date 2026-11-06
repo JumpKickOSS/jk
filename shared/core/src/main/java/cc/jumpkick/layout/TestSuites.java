@@ -269,12 +269,18 @@ public final class TestSuites {
         return List.of(base.resolve("scala"), base.resolve("java"));
     }
 
-    /** Collect {@code .java} under the selected suites (deduped, stable order). */
+    /**
+     * Collect {@code .java} under the selected suites (deduped, stable order), those in a suite's
+     * Scala root included: they compile jointly with its Scala.
+     */
     public static List<Path> collectJavaSources(Path projectDir, boolean compact, List<String> suites)
             throws IOException {
         LinkedHashSet<Path> out = new LinkedHashSet<>();
         for (String suite : effectiveSuites(suites)) {
             for (Path root : javaRoots(projectDir, compact, suite)) {
+                out.addAll(collectExt(root, ".java"));
+            }
+            for (Path root : scalaRoots(projectDir, compact, suite)) {
                 out.addAll(collectExt(root, ".java"));
             }
         }

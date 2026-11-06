@@ -50,6 +50,18 @@ class TestSuitesTest {
     }
 
     @Test
+    void java_in_a_suites_scala_root_is_collected(@TempDir Path tmp) throws Exception {
+        Files.createDirectories(tmp.resolve("src/test/java"));
+        Files.writeString(tmp.resolve("src/test/java/ATest.java"), "class ATest {}");
+        Files.createDirectories(tmp.resolve("src/test/scala/p"));
+        Files.writeString(tmp.resolve("src/test/scala/p/package-info.java"), "package p;");
+        Files.writeString(tmp.resolve("src/test/scala/p/BTest.scala"), "class BTest");
+        assertThat(TestSuites.collectJavaSources(tmp, false, List.of(TestSuites.DEFAULT)))
+                .extracting(p -> p.getFileName().toString())
+                .containsExactly("ATest.java", "package-info.java");
+    }
+
+    @Test
     void selection_default_is_test_suite() {
         var r = TestSelection.DEFAULT.resolve(List.of("test", "integration"));
         assertThat(r.suites()).containsExactly("test");
