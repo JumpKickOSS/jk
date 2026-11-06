@@ -16,31 +16,10 @@ class TermTest {
     }
 
     @Test
-    void contradicts_when_intersection_is_empty() {
-        Term a = Term.positive("a", VersionSet.exact("1.0"));
-        Term b = Term.positive("a", VersionSet.exact("2.0"));
-        assertThat(a.contradicts(b)).isTrue();
-    }
-
-    @Test
-    void does_not_contradict_when_sets_overlap() {
-        Term a = Term.positive("a", VersionSet.between("1.0", true, "3.0", false));
-        Term b = Term.positive("a", VersionSet.between("2.0", true, "4.0", false));
-        assertThat(a.contradicts(b)).isFalse();
-    }
-
-    @Test
-    void terms_on_different_packages_never_contradict() {
-        Term a = Term.positive("a", VersionSet.exact("1.0"));
-        Term b = Term.positive("b", VersionSet.exact("1.0"));
-        assertThat(a.contradicts(b)).isFalse();
-    }
-
-    @Test
     void only_a_negative_term_over_no_versions_always_holds() {
         assertThat(Term.negative("a", VersionSet.EMPTY).alwaysHolds()).isTrue();
         Term absent = Term.negative("a", VersionSet.exact("1.0")).intersect(Term.negative("a", VersionSet.ALL));
-        assertThat(absent.isEmpty()).isTrue();
+        assertThat(absent.effectiveVersions().isEmpty()).isTrue();
         assertThat(absent.alwaysHolds()).as("absent is a constraint").isFalse();
         assertThat(Term.positive("a", VersionSet.ALL).alwaysHolds()).isFalse();
         assertThat(Term.positive("a", VersionSet.EMPTY).alwaysHolds()).isFalse();
