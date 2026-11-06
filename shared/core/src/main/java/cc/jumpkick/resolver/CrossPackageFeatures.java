@@ -54,9 +54,8 @@ public final class CrossPackageFeatures {
                         + "` selects features, but only path= dependencies support cross-package features yet"
                         + " (workspace/git/Maven sidecar come later)");
             }
-            Path libToml = ManifestPaths.manifestIn(projectDir
-                    .resolve(Objects.requireNonNull(d.pathSource()).rawPath())
-                    .normalize());
+            Path libToml = ManifestPaths.manifestIn(
+                    Objects.requireNonNull(d.pathSource()).dir(projectDir));
             if (!Files.isRegularFile(libToml)) {
                 throw new IllegalArgumentException("dependency `"
                         + d.library()

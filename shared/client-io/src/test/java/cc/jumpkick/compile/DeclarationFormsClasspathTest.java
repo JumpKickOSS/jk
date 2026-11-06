@@ -115,6 +115,29 @@ class DeclarationFormsClasspathTest {
     }
 
     @Test
+    void a_members_path_dependency_resolves_from_the_members_directory() throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "1.0"
+
+                [workspace]
+                modules = ["app"]
+                """);
+        project("outside", "");
+        Path app = member(root, "app", """
+                [dependencies]
+                outside = { path = "../../outside" }
+                """);
+        JkBuild build = JkBuildParser.parse(app.resolve("jk.toml"));
+        Lockfile lock = lock(
+                row("com.example:outside:jar:", List.of(Scope.MAIN)), row("com.other:noise:jar:", List.of(Scope.MAIN)));
+
+        assertThat(names(lock, ClasspathResolver.COMPILE_MAIN, build, app)).containsExactly("com.example:outside:jar:");
+    }
+
+    @Test
     void a_siblings_local_jar_rides_to_its_consumer() throws Exception {
         Path root = Files.createDirectories(tmp.resolve("ws"));
         Files.writeString(root.resolve("jk.toml"), """

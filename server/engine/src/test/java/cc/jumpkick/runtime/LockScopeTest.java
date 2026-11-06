@@ -7,9 +7,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PathSource;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -137,5 +139,45 @@ class LockScopeTest {
         var scope = LockPlans.lockScope(tmp);
 
         assertThat(scope.lockDir()).isEqualTo(tmp);
+    }
+
+    @Test
+    void a_members_path_dependencies_reach_the_merged_union_relative_to_the_root(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "root"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["libs/app"]
+                """);
+        Files.createDirectories(ws.resolve("libs/app"));
+        Files.writeString(ws.resolve("libs/app/jk.toml"), """
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                outside = { path = "../../../outside" }
+
+                [variants.tier]
+                default = "paid"
+                [variants.tier.free]
+                [variants.tier.paid]
+                [variants.tier.paid.dependencies]
+                vendored = { path = "../vendored" }
+                """);
+
+        var scope = LockPlans.lockScope(ws);
+
+        assertThat(scope.effective().dependencies().byScope().values().stream()
+                        .flatMap(List::stream)
+                        .map(Dependency::pathSource)
+                        .filter(Objects::nonNull)
+                        .map(PathSource::rawPath))
+                .containsExactlyInAnyOrder("../outside", "libs/vendored");
     }
 }

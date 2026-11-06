@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.config.PathTargets;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.layout.LanguageRuntimes;
-import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
@@ -18,7 +15,6 @@ import cc.jumpkick.resolver.CrossPackageFeatures;
 import cc.jumpkick.resolver.TestEngines;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
@@ -111,9 +107,9 @@ final class ModuleRoots {
      * The lock row names a declaration stands for. A coordinate is its package key; a local jar
      * ({@code sha256 =}) is the row {@code jk lock} writes under the declaration's own name; a git
      * dependency is the row stamped with its repository and ref; a path dependency is the
-     * coordinate its target publishes — read from the target's {@code jk.toml}, or every row a
-     * path build published when the target is a Maven or Gradle project. A workspace edge is not a
-     * lock row.
+     * coordinate its target publishes, read from the target's {@code jk.toml} with the path resolved
+     * from {@code baseDir}, the declaring module's directory, or every row a path build published
+     * when the target is a Maven or Gradle project. A workspace edge is not a lock row.
      */
     private static void addDeclared(
             Set<String> roots, Dependency dep, @Nullable Path baseDir, List<Lockfile.Artifact> rows) {
@@ -159,30 +155,13 @@ final class ModuleRoots {
     private static void addFeatureExtras(
             Set<String> roots, List<Dependency> main, @Nullable Path baseDir, List<Lockfile.Artifact> rows) {
         if (baseDir == null || main.stream().noneMatch(Dependency::hasFeatureSelection)) return;
-        for (Dependency extra :
-                CrossPackageFeatures.expand(pathBase(baseDir), main).extrasList()) {
+        for (Dependency extra : CrossPackageFeatures.expand(baseDir, main).extrasList()) {
             addDeclared(roots, extra, baseDir, rows);
         }
     }
 
     /** The {@code group:artifact} a path dependency's jk target publishes, or null for a foreign target. */
     private static @Nullable String pathCoordinate(PathSource path, @Nullable Path baseDir) {
-        if (baseDir == null) return null;
-        Path manifest = ManifestPaths.manifestIn(
-                pathBase(baseDir).resolve(path.rawPath()).normalize());
-        if (!Files.isRegularFile(manifest)) return null;
-        try {
-            JkBuild target = JkBuildParser.parse(manifest);
-            return target.project().group() + ":" + target.project().name();
-        } catch (UserConfigParseException unparsed) {
-            throw unparsed; // config.toml's own error, with its position — never this site's fallback
-        } catch (IOException | RuntimeException e) {
-            return null;
-        }
-    }
-
-    /** The directory {@code jk lock} resolves path dependencies against: the lock's own. */
-    private static Path pathBase(Path moduleDir) {
-        return LockPaths.lockOwnerDir(moduleDir);
+        return baseDir == null ? null : PathTargets.coordinate(baseDir, path);
     }
 }

@@ -18,6 +18,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PathSource;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.Workspace;
@@ -44,6 +45,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -647,8 +649,60 @@ public final class LockPlans {
         for (var module : modules.entrySet()) {
             UnresolvedPins.refuse(ManifestPaths.manifestIn(module.getKey()), module.getValue());
         }
-        JkBuild effective = Variants.unionDependencies(WorkspaceMerge.merge(rootManifest, modules.values(), selection));
+        List<JkBuild> members = new ArrayList<>(modules.size());
+        modules.forEach((dir, member) -> members.add(rootRelativePaths(wsRoot, dir, member)));
+        JkBuild effective = Variants.unionDependencies(WorkspaceMerge.merge(rootManifest, members, selection));
         return new LockScope(wsRoot, effective, coordLabel(rootManifest, wsRoot), true, modules.size());
+    }
+
+    /**
+     * {@code member} with every relative {@code path} dependency, in its own tables and each variant
+     * value's, rewritten from {@code memberDir} to {@code wsRoot}. A member writes its path
+     * dependencies relative to itself; the merged manifest the lock solves resolves them from the
+     * root.
+     */
+    static JkBuild rootRelativePaths(Path wsRoot, Path memberDir, JkBuild member) {
+        if (wsRoot.equals(memberDir)) return member;
+        List<Variants.Dimension> dimensions = new ArrayList<>();
+        for (Variants.Dimension dimension : member.variants().dimensions()) {
+            Map<String, Variants.Value> values = new LinkedHashMap<>();
+            dimension
+                    .values()
+                    .forEach((name, value) -> values.put(
+                            name,
+                            new Variants.Value(
+                                    value.extraSrc(),
+                                    rootRelativePaths(wsRoot, memberDir, value.dependencies()),
+                                    value.pluginOverlays())));
+            dimensions.add(new Variants.Dimension(dimension.name(), dimension.defaultValue(), values));
+        }
+        return member.withDependencies(new JkBuild.Dependencies(rootRelativePaths(
+                        wsRoot, memberDir, member.dependencies().byScope())))
+                .withVariants(new Variants(dimensions));
+    }
+
+    private static Map<Scope, List<Dependency>> rootRelativePaths(
+            Path wsRoot, Path memberDir, Map<Scope, List<Dependency>> byScope) {
+        Map<Scope, List<Dependency>> out = new EnumMap<>(Scope.class);
+        byScope.forEach((scope, deps) -> {
+            List<Dependency> rebased = new ArrayList<>(deps.size());
+            for (Dependency d : deps) {
+                PathSource source = d.pathSource();
+                if (source == null || Path.of(source.rawPath()).isAbsolute()) {
+                    rebased.add(d);
+                    continue;
+                }
+                Path target = source.dir(memberDir.toAbsolutePath());
+                String fromRoot = wsRoot.toAbsolutePath()
+                        .normalize()
+                        .relativize(target)
+                        .toString()
+                        .replace('\\', '/');
+                rebased.add(d.withPathSource(new PathSource(fromRoot.isEmpty() ? "." : fromRoot)));
+            }
+            out.put(scope, rebased);
+        });
+        return out;
     }
 
     /**

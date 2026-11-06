@@ -202,7 +202,7 @@ public final class LockManifestDigest {
             for (Dependency d : deps) {
                 PathSource source = d.pathSource();
                 if (!d.isPath() || source == null) continue;
-                Path toml = declaringDir.resolve(source.rawPath()).normalize().resolve(ManifestPaths.MANIFEST);
+                Path toml = source.dir(declaringDir).resolve(ManifestPaths.MANIFEST);
                 if (!Files.isRegularFile(toml)) {
                     absent(toml, inputs);
                     continue;

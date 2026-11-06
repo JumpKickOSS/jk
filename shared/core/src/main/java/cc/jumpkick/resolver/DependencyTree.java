@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.config.PathTargets;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.FeatureSelection;
@@ -167,7 +168,7 @@ public final class DependencyTree {
             @Nullable List<Scope> scopeOrder,
             boolean stack,
             FeatureSelection selection) {
-        JkBuild project = selection.apply(declared);
+        JkBuild project = PathTargets.named(selection.apply(declared), projectDir);
         List<Scope> order = DependencyTreeStyle.sectionOrder(scopeOrder);
         StringBuilder out = new StringBuilder();
         // Root node: styled via rootLine, which defaults to " ● boldCoord" but

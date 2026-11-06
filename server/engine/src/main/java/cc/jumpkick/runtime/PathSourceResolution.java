@@ -39,8 +39,9 @@ public final class PathSourceResolution {
 
     /**
      * Materialize every path dependency in {@code effective} (resolving each against {@code
-     * lockRootDir} — the directory of the consuming {@code jk.toml}), augment {@code baseRepos} with
-     * each artifact's {@code file://} repo, and rewrite path deps to coordinate pins.
+     * lockRootDir}, the lock's directory: a workspace's merged manifest carries each member's path
+     * dependencies relative to it), augment {@code baseRepos} with each artifact's {@code file://}
+     * repo, and rewrite path deps to coordinate pins.
      */
     public static Prepared prepare(
             JkBuild effective, RepoGroup baseRepos, Cas cas, Path lockRootDir, Path javaHome, String jkVersion)
