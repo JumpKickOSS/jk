@@ -16,6 +16,7 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.base.TestStoreSeed;
+import cc.jumpkick.testing.MavenStub;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -62,7 +63,7 @@ class CoexistenceMirrorE2eTest {
     private static final String ARTIFACT = "only-on-nexus";
 
     /** Fresh per test, so the cache under {@code build/} cannot answer for the mirror. */
-    private final String version = "1." + Long.toString(System.nanoTime(), 36);
+    private final String version = MavenStub.freshVersion();
 
     private final String pomPath =
             "/" + GROUP_PATH + "/" + ARTIFACT + "/" + version + "/" + ARTIFACT + "-" + version + ".pom";
