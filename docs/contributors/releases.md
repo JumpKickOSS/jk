@@ -31,6 +31,18 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
 
+### 0.50.4
+
+- **The code graph is a build artifact.** Its fragments are action-cache entries, shared by every
+  worktree and clone on the machine and reclaimed by `jk cache clean` like any other; the linked
+  graph lives under `target/graph/`. `.jk/graph/` is no longer written or committed, and the next
+  refresh removes one left in a checkout. A call edge comes only from this checkout's own compile.
+- **A graph question compiles what was never compiled.** On a fresh checkout the first `callers`
+  compiles the modules with no classes (a restore when the cache holds them) before it answers;
+  when that compile cannot run, the answer names those modules and does not call itself complete.
+- **`jk status` labels its count.** The row of cached key records reads "Actions + Graph", since
+  the code graph's fragments are among them.
+
 ### 0.50.3
 
 - **Logins live in the OS keychain.** `jk repo login` and `jk auth login` keep the secret in the

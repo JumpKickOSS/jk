@@ -277,12 +277,18 @@ public final class StatusCommand implements CliCommand {
         }
     }
 
+    /**
+     * The row counting the cache's key records: one per cached action and one per code-graph
+     * fragment, which the graph keeps there so the budget and the sweep treat it alike.
+     */
+    static final String ACTION_RECORDS = "Actions + Graph";
+
     private static void printCacheSection(CacheSnapshot cache) {
         sectionHeader("Cache", null);
         CacheSnapshot c = cache != null ? cache : new CacheSnapshot("—", "—", "—");
         kv("Size on Disk", c.sizeOnDisk());
         kv("CAS Entries", c.casEntries());
-        kv("Actions Cached", c.actionsCached());
+        kv(ACTION_RECORDS, c.actionsCached());
     }
 
     // ── rendering helpers ────────────────────────────────────────────────────

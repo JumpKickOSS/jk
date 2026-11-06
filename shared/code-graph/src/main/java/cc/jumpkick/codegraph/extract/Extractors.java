@@ -14,12 +14,6 @@ public final class Extractors {
 
     private Extractors() {}
 
-    /**
-     * Bumped whenever any extractor's output changes, so cached fragments from an older extractor are
-     * not reused.
-     */
-    public static final String VERSION = "11";
-
     private static final Map<String, Extractor> BY_EXTENSION = Map.ofEntries(
             Map.entry("java", JvmSourceScanner::extract),
             Map.entry("kt", JvmSourceScanner::extract),

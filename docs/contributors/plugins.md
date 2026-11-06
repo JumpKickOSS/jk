@@ -100,7 +100,8 @@ The guarded exceptions each carry a current product invariant:
 - `graph → core`: the graph worker walks with the workspace's skip rules and writes its outputs
   atomically.
 - `graph → client-io`: the graph worker keeps its fragments as action-cache entries: the cache
-  CAS and the one key-record format.
+  CAS, the one key-record format, and the keys the engine also computes to skip indexing a class
+  set the cache holds.
 
 Publisher may use `core` test fixtures, and image-builder may use `host` test fixtures. These
 test-only edges do not enter worker publication or runtime classpaths.

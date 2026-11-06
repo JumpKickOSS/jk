@@ -154,7 +154,7 @@ class CacheCommandTest {
     }
 
     /**
-     * "Actions Cached" is a count of <em>cached actions</em>, and {@code actions/} holds three
+     * "Actions + Graph" is a count of <em>key records</em>, and {@code actions/} holds three
      * populations, not one: key records, task pointers, and Zinc analysis. A key record is one
      * file per action and the other two are per-task bookkeeping, so the sum is not "actions".
      * {@link ActionTree} owns the {@code keys} directory to count from.

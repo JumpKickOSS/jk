@@ -3,10 +3,10 @@ package cc.jumpkick.graph;
 
 import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.GraphCacheKeys;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.GraphJson;
-import cc.jumpkick.codegraph.extract.Extractors;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
@@ -19,7 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -27,25 +26,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The graph's fragments as action-cache entries, shared by every checkout and branch on the machine.
- * A file's declarations are keyed by its path, content hash and the extractor version; a class set's
- * compiled facts by the keys of the compiles that produced it, which cover the classpath, so a fact
- * is reused only where that compile would be. Each entry is a key record under {@code
+ * The graph's fragments as action-cache entries, shared by every checkout and branch on the machine,
+ * under the keys {@link GraphCacheKeys} computes. A file's declarations are keyed by its path,
+ * content hash and the extractor version; a class set's compiled facts by its module, its source set
+ * and the keys of the compiles that produced it, which cover its sources and classpath, so a fact is
+ * reused only where that compile would be. Each entry is a key record under {@code
  * actions/keys/} with one output, the fragment's compact JSON in the cache CAS, so {@code jk cache
  * clean}, the budget and the sweep treat it as any other entry. No task pointer names one, so under
  * a full budget they are evicted before a build's own outputs. Entries read or written are kept in
  * memory for the workspace until a refresh no longer needs them.
  */
 final class FragmentCache {
-
-    /** The task a declarations record names. */
-    static final String DECLARATIONS = "graph-declarations";
-
-    /** The task a compiled-facts record names. */
-    static final String CLASSES = "graph-classes";
-
-    /** The one output of a record: the fragment, or the class set's fragments by file. */
-    static final String OUTPUT = "fragment.json";
 
     private final @Nullable Path keys;
     private final @Nullable Cas cas;
@@ -62,16 +53,9 @@ final class FragmentCache {
         return new FragmentCache(cacheRoot);
     }
 
-    /** The key of {@code rel}'s declarations at content hash {@code sha}, read by the reader {@code flavor} names. */
-    static String declarationsKey(String rel, String sha, String flavor) {
-        return Hashing.sha256Hex(DECLARATIONS + "\n" + Extractors.VERSION + flavor + "\n" + rel + "\n" + sha);
-    }
-
     /** The key of a class set's compiled facts; {@code null} when no compile stamped the set, which is then never cached. */
     static @Nullable String classesKey(GraphBuild.ClassIndex c) {
-        if (c.compileKeys().isEmpty()) return null;
-        return Hashing.sha256Hex(CLASSES + "\n" + Extractors.VERSION + "\n" + c.modulePrefix() + "\n"
-                + String.join("\n", new TreeSet<>(c.compileKeys())));
+        return GraphCacheKeys.classes(c.modulePrefix(), c.sourceSet(), c.compileKeys());
     }
 
     /** The declarations stored under {@code key} for {@code rel}, else {@code null}. */
@@ -95,8 +79,8 @@ final class FragmentCache {
         declared.put(key, f);
         store(
                 key,
-                DECLARATIONS,
-                Map.of("path", rel, "sha256", sha, "extractor", Extractors.VERSION + flavor),
+                GraphCacheKeys.DECLARATIONS,
+                Map.of("path", rel, "sha256", sha, "extractor", GraphCacheKeys.VERSION + flavor),
                 MiniJson.write(GraphJson.compactTree(f, rel)));
     }
 
@@ -120,14 +104,17 @@ final class FragmentCache {
         }
     }
 
-    void putClasses(String key, List<String> compileKeys, Map<String, Fragment> byFile) {
+    /** Stores {@code c}'s compiled facts by file under {@code key}, with its class count for an engine that skips its index. */
+    void putClasses(String key, GraphBuild.ClassIndex c, Map<String, Fragment> byFile) {
         compiled.put(key, byFile);
         Map<String, Object> doc = new LinkedHashMap<>();
         byFile.forEach((rel, f) -> doc.put(rel, GraphJson.compactTree(f, rel)));
         Map<String, String> inputs = new LinkedHashMap<>();
-        inputs.put("extractor", Extractors.VERSION);
-        for (String k : new TreeSet<>(compileKeys)) inputs.put("compile:" + k, k);
-        store(key, CLASSES, inputs, MiniJson.write(doc));
+        inputs.put("extractor", GraphCacheKeys.VERSION);
+        inputs.put("set", c.sourceSet());
+        inputs.put(GraphCacheKeys.CLASS_COUNT, Integer.toString(c.classes()));
+        for (String k : new TreeSet<>(c.compileKeys())) inputs.put("compile:" + k, k);
+        store(key, GraphCacheKeys.CLASSES, inputs, MiniJson.write(doc));
     }
 
     /** Drops from memory every entry a refresh no longer reads; the cache keeps them. */
@@ -140,7 +127,7 @@ final class FragmentCache {
         if (keys == null || cas == null) return null;
         try {
             String record = Files.readString(keys.resolve(key), StandardCharsets.UTF_8);
-            String sha = ActionRecordText.parse(record).outputs().get(OUTPUT);
+            String sha = ActionRecordText.parse(record).outputs().get(GraphCacheKeys.OUTPUT);
             if (sha == null) return null;
             return MiniJson.parse(new String(cas.read(sha), StandardCharsets.UTF_8));
         } catch (NoSuchFileException absent) {
@@ -160,7 +147,8 @@ final class FragmentCache {
             cas.put(bytes, sha);
             Files.createDirectories(keys);
             AtomicWrites.replace(
-                    keys.resolve(key), ActionRecordText.render(task, key, inputs, Map.of(OUTPUT, sha), Set.of()));
+                    keys.resolve(key),
+                    ActionRecordText.render(task, key, inputs, Map.of(GraphCacheKeys.OUTPUT, sha), Set.of()));
         } catch (IOException | RuntimeException failed) {
             Log.debug("graph: cache entry " + key + " not written", failed);
         }

@@ -3,27 +3,37 @@ package cc.jumpkick.engine.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.ActionRecordText;
+import cc.jumpkick.cache.GraphCacheKeys;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.WarmWorkers;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.GraphLayout;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleInputProvenance;
+import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphProgress;
 import cc.jumpkick.wire.protocol.GraphRequest;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -37,9 +47,19 @@ class GraphRunnerTest {
         WarmWorkers.shutdown();
     }
 
+    /** The action cache the graph's fragments go to: this test's own, never the machine's. */
+    @TempDir
+    Path cache;
+
+    @BeforeEach
+    void scratchCache() {
+        System.setProperty("jk.env.JK_CACHE_DIR", cache.toString());
+    }
+
     @AfterEach
     void noCompiler() {
         GraphRunner.compiler(null);
+        System.clearProperty("jk.env.JK_CACHE_DIR");
     }
 
     /**
@@ -154,6 +174,38 @@ class GraphRunnerTest {
         assertThat(ack.note())
                 .isEqualTo("compile skipped: the code does not compile; " + root.getFileName()
                         + " has no compiled classes, so the calls made there are missing: search it for calls too");
+    }
+
+    /**
+     * Compiled facts the engine finds cached but the worker cannot read by the time it asks are
+     * indexed and asked again: the answer still holds the calls.
+     */
+    @Test
+    void cachedFactsGoneBeforeTheWorkerReadsThemAreIndexedAndAskedAgain(@TempDir Path tmp) throws Exception {
+        Path root = workspace(tmp);
+        Path classes = root.resolve("target/classes");
+        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile", "compile-key-1", List.of(), List.of(), 25, "");
+        String key = Objects.requireNonNull(GraphCacheKeys.classes("", "main", List.of("compile-key-1")));
+        byte[] unreadable = "[]".getBytes(StandardCharsets.UTF_8);
+        String sha = Hashing.sha256Hex(unreadable);
+        JkStores.cacheCas(cache).put(unreadable, sha);
+        Path record = GraphCacheKeys.record(cache, key);
+        Files.createDirectories(record.getParent());
+        Files.writeString(
+                record,
+                ActionRecordText.render(
+                        GraphCacheKeys.CLASSES,
+                        key,
+                        Map.of(GraphCacheKeys.CLASS_COUNT, "2"),
+                        Map.of(GraphCacheKeys.OUTPUT, sha),
+                        Set.of()));
+        assertThat(GraphRunner.classIndexes(root, cache, false).rows())
+                .as("the engine takes the set as cached")
+                .allSatisfy(row -> assertThat(row).startsWith("\t"));
+
+        GraphAck ack = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        assertThat(ack.error()).isNull();
+        assertThat(ack.text()).contains("OrderService.total()").contains("Complete from the compiled classes");
     }
 
     private static Path workspace(Path dir) throws Exception {
@@ -322,8 +374,10 @@ class GraphRunnerTest {
         assertThat(built.error()).isNull();
         assertThat(built.files()).isEqualTo(4);
         assertThat(built.classes()).isEqualTo(2);
-        // Declarations another run already cached on this machine are read, not extracted.
-        assertThat(built.extracted()).isBetween(0, 4);
+        assertThat(built.extracted()).isEqualTo(4);
+        assertThat(cache.resolve("actions/keys"))
+                .as("the fragments are this test's cache entries")
+                .isNotEmptyDirectory();
         assertThat(progress).isNotEmpty();
         assertThat(GraphRunner.hasGraph(root)).isTrue();
 

@@ -124,7 +124,7 @@ final class GraphRename {
             "typealias");
 
     /** One class's facts and the module directory its index came from. */
-    private record Loaded(ClassFacts facts, String prefix) {}
+    private record Loaded(ClassFacts facts, String prefix, String sourceSet) {}
 
     /** One use the compiled classes record: whether it is the family's, a declaration, its line, arity and count. */
     private record Rec(boolean mine, boolean decl, int line, int arity, int count) {}
@@ -152,8 +152,10 @@ final class GraphRename {
         if (refused != null) return refused;
         Map<String, Loaded> classes = new LinkedHashMap<>();
         for (GraphBuild.ClassIndex c : indexes) {
-            for (ClassFacts cf : FactsFormat.read(c.index()).classes().values()) {
-                classes.putIfAbsent(cf.name(), new Loaded(cf, c.modulePrefix()));
+            // The engine indexes every set for a rename: its compiled classes are what find every use.
+            Path index = Objects.requireNonNull(c.index(), "a rename reads every class set's index");
+            for (ClassFacts cf : FactsFormat.read(index).classes().values()) {
+                classes.putIfAbsent(cf.name(), new Loaded(cf, c.modulePrefix(), c.sourceSet()));
             }
         }
         Hierarchy h = new Hierarchy(classes);
@@ -252,7 +254,11 @@ final class GraphRename {
             String file = l.facts().sourceFile();
             return file == null
                     ? null
-                    : GraphBuild.find(byName, l.prefix(), pkg(l.facts().name()), file);
+                    : GraphBuild.find(
+                            byName,
+                            GraphBuild.own(graph.modules(), l.prefix(), l.sourceSet()),
+                            pkg(l.facts().name()),
+                            file);
         }
 
         /** Files every declaration and call of the name the classes record under its source file. */
@@ -541,8 +547,7 @@ final class GraphRename {
             CodeGraph graph, List<GraphBuild.ClassIndex> indexes, @Nullable Set<String> reaching) {
         Set<String> have = new TreeSet<>();
         for (GraphBuild.ClassIndex c : indexes) {
-            String file = c.index().getFileName().toString();
-            have.add(c.modulePrefix() + " " + (file.startsWith("test") ? "test" : "main"));
+            have.add(c.modulePrefix() + " " + c.sourceSet());
         }
         Modules modules = graph.modules();
         Set<String> missing = new TreeSet<>();

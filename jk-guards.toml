@@ -712,7 +712,7 @@ reason = "the graph worker walks with the workspace's skip rules and writes its 
 
 [[guards.plugin-sdk-boundary.allow]]
 in     = "plugins/graph -> shared/client-io"
-reason = "the graph worker keeps its fragments as action-cache entries: the cache CAS and the one key-record format"
+reason = "the graph worker keeps its fragments as action-cache entries: the cache CAS, the one key-record format and the keys the engine shares"
 
 [[guards.plugin-sdk-boundary.allow]]
 in     = "plugins/auditor -> shared/core"

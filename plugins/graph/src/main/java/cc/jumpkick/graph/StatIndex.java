@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.graph;
 
-import cc.jumpkick.codegraph.extract.Extractors;
+import cc.jumpkick.cache.GraphCacheKeys;
 import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.util.AtomicWrites;
@@ -103,6 +103,6 @@ final class StatIndex {
     }
 
     private static String header() {
-        return "# jk graph files, identity 2, extractors " + Extractors.VERSION;
+        return "# jk graph files, identity 2, extractors " + GraphCacheKeys.VERSION;
     }
 }
