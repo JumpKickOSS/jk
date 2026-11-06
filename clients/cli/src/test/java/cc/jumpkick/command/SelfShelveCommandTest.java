@@ -88,7 +88,7 @@ class SelfShelveCommandTest {
     void with_a_materialized_engine_the_shelved_jars_are_pinned_to_it(@TempDir Path dist) throws Exception {
         Path engineJar = Files.writeString(dist.resolve("jk-engine-" + JkVersion.VERSION + ".jar"), "engine-bytes");
         EngineInstall install = EngineInstall.current();
-        install.materializeFromFiles(JkVersion.VERSION, JkStores.storeCas(), engineJar);
+        install.materializeFromFiles(JkVersion.VERSION, JkStores.storeCas(), engineJar, true);
         Path repos = dist.resolve("repos");
         Path entry = repos.resolve("jk-local/cc/jumpkick/jk-test-runner/1.0.0");
         Files.createDirectories(entry);

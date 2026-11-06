@@ -189,9 +189,18 @@ public final class EngineInstall {
      * Ingest {@code engineJar} into the CAS, then materialize.
      */
     public Materialized materializeFromFiles(String version, Cas cas, Path engineJar) throws IOException {
+        return materializeFromFiles(version, cas, engineJar, false);
+    }
+
+    /**
+     * As {@link #materializeFromFiles(String, Cas, Path)}; {@code downgrade} lifts the refusal of an
+     * older version, as {@link #materialize(String, Cas, String, boolean)} does.
+     */
+    public Materialized materializeFromFiles(String version, Cas cas, Path engineJar, boolean downgrade)
+            throws IOException {
         String engineSha = Hashing.sha256Hex(engineJar);
         cas.putFile(engineJar, engineSha);
-        return materialize(version, cas, engineSha);
+        return materialize(version, cas, engineSha, downgrade);
     }
 
     public static Optional<Path> displaceToOld(Path live) throws IOException {
