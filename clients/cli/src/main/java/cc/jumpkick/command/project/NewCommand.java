@@ -374,6 +374,8 @@ public final class NewCommand implements CliCommand {
         if (parent != null && parent.javaRelease() > 0) {
             params.putIfAbsent("java", Integer.toString(parent.javaRelease()));
         }
+        // A template directory is the working directory's, wherever the project goes.
+        if (templateRef != null) templateRef = NewTemplate.localRef(templateRef, cwd);
         Asker asker = formAsker();
         return runForm(asker, cwd, params);
     }

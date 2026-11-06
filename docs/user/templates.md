@@ -122,7 +122,11 @@ first of java → kotlin → groovy that has the name; two frameworks in that on
 with the same name is ambiguous and the error lists both ids. `-t spring-boot` is a
 **framework**, not a template: the engine lists templates under that framework.
 
-Local path, `owner/repo`, or git/HTTPS URI also work.
+A local path, `owner/repo`, or git/HTTPS URI also works. A relative path names a directory under
+the working directory (`--dir` when given), wherever the project goes: `jk new -t ./my.g8 demo` and
+`jk new -t my.g8 demo` both scaffold from `my.g8/`. A directory counts only when it holds a
+template (a `.jk-template.toml`, a `default.properties` or `src/main/g8/`), so `-t app` still
+means the catalogue's `app` beside an `app/` that is not a template.
 
 Official catalog: [JumpKickOSS/jk-templates](https://github.com/JumpKickOSS/jk-templates)
 (overridable). Plugin jars may overlay the same `(language, framework, name)`.
