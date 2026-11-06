@@ -7,7 +7,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Answer to {@link EngineProtocol#PLUGIN_VERB_REQUEST}: whether a plugin owns the command, plus
- * output/exit. {@code found=false} → unknown-command help; non-null {@code error} → failed run.
+ * output/exit. {@code found=false} → unknown-command help; non-null {@code error} → failed run,
+ * printed after whatever output the command produced, exiting {@code exit}.
  */
 public record PluginCommandReport(@Nullable String error, boolean found, int exit, List<String> output) {
 

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.PluginClient;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
@@ -16,7 +17,6 @@ import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
-import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,8 +28,9 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Engine-hosted plugin commands: fork the active code plugin over JSONL, stream {@code command-out},
- * and return its exit code. {@code found=false} leaves unknown-command handling to the client.
+ * Engine-hosted plugin commands: fork the active code plugin over JSONL ({@link PluginBuild#fork},
+ * the launch its build steps use), stream {@code command-out}, and return its exit code.
+ * {@code found=false} leaves unknown-command handling to the client.
  */
 public final class PluginCommands {
 
@@ -95,7 +96,6 @@ public final class PluginCommands {
             }
             Path spec = specWriter.writeTempSpec();
             try {
-                Path jar = PluginBuild.workerJarFor(active, cache);
                 List<String> output = new ArrayList<>();
                 @Nullable String[] error = new String[1];
                 PluginClient client = new PluginClient(PluginBuild.code(active).protocolPrefix())
@@ -104,13 +104,15 @@ public final class PluginCommands {
                         .onOther(line -> {
                             // labels/done — not part of the command's user-facing output
                         });
-                int exit;
-                try (PluginTransfers ignored = PluginTransfers.relay(client)) {
-                    exit = client.run(PluginLaunch.javaCommand(
-                            jar, spec, PluginBuild.code(active).protocolPrefix()));
-                }
+                int exit = PluginBuild.fork(active, cache, spec, client, WorkerEnv.strict());
                 String failure = error[0];
                 if (failure != null) return PluginCommandReport.error(failure);
+                // A non-zero exit the command did not explain — the worker died before it spoke,
+                // or wrote only to stderr — fails with that stderr; a command that printed its
+                // own lines and chose its exit keeps both.
+                if (exit != 0 && (output.isEmpty() || !client.tail().isEmpty())) {
+                    return new PluginCommandReport(PluginBuild.failure(active, exit, client), true, exit, output);
+                }
                 return new PluginCommandReport(null, true, exit, output);
             } finally {
                 Files.deleteIfExists(spec);
