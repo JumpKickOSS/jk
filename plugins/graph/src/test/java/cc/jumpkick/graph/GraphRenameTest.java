@@ -321,6 +321,11 @@ class GraphRenameTest {
     }
 
     private static GraphService.Workspace service(Path root, Set<String> stale) throws IOException {
+        return service(root, stale, List.of());
+    }
+
+    private static GraphService.Workspace service(Path root, Set<String> stale, List<String> uncompiled)
+            throws IOException {
         Path classes = root.resolve("target/classes");
         FactsIndexing.Ensured e =
                 FactsIndexing.ensure(classes, FactsIndexing.indexPath(root.resolve("target"), "main"));
@@ -336,7 +341,7 @@ class GraphRenameTest {
                 List.of(),
                 List.of(),
                 null,
-                List.of());
+                uncompiled);
     }
 
     private static GraphService.Request request(String address, String to) {
@@ -368,6 +373,35 @@ class GraphRenameTest {
         Files.writeString(root.resolve(module).resolve("jk.toml"), toml);
     }
 
+    /**
+     * A module or test set with no compiled classes may hold calls the rename could not see: the
+     * answer renames what the classes record, says it is not complete, and never says the task is
+     * done once the test passes.
+     */
+    @Test
+    void aRenameWithAModuleThatHasNoCompiledClassesIsNotComplete(@TempDir Path dir) throws IOException {
+        Path root = workspace(
+                dir,
+                sources(
+                        "Calc.java",
+                        "package com.acme.shop;\n\npublic class Calc {\n    public int doubled(int n) {\n        return n * 2;"
+                                + "\n    }\n}\n",
+                        "Use.java",
+                        "package com.acme.shop;\n\nclass Use {\n    int four(Calc c) {\n        return c.doubled(2);\n"
+                                + "    }\n}\n"));
+        String answer = GraphService.run(
+                        service(root, Set.of(), List.of("tool")),
+                        request("Calc.doubled", "twice"),
+                        GraphBuild.Progress.NONE)
+                .text();
+        assertThat(answer)
+                .startsWith("Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files.")
+                .contains("Every use the compiled classes record is renamed. Not complete: the note below names the"
+                        + " modules with no compiled classes. Test next: run(kind=test), or jk test.")
+                .doesNotContain("no search needed", "the task is done");
+        assertThat(read(root, "Use.java")).contains("return c.twice(2);");
+    }
+
     @Test
     void theAnswerNamesTheModulesTheRenameEditedToTest() {
         Modules modules = new Modules(List.of(
@@ -379,21 +413,25 @@ class GraphRenameTest {
                         List.of(
                                 "shared/code-graph/src/main/java/a/CodeGraph.java",
                                 "plugins/graph/src/main/java/b/GraphTools.java",
-                                "plugins/graph/src/test/java/b/GraphToolsTest.java")))
+                                "plugins/graph/src/test/java/b/GraphToolsTest.java"),
+                        true))
                 .as("by directory, sorted, the whole workspace's unrelated failures left out")
                 .isEqualTo("Test the test classes it edited: run(kind=test, only=plugins/graph,shared/code-graph,"
                         + " classes=GraphToolsTest), or jk test -m plugins/graph,shared/code-graph -S GraphToolsTest."
                         + EditedTests.DONE);
-        assertThat(EditedTests.next(modules, List.of("shared/code-graph/src/main/java/a/CodeGraph.java")))
+        assertThat(EditedTests.next(modules, List.of("shared/code-graph/src/main/java/a/CodeGraph.java"), true))
                 .as("no test edited: the modules' suites")
                 .isEqualTo("Test the modules it edited: run(kind=test, only=shared/code-graph), or jk test -m"
                         + " shared/code-graph." + EditedTests.DONE);
-        assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java")))
+        assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java"), true))
                 .isEqualTo("Test next: run(kind=test), or jk test." + EditedTests.DONE);
-        assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java", "src/test/java/RootTest.java")))
+        assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java", "src/test/java/RootTest.java"), true))
                 .as("a single-module project names its edited tests too")
                 .isEqualTo("Test the test classes it edited: run(kind=test, classes=RootTest), or jk test -S RootTest."
                         + EditedTests.DONE);
+        assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java"), false))
+                .as("calls a module with no compiled classes makes may be missing: never done")
+                .isEqualTo("Test next: run(kind=test), or jk test.");
     }
 
     private static final Map<String, String> SIZES = sources(

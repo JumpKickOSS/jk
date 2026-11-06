@@ -145,7 +145,8 @@ public final class GraphRunner {
             String skipped = compiled.line();
             if (skipped != null) ack = withLine(ack, skipped);
             String uncompiled = compiled.uncompiledLine(indexes.uncompiled());
-            return uncompiled == null ? ack : withLine(ack, uncompiled);
+            if (uncompiled != null) ack = withLine(ack, uncompiled);
+            return withUncompiled(ack, indexes.uncompiled());
         } finally {
             lock.unlock();
         }
@@ -211,12 +212,17 @@ public final class GraphRunner {
         @Nullable
         String uncompiledLine(List<String> uncompiled) {
             if (uncompiled.isEmpty()) return null;
-            boolean one = uncompiled.size() == 1;
             String why = skipped == null || earlierClasses ? "" : "compile skipped: " + skipped + "; ";
-            return why + String.join(", ", uncompiled) + (one ? " has" : " have")
-                    + " no compiled classes, so the calls made there are missing: search " + (one ? "it" : "them")
-                    + " for calls too";
+            return why + unseen(uncompiled);
         }
+    }
+
+    /** What an answer says of {@code uncompiled}, the modules and test sets with no compiled classes. */
+    public static String unseen(List<String> uncompiled) {
+        boolean one = uncompiled.size() == 1;
+        return String.join(", ", uncompiled) + (one ? " has" : " have")
+                + " no compiled classes, so the calls made there are missing: search " + (one ? "it" : "them")
+                + " for calls too";
     }
 
     /**
@@ -335,7 +341,25 @@ public final class GraphRunner {
                 ack.classes(),
                 ack.millis(),
                 ack.dir(),
-                note);
+                note,
+                ack.uncompiled());
+    }
+
+    /** {@code ack} naming {@code uncompiled}, the modules and test sets it has no compiled classes of. */
+    static GraphAck withUncompiled(GraphAck ack, List<String> uncompiled) {
+        if (!ack.ok() || uncompiled.isEmpty()) return ack;
+        return new GraphAck(
+                null,
+                ack.text(),
+                ack.nodes(),
+                ack.edges(),
+                ack.files(),
+                ack.extracted(),
+                ack.classes(),
+                ack.millis(),
+                ack.dir(),
+                ack.note(),
+                uncompiled);
     }
 
     /**
@@ -546,7 +570,8 @@ public final class GraphRunner {
                 Jsonl.intValue(json, "classes", 0),
                 Jsonl.longValue(json, "millis", 0),
                 dir == null ? "" : dir,
-                null);
+                null,
+                List.of());
     }
 
     private static Path spec(

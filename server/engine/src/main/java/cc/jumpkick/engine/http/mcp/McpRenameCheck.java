@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.engine.graph.GraphRunner;
 import cc.jumpkick.host.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,7 +12,8 @@ import java.util.regex.Pattern;
 /**
  * After an MCP {@code rename}, the check its answer names: the edited tests, then guard, run here
  * within the caller's wait, so the answer says whether the task is done. Agents otherwise spend a
- * tool call (and, on some hosts, a schema lookup) on each.
+ * tool call (and, on some hosts, a schema lookup) on each. A rename that could not see the calls
+ * of a module or test set with no compiled classes is never done: the answer names them to search.
  */
 public final class McpRenameCheck {
 
@@ -33,10 +35,11 @@ public final class McpRenameCheck {
     private McpRenameCheck() {}
 
     /**
-     * {@code renamed} followed by its check's verdicts. An answer with no test instruction (refused,
-     * nothing renamed, modules not checked) is returned as it is.
+     * {@code renamed} followed by its check's verdicts; {@code uncompiled} names the modules and test
+     * sets with no compiled classes, whose calls the rename could not see. An answer with no test
+     * instruction (refused, nothing renamed, modules not checked) is returned as it is.
      */
-    public static Map<String, Object> after(McpCall in, String renamed, long startedNanos) {
+    public static Map<String, Object> after(McpCall in, String renamed, long startedNanos, List<String> uncompiled) {
         Matcher call = TEST_CALL.matcher(renamed);
         if (!call.find()) return in.text(renamed);
         Map<String, Object> args = new LinkedHashMap<>();
@@ -58,8 +61,8 @@ public final class McpRenameCheck {
         }
         left = budget - elapsedS(startedNanos);
         if (left < GUARD_FLOOR_S) {
-            return in.text(body + "\nChecked by jk: " + firstLine(test)
-                    + ". Then run(kind=guard); when it says OK the task is done.");
+            return in.text(body + "\nChecked by jk: " + firstLine(test) + ". Then run(kind=guard)"
+                    + (uncompiled.isEmpty() ? "; when it says OK the task is done." : ". " + unseen(uncompiled)));
         }
         // Guard the modules the rename edited, as the tests ran: a workspace's whole guard can take minutes.
         Map<String, Object> guardArgs = new LinkedHashMap<>(Map.of("dir", in.requiredDir(), "kind", "guard"));
@@ -68,8 +71,19 @@ public final class McpRenameCheck {
         if (!guard.startsWith("OK")) {
             return in.text(body + "\nChecked by jk: " + firstLine(test) + ". Guard: " + guard.strip());
         }
-        return in.text(body + "\nChecked by jk: " + firstLine(test) + "; " + firstLine(guard)
-                + ". The task is done: no other build, test or search is needed.");
+        return in.text(
+                body + "\nChecked by jk: " + firstLine(test) + "; " + firstLine(guard) + ". " + done(uncompiled));
+    }
+
+    /** The answer's last sentence after a check that passed. */
+    static String done(List<String> uncompiled) {
+        return uncompiled.isEmpty()
+                ? "The task is done: no other build, test or search is needed."
+                : unseen(uncompiled);
+    }
+
+    private static String unseen(List<String> uncompiled) {
+        return GraphRunner.unseen(uncompiled) + ".";
     }
 
     private static McpCall sub(McpCall in, Map<String, Object> args, int timeoutS) {

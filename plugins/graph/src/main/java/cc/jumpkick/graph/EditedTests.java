@@ -8,7 +8,8 @@ import java.util.TreeSet;
 
 /**
  * What to test after an edit jk made: the modules holding the edited files, by directory, not the
- * whole workspace, whose unrelated failures an agent would otherwise chase.
+ * whole workspace, whose unrelated failures an agent would otherwise chase. A rename the tests of
+ * the modules it edited do not prove done says so.
  */
 final class EditedTests {
 
@@ -24,8 +25,25 @@ final class EditedTests {
     static final String DONE = " A rename changes no behaviour: once that test and run(kind=guard) pass, the task"
             + " is done; a full build or test adds nothing.";
 
-    /** The line that says so; a single-module project, or an edit at the workspace root, is tested whole. */
-    static String next(Modules modules, Collection<String> edited) {
+    /**
+     * The line after a rename whose every use the compiled classes record was renamed: whether it is
+     * complete, then what to test.
+     */
+    static String renamed(Modules modules, Collection<String> edited, boolean complete) {
+        return (complete
+                        ? "Every use the compiled classes record is renamed; no search needed. "
+                        : "Every use the compiled classes record is renamed. Not complete: the note below names the"
+                                + " modules with no compiled classes. ")
+                + next(modules, edited, complete);
+    }
+
+    /**
+     * The line that says so; a single-module project, or an edit at the workspace root, is tested
+     * whole. It says the task is done after the test only when {@code complete}: no module or test
+     * set lacks the compiled classes that find its calls.
+     */
+    static String next(Modules modules, Collection<String> edited, boolean complete) {
+        String done = complete ? DONE : "";
         Set<String> classes = testClasses(modules, edited);
         Set<String> touched = new TreeSet<>();
         boolean whole = false;
@@ -38,16 +56,16 @@ final class EditedTests {
             touched.add(m.prefix().substring(0, m.prefix().length() - 1));
         }
         if (whole || touched.isEmpty()) {
-            if (classes.isEmpty()) return "Test next: run(kind=test), or jk test." + DONE;
+            if (classes.isEmpty()) return "Test next: run(kind=test), or jk test." + done;
             return "Test the test classes it edited: run(kind=test, classes=" + String.join(",", classes)
-                    + "), or jk test -S " + String.join(" -S ", classes) + "." + DONE;
+                    + "), or jk test -S " + String.join(" -S ", classes) + "." + done;
         }
         String only = String.join(",", touched);
         if (classes.isEmpty()) {
-            return "Test the modules it edited: run(kind=test, only=" + only + "), or jk test -m " + only + "." + DONE;
+            return "Test the modules it edited: run(kind=test, only=" + only + "), or jk test -m " + only + "." + done;
         }
         return "Test the test classes it edited: run(kind=test, only=" + only + ", classes=" + String.join(",", classes)
-                + "), or jk test -m " + only + " -S " + String.join(" -S ", classes) + "." + DONE;
+                + "), or jk test -m " + only + " -S " + String.join(" -S ", classes) + "." + done;
     }
 
     /**

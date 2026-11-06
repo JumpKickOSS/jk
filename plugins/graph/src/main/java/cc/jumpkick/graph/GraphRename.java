@@ -142,11 +142,13 @@ final class GraphRename {
 
     /**
      * Renames {@code address} ({@code Type.method}, every overload, or {@code Type.method(int,
-     * String)} for one) to {@code to} under {@code root}; returns the answer.
+     * String)} for one) to {@code to} under the workspace's root; returns the answer, complete only
+     * when no module or test set lacks the compiled classes that find its calls.
      */
-    static String rename(
-            Path root, CodeGraph graph, List<GraphBuild.ClassIndex> indexes, String address, String to, int budget)
+    static String rename(GraphService.Workspace w, CodeGraph graph, String address, String to, int budget)
             throws IOException {
+        Path root = w.root();
+        List<GraphBuild.ClassIndex> indexes = w.indexes();
         if (!identifier(to)) throw new IllegalArgumentException("'" + to + "' is not a method name");
         String refused = edited(indexes);
         if (refused != null) return refused;
@@ -184,7 +186,7 @@ final class GraphRename {
         for (Map.Entry<String, String> e : run.edited.entrySet()) {
             Files.writeString(root.resolve(e.getKey()), e.getValue(), StandardCharsets.UTF_8);
         }
-        return Budget.lines(run.answer(), budget, "Raise the budget for every line");
+        return Budget.lines(run.answer(w.uncompiled().isEmpty()), budget, "Raise the budget for every line");
     }
 
     /** One rename's working state: what the classes record per file, and the edits chosen from it. */
@@ -402,16 +404,7 @@ final class GraphRename {
             }
         }
 
-        /**
-         * What to run next: the tests of the modules the rename edited, by directory, not the whole
-         * workspace, whose unrelated failures an agent would otherwise chase. A single-module
-         * project, or an edit at the workspace root, is tested whole.
-         */
-        String testNext() {
-            return EditedTests.next(graph.modules(), edited.keySet());
-        }
-
-        List<String> answer() {
+        List<String> answer(boolean complete) {
             List<String> lines = new ArrayList<>();
             lines.add("Renamed " + display(target) + " to " + to + ": " + count(declarations, "declaration") + ", "
                     + count(calls, "call") + (docs == 0 ? "" : ", " + count(docs, "doc link"))
@@ -422,7 +415,7 @@ final class GraphRename {
             }
             lines.addAll(RenameMentions.lines(mentions, old, display(target)));
             if (unsettled.isEmpty() && unplaced.isEmpty() && unchecked.isEmpty()) {
-                lines.add("Every use the compiled classes record is renamed; no search needed. " + testNext());
+                lines.add(EditedTests.renamed(graph.modules(), edited.keySet(), complete));
             }
             if (!unchecked.isEmpty()) {
                 lines.add("Not checked: these modules may call it but have no compiled classes. Each line below uses a "

@@ -234,6 +234,61 @@ class GraphRunnerTest {
     }
 
     /**
+     * A rename on a fresh checkout compiles the main sources and the tests first, so the test's call
+     * is renamed with the rest and the answer is complete.
+     */
+    @Test
+    void aRenameOnAFreshCheckoutCompilesFirstAndRenamesTheTestsCallToo(@TempDir Path tmp) throws Exception {
+        Path root = calc(tmp);
+        Javac javac = new Javac();
+        GraphRunner.compiler(javac);
+        GraphAck ack = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
+        assertThat(ack.error()).isNull();
+        assertThat(javac.tests).containsExactly(false, true);
+        assertThat(ack.text())
+                .startsWith("Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files.")
+                .contains("no search needed")
+                .contains("the task is done");
+        assertThat(ack.uncompiled()).isEmpty();
+        assertThat(root.resolve("src/main/java/demo/Calc.java")).content().contains("public int twice(int n)");
+        assertThat(root.resolve("src/test/java/demo/CalcTest.java")).content().contains("new Calc().twice(2)");
+    }
+
+    /**
+     * A rename while a test set does not compile renames what the compiled classes record, names
+     * the set, and never says the task is done: calls made there may be missing.
+     */
+    @Test
+    void aRenameWhileTestsDoNotCompileNamesThemAndIsNotDone(@TempDir Path tmp) throws Exception {
+        Path root = calc(tmp);
+        Path main = root.resolve("src/main/java/demo");
+        Files.writeString(main.resolve("Use.java"), """
+                package demo;
+
+                class Use {
+                    int four() {
+                        return new Calc().doubled(2);
+                    }
+                }
+                """);
+        Path test = root.resolve("src/test/java/demo/CalcTest.java");
+        Files.writeString(test, "package demo;\n\nclass CalcTest {\n    boolean broken() { return nope(; }\n}\n");
+        Javac javac = new Javac();
+        GraphRunner.compiler(javac);
+        GraphAck ack = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
+        assertThat(ack.error()).isNull();
+        assertThat(ack.text())
+                .startsWith("Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files.")
+                .contains("Not complete: the note below names the modules with no compiled classes.")
+                .doesNotContain("no search needed", "the task is done");
+        assertThat(ack.uncompiled()).containsExactly("src/test");
+        assertThat(ack.note())
+                .isEqualTo("compile skipped: the code does not compile; src/test has no compiled classes, so the calls"
+                        + " made there are missing: search it for calls too");
+        assertThat(main.resolve("Use.java")).content().contains("new Calc().twice(2)");
+    }
+
+    /**
      * Compiled facts the engine finds cached but the worker cannot read by the time it asks are
      * indexed and asked again: the answer still holds the calls.
      */

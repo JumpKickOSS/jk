@@ -165,7 +165,9 @@ public final class CodeGraphTool implements McpTool {
         }
         if (!ack.ok()) return in.error(String.valueOf(ack.error()));
         String text = ack.note() == null ? ack.text() : ack.text() + "\n\n[i] " + ack.note();
-        if ("rename".equals(op) && in.flagOr("check", true)) return McpRenameCheck.after(in, text, started);
+        if ("rename".equals(op) && in.flagOr("check", true)) {
+            return McpRenameCheck.after(in, text, started, ack.uncompiled());
+        }
         return in.text(text);
     }
 

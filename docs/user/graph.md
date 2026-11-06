@@ -266,6 +266,9 @@ the name is called too, uses are told apart by method body and by argument count
 still cannot be told apart (a method reference to the class's own method, a call in a `finally`
 block, which the compiler copies) is left alone and quoted under the answer, as are the uses of the
 name in a module that may call it but has no compiled classes, so the agent edits those few by hand.
+A rename compiles a never-compiled module, and its tests, first, as a question does; when that
+compile cannot run, the answer says it is not complete, never that the task is done, and the note
+names the modules and test directories whose calls it could not see.
 
 It refuses, changing nothing, when a source was edited since the build (build first), when a
 related type already declares the new name with the same parameters, or when the method overrides
