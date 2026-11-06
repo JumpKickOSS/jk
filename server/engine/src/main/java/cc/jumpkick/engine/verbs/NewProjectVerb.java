@@ -62,7 +62,8 @@ public final class NewProjectVerb implements HostedVerb {
                         wire.standalone(),
                         wire.templateParams(),
                         wire.relaxParent(),
-                        wire.targetDir());
+                        wire.targetDir(),
+                        wire.cwd());
                 NewProjectOps.Created created = NewProjectOps.createWithIdentity(req);
                 ack = NewProjectAck.of(created.path().toString(), created.projectId(), created.filesWritten());
             } catch (Exception e) {

@@ -87,9 +87,10 @@ public final class McpScaffold {
      * The scaffold request for a call. The template's form (the default template's when the call
      * names none) is settled first: the call's arguments and {@code params} answer it, defaults fill
      * the rest, and a required field still missing is asked through elicitation or named in the
-     * error ({@link McpNewForm}).
+     * error ({@link McpNewForm}). A relative template path resolves against {@code cwd}, for the form
+     * and the scaffold alike.
      */
-    public static NewProjectOps.Request request(McpCall in, String parentDir) throws IOException {
+    public static NewProjectOps.Request request(McpCall in, String parentDir, Path cwd) throws IOException {
         String name = in.str("name");
         String group = in.str("group");
         String lang = in.str("lang");
@@ -101,7 +102,7 @@ public final class McpScaffold {
                 if (e.getValue() != null) params.put(String.valueOf(e.getKey()), Values.text(e.getValue()));
             }
         }
-        NewProjectOps.TemplateForm t = NewProjectOps.templateForm(orDefault(template), lang, Path.of(parentDir));
+        NewProjectOps.TemplateForm t = NewProjectOps.templateForm(orDefault(template), lang, cwd);
         Form form = NewProjectForm.of(t);
         Map<String, Object> given = new LinkedHashMap<>(params);
         given.put("template", t.id());
@@ -119,7 +120,8 @@ public final class McpScaffold {
         for (Field f : form.fields()) passthrough.remove(f.key());
         Map<String, String> answers = new LinkedHashMap<>(NewProjectForm.templateParams(values));
         answers.putAll(passthrough);
-        return new NewProjectOps.Request(name, parentDir, group, lang, layout, t.id(), true, answers, false, null);
+        return new NewProjectOps.Request(
+                name, parentDir, group, lang, layout, t.id(), true, answers, false, null, cwd.toString());
     }
 
     private static void putIfSet(Map<String, Object> out, String key, @Nullable String value) {

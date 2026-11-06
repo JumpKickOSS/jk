@@ -9,6 +9,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.http.mcp.tools.NewTool;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.runtime.NewProjectJava;
+import cc.jumpkick.jdk.InstalledJdk;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
@@ -263,6 +266,43 @@ class McpNewFormTest {
                 .body();
         assertThat(created).as(created).contains("created");
         assertThat(parent.resolve("plain/jk.toml")).content().contains("[application]");
+    }
+
+    @Test
+    void the_app_template_targets_the_major_of_the_host_s_default_jdk() throws IOException {
+        JdkInventory inventory = new JdkInventory(temp.resolve("jdks"), temp.resolve("jk-jdks.toml"));
+        inventory.setDefault(new InstalledJdk("temurin-21.0.7", temp.resolve("jdks/temurin-21.0.7")));
+        NewProjectJava.inventory(() -> inventory);
+        try {
+            String session = initialize("2025-11-25", "{}");
+            String created = mcp.handle(
+                            rpc(Map.of("template", "app", "name", "hosted", "parentDir", parent.toString())), session)
+                    .body();
+            assertThat(created).as(created).contains("created");
+            assertThat(parent.resolve("hosted/jk.toml")).content().contains("java = 21");
+        } finally {
+            NewProjectJava.inventory(null);
+        }
+    }
+
+    @Test
+    void a_relative_template_path_resolves_against_the_bound_dir_for_the_form_and_the_scaffold() throws IOException {
+        Path work = Files.createDirectories(temp.resolve("work"));
+        Path mine = Files.createDirectories(work.resolve("mine.g8/src/main/g8"));
+        Files.writeString(work.resolve("mine.g8/default.properties"), "name=demo\n");
+        Files.writeString(mine.resolve("jk.toml"), "name = \"$name$\"\nfrom = \"work\"\n");
+        String session = initialize("2025-11-25", "{}");
+
+        String form = mcp.handle(rpc(Map.of("action", "form", "template", "mine.g8", "dir", work.toString())), session)
+                .body();
+        assertThat(form).as(form).contains(work.resolve("mine.g8").toString());
+
+        // No parentDir: the project goes beside the bound dir, and the template is still the bound dir's.
+        String created = mcp.handle(
+                        rpc(Map.of("template", "mine.g8", "name", "beside", "dir", work.toString())), session)
+                .body();
+        assertThat(created).as(created).contains("created");
+        assertThat(temp.resolve("beside/jk.toml")).content().contains("from = \"work\"");
     }
 
     private String call(Map<String, Object> extra) {

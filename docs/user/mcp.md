@@ -262,6 +262,10 @@ as `jk new`.
   (lowercase letters, digits and `-`), `group`, `lang`, `layout` and `parentDir` (the form's
   `dir`, by default the bound project's parent) are arguments of their own. `preview=true` returns
   the file set and writes nothing.
+- `template` may be a template directory: a relative one resolves against `parentDir`, else the
+  bound project, for `action=form` and the scaffold alike. As with `jk new`, the project's `java`
+  is the major of the machine's default JDK (`jk jdk default`), or the template's own when there
+  is none, unless `params` answers `java`.
 
 A question the call leaves out takes its default; only a required question with no default holds
 the call up, and an agent that passes every answer is never asked anything. What happens to one

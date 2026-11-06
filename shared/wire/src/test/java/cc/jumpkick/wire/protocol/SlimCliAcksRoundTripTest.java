@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -35,5 +36,27 @@ class SlimCliAcksRoundTripTest {
                 NewProjectAck.error("target directory is not empty").encode());
         assertThat(err.error()).isEqualTo("target directory is not empty");
         assertThat(err.filesWritten()).isZero();
+    }
+
+    @Test
+    void new_project_request_round_trips_the_working_directory_only_when_set() {
+        NewProjectRequest in = new NewProjectRequest(
+                "demo",
+                "/home/u",
+                null,
+                null,
+                "auto",
+                "./my.g8",
+                true,
+                Map.of("java", "21"),
+                true,
+                null,
+                "/home/u/work");
+        assertThat(NewProjectRequest.decode(in.encode())).isEqualTo(in);
+
+        NewProjectRequest bare =
+                new NewProjectRequest("demo", "/home/u", null, null, null, null, true, Map.of(), false, null, null);
+        assertThat(bare.encode()).doesNotContain("\"cwd\"");
+        assertThat(NewProjectRequest.decode(bare.encode()).cwd()).isNull();
     }
 }

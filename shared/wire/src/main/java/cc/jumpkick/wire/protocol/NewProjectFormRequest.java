@@ -7,7 +7,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The new-project form ({@code jk new} on a terminal, {@code jk new -t <ref> --help}). With no
  * {@code template} the answer is jk's own step alone; with one, that step and the template's.
- * {@code dir} is where the project will live, for resolving a template by relative path.
+ * {@code dir} is the caller's working directory, which a relative template path resolves against,
+ * as it does when the project is scaffolded.
  */
 public record NewProjectFormRequest(
         @Nullable String template,

@@ -398,7 +398,8 @@ final class EngineReads {
                                 req.standalone(),
                                 req.templateParams(),
                                 req.relaxParent(),
-                                req.targetDir())
+                                req.targetDir(),
+                                req.cwd())
                         .encode(),
                 EngineProtocol.NEW_PROJECT_ACK,
                 "new-project request",

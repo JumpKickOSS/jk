@@ -317,7 +317,10 @@ public final class EngineRequests {
     // ---- hosted plan commands ----------------------------------------------------------------
 
     /** Everything an engine-hosted {@code jk install <git-url>} fetch needs — pre-split/expanded client-side. */
-    /** Engine-hosted {@code jk new}. {@code relaxParent} skips the dashboard HOME/tmp allowlist. */
+    /**
+     * Engine-hosted {@code jk new}. {@code relaxParent} skips the dashboard HOME/tmp allowlist;
+     * {@code cwd} is the working directory a relative template path resolves against.
+     */
     public record NewProjectRequest(
             String name,
             String parentDir,
@@ -328,7 +331,8 @@ public final class EngineRequests {
             boolean standalone,
             Map<String, String> templateParams,
             boolean relaxParent,
-            @Nullable String targetDir) {}
+            @Nullable String targetDir,
+            String cwd) {}
 
     public record GitFetchRequest(
             String url, String canonicalUrl, String ref, Path cache, boolean refresh, boolean requireJkToml) {

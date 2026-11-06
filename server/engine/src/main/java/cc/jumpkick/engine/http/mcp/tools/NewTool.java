@@ -46,8 +46,8 @@ public final class NewTool implements McpTool {
                         "layout",
                         McpSchemas.string(Layout.scaffoldHelp() + " — where to place sources, not a jk.toml key"),
                         "template",
-                        McpSchemas.string(
-                                "Template id (java/spring-boot/webapp), framework/name, or name (default app)"),
+                        McpSchemas.string("Template id (java/spring-boot/webapp), framework/name, name (default app),"
+                                + " or a directory, relative to parentDir (else the bound dir)"),
                         "params",
                         params,
                         "preview",
@@ -65,7 +65,7 @@ public final class NewTool implements McpTool {
                 Map<String, Object> form = McpScaffold.form(in.str("template"), in.str("lang"), cwd(in));
                 return in.ok(McpEnvelope.of("new-form", form), "form of " + form.get("template"));
             }
-            NewProjectOps.Request req = McpScaffold.request(in, parentDir(in));
+            NewProjectOps.Request req = McpScaffold.request(in, parentDir(in), cwd(in));
             boolean preview = "preview".equalsIgnoreCase(action) || in.flag("preview");
             if (preview) {
                 return in.ok(
@@ -90,7 +90,10 @@ public final class NewTool implements McpTool {
         }
     }
 
-    /** Where a relative template path resolves: the scaffold's parent when one is known. */
+    /**
+     * Where a relative template path resolves, for the form and the scaffold alike: the
+     * {@code parentDir} argument, else the bound dir, else the home directory.
+     */
     private static Path cwd(McpCall in) {
         String parent = in.str("parentDir");
         if (parent != null && !parent.isBlank()) return Path.of(parent);

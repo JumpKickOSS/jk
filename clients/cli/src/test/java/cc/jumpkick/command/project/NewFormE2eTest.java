@@ -36,6 +36,25 @@ class NewFormE2eTest {
     }
 
     @Test
+    void help_reads_a_relative_template_from_the_dir_option(@TempDir Path dir) throws Exception {
+        Path template = template(dir);
+        for (String[] argv : new String[][] {
+            {"-C", dir.toString(), "new", "-t", "templates/java/none/asking.g8", "--help"},
+            {"new", "--dir", dir.toString(), "-t", "./templates/java/none/asking.g8", "--help"},
+        }) {
+            String[] out = new String[1];
+            int[] code = new int[1];
+            Capture.stderr(() -> out[0] = Capture.stdout(() -> code[0] = Jk.execute(argv)));
+
+            assertThat(code[0]).isZero();
+            assertThat(out[0])
+                    .as(String.join(" ", argv))
+                    .contains("Template " + template)
+                    .contains("database: none|postgres (required)  # Database");
+        }
+    }
+
+    @Test
     void a_required_question_without_a_default_names_its_flag_and_an_answer_scaffolds(@TempDir Path dir)
             throws Exception {
         Path template = template(dir);
