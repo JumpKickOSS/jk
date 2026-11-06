@@ -86,8 +86,8 @@ build against; `jk update` moves it — [Lockfile](lockfile.md#jk-update).
 
 `--lang` defaults to **java**. For a `framework/name` ref, a miss on that language walks
 java → kotlin → groovy → scala until a hit (`jk new -t grails/hello` lands on groovy).
-`jk new -l groovy` scaffolds the Groovy `app`. No catalogue template is in Scala yet, so the
-form offers java, kotlin and groovy (and `--lang node` runs the Node generators below).
+`jk new -l groovy` scaffolds the Groovy `app`, `jk new -l scala` the Scala 3 one. The form offers
+java, kotlin, groovy and scala (and `--lang node` runs the Node generators below).
 
 Layout (`traditional` vs `simple`) is **file placement**, not a `jk.toml` key —
 [Layout](layout.md). `--layout simple` sets Giter8 `simple=yes` when the template’s

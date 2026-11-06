@@ -1,0 +1,47 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+java = $java$
+scala = "3.10.0"
+
+# The library starter pack wants every package @NullMarked. Scala cannot annotate a package, so a
+# package-info.java in the Java sources carries it.
+[dependencies]
+jspecify = "1.0.1"
+$if(deps_guava.truthy)$
+guava = "33.8.0-jre"
+$endif$
+$if(deps_commons_lang.truthy)$
+commons-lang3 = "3.21.0"
+$endif$
+$if(deps_commons_io.truthy)$
+commons-io = "2.22.0"
+$endif$
+# `jk add <library>` adds another at its newest stable release.
+
+# `git.properties` in the jar: the commit, branch and dirty flag the library was built from.
+[build-info]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"

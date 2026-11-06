@@ -174,11 +174,13 @@ class Giter8TemplateIndexTest {
     }
 
     @Test
-    void default_lang_prefers_java_then_kotlin_then_groovy() {
+    void default_lang_prefers_java_then_kotlin_then_groovy_then_scala() {
         assertThat(Giter8ShortNames.defaultLang(List.of("groovy", "kotlin", "java")))
                 .contains("java");
         assertThat(Giter8ShortNames.defaultLang(List.of("groovy", "kotlin"))).contains("kotlin");
-        assertThat(Giter8ShortNames.defaultLang(List.of("groovy"))).contains("groovy");
+        assertThat(Giter8ShortNames.defaultLang(List.of("scala", "groovy"))).contains("groovy");
+        assertThat(Giter8ShortNames.defaultLang(List.of(" Scala "))).contains("scala");
+        assertThat(Giter8ShortNames.defaultLang(List.of("clojure"))).isEmpty();
         assertThat(Giter8ShortNames.defaultLang(List.of())).isEmpty();
     }
 

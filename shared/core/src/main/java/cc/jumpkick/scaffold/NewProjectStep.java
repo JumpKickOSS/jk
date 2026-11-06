@@ -22,8 +22,11 @@ public final class NewProjectStep {
     /** What a project is made from when nothing names a template: the blank application. */
     public static final String DEFAULT_TEMPLATE = "app";
 
-    /** The languages a catalogue template can be filed under, in the order the form offers them. */
-    public static final List<String> LANGS = List.of("java", "kotlin", "groovy");
+    /**
+     * The languages a catalogue template can be filed under, in the order the form offers them; the
+     * template index and the {@code .jk-template.toml} loader accept exactly these.
+     */
+    public static final List<String> LANGS = List.of("java", "kotlin", "groovy", "scala");
 
     /** Where the template search lists the catalogue, filtered by the language answered before it. */
     public static final String TEMPLATES_SOURCE = "/api/templates?lang={lang}";

@@ -240,7 +240,7 @@ class McpNewFormTest {
         // jk's step comes first, from the same field list the CLI and the engine's form use; dir is
         // answered by parentDir here.
         assertThat(form)
-                .contains("lang: java|kotlin|groovy = java  # Language")
+                .contains("lang: java|kotlin|groovy|scala = java  # Language")
                 .contains("template: search = app  # Template")
                 .contains("name: text /[a-z][a-z0-9-]*/ (required)  # Name")
                 .contains("group: text")

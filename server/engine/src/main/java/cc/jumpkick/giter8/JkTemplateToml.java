@@ -8,6 +8,7 @@ import cc.jumpkick.form.FormException;
 import cc.jumpkick.form.Option;
 import cc.jumpkick.form.Step;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.scaffold.NewProjectStep;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -184,7 +185,8 @@ public final class JkTemplateToml {
         }
         String language = requireIdent(stringOf(r, "language", displayPath), "language", displayPath);
         if (!isLang(language)) {
-            throw new IllegalArgumentException(displayPath + ": language must be java, kotlin, or groovy");
+            throw new IllegalArgumentException(
+                    displayPath + ": language must be one of " + String.join(", ", NewProjectStep.LANGS));
         }
         String framework = requireIdent(stringOf(r, "framework", displayPath), "framework", displayPath);
         String name = requireIdent(stringOf(r, "name", displayPath), "name", displayPath);
@@ -292,7 +294,7 @@ public final class JkTemplateToml {
     }
 
     static boolean isLang(String s) {
-        return "java".equals(s) || "kotlin".equals(s) || "groovy".equals(s);
+        return NewProjectStep.LANGS.contains(s);
     }
 
     static boolean isKebab(String s) {

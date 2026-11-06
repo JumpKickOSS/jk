@@ -1,0 +1,31 @@
+language = "scala"
+framework = "none"
+name = "app"
+description = "Blank application: a main class and its test, with the libraries, fat jar and native binary you pick"
+layouts = ["traditional", "simple"]
+
+[[ask]]
+key = "deps"
+label = "Libraries"
+help = "Common libraries to start with, each pinned at today's stable release"
+kind = "multi"
+options = [
+  { id = "guava", label = "Guava" },
+  { id = "commons-lang", label = "Apache Commons Lang" },
+  { id = "commons-io", label = "Apache Commons IO" },
+]
+default = []
+
+[[ask]]
+key = "assembly"
+label = "Runnable fat jar"
+help = "jk build also writes one jar holding the app and every dependency"
+kind = "bool"
+default = false
+
+[[ask]]
+key = "native"
+label = "Native binary"
+help = "jk native builds a GraalVM executable, which ships as itself instead of in a container image"
+kind = "bool"
+default = false
