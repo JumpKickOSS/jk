@@ -13,7 +13,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.Set;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -36,11 +35,6 @@ class M2CleanTest {
         m2 = tmp.resolve("m2");
         System.setProperty("jk.m2.local", m2.toString());
         central = RepoArtifactStore.forRepository(store, "central", CENTRAL);
-    }
-
-    @AfterEach
-    void tearDown() {
-        System.clearProperty("jk.m2.local");
     }
 
     /** A file jk downloaded and last used {@code daysAgo} days ago: in the local repository, with a memo that says so. */

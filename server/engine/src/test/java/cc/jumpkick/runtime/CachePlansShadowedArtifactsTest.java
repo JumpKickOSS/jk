@@ -10,7 +10,6 @@ import cc.jumpkick.repo.RepoIdentity;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,11 +29,6 @@ class CachePlansShadowedArtifactsTest {
         store = tmp.resolve("store");
         System.setProperty("jk.env.JK_STORE_DIR", store.toString());
         System.setProperty("jk.m2.local", tmp.resolve("m2").toString());
-    }
-
-    @AfterEach
-    void tearDown() {
-        System.clearProperty("jk.m2.local");
     }
 
     private Path leave(String origin, String treeId) throws Exception {

@@ -196,72 +196,60 @@ class MavenRepoTest {
 
     @Test
     void m2integration_false_keeps_jars_in_the_named_store(@TempDir Path tempDir, @TempDir Path m2) throws Exception {
-        String previous = System.setProperty("jk.m2.local", m2.toString());
-        try {
-            byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
-            serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
-            MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, false);
+        System.setProperty("jk.m2.local", m2.toString());
+        byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
+        serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, false);
 
-            Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
-            repo.fetchArtifact(coord);
+        Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
+        repo.fetchArtifact(coord);
 
-            assertThat(RepoArtifactStore.forRepository(tempDir, "test", base).locate(MavenLayout.artifactPath(coord)))
-                    .isPresent();
-            assertThat(m2.resolve(MavenLayout.artifactPath(coord))).doesNotExist();
-        } finally {
-            restoreM2Local(previous);
-        }
+        assertThat(RepoArtifactStore.forRepository(tempDir, "test", base).locate(MavenLayout.artifactPath(coord)))
+                .isPresent();
+        assertThat(m2.resolve(MavenLayout.artifactPath(coord))).doesNotExist();
     }
 
     @Test
     void a_shared_repository_downloads_into_m2_and_keeps_only_its_memo_in_the_store(
             @TempDir Path tempDir, @TempDir Path m2, @TempDir Path settingsDir) throws Exception {
-        String previous = System.setProperty("jk.m2.local", m2.toString());
-        try {
-            declareShared(settingsDir);
-            byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
-            serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
-            MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, true);
+        System.setProperty("jk.m2.local", m2.toString());
+        declareShared(settingsDir);
+        byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
+        serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, true);
 
-            Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
-            MavenRepo.Fetched fetched = repo.fetchArtifact(coord);
+        Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
+        MavenRepo.Fetched fetched = repo.fetchArtifact(coord);
 
-            String rel = MavenLayout.artifactPath(coord);
-            Path m2Jar = m2.resolve(rel);
-            assertThat(fetched.cachePath()).isEqualTo(m2Jar);
-            assertThat(Files.readAllBytes(m2Jar)).isEqualTo(jar);
-            Path tree = Objects.requireNonNull(
-                    RepoArtifactStore.forRepository(tempDir, "test", base).root());
-            assertThat(tree.resolve(rel)).as("no second copy in the store").doesNotExist();
-            assertThat(ArtifactMemo.read(ArtifactMemo.jkPath(tree, rel)))
-                    .get()
-                    .satisfies(memo -> assertThat(memo.provesFetchedBy(m2Jar)).isTrue());
-            assertThat(m2Jar.resolveSibling("widget-1.0.jk"))
-                    .as("the local repository holds no jk file")
-                    .doesNotExist();
-        } finally {
-            restoreM2Local(previous);
-        }
+        String rel = MavenLayout.artifactPath(coord);
+        Path m2Jar = m2.resolve(rel);
+        assertThat(fetched.cachePath()).isEqualTo(m2Jar);
+        assertThat(Files.readAllBytes(m2Jar)).isEqualTo(jar);
+        Path tree = Objects.requireNonNull(
+                RepoArtifactStore.forRepository(tempDir, "test", base).root());
+        assertThat(tree.resolve(rel)).as("no second copy in the store").doesNotExist();
+        assertThat(ArtifactMemo.read(ArtifactMemo.jkPath(tree, rel)))
+                .get()
+                .satisfies(memo -> assertThat(memo.provesFetchedBy(m2Jar)).isTrue());
+        assertThat(m2Jar.resolveSibling("widget-1.0.jk"))
+                .as("the local repository holds no jk file")
+                .doesNotExist();
     }
 
     @Test
     void a_repository_settings_do_not_declare_keeps_its_jars_in_the_store_even_with_m2_integration_on(
             @TempDir Path tempDir, @TempDir Path m2) throws Exception {
-        String previous = System.setProperty("jk.m2.local", m2.toString());
-        try {
-            byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
-            serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
-            MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, true);
+        System.setProperty("jk.m2.local", m2.toString());
+        byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
+        serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, true);
 
-            Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
-            repo.fetchArtifact(coord);
+        Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
+        repo.fetchArtifact(coord);
 
-            assertThat(RepoArtifactStore.forRepository(tempDir, "test", base).locate(MavenLayout.artifactPath(coord)))
-                    .isPresent();
-            assertThat(m2.resolve(MavenLayout.artifactPath(coord))).doesNotExist();
-        } finally {
-            restoreM2Local(previous);
-        }
+        assertThat(RepoArtifactStore.forRepository(tempDir, "test", base).locate(MavenLayout.artifactPath(coord)))
+                .isPresent();
+        assertThat(m2.resolve(MavenLayout.artifactPath(coord))).doesNotExist();
     }
 
     /** The user's settings.xml declares the stub in an active profile, so Maven shares it as it does Central. */
@@ -276,15 +264,6 @@ class MavenRepoTest {
                 </settings>
                 """.formatted(base));
         System.setProperty(MavenSettings.SETTINGS_PROPERTY, xml.toString());
-    }
-
-    /** Restore {@code jk.m2.local} to its prior value (the class-level {@link #isolateM2} temp dir). */
-    private static void restoreM2Local(String previous) {
-        if (previous != null) {
-            System.setProperty("jk.m2.local", previous);
-        } else {
-            System.clearProperty("jk.m2.local");
-        }
     }
 
     @Test

@@ -11,8 +11,6 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -21,22 +19,13 @@ class ArtifactLocatorTest {
 
     private static final String CENTRAL = "central+https://repo.maven.apache.org/maven2/";
 
-    private @Nullable String priorM2;
-
     @TempDir
     Path dir;
 
     /** The local repository every test in this class means by {@code ~/.m2}: the per-test directory it points at. */
     @BeforeEach
     void pointM2At() {
-        priorM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", dir.resolve("m2").toString());
-    }
-
-    @AfterEach
-    void restoreM2() {
-        if (priorM2 == null) System.clearProperty("jk.m2.local");
-        else System.setProperty("jk.m2.local", priorM2);
     }
 
     /**

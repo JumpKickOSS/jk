@@ -50,7 +50,6 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     private static final String BY_DISCONNECT = "the client disconnected before the job finished";
     private static final String HELD_PATH = "/com/foo/leaf/maven-metadata.xml";
 
-    private @Nullable String previousM2;
     private HttpServer repo;
     private final CountDownLatch held = new CountDownLatch(1);
     private final CountDownLatch release = new CountDownLatch(1);
@@ -62,7 +61,6 @@ class CancellationPrecedenceTest extends EngineServerHarness {
 
     @BeforeEach
     void mockRepo() throws IOException {
-        previousM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", shortTempDir().toString()); // never touch the real ~/.m2
         Map<String, byte[]> served = new HashMap<>();
         seedArtifact(served, "org.junit.jupiter", "junit-jupiter", "6.1.0");
@@ -108,8 +106,6 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         release.countDown();
         if (server != null) server.close();
         if (repo != null) repo.stop(0);
-        if (previousM2 == null) System.clearProperty("jk.m2.local");
-        else System.setProperty("jk.m2.local", previousM2);
     }
 
     @Test

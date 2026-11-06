@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -550,10 +549,5 @@ class ClasspathAfterSyncTest {
     private static void centralIsTheLocalRepository(Path store) {
         System.setProperty(
                 "jk.m2.local", store.resolve("repos").resolve("central").toString());
-    }
-
-    @AfterEach
-    void forgetLocalRepository() {
-        System.clearProperty("jk.m2.local");
     }
 }

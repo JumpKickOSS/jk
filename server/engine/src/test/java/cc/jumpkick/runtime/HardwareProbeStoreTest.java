@@ -15,7 +15,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -40,26 +39,10 @@ class HardwareProbeStoreTest {
             "org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar",
             "org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar");
 
-    private final Map<String, String> saved = new HashMap<>();
-
-    @AfterEach
-    void restoreAmbientRoots() {
-        saved.forEach((k, v) -> {
-            if (v == null) System.clearProperty(k);
-            else System.setProperty(k, v);
-        });
-        saved.clear();
-    }
-
-    private void set(String key, String value) {
-        saved.putIfAbsent(key, System.getProperty(key));
-        System.setProperty(key, value);
-    }
-
     /** Point the artifact store, the Maven local repository and the cache root at this test's dirs. */
     private void redirectRoots(Path store, Path m2, Path cache) {
         System.setProperty("jk.env.JK_STORE_DIR", store.toAbsolutePath().toString());
-        set("jk.m2.local", m2.toAbsolutePath().toString());
+        System.setProperty("jk.m2.local", m2.toAbsolutePath().toString());
         System.setProperty("jk.env.JK_CACHE_DIR", cache.toAbsolutePath().toString());
     }
 

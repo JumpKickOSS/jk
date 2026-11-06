@@ -56,7 +56,6 @@ class EngineServerLameDuckTest extends EngineServerHarness {
      */
     private static final long DRAIN_DEADLINE_MS = 20_000L;
 
-    private @Nullable String previousM2;
     private @Nullable String previousTransport;
     private HttpServer repo;
     private final CountDownLatch held = new CountDownLatch(1);
@@ -68,7 +67,6 @@ class EngineServerLameDuckTest extends EngineServerHarness {
 
     @BeforeEach
     void mockRepo() throws IOException {
-        previousM2 = System.getProperty("jk.m2.local");
         previousTransport = System.getProperty(EngineTransport.TRANSPORT_PROPERTY);
         System.setProperty("jk.m2.local", shortTempDir().toString()); // never touch the real ~/.m2
         Map<String, byte[]> served = new HashMap<>();
@@ -115,8 +113,6 @@ class EngineServerLameDuckTest extends EngineServerHarness {
         if (worker != null) worker.destroyForcibly();
         if (server != null) server.close();
         if (repo != null) repo.stop(0);
-        if (previousM2 == null) System.clearProperty("jk.m2.local");
-        else System.setProperty("jk.m2.local", previousM2);
         if (previousTransport == null) System.clearProperty(EngineTransport.TRANSPORT_PROPERTY);
         else System.setProperty(EngineTransport.TRANSPORT_PROPERTY, previousTransport);
     }

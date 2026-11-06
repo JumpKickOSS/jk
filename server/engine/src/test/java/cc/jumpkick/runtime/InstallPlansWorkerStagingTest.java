@@ -18,7 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -102,10 +101,5 @@ class InstallPlansWorkerStagingTest {
     private static void centralIsTheLocalRepository(Path store) {
         System.setProperty(
                 "jk.m2.local", store.resolve("repos").resolve("central").toString());
-    }
-
-    @AfterEach
-    void forgetLocalRepository() {
-        System.clearProperty("jk.m2.local");
     }
 }

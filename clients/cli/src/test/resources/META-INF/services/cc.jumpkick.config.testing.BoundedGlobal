@@ -8,3 +8,4 @@ cc.jumpkick.cli.tui.ConfirmGlobal
 cc.jumpkick.http.testing.ConnectFaultsGlobal
 cc.jumpkick.resolve.testing.ResolveProcessCacheGlobal
 cc.jumpkick.config.testing.JkEnvGlobal
+cc.jumpkick.m2.testing.MavenLocalRepoGlobal

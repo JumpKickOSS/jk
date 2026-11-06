@@ -30,13 +30,11 @@ class TestStoreSeedTest {
     Path tmp;
 
     private @Nullable String priorHome;
-    private @Nullable String priorM2;
 
     /** The machine: the developer's {@code ~/.m2} is {@code tmp/home/.m2/repository}, nothing real is read. */
     @BeforeEach
     void isolate() {
         priorHome = System.getProperty("user.home");
-        priorM2 = System.getProperty("jk.m2.local");
         System.setProperty("user.home", tmp.resolve("home").toString());
         System.setProperty("jk.m2.local", tmp.resolve("own").toString());
     }
@@ -44,8 +42,6 @@ class TestStoreSeedTest {
     @AfterEach
     void restore() {
         if (priorHome != null) System.setProperty("user.home", priorHome);
-        if (priorM2 == null) System.clearProperty("jk.m2.local");
-        else System.setProperty("jk.m2.local", priorM2);
     }
 
     private Path userM2() {

@@ -25,7 +25,6 @@ class M2DirsTest {
 
     @AfterEach
     void clear() {
-        System.clearProperty("jk.m2.local");
         System.clearProperty("maven.repo.local");
     }
 

@@ -13,17 +13,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class PomRuntimeClasspathTest {
-
-    @AfterEach
-    void forgetM2() {
-        System.clearProperty("jk.m2.local");
-    }
 
     @BeforeEach
     void clearCaches() {
