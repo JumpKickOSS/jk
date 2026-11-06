@@ -228,7 +228,8 @@ class GradleModelQueryNetworkTest {
                 """);
         Files.writeString(root.resolve("build.gradle.kts"), "");
         Path app = Files.createDirectories(root.resolve("app"));
-        Files.writeString(app.resolve("build.gradle.kts"), """
+        Files.writeString(
+                app.resolve("build.gradle.kts"), """
                 plugins { groovy }
                 repositories { mavenCentral() }
                 dependencies {
@@ -237,8 +238,9 @@ class GradleModelQueryNetworkTest {
                     testImplementation(platform("org.apache.groovy:groovy-bom:5.0.2"))
                     testImplementation("org.apache.groovy:groovy")
                 }
+                java { toolchain { languageVersion = JavaLanguageVersion.of(%d) } }
                 tasks.withType<JavaCompile>().configureEach { options.release = 17 }
-                """);
+                """.formatted(Runtime.version().feature()));
         Path source = app.resolve("src/test/java/ws/WsTest.java");
         Files.createDirectories(source.getParent());
         Files.writeString(source, "package ws; class WsTest {}");
@@ -261,6 +263,9 @@ class GradleModelQueryNetworkTest {
         assertThat(bind.version().raw()).as(rows.toString()).isEqualTo("4.0.5");
         assertThat(Objects.requireNonNull(appBuild.project().groovy()).raw()).isEqualTo("5.0.2");
         assertThat(result.root().project().java()).isEqualTo(17);
+        assertThat(result.root().project().jdkMajor())
+                .as("a toolchain the host JDK compiles to, with Gradle's default vendor, is no jdk pin")
+                .isZero();
         assertThat(appBuild.project().java()).as("inherited from the root").isZero();
         assertThat(appBuild.build().javac().args())
                 .as("--release is jk's to pass")
