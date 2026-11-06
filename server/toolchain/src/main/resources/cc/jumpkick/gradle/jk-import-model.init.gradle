@@ -10,6 +10,7 @@
 // `-Pjk.import.plugins` is the comma-separated list of plugin ids the import knows how to map;
 // each project answers which of them it applies.
 import groovy.json.JsonOutput
+import java.util.Locale
 import groovy.json.JsonSlurper
 import groovy.transform.Field
 import org.gradle.api.Project
@@ -204,7 +205,8 @@ def describeProject(Project p, Project root, List<String> probeIds) {
         try { def lv = javaExt.toolchain.languageVersion.orNull; if (lv != null) j.toolchain = lv.asInt() } catch (Throwable ignored) { }
         try {
             def vendor = javaExt.toolchain.vendor.orNull?.toString()
-            if (vendor && !vendor.equalsIgnoreCase('any')) j.vendor = vendor
+            // The convention when the build names none prints `any vendor` (`any` on older Gradle).
+            if (vendor && !vendor.toLowerCase(Locale.ROOT).startsWith('any')) j.vendor = vendor
         } catch (Throwable ignored) { }
         try { j.sourceCompatibility = javaExt.sourceCompatibility.majorVersion } catch (Throwable ignored) { }
         try { j.targetCompatibility = javaExt.targetCompatibility.majorVersion } catch (Throwable ignored) { }
