@@ -145,6 +145,20 @@ class Giter8TemplateIndexTest {
     }
 
     @Test
+    void a_template_that_fails_lint_is_left_out_of_the_catalogue(@TempDir Path temp) throws Exception {
+        writeTemplate(temp, "java", "none", "linted-ok", "fine", "\"traditional\"");
+        writeTemplate(temp, "java", "none", "linted-bad", "undeclared property", "\"traditional\"");
+        Path bad = temp.resolve("java/none/linted-bad.g8");
+        Files.writeString(bad.resolve("default.properties"), "name=x\nflavour=sweet\n");
+
+        assertThat(JkTemplateToml.loadOrRefuse(bad)).isEmpty();
+        Giter8TemplateIndex.invalidate();
+        assertThat(Giter8TemplateIndex.picker(List.of(temp)).stream().map(TemplateSpec::id))
+                .contains("java/none/linted-ok")
+                .doesNotContain("java/none/linted-bad");
+    }
+
+    @Test
     void ignores_legacy_lang_name_g8(@TempDir Path temp) throws Exception {
         Path g8 = temp.resolve("java/cli.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));

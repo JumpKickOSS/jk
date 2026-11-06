@@ -46,6 +46,12 @@ class PluginTemplatesTest {
                     layouts = ["traditional"]
                     """);
             put(out, "templates/kotlin/demo-plug/hello.g8/default.properties", "name=k\n");
+            put(out, "templates/java/demo-plug/unlinted.g8/.jk-template.toml", """
+                    language = "java"
+                    framework = "demo-plug"
+                    name = "unlinted"
+                    """);
+            put(out, "templates/java/demo-plug/unlinted.g8/default.properties", "name=u\nflavour=sweet\n");
         }
         var d = PluginDescriptors.parse("""
                 [plugin]
@@ -55,7 +61,10 @@ class PluginTemplatesTest {
                 """, "demo-plug.toml");
         PluginTableRegistry.putBuiltIn(d, jar);
         var listed = PluginTemplates.list();
-        assertThat(listed.stream().map(TemplateSpec::id)).contains("java/demo-plug/hello", "kotlin/demo-plug/hello");
+        assertThat(listed.stream().map(TemplateSpec::id))
+                .contains("java/demo-plug/hello", "kotlin/demo-plug/hello")
+                .as("a plugin template that fails the catalogue lint is not listed")
+                .doesNotContain("java/demo-plug/unlinted");
         Path extracted = PluginTemplates.materialize("demo-plug", "java", "demo-plug", "hello");
         Path dest = dir.resolve("out");
         Giter8Apply.apply(extracted, dest, Map.of("name", "widget"));

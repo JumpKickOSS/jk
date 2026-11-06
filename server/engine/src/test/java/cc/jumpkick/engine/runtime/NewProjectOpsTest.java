@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.Symlinks;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -339,6 +340,98 @@ class NewProjectOpsTest {
     void an_unknown_jk_layout_parameter_is_refused(@TempDir Path temp) {
         assertThatThrownBy(() -> scaffoldDual(temp, null, null, Map.of("jk_layout", "sideways")))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void a_template_that_fails_lint_is_refused_naming_the_property(@TempDir Path temp) throws Exception {
+        Path g8 = askingTemplate(temp, "name=demo\nflavour=sweet\n");
+        Path parent = Files.createDirectories(temp.resolve("apps"));
+
+        assertThatThrownBy(() -> create(parent, "widget", g8, Map.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'flavour'")
+                .hasMessageContaining("internal");
+        assertThat(parent.resolve("widget")).doesNotExist();
+    }
+
+    @Test
+    void template_answers_reach_the_giter8_bindings(@TempDir Path temp) throws Exception {
+        Path g8 = askingTemplate(temp, "name=demo\n");
+        Path parent = Files.createDirectories(temp.resolve("apps"));
+
+        Path defaults = create(parent, "widget", g8, Map.of());
+        assertThat(defaults.resolve("jk.toml")).content().isEqualTo("name = \"widget\"\ndb = \"none\"\n");
+
+        Path answered = create(parent, "widget2", g8, Map.of("database", "postgres", "native", "yes"));
+        assertThat(answered.resolve("jk.toml"))
+                .content()
+                .isEqualTo("name = \"widget2\"\ndb = \"postgres\"\npostgresql = \"42\"\n[native]\n");
+
+        assertThatThrownBy(() -> create(parent, "widget3", g8, Map.of("database", "oracle")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("database must be one of none, postgres")
+                .hasMessageContaining("-p database=none|postgres");
+    }
+
+    /** A catalogue-shaped template with two asks whose jk.toml shows the bindings it got. */
+    private static Path askingTemplate(Path temp, String defaultProperties) throws IOException {
+        Path g8 = temp.resolve("templates/java/none/asking.g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve(".jk-template.toml"), """
+                language = "java"
+                framework = "none"
+                name = "asking"
+                layouts = ["traditional"]
+
+                [[ask]]
+                key = "database"
+                label = "Database"
+                kind = "choice"
+                options = ["none", "postgres"]
+                default = "none"
+
+                [[ask]]
+                key = "native"
+                label = "Native binary"
+                kind = "bool"
+                default = false
+                """);
+        Files.writeString(g8.resolve("default.properties"), defaultProperties);
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), """
+                name = "$name$"
+                db = "$database$"
+                $if(database_postgres.truthy)$
+                postgresql = "42"
+                $endif$
+                $if(native.truthy)$
+                [native]
+                $endif$
+                """);
+        return g8;
+    }
+
+    private static Path create(Path parent, String name, Path template, Map<String, String> params) throws IOException {
+        return NewProjectOps.create(new NewProjectOps.Request(
+                        name,
+                        parent.toString(),
+                        "com.acme",
+                        "java",
+                        "traditional",
+                        template.toAbsolutePath().toString(),
+                        false,
+                        null,
+                        0,
+                        false,
+                        false,
+                        false,
+                        null,
+                        List.of(),
+                        false,
+                        false,
+                        params,
+                        false,
+                        null))
+                .path();
     }
 
     /**

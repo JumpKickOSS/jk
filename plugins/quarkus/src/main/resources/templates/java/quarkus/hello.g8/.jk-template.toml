@@ -3,3 +3,6 @@ framework = "quarkus"
 name = "hello"
 description = "Quarkus REST application"
 layouts = ["traditional", "simple"]
+
+# Resolved at scaffold time to the newest stable Quarkus platform BOM; not a question.
+internal = ["quarkus_platform_version"]
