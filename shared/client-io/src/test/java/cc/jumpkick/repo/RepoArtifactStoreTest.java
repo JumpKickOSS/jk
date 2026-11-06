@@ -234,8 +234,9 @@ class RepoArtifactStoreTest {
         assertThat(RepoArtifactStore.forSource(store, "jk-local").root()).isEqualTo(store.resolve("repos/jk-local"));
         assertThat(RepoArtifactStore.forSource(store, "git:com.acme:lib:1.0+file:///tmp/x")
                         .root())
-                .as("a synthetic source reads the first-party shelf")
-                .isEqualTo(store.resolve("repos/jk-local"));
+                .as("a git or path dependency's repository is keyed by its URL, as the fetch that filled it was")
+                .isEqualTo(RepoArtifactStore.forRepository(store, "x", URI.create("file:///tmp/x"))
+                        .root());
     }
 
     @Test

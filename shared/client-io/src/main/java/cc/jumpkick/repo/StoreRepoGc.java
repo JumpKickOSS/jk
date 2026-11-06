@@ -5,6 +5,9 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.AccessLedger;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -12,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Garbage collection of the artifacts the store itself holds under {@code <store>/repos/<id>}: those of
@@ -25,8 +29,10 @@ import java.util.Set;
  * {@link #LARGE_BYTES} or more and {@link #TTL} for the rest, longer for one used on many days and
  * shorter on a full disk. A miss costs one download, checked against the lock like any other, so a
  * large file nobody has asked for in a week — an IDE distribution is hundreds of megabytes — has no
- * business staying. The first-party trees ({@code jk-local}, {@code jumpkick}) are what installs
- * shelve and are left to the install.
+ * business staying. An artifact of a {@code file:} origin that no longer holds it (the repository a
+ * path dependency was built into, pruned with the cache) cannot be fetched again and stays. The
+ * first-party trees ({@code jk-local}, {@code jumpkick}) are what installs shelve and are left to
+ * the install.
  */
 public final class StoreRepoGc {
 
@@ -56,6 +62,7 @@ public final class StoreRepoGc {
         int deleted = 0;
         long freed = 0;
         for (Path tree : trees) {
+            Path fileOrigin = fileOrigin(tree);
             Map<String, AccessLedger.Use> uses =
                     AccessLedger.at(tree.resolve(RepoArtifactStore.ACCESS_DIR)).load();
             List<Path> memos = new ArrayList<>();
@@ -65,6 +72,9 @@ public final class StoreRepoGc {
             for (Path memo : memos) {
                 Path artifact = M2Clean.artifactFor(tree, tree.relativize(memo));
                 if (artifact == null) continue; // the artifact lives elsewhere (the local repository)
+                if (fileOrigin != null && !Files.isRegularFile(fileOrigin.resolve(tree.relativize(artifact)))) {
+                    continue;
+                }
                 long size = Files.size(artifact);
                 AccessLedger.Use use = uses.get(RepoArtifactStore.useKey(tree, memo));
                 long usedAt = Files.getLastModifiedTime(memo).toMillis();
@@ -85,5 +95,17 @@ public final class StoreRepoGc {
             }
         }
         return new Report(deleted, freed);
+    }
+
+    /** The directory a {@code file:} origin names, else null (a remote, or a tree with no origin). */
+    private static @Nullable Path fileOrigin(Path tree) {
+        String origin = RepoArtifactStore.describe(tree).origin();
+        if (origin == null) return null;
+        try {
+            URI uri = new URI(origin);
+            return "file".equalsIgnoreCase(uri.getScheme()) ? Path.of(uri) : null;
+        } catch (URISyntaxException | IllegalArgumentException | FileSystemNotFoundException notLocal) {
+            return null;
+        }
     }
 }
