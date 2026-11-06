@@ -8,6 +8,7 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.command.Exit;
 import java.io.ByteArrayOutputStream;
@@ -100,6 +101,29 @@ class NewCommandTest {
     }
 
     @Test
+    void with_no_terminal_plugin_scaffolds_the_plugin_template_against_this_jk_s_sdk(@TempDir Path tempDir)
+            throws IOException {
+        Path target = tempDir.resolve("greet");
+        Run run = jk("new", "-P", "--group", "com.example", "--no-module", target.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+
+        assertThat(Files.readString(target.resolve("jk.toml")))
+                .contains("jk-plugin-sdk = \"cc.jumpkick:jk-plugin-sdk:" + JkVersion.VERSION + "\"");
+        assertThat(Files.readString(target.resolve("src/main/resources/jk-plugin.toml")))
+                .contains("id        = \"greet\"")
+                .contains("sdk       = \"" + JkVersion.VERSION + "\"")
+                .contains("protocol-prefix = \"##GREET:\"");
+        assertThat(target.resolve("src/main/resources/META-INF/services/cc.jumpkick.plugin.Plugin"))
+                .content()
+                .isEqualToIgnoringWhitespace("com.example.GreetPlugin");
+        assertThat(target.resolve("src/main/java/com/example/GreetPlugin.java")).isRegularFile();
+        assertThat(target.resolve("src/main/java/com/example/package-info.java"))
+                .isRegularFile();
+        assertThat(target.resolve("src/test/java/com/example/GreetPluginTest.java"))
+                .isRegularFile();
+    }
+
+    @Test
     void jdk_answers_the_template_s_java_level(@TempDir Path tempDir) throws IOException {
         Path target = tempDir.resolve("older");
         Run run = jk("new", "--jdk", "21", "--no-module", target.toString());
@@ -115,9 +139,9 @@ class NewCommandTest {
         refused.put(List.of("--native"), "-p native=true");
         refused.put(List.of("-d", "guava"), "-p deps=guava,commons-lang,commons-io");
         refused.put(List.of("-m", "core"), "module = \"<name>\"");
-        refused.put(List.of("-P"), "third-party-plugin");
         refused.put(List.of("--jdk", "temurin-25"), "--jdk 25");
         refused.put(List.of("-e", "-t", "cli"), "keep one");
+        refused.put(List.of("-P", "-t", "cli"), "keep one");
         int i = 0;
         for (var e : refused.entrySet()) {
             Path target = tempDir.resolve("p" + i++);

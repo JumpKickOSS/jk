@@ -100,6 +100,9 @@ test-plugin-jars = [
   "kotlin-compiler",
   "groovy-compiler",
   "spring-boot",
+  # jk publish, which stages this checkout's plugin SDK in a file repository for a plugin build
+  # (TemplateCatalogE2eTest's plugin template, ThirdPartyPluginExampleTest).
+  "publisher",
   # Rule packs the templates/ catalog declares: staged into the test sandbox store, where a
   # scaffolded project's lock looks for a first-party pack (TemplateCatalogE2eTest).
   "cc.jumpkick.guards:spring",

@@ -1,0 +1,20 @@
+# The declarative layer, which jk reads itself without running any plugin code: the table this
+# plugin owns, the keys it accepts, and where its code layer speaks. It lands at the jar root.
+[plugin]
+id        = "$name$"
+table     = "$name$"
+version   = "0.1.0"
+# The jk-plugin-sdk release the code compiles against (jk.toml [dependencies]): a consumer's lock
+# pins the worker's SDK at it. jk-compat is the oldest jk that loads the plugin.
+sdk       = "$jk_version$"
+jk-compat = ">=$jk_version$"
+
+# Typed keys for the [$name$] table: jk validates a consumer's table against them and hands the
+# code the defaulted values, never raw TOML.
+[schema]
+greeting = { type = "string", default = "hello", hint = "what `jk $name$` prints" }
+
+# The code layer: jk forks the jar as a worker, once the consumer trusts it, and reads the
+# worker's protocol lines by this prefix. It must equal the prefix the Plugin class returns.
+[code]
+protocol-prefix = "##$name;format="upper,word"$:"

@@ -35,10 +35,6 @@ class NewFlagsTest {
         module.kotlinModule = "core";
         assertThat(module.refusal())
                 .isEqualTo("jk new: --kotlin-module is gone: set module = \"<name>\" in the new jk.toml");
-
-        NewCommand plugin = new NewCommand();
-        plugin.plugin = true;
-        assertThat(plugin.refusal()).startsWith("jk new: --plugin is gone").contains("third-party-plugin");
     }
 
     @Test
@@ -81,5 +77,23 @@ class NewFlagsTest {
         init.executable = false;
         init.templateRef = "cli";
         assertThat(init.refusal()).isEqualTo("jk init: --no-executable names a template, and so does -t; keep one");
+    }
+
+    @Test
+    void plugin_names_the_plugin_template_unless_another_flag_already_names_one() {
+        NewCommand plugin = new NewCommand();
+        plugin.plugin = true;
+        assertThat(plugin.refusal()).isNull();
+        assertThat(plugin.template()).isEqualTo("plugin");
+
+        NewCommand withT = new NewCommand();
+        withT.plugin = true;
+        withT.templateRef = "cli";
+        assertThat(withT.refusal()).isEqualTo("jk new: --plugin names a template, and so does -t; keep one");
+
+        NewCommand withE = new NewCommand();
+        withE.plugin = true;
+        withE.executable = true;
+        assertThat(withE.refusal()).isEqualTo("jk new: -e names a template, and so does --plugin; keep one");
     }
 }

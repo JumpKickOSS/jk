@@ -81,8 +81,10 @@ The plugin SDK, `cc.jumpkick:jk-plugin-sdk` (with `jk-host`, its one dependency)
 jk resolves `cc.jumpkick` from jumpkick.build alone; a plugin built with Maven or Gradle finds the
 SDK on Central. A
 plugin authored outside the jk tree depends on that coordinate and declares the jk it needs with a
-`jk-compat` floor — [examples/third-party-plugin](examples/third-party-plugin/) is the complete
-shape, and the [contributor plugin guide](../contributors/plugins.md) the reference. Pre-1.0 the
+`jk-compat` floor — `jk new -P <name>` scaffolds one against the running jk's SDK (the
+[`plugin` template](templates.md#first-party-templates)),
+[examples/third-party-plugin](examples/third-party-plugin/) is the complete shape with a consumer,
+and the [contributor plugin guide](../contributors/plugins.md) the reference. Pre-1.0 the
 SPI is still additive-only by intent rather than by contract, and there is **no** public plugin
 marketplace: a consumer pins a plugin jar by content (path or Maven coordinate + required
 `sha256`).
