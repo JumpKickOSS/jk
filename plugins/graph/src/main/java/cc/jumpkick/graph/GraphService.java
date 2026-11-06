@@ -98,9 +98,9 @@ public final class GraphService {
      * graph ({@code out}) and the cache root whose action index holds the fragments ({@code cache}), every module's
      * class facts index, its modules, the script reader, the {@code [graph.aliases]} (term → outside words), for {@code rules} the guard rules
      * the engine matched to the file (one JSON object each), for {@code read} and {@code find} the
-     * locked jars and where their API indexes are kept, the modules with main sources the engine
-     * has no compiled classes of ({@code uncompiled}), whose calls no answer holds, and for a rename
-     * which modules see which ({@code reach}).
+     * locked jars and where their API indexes are kept, the modules and test suites with sources
+     * the engine has no compiled classes of ({@code uncompiled}), whose calls no answer holds, and
+     * for a rename or callers which modules see which ({@code reach}).
      */
     public record Workspace(
             Path root,
@@ -113,7 +113,7 @@ public final class GraphService {
             List<String> guardRules,
             List<LibraryApi.Jar> libraries,
             @Nullable Path apiCache,
-            List<String> uncompiled,
+            List<Uncompiled> uncompiled,
             ModuleReach reach) {
 
         public Workspace {
@@ -125,8 +125,47 @@ public final class GraphService {
         }
     }
 
-    /** An operation's text and the refresh it was answered from. */
-    public record Answer(String text, GraphBuild.Result build) {}
+    /**
+     * A module's source set with sources and no compiled classes the graph reads: its sources are
+     * the module's ({@code prefix}) under {@code dir} ({@code src/main/}, {@code src/integration/},
+     * a compact module's {@code src/}), and an answer calls it {@code name}.
+     */
+    public record Uncompiled(String prefix, String dir, String name) {
+
+        /** Whether the workspace-relative source {@code rel} is one of this set's. */
+        boolean holds(Modules modules, String rel) {
+            Modules.Module m = modules.of(rel);
+            return (m == null ? "" : m.prefix()).equals(prefix) && rel.startsWith(prefix + dir);
+        }
+    }
+
+    /**
+     * An operation's text, the refresh it was answered from, and the names of the {@link
+     * Uncompiled} sets whose calls the text may be missing.
+     */
+    public record Answer(String text, GraphBuild.Result build, List<String> uncompiled) {
+
+        public Answer {
+            uncompiled = List.copyOf(uncompiled);
+        }
+    }
+
+    /** An operation's text and the uncompiled sets it may be missing calls from, by name. */
+    record Reply(String text, List<String> uncompiled) {
+
+        Reply {
+            uncompiled = List.copyOf(uncompiled);
+        }
+
+        /** {@code text} missing the calls of every uncompiled set of {@code w}. */
+        static Reply of(Workspace w, String text) {
+            return new Reply(text, names(w.uncompiled()));
+        }
+    }
+
+    static List<String> names(List<Uncompiled> sets) {
+        return sets.stream().map(Uncompiled::name).toList();
+    }
 
     public static Answer run(Workspace w, Request r, GraphBuild.Progress progress) throws IOException {
         if (!OPS.contains(r.op())) throw new IllegalArgumentException("unknown graph operation '" + r.op() + "'");
@@ -140,7 +179,8 @@ public final class GraphService {
             build = GraphBuild.refresh(
                     w.root(), w.out(), w.cache(), w.indexes(), w.modules(), w.scripts(), r.rebuild(), progress);
         }
-        return new Answer(text(w, build, r), build);
+        Reply reply = text(w, build, r);
+        return new Answer(reply.text(), build, reply.uncompiled());
     }
 
     /**
@@ -166,7 +206,15 @@ public final class GraphService {
         return new GraphBuild.Result(graph, key.files(), 0, 0, out, 0, false, key.commit());
     }
 
-    static String text(Workspace w, GraphBuild.Result build, Request r) throws IOException {
+    static Reply text(Workspace w, GraphBuild.Result build, Request r) throws IOException {
+        if ("rename".equals(r.op())) {
+            List<String> a = r.args();
+            return GraphRename.rename(w, build.graph(), arg(a, 0, "a method"), arg(a, 1, "the new name"), r.budget());
+        }
+        return Reply.of(w, said(w, build, r));
+    }
+
+    private static String said(Workspace w, GraphBuild.Result build, Request r) throws IOException {
         CodeGraph g = build.graph();
         Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
         GraphTools tools = new GraphTools(
@@ -186,7 +234,6 @@ public final class GraphService {
                         arg(a, 0, "a method"),
                         EnvValues.parseBool(r.options().get("transitive")).orElse(false) ? r.maxHops() : 1,
                         r.budget());
-            case "rename" -> GraphRename.rename(w, g, arg(a, 0, "a method"), arg(a, 1, "the new name"), r.budget());
             case "rules" -> RulesFor.answer(g, w.root(), arg(a, 0, "a file"), w.guardRules());
             case "find" -> find(w, g, scope, r, a);
             case "read" ->

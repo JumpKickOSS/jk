@@ -322,10 +322,17 @@ class GraphRenameTest {
     }
 
     private static GraphService.Workspace service(Path root, Set<String> stale) throws IOException {
-        return service(root, stale, List.of());
+        return service(root, stale, Modules.NONE, List.of(), ModuleReach.UNKNOWN);
     }
 
-    private static GraphService.Workspace service(Path root, Set<String> stale, List<String> uncompiled)
+    private static GraphService.Workspace service(
+            Path root, Modules modules, List<GraphService.Uncompiled> uncompiled, ModuleReach reach)
+            throws IOException {
+        return service(root, Set.of(), modules, uncompiled, reach);
+    }
+
+    private static GraphService.Workspace service(
+            Path root, Set<String> stale, Modules modules, List<GraphService.Uncompiled> uncompiled, ModuleReach reach)
             throws IOException {
         Path classes = root.resolve("target/classes");
         FactsIndexing.Ensured e =
@@ -336,14 +343,14 @@ class GraphRenameTest {
                 root.resolve("target/jk-cache"),
                 List.of(new GraphBuild.ClassIndex(
                         e.index(), "", "main", e.bodyDigest(), e.classes(), stale, List.of())),
-                Modules.NONE,
+                modules,
                 new ScriptReader(null, null),
                 Map.of(),
                 List.of(),
                 List.of(),
                 null,
                 uncompiled,
-                ModuleReach.UNKNOWN);
+                reach);
     }
 
     private static GraphService.Request request(String address, String to) {
@@ -436,7 +443,9 @@ class GraphRenameTest {
                 List.of(),
                 List.of(),
                 null,
-                List.of("report", "other"),
+                List.of(
+                        new GraphService.Uncompiled("report/", "src/main/", "report"),
+                        new GraphService.Uncompiled("other/", "src/main/", "other")),
                 reach);
         String answer = GraphService.run(w, request("Square.area", "size"), GraphBuild.Progress.NONE)
                 .text();
@@ -489,17 +498,13 @@ class GraphRenameTest {
      */
     @Test
     void aRenameWithAModuleThatHasNoCompiledClassesIsNotComplete(@TempDir Path dir) throws IOException {
-        Path root = workspace(
-                dir,
-                sources(
-                        "Calc.java",
-                        "package com.acme.shop;\n\npublic class Calc {\n    public int doubled(int n) {\n        return n * 2;"
-                                + "\n    }\n}\n",
-                        "Use.java",
-                        "package com.acme.shop;\n\nclass Use {\n    int four(Calc c) {\n        return c.doubled(2);\n"
-                                + "    }\n}\n"));
+        Path root = workspace(dir, CALC);
         String answer = GraphService.run(
-                        service(root, Set.of(), List.of("tool")),
+                        service(
+                                root,
+                                Modules.NONE,
+                                List.of(new GraphService.Uncompiled("tool/", "src/main/", "tool")),
+                                ModuleReach.UNKNOWN),
                         request("Calc.doubled", "twice"),
                         GraphBuild.Progress.NONE)
                 .text();
@@ -510,6 +515,89 @@ class GraphRenameTest {
                 .doesNotContain("no search needed", "the task is done");
         assertThat(read(root, "Use.java")).contains("return c.twice(2);");
     }
+
+    /**
+     * A module with no compiled classes counts only when it can reach the method: one that does not
+     * see the module declaring it cannot call it, so the rename stays complete and names nothing; one
+     * that does makes it not complete, and it is the set named. Without the engine's edges every
+     * module counts.
+     */
+    @Test
+    void onlyAnUncompiledModuleThatCanReachTheMethodMakesARenameNotComplete(@TempDir Path dir) throws IOException {
+        Path root = workspace(dir, CALC);
+        ModuleReach reach = ModuleReach.of(List.of("", "app/\t", "other/"));
+        Modules modules = new Modules(List.of(
+                new Modules.Module("", false), new Modules.Module("app/", false), new Modules.Module("other/", false)));
+        GraphService.Answer outside = GraphService.run(
+                service(root, modules, List.of(new GraphService.Uncompiled("other/", "src/main/", "other")), reach),
+                request("Calc.doubled", "twice"),
+                GraphBuild.Progress.NONE);
+        assertThat(outside.text())
+                .contains("Every use the compiled classes record is renamed; no search needed.")
+                .contains("the task is done");
+        assertThat(outside.uncompiled()).isEmpty();
+
+        root = workspace(Files.createDirectories(dir.resolve("inside")), CALC);
+        GraphService.Answer inside = GraphService.run(
+                service(root, modules, List.of(new GraphService.Uncompiled("app/", "src/main/", "app")), reach),
+                request("Calc.doubled", "twice"),
+                GraphBuild.Progress.NONE);
+        assertThat(inside.text())
+                .contains("Not complete: the note below names the modules with no compiled classes.")
+                .doesNotContain("no search needed", "the task is done");
+        assertThat(inside.uncompiled()).containsExactly("app");
+
+        root = workspace(Files.createDirectories(dir.resolve("unknown")), CALC);
+        GraphService.Answer unknown = GraphService.run(
+                service(
+                        root,
+                        modules,
+                        List.of(new GraphService.Uncompiled("other/", "src/main/", "other")),
+                        ModuleReach.UNKNOWN),
+                request("Calc.doubled", "twice"),
+                GraphBuild.Progress.NONE);
+        assertThat(unknown.uncompiled()).containsExactly("other");
+    }
+
+    /**
+     * A test suite with no compiled classes is read as a module with none is: its uses of the name
+     * are quoted for the agent to edit, and it is the set named.
+     */
+    @Test
+    void aSuiteWithNoCompiledClassesHasItsUsesQuoted(@TempDir Path dir) throws IOException {
+        Path root = workspace(dir, CALC);
+        Path it = Files.createDirectories(root.resolve("src/integration/java/com/acme/shop"));
+        Files.writeString(it.resolve("CalcIT.java"), """
+                package com.acme.shop;
+
+                class CalcIT {
+                    boolean doubles(Calc c) {
+                        return c.doubled(2) == 4;
+                    }
+                }
+                """);
+        GraphService.Answer answer = GraphService.run(
+                service(
+                        root,
+                        Modules.NONE,
+                        List.of(new GraphService.Uncompiled("", "src/integration/", "src/integration")),
+                        ModuleReach.UNKNOWN),
+                request("Calc.doubled", "twice"),
+                GraphBuild.Progress.NONE);
+        assertThat(answer.text())
+                .contains("Not checked: these modules may call it but have no compiled classes.")
+                .contains("src/integration/java/com/acme/shop/CalcIT.java", "return c.doubled(2) == 4;")
+                .doesNotContain("the task is done");
+        assertThat(answer.uncompiled()).containsExactly("src/integration");
+    }
+
+    private static final Map<String, String> CALC = sources(
+            "Calc.java",
+            "package com.acme.shop;\n\npublic class Calc {\n    public int doubled(int n) {\n        return n * 2;"
+                    + "\n    }\n}\n",
+            "Use.java",
+            "package com.acme.shop;\n\nclass Use {\n    int four(Calc c) {\n        return c.doubled(2);\n"
+                    + "    }\n}\n");
 
     @Test
     void theAnswerNamesTheModulesTheRenameEditedToTest() {

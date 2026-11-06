@@ -98,34 +98,34 @@ class GraphClassFactsCurrencyTest {
                 version = "0.1.0"
                 java = 25
                 """);
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .as("no main sources: nothing a compile would make classes of")
                 .isEmpty();
         Path dir = Files.createDirectories(tmp.resolve("src/main/java/demo"));
         Files.writeString(dir.resolve("App.java"), "package demo; public class App {}\n");
         GraphRunner.ClassIndexes fresh = GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false);
-        assertThat(fresh.uncompiled()).containsExactly(String.valueOf(tmp.getFileName()));
+        assertThat(fresh.uncompiledNames()).containsExactly(String.valueOf(tmp.getFileName()));
         assertThat(fresh.rows()).isEmpty();
         assertThat(fresh.leftOut()).isEmpty();
 
         Path classes = Files.createDirectories(BuildLayout.moduleTargetDir(tmp).resolve("classes"));
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .as("a compile that failed leaves the directory empty")
                 .containsExactly(String.valueOf(tmp.getFileName()));
         Files.createDirectories(classes.resolve("demo"));
         Files.write(classes.resolve("demo/App.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .isEmpty();
 
         Path test = Files.createDirectories(tmp.resolve("src/test/java/demo"));
         Files.writeString(test.resolve("AppTest.java"), "package demo; class AppTest {}\n");
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .as("tests that never compiled are named by their directory")
                 .containsExactly("src/test");
         Path testClasses =
                 Files.createDirectories(BuildLayout.moduleTargetDir(tmp).resolve("test-classes/demo"));
         Files.write(testClasses.resolve("AppTest.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .isEmpty();
         assertThat(GraphRunner.testSet("core", false, "test")).isEqualTo("core/src/test");
         assertThat(GraphRunner.testSet("core", true, "integration")).isEqualTo("core/integration");
@@ -156,32 +156,35 @@ class GraphClassFactsCurrencyTest {
                 Files.createDirectories(BuildLayout.moduleTargetDir(tmp).resolve("test-classes"));
         Files.createDirectories(testClasses.resolve("demo"));
         Files.write(testClasses.resolve("demo/AppTest.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .as("no suite marker: the default suite's classes")
                 .containsExactly("src/integration");
 
         Files.writeString(testClasses.resolve(".jk-suites"), "test");
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .containsExactly("src/integration");
         Files.writeString(testClasses.resolve(".jk-suites"), "test,integration");
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .as("compiled with the default suite")
                 .isEmpty();
         Files.writeString(testClasses.resolve(".jk-suites"), "integration");
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .as("a run of the integration suite alone leaves the default suite's tests uncompiled")
                 .containsExactly("src/test");
 
         Files.writeString(testClasses.resolve(".jk-suites"), "test,integration");
         Path guard = Files.createDirectories(tmp.resolve("src/guard/java/demo"));
         Files.writeString(guard.resolve("AppRules.java"), "package demo; class AppRules {}\n");
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .as("no guard classes yet")
                 .containsExactly("src/guard");
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+                .as("the worker finds the suite's sources by module and directory")
+                .containsExactly(new GraphRunner.Uncompiled("", "src/guard/", "src/guard"));
         Path guardClasses =
                 Files.createDirectories(BuildLayout.guardClassesDir(tmp).resolve("demo"));
         Files.write(guardClasses.resolve("AppRules.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
-        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .as("compiled by jk guard into its own classes")
                 .isEmpty();
     }
