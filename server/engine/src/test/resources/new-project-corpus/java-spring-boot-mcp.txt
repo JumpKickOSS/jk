@@ -1,0 +1,143 @@
+# The new-project corpus of java/spring-boot/mcp: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+layout = traditional
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/Application.java
+src/main/java/com/acme/McpConfig.java
+src/main/java/com/acme/TimeTools.java
+src/main/java/com/acme/package-info.java
+src/main/resources/application.properties
+src/test/java/com/acme/ApplicationTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+
+[application]
+main = "com.acme.Application"
+
+[spring-boot]
+version = "…"
+
+# `git.properties` and Boot's `META-INF/build-info.properties` in the jar: the commit, branch and
+# version the build came from.
+[build-info]
+
+[dependencies]
+starter-webmvc = "org.springframework.boot:spring-boot-starter-webmvc"
+mcp-server = "org.springframework.ai:spring-ai-starter-mcp-server-webmvc:…"
+
+[test-dependencies]
+starter-test = "org.springframework.boot:spring-boot-starter-test"
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== layout=simple
+layout = simple
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+resources/application.properties
+src/com/acme/Application.java
+src/com/acme/McpConfig.java
+src/com/acme/TimeTools.java
+src/com/acme/package-info.java
+test/src/com/acme/ApplicationTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+java = 25
+
+[application]
+main = "com.acme.Application"
+
+[spring-boot]
+version = "…"
+
+# `git.properties` and Boot's `META-INF/build-info.properties` in the jar: the commit, branch and
+# version the build came from.
+[build-info]
+
+[dependencies]
+starter-webmvc = "org.springframework.boot:spring-boot-starter-webmvc"
+mcp-server = "org.springframework.ai:spring-ai-starter-mcp-server-webmvc:…"
+
+[test-dependencies]
+starter-test = "org.springframework.boot:spring-boot-starter-test"
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
