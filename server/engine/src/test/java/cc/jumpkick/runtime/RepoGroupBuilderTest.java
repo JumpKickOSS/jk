@@ -13,6 +13,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.m2.MavenSettings;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
@@ -65,6 +66,71 @@ class RepoGroupBuilderTest {
         int n = 0;
         for (int at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + needle.length())) n++;
         return n;
+    }
+
+    /**
+     * A repository only ~/.jk/config.toml declares, whose credential reads an unset variable, does
+     * not fail a project that never asks it: it refuses its own requests, naming the variable.
+     */
+    @Test
+    void a_user_config_repository_with_an_unset_credential_refuses_only_its_own_requests(@TempDir Path tmp)
+            throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "demo"
+                name = "demo"
+                version = "1.0.0"
+                """);
+        var project = JkBuildParser.parse(tmp.resolve("jk.toml"));
+        Files.writeString(tmp.resolve("config.toml"), """
+                [repositories.corp]
+                url = "https://repo.corp.example/maven/"
+                groups = ["com.corp"]
+                token = "${JK_TEST_CORP_TOKEN_UNSET}"
+                """);
+        System.setProperty("jk.env.JK_HOME", tmp.toString());
+        RepoGroup group;
+        try {
+            group = RepoGroupBuilder.buildFor(project, null, new Cas(tmp.resolve("store")), name -> null);
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
+
+        MavenRepo corp = group.repos().stream()
+                .filter(r -> r.name().equals("corp"))
+                .findFirst()
+                .orElseThrow();
+        assertThatThrownBy(() -> corp.availableVersions(Coordinate.of("com.corp", "lib", "1.0")))
+                .hasMessageContaining("repository corp")
+                .hasMessageContaining("is not asked")
+                .hasMessageContaining("${JK_TEST_CORP_TOKEN_UNSET}");
+    }
+
+    /** The same unset reference on a repository the project declares itself still fails the build of the group. */
+    @Test
+    void a_project_repository_with_an_unset_user_config_credential_still_fails_at_once(@TempDir Path tmp)
+            throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "demo"
+                name = "demo"
+                version = "1.0.0"
+
+                [repositories.corp]
+                url = "https://repo.corp.example/maven/"
+                """);
+        var project = JkBuildParser.parse(tmp.resolve("jk.toml"));
+        Files.writeString(tmp.resolve("config.toml"), """
+                [repositories.corp]
+                url = "https://repo.corp.example/maven/"
+                token = "${JK_TEST_CORP_TOKEN_UNSET}"
+                """);
+        System.setProperty("jk.env.JK_HOME", tmp.toString());
+        try {
+            assertThatThrownBy(
+                            () -> RepoGroupBuilder.buildFor(project, null, new Cas(tmp.resolve("store")), name -> null))
+                    .hasMessageContaining("${JK_TEST_CORP_TOKEN_UNSET}");
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
     }
 
     @Test

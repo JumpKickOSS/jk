@@ -133,6 +133,9 @@ public final class MavenRepo {
      */
     private final AtomicReference<@Nullable String> unreachable = new AtomicReference<>();
 
+    /** Why every request to this repository is refused before it is sent; null when requests go out. */
+    private volatile @Nullable String refusal;
+
     /** {@code optional = true} on the declaring table, or a repository a dependency's POM declares. */
     private final boolean optional;
 
@@ -300,6 +303,17 @@ public final class MavenRepo {
      * with…} method or {@link #mirroredThrough} does not carry it, since a mirror has its own
      * credential.
      */
+    /**
+     * This repository, refusing every request with {@code why} instead of sending it: its
+     * credential could not be resolved, and an anonymous request is never the fallback. What its
+     * store already holds still answers, and a resolve that never asks it never fails on it. Set
+     * before the repository is shared.
+     */
+    public MavenRepo refusingRequests(String why) {
+        this.refusal = Objects.requireNonNull(why, "why");
+        return this;
+    }
+
     public MavenRepo refreshingCredentialWith(Supplier<RepoCredential> refresh) {
         this.credentialRefresh = Objects.requireNonNull(refresh, "refresh");
         return this;
@@ -925,8 +939,16 @@ public final class MavenRepo {
         return new DownloadLeg.Vouch(at, true, !at.equals(uri));
     }
 
-    /** The fault an earlier request met, thrown again without a request, once this repository is unreachable. */
-    private void refuseIfUnreachable() throws RepositoryUnreachableException {
+    /**
+     * The fault an earlier request met, thrown again without a request, once this repository is
+     * unreachable; or the reason it refuses every request ({@link #refusingRequests}).
+     */
+    private void refuseIfUnreachable() throws IOException {
+        String why = refusal;
+        if (why != null) {
+            throw new IOException(
+                    "repository " + name + " at " + SafeUri.forMessage(baseUrl) + " is not asked: " + why);
+        }
         String fault = unreachable.get();
         if (fault != null) throw unreachableFailure(fault, null);
     }

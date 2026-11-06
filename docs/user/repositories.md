@@ -372,6 +372,10 @@ password = "${file:~/.jk/secrets.properties#corp.password}"
   set `mode: 0400`.
 - A missing file, a missing key, or an empty value is an error that names
   `repositories.<id>.<key>` and the path. jk never falls back to an anonymous request.
+- A repository only `~/.jk/config.toml` declares, whose reference does not resolve (an unset
+  variable, a missing file), fails only the resolves that ask it: it sends nothing and refuses each
+  request, naming the reference, while every project that never asks it resolves as usual. A
+  repository the project declares fails the resolve at once.
 - jk re-reads the file whenever its modification time, size or identity changes, so a rotated
   secret takes effect on the next command. You don't need `jk engine stop`.
 - jk masks every value it reads in its output, `-o jsonl` and the engine log, the same way it masks

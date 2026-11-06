@@ -31,6 +31,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -216,6 +217,7 @@ public final class RepoGroupBuilder {
 
         Map<String, RepositorySpec> byName = new LinkedHashMap<>();
         for (RepositorySpec s : projectRepos) byName.put(s.name(), s);
+        Set<String> projectNames = Set.copyOf(byName.keySet());
         for (RepositorySpec s : globalRepos) byName.putIfAbsent(s.name(), s);
 
         List<RepositorySpec> effective = effectiveRepos(byName);
@@ -237,7 +239,18 @@ public final class RepoGroupBuilder {
                 continue;
             }
             asked.add(spec);
-            RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credentialOpt());
+            // A credential of a repository only ~/.jk/config.toml declares that does not resolve (an
+            // unset ${VAR}, a missing ${file:}) fails the resolves that ask that repository, not
+            // every project's: the repository refuses its requests instead.
+            RepoCredential cred;
+            String refusal = null;
+            try {
+                cred = creds.resolve(spec.name(), spec.url(), spec.credentialOpt());
+            } catch (IllegalStateException | JkBuildParseException unresolved) {
+                if (projectNames.contains(spec.name())) throw unresolved;
+                cred = RepoCredential.ANONYMOUS;
+                refusal = unresolved.getMessage();
+            }
             maybeWarnUrlUserInfo(spec, cred);
             // Per-repo object-store config (region/endpoint/keys) flows to the
             // transport; HTTP credentials still ride the MavenRepo credential.
@@ -262,9 +275,13 @@ public final class RepoGroupBuilder {
                             spec.allowInsecure())
                     .withPolicy(spec.releases(), spec.snapshots())
                     .withOptional(spec.optional());
-            // A credential a ${cmd:} helper printed may have expired: a refusal re-runs it once.
-            var refresh = creds.refresher(spec.name(), spec.url(), spec.credentialOpt(), cred);
-            if (refresh != null) repo.refreshingCredentialWith(refresh);
+            if (refusal != null) {
+                repo.refusingRequests(refusal);
+            } else {
+                // A credential a ${cmd:} helper printed may have expired: a refusal re-runs it once.
+                var refresh = creds.refresher(spec.name(), spec.url(), spec.credentialOpt(), cred);
+                if (refresh != null) repo.refreshingCredentialWith(refresh);
+            }
             repos.add(RepoMirrors.apply(repo, mirrors, settings, creds));
             exclusiveGroups.add(exclusiveGroupsFor(spec));
             routedGroups.add(routedGroupsFor(spec));
