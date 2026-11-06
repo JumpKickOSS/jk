@@ -8,7 +8,6 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.Sleepers;
-import cc.jumpkick.util.StoreWriteGate;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -32,9 +31,6 @@ class WorkerAotCacheTest {
 
     @BeforeEach
     void fresh() {
-        // A store wipe earlier in this JVM (the cache inventory tests) switches recording off for
-        // the engine's lifetime; this class measures recording, so it starts from an unwiped gate.
-        StoreWriteGate.resetForTests();
         WorkerAotCache.forgetFailuresForTests();
     }
 

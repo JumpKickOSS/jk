@@ -379,7 +379,7 @@ class OfficialTemplatesFreshenTest {
      * A hygiene refresh reaches the store gate only after a wipe that holds it lets go, and by then
      * the wipe is a fact it must honour: the store the nuke reported gone stays gone. The
      * user-action refresh is the one that repopulates. The wipe leaves this JVM's gate marked
-     * wiped; the only reader is the hygiene path pinned here.
+     * wiped until the test ends.
      */
     @Test
     void a_hygiene_refresh_that_reaches_the_gate_after_a_wipe_clones_nothing_and_a_user_action_does() throws Exception {
@@ -419,7 +419,6 @@ class OfficialTemplatesFreshenTest {
             assertTrue(Files.isDirectory(clone.resolve("java/spring/hello.g8")), "a user action repopulates");
         } finally {
             pool.shutdownNow();
-            StoreWriteGate.resetForTests();
             if (prev == null) System.clearProperty("jk.env.JK_STORE_DIR");
             else System.setProperty("jk.env.JK_STORE_DIR", prev);
         }

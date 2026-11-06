@@ -46,12 +46,12 @@ import org.junit.platform.launcher.TestPlan;
  * outlive its class and reach every class scheduled after it in the same worker — which is what the
  * per-class {@code @AfterEach reset} hooks deleted were papering over.
  *
- * <p>Deliberately a platform {@link TestExecutionListener} rather than a Jupiter {@code Extension}:
- * extension autodetection is a single per-task switch and the unit tier keeps it off on purpose so
- * {@code EngineTestExtension} stays unloaded. A listener is discovered unconditionally, so
- * every tier gets the boundary and no tier gains an engine. The cost is that a listener cannot fail
- * a test — the platform isolates listener exceptions — so this reports rather than fails. Turning
- * the report into a build failure needs a mechanism decision and is left to its own change.
+ * <p>A platform {@link TestExecutionListener} rather than a Jupiter {@code Extension}: the
+ * platform loads listeners whatever launcher runs the suite, a nested one included, and a listener
+ * sees every container as well as every test. A module opts in by naming this class in its test
+ * {@code META-INF/services/org.junit.platform.launcher.TestExecutionListener} and its globals in
+ * {@code META-INF/services/cc.jumpkick.config.testing.BoundedGlobal}. The cost is that a listener
+ * cannot fail a test (the platform isolates listener exceptions), so this reports rather than fails.
  */
 public final class SessionBoundary implements TestExecutionListener {
 

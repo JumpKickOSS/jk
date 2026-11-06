@@ -1,3 +1,4 @@
+cc.jumpkick.config.testing.SessionBoundary
 cc.jumpkick.http.testing.ConnectFaultsReset
 cc.jumpkick.resolve.testing.ResolveProcessCacheReset
 cc.jumpkick.templates.testing.SharedHomeTemplateCatalog
