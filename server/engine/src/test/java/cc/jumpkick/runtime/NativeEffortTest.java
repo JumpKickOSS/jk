@@ -18,13 +18,10 @@ class NativeEffortTest {
     @TempDir
     Path stateDir;
 
-    private String prevStateDir;
-
     @BeforeEach
     void isolateHostState() {
         // Pin state + builds so host-metrics.toml (cpuScale, learned native rates) cannot leak
         // into assertions. builds/ hangs off the state root, so one override pins both.
-        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
         Calibration.invalidateMemo();
         BuildMetrics.clearSessionAggregatesMemo();
@@ -32,8 +29,6 @@ class NativeEffortTest {
 
     @AfterEach
     void restoreHostState() {
-        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
         Calibration.invalidateMemo();
         BuildMetrics.clearSessionAggregatesMemo();
     }

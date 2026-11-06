@@ -627,49 +627,45 @@ class WorkspaceFileAccessTest {
     @Test
     void resolve_root_is_one_of_the_ids_live_checkouts(@TempDir Path tmp, @TempDir Path buildsDir) throws Exception {
         System.setProperty("jk.env.JK_STATE_DIR", buildsDir.toString());
-        try {
-            String id = "aabbccddeeff00112233445566778899";
-            Path a = tmp.resolve("wt-a").toAbsolutePath().normalize();
-            Path b = tmp.resolve("wt-b").toAbsolutePath().normalize();
-            writeJkToml(a, "demo");
-            writeJkToml(b, "demo");
-            Path home = ProjectBuilds.projectHome(id);
-            ProjectIdentity.IdentityFile.write(home, identityAt(id, a));
-            assertThat(WorkspaceFileAccess.resolveRoot(id, null)).isEqualTo(new WorkspaceFileAccess.Root.Ok(a));
+        String id = "aabbccddeeff00112233445566778899";
+        Path a = tmp.resolve("wt-a").toAbsolutePath().normalize();
+        Path b = tmp.resolve("wt-b").toAbsolutePath().normalize();
+        writeJkToml(a, "demo");
+        writeJkToml(b, "demo");
+        Path home = ProjectBuilds.projectHome(id);
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, a));
+        assertThat(WorkspaceFileAccess.resolveRoot(id, null)).isEqualTo(new WorkspaceFileAccess.Root.Ok(a));
 
-            ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
-            assertThat(WorkspaceFileAccess.resolveRoot(id, null))
-                    .isInstanceOfSatisfying(
-                            WorkspaceFileAccess.Root.Ambiguous.class, several -> assertThat(several.checkouts())
-                                    .extracting(ProjectIdentity.Checkout::path)
-                                    .containsExactly(a, b));
-            assertThat(WorkspaceFileAccess.resolveRoot(id, b.toString())).isEqualTo(new WorkspaceFileAccess.Root.Ok(b));
-            assertThat(WorkspaceFileAccess.resolveRoot(
-                            id, tmp.resolve("wt-b/../wt-a").toString()))
-                    .as("a selector is compared as a path, not a string")
-                    .isEqualTo(new WorkspaceFileAccess.Root.Ok(a));
-            Path elsewhere = Files.createDirectories(tmp.resolve("elsewhere"));
-            writeJkToml(elsewhere, "demo");
-            assertThat(WorkspaceFileAccess.resolveRoot(id, elsewhere.toString()))
-                    .as("a jk.toml elsewhere does not widen the sandbox")
-                    .isInstanceOfSatisfying(WorkspaceFileAccess.Root.NotACheckout.class, wrong -> {
-                        assertThat(wrong.dir()).isEqualTo(elsewhere.toString());
-                        assertThat(wrong.checkouts())
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
+        assertThat(WorkspaceFileAccess.resolveRoot(id, null))
+                .isInstanceOfSatisfying(
+                        WorkspaceFileAccess.Root.Ambiguous.class, several -> assertThat(several.checkouts())
                                 .extracting(ProjectIdentity.Checkout::path)
-                                .containsExactly(a, b);
-                    });
+                                .containsExactly(a, b));
+        assertThat(WorkspaceFileAccess.resolveRoot(id, b.toString())).isEqualTo(new WorkspaceFileAccess.Root.Ok(b));
+        assertThat(WorkspaceFileAccess.resolveRoot(
+                        id, tmp.resolve("wt-b/../wt-a").toString()))
+                .as("a selector is compared as a path, not a string")
+                .isEqualTo(new WorkspaceFileAccess.Root.Ok(a));
+        Path elsewhere = Files.createDirectories(tmp.resolve("elsewhere"));
+        writeJkToml(elsewhere, "demo");
+        assertThat(WorkspaceFileAccess.resolveRoot(id, elsewhere.toString()))
+                .as("a jk.toml elsewhere does not widen the sandbox")
+                .isInstanceOfSatisfying(WorkspaceFileAccess.Root.NotACheckout.class, wrong -> {
+                    assertThat(wrong.dir()).isEqualTo(elsewhere.toString());
+                    assertThat(wrong.checkouts())
+                            .extracting(ProjectIdentity.Checkout::path)
+                            .containsExactly(a, b);
+                });
 
-            // The deleted worktree stops counting without anyone rewriting the file.
-            Files.delete(a.resolve("jk.toml"));
-            Files.delete(a);
-            assertThat(WorkspaceFileAccess.resolveRoot(id, null)).isEqualTo(new WorkspaceFileAccess.Root.Ok(b));
+        // The deleted worktree stops counting without anyone rewriting the file.
+        Files.delete(a.resolve("jk.toml"));
+        Files.delete(a);
+        assertThat(WorkspaceFileAccess.resolveRoot(id, null)).isEqualTo(new WorkspaceFileAccess.Root.Ok(b));
 
-            assertThat(WorkspaceFileAccess.resolveRoot("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", null))
-                    .isEqualTo(new WorkspaceFileAccess.Root.Unknown());
-            assertThat(WorkspaceFileAccess.resolveRoot("", null)).isEqualTo(new WorkspaceFileAccess.Root.Unknown());
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
-        }
+        assertThat(WorkspaceFileAccess.resolveRoot("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", null))
+                .isEqualTo(new WorkspaceFileAccess.Root.Unknown());
+        assertThat(WorkspaceFileAccess.resolveRoot("", null)).isEqualTo(new WorkspaceFileAccess.Root.Unknown());
     }
 
     private static ProjectIdentity identityAt(String id, Path checkout) {

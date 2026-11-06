@@ -109,7 +109,6 @@ class UserPluginsTest {
                     .isInstanceOfSatisfying(UserConfigParseException.class, e -> assertThat(e.file())
                             .isEqualTo(config));
         } finally {
-            System.clearProperty("jk.env.JK_HOME");
             GlobalConfig.clearCache();
         }
     }

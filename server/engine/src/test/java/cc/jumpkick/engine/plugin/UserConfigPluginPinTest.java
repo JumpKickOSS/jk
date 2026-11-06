@@ -44,7 +44,6 @@ class UserConfigPluginPinTest {
         PluginTableRegistry.userPinSync(null);
         System.setProperty("jk.env.JK_HOME", empty.resolve("no-home").toString());
         UserPluginPins.sync();
-        System.clearProperty("jk.env.JK_HOME");
     }
 
     @Test

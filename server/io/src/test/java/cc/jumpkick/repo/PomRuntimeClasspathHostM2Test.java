@@ -55,11 +55,8 @@ class PomRuntimeClasspathHostM2Test {
                 </project>
                 """);
 
-        List<String> keys = List.of(
-                "jk.env.JK_HOME",
-                PomRuntimeClasspath.HOST_STORE_PROPERTY,
-                PomRuntimeClasspath.HOST_M2_PROPERTY,
-                "jk.m2.local");
+        List<String> keys =
+                List.of(PomRuntimeClasspath.HOST_STORE_PROPERTY, PomRuntimeClasspath.HOST_M2_PROPERTY, "jk.m2.local");
         List<String> previous = keys.stream().map(System::getProperty).toList();
         try {
             System.setProperty("jk.env.JK_HOME", sandbox.toString());

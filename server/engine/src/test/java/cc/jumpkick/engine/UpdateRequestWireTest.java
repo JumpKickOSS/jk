@@ -58,7 +58,6 @@ class UpdateRequestWireTest extends EngineServerHarness {
     void release() {
         if (previousM2 != null) System.setProperty("jk.m2.local", previousM2);
         else System.clearProperty("jk.m2.local");
-        System.clearProperty("jk.env.JK_STORE_DIR");
         LockfileReader.clearCache();
     }
 

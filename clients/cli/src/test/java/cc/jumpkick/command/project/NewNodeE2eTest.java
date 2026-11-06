@@ -19,8 +19,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -43,11 +41,8 @@ class NewNodeE2eTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp().withoutChecksums();
 
-    private @Nullable String priorMirror;
-
     @BeforeEach
     void dist() throws IOException {
-        priorMirror = System.getProperty(MIRROR);
         NodePlatform host = NodePlatform.host();
         byte[] archive = archive(host.key());
         http.served().put("/v" + VERSION + "/" + host.archiveName(VERSION), archive);
@@ -68,12 +63,6 @@ class NewNodeE2eTest {
                 "[{\"version\":\"v" + VERSION + "\",\"npm\":\"11.0.0\",\"lts\":\"Krypton\",\"security\":false,"
                         + "\"files\":[\"linux-x64\",\"linux-arm64\",\"osx-arm64-tar\",\"osx-x64-tar\"]}]");
         System.setProperty(MIRROR, http.baseUrl());
-    }
-
-    @AfterEach
-    void restore() {
-        if (priorMirror == null) System.clearProperty(MIRROR);
-        else System.setProperty(MIRROR, priorMirror);
     }
 
     @Test

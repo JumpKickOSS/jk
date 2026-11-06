@@ -1,2 +1,3 @@
 cc.jumpkick.http.testing.ConnectFaultsGlobal
 cc.jumpkick.repo.testing.RepoProcessMemosGlobal
+cc.jumpkick.config.testing.JkEnvGlobal

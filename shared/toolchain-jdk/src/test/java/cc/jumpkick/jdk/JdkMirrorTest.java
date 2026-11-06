@@ -14,7 +14,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +21,6 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -32,13 +30,6 @@ class JdkMirrorTest {
 
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
-
-    private final List<String> overlays = new ArrayList<>();
-
-    @AfterEach
-    void clear() {
-        overlays.forEach(name -> System.clearProperty("jk.env." + name));
-    }
 
     @Test
     void without_a_mirror_every_url_is_used_as_the_feed_names_it() {
@@ -147,9 +138,8 @@ class JdkMirrorTest {
         return Objects.requireNonNull(mirror.origin(), "mirror origin");
     }
 
-    private void overlay(String name, String value) {
+    private static void overlay(String name, String value) {
         System.setProperty("jk.env." + name, value);
-        overlays.add(name);
     }
 
     /** A one-JDK JetBrains feed for this host's platform naming {@code url}, one key per line as the feed is. */

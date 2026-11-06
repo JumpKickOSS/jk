@@ -14,7 +14,6 @@ import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.List;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -41,12 +40,6 @@ class RepoCredentialFileTest {
 
     @RegisterExtension
     final MockMavenServer maven = new MockMavenServer();
-
-    @AfterEach
-    void clearSeam() {
-        System.clearProperty(TOKEN_FILE);
-        System.clearProperty(HOST);
-    }
 
     @Test
     void a_token_file_authenticates_and_a_rotated_one_is_read_by_the_next_lock(@TempDir Path tempDir) throws Exception {

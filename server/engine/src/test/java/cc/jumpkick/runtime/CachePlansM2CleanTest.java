@@ -33,13 +33,12 @@ class CachePlansM2CleanTest {
 
     private Path store;
     private Path m2;
-    private String priorStore;
 
     @BeforeEach
     void setUp() throws Exception {
         store = tmp.resolve("store");
         m2 = tmp.resolve("m2");
-        priorStore = System.setProperty("jk.env.JK_STORE_DIR", store.toString());
+        System.setProperty("jk.env.JK_STORE_DIR", store.toString());
         System.setProperty("jk.m2.local", m2.toString());
         downloadedLongAgo();
     }
@@ -48,8 +47,6 @@ class CachePlansM2CleanTest {
     void tearDown() {
         System.clearProperty("jk.m2.local");
         System.clearProperty("jk.m2.auto-clean");
-        if (priorStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
-        else System.setProperty("jk.env.JK_STORE_DIR", priorStore);
     }
 
     private void downloadedLongAgo() throws IOException {

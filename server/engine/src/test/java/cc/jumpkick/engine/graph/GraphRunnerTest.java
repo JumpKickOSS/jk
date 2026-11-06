@@ -61,7 +61,6 @@ class GraphRunnerTest {
     @AfterEach
     void noCompiler() {
         GraphRunner.compiler(null);
-        System.clearProperty("jk.env.JK_CACHE_DIR");
     }
 
     /**

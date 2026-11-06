@@ -90,7 +90,6 @@ class LockClosuresTest {
 
     @AfterEach
     void releaseOverrides() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
         System.clearProperty("jk.m2.integration");
     }
 

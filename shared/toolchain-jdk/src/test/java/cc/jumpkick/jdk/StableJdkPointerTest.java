@@ -11,7 +11,6 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,7 +18,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 class StableJdkPointerTest {
 
-    private @Nullable String prevStateDir;
     private Path isolatedState;
 
     /**
@@ -31,15 +29,12 @@ class StableJdkPointerTest {
     @BeforeEach
     void isolateState() throws IOException {
         isolatedState = Files.createTempDirectory("jk-state-");
-        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", isolatedState.toString());
         JdkInventory.resetShared();
     }
 
     @AfterEach
     void restoreState() {
-        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
         JdkInventory.resetShared();
         PathUtil.deleteRecursively(isolatedState);
     }

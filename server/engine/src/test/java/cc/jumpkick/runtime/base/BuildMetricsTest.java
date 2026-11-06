@@ -78,7 +78,6 @@ class BuildMetricsTest {
      */
     @Test
     void default_path_with_engine_like_cwd_uses_machine_wide_aggregates(@TempDir Path state) throws Exception {
-        String prevBuilds = System.getProperty("jk.env.JK_STATE_DIR");
         Path builds = state.resolve("builds");
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
         BuildMetrics.clearSessionAggregatesMemo();
@@ -119,14 +118,11 @@ class BuildMetricsTest {
             SessionContext.install(prior);
             BuildMetrics.clearSessionAggregatesMemo();
             BuildMetrics.clearMemo();
-            if (prevBuilds == null) System.clearProperty("jk.env.JK_STATE_DIR");
-            else System.setProperty("jk.env.JK_STATE_DIR", prevBuilds);
         }
     }
 
     @Test
     void default_path_with_jk_toml_cwd_stays_project_scoped(@TempDir Path state) throws Exception {
-        String prevBuilds = System.getProperty("jk.env.JK_STATE_DIR");
         Path builds = state.resolve("builds");
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
         BuildMetrics.clearSessionAggregatesMemo();
@@ -165,8 +161,6 @@ class BuildMetricsTest {
             SessionContext.install(prior);
             BuildMetrics.clearSessionAggregatesMemo();
             BuildMetrics.clearMemo();
-            if (prevBuilds == null) System.clearProperty("jk.env.JK_STATE_DIR");
-            else System.setProperty("jk.env.JK_STATE_DIR", prevBuilds);
         }
     }
 

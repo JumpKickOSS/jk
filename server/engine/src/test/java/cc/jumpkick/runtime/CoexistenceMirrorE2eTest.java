@@ -78,7 +78,6 @@ class CoexistenceMirrorE2eTest {
 
     private @Nullable String priorSettings;
     private @Nullable String priorM2;
-    private @Nullable String priorStore;
 
     @BeforeAll
     static void engineShadowSource() {
@@ -99,7 +98,6 @@ class CoexistenceMirrorE2eTest {
         // mirror hosts, with its memos, would land there.
         priorM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", CACHE.resolve("m2").toAbsolutePath().toString());
-        priorStore = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty(
                 "jk.env.JK_STORE_DIR", CACHE.resolve("store").toAbsolutePath().toString());
         nexus.start();
@@ -112,8 +110,6 @@ class CoexistenceMirrorE2eTest {
         else System.setProperty(MavenSettings.SETTINGS_PROPERTY, priorSettings);
         if (priorM2 == null) System.clearProperty("jk.m2.local");
         else System.setProperty("jk.m2.local", priorM2);
-        if (priorStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
-        else System.setProperty("jk.env.JK_STORE_DIR", priorStore);
         SessionContext.reset();
     }
 
@@ -179,26 +175,22 @@ class CoexistenceMirrorE2eTest {
         System.setProperty(
                 MavenSettings.SETTINGS_PROPERTY, tmp.resolve("no-settings.xml").toString());
         System.setProperty("jk.env.JK_HOME", home.toString());
-        try {
-            Path project = writeProject(tmp.resolve("shop"));
+        Path project = writeProject(tmp.resolve("shop"));
 
-            BuildPlanResult built = plan(project, CACHE).run();
+        BuildPlanResult built = plan(project, CACHE).run();
 
-            assertThat(built.errors()).isEmpty();
-            assertThat(built.success()).isTrue();
-            assertThat(nexus.requested).contains(pomPath, jarPath);
-            Lockfile lock = LockfileReader.read(LockPaths.lockFile(project));
-            assertThat(lock.artifacts())
-                    .filteredOn(a -> a.name().startsWith("com.example.mirrored:" + ARTIFACT + ":"))
-                    .singleElement()
-                    .satisfies(a -> assertThat(a.source())
-                            .isEqualTo(RepositorySpec.CENTRAL + "+" + RepositorySpec.MAVEN_CENTRAL.url()));
-            assertThat(Files.readString(LockPaths.lockFile(project)))
-                    .doesNotContain("corp")
-                    .doesNotContain(nexus.base().getHost() + ":" + nexus.base().getPort());
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-        }
+        assertThat(built.errors()).isEmpty();
+        assertThat(built.success()).isTrue();
+        assertThat(nexus.requested).contains(pomPath, jarPath);
+        Lockfile lock = LockfileReader.read(LockPaths.lockFile(project));
+        assertThat(lock.artifacts())
+                .filteredOn(a -> a.name().startsWith("com.example.mirrored:" + ARTIFACT + ":"))
+                .singleElement()
+                .satisfies(a -> assertThat(a.source())
+                        .isEqualTo(RepositorySpec.CENTRAL + "+" + RepositorySpec.MAVEN_CENTRAL.url()));
+        assertThat(Files.readString(LockPaths.lockFile(project)))
+                .doesNotContain("corp")
+                .doesNotContain(nexus.base().getHost() + ":" + nexus.base().getPort());
     }
 
     /** A POM, a jar with a manifest, and the version list, for a coordinate Central has never heard of. */

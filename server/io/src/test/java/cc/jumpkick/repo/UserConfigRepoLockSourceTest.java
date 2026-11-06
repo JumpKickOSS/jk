@@ -13,7 +13,6 @@ import cc.jumpkick.model.RepositorySpec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,11 +34,6 @@ class UserConfigRepoLockSourceTest {
 
     private static final String USER = "alice";
     private static final String TOKEN = "s3cr3t-nexus-token";
-
-    @AfterEach
-    void clearOverride() {
-        System.clearProperty("jk.env.JK_HOME");
-    }
 
     /**
      * {@code JkDirs} reads every environment variable through a system-property seam. The user

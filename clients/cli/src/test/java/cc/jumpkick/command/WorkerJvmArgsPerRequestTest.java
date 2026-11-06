@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,11 +24,6 @@ class WorkerJvmArgsPerRequestTest {
 
     /** The client reads {@code JK_JVM_ARGS} through {@code JkDirs.env}, which this property overrides. */
     private static final String ENV_SEAM = "jk.env.JK_JVM_ARGS";
-
-    @AfterEach
-    void clearSeam() {
-        System.clearProperty(ENV_SEAM);
-    }
 
     @Test
     void two_builds_with_different_jvm_args_against_one_engine_fork_workers_with_their_own(@TempDir Path tempDir)

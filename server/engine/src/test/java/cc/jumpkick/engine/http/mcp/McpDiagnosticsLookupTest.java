@@ -102,32 +102,28 @@ class McpDiagnosticsLookupTest {
     void a_nested_worktree_recorded_as_a_checkout_is_not_the_parents_run(@TempDir Path tmp, @TempDir Path stateDir)
             throws Exception {
         System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
-        try {
-            String id = "aabbccddeeff00112233445566778899";
-            Path parent = Files.createDirectories(tmp.resolve("ws"));
-            Path nested = Files.createDirectories(parent.resolve(".worktrees/feature"));
-            Path module = Files.createDirectories(parent.resolve("app"));
-            Path home = ProjectBuilds.projectHome(id);
-            ProjectIdentity.IdentityFile.write(
-                    home, new ProjectIdentity(id, "g:a", parent, ProjectIdentity.Source.LOCK, null, null));
-            ProjectIdentity.IdentityFile.write(
-                    home, new ProjectIdentity(id, "g:a", nested, ProjectIdentity.Source.LOCK, null, null));
-            String nestedRun = "{\"id\":\"nested\",\"kind\":\"build\",\"dir\":" + MiniJson.write(nested.toString())
-                    + ",\"projectId\":\"" + id + "\",\"success\":false,\"running\":false,\"requestId\":5}";
-            String moduleRun = "{\"id\":\"module\",\"kind\":\"build\",\"dir\":" + MiniJson.write(module.toString())
-                    + ",\"projectId\":\"" + id + "\",\"success\":true,\"running\":false,\"requestId\":6}";
-            Map<String, Object> newest =
-                    requireNonNull(McpDiagnostics.findNewest(List.of(nestedRun, moduleRun), parent.toString()));
-            assertThat(newest.get("id"))
-                    .as("a module dir under the checkout still answers")
-                    .isEqualTo("module");
-            assertThat(McpDiagnostics.findNewest(List.of(nestedRun), parent.toString()))
-                    .isNull();
-            assertThat(requireNonNull(McpDiagnostics.findNewest(List.of(nestedRun), nested.toString()))
-                            .get("id"))
-                    .isEqualTo("nested");
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
-        }
+        String id = "aabbccddeeff00112233445566778899";
+        Path parent = Files.createDirectories(tmp.resolve("ws"));
+        Path nested = Files.createDirectories(parent.resolve(".worktrees/feature"));
+        Path module = Files.createDirectories(parent.resolve("app"));
+        Path home = ProjectBuilds.projectHome(id);
+        ProjectIdentity.IdentityFile.write(
+                home, new ProjectIdentity(id, "g:a", parent, ProjectIdentity.Source.LOCK, null, null));
+        ProjectIdentity.IdentityFile.write(
+                home, new ProjectIdentity(id, "g:a", nested, ProjectIdentity.Source.LOCK, null, null));
+        String nestedRun = "{\"id\":\"nested\",\"kind\":\"build\",\"dir\":" + MiniJson.write(nested.toString())
+                + ",\"projectId\":\"" + id + "\",\"success\":false,\"running\":false,\"requestId\":5}";
+        String moduleRun = "{\"id\":\"module\",\"kind\":\"build\",\"dir\":" + MiniJson.write(module.toString())
+                + ",\"projectId\":\"" + id + "\",\"success\":true,\"running\":false,\"requestId\":6}";
+        Map<String, Object> newest =
+                requireNonNull(McpDiagnostics.findNewest(List.of(nestedRun, moduleRun), parent.toString()));
+        assertThat(newest.get("id"))
+                .as("a module dir under the checkout still answers")
+                .isEqualTo("module");
+        assertThat(McpDiagnostics.findNewest(List.of(nestedRun), parent.toString()))
+                .isNull();
+        assertThat(requireNonNull(McpDiagnostics.findNewest(List.of(nestedRun), nested.toString()))
+                        .get("id"))
+                .isEqualTo("nested");
     }
 }

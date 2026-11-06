@@ -639,6 +639,9 @@ population = { constants = 29, files = 2266, literals = 44297 }
 [central-address]
 population = { files = 2306 }
 
+[central-through-the-group]
+population = { files = 2763 }
+
 [charter-parity]
 population = { examined = 33 }
 
@@ -1571,7 +1574,7 @@ population = { files = 2203 }
 population = { files = 4230 }
 
 [no-fqcn]
-population = { units = 4647 }
+population = { units = 5039 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1598,7 +1601,7 @@ value  = 3
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "clients/cli/src/test/java/cc/jumpkick/command/system/SelfNukeCommandTest.java"
-value  = 3
+value  = 2
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/BaseJre.java"

@@ -12,7 +12,6 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,26 +22,13 @@ class SelfMaterializeCommandTest {
     @TempDir
     Path isolatedHome;
 
-    private String prevHome;
-    private String prevState;
-
     @BeforeEach
     void isolateHome() throws Exception {
-        prevHome = System.getProperty("jk.env.JK_HOME");
-        prevState = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_HOME", isolatedHome.toString());
         System.setProperty(
                 "jk.env.JK_STATE_DIR",
                 Files.createDirectories(isolatedHome.resolve("state")).toString());
         CliOutput.beginCommand(false);
-    }
-
-    @AfterEach
-    void restoreHome() {
-        if (prevHome == null) System.clearProperty("jk.env.JK_HOME");
-        else System.setProperty("jk.env.JK_HOME", prevHome);
-        if (prevState == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevState);
     }
 
     @Test

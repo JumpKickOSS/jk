@@ -89,30 +89,24 @@ class ClientKeychainTest {
     void a_command_reads_the_logins_as_they_are_when_it_runs_not_as_an_earlier_command_in_the_process_found_them(
             @TempDir Path home) throws Exception {
         System.setProperty("jk.env.JK_HOME", home.toString());
-        try {
-            login("private", "no-such-keychain repo/private");
+        login("private", "no-such-keychain repo/private");
 
-            ClientKeychain.Carried first = SessionContext.invocation(() -> {
-                ClientKeychain.Carried once = ClientKeychain.carried();
-                assertThat(ClientKeychain.carried())
-                        .as("one command reads once")
-                        .isSameAs(once);
-                return once;
-            });
-            assertThat(first.refused()).containsOnlyKeys("no-such-keychain repo/private");
+        ClientKeychain.Carried first = SessionContext.invocation(() -> {
+            ClientKeychain.Carried once = ClientKeychain.carried();
+            assertThat(ClientKeychain.carried()).as("one command reads once").isSameAs(once);
+            return once;
+        });
+        assertThat(first.refused()).containsOnlyKeys("no-such-keychain repo/private");
 
-            assertThat(run("repo", "logout", "private")).isZero();
-            assertThat(SessionContext.invocation(ClientKeychain::carried))
-                    .as("the command after the logout sends nothing for it")
-                    .isEqualTo(ClientKeychain.Carried.NONE);
+        assertThat(run("repo", "logout", "private")).isZero();
+        assertThat(SessionContext.invocation(ClientKeychain::carried))
+                .as("the command after the logout sends nothing for it")
+                .isEqualTo(ClientKeychain.Carried.NONE);
 
-            login("private", "no-such-keychain repo/rotated");
-            assertThat(SessionContext.invocation(ClientKeychain::carried).refused())
-                    .as("the command after a new login sends the new item")
-                    .containsOnlyKeys("no-such-keychain repo/rotated");
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-        }
+        login("private", "no-such-keychain repo/rotated");
+        assertThat(SessionContext.invocation(ClientKeychain::carried).refused())
+                .as("the command after a new login sends the new item")
+                .containsOnlyKeys("no-such-keychain repo/rotated");
     }
 
     @Test
@@ -121,32 +115,28 @@ class ClientKeychainTest {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path src = Files.createDirectories(project.resolve("src"));
         System.setProperty("jk.env.JK_HOME", home.toString());
-        try {
-            login("private", "no-such-keychain repo/private");
+        login("private", "no-such-keychain repo/private");
 
-            SessionContext.invocation(() -> {
-                try (SourceWatch watch = SourceWatch.open(project, List.of(src), 0)) {
-                    assertThat(ClientKeychain.carried().refused())
-                            .as("the watch's first build")
-                            .containsOnlyKeys("no-such-keychain repo/private");
+        SessionContext.invocation(() -> {
+            try (SourceWatch watch = SourceWatch.open(project, List.of(src), 0)) {
+                assertThat(ClientKeychain.carried().refused())
+                        .as("the watch's first build")
+                        .containsOnlyKeys("no-such-keychain repo/private");
 
-                    login("private", "no-such-keychain repo/rotated");
-                    assertThat(ClientKeychain.carried().refused())
-                            .as("within one pass the read stands")
-                            .containsOnlyKeys("no-such-keychain repo/private");
+                login("private", "no-such-keychain repo/rotated");
+                assertThat(ClientKeychain.carried().refused())
+                        .as("within one pass the read stands")
+                        .containsOnlyKeys("no-such-keychain repo/private");
 
-                    Files.writeString(src.resolve("Main.java"), "class Main {}\n");
-                    assertThat(watch.pollChange(30, TimeUnit.SECONDS)).isPresent();
+                Files.writeString(src.resolve("Main.java"), "class Main {}\n");
+                assertThat(watch.pollChange(30, TimeUnit.SECONDS)).isPresent();
 
-                    assertThat(ClientKeychain.carried().refused())
-                            .as("the rebuild after the change sends the rotated login")
-                            .containsOnlyKeys("no-such-keychain repo/rotated");
-                }
-                return null;
-            });
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-        }
+                assertThat(ClientKeychain.carried().refused())
+                        .as("the rebuild after the change sends the rotated login")
+                        .containsOnlyKeys("no-such-keychain repo/rotated");
+            }
+            return null;
+        });
     }
 
     /** A {@code jk repo login} record whose secret is the keychain item {@code pointer}. */

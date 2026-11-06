@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -24,23 +23,14 @@ class ScheduleBiasTest {
     @TempDir
     Path home;
 
-    private String prevBuilds;
-
     @BeforeEach
     void isolateStore() throws Exception {
-        prevBuilds = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", home.toString());
         // A fresh @TempDir per test is not enough on its own: the state root resolves once per
         // JVM, so whichever test in this worker ran first owns the directory every later one
         // reads. Sharded across 24 workers that is order-dependent — this class passed under one
         // harness and failed under the other until the store itself was cleared per test.
         Files.deleteIfExists(ScheduleBias.file());
-    }
-
-    @AfterEach
-    void restore() {
-        if (prevBuilds == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevBuilds);
     }
 
     /**

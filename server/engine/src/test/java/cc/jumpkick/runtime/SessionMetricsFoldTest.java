@@ -23,12 +23,10 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class SessionMetricsFoldTest {
 
-    private String previousStateDir;
     private Session previousSession;
 
     @BeforeEach
     void isolate() {
-        previousStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         previousSession = SessionContext.current();
     }
 
@@ -37,8 +35,6 @@ class SessionMetricsFoldTest {
         SessionContext.install(previousSession);
         BuildMetrics.clearSessionAggregatesMemo();
         BuildMetrics.clearMemo();
-        if (previousStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", previousStateDir);
     }
 
     /** A project's ledger as the harvest leaves it; the returned checkout is where its session runs. */

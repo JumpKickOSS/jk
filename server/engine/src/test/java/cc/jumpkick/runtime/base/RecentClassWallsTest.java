@@ -23,11 +23,8 @@ class RecentClassWallsTest {
     @TempDir
     Path state;
 
-    private String prevStateDir;
-
     @BeforeEach
     void isolateState() {
-        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", state.resolve("state").toString());
         RecentClassWalls.clear();
         BuildMetrics.clearSessionAggregatesMemo();
@@ -35,8 +32,6 @@ class RecentClassWallsTest {
 
     @AfterEach
     void restoreState() {
-        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
         RecentClassWalls.clear();
         BuildMetrics.clearSessionAggregatesMemo();
     }

@@ -36,36 +36,31 @@ class IdleHousekeepingNukedCacheTest {
         System.setProperty("jk.env.JK_AUTO_PRUNE", "true");
         // No host calibration after the prune: it would run a real warmup on this machine.
         Files.writeString(home.resolve("config.toml"), "[engine]\nauto-warmup = false\n");
-        try {
-            // Control. Without it an enqueue that silently never happened would leave the log
-            // empty below and this test would pass having exercised nothing.
-            Path live = roots.resolve("live");
-            Files.createDirectories(live.resolve("actions/keys"));
-            Files.writeString(live.resolve("actions/keys/task1"), "x", StandardCharsets.UTF_8);
-            IdleHousekeeping control = idle(live, log);
-            control.maybeEnqueuePrune(live);
-            control.run();
-            assertThat(log)
-                    .as("the harness really does reach the prune from the boundary")
-                    .anyMatch(line -> line.contains("idle-boundary cache prune removed"));
-            log.clear();
+        // Control. Without it an enqueue that silently never happened would leave the log
+        // empty below and this test would pass having exercised nothing.
+        Path live = roots.resolve("live");
+        Files.createDirectories(live.resolve("actions/keys"));
+        Files.writeString(live.resolve("actions/keys/task1"), "x", StandardCharsets.UTF_8);
+        IdleHousekeeping control = idle(live, log);
+        control.maybeEnqueuePrune(live);
+        control.run();
+        assertThat(log)
+                .as("the harness really does reach the prune from the boundary")
+                .anyMatch(line -> line.contains("idle-boundary cache prune removed"));
+        log.clear();
 
-            // Subject: the root `jk cache nuke` removed a moment ago.
-            Path nuked = roots.resolve("nuked");
-            IdleHousekeeping housekeeping = idle(nuked, log);
-            housekeeping.maybeEnqueuePrune(nuked);
-            housekeeping.run();
+        // Subject: the root `jk cache nuke` removed a moment ago.
+        Path nuked = roots.resolve("nuked");
+        IdleHousekeeping housekeeping = idle(nuked, log);
+        housekeeping.maybeEnqueuePrune(nuked);
+        housekeeping.run();
 
-            assertThat(nuked)
-                    .as("the boundary must not put back what the nuke removed")
-                    .doesNotExist();
-            assertThat(log)
-                    .as("and must not report a failure for a cache that is simply not there")
-                    .isEmpty();
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-            System.clearProperty("jk.env.JK_AUTO_PRUNE");
-        }
+        assertThat(nuked)
+                .as("the boundary must not put back what the nuke removed")
+                .doesNotExist();
+        assertThat(log)
+                .as("and must not report a failure for a cache that is simply not there")
+                .isEmpty();
     }
 
     private static IdleHousekeeping idle(Path cache, List<String> log) {

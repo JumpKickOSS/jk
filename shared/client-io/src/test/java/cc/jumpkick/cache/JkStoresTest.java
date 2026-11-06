@@ -22,17 +22,11 @@ class JkStoresTest {
     @Test
     void store_and_store_cas_root_under_the_store_override(@TempDir Path tmp) {
         Path store = tmp.resolve("store");
-        String prev = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_STORE_DIR", store.toString());
-        try {
-            assertThat(JkStores.store()).isEqualTo(store);
-            assertThat(JkStores.storeCas().root()).isEqualTo(store);
-            assertThat(JkStores.resolve("git")).isEqualTo(store.resolve("git"));
-            assertThat(JkStores.resolve("repos")).isEqualTo(store.resolve("repos"));
-        } finally {
-            if (prev == null) System.clearProperty("jk.env.JK_STORE_DIR");
-            else System.setProperty("jk.env.JK_STORE_DIR", prev);
-        }
+        assertThat(JkStores.store()).isEqualTo(store);
+        assertThat(JkStores.storeCas().root()).isEqualTo(store);
+        assertThat(JkStores.resolve("git")).isEqualTo(store.resolve("git"));
+        assertThat(JkStores.resolve("repos")).isEqualTo(store.resolve("repos"));
     }
 
     @Test

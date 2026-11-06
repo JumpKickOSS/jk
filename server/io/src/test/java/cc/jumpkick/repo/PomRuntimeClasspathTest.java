@@ -396,7 +396,6 @@ class PomRuntimeClasspathTest {
                 </project>
                 """);
 
-        String prevHome = System.getProperty("jk.env.JK_HOME");
         String prevHost = System.getProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY);
         try {
             System.setProperty("jk.env.JK_HOME", sandbox.toString());
@@ -409,7 +408,6 @@ class PomRuntimeClasspathTest {
                             workspaceJar.toAbsolutePath().normalize(),
                             depJar.toAbsolutePath().normalize());
         } finally {
-            restoreProp("jk.env.JK_HOME", prevHome);
             restoreProp(PomRuntimeClasspath.HOST_STORE_PROPERTY, prevHost);
         }
     }
@@ -432,7 +430,6 @@ class PomRuntimeClasspathTest {
         Path jar = tmp.resolve("jk-host-worker-1.0.0.jar");
         Files.writeString(jar, "x");
 
-        String prevHome = System.getProperty("jk.env.JK_HOME");
         String prevHost = System.getProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY);
         try {
             System.setProperty("jk.env.JK_HOME", sandbox.toString());
@@ -443,7 +440,6 @@ class PomRuntimeClasspathTest {
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("POM");
         } finally {
-            restoreProp("jk.env.JK_HOME", prevHome);
             restoreProp(PomRuntimeClasspath.HOST_STORE_PROPERTY, prevHost);
         }
     }

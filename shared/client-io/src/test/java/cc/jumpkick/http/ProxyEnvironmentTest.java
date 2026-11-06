@@ -237,19 +237,15 @@ class ProxyEnvironmentTest {
             throws Exception {
         Files.writeString(home.resolve("config.toml"), "");
         System.setProperty("jk.env.JK_HOME", home.toString());
-        try {
-            Session request =
-                    Session.defaults().withVariant(null, Map.of("https_proxy", "http://this-terminal.proxy:3128"));
-            List<Proxy> chosen = SessionContext.where(
-                    request, () -> ProxyEnvironment.ambient().select(CENTRAL));
+        Session request =
+                Session.defaults().withVariant(null, Map.of("https_proxy", "http://this-terminal.proxy:3128"));
+        List<Proxy> chosen =
+                SessionContext.where(request, () -> ProxyEnvironment.ambient().select(CENTRAL));
 
-            assertThat(chosen).singleElement().satisfies(proxy -> {
-                assertThat(proxy.type()).isEqualTo(Proxy.Type.HTTP);
-                assertThat(proxy.address()).isEqualTo(at("this-terminal.proxy", 3128));
-            });
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-        }
+        assertThat(chosen).singleElement().satisfies(proxy -> {
+            assertThat(proxy.type()).isEqualTo(Proxy.Type.HTTP);
+            assertThat(proxy.address()).isEqualTo(at("this-terminal.proxy", 3128));
+        });
     }
 
     /**

@@ -16,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -37,11 +36,6 @@ class ManifestUpdatesTest {
     @BeforeEach
     void isolateStore() {
         System.setProperty("jk.env.JK_STORE_DIR", isolatedStore.resolve("store").toString());
-    }
-
-    @AfterEach
-    void releaseStoreOverride() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
     }
 
     // ---- candidate selection --------------------------------------------------

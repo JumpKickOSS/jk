@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.function.IntSupplier;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,18 +27,9 @@ class ResultsCommandTest {
     @TempDir
     Path tmp;
 
-    private String prevBuilds;
-
     @BeforeEach
     void isolateBuilds() {
-        prevBuilds = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", tmp.toString());
-    }
-
-    @AfterEach
-    void restoreBuilds() {
-        if (prevBuilds == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevBuilds);
     }
 
     @Test

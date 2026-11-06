@@ -60,8 +60,6 @@ class KtsSessionTest {
     @TempDir
     static Path cacheDir;
 
-    private static String prevCacheDir;
-
     /**
      * Point the compiled-script cache at a temp dir. Counting jars in the developer's real cache
      * would be both a pollution of it and a race against whatever else is building. The class
@@ -75,7 +73,6 @@ class KtsSessionTest {
 
     @BeforeAll
     static void isolateCompiledScriptCache() {
-        prevCacheDir = System.getProperty("jk.env.JK_CACHE_DIR");
         System.setProperty("jk.env.JK_CACHE_DIR", cacheDir.toString());
         KtsSession.shutdown(); // a session started under a different cache must not be reused
     }
@@ -83,8 +80,6 @@ class KtsSessionTest {
     @AfterAll
     static void restoreCache() {
         KtsSession.shutdown();
-        if (prevCacheDir == null) System.clearProperty("jk.env.JK_CACHE_DIR");
-        else System.setProperty("jk.env.JK_CACHE_DIR", prevCacheDir);
     }
 
     /**

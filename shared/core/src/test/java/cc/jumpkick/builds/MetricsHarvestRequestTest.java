@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,11 +13,6 @@ import org.junit.jupiter.api.io.TempDir;
 class MetricsHarvestRequestTest {
 
     private static final String STATE_DIR = "jk.env.JK_STATE_DIR";
-
-    @AfterEach
-    void restore() {
-        System.clearProperty(STATE_DIR);
-    }
 
     @Test
     void each_requested_root_is_harvested_and_the_current_state_dir_is_not(@TempDir Path tmp) throws Exception {

@@ -36,7 +36,6 @@ class JdkInstallerDownloadsTest {
     private final AtomicReference<TransferBoard.Snapshot> midway = new AtomicReference<>();
     private HttpServer server;
     private URI base;
-    private String prevStateDir;
     private Path isolatedState;
 
     @BeforeEach
@@ -64,15 +63,12 @@ class JdkInstallerDownloadsTest {
         server.start();
         base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
         isolatedState = Files.createTempDirectory("jk-state-");
-        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", isolatedState.toString());
     }
 
     @AfterEach
     void stop() {
         server.stop(0);
-        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
         PathUtil.deleteRecursively(isolatedState);
     }
 

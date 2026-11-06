@@ -394,7 +394,6 @@ class OfficialTemplatesFreshenTest {
         Path store = tmp.resolve("store");
         Path clone = store.resolve(JkDirs.TEMPLATES_DIR)
                 .resolve(OfficialTemplatesFreshen.parse(ref).cacheKey());
-        String prev = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_STORE_DIR", store.toString());
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
@@ -419,8 +418,6 @@ class OfficialTemplatesFreshenTest {
             assertTrue(Files.isDirectory(clone.resolve("java/spring/hello.g8")), "a user action repopulates");
         } finally {
             pool.shutdownNow();
-            if (prev == null) System.clearProperty("jk.env.JK_STORE_DIR");
-            else System.setProperty("jk.env.JK_STORE_DIR", prev);
         }
     }
 

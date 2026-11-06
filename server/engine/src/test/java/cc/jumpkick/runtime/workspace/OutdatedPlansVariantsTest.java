@@ -10,7 +10,6 @@ import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -32,11 +31,6 @@ class OutdatedPlansVariantsTest {
     void isolateStore() {
         System.setProperty("jk.env.JK_STORE_DIR", isolatedStore.resolve("store").toString());
         RepoGroup.clearProcessVersionsCache();
-    }
-
-    @AfterEach
-    void releaseStoreOverride() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
     }
 
     @Test

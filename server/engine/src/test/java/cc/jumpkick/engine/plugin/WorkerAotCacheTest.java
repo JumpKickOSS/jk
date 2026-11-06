@@ -38,7 +38,6 @@ class WorkerAotCacheTest {
     void forget() {
         WorkerAotCache.forgetFailuresForTests();
         System.clearProperty("jk.worker.aot");
-        System.clearProperty("jk.env.JK_STATE_DIR");
     }
 
     /** The key is a pure function of its inputs, and each input moves it; the name carries the JDK tag. */

@@ -44,11 +44,8 @@ class KtsHostProtocolTest {
     @TempDir
     Path cacheDir;
 
-    private String prevCacheDir;
-
     @BeforeEach
     void isolateCompiledScriptCache() {
-        prevCacheDir = System.getProperty("jk.env.JK_CACHE_DIR");
         System.setProperty("jk.env.JK_CACHE_DIR", cacheDir.toString());
         KtsSession.shutdown();
     }
@@ -57,8 +54,6 @@ class KtsHostProtocolTest {
     void restoreCache() {
         KtsSession.shutdown();
         KtsSession.cancelGraceForTests(null);
-        if (prevCacheDir == null) System.clearProperty("jk.env.JK_CACHE_DIR");
-        else System.setProperty("jk.env.JK_CACHE_DIR", prevCacheDir);
     }
 
     /**

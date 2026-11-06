@@ -49,21 +49,17 @@ class StoredLoginsTest {
     void a_config_toml_that_does_not_parse_leaves_doctor_running_and_names_the_position(@TempDir Path home)
             throws Exception {
         System.setProperty("jk.env.JK_HOME", home.toString());
-        try {
-            Files.writeString(JkDirs.userConfigFile(), "[credentials]\nstore = \"keychain\"\n\n[mirrors\n");
+        Files.writeString(JkDirs.userConfigFile(), "[credentials]\nstore = \"keychain\"\n\n[mirrors\n");
 
-            StoredLogins.Rows rows = StoredLogins.collect();
+        StoredLogins.Rows rows = StoredLogins.collect();
 
-            assertThat(rows.destination()).isEqualTo("unknown");
-            assertThat(rows.error())
-                    .startsWith("where a new login goes is unknown: " + JkDirs.userConfigFile() + ":4:")
-                    .endsWith(" does not parse");
-            assertThat(StoredLogins.render(rows, Theme.active()).stream().map(TestAnsi::strip))
-                    .first()
-                    .asString()
-                    .startsWith("warn:    logins — where a new login goes is unknown");
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-        }
+        assertThat(rows.destination()).isEqualTo("unknown");
+        assertThat(rows.error())
+                .startsWith("where a new login goes is unknown: " + JkDirs.userConfigFile() + ":4:")
+                .endsWith(" does not parse");
+        assertThat(StoredLogins.render(rows, Theme.active()).stream().map(TestAnsi::strip))
+                .first()
+                .asString()
+                .startsWith("warn:    logins — where a new login goes is unknown");
     }
 }

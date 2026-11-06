@@ -198,7 +198,6 @@ class HttpProxyTest {
                     "Basic " + Base64.getEncoder().encodeToString("alice:s3cr3t".getBytes(StandardCharsets.UTF_8));
             assertThat(authorizations).containsExactly(expected);
         } finally {
-            System.clearProperty("jk.env.JK_HOME");
             authProxy.stop(0);
         }
     }

@@ -84,7 +84,6 @@ class RepoCredentialHelperGroupTest {
     @AfterEach
     void stop() {
         server.stop(0);
-        System.clearProperty("jk.env.JK_HOME");
         System.clearProperty("jk.m2.local");
         RunNotices.clear();
     }

@@ -12,8 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,17 +28,9 @@ class StableVersionsTest {
     @TempDir
     Path store;
 
-    private @Nullable String priorStore;
-
     @BeforeEach
     void ownStore() {
-        priorStore = System.setProperty("jk.env.JK_STORE_DIR", store.toString());
-    }
-
-    @AfterEach
-    void restoreStore() {
-        if (priorStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
-        else System.setProperty("jk.env.JK_STORE_DIR", priorStore);
+        System.setProperty("jk.env.JK_STORE_DIR", store.toString());
     }
 
     private static Path project(Path tmp) throws IOException {
