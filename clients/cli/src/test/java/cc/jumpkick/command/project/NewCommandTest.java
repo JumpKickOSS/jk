@@ -280,6 +280,45 @@ class NewCommandTest {
     }
 
     @Test
+    void a_relative_template_directory_resolves_against_the_working_directory(@TempDir Path tempDir)
+            throws IOException {
+        localTemplate(tempDir.resolve("my.g8"));
+        Run dotted = jk("new", "-t", "./my.g8", "--no-module", "--dir", tempDir.toString(), "demo");
+        assertThat(dotted.exit()).as(dotted.err()).isZero();
+        assertThat(Files.readString(tempDir.resolve("demo/jk.toml"))).contains("from = \"local\"");
+
+        Run bare = jk("new", "-t", "my.g8", "--no-module", "--dir", tempDir.toString(), "other");
+        assertThat(bare.exit()).as(bare.err()).isZero();
+        assertThat(Files.readString(tempDir.resolve("other/jk.toml"))).contains("from = \"local\"");
+
+        // The project may live elsewhere; the template is still the working directory's.
+        Path elsewhere = Files.createDirectories(tempDir.resolve("elsewhere")).resolve("third");
+        Run apart = jk("new", "-t", "my.g8", "--no-module", "--dir", tempDir.toString(), elsewhere.toString());
+        assertThat(apart.exit()).as(apart.err()).isZero();
+        assertThat(Files.readString(elsewhere.resolve("jk.toml"))).contains("from = \"local\"");
+    }
+
+    @Test
+    void a_directory_named_like_a_catalogue_template_without_a_template_in_it_leaves_the_catalogue(
+            @TempDir Path tempDir) throws IOException {
+        Files.createDirectories(tempDir.resolve("app/src"));
+        Run run = jk("new", "-t", "app", "--group", "com.example", "--no-module", "--dir", tempDir.toString(), "demo");
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(JkBuildParser.parse(tempDir.resolve("demo/jk.toml")).mainClass())
+                .isEqualTo("com.example.Main");
+    }
+
+    /** A Giter8 template at {@code g8} whose {@code jk.toml} says it came from here. */
+    private static void localTemplate(Path g8) throws IOException {
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve("default.properties"), "name=demo\n");
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), """
+                name = "$name$"
+                from = "local"
+                """);
+    }
+
+    @Test
     void existing_jk_toml_emits_styled_error(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), "# existing");
         var captured = new ByteArrayOutputStream();

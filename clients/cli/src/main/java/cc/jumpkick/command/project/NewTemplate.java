@@ -13,6 +13,8 @@ import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -150,6 +152,26 @@ final class NewTemplate {
             params.put(p.substring(0, eq), p.substring(eq + 1));
         }
         return params;
+    }
+
+    /**
+     * {@code ref} as the absolute path of the template directory it names under {@code cwd}, or
+     * {@code ref} unchanged. A directory counts only when it holds a template, a
+     * {@code .jk-template.toml} or a Giter8 layout, so a catalogue name that matches some other
+     * directory still reaches the catalogue.
+     */
+    static String localRef(String ref, Path cwd) {
+        if (ref.isBlank() || ref.contains("://") || ref.startsWith("git@")) return ref;
+        Path dir;
+        try {
+            dir = cwd.resolve(ref).toAbsolutePath().normalize();
+        } catch (InvalidPathException e) {
+            return ref;
+        }
+        boolean template = Files.isRegularFile(dir.resolve(".jk-template.toml"))
+                || Files.isRegularFile(dir.resolve("default.properties"))
+                || Files.isDirectory(dir.resolve("src/main/g8"));
+        return template ? dir.toString() : ref;
     }
 
     /** Short-name shaped refs: the engine owns the catalog and freshen. */
