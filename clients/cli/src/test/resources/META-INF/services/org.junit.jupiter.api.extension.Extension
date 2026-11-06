@@ -1,1 +1,2 @@
 cc.jumpkick.cli.engine.EngineTestExtension
+cc.jumpkick.testing.CheckoutUntouched
