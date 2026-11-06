@@ -157,6 +157,17 @@ public final class CompileSupport {
         return new ArrayList<>(out);
     }
 
+    /**
+     * The {@code .java} files under the TRADITIONAL {@code src/main/scala} root: they compile with
+     * the module's Java, in the same Zinc session as its Scala. SIMPLE's {@code src/} walk already
+     * holds them.
+     */
+    public static List<Path> collectJavaInScalaRoot(Path projectDir, boolean compact) throws IOException {
+        if (compact) return List.of();
+        return collectFilesWithExtension(
+                ModuleLayout.mainScalaRoots(projectDir, false).getFirst(), ".java");
+    }
+
     /** All default-suite test {@code .scala} files (roots from {@link cc.jumpkick.layout.TestSuites}). */
     public static List<Path> collectScalaTestSources(Path projectDir, boolean compact) throws IOException {
         return TestSuites.collectScalaSources(projectDir, compact, List.of(TestSuites.DEFAULT));
