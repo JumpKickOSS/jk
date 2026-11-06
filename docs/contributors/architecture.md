@@ -52,9 +52,10 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   as are the running-JVM cap, the compile lane count (`JavaCompilerHost.laneBudget`) and the
   overbook free memory (host `MemAvailable`, capped by this engine's workers group): an engine
   process joins `HostLeases`, one `<state>/engine/worker-leases` file under a file lock in which
-  every engine of the state dir records its budget, charged bytes, running JVMs and worker
-  pids, each grant is decided against the sums, the first live line's budget is every engine's,
-  and a reader drops the line of an engine whose pid is gone or was reused and kills the
+  every engine of the state dir records its budget, JVM cap, charged bytes, running JVMs,
+  queued leases and worker pids, each grant is decided against the sums, the first live line's
+  budget and JVM cap are every engine's, an idle compile lane exits while any engine has a lease
+  queued, and a reader drops the line of an engine whose pid is gone or was reused and kills the
   workers it names that still run (pid and start instant both match), so a draining engine and
   its successor share one set of limits and a crashed one blocks nobody; a test JVM's ledger
   joins nothing — and which asks a resident helper such

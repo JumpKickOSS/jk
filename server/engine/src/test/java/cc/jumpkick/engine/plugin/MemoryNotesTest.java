@@ -23,14 +23,14 @@ class MemoryNotesTest {
         TaskContext ctx = recording(output, warnings);
         StepScope.open(ctx);
         try {
-            WorkerLeases.recordWait(ctx, 200_000_000L);
-            WorkerLeases.recordWait(ctx, 2_000_000_000L);
-            WorkerLeases.recordWait(ctx, 1_000_000_000L);
+            MemoryNotes.recordWait(ctx, 200_000_000L);
+            MemoryNotes.recordWait(ctx, 2_000_000_000L);
+            MemoryNotes.recordWait(ctx, 1_000_000_000L);
         } finally {
             StepScope.close();
         }
         assertThat(output).containsExactly("waited 2s for memory", "waited 1s for memory");
-        String phrase = WorkerLeases.waitedPhrase(3_000_000_000L);
+        String phrase = MemoryNotes.waitedPhrase(3_000_000_000L);
         if (WorkerContainment.leaseBudget().source() == WorkerContainment.BudgetSource.OVERRIDE) {
             phrase = phrase + " (" + WorkerContainment.BUDGET_ENV + ")";
         }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.JavaCompilerHost.Lanes;
 import cc.jumpkick.compile.JavaCompilerHost.Session;
+import cc.jumpkick.engine.plugin.HostEngines;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.WorkerLeases;
@@ -58,6 +59,46 @@ class JavaCompilerHostBudgetTest {
             Thread.ofVirtual().start(() -> {
                 try {
                     testJvm.complete(ledger.acquireBytes(lease, true, 32L));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    testJvm.completeExceptionally(e);
+                }
+            });
+            testJvm.get(5, TimeUnit.SECONDS).close();
+        } finally {
+            pool.close();
+        }
+    }
+
+    @Test
+    void an_idle_lane_exits_when_another_engine_of_the_host_waits_for_a_jvm_slot(@TempDir Path dir) throws Exception {
+        long lease = 64L << 20;
+        WorkerLeases.Ledger mine = HostEngines.engine(dir.resolve("engine"), 1001, 8L << 30, 1);
+        WorkerLeases.Ledger other = HostEngines.engine(dir.resolve("engine"), 1002, 8L << 30, 1);
+        JavaCompilerHost.overrideLaneBudgetForTests(1);
+        CountDownLatch compiling = new CountDownLatch(1);
+        CountDownLatch finishCompile = new CountDownLatch(1);
+        Lanes pool = new Lanes(
+                1,
+                (owner, index) -> new Session(
+                        owner, 31L, index, self -> holdLeaseWhileCompiling(self, mine, compiling, finishCompile)),
+                req -> dir.resolve("spec"),
+                (failed, bigger) -> {},
+                true,
+                mine);
+        CompileWork work = CompileWork.compile(request(dir, "mod"));
+        try {
+            pool.enqueue(work);
+            assertThat(compiling.await(5, TimeUnit.SECONDS)).isTrue();
+            finishCompile.countDown();
+            assertThat(work.compile).succeedsWithin(DurationOf.FIVE);
+            assertThat(pool.liveLanes())
+                    .as("the idle lane stays while nothing waits")
+                    .isOne();
+            CompletableFuture<WorkerLeases.Grant> testJvm = new CompletableFuture<>();
+            Thread.ofVirtual().start(() -> {
+                try {
+                    testJvm.complete(other.acquireBytes(lease, true, 32L));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     testJvm.completeExceptionally(e);

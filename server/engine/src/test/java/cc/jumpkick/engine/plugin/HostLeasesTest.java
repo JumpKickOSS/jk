@@ -91,7 +91,7 @@ class HostLeasesTest {
             awaitLeased(draining, 2 * GIB);
         }
         assertThat(Files.readString(engineDir.resolve(HostLeases.FILE)))
-                .isEqualTo("1001 0 " + BUDGET + " 0 0\n1002 0 " + BUDGET + " 0 0\n");
+                .isEqualTo("1001 0 " + BUDGET + " 8 0 0 0\n1002 0 " + BUDGET + " 8 0 0 0\n");
     }
 
     @Test
@@ -111,7 +111,7 @@ class HostLeasesTest {
     void a_crashed_engines_leases_are_reclaimed_by_the_next_reader() throws Exception {
         long gonePid = 2_000_000_000L;
         assertThat(new HostLeases.Owner(gonePid, 0).alive()).isFalse();
-        Files.writeString(engineDir.resolve(HostLeases.FILE), gonePid + " 0 " + BUDGET + " " + BUDGET + " 1\n");
+        Files.writeString(engineDir.resolve(HostLeases.FILE), gonePid + " 0 " + BUDGET + " 8 " + BUDGET + " 1 0\n");
 
         WorkerLeases.Ledger next = new WorkerLeases.Ledger(() -> BUDGET, () -> 8, id -> false, OverbookSignals.off())
                 .waitAtMost(Duration.ofSeconds(2))
@@ -126,7 +126,7 @@ class HostLeasesTest {
     @Test
     void a_reused_pid_does_not_keep_the_dead_engines_leases() throws Exception {
         long parent = ProcessHandle.current().parent().orElseThrow().pid();
-        Files.writeString(engineDir.resolve(HostLeases.FILE), parent + " 1 " + BUDGET + " " + BUDGET + " 1\n");
+        Files.writeString(engineDir.resolve(HostLeases.FILE), parent + " 1 " + BUDGET + " 8 " + BUDGET + " 1 0\n");
 
         WorkerLeases.Ledger next = new WorkerLeases.Ledger(() -> BUDGET, () -> 8, id -> false, OverbookSignals.off())
                 .waitAtMost(Duration.ofSeconds(2))
@@ -138,11 +138,12 @@ class HostLeasesTest {
 
     @Test
     void a_line_that_does_not_parse_is_dropped() throws Exception {
-        Files.writeString(engineDir.resolve(HostLeases.FILE), "garbage\n1001 0 1 not-bytes 0\n1003 0 1 1 0 7\n");
+        Files.writeString(
+                engineDir.resolve(HostLeases.FILE), "garbage\n1001 0 1 8 not-bytes 0 0\n1003 0 1 8 1 0 0 7\n");
         WorkerLeases.Ledger ledger = engine(1002, OverbookSignals.off());
         try (WorkerLeases.Grant grant = ledger.acquireBytes(BUDGET, true, 7L)) {
             assertThat(Files.readString(engineDir.resolve(HostLeases.FILE)))
-                    .isEqualTo("1002 0 " + BUDGET + " " + BUDGET + " 1\n");
+                    .isEqualTo("1002 0 " + BUDGET + " 8 " + BUDGET + " 1 0\n");
         }
     }
 
@@ -208,7 +209,48 @@ class HostLeasesTest {
 
         live.remove(1001L);
         assertThat(later.snapshot().budgetBytes()).isEqualTo(2 * BUDGET);
-        assertThat(Files.readString(engineDir.resolve(HostLeases.FILE))).isEqualTo("1002 0 " + 2 * BUDGET + " 0 0\n");
+        assertThat(Files.readString(engineDir.resolve(HostLeases.FILE)))
+                .isEqualTo("1002 0 " + 2 * BUDGET + " 8 0 0 0\n");
+    }
+
+    @Test
+    void the_jvm_cap_the_first_engine_recorded_is_the_one_every_engine_leases_against() throws Exception {
+        Set<Long> live = ConcurrentHashMap.newKeySet();
+        live.add(1001L);
+        live.add(1002L);
+        WorkerLeases.Ledger first = engine(1001, BUDGET, 2, owner -> live.contains(owner.pid()));
+        WorkerLeases.Ledger later = engine(1002, BUDGET, 8, owner -> live.contains(owner.pid()));
+        assertThat(later.cpuCap()).isEqualTo(2);
+        assertThat(later.snapshot().cpuCap()).isEqualTo(2);
+        assertThat(first.snapshot().cpuCap()).isEqualTo(2);
+
+        try (WorkerLeases.Grant a = first.acquireBytes(64 * MIB, true, 3L);
+                WorkerLeases.Grant b = later.acquireBytes(64 * MIB, true, 7L)) {
+            CompletableFuture<WorkerLeases.Grant> third = acquire(later, 64 * MIB, 8L);
+            awaitQueued(later);
+            assertThat(later.snapshot().waiting()).startsWith("job #8 needs a JVM slot (2/2 running)");
+            a.close();
+            third.get(5, TimeUnit.SECONDS).close();
+        }
+
+        live.remove(1001L);
+        assertThat(later.snapshot().cpuCap()).isEqualTo(8);
+        assertThat(Files.readString(engineDir.resolve(HostLeases.FILE))).isEqualTo("1002 0 " + BUDGET + " 8 0 0 0\n");
+    }
+
+    @Test
+    void a_lease_waiting_in_one_engine_is_counted_by_the_others() throws Exception {
+        WorkerLeases.Ledger draining = engine(1001, BUDGET, 1, owner -> true);
+        WorkerLeases.Ledger successor = engine(1002, BUDGET, 1, owner -> true);
+        WorkerLeases.Grant held = draining.acquireBytes(64 * MIB, true, 3L);
+        assertThat(draining.otherEnginesWaiting()).isZero();
+
+        CompletableFuture<WorkerLeases.Grant> waiting = acquire(successor, 64 * MIB, 7L);
+        awaitQueued(successor);
+        awaitOthersWaiting(draining, 1);
+        held.close();
+        waiting.get(5, TimeUnit.SECONDS).close();
+        awaitOthersWaiting(draining, 0);
     }
 
     @Test
@@ -220,9 +262,10 @@ class HostLeasesTest {
             try (WorkerLeases.Grant grant = ledger.acquireBytes(GIB, true, 3L)) {
                 grant.watch(worker.pid(), "test JVM", null);
                 assertThat(Files.readString(engineDir.resolve(HostLeases.FILE)))
-                        .isEqualTo("1001 0 " + BUDGET + " " + GIB + " 1 " + worker.pid() + ":" + started + "\n");
+                        .isEqualTo("1001 0 " + BUDGET + " 8 " + GIB + " 1 0 " + worker.pid() + ":" + started + "\n");
             }
-            assertThat(Files.readString(engineDir.resolve(HostLeases.FILE))).isEqualTo("1001 0 " + BUDGET + " 0 0\n");
+            assertThat(Files.readString(engineDir.resolve(HostLeases.FILE)))
+                    .isEqualTo("1001 0 " + BUDGET + " 8 0 0 0\n");
         } finally {
             worker.destroyForcibly();
         }
@@ -240,7 +283,7 @@ class HostLeasesTest {
             // The second pid names a process that started a minute after the dead engine's worker did.
             Files.writeString(
                     engineDir.resolve(HostLeases.FILE),
-                    gonePid + " 0 " + BUDGET + " " + 2 * GIB + " 2 " + orphan.pid() + ":" + started + " "
+                    gonePid + " 0 " + BUDGET + " 8 " + 2 * GIB + " 2 0 " + orphan.pid() + ":" + started + " "
                             + stranger.pid() + ":" + (strangerStarted - 60_000) + "\n");
 
             WorkerLeases.Ledger next = new WorkerLeases.Ledger(
@@ -305,6 +348,16 @@ class HostLeasesTest {
         while (ledger.snapshot().leasedBytes() != bytes) {
             if (System.nanoTime() > deadline)
                 throw new AssertionError("leased " + ledger.snapshot().leasedBytes());
+            Thread.sleep(20);
+        }
+    }
+
+    /** The other engines' queue is re-read at most every 250 ms. */
+    private static void awaitOthersWaiting(WorkerLeases.Ledger ledger, int waiting) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (ledger.otherEnginesWaiting() != waiting) {
+            if (System.nanoTime() > deadline)
+                throw new AssertionError("other engines waiting: " + ledger.otherEnginesWaiting());
             Thread.sleep(20);
         }
     }
