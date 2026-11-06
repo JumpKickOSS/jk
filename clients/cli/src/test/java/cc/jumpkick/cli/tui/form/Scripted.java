@@ -25,35 +25,35 @@ import java.util.function.Function;
  * screen after every flush, through the same VT viewport the live-region tests use, so a test can
  * read what each keystroke showed.
  */
-final class Scripted {
+public final class Scripted {
 
-    static final String UP = "\u001b[A";
-    static final String DOWN = "\u001b[B";
-    static final String RIGHT = "\u001b[C";
-    static final String LEFT = "\u001b[D";
-    static final String ENTER = "\r";
-    static final String TAB = "\t";
-    static final String BACKSPACE = "\u007f";
-    static final String CTRL_C = "\u0003";
+    public static final String UP = "\u001b[A";
+    public static final String DOWN = "\u001b[B";
+    public static final String RIGHT = "\u001b[C";
+    public static final String LEFT = "\u001b[D";
+    public static final String ENTER = "\r";
+    public static final String TAB = "\t";
+    public static final String BACKSPACE = "\u007f";
+    public static final String CTRL_C = "\u0003";
 
     /** The private-use codepoints only the nerd mode may paint. */
-    static final String PILL_CAP = "";
+    public static final String PILL_CAP = "";
 
-    enum Mode {
+    public enum Mode {
         NERD,
         ANSI,
         PLAIN
     }
 
     /** One run: the answer, every frame as screen rows, and the raw bytes written. */
-    record Run<T>(Optional<T> answer, List<List<String>> frames, String written) {
+    public record Run<T>(Optional<T> answer, List<List<String>> frames, String written) {
         /** The screen as the run left it. */
-        List<String> last() {
+        public List<String> last() {
             return frames.isEmpty() ? List.of() : frames.getLast();
         }
 
         /** The first frame that shows {@code text}, joined by newlines. */
-        String frameWith(String text) {
+        public String frameWith(String text) {
             for (List<String> f : frames) {
                 String joined = String.join("\n", f);
                 if (joined.contains(text)) return joined;
@@ -65,11 +65,12 @@ final class Scripted {
     private Scripted() {}
 
     /** {@code keys} in nerd or ANSI mode, {@code lines} in plain mode. */
-    static <T> Run<T> run(Mode mode, Question<T> question, String keys, String lines) throws Exception {
+    public static <T> Run<T> run(Mode mode, Question<T> question, String keys, String lines) throws Exception {
         return drive(mode, keys, lines, asker -> asker.ask(question));
     }
 
-    static <R> Run<R> drive(Mode mode, String keys, String lines, Function<Asker, Optional<R>> body) throws Exception {
+    public static <R> Run<R> drive(Mode mode, String keys, String lines, Function<Asker, Optional<R>> body)
+            throws Exception {
         if (mode == Mode.PLAIN) return NoAnsi.forced(() -> cooked(lines, body));
         NerdFontCaps caps = mode == Mode.NERD ? NerdFontCaps.ALL : NerdFontCaps.NONE;
         return NoAnsi.forcedAnsi(() -> raw(keys, caps, body));

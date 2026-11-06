@@ -407,6 +407,12 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #NEW_PROJECT_REQUEST}. */
     public static final String NEW_PROJECT_ACK = "new-project-ack";
 
+    /** Client → server: the new-project form, jk's step and a template's; one {@link #NEW_PROJECT_FORM_ACK}. */
+    public static final String NEW_PROJECT_FORM_REQUEST = "new-project-form-request";
+
+    /** Server → client, terminal for {@link #NEW_PROJECT_FORM_REQUEST}. */
+    public static final String NEW_PROJECT_FORM_ACK = "new-project-form-ack";
+
     /** Client → server: plugin-declared command; one {@link #PLUGIN_VERB_ACK}. */
     public static final String PLUGIN_VERB_REQUEST = "plugin-command-request";
 

@@ -52,8 +52,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class NewProjectOps {
 
-    private static final Pattern NAME = Pattern.compile("[A-Za-z][A-Za-z0-9._-]*");
-    private static final Pattern GROUP = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*");
+    static final Pattern NAME = Pattern.compile("[A-Za-z][A-Za-z0-9._-]*");
+    static final Pattern GROUP = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*");
 
     private NewProjectOps() {}
 
@@ -406,6 +406,51 @@ public final class NewProjectOps {
                 : req.template().strip();
 
         return new Prepared(name, parent, target, group, lang, layout, template, req.executable(), req);
+    }
+
+    /**
+     * A template as the new-project form asks it: the id its ref resolved to (the ref itself for a
+     * path or URL), the layouts it renders, the one it renders by default, and its descriptor, or
+     * {@code null} for a template that has none.
+     */
+    public record TemplateForm(
+            String id, List<String> layouts, String defaultLayout, JkTemplateToml.@Nullable Meta meta) {
+        public TemplateForm {
+            layouts = List.copyOf(layouts);
+        }
+    }
+
+    /**
+     * Resolves {@code ref} as a create would, reads its descriptor (the catalogue lint included)
+     * and its default layout. Writes nothing; a plugin template is extracted and removed again.
+     */
+    public static TemplateForm templateForm(String ref, @Nullable String lang, Path cwd) throws IOException {
+        String langName =
+                lang == null || lang.isBlank() ? null : parseLang(lang).hoconValue();
+        Optional<TemplateSpec> spec = resolveIndexed(ref, langName, cwd);
+        Path root;
+        Path extracted = null;
+        if (spec.isPresent() && TemplateSpec.SOURCE_PLUGIN.equals(spec.get().source())) {
+            var s = spec.get();
+            extracted = PluginTemplates.materialize(
+                    Objects.requireNonNull(s.pluginId(), "pluginId"), s.language(), s.framework(), s.name());
+            root = extracted;
+        } else if (spec.isPresent() && spec.get().root() != null) {
+            root = Objects.requireNonNull(spec.get().root());
+        } else {
+            root = resolveTemplate(ref, langName, cwd);
+            if (spec.isEmpty()) spec = resolveIndexed(ref, langName, cwd);
+        }
+        try {
+            JkTemplateToml.Meta meta = JkTemplateToml.load(root).orElse(null);
+            List<String> layouts = spec.map(TemplateSpec::layouts)
+                    .orElse(meta == null ? List.of(Layout.TOKEN_TRADITIONAL, Layout.TOKEN_SIMPLE) : meta.layouts());
+            String preferred = templateLayout(null, Map.of(), root).token();
+            String defaultLayout = layouts.contains(preferred) ? preferred : layouts.getFirst();
+            return new TemplateForm(spec.map(TemplateSpec::id).orElse(ref), layouts, defaultLayout, meta);
+        } finally {
+            if (extracted != null) PathUtil.deleteRecursivelyOrThrow(extracted);
+        }
     }
 
     private static Optional<TemplateSpec> resolveIndexed(@Nullable String ref, @Nullable String lang, Path cwd) {

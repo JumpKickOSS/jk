@@ -4,14 +4,14 @@ package cc.jumpkick.giter8;
 import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Field;
 import cc.jumpkick.form.FieldDefault;
-import cc.jumpkick.form.FieldKind;
+import cc.jumpkick.form.FieldLine;
 import cc.jumpkick.form.FormCheck;
 import cc.jumpkick.form.Option;
 import cc.jumpkick.form.Step;
+import cc.jumpkick.form.Values;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -46,15 +46,15 @@ public final class TemplateAnswers {
         for (Field f : step.get().fields()) {
             String raw = params.get(f.key());
             if (raw == null) continue;
-            Object typed = typed(f, raw);
+            Object typed = Values.parse(f, raw);
             if (typed == null) {
-                problems.add(f.key() + " must be true or false; got '" + raw + "'" + hint(meta, f.key()));
+                problems.add(f.key() + " must be true or false; got '" + raw + "'" + hint(meta, f.key(), ""));
             } else {
                 answers.put(f.key(), typed);
             }
         }
         FormCheck check = meta.form().orElseThrow().check(answers, DerivedDefaults.NONE);
-        for (FormCheck.Problem p : check.problems()) problems.add(p.message() + hint(meta, p.key()));
+        for (FormCheck.Problem p : check.problems()) problems.add(p.message() + hint(meta, p.key(), p.message()));
         if (!problems.isEmpty()) throw new IllegalArgumentException(String.join("; ", problems));
         for (Field f : step.get().fields()) {
             Object value = check.values().get(f.key());
@@ -95,39 +95,14 @@ public final class TemplateAnswers {
     }
 
     /**
-     * A command-line answer as the kind's type: a bool reads {@code true}/{@code yes}/{@code y} or
-     * {@code false}/{@code no}/{@code n} ({@code null} for anything else), a multi splits on commas.
+     * The flag that answers {@code key}: after a missing answer as {@code ": -p key=…"}, after a
+     * wrong one in parentheses.
      */
-    static @Nullable Object typed(Field f, String raw) {
-        String s = raw.strip();
-        return switch (f.kind()) {
-            case BOOL ->
-                switch (s.toLowerCase(Locale.ROOT)) {
-                    case "true", "yes", "y" -> Boolean.TRUE;
-                    case "false", "no", "n" -> Boolean.FALSE;
-                    default -> null;
-                };
-            case MULTI -> {
-                List<String> ids = new ArrayList<>();
-                for (String part : s.split(",")) {
-                    if (!part.isBlank()) ids.add(part.strip());
-                }
-                yield ids;
-            }
-            default -> raw;
-        };
-    }
-
-    private static String hint(JkTemplateToml.Meta meta, String key) {
+    private static String hint(JkTemplateToml.Meta meta, String key, String message) {
         for (Field f : meta.asks()) {
             if (!f.key().equals(key)) continue;
-            if (f.kind() == FieldKind.CHOICE || f.kind() == FieldKind.MULTI) {
-                String sep = f.kind() == FieldKind.CHOICE ? "|" : ",";
-                return " (-p " + key + "="
-                        + f.options().stream().map(Option::id).collect(Collectors.joining(sep)) + ")";
-            }
-            if (f.kind() == FieldKind.BOOL) return " (-p " + key + "=true|false)";
-            return " (-p " + key + "=…)";
+            String param = FieldLine.param(f);
+            return message.endsWith(" needs a value") ? ": " + param : " (" + param + ")";
         }
         return "";
     }

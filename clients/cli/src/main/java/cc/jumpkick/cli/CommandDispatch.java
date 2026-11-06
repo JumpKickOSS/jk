@@ -466,7 +466,7 @@ public final class CommandDispatch {
         // matching picocli — so `jk <cmd> --help` always shows help.
         boolean passthrough = cmd.passthrough();
         if (helpRequested(cmd, passthrough ? args.leading() : args.joined())) {
-            System.out.print(renderHelp(cmd, qualified, ansi));
+            printHelp(cmd, qualified, args.joined(), ansi);
             return 0;
         }
         Invocation in;
@@ -786,6 +786,13 @@ public final class CommandDispatch {
             i += consumesNext ? 2 : 1;
         }
         return -1;
+    }
+
+    /** A leaf command's help, then whatever this invocation's arguments add to it. */
+    private static void printHelp(CliCommand cmd, String qualified, List<String> args, boolean ansi) {
+        System.out.print(renderHelp(cmd, qualified, ansi));
+        String more = cmd.helpFor(args);
+        if (!more.isEmpty()) System.out.print("\n" + more);
     }
 
     /**

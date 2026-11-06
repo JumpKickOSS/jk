@@ -1,18 +1,60 @@
 # Templates (`jk new`)
 
 ```bash
+jk new                       # on a terminal: the new-project form
 jk new my-app
 jk new -t cli my-app
 jk new -t spring-boot/hello my-api
 jk new -t quarkus/hello my-api
 jk new -t grails/hello my-svc
 jk new -t spring-boot/webmvc -L simple my-api
-jk new -p key=value          # repeatable; non-interactive props
+jk new -t app -p native=true my-app   # -p answers a template question; repeatable
+jk new -t app --help         # the template's questions, with their values and defaults
 jk init -t hello
 ```
 
-`-t` / `--template` is exclusive with `--plugin`. Blank `jk new` (no `-t`) is the wizard /
-flag scaffolder for a plain library or `--executable` app.
+`-t` / `--template` is exclusive with `--plugin`.
+
+**On a terminal**, `jk new` asks what its flags left open. It walks jk's own step first (language,
+template, name, group), then the chosen template's: the layout when the template renders more than
+one, then the template's [questions](#template-questions-jk-templatetoml). A flag answers its field
+up front (`--lang`, `-t`, the name or `--name`, `--group`, `-L`, and `-p key=value` for a template's
+question), and the field is shown answered rather than asked; an `advanced` question takes its
+default unless `-p` sets it. The walk ends on the equivalent command, which makes the same project
+without asking:
+
+```text
+Equivalent command  jk new my-app -t kotlin/none/app -L simple -p native=true
+```
+
+A flag only the blank scaffolder takes (`-e`, `-A`, `-n`, `-P`, `-d`, `-m`, `--jdk`) skips the form
+and scaffolds a plain library or `--executable` app, as without a terminal.
+
+**Without a terminal** (a pipe, `CI`, `JK_NONINTERACTIVE`), `-t` scaffolds the template with every
+question unanswered by `-p` at its default. A required question with no default is an error naming
+the flag that answers it:
+
+```text
+template java/spring-boot/webmvc: database needs a value: -p database=none|postgres|mysql
+```
+
+With no `-t`, `jk new` is the blank scaffolder for a plain library or `--executable` app.
+
+**`jk new -t <template> --help`** follows the command's own help with the template's questions, one
+line each, generated from its form:
+
+```text
+Template java/none/app (-L for layout, -p key=value for the rest):
+  layout: traditional|simple = traditional  # Layout
+  deps: [guava,commons-lang,commons-io] = []  # Libraries
+  assembly: true|false = false  # Runnable fat jar
+  native: true|false = false  # Native binary
+```
+
+A line reads `key: values = default`: `a|b` is a choice, `[a,b]` a multi (answer with
+comma-separated ids), `true|false` a bool and `text` a text, with its pattern between slashes.
+`(required)` marks a question with no default, `when …` the condition that shows it and
+`(advanced)` one the form does not ask.
 
 A standalone template scaffold gets what a plain `jk new` gets: [jk's section of
 **`AGENTS.md`**](agents.md#jks-section-of-agentsmd) (into the template's own `AGENTS.md` when it
@@ -176,8 +218,9 @@ message naming the property; a refused template is left out of the catalogue and
 - every `when` names earlier asks only, and every `default` is one of its `options`;
 - no `<key>_<option>` binding names another property.
 
-Reserved properties are jk's own: `name`, `organization`, `package`, `group`, `java`,
-`jk_languages`, `jk_layout`, `jk_version`, `name_normalized`, `simple` and `verbatim`.
+Reserved properties are jk's own: the keys of jk's step (`lang`, `template`, `name`, `group`,
+`layout`) and what the apply sets (`organization`, `package`, `java`, `jk_languages`, `jk_layout`,
+`jk_version`, `name_normalized`, `simple` and `verbatim`).
 
 ## Node front ends (`--lang node`)
 
@@ -226,9 +269,8 @@ table, so the jar records the commit it was built from (`git.properties`, and Bo
 `META-INF/build-info.properties` for `/actuator/info`). None ships an `AGENTS.md`: `jk new`
 writes jk's current section into every project it scaffolds.
 
-MCP `new`: `action=templates` lists `{id,name,language,framework,…}`; `preview=true`
-returns the file set without writing. The web dashboard has a New project modal —
-[Web](web.md).
+MCP `new` asks the same questions — [MCP](mcp.md#new). The web dashboard has a New project
+modal — [Web](web.md).
 
 ## Related
 

@@ -208,7 +208,9 @@ jk add com.acme:mylib             # GAV without a version: today's stable
 jk remove <coord>
 ```
 
-`jk new` without `-t` is the wizard / flag scaffolder (library or `--executable` app).
+On a terminal `jk new` asks for a template and its questions ([Templates](templates.md)); without
+one, or with a blank-scaffolder flag (`-e`, `-d`, `--jdk`, …), `jk new` without `-t` scaffolds a
+plain library or `--executable` app.
 `--template` cannot be combined with `--plugin`. Every language it scaffolds — Java, Kotlin, Groovy,
 Scala — gets its level as `java = N` and no toolchain pin: the host JDK compiles to the level. A
 `jdk = "…"` line is written only for an explicit `--jdk` (`--jdk corretto-25`, `--jdk 21`), the one

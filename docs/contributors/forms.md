@@ -99,6 +99,22 @@ a `bool` as `--flag` or `--flag=false`); every other field is `-p key=value`, a 
 commas. Hidden fields and values equal to their default are left out, and words are quoted for a
 POSIX shell.
 
+## The new-project form
+
+`jk new` and MCP `new` render one form, which the engine builds (`NewProjectForm`): jk's step
+(`lang`, `template` as a search over the catalogue, `name`, `group`, and `layout` when the template
+renders more than one), then the template's own `[[ask]]` step. Once a template is chosen, `lang`
+defaults to its language. The keys of jk's step are reserved, so no template may ask for one.
+
+| Surface | How it gets the form | Where it renders |
+|---|---|---|
+| CLI on a terminal | `new-project-form-request` (no template: jk's step and the catalogue; a template: both steps and the resolved id) | `NewForm` walks it with `FormRenderer`, then scaffolds through `NewTemplate`; the summary names the resolved id, so it reproduces the same template whatever language was asked |
+| CLI `-t <ref> --help` | the same request | `NewForm.help`, a `FieldLine` per field |
+| MCP `new` | `NewProjectOps.templateForm` in process | `McpNewForm` settles the answers: arguments and `params`, then defaults, then form elicitation for what is still required, else an error of `FieldLine`s |
+
+`FieldLine` is the one compact spelling of a field (`key: a|b = a  # Label`), shared by MCP
+`action=form`, `--help` and the missing-answer errors; `FieldLine.param` is its `-p` form.
+
 ## Adding a kind
 
 A kind is allowed only when every surface can render it or escalate it. Adding one means adding it to

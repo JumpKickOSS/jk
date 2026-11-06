@@ -68,7 +68,7 @@ final class NewNode {
                     "name the project: jk new -l node -t " + framework.get().id() + " <name>");
             return Exit.USAGE;
         }
-        Path target = NewWizard.resolveTarget(a.directory(), a.cwd(), name);
+        Path target = NewArgs.resolveTarget(a.directory(), a.cwd(), name);
         try {
             if (Files.exists(target) && !isEmpty(target)) {
                 CommandWedge.printFail(WEDGE, target + " already exists and is not empty");

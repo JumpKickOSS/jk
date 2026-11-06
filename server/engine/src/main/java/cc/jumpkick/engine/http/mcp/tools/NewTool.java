@@ -12,21 +12,28 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.model.Layout;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** {@code new} — the scaffolder behind {@code jk new} and the dashboard, preview included. */
+/**
+ * {@code new} — the scaffolder behind {@code jk new} and the dashboard, preview included. A
+ * template's questions are answered by {@code params}; what is still required goes to the human
+ * through elicitation when the client offers it.
+ */
 public final class NewTool implements McpTool {
 
     @Override
     public Spec spec() {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("type", "object");
+        params.put("description", "Template answers, key: value (action=form lists them)");
         return new Spec(
                 "new",
-                "Scaffold a project (same scaffolder as jk new / the dashboard). "
-                        + "action=templates lists catalog + local template short names; "
-                        + "preview=true returns the exact file set without writing.",
+                "Scaffold a project (same scaffolder as jk new). action=templates lists templates; "
+                        + "action=form lists one template's fields; preview=true lists files without writing.",
                 McpSchemas.object(Map.of(
                         "action",
-                        McpSchemas.string("create (default) | templates | preview"),
+                        McpSchemas.string("create (default) | templates | form | preview"),
                         "name",
                         McpSchemas.string("Project name (letters, digits, . _ -)"),
                         "parentDir",
@@ -34,11 +41,13 @@ public final class NewTool implements McpTool {
                         "group",
                         McpSchemas.string("Group id (default com.example)"),
                         "lang",
-                        McpSchemas.string("java (default) | kotlin | groovy"),
+                        McpSchemas.string("java (default) | kotlin | groovy | scala"),
                         "layout",
                         McpSchemas.string(Layout.scaffoldHelp() + " — where to place sources, not a jk.toml key"),
                         "template",
-                        McpSchemas.string("Giter8 id (java/spring-boot/hello), framework/name, or name under none"),
+                        McpSchemas.string("Template id (java/spring-boot/hello), framework/name, or name"),
+                        "params",
+                        params,
                         "preview",
                         McpSchemas.bool("List files without writing"))));
     }
@@ -46,19 +55,20 @@ public final class NewTool implements McpTool {
     @Override
     public Map<String, Object> call(McpCall in) {
         String action = in.action("create");
-        if ("templates".equalsIgnoreCase(action)) {
-            return in.ok(McpEnvelope.of("templates", McpScaffold.templates()), "template catalog");
-        }
-        NewProjectOps.Request req = new NewProjectOps.Request(
-                in.str("name"),
-                parentDir(in),
-                in.str("group"),
-                in.str("lang"),
-                in.str("layout"),
-                in.str("template"),
-                in.flagOr("executable", true));
-        boolean preview = "preview".equalsIgnoreCase(action) || in.flag("preview");
         try {
+            if ("templates".equalsIgnoreCase(action)) {
+                return in.ok(McpEnvelope.of("templates", McpScaffold.templates()), "template catalog");
+            }
+            if ("form".equalsIgnoreCase(action)) {
+                String template = in.str("template");
+                if (template == null || template.isBlank()) {
+                    throw new McpError(-32602, "action=form requires arguments.template");
+                }
+                Map<String, Object> form = McpScaffold.form(template, in.str("lang"), cwd(in));
+                return in.ok(McpEnvelope.of("new-form", form), "form of " + form.get("template"));
+            }
+            NewProjectOps.Request req = McpScaffold.request(in, parentDir(in));
+            boolean preview = "preview".equalsIgnoreCase(action) || in.flag("preview");
             if (preview) {
                 return in.ok(
                         McpEnvelope.of(
@@ -80,6 +90,14 @@ public final class NewTool implements McpTool {
         } catch (IOException e) {
             throw new McpError(-32000, Errors.text(e));
         }
+    }
+
+    /** Where a relative template path resolves: the scaffold's parent when one is known. */
+    private static Path cwd(McpCall in) {
+        String parent = in.str("parentDir");
+        if (parent != null && !parent.isBlank()) return Path.of(parent);
+        String bound = in.dir();
+        return Path.of(bound != null && !bound.isBlank() ? bound : System.getProperty("user.home"));
     }
 
     /** Default scaffold parent: explicit arg, else the bound dir's parent. */

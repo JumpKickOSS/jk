@@ -35,25 +35,44 @@ public final class FormRenderer {
 
     /** The settled values, or empty when the user backed out. {@code given} are answers from flags. */
     public Optional<Map<String, Object>> run(Form form, Map<String, ?> given) {
+        return run(form, Map.of(), given);
+    }
+
+    /**
+     * As {@link #run(Form, Map)}, continuing a walk: {@code settled} are answers an earlier walk
+     * already showed, taken without showing them again. A step prints its title only when it shows
+     * or asks something.
+     */
+    public Optional<Map<String, Object>> run(Form form, Map<String, ?> settled, Map<String, ?> given) {
         Map<String, Object> values = new LinkedHashMap<>();
         RenderContext ctx = asker.context();
         for (Step step : form.steps()) {
-            asker.println(
-                    JkWedge.menu(form.title(), RichText.plain(step.title())).renderLine(ctx));
+            boolean titled = false;
             for (Field f : step.fields()) {
                 @Nullable Object fallback = Form.defaultOf(f, sources.derived());
                 if (!Form.visible(f, values)) {
                     if (fallback != null) values.put(f.key(), fallback);
                     continue;
                 }
-                Object preset = given.get(f.key());
-                if (preset != null && f.problem(preset) == null) {
-                    values.put(f.key(), preset);
-                    showGiven(Questions.of(f, values, sources), preset);
+                Object earlier = settled.get(f.key());
+                if (earlier != null && f.problem(earlier) == null) {
+                    values.put(f.key(), earlier);
                     continue;
                 }
-                if (f.advanced() && fallback != null) {
+                Object preset = given.get(f.key());
+                boolean fits = preset != null && f.problem(preset) == null;
+                if (!fits && f.advanced() && fallback != null) {
                     values.put(f.key(), fallback);
+                    continue;
+                }
+                if (!titled) {
+                    asker.println(JkWedge.menu(form.title(), RichText.plain(step.title()))
+                            .renderLine(ctx));
+                    titled = true;
+                }
+                if (fits && preset != null) {
+                    values.put(f.key(), preset);
+                    showGiven(Questions.of(f, values, sources), preset);
                     continue;
                 }
                 Optional<?> answer = asker.ask(Questions.of(f, values, sources));

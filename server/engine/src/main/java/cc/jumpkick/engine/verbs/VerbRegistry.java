@@ -55,6 +55,7 @@ public final class VerbRegistry {
                 new PluginCommandVerb(host),
                 new GenerateVerb(host),
                 new NewProjectVerb(host),
+                new NewProjectFormVerb(host),
                 new IdeModelVerb(host),
                 new DenyCheckVerb(host),
                 new GuardFreezeVerb(host),

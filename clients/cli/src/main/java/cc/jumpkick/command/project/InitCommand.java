@@ -34,9 +34,14 @@ public final class InitCommand implements CliCommand {
     }
 
     @Override
+    public String helpFor(List<String> args) {
+        return new NewCommand().helpFor(args);
+    }
+
+    @Override
     public int run(Invocation in) throws IOException {
         // Delegate to NewCommand with directory pinned to "." so its target-
-        // resolution, wizard-preset, and existing-project logic all fire
+        // resolution, name preset, and existing-project logic all fire
         // correctly against the current directory. NewCommand's own
         // emitProjectExistsError() handles the already-exists case.
         NewCommand delegate = new NewCommand();
@@ -49,6 +54,7 @@ public final class InitCommand implements CliCommand {
         delegate.nativeImage = in.isSet("native");
         delegate.plugin = in.isSet("plugin");
         delegate.templateRef = in.value("template").orElse(null);
+        delegate.templateParams = in.values("param");
         delegate.depsCsv = in.value("deps").orElse(null);
         delegate.layoutFlag = in.value("layout").orElse(null);
         delegate.kotlinModule = in.value("kotlin-module").orElse(null);

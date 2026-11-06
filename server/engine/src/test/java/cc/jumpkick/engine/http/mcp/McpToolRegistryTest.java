@@ -165,6 +165,21 @@ class McpToolRegistryTest {
         assertThat(all.length()).as("full list is the expensive one").isGreaterThan(loop.length() * 4);
     }
 
+    /**
+     * {@code new} carries a template's questions in {@code action=form}, never in its card: the
+     * card stays the size of a scaffolder's, whatever the catalogue asks.
+     */
+    @Test
+    void the_new_card_holds_no_template_questions_and_stays_within_its_budget() {
+        Map<String, Object> card = objects(McpTools.standard().listing(McpTools.Surface.ALL), "tools").stream()
+                .filter(r -> "new".equals(r.get("name")))
+                .findFirst()
+                .orElseThrow();
+        String json = MiniJson.write(card);
+        assertThat(json.length()).as("new card %d bytes", json.length()).isLessThanOrEqualTo(1_300);
+        assertThat(json).contains("action=form", "params").doesNotContain("database", "native");
+    }
+
     @Test
     void the_playbook_names_only_the_default_tools() {
         for (String instructions : List.of(McpTools.INSTRUCTIONS, McpTools.PINNED_INSTRUCTIONS)) {

@@ -4,16 +4,13 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
-import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.command.project.NewCommand;
-import cc.jumpkick.command.project.NewWizard;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Workspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -161,32 +158,6 @@ class NewModuleTest {
     @Test
     void detect_returns_empty_with_no_enclosing_project(@TempDir Path dir) {
         assertThat(NewCommand.detectParentDir(dir, null, false)).isEmpty();
-    }
-
-    // ---- jdkFloor: the Java Language Version shapes the JDK list ------------
-
-    @Test
-    void jdk_floor_uses_the_chosen_java_version() {
-        assertThat(NewWizard.jdkFloor(answers("lang", "java", "javaVersion", "25"), null))
-                .isEqualTo(25);
-        assertThat(NewWizard.jdkFloor(answers("lang", "java", "javaVersion", "17"), null))
-                .isEqualTo(17);
-    }
-
-    @Test
-    void jdk_floor_is_unrestricted_for_kotlin() {
-        assertThat(NewWizard.jdkFloor(answers("lang", "kotlin"), null)).isZero();
-    }
-
-    @Test
-    void jdk_floor_defaults_to_latest_lts_when_unanswered() {
-        assertThat(NewWizard.jdkFloor(answers("lang", "java"), null)).isEqualTo(NewWizard.LATEST_LTS_MAJOR);
-    }
-
-    private static Answers answers(String... kv) {
-        var map = new HashMap<String, Object>();
-        for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
-        return Answers.of(map);
     }
 
     private static Workspace workspaceOf(JkBuild build) {
