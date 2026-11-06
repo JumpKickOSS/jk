@@ -271,7 +271,7 @@ still cannot be told apart (a method reference to the class's own method, a call
 block, which the compiler copies) is left alone and quoted under the answer, as are the uses of the
 name in a module that may call it but has no compiled classes, so the agent edits those few by hand.
 A module may call it when it sees, as the build does, a module declaring the method or one it
-overrides: through any dependency table, a variant's or a `path` dependency, or a published POM a
+overrides: through any dependency table, a variant value's included, or a published POM a
 member serves. A supertype outside the workspace that may declare the method makes every module one.
 A rename compiles a never-compiled module, and its tests, first, as a question does; when that
 compile cannot run, or a suite a question does not compile has no classes, the answer says it is

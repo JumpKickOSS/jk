@@ -4,7 +4,9 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PathSource;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
@@ -30,11 +32,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * BuildPlanner.coreBuilder}). There is no separate "dependency unit" concept: a local sibling is
  * always a workspace module, and a git dependency (any ref type) is always a lock-pinned
  * coordinate resolved by {@link GitSourceResolution} — neither needs its own build unit here.
- * Edges point from a unit to the units that must build before it (prereqs): sibling deps plus
- * {@code [build].order-after}.
+ * Edges point from a unit to the units that must build before it (prereqs): sibling deps (every
+ * {@code [variants]} value's included) plus {@code [build].order-after}.
  *
- * <p>Cycles and chains deeper than {@link #MAX_DEPTH} are reported as errors before any build
- * runs.
+ * <p>Cycles, chains deeper than {@link #MAX_DEPTH} and a {@code path} dependency on a member are
+ * reported as errors before any build runs.
  */
 public final class BuildGraph {
 
@@ -301,6 +303,26 @@ public final class BuildGraph {
             // classpath without any declared dependency naming it; the wave has to know.
             for (Path prereq : ModuleOrder.substitutedPrereqs(rootDir, moduleDir, m, ALL_SCOPES, dirByCoord)) {
                 addEdge(moduleDir, prereq);
+            }
+            rejectPathToMember(moduleDir, m);
+        }
+
+        /**
+         * A {@code path} dependency builds its target apart from the workspace and publishes it under
+         * the target's own coordinate, which a member's coordinate shadows: the member is never on the
+         * consumer's classpath that way. A member names another with {@code workspace = true}.
+         */
+        private void rejectPathToMember(Path moduleDir, JkBuild m) {
+            for (Scope scope : ALL_SCOPES) {
+                for (Dependency d : ModuleOrder.declared(m, scope)) {
+                    PathSource source = d.pathSource();
+                    if (source == null) continue;
+                    BuildUnit target = units.get(canonical(moduleDir.resolve(source.rawPath())));
+                    if (target == null || target.dir().equals(moduleDir)) continue;
+                    errors.add(m.project().name() + ": `" + d.library() + " = { path = \"" + source.rawPath()
+                            + "\" }` names workspace member " + target.coord() + "; write `" + d.library()
+                            + " = { workspace = true }`");
+                }
             }
         }
 
