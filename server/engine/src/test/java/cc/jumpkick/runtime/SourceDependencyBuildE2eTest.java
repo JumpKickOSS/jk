@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -13,7 +14,6 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.workspace.ExecPlans;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.testing.TestCaches;
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -66,8 +66,7 @@ class SourceDependencyBuildE2eTest {
                 .setBare(true)
                 .call()
                 .close();
-        Path app = writeApp(
-                tmp.resolve("app"), "lib = { git = \"" + bare.toUri() + "\", tag = \"v1.0.0\" }");
+        Path app = writeApp(tmp.resolve("app"), "lib = { git = \"" + bare.toUri() + "\", tag = \"v1.0.0\" }");
 
         assertLocksBuildsAndRuns(app, cache, "from git");
     }
