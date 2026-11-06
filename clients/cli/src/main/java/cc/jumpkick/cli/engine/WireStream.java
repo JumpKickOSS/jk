@@ -133,7 +133,7 @@ public final class WireStream {
      * cancel handle for as long as the stream is live, so Ctrl-C ({@link
      * EngineClient#cancelBestEffortForInterrupt}) can cancel it by id — the only handle that works
      * for a verb whose journal dir is the cache rather than the user's project, which is every
-     * verb that takes no {@code dir} ({@code jk cache prune}, {@code jk tool resolve}, {@code jk
+     * verb that takes no {@code dir} ({@code jk cache clean}, {@code jk tool resolve}, {@code jk
      * tool run <script>}).
      *
      * @param ch the stream's channel, half-closed while waiting for {@code job-finish}; {@code
