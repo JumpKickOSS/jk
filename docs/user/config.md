@@ -375,6 +375,9 @@ Anything else means "unset", so the next layer down decides; a malformed value i
 hard failure. There is one reader behind all of it, so `CI=yes` and `CI=1` mean exactly what
 `CI=true` means everywhere.
 
+`JK_CEILING_DIRECTORIES` keeps jk's search for a project and its workspace below the directories it
+lists: [Workspaces § Where jk looks for the workspace](workspaces.md#where-jk-looks-for-the-workspace).
+
 Install / dirs: [Install](install.md). Format: [Format](format.md). Cache budgets:
 [Cache](cache.md). `.env` layering: `jk env` on the install page.
 

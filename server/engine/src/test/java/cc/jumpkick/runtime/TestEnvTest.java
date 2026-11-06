@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SearchCeiling;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -138,6 +139,38 @@ class TestEnvTest {
                 .as("outside the sandboxed product home")
                 .isFalse();
         assertThat(env.get("TMPDIR")).isNotEqualTo(System.getProperty("java.io.tmpdir"));
+    }
+
+    @Test
+    void a_fixture_in_a_temp_directory_never_climbs_out_of_the_temp_root(@TempDir Path tmp) throws Exception {
+        // A project a test scaffolds under its temp root must not find whatever lies above that
+        // root: the search ceiling is the temp root itself and jk's short @TempDir root.
+        JkBuild project = project(tmp, "");
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
+
+        SearchCeiling ceiling = SearchCeiling.parse(env.get(SearchCeiling.ENV));
+        Path tmpRoot = Path.of(env.get("TMPDIR"));
+        assertThat(ceiling.above(tmpRoot.resolve("junit-1"))).isNull();
+        Path shortRoot = Path.of(System.getProperty("user.home"), ".jk-test-tmp");
+        assertThat(ceiling.above(shortRoot.resolve("1234"))).isNull();
+
+        // A temp root the module points into its own tree is the ceiling instead, and one the module
+        // names itself wins.
+        JkBuild scratch = project(tmp, """
+                [test]
+                env = [{ TMPDIR = "${target}/scratch" }]
+                """);
+        env = TestEnv.forModuleUnseeded(scratch, tmp, BuildLayout.of(tmp, scratch))
+                .extras();
+        assertThat(SearchCeiling.parse(env.get(SearchCeiling.ENV)).above(tmp.resolve("target/scratch/x")))
+                .isNull();
+        JkBuild named = project(tmp, """
+                [test]
+                env = [{ JK_CEILING_DIRECTORIES = "/somewhere" }]
+                """);
+        env = TestEnv.forModuleUnseeded(named, tmp, BuildLayout.of(tmp, named)).extras();
+        assertThat(env.get(SearchCeiling.ENV)).isEqualTo("/somewhere");
     }
 
     @Test

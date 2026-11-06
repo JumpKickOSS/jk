@@ -57,14 +57,15 @@ public final class ConfigSources {
 
     /**
      * Search {@code startDir} and its ancestors for the nearest {@code jk.toml}; {@code null} when
-     * none is found before the filesystem root.
+     * none is found before the filesystem root or a {@link SearchCeiling}.
      */
     public static @Nullable Path findProjectConfig(Path startDir) {
+        SearchCeiling ceiling = SearchCeiling.current();
         Path here = startDir == null ? null : startDir.toAbsolutePath().normalize();
         while (here != null) {
             Path candidate = here.resolve(ManifestPaths.MANIFEST);
             if (Files.isRegularFile(candidate)) return candidate;
-            here = here.getParent();
+            here = ceiling.above(here);
         }
         return null;
     }

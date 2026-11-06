@@ -9,6 +9,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.form.Asker;
 import cc.jumpkick.command.EngineEdits;
+import cc.jumpkick.config.SearchCeiling;
 import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Form;
 import cc.jumpkick.form.FormCommand;
@@ -218,15 +219,17 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * Walk up from {@code startDir} for a parent {@code jk.toml}; stop at {@code .git} or
-     * {@code $HOME}. {@code --no-module} → empty.
+     * Walk up from {@code startDir} for a parent {@code jk.toml}; stop at a repository's top (its
+     * {@code .git} directory, or the {@code .git} file of a worktree or submodule), at {@code $HOME},
+     * or before a {@link SearchCeiling}. {@code --no-module} → empty.
      */
     public static Optional<Path> detectParentDir(Path startDir, @Nullable Path home, boolean noModule) {
         if (noModule) return Optional.empty();
+        SearchCeiling ceiling = SearchCeiling.current();
         Path normHome = home == null ? null : home.toAbsolutePath().normalize();
-        for (Path dir = startDir.toAbsolutePath().normalize(); dir != null; dir = dir.getParent()) {
+        for (Path dir = startDir.toAbsolutePath().normalize(); dir != null; dir = ceiling.above(dir)) {
             if (Files.exists(dir.resolve(ManifestPaths.MANIFEST))) return Optional.of(dir);
-            if (Files.isDirectory(dir.resolve(".git"))) return Optional.empty(); // exited the repo
+            if (Files.exists(dir.resolve(".git"))) return Optional.empty(); // exited the repo
             if (dir.equals(normHome)) return Optional.empty(); // hit $HOME
         }
         return Optional.empty();

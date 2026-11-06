@@ -63,14 +63,15 @@ public final class PomReactorScan {
     /**
      * The outermost strict ancestor of {@code dir} that is built from its POM and whose reactor
      * lists {@code dir}, or empty. Outermost, because a nested aggregator lists its children too
-     * and the workspace is the whole tree.
+     * and the workspace is the whole tree; never at or above a {@link SearchCeiling}.
      */
     public static Optional<Path> reactorRootOf(Path dir) {
+        SearchCeiling ceiling = SearchCeiling.current();
         Path normalized = dir.toAbsolutePath().normalize();
         Path candidate = normalized;
         Path found = null;
         for (int depth = 0; depth < MAX_DEPTH; depth++) {
-            Path parent = candidate.getParent();
+            Path parent = ceiling.above(candidate);
             if (parent == null) break;
             if (ManifestPaths.isShadowed(parent)) {
                 String rel = parent.relativize(normalized).toString().replace(File.separatorChar, '/');

@@ -82,6 +82,11 @@ shipped one), the files of each [agent in use](agents.md) and a first code graph
 owns them. A template scaffolded inside a project is listed in the root's `[workspace].modules`,
 as a plain `jk new` module is, so the next `jk build` builds it.
 
+"Inside a project" means the nearest `jk.toml` at or above the new project's parent directory,
+looking no higher than the top of its git repository (a `.git` directory, or the `.git` file of a
+worktree), `$HOME`, or a [search ceiling](workspaces.md#where-jk-looks-for-the-workspace). `-N`
+(`--no-module`) makes a standalone project wherever it lands.
+
 Every library and framework version a scaffold writes is today's **current stable, as an exact
 pin** (`[spring-boot] version = "4.1.0"`, not `"latest"`). The committed file says what you
 build against; `jk update` moves it — [Lockfile](lockfile.md#jk-update).
