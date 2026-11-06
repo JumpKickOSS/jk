@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.tui.form.Scripted.CTRL_C;
 import static cc.jumpkick.cli.tui.form.Scripted.ENTER;
 import static cc.jumpkick.cli.tui.form.Scripted.RIGHT;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cli.tui.form.Scripted;
 import cc.jumpkick.cli.tui.form.Scripted.Mode;
@@ -16,6 +17,7 @@ import cc.jumpkick.form.Form;
 import cc.jumpkick.form.FormCommand;
 import cc.jumpkick.form.Option;
 import cc.jumpkick.form.Step;
+import cc.jumpkick.scaffold.NewProjectStep;
 import cc.jumpkick.wire.protocol.NewProjectFormAck;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -33,8 +35,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
 /**
- * {@code jk new} on a terminal, scripted: jk's step, then the chosen template's step with one field
- * of every kind a template asks, then the summary. The forms are the shapes the engine serves.
+ * {@code jk new}'s form, scripted on a terminal and settled without one: jk's step (the real
+ * {@link NewProjectStep}, as the engine serves it), then the chosen template's step with one field of
+ * every kind a template asks, then the summary.
  */
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class NewFormTest {
@@ -42,6 +45,8 @@ class NewFormTest {
     private static final Map<String, String> CATALOGUE = new LinkedHashMap<>();
 
     static {
+        // Sorts ahead of app, which the search preselects all the same.
+        CATALOGUE.put("kotlin/micronaut/hello", "Micronaut hello app");
         CATALOGUE.put("java/none/app", "Blank Java application");
         CATALOGUE.put("kotlin/none/app", "Blank Kotlin application");
         CATALOGUE.put("kotlin/spring-boot/hello", "Boot hello app");
@@ -52,35 +57,18 @@ class NewFormTest {
             "template", FormCommand.Flag.named("-t"),
             "name", FormCommand.Flag.positional(),
             "group", FormCommand.Flag.named("--group"),
+            "dir", FormCommand.Flag.named("--dir"),
             "layout", FormCommand.Flag.named("-L"));
 
-    private static final DerivedDefaults DERIVED = from -> from.equals("git-email") ? "com.acme" : null;
+    private static final DerivedDefaults DERIVED = from -> switch (from) {
+        case NewProjectStep.GIT_EMAIL -> "com.acme";
+        case NewProjectStep.PARENT_DIR -> "/work";
+        default -> null;
+    };
 
     /** The engine's step 1; {@code lang} defaults to the template's language once one is chosen. */
     private static Step project(String lang, boolean layout) {
-        List<Field> fields = new ArrayList<>(List.of(
-                Field.of("lang", "Language", FieldKind.CHOICE)
-                        .option("java")
-                        .option("kotlin")
-                        .defaultValue(lang)
-                        .build(),
-                Field.of("template", "Template", FieldKind.SEARCH)
-                        .source("/api/templates?lang={lang}")
-                        .build(),
-                Field.of("name", "Name", FieldKind.TEXT)
-                        .pattern("[A-Za-z][A-Za-z0-9._-]*")
-                        .build(),
-                Field.of("group", "Group", FieldKind.TEXT)
-                        .defaultFrom("git-email")
-                        .build()));
-        if (layout) {
-            fields.add(Field.of("layout", "Layout", FieldKind.CHOICE)
-                    .option("traditional")
-                    .option("simple")
-                    .defaultValue("traditional")
-                    .build());
-        }
-        return new Step("project", "Project", fields);
+        return NewProjectStep.of(lang, layout ? List.of("traditional", "simple") : List.of(), "traditional");
     }
 
     private static final Step TEMPLATE = Step.of(
@@ -140,7 +128,7 @@ class NewFormTest {
     }
 
     private static NewForm.Given nothing() {
-        return new NewForm.Given(null, null, null, null, null, Map.of());
+        return new NewForm.Given(null, null, null, null, null, null, Map.of());
     }
 
     @ParameterizedTest
@@ -150,9 +138,10 @@ class NewFormTest {
     void keys_walk_jks_step_then_the_templates_and_end_on_the_command(Mode mode) throws Exception {
         Engine engine = new Engine();
         String keys = RIGHT + ENTER // kotlin
-                + ENTER // template: app, the first kotlin match
+                + ENTER // template: app, preselected though micronaut/hello sorts first
                 + "demo" + ENTER // name
                 + ENTER // group: derived
+                + ENTER // dir: derived
                 + RIGHT + ENTER // layout: simple
                 + "hi" + ENTER // motto
                 + "y" // native
@@ -191,6 +180,7 @@ class NewFormTest {
                 + "app\n" // template
                 + "demo\n" // name
                 + "\n" // group
+                + "\n" // dir
                 + "\n" // layout: traditional
                 + "hi\n" // motto
                 + "\n" // native: no
@@ -214,10 +204,16 @@ class NewFormTest {
     void flags_answer_their_fields_and_only_the_rest_is_asked() throws Exception {
         Engine engine = new Engine();
         NewForm.Given given = new NewForm.Given(
-                null, "app", "demo", null, "traditional", Map.of("motto", "hi", "libs", "guava,jackson", "x", "1"));
+                null,
+                "app",
+                "demo",
+                null,
+                null,
+                "traditional",
+                Map.of("motto", "hi", "libs", "guava,jackson", "x", "1"));
         List<String> transcripts = new ArrayList<>();
 
-        NewForm.Answered a = walk(Mode.PLAIN, "", "\n" + "y\n" + "2\n", engine, given, transcripts)
+        NewForm.Answered a = walk(Mode.PLAIN, "", "\n" + "\n" + "y\n" + "2\n", engine, given, transcripts)
                 .orElseThrow();
 
         assertThat(engine.fetched).containsExactly("app@null");
@@ -230,10 +226,63 @@ class NewFormTest {
         String transcript = transcripts.getFirst();
         assertThat(transcript)
                 .contains("Template\n-> java/none/app\n")
-                .contains("Language\n-> java\n")
+                .contains("Language\n-> Java\n")
                 .contains("Motto\n-> hi\n")
                 .doesNotContain("Motto (")
-                .contains("Group [com.acme]: -> com.acme\n");
+                .contains("Group (Maven groupId and package) [com.acme]: -> com.acme\n")
+                .contains("Directory (Where the project's directory is created) [/work]: -> /work\n");
+    }
+
+    @Test
+    void with_no_terminal_and_no_template_the_defaults_make_an_app() throws Exception {
+        Engine engine = new Engine();
+        NewForm.Given given = new NewForm.Given(null, null, "demo", null, null, null, Map.of("motto", "hi"));
+
+        NewForm.Answered a = NewForm.settle(engine, given, DERIVED, "jk new", FLAGS);
+
+        assertThat(engine.fetched).containsExactly("null@null", "app@java");
+        assertThat(a.template()).isEqualTo("java/none/app");
+        assertThat(a.text("lang")).isEqualTo("java");
+        assertThat(a.text("group")).isEqualTo("com.acme");
+        assertThat(a.text("dir")).isEqualTo("/work");
+        assertThat(a.text("layout")).isEqualTo("traditional");
+        assertThat(a.params())
+                .containsExactly(
+                        Map.entry("motto", "hi"),
+                        Map.entry("native", "false"),
+                        Map.entry("database", "none"),
+                        Map.entry("libs", ""),
+                        Map.entry("flavour", "plain"));
+        assertThat(a.command()).isEqualTo("jk new demo -t java/none/app -p motto=hi");
+    }
+
+    @Test
+    void with_no_terminal_a_template_s_flags_answer_it_and_its_defaults_the_rest() throws Exception {
+        Engine engine = new Engine();
+        NewForm.Given given = new NewForm.Given(
+                "kotlin", "app", "demo", "org.x", "/elsewhere", "simple", Map.of("motto", "hi", "native", "yes"));
+
+        NewForm.Answered a = NewForm.settle(engine, given, DERIVED, "jk new", FLAGS);
+
+        assertThat(engine.fetched).containsExactly("app@kotlin");
+        assertThat(a.template()).isEqualTo("kotlin/none/app");
+        assertThat(a.params()).containsEntry("native", "true").containsEntry("database", "none");
+        assertThat(a.command())
+                .as("the template's own language is the default, so --lang drops out")
+                .isEqualTo("jk new demo -t kotlin/none/app --group org.x --dir /elsewhere -L simple"
+                        + " -p motto=hi -p native=true");
+    }
+
+    @Test
+    void with_no_terminal_each_missing_or_wrong_answer_is_a_line_naming_its_flag() throws Exception {
+        NewForm.Given given = new NewForm.Given(null, "app", "Demo", null, null, null, Map.of("database", "mysql"));
+
+        assertThatThrownBy(() -> NewForm.settle(new Engine(), given, DERIVED, "jk new", FLAGS))
+                .isInstanceOfSatisfying(
+                        NewForm.Unsettled.class, e -> assertThat(e.lines()).isEqualTo("""
+                                jk new: name must match [a-z][a-z0-9-]*; got 'Demo' (jk new <name>)
+                                jk new: motto needs a value: -p motto=…
+                                jk new: database must be one of none, postgres; got 'mysql' (-p database=none|postgres)"""));
     }
 
     @ParameterizedTest
@@ -251,7 +300,7 @@ class NewFormTest {
                 .build();
         assertThat(search.matches(f, "/api/templates?lang=kotlin", ""))
                 .extracting(Option::id)
-                .containsExactly("app", "spring-boot/hello");
+                .containsExactly("micronaut/hello", "app", "spring-boot/hello");
         assertThat(search.matches(f, "/api/templates?lang=kotlin", "boot"))
                 .extracting(Option::id)
                 .containsExactly("spring-boot/hello");

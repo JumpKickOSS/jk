@@ -29,23 +29,25 @@ public final class NewTool implements McpTool {
         params.put("description", "Template answers, key: value (action=form lists them)");
         return new Spec(
                 "new",
-                "Scaffold a project (same scaffolder as jk new). action=templates lists templates; "
-                        + "action=form lists one template's fields; preview=true lists files without writing.",
+                "Scaffold a project from a template (same as jk new; default template app). action=templates "
+                        + "lists templates; action=form lists a template's fields; preview=true lists files "
+                        + "without writing.",
                 McpSchemas.object(Map.of(
                         "action",
                         McpSchemas.string("create (default) | templates | form | preview"),
                         "name",
-                        McpSchemas.string("Project name (letters, digits, . _ -)"),
+                        McpSchemas.string("Project name and directory leaf (lowercase letters, digits, -)"),
                         "parentDir",
                         McpSchemas.string("Parent directory (default: parent of bound dir)"),
                         "group",
-                        McpSchemas.string("Group id (default com.example)"),
+                        McpSchemas.string("Group id and package (default com.example)"),
                         "lang",
-                        McpSchemas.string("java (default) | kotlin | groovy | scala"),
+                        McpSchemas.string("java (default) | kotlin | groovy"),
                         "layout",
                         McpSchemas.string(Layout.scaffoldHelp() + " — where to place sources, not a jk.toml key"),
                         "template",
-                        McpSchemas.string("Template id (java/spring-boot/hello), framework/name, or name"),
+                        McpSchemas.string(
+                                "Template id (java/spring-boot/webapp), framework/name, or name (default app)"),
                         "params",
                         params,
                         "preview",
@@ -60,11 +62,7 @@ public final class NewTool implements McpTool {
                 return in.ok(McpEnvelope.of("templates", McpScaffold.templates()), "template catalog");
             }
             if ("form".equalsIgnoreCase(action)) {
-                String template = in.str("template");
-                if (template == null || template.isBlank()) {
-                    throw new McpError(-32602, "action=form requires arguments.template");
-                }
-                Map<String, Object> form = McpScaffold.form(template, in.str("lang"), cwd(in));
+                Map<String, Object> form = McpScaffold.form(in.str("template"), in.str("lang"), cwd(in));
                 return in.ok(McpEnvelope.of("new-form", form), "form of " + form.get("template"));
             }
             NewProjectOps.Request req = McpScaffold.request(in, parentDir(in));

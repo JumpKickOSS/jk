@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -23,7 +24,7 @@ class AddRemoveCommandTest {
 
     @Test
     void add_modifies_build_jk(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         int exit =
                 run("add", "--offline", "com.fasterxml.jackson.core:jackson-databind:2.18.2", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
@@ -37,7 +38,7 @@ class AddRemoveCommandTest {
 
     @Test
     void add_test_scope(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         int exit = run("add", "--offline", "org.junit.jupiter:junit-jupiter:6.1.0", "--test", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
@@ -48,7 +49,7 @@ class AddRemoveCommandTest {
 
     @Test
     void add_processor_and_test_together_write_the_test_processor_table(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         int exit = run(
                 "add", "org.mapstruct:mapstruct-processor:1.6.3", "--processor", "--test", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
@@ -74,7 +75,7 @@ class AddRemoveCommandTest {
 
     @Test
     void add_refuses_two_scope_flags_that_name_two_tables(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         assertThat(run(
                         "add",
                         "--offline",
@@ -92,7 +93,7 @@ class AddRemoveCommandTest {
 
     @Test
     void add_with_structured_flags(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         int exit = run(
                 "add",
                 "spring-web",
@@ -118,7 +119,7 @@ class AddRemoveCommandTest {
 
     @Test
     void add_then_remove_by_name(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         run("add", "--offline", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
         int exit = run("remove", "bar", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
@@ -129,7 +130,7 @@ class AddRemoveCommandTest {
 
     @Test
     void remove_accepts_coord_form_as_migration_aid(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         run("add", "--offline", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
         int exit = run("remove", "com.foo.addrm:bar", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
@@ -140,7 +141,7 @@ class AddRemoveCommandTest {
 
     @Test
     void remove_accepts_coord_with_version_and_at_version(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         run("add", "--offline", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
         assertThat(run("remove", "com.foo.addrm:bar:9.9.9", "-C", tempDir.toString()))
                 .isEqualTo(0);
@@ -187,7 +188,7 @@ class AddRemoveCommandTest {
 
     @Test
     void add_rejects_unparseable_coord(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         // A bare name that is not in the library catalog and has no --group
         // is a usage error.
         int exit = run("add", "--offline", "not-a-coord", "-C", tempDir.toString());
@@ -206,7 +207,7 @@ class AddRemoveCommandTest {
         // catalog. The "not in catalog" error should surface the
         // suggestion via LibraryCatalog.suggestionsFor — matching the
         // did-you-mean behavior of the parser.
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
 
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
         PrintStream origErr = System.err;
@@ -228,7 +229,7 @@ class AddRemoveCommandTest {
     void remove_bare_name_prefers_manifest_key_over_shadowing_directory(@TempDir Path tempDir) throws Exception {
         // an unrelated checkout ./jackson (project name jackson-core) must not redirect
         // `jk remove jackson` away from the manifest dep of the same name.
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         run("add", "--offline", "com.foo.addrm:jackson:1.0", "-C", tempDir.toString());
         Path shadow = tempDir.resolve("jackson");
         Files.createDirectories(shadow);
@@ -250,7 +251,7 @@ class AddRemoveCommandTest {
     void add_path_form_promotes_a_plain_project_into_a_workspace(@TempDir Path tempDir) throws Exception {
         // Without the registration the dependency names a coordinate nobody published, so
         // `jk add ./libb` would leave a project that cannot lock.
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         Path lib = tempDir.resolve("libb");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
@@ -272,7 +273,7 @@ class AddRemoveCommandTest {
     @Test
     void remove_path_form_unregisters_the_workspace_module(@TempDir Path tempDir) throws Exception {
         // `jk add ./libb` registers [workspace].modules; `jk remove ./libb` must undo it.
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         Path lib = tempDir.resolve("libb");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
@@ -294,7 +295,7 @@ class AddRemoveCommandTest {
     void add_with_coord_flags_wins_over_shadowing_directory(@TempDir Path tempDir) throws Exception {
         // explicit coordinate flags mean the library form even when ./<name> is a
         // directory — they must not be silently dropped by the path branch.
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         Files.createDirectories(tempDir.resolve("spring-web"));
         int exit = run(
                 "add",
@@ -314,7 +315,7 @@ class AddRemoveCommandTest {
 
     @Test
     void add_explicit_path_with_coord_flags_is_a_usage_error(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         Files.createDirectories(tempDir.resolve("mod"));
         int exit = run("add", "--offline", "./mod", "--ver", "1.0", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(64);

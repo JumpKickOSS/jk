@@ -237,10 +237,32 @@ class McpNewFormTest {
                 .contains("cache: off|on (required) when database == 'postgres'  # Cache")
                 .contains("flavour: plain|sweet = plain  # Flavour")
                 .doesNotContain("layout:");
+        // jk's step comes first, from the same field list the CLI and the engine's form use; dir is
+        // answered by parentDir here.
+        assertThat(form)
+                .contains("lang: java|kotlin|groovy = java  # Language")
+                .contains("template: search = app  # Template")
+                .contains("name: text /[a-z][a-z0-9-]*/ (required)  # Name")
+                .contains("group: text")
+                .contains("parentDir: path = from parent-dir  # Directory");
+        assertThat(form.indexOf("lang: ")).isLessThan(form.indexOf("database: "));
 
         String templates =
                 mcp.handle(rpc(Map.of("action", "templates")), session).body();
         assertThat(templates).contains("\"templates\"").doesNotContain("\"layouts\"", "builtinLayouts", "\"source\"");
+    }
+
+    @Test
+    void with_no_template_the_form_and_the_scaffold_are_the_app_template_s() {
+        String session = initialize("2025-11-25", "{}");
+        String form = mcp.handle(rpc(Map.of("action", "form", "parentDir", parent.toString())), session)
+                .body();
+        assertThat(form).contains("java/none/app").contains("assembly: true|false = false");
+
+        String created = mcp.handle(rpc(Map.of("name", "plain", "parentDir", parent.toString())), session)
+                .body();
+        assertThat(created).as(created).contains("created");
+        assertThat(parent.resolve("plain/jk.toml")).content().contains("[application]");
     }
 
     private String call(Map<String, Object> extra) {

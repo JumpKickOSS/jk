@@ -8,11 +8,8 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
-import cc.jumpkick.scaffold.NewInputs;
-import cc.jumpkick.terminal.Style;
-import org.jspecify.annotations.Nullable;
 
-/** What the blank scaffolder's {@code jk new} says: the existing-project failure and the success chip. */
+/** What {@code jk new} says when the target already holds a project. */
 final class NewChrome {
 
     private NewChrome() {}
@@ -45,29 +42,5 @@ final class NewChrome {
         CommandWedge.envelopeStartErr();
         CliOutput.err(warnLine);
         CliOutput.err(chipLine);
-    }
-
-    /**
-     * The success chip. {@code parentProject} is the enclosing project's display name when the new
-     * project was registered as one of its modules, else null.
-     */
-    static void created(NewInputs inputs, @Nullable String parentProject, boolean isInit) {
-        CommandWedge.printLine(successLine(inputs, parentProject, isInit));
-    }
-
-    private static String successLine(NewInputs inputs, @Nullable String parentProject, boolean isInit) {
-        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
-        Style accent = Theme.active().brightCyan().bold();
-        if (parentProject != null) {
-            String message = "New module "
-                    + Theme.paint(inputs.name(), accent)
-                    + Theme.colorize(" added to project ", Theme.active().normalGray())
-                    + Theme.colorize(parentProject, accent);
-            return JkWedge.chipLine(Glyphs.CHECK, "New Module", nerdFont, message);
-        }
-        String chipCommand = isInit ? "Init" : "New Project";
-        String action = isInit ? "Initialized" : "Created new";
-        String message = action + " project " + Theme.paint(inputs.name(), accent);
-        return JkWedge.chipLine(Glyphs.CHECK, chipCommand, nerdFont, message);
     }
 }

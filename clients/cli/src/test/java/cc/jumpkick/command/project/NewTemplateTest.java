@@ -25,23 +25,14 @@ class NewTemplateTest {
         CliOutput.beginCommand(false);
     }
 
-    private static NewTemplate.Args args(List<String> params, boolean plugin) {
-        return new NewTemplate.Args(
-                "hello", params, null, null, null, null, null, Path.of("/tmp"), plugin, null, true, null);
-    }
-
-    @Test
-    void template_and_plugin_cannot_be_combined() {
-        int[] code = {0};
-        String err = TestAnsi.strip(Capture.stderr(() -> code[0] = NewTemplate.apply(args(List.of(), true))));
-        assertThat(code[0]).isEqualTo(Exit.USAGE);
-        assertThat(err).contains("--template cannot be combined with --plugin");
+    private static NewTemplate.Args args(List<String> params) {
+        return new NewTemplate.Args("hello", params, null, null, null, null, null, Path.of("/tmp"), null, true, null);
     }
 
     @Test
     void a_param_without_an_equals_is_a_usage_error_and_never_reaches_the_engine() {
         int[] code = {0};
-        String err = TestAnsi.strip(Capture.stderr(() -> code[0] = NewTemplate.apply(args(List.of("oops"), false))));
+        String err = TestAnsi.strip(Capture.stderr(() -> code[0] = NewTemplate.apply(args(List.of("oops")))));
         assertThat(code[0]).isEqualTo(Exit.USAGE);
         assertThat(err).contains("--param expects key=value, got: oops");
     }
@@ -49,7 +40,7 @@ class NewTemplateTest {
     @Test
     void a_leading_equals_is_an_empty_key_and_is_rejected_too() {
         int[] code = {0};
-        String err = TestAnsi.strip(Capture.stderr(() -> code[0] = NewTemplate.apply(args(List.of("=v"), false))));
+        String err = TestAnsi.strip(Capture.stderr(() -> code[0] = NewTemplate.apply(args(List.of("=v")))));
         assertThat(code[0]).isEqualTo(Exit.USAGE);
         assertThat(err).contains("--param expects key=value");
     }

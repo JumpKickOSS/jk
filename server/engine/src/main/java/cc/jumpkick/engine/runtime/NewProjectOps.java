@@ -21,12 +21,9 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Layout;
-import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.runtime.RepoGroupBuilder;
-import cc.jumpkick.runtime.StableVersions;
-import cc.jumpkick.scaffold.NewInputs;
-import cc.jumpkick.scaffold.NewScaffolder;
-import cc.jumpkick.scaffold.ScaffoldVersions;
+import cc.jumpkick.scaffold.NewProjectSeed;
+import cc.jumpkick.scaffold.NewProjectStep;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
@@ -47,13 +44,14 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Shared project creation used by {@code POST /api/projects}. Uses the same
- * {@link NewScaffolder} / {@link Giter8Apply} path as {@code jk new} — no second scaffolder.
+ * Shared project creation used by {@code jk new}, MCP {@code new} and {@code POST /api/projects}: every
+ * project comes from a template through {@link Giter8Apply}, and no template is the default one
+ * ({@link NewProjectStep#DEFAULT_TEMPLATE}).
  */
 public final class NewProjectOps {
 
-    static final Pattern NAME = Pattern.compile("[A-Za-z][A-Za-z0-9._-]*");
-    static final Pattern GROUP = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*");
+    static final Pattern NAME = NewProjectStep.NAME;
+    static final Pattern GROUP = NewProjectStep.GROUP;
 
     private NewProjectOps() {}
 
@@ -67,15 +65,6 @@ public final class NewProjectOps {
             @Nullable String lang,
             @Nullable String layout,
             @Nullable String template,
-            boolean executable,
-            @Nullable String jdk,
-            int javaRelease,
-            boolean assembly,
-            boolean nativeImage,
-            boolean plugin,
-            @Nullable String kotlinModule,
-            List<String> deps,
-            boolean sample,
             boolean standalone,
             Map<String, String> templateParams,
             boolean relaxParent,
@@ -87,28 +76,8 @@ public final class NewProjectOps {
                 @Nullable String group,
                 @Nullable String lang,
                 @Nullable String layout,
-                @Nullable String template,
-                boolean executable) {
-            this(
-                    name,
-                    parentDir,
-                    group,
-                    lang,
-                    layout,
-                    template,
-                    executable,
-                    null,
-                    0,
-                    false,
-                    false,
-                    false,
-                    null,
-                    List.of(),
-                    true,
-                    true,
-                    Map.of(),
-                    false,
-                    null);
+                @Nullable String template) {
+            this(name, parentDir, group, lang, layout, template, true, Map.of(), false, null);
         }
     }
 
@@ -130,10 +99,8 @@ public final class NewProjectOps {
             Path parent,
             Path target,
             String group,
-            NewInputs.Language lang,
-            Layout layout,
-            @Nullable String template,
-            boolean executable,
+            @Nullable String lang,
+            String template,
             Request req) {}
 
     public static Result create(Request req) throws IOException {
@@ -222,135 +189,79 @@ public final class NewProjectOps {
 
     private static void scaffoldInto(Prepared prep, Path target) throws IOException {
         Request req = prep.req();
-        if (prep.template() != null) {
-            Map<String, String> params = new LinkedHashMap<>();
-            if (req.templateParams() != null) params.putAll(req.templateParams());
-            params.putIfAbsent("name", prep.name());
-            params.putIfAbsent("package", prep.group());
-            params.putIfAbsent("organization", prep.group());
-            if (prep.group() != null && !prep.group().isBlank()) {
-                params.putIfAbsent("group", prep.group());
+        Map<String, String> params = new LinkedHashMap<>();
+        if (req.templateParams() != null) params.putAll(req.templateParams());
+        params.putIfAbsent("name", prep.name());
+        params.putIfAbsent("package", prep.group());
+        params.putIfAbsent("organization", prep.group());
+        if (prep.group() != null && !prep.group().isBlank()) {
+            params.putIfAbsent("group", prep.group());
+        }
+        boolean offline = SessionContext.current().config().offlineOr(false);
+        Path templateRoot;
+        Path extracted = null;
+        // Resolution lang stays null unless the user asked: a bare name then searches every
+        // language, so a kotlin-only template is reached without --lang.
+        String langName = prep.lang();
+        var spec = resolveIndexed(prep.template(), langName, prep.parent());
+        if (spec.isPresent() && TemplateSpec.SOURCE_PLUGIN.equals(spec.get().source())) {
+            var s = spec.get();
+            extracted = PluginTemplates.materialize(
+                    Objects.requireNonNull(s.pluginId(), "pluginId"), s.language(), s.framework(), s.name());
+            templateRoot = extracted;
+        } else if (spec.isPresent() && spec.get().root() != null) {
+            templateRoot = spec.get().root();
+        } else {
+            templateRoot = resolveTemplate(prep.template(), langName, prep.parent());
+            // resolveTemplate may have freshened the official cache; re-resolve so layout
+            // metadata is honored identically on cold and warm caches.
+            if (spec.isEmpty()) {
+                spec = resolveIndexed(prep.template(), langName, prep.parent());
             }
-            boolean offline = SessionContext.current().config().offlineOr(false);
-            Path templateRoot;
-            Path extracted = null;
-            // Resolution lang stays null unless the user asked: parseLang's java default is a
-            // scaffolding default, not a search restriction — kotlin-only bare names must hit.
-            String langName = req.lang() == null || req.lang().isBlank()
-                    ? null
-                    : prep.lang().hoconValue();
-            var spec = resolveIndexed(prep.template(), langName, prep.parent());
-            if (spec.isPresent() && TemplateSpec.SOURCE_PLUGIN.equals(spec.get().source())) {
-                var s = spec.get();
-                extracted = PluginTemplates.materialize(
-                        Objects.requireNonNull(s.pluginId(), "pluginId"), s.language(), s.framework(), s.name());
-                templateRoot = extracted;
-            } else if (spec.isPresent() && spec.get().root() != null) {
-                templateRoot = spec.get().root();
-            } else {
-                templateRoot = resolveTemplate(prep.template(), langName, prep.parent());
-                // resolveTemplate may have freshened the official cache; re-resolve so layout
-                // metadata is honored identically on cold and warm caches.
-                if (spec.isEmpty()) {
-                    spec = resolveIndexed(prep.template(), langName, prep.parent());
-                }
+        }
+        Layout layout = templateLayout(req.layout(), params, templateRoot);
+        params.put(TEMPLATE_LAYOUT_PARAM, layout.token());
+        if (layout == Layout.SIMPLE) {
+            if (spec.isPresent() && !spec.get().supportsLayout(Giter8ShortNames.LAYOUT_SIMPLE)) {
+                throw new IOException("template " + prep.template() + " does not support --layout "
+                        + Layout.SIMPLE.token() + " (declared layouts: "
+                        + String.join(", ", spec.get().layouts()) + ")");
             }
-            Layout layout = templateLayout(req.layout(), params, templateRoot);
-            params.put(TEMPLATE_LAYOUT_PARAM, layout.token());
-            if (layout == Layout.SIMPLE) {
-                if (spec.isPresent() && !spec.get().supportsLayout(Giter8ShortNames.LAYOUT_SIMPLE)) {
-                    throw new IOException("template " + prep.template() + " does not support --layout "
-                            + Layout.SIMPLE.token() + " (declared layouts: "
-                            + String.join(", ", spec.get().layouts()) + ")");
-                }
-                // Set for path/remote templates too (no indexed metadata): a dual-layout
-                // template honors it, a single-layout one ignores it — never a silent drop
-                // that renders a different tree than the flag asked for.
-                params.putIfAbsent(Giter8ShortNames.LAYOUT_SIMPLE, "yes");
-            }
+            // Set for path/remote templates too (no indexed metadata): a dual-layout
+            // template honors it, a single-layout one ignores it — never a silent drop
+            // that renders a different tree than the flag asked for.
+            params.putIfAbsent(Giter8ShortNames.LAYOUT_SIMPLE, "yes");
+        }
+        try {
+            Map<String, String> bound;
             try {
-                Map<String, String> bound;
+                // The catalogue lint again, for a template reached by path or URL rather than
+                // through the index; then the asks settle and bind.
+                bound = TemplateAnswers.bind(JkTemplateToml.load(templateRoot).orElse(null), params);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("template " + prep.template() + ": " + e.getMessage(), e);
+            }
+            Giter8Apply.apply(
+                    templateRoot,
+                    target,
+                    bound,
+                    Giter8Maven.fromRepositories(() -> RepoGroupBuilder.buildDefault(JkStores.storeCas()), offline));
+        } catch (IOException e) {
+            throw new IOException(
+                    "applying template " + prep.template() + " lang=" + langName + ": " + e.getMessage(), e);
+        } finally {
+            if (extracted != null) {
                 try {
-                    // The catalogue lint again, for a template reached by path or URL rather than
-                    // through the index; then the asks settle and bind.
-                    bound = TemplateAnswers.bind(
-                            JkTemplateToml.load(templateRoot).orElse(null), params);
-                } catch (IllegalArgumentException e) {
-                    throw new IllegalArgumentException("template " + prep.template() + ": " + e.getMessage(), e);
-                }
-                Giter8Apply.apply(
-                        templateRoot,
-                        target,
-                        bound,
-                        Giter8Maven.fromRepositories(
-                                () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()), offline));
-            } catch (IOException e) {
-                throw new IOException(
-                        "applying template " + prep.template() + " lang=" + langName + ": " + e.getMessage(), e);
-            } finally {
-                if (extracted != null) {
-                    try {
-                        PathUtil.deleteRecursivelyOrThrow(extracted);
-                    } catch (IOException ignored) {
-                        // extract is under JkDirs.tmp(); don't mask the apply error
-                    }
+                    PathUtil.deleteRecursivelyOrThrow(extracted);
+                } catch (IOException ignored) {
+                    // extract is under JkDirs.tmp(); don't mask the apply error
                 }
             }
-            if (!Files.isRegularFile(target.resolve(ManifestPaths.MANIFEST))) {
-                throw new IOException("template did not produce jk.toml: " + prep.template());
-            }
-            if (req.standalone()) NewScaffolder.finishStandalone(target);
-            return;
         }
-        Optional<String> main = Optional.empty();
-        if (prep.executable() && !req.plugin()) {
-            boolean compact = prep.layout() == Layout.SIMPLE;
-            main = Optional.of(
-                    switch (prep.lang()) {
-                        case JAVA -> prep.group() + ".Main";
-                        case KOTLIN -> compact ? "MainKt" : prep.group() + ".MainKt";
-                        case GROOVY -> compact ? "Main" : prep.group() + ".Main";
-                        case SCALA -> compact ? "Main" : prep.group() + ".Main";
-                    });
+        if (!Files.isRegularFile(target.resolve(ManifestPaths.MANIFEST))) {
+            throw new IOException("template did not produce jk.toml: " + prep.template());
         }
-        int hostMajor = Runtime.version().feature();
-        int jdkMajor = req.javaRelease() > 0 ? req.javaRelease() : hostMajor;
-        String jdk = req.jdk() == null || req.jdk().isBlank() ? null : req.jdk();
-        NewInputs inputs = new NewInputs(
-                prep.group(),
-                prep.name(),
-                jdk,
-                jdkMajor,
-                jdkMajor,
-                null,
-                main.orElse(null),
-                req.assembly(),
-                req.nativeImage(),
-                req.plugin(),
-                prep.lang(),
-                prep.layout(),
-                req.kotlinModule() == null || req.kotlinModule().isBlank() ? null : req.kotlinModule(),
-                req.deps() == null ? List.of() : req.deps(),
-                req.sample(),
-                target);
-        NewScaffolder.write(inputs, req.standalone(), scaffoldVersions());
-    }
-
-    /**
-     * Where a scaffold gets the numbers it pins: the newest stable release in the user's global
-     * repositories over the public baseline (there is no project manifest yet). The group is built
-     * on first use, so a Java project with no dependencies never touches a repository.
-     */
-    static ScaffoldVersions scaffoldVersions() {
-        return new ScaffoldVersions() {
-            private @Nullable RepoGroup repos;
-
-            @Override
-            public String newestStable(String group, String artifact) throws IOException {
-                if (repos == null) repos = RepoGroupBuilder.buildDefault(JkStores.storeCas());
-                return StableVersions.newest(repos, group, artifact);
-            }
-        };
+        if (req.standalone()) NewProjectSeed.finish(target);
     }
 
     private static Prepared prepare(Request req) throws IOException {
@@ -358,7 +269,8 @@ public final class NewProjectOps {
         String name = req.name() == null ? "" : req.name().strip();
         if (name.isEmpty()) throw new IllegalArgumentException("missing \"name\"");
         if (!NAME.matcher(name).matches()) {
-            throw new IllegalArgumentException("invalid name (use letters, digits, . _ -; start with a letter)");
+            throw new IllegalArgumentException(
+                    "invalid name '" + name + "' (lowercase letters, digits and -, starting with a letter)");
         }
         String parentRaw = req.parentDir() == null ? "" : req.parentDir().strip();
         if (parentRaw.isEmpty()) throw new IllegalArgumentException("missing \"parentDir\"");
@@ -399,13 +311,13 @@ public final class NewProjectOps {
             throw new IllegalArgumentException("invalid group (Java package form expected)");
         }
 
-        NewInputs.Language lang = parseLang(req.lang());
-        Layout layout = parseLayout(req.layout());
+        String lang = req.lang() == null || req.lang().isBlank() ? null : parseLang(req.lang());
+        parseLayout(req.layout());
         String template = req.template() == null || req.template().isBlank()
-                ? null
+                ? NewProjectStep.DEFAULT_TEMPLATE
                 : req.template().strip();
 
-        return new Prepared(name, parent, target, group, lang, layout, template, req.executable(), req);
+        return new Prepared(name, parent, target, group, lang, template, req);
     }
 
     /**
@@ -425,8 +337,7 @@ public final class NewProjectOps {
      * and its default layout. Writes nothing; a plugin template is extracted and removed again.
      */
     public static TemplateForm templateForm(String ref, @Nullable String lang, Path cwd) throws IOException {
-        String langName =
-                lang == null || lang.isBlank() ? null : parseLang(lang).hoconValue();
+        String langName = lang == null || lang.isBlank() ? null : parseLang(lang);
         Optional<TemplateSpec> spec = resolveIndexed(ref, langName, cwd);
         Path root;
         Path extracted = null;
@@ -677,15 +588,13 @@ public final class NewProjectOps {
         return path;
     }
 
-    private static NewInputs.Language parseLang(@Nullable String lang) {
-        if (lang == null || lang.isBlank()) return NewInputs.Language.JAVA;
-        return switch (lang.strip().toLowerCase(Locale.ROOT)) {
-            case "java" -> NewInputs.Language.JAVA;
-            case "kotlin" -> NewInputs.Language.KOTLIN;
-            case "groovy" -> NewInputs.Language.GROOVY;
-            case "scala" -> NewInputs.Language.SCALA;
-            default -> throw new IllegalArgumentException("lang must be java|kotlin|groovy|scala");
-        };
+    /** A language a template is filed under, lowercased; anything else is refused. */
+    private static String parseLang(String lang) {
+        String l = lang.strip().toLowerCase(Locale.ROOT);
+        if (!NewProjectStep.LANGS.contains(l)) {
+            throw new IllegalArgumentException("lang must be " + String.join("|", NewProjectStep.LANGS));
+        }
+        return l;
     }
 
     /**

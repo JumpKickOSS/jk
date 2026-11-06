@@ -4,6 +4,7 @@ package cc.jumpkick.command.project;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.ScaffoldTestSupport;
 import cc.jumpkick.testing.TestCaches;
@@ -29,7 +30,7 @@ class VerifyBuildCommandTest {
 
     @Test
     void verify_passes_for_unchanged_java_project(@TempDir Path tempDir) throws IOException {
-        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--name", "widget", "--layout", "traditional", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -64,7 +65,7 @@ class VerifyBuildCommandTest {
     void verify_passes_for_kotlin_project(@TempDir Path tempDir) throws IOException {
         // The old verify compiled src/main/java with javac only — a Kotlin project silently
         // verified an empty jar. Through the real plan, kotlinc runs in the scratch rebuild.
-        run("new", "--name", "widget", "--lang", "kotlin", tempDir.toString());
+        BlankProject.write("--name", "widget", "--lang", "kotlin", tempDir.toString());
         Path src = tempDir.resolve("src/main/kotlin/example/Hello.kt");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -126,7 +127,7 @@ class VerifyBuildCommandTest {
 
     @Test
     void verify_fails_when_sources_changed_since_build(@TempDir Path tempDir) throws IOException {
-        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--name", "widget", "--layout", "traditional", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -153,7 +154,7 @@ class VerifyBuildCommandTest {
 
     @Test
     void verify_requires_an_existing_jar(@TempDir Path tempDir) throws IOException {
-        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--name", "widget", "--layout", "traditional", tempDir.toString());
         ScaffoldTestSupport.writeEmptyLock(tempDir); // verify requires jk-lock.toml, but no build ran
         int exit = run(
                 "verify",

@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.GraphRefreshSlot;
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.Capture;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,7 +24,7 @@ class BuildCacheTest {
 
     @Test
     void second_build_is_up_to_date_via_freshness_stamp(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", tempDir.toString());
+        BlankProject.write("--name", "widget", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -54,7 +55,7 @@ class BuildCacheTest {
      */
     @Test
     void a_source_replaced_under_an_older_mtime_is_recompiled(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", tempDir.toString());
+        BlankProject.write("--name", "widget", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -81,7 +82,7 @@ class BuildCacheTest {
 
     @Test
     void rebuild_flag_bypasses_the_up_to_date_fast_path(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", tempDir.toString());
+        BlankProject.write("--name", "widget", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -108,7 +109,7 @@ class BuildCacheTest {
         // The freshness stamp lives inside the classes dir; deleting the
         // dir (e.g. `jk clean`) removes the stamp and forces the action-key
         // path, which restores from CAS on a hit.
-        run("new", "--name", "widget", tempDir.toString());
+        BlankProject.write("--name", "widget", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -134,7 +135,7 @@ class BuildCacheTest {
      */
     @Test
     void clean_leaves_the_shared_action_cache_and_a_forced_build_overwrites_it(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", tempDir.toString());
+        BlankProject.write("--name", "widget", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
@@ -186,7 +187,7 @@ class BuildCacheTest {
 
     @Test
     void editing_a_source_invalidates_cache(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", tempDir.toString());
+        BlankProject.write("--name", "widget", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """

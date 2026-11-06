@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static cc.jumpkick.cli.testing.MockMavenServer.mavenPath;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.testing.SysProps;
@@ -370,8 +371,7 @@ class InstallExecCommandTest {
     @Test
     void tool_install_of_a_project_dir_delegates_to_the_app_pipeline(@TempDir Path tempDir) throws Exception {
         // Convergence (plan §9): `jk tool install <dir>` == `jk install` run in that dir.
-        run(
-                "new",
+        BlankProject.write(
                 "--group",
                 "com.example",
                 "--name",

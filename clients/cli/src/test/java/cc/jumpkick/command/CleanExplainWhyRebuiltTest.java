@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.Capture;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,7 +19,7 @@ class CleanExplainWhyRebuiltTest {
 
     @Test
     void clean_removes_target_and_build_and_generated(@TempDir Path tempDir) throws Exception {
-        run("new", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--layout", "traditional", tempDir.toString());
         Files.createDirectories(tempDir.resolve("target/classes/example"));
         Files.writeString(tempDir.resolve("target/classes/example/Hello.class"), "fake");
         Files.writeString(tempDir.resolve("target/widget-0.1.0.jar"), "fake");
@@ -33,7 +34,7 @@ class CleanExplainWhyRebuiltTest {
 
     @Test
     void clean_keep_artifacts_preserves_target(@TempDir Path tempDir) throws Exception {
-        run("new", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--layout", "traditional", tempDir.toString());
         Files.createDirectories(tempDir.resolve("target/classes"));
         Files.writeString(tempDir.resolve("target/classes/Hello.class"), "fake");
         Files.writeString(tempDir.resolve("target/widget-0.1.0.jar"), "fake-jar");
@@ -46,7 +47,7 @@ class CleanExplainWhyRebuiltTest {
 
     @Test
     void clean_idempotent_on_empty_project(@TempDir Path tempDir) {
-        run("new", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--layout", "traditional", tempDir.toString());
         int exit = run("clean", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
     }
@@ -55,7 +56,7 @@ class CleanExplainWhyRebuiltTest {
 
     @Test
     void why_rebuilt_alias_dispatches_to_explain(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--name", "widget", "--layout", "traditional", tempDir.toString());
         ScaffoldTestSupport.writeEmptyLock(tempDir);
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
@@ -74,7 +75,7 @@ class CleanExplainWhyRebuiltTest {
 
     @Test
     void explain_lists_compile_tasks_with_cache_status(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--name", "widget", "--layout", "traditional", tempDir.toString());
         ScaffoldTestSupport.writeEmptyLock(tempDir); // jk new no longer locks; explain needs a lock
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
@@ -98,7 +99,7 @@ class CleanExplainWhyRebuiltTest {
 
     @Test
     void explain_reports_hit_after_build(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--name", "widget", "--layout", "traditional", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package example; public class Hello {}");
@@ -114,7 +115,7 @@ class CleanExplainWhyRebuiltTest {
 
     @Test
     void explain_graph_dot_single_module(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--name", "widget", "--layout", "traditional", tempDir.toString());
         // --graph does not need a lock or engine
         String stdout = Capture.stdout(() -> run("explain", "--graph", "dot", "-C", tempDir.toString()));
         assertThat(stdout).contains("digraph modules");

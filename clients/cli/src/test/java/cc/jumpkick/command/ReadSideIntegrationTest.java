@@ -6,6 +6,7 @@ import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.cli.testing.TranscriptOf;
@@ -50,7 +51,7 @@ class ReadSideIntegrationTest {
 
         Path cache = tempDir.resolve("cache");
 
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         run("add", "--offline", "com.foo:root:1.0", "-C", tempDir.toString());
         run("lock", "-C", tempDir.toString(), "--repo-url", maven.base().toString(), "--cache-dir", cache.toString());
 
@@ -94,7 +95,7 @@ class ReadSideIntegrationTest {
     void why_returns_1_for_unknown_module(@TempDir Path tempDir) throws IOException {
         // The queried module isn't in the (empty) lock — jk new no longer writes
         // one, so stand in the empty lock a first build would produce.
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         ScaffoldTestSupport.writeEmptyLock(tempDir);
         int exit = run("why", "com.foo:bar", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(1);
@@ -117,7 +118,7 @@ class ReadSideIntegrationTest {
         maven.registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
         maven.registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         run("add", "--offline", "com.foo:leaf:1.0", "-C", tempDir.toString());
         // Erase the empty lockfile that `jk init` stamps so we can verify
         // sync creates a fresh one (with the dep we just added).

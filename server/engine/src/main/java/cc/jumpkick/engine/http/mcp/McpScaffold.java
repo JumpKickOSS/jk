@@ -9,6 +9,7 @@ import cc.jumpkick.form.Form;
 import cc.jumpkick.form.FormCheck;
 import cc.jumpkick.form.Values;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.scaffold.NewProjectStep;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -22,6 +23,9 @@ import org.jspecify.annotations.Nullable;
  * {@code POST /api/projects} — never a second layout. Encoding and the form's settling live here.
  */
 public final class McpScaffold {
+
+    /** The argument that answers the form's {@code dir}; MCP's own {@code dir} names the project a call is about. */
+    static final String PARENT_DIR_ARG = "parentDir";
 
     private McpScaffold() {}
 
@@ -42,23 +46,48 @@ public final class McpScaffold {
         return Map.of("templates", rows);
     }
 
-    /** One template's fields, one compact line each: the layout when it is a choice, then its asks. */
-    public static Map<String, Object> form(String template, @Nullable String lang, Path cwd) throws IOException {
-        NewProjectOps.TemplateForm t = NewProjectOps.templateForm(template, lang, cwd);
+    /**
+     * One template's form, one compact line per field: jk's step (each line keyed by the argument
+     * that answers it), then the template's asks, which {@code params} answers. No template is the
+     * default one.
+     */
+    public static Map<String, Object> form(@Nullable String template, @Nullable String lang, Path cwd)
+            throws IOException {
+        NewProjectOps.TemplateForm t = NewProjectOps.templateForm(orDefault(template), lang, cwd);
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("template", t.id());
         m.put(
                 "fields",
-                NewProjectForm.templateFields(NewProjectForm.of(t)).stream()
-                        .map(FieldLine::of)
-                        .toList());
+                NewProjectForm.of(t).fields().stream().map(McpScaffold::line).toList());
         return m;
     }
 
+    /** A field's line, keyed by the argument that answers it: {@code dir} is {@code parentDir} here. */
+    static String line(Field f) {
+        if (!f.key().equals("dir")) return FieldLine.of(f);
+        return FieldLine.of(new Field(
+                PARENT_DIR_ARG,
+                f.label(),
+                f.help(),
+                f.kind(),
+                f.options(),
+                f.defaultValue(),
+                f.required(),
+                f.pattern(),
+                f.when(),
+                f.advanced(),
+                f.source()));
+    }
+
+    private static String orDefault(@Nullable String template) {
+        return template == null || template.isBlank() ? NewProjectStep.DEFAULT_TEMPLATE : template.strip();
+    }
+
     /**
-     * The scaffold request for a call. With a template, its form is settled first: the call's
-     * arguments and {@code params} answer it, defaults fill the rest, and a required field still
-     * missing is asked through elicitation or named in the error ({@link McpNewForm}).
+     * The scaffold request for a call. The template's form (the default template's when the call
+     * names none) is settled first: the call's arguments and {@code params} answer it, defaults fill
+     * the rest, and a required field still missing is asked through elicitation or named in the
+     * error ({@link McpNewForm}).
      */
     public static NewProjectOps.Request request(McpCall in, String parentDir) throws IOException {
         String name = in.str("name");
@@ -72,46 +101,25 @@ public final class McpScaffold {
                 if (e.getValue() != null) params.put(String.valueOf(e.getKey()), Values.text(e.getValue()));
             }
         }
-        if (template != null && !template.isBlank()) {
-            NewProjectOps.TemplateForm t = NewProjectOps.templateForm(template.strip(), lang, Path.of(parentDir));
-            Form form = NewProjectForm.of(t);
-            Map<String, Object> given = new LinkedHashMap<>(params);
-            given.put("template", t.id());
-            putIfSet(given, "name", name);
-            putIfSet(given, "group", group);
-            putIfSet(given, "lang", lang);
-            if (form.field("layout") != null) putIfSet(given, "layout", layout);
-            FormCheck settled = McpNewForm.settle(in, form, NewProjectForm.typed(form, given));
-            Map<String, Object> values = settled.values();
-            name = (String) values.get("name");
-            if (values.get("group") instanceof String g) group = g;
-            if (values.get("layout") instanceof String l) layout = l;
-            template = t.id();
-            Map<String, String> passthrough = new LinkedHashMap<>(params);
-            for (Field f : form.fields()) passthrough.remove(f.key());
-            params = new LinkedHashMap<>(NewProjectForm.templateParams(values));
-            params.putAll(passthrough);
-        }
-        return new NewProjectOps.Request(
-                name,
-                parentDir,
-                group,
-                lang,
-                layout,
-                template,
-                in.flagOr("executable", true),
-                null,
-                0,
-                false,
-                false,
-                false,
-                null,
-                List.of(),
-                true,
-                true,
-                params,
-                false,
-                null);
+        NewProjectOps.TemplateForm t = NewProjectOps.templateForm(orDefault(template), lang, Path.of(parentDir));
+        Form form = NewProjectForm.of(t);
+        Map<String, Object> given = new LinkedHashMap<>(params);
+        given.put("template", t.id());
+        given.put("dir", parentDir);
+        putIfSet(given, "name", name);
+        putIfSet(given, "group", group);
+        putIfSet(given, "lang", lang);
+        if (form.field("layout") != null) putIfSet(given, "layout", layout);
+        FormCheck settled = McpNewForm.settle(in, form, NewProjectForm.typed(form, given));
+        Map<String, Object> values = settled.values();
+        name = (String) values.get("name");
+        if (values.get("group") instanceof String g) group = g;
+        if (values.get("layout") instanceof String l) layout = l;
+        Map<String, String> passthrough = new LinkedHashMap<>(params);
+        for (Field f : form.fields()) passthrough.remove(f.key());
+        Map<String, String> answers = new LinkedHashMap<>(NewProjectForm.templateParams(values));
+        answers.putAll(passthrough);
+        return new NewProjectOps.Request(name, parentDir, group, lang, layout, t.id(), true, answers, false, null);
     }
 
     private static void putIfSet(Map<String, Object> out, String key, @Nullable String value) {

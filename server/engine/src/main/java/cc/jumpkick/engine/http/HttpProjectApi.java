@@ -48,8 +48,9 @@ final class HttpProjectApi {
     }
 
     /**
-     * {@code POST /api/projects} — scaffold a new project under {@code parentDir}. Same
-     * {@link cc.jumpkick.scaffold.NewScaffolder} path as {@code jk new}.
+     * {@code POST /api/projects} — scaffold a new project under {@code parentDir}, from a template as
+     * {@code jk new} does. With no template, {@code executable} (default true) picks the blank
+     * application, {@code false} the blank library.
      */
     void handleNewProject(HttpExchange exchange) throws IOException {
         String body = HttpRequests.body(exchange);
@@ -60,10 +61,11 @@ final class HttpProjectApi {
         String layout = Jsonl.str(body, "layout");
         String template = Jsonl.str(body, "template");
         boolean executable = Jsonl.bool(body, "executable", true);
+        if ((template == null || template.isBlank()) && !executable) template = "library";
         try {
             // The SPA routes #project/<id> immediately, so identity materializes with creation.
             var result = NewProjectOps.createWithIdentity(
-                    new NewProjectOps.Request(name, parentDir, group, lang, layout, template, executable));
+                    new NewProjectOps.Request(name, parentDir, group, lang, layout, template));
             JsonOut created = JsonOut.object()
                     .put("path", result.path().toString())
                     .put("dir", result.path().toString());

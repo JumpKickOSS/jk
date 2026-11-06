@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.command.DefaultTestDepsFixture;
 import cc.jumpkick.host.Hashing;
@@ -84,7 +85,7 @@ class LockCommandTest {
 
         // Run the commands against the test repo.
         int exit;
-        exit = run("new", tempDir.toString());
+        exit = BlankProject.write(tempDir.toString());
         assertThat(exit).isEqualTo(0);
         exit = run("add", "--offline", "com.foo:root:1.0", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
@@ -132,7 +133,7 @@ class LockCommandTest {
 
     @Test
     void lock_with_no_dependencies_defaults_to_junit(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         int exit = run(
                 "lock",
                 "-C",
@@ -282,7 +283,7 @@ class LockCommandTest {
         registerRootLeafGraph();
         Path cache = tempDir.resolve("cache");
 
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         run("add", "--offline", "com.foo:root:1.0", "-C", tempDir.toString());
         assertThat(run(
                         "lock",
@@ -355,7 +356,7 @@ class LockCommandTest {
 
         // Warm the shared cache + journal with an online lock in one project.
         Path online = Files.createDirectories(tempDir.resolve("online"));
-        run("new", online.toString());
+        BlankProject.write(online.toString());
         run("add", "--offline", "com.foo:root:1.0", "-C", online.toString());
         assertThat(run(
                         "lock",
@@ -451,7 +452,7 @@ class LockCommandTest {
 
     @Test
     void java_project_lock_has_no_kotlin_version(@TempDir Path tempDir) throws Exception {
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         int exit = run(
                 "lock",
                 "-C",

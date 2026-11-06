@@ -59,7 +59,7 @@ their plugins.
 
 **Language mix:** Java is the default. A module may mix Java with Kotlin, Groovy, **or**
 Scala 3 (Java↔Scala circular refs compile in one Zinc session). **Kotlin + Groovy in one
-module is rejected.** Scaffold with `jk new -l kotlin`, `--lang groovy`, or `--lang scala`.
+module is rejected.** Scaffold with `jk new -l kotlin` or `--lang groovy`; no catalogue template is in Scala yet.
 With no language key at all the languages are inferred from the tree; once one is declared, the
 declaration is the whole set — a `kotlin =` manifest over `src/main/java` compiles no Java, and the
 build warns once per module, naming the root and the key to add (`src/main/java holds Java sources
@@ -208,13 +208,11 @@ jk add com.acme:mylib             # GAV without a version: today's stable
 jk remove <coord>
 ```
 
-On a terminal `jk new` asks for a template and its questions ([Templates](templates.md)); without
-one, or with a blank-scaffolder flag (`-e`, `-d`, `--jdk`, …), `jk new` without `-t` scaffolds a
-plain library or `--executable` app.
-`--template` cannot be combined with `--plugin`. Every language it scaffolds — Java, Kotlin, Groovy,
-Scala — gets its level as `java = N` and no toolchain pin: the host JDK compiles to the level. A
-`jdk = "…"` line is written only for an explicit `--jdk` (`--jdk corretto-25`, `--jdk 21`), the one
-case where a particular install is being asked for.
+Every project comes from a template ([Templates](templates.md)): `jk new` with no `-t` is the `app`
+template, `-t library` the blank library. On a terminal it asks for a template and its questions;
+without one the flags and the form's defaults answer them, and a required field with neither is an
+error naming its flag. A template writes the level as `java = N` and no toolchain pin, so the host
+JDK compiles to it; `--jdk 21` sets that level.
 
 ## Related
 

@@ -20,14 +20,13 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk new -t <local-path|short-name|git-uri|owner/repo>}, and where the new-project form
- * ends: one engine call scaffolds the template from the settled answers.
+ * Where the new-project form ends: one engine call scaffolds the template
+ * ({@code <local-path|short-name|git-uri|owner/repo>}) from the settled answers.
  *
- * <p>It is a mode, not a variation: the giter8 parameter map <em>is</em> the project definition, so
- * the flags this mode reads ({@code --name}, {@code --group}, {@code --lang}, {@code --layout}) are
- * seeds for that map rather than fields of a {@code NewInputs}, and the whole scaffold happens
- * engine-side in one call instead of through the local plan. Nothing rolls back here — a partially
- * expanded template is the engine's problem to avoid, not the client's to undo.
+ * <p>The Giter8 parameter map <em>is</em> the project definition, so the step-1 answers (name, group,
+ * language, layout) are seeds for that map, and the whole scaffold happens engine-side in one call.
+ * Nothing rolls back here — a partially expanded template is the engine's problem to avoid, not the
+ * client's to undo.
  */
 final class NewTemplate {
 
@@ -51,7 +50,6 @@ final class NewTemplate {
             @Nullable String layout,
             @Nullable Path directory,
             Path cwd,
-            boolean plugin,
             NewCommand.@Nullable ParentInfo parent,
             boolean offline,
             @Nullable String frontend) {
@@ -62,10 +60,6 @@ final class NewTemplate {
     }
 
     static int apply(Args args) {
-        if (args.plugin()) {
-            CommandWedge.printFail("New", "--template cannot be combined with --plugin");
-            return Exit.USAGE;
-        }
         Map<String, String> params = params(args.params());
         if (params == null) return Exit.USAGE;
         var presetName = NewArgs.presetName(args.directory(), args.cwd());
@@ -108,15 +102,6 @@ final class NewTemplate {
                             resolvedLang,
                             resolvedLayout.token(),
                             args.ref(),
-                            false,
-                            null,
-                            0,
-                            false,
-                            false,
-                            false,
-                            null,
-                            List.of(),
-                            true,
                             args.standalone(),
                             params,
                             true,

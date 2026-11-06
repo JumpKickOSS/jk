@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,7 +29,7 @@ class WorkerJvmArgsPerRequestTest {
     @Test
     void two_builds_with_different_jvm_args_against_one_engine_fork_workers_with_their_own(@TempDir Path tempDir)
             throws Exception {
-        assertThat(run("new", "--name", "probe", tempDir.toString())).isZero();
+        assertThat(BlankProject.write("--name", "probe", tempDir.toString())).isZero();
         Path calcTest = scaffoldedTest(tempDir);
         String pkg = Files.readString(calcTest)
                 .lines()
