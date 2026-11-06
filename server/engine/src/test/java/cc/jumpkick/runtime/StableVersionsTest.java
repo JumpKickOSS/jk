@@ -12,15 +12,36 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The number a writer pins for a version-less coordinate comes from the project's declared
  * repositories, and an exact version must be one they serve. The fixture is a {@code file://}
- * repository the manifest names, so nothing here reaches the network.
+ * repository the manifest names, so nothing here reaches the network. Each test has a store of its
+ * own: a coordinate no repository serves is matched against every module in the store, and the
+ * sandbox's shared store holds thousands that every suite on the host keeps adding to.
  */
 class StableVersionsTest {
+
+    @TempDir
+    Path store;
+
+    private @Nullable String priorStore;
+
+    @BeforeEach
+    void ownStore() {
+        priorStore = System.setProperty("jk.env.JK_STORE_DIR", store.toString());
+    }
+
+    @AfterEach
+    void restoreStore() {
+        if (priorStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
+        else System.setProperty("jk.env.JK_STORE_DIR", priorStore);
+    }
 
     private static Path project(Path tmp) throws IOException {
         Path repo = tmp.resolve("repo");

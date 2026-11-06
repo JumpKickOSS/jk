@@ -365,20 +365,24 @@ class WireWriterTest {
         assertThat(pipe.sink().isOpen()).isTrue();
     }
 
-    /** A dropped client's spill file goes with it. */
+    /**
+     * A dropped client's spill file goes with it. The stream fills with no idle bound, so a fill
+     * slower than the bound on a loaded host cannot drop the client before the spill is seen.
+     */
     @Test
     @Timeout(60)
     void a_dropped_client_leaves_no_spill_file() throws Exception {
         Pipe pipe = Pipe.open();
         BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
+        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
         String line = failureSizedLine();
         for (long i = 0; i < 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1); i++) {
             WireWriter.sendQuiet(writer, line);
         }
         assertThat(spillFiles()).hasSize(1);
 
+        WireWriter.idleBound(writer, 300);
         assertThatThrownBy(() -> WireWriter.send(writer, line)).isInstanceOf(IOException.class);
         assertThat(spillFiles()).isEmpty();
     }
