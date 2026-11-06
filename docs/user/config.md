@@ -155,7 +155,8 @@ They are not project-overridable.
 ```
 
 `JK_HTTP_ENABLED=false`, `JK_MCP_ENABLED=false`, `JK_MCP_MAX_SESSIONS=64`, `JK_MCP_SESSION_EXPIRY=8h`,
-`JK_MCP_TOOLS=all`. Details: [MCP](mcp.md),
+`JK_MCP_TOOLS=all`. `session-expiry` covers every session (MCP, BSP, shell, dashboard), so it
+applies with `[http] enabled = false` or `[mcp] enabled = false` too. Details: [MCP](mcp.md),
 [Web](web.md).
 
 ## Network

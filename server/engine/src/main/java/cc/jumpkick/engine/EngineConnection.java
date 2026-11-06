@@ -77,8 +77,8 @@ final class EngineConnection {
     /**
      * What serving a connection needs from the engine: read-only views of its identity and state,
      * the verb registry, the job envelope, and the lifecycle callbacks — never the lifecycle lock.
-     * {@code primary} answers whether the endpoint still names this engine; only a displaced one
-     * honours {@code stop-sessions}.
+     * {@code state} is this engine's {@link EngineState}; only a displaced one honours {@code
+     * stop-sessions}.
      */
     record Context(
             VerbRegistry verbs,
@@ -93,7 +93,7 @@ final class EngineConnection {
             BooleanSupplier draining,
             LongSupplier drainDeadline,
             DrainReporter drain,
-            BooleanSupplier primary,
+            Supplier<EngineState> state,
             Runnable stopSessions,
             ShutdownHandler shutdown,
             Runnable idleDropped) {}
@@ -241,13 +241,14 @@ final class EngineConnection {
             case EngineProtocol.DRAIN_STATUS -> ctx.drain().predecessorReported(line);
             case EngineProtocol.DRAIN_DONE -> ctx.drain().predecessorFinished(Jsonl.longValue(line, "pid", -1));
             case EngineProtocol.STOP_SESSIONS -> {
-                if (ctx.primary().getAsBoolean()) {
+                EngineState state = ctx.state().get();
+                if (state.writesSessions()) {
                     WireWriter.send(
                             writer,
                             ProtoLifecycle.error(
                                     EngineProtocol.ERR_REQUEST_FAILED,
-                                    "refused stop-sessions: the endpoint still names this engine, so it is the"
-                                            + " primary and keeps writing sessions; only a displaced engine stops"));
+                                    "refused stop-sessions: " + refusal(state)
+                                            + ", so it keeps writing sessions; only a displaced engine stops"));
                     return false;
                 }
                 // A successor adopts once this ack is out, so the gate closes first.
@@ -303,6 +304,13 @@ final class EngineConnection {
         JobControlFrame request = JobControlFrame.decode(requestLine);
         boolean applied = request.jid() >= 0 && ctx.jobs().holdJob(request.jid(), request.suspend());
         WireWriter.send(writer, new JobControlAckFrame(request.jid(), applied).encode());
+    }
+
+    /** Why an engine in {@code state}, one that writes sessions, refuses {@code stop-sessions}. */
+    private static String refusal(EngineState state) {
+        return state == EngineState.ORPHANED
+                ? "no endpoint names this engine and no successor took it over, so it is orphaned"
+                : "the endpoint still names this engine, so it is the primary";
     }
 
     private void handleCancelRequest(String requestLine, BufferedWriter writer) throws IOException {

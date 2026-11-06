@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -343,37 +342,6 @@ class JkHttpConfigTest {
         Files.writeString(toml, "[mcp]\nmax-sessions = 0\n");
         assertThat(JkHttpConfig.fromToml(toml).orElseThrow().mcp().maxSessions())
                 .isEqualTo(JkHttpConfig.DEFAULT_MCP_MAX_SESSIONS);
-    }
-
-    @Test
-    void mcp_session_expiry_reads_a_duration_from_the_file_and_the_env_and_refuses_zero(@TempDir Path tempDir)
-            throws IOException {
-        assertThat(JkHttpConfig.Mcp.DEFAULTS.sessionExpiry()).isEqualTo(Duration.ofHours(24));
-        Path toml = tempDir.resolve("config.toml");
-        Files.writeString(toml, "[mcp]\nsession-expiry = \"90m\"\n");
-        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().mcp().sessionExpiry())
-                .isEqualTo(Duration.ofMinutes(90));
-        Files.writeString(toml, "[mcp]\nsession-expiry = 600\n");
-        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().mcp().sessionExpiry())
-                .as("a bare number is seconds")
-                .isEqualTo(Duration.ofMinutes(10));
-        assertThat(JkHttpConfig.resolve(toml, Map.of("JK_MCP_SESSION_EXPIRY", "7d")::get)
-                        .orElseThrow()
-                        .mcp()
-                        .sessionExpiry())
-                .isEqualTo(Duration.ofDays(7));
-        assertThat(JkHttpConfig.resolve(toml, Map.of("JK_MCP_SESSION_EXPIRY", "soon")::get)
-                        .orElseThrow()
-                        .mcp()
-                        .sessionExpiry())
-                .as("an unreadable env value falls through to the file")
-                .isEqualTo(Duration.ofMinutes(10));
-        Files.writeString(toml, "[mcp]\nsession-expiry = \"0h\"\n");
-        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().mcp().sessionExpiry())
-                .isEqualTo(JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY);
-        assertThat(JkHttpConfig.spell(Duration.ofHours(24))).isEqualTo("24h");
-        assertThat(JkHttpConfig.spell(Duration.ofDays(7))).isEqualTo("7d");
-        assertThat(JkHttpConfig.spell(Duration.ofMinutes(90))).isEqualTo("90m");
     }
 
     @Test

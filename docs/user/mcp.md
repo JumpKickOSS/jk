@@ -76,7 +76,8 @@ never refused.
 Most clients never send `DELETE /mcp`. A session with no activity (no call, no run) for `[mcp]
 session-expiry` / `JK_MCP_SESSION_EXPIRY` (default **24h**; `"90m"`, `"7d"`, `"3600s"` or a number
 of seconds) ends, and the engine forgets its connection, whether the client still holds it or the
-session came over from a previous engine. A client that comes back with the old `Mcp-Session-Id`
+session came over from a previous engine. The expiry governs every session, not only MCP ones, so
+it holds with the HTTP server off. A client that comes back with the old `Mcp-Session-Id`
 gets the `404` and sends `initialize` for a new session; `jk mcp` does that for the host. Ten
 minutes of quiet only marks a session idle and starts a new episode on its next call.
 

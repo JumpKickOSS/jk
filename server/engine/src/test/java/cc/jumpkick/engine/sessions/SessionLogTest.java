@@ -3,7 +3,7 @@ package cc.jumpkick.engine.sessions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.jsonl.MiniJson;
@@ -29,7 +29,7 @@ class SessionLogTest {
 
     private static final long T = 1_700_000_000_000L;
     private static final String LABEL = "claude-code 3f9a";
-    private static final long EXPIRY = JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis();
+    private static final long EXPIRY = SessionExpiry.DEFAULT.toMillis();
 
     @TempDir
     Path root;

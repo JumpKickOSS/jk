@@ -4,7 +4,7 @@ package cc.jumpkick.engine.http;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.SessionJournal;
@@ -181,7 +181,7 @@ class McpConnectionReplacementTest {
 
     @Test
     void a_client_back_after_its_session_expired_is_a_404_then_a_new_session() {
-        long expiry = JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis();
+        long expiry = SessionExpiry.DEFAULT.toMillis();
         AtomicLong now = new AtomicLong(System.currentTimeMillis());
         SessionLog log = new SessionLog(
                 new SessionJournal(state.resolve("sessions")),
@@ -289,7 +289,7 @@ class McpConnectionReplacementTest {
                 new SessionJournal(state.resolve("sessions")),
                 System::currentTimeMillis,
                 EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
-                JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis());
+                SessionExpiry.DEFAULT.toMillis());
     }
 
     private McpHandler handler(SessionLog log) {

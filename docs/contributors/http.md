@@ -51,13 +51,17 @@ working the next morning.
 
 Three states, decided by whether this process is still the named primary (endpoint pointer **and**
 pid file). The generation filename alone is not identity: deleting and recreating the state directory
-can leave a ghost engine whose socket *name* matches the successor.
+can leave a ghost engine whose socket *name* matches the successor. `EngineElection.state` is the one
+reading of them (`EngineState`); the exit watchdog, the session write gate and `stop-sessions` all
+act on it.
 
 | Pointer / pid | State | Behaviour |
 |---|---|---|
-| names this engine (pid matches) | **primary** | Never self-terminates. Exits on `jk engine stop` or version-skew replacement. |
-| names another process, or pid file / hello pid differs | **displaced** | Yields HTTP **immediately**, drains in-flight jobs on its own generation socket, reports `drain-status` to the successor, exits when idle or at the drain deadline. |
-| absent | **orphaned** | Exits once genuinely unused: no in-flight jobs **and** no attached SSE stream. |
+| names this engine (pid matches) | **primary** | Never self-terminates. Exits on `jk engine stop` or version-skew replacement. Writes its sessions; refuses `stop-sessions`. |
+| names another process, or pid file / hello pid differs | **displaced** | Yields HTTP **immediately**, drains in-flight jobs on its own generation socket, reports `drain-status` to the successor, exits when idle or at the drain deadline. Writes no session record; honours `stop-sessions`. |
+| absent | **orphaned** | Exits once genuinely unused: no in-flight jobs **and** no attached SSE stream. Writes its sessions; refuses `stop-sessions`, since no successor will adopt them. |
+
+The rule for sessions is one line: **only a displaced engine stops writing them**.
 
 "No jobs in flight" means every record written. A job, attached or detached (MCP, `POST /api/build`),
 writes its journal record, `jk-results.md` and session fold while it still holds its plan slot, and
@@ -85,14 +89,14 @@ Only the primary engine writes session records, and the hand-off between two eng
 handshake. Once the successor has taken the endpoint and asked its predecessor to yield, it sends
 `stop-sessions` on the predecessor's generation socket, the one the drain uses. The predecessor closes
 its write gate (`SessionLog.stopWriting`), which returns once any session write it had in flight has
-landed, and answers `sessions-stopped`. Only a displaced engine honours `stop-sessions`: one the
-endpoint still names is the primary, and refuses it with an `error` that says so and keeps writing,
-so a stray request cannot silence the engine that owns the sessions. Only then does the successor read the stored sessions and
+landed, and answers `sessions-stopped`. A primary or orphaned engine refuses it with an `error`
+naming its state and keeps writing ([the states](#when-an-engine-does-exit)), so a stray request
+cannot silence the engine that owns the sessions. Only then does the successor read the stored sessions and
 adopt them (`SessionLog.adopt`, which every session entry point runs first), so it sees the
 predecessor's last write and never writes over it. A predecessor that does not answer within two
 seconds (dead, wedged, or an engine that predates the message) is treated as stopped, and the
-successor adopts without it; the predecessor still checks the endpoint before every session write and
-stops for good the moment it names another (`SessionLog.writeWhile`), so one that comes back late
+successor adopts without it; the predecessor still reads its state before every session write and
+stops for good the moment it is displaced (`SessionLog.writeWhile`), so one that comes back late
 writes nothing more. Each run a displaced engine finishes while it
 drains goes out in its next `drain-status` instead, under `runs` (each the text of one JSON object,
 the fields the session log folds), and the successor folds it into its episode as if it had
@@ -105,11 +109,8 @@ and [MCP sessions](#mcp-sessions-and-server-requests).
 ### An orphan waits for an attached tab
 
 An orphaned engine is one no pointer names: no CLI will reach it again, and no successor wants its
-port either. Before this was handled, such an engine served forever — the displacement check required
-the pointer to *exist*, so a deleted one left an unreachable engine running indefinitely.
-
-It now exits when unused, but an attached SSE stream vetoes that. Unlike displacement there is no
-successor to hand the tab to, so exiting under an open dashboard would strand it with nothing to
+port either. It exits when unused, but an attached SSE stream vetoes that. Unlike displacement there
+is no successor to hand the tab to, so exiting under an open dashboard would strand it with nothing to
 reconnect to.
 
 The count comes from the SSE admission budgets rather than a separate counter, so it cannot drift from
@@ -358,7 +359,7 @@ the connection behind it (below); it is removed when the session ends.
 
 A session ends at `DELETE /mcp`, or when the sweep (the engine's maintenance tick, and every read
 of the sessions) finds it has had no activity for the session expiry (`[mcp] session-expiry`,
-default 24 hours). Activity is its last fact or the last request on its MCP connection, whichever
+default 24 hours, read by `SessionExpiry` whether or not the engine serves HTTP). Activity is its last fact or the last request on its MCP connection, whichever
 is later. The rule is the same for every session, attached or not, adopted or not, and an ending
 session takes its connection with it: `SessionLog` drops it, deletes `connection.json`, and tells
 `McpConnections` to unload it, so its id is a 404 from then on. The idle gap (ten minutes) marks a

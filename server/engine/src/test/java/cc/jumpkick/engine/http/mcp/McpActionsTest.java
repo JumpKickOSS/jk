@@ -4,7 +4,7 @@ package cc.jumpkick.engine.http.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
@@ -31,7 +31,7 @@ class McpActionsTest {
             null,
             System::currentTimeMillis,
             EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
-            JkHttpConfig.Mcp.DEFAULT_SESSION_EXPIRY.toMillis());
+            SessionExpiry.DEFAULT.toMillis());
 
     @Test
     void a_graph_question_and_a_dependency_change_are_logged_in_display_form() {

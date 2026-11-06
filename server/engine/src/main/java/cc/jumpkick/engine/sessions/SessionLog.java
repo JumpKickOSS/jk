@@ -36,8 +36,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Sessions outlive the engine. A new engine {@link #adopt adopts} every session a previous one
  * left open, with its episodes as they stood and the MCP connection behind it ({@link
- * #saveConnection}), so an agent that returns keeps its session. Only the primary engine writes the
- * records: a successor adopts only once the engine it displaced has {@link #stopWriting stopped
+ * #saveConnection}), so an agent that returns keeps its session. A displaced engine writes none of
+ * the records: a successor adopts only once the engine it displaced has {@link #stopWriting stopped
  * writing} ({@link #adoptAfter}), and a displaced engine hands the runs it finishes to its successor
  * instead ({@link #writeWhile}).
  */
@@ -60,7 +60,7 @@ public final class SessionLog {
     private final long idleGapMillis;
     private final long expiryMillis;
     private volatile Events events = (type, payload) -> {};
-    private volatile BooleanSupplier primary = () -> true;
+    private volatile BooleanSupplier writes = () -> true;
     private volatile Consumer<FinishedRun> successor = run -> {};
     private volatile Runnable predecessorStopped = () -> {};
     private volatile Consumer<String> connectionEnded = id -> {};
@@ -73,7 +73,7 @@ public final class SessionLog {
     /** Whether {@link #adopt} has run. */
     private boolean adopted;
 
-    /** Set once {@link #primary} fails or {@link #stopWriting} runs: the log writes nothing from then on. */
+    /** Set once {@link #writes} fails or {@link #stopWriting} runs: the log writes nothing from then on. */
     private boolean retired;
 
     /** One open session: its record, its episodes, the sequence its next action takes, its MCP connection. */
@@ -114,11 +114,12 @@ public final class SessionLog {
     }
 
     /**
-     * Write records only while {@code primary} holds. Once it fails the log writes nothing more and
-     * hands each run that finishes here to {@code successor}, the engine that now writes them.
+     * Write records only while {@code writes} holds: the engine is not displaced. Once it fails the
+     * log writes nothing more and hands each run that finishes here to {@code successor}, the engine
+     * that now writes them.
      */
-    public void writeWhile(BooleanSupplier primary, Consumer<FinishedRun> successor) {
-        this.primary = primary;
+    public void writeWhile(BooleanSupplier writes, Consumer<FinishedRun> successor) {
+        this.writes = writes;
         this.successor = successor;
     }
 
@@ -148,6 +149,11 @@ public final class SessionLog {
 
     public long idleGapMillis() {
         return idleGapMillis;
+    }
+
+    /** How long a session with no activity lasts before it ends ({@code [mcp] session-expiry}). */
+    public long expiryMillis() {
+        return expiryMillis;
     }
 
     /** True when runs of {@code trigger} belong to a session. */
@@ -615,10 +621,10 @@ public final class SessionLog {
         }
     }
 
-    /** True while this engine writes the records; false for good once {@link #primary} fails or it is stopped. */
+    /** True while this engine writes the records; false for good once {@link #writes} fails or it is stopped. */
     private boolean writing() {
         if (retired) return false;
-        if (primary.getAsBoolean()) return true;
+        if (writes.getAsBoolean()) return true;
         retired = true;
         return false;
     }

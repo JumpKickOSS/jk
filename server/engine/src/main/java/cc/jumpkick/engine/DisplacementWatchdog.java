@@ -7,22 +7,12 @@ import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
 /**
- * Lifecycle watchdog over the endpoint pointer <em>and</em> the pid file. The filename alone is
- * not identity: deleting and recreating the state dir leaves a ghost engine whose generation
- * name matches the successor's pointer, so it would never drain. The pid file and a hello of
- * the path catch that.
- *
- * <ul>
- * <li><b>Pointer, pid file, or live hello names someone else</b> — displaced. Yield HTTP
- * immediately so the successor can bind the port, drain in-flight jobs on this generation's own
- * socket, report status to the successor, exit when idle or at the drain deadline. Attached
- * dashboard streams get no vote: the successor needs the port, and a tab reconnects to it.
- * <li><b>The pointer is absent</b> — orphaned. Exit once genuinely unused — no jobs and no
- * attached streams. Keep HTTP while a browser is attached, because here there is no successor
- * to hand it to.
- * <li><b>The pointer names this engine and the pid file matches</b> — primary. Never
- * self-terminates.
- * </ul>
+ * Lifecycle watchdog over {@link EngineElection#state}: a {@link EngineState#DISPLACED displaced}
+ * engine yields HTTP at once so the successor can bind the port (attached dashboard streams get no
+ * vote; a tab reconnects to the successor), drains its in-flight jobs on its own generation socket
+ * and exits when idle or at the drain deadline. An {@link EngineState#ORPHANED orphaned} one exits
+ * once unused, keeping HTTP while a browser is attached because there is no successor to hand it
+ * to. A {@link EngineState#PRIMARY primary} one never self-terminates.
  *
  * <p>The watchdog decides; the lifecycle owner transitions. Both transitions reach {@code
  * EngineServer} through the two callbacks, and this class never sees the lifecycle lock.
@@ -89,17 +79,20 @@ final class DisplacementWatchdog {
      * {@code true} when the watchdog's work is done.
      */
     boolean tick() throws IOException {
-        if (election.displacedBySuccessor()) {
-            log.accept("jk engine: displaced by a newer engine — yielding HTTP and draining");
-            yieldListeners.accept(activeBuildPlans.getAsInt() == 0);
-            return true;
-        }
-        if (election.endpointMissing() && orphanedAndUnused()) {
-            log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
-            exitUnused.run();
-            return true;
-        }
-        return false;
+        return switch (election.state()) {
+            case DISPLACED -> {
+                log.accept("jk engine: displaced by a newer engine — yielding HTTP and draining");
+                yieldListeners.accept(activeBuildPlans.getAsInt() == 0);
+                yield true;
+            }
+            case ORPHANED -> {
+                if (!orphanedAndUnused()) yield false;
+                log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
+                exitUnused.run();
+                yield true;
+            }
+            case PRIMARY -> false;
+        };
     }
 
     /**
