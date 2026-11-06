@@ -13,7 +13,6 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -40,8 +39,7 @@ class NewCommandTest {
     @IsolatedState
     void with_no_terminal_and_no_template_jk_new_scaffolds_the_app_template_with_its_defaults(@TempDir Path tempDir)
             throws IOException {
-        JdkInventory inventory = new JdkInventory(JkDirs.jdks(), JkDirs.state().resolve(JdkInventory.FILE_NAME));
-        assertThat(inventory.defaultId())
+        assertThat(JdkInventory.current().defaultId())
                 .as("no default JDK in this state root")
                 .isEmpty();
         Path target = tempDir.resolve("widget");
