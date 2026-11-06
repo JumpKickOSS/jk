@@ -314,6 +314,18 @@ that is how a stale override shows up. `-O jsonl` carries the same facts as
 is queued), and `workerOverLease` (the Over lease line, `""` when no worker is). The
 dashboard's Admin page shows the same line.
 
+The budget is one per host: every engine of one state directory leases from it together,
+so an engine still draining after `jk engine stop` and the engine that took over never
+hold more between them than one engine could alone. Each engine records what it holds in
+`<state>/engine/worker-leases` and counts the others' lines before it grants a lease; the
+leased total on the Workers line and the Waiting line's `held by other engines 3.0 GiB` include
+them. A line whose engine is gone — it crashed, or was killed — is dropped by the next
+engine that reads the file, so a dead engine's leases never hold the host back. Each engine
+compares that one total with its own budget, so an engine started with a different
+`JK_WORKER_BUDGET_MB` still counts the others. A test JVM's in-process engine keeps its own
+ledger, and a nested engine under `jk test` has its own state directory, so neither
+shares the host's budget.
+
 A JVM leases its `-Xmx` plus overhead of `max(160 MiB, 12% of -Xmx)`. The 12% is the
 resident cost of GC and thread structures measured above a filled heap; 160 MiB covers
 the metaspace and code cache a compiler or test worker holds on top of that. A process
@@ -374,8 +386,8 @@ a headroom of the larger of 1 GiB and 10% of the budget. Forks already running c
 usage in that sample, not at the reservation they hold. Pressure has to be low:
 `some` `avg10` below 5 and `full` `avg10` below 1, on `/proc/pressure/memory` and on the
 workers group's `memory.pressure` when that file is present. The reserved total, including
-the new lease, stays at or under twice the budget, so a run of grants between samples cannot
-grow without a bound. The sample is reused for 250 ms. When the pressure rises or the free
+the new lease, stays at or under twice the budget across every engine of the host, so a run
+of grants between samples cannot grow without a bound. The sample is reused for 250 ms. When the pressure rises or the free
 memory falls short, further leases wait in the same queue. A running fork is never killed to
 make room. The engine log records each grant that started past the budget, with the cap and
 the sample that allowed it:

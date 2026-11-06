@@ -48,7 +48,12 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   cgroup quota when present else `availableProcessors()`, `1`=serial, `N`=cap),
   still limited by the worker lease ledger (`WorkerLeases`: FIFO with a ten-minute deadline per
   wait, which refuses at once a lease past twice the budget, which on Linux may grant past
-  that budget while free memory and PSI pressure stay low but never past twice it, and which asks a resident helper such
+  that budget while free memory and PSI pressure stay low but never past twice it — both bounds
+  host-wide: an engine process joins `HostLeases`, one `<state>/engine/worker-leases` file under
+  a file lock in which every engine of the state dir records its charged bytes, each grant is
+  decided against the sum, and a reader drops the line of an engine whose pid is gone or was
+  reused, so a draining engine and its successor share one budget and a crashed one blocks
+  nobody; a test JVM's ledger joins nothing — and which asks a resident helper such
   as the build-script host to exit when the head of the queue would fit without its lease, so
   the head waits only on forks doing work; every two seconds it reads each live worker's
   resident set and charges the larger of lease and RSS, names a worker far over its lease in

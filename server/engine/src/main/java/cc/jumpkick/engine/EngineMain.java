@@ -9,6 +9,7 @@ import cc.jumpkick.engine.plugin.ExecutionSpeed;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.UserPluginPins;
 import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Forks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.BuildIdentity;
@@ -89,6 +90,8 @@ public final class EngineMain {
         try {
             JkDirs.current().secureRoots();
             EnginePaths.Paths paths = EnginePaths.current();
+            // One worker budget for every engine of this state dir, a draining one included.
+            WorkerLeases.shareHost(paths.dir());
             JkEngineConfig config = JkEngineConfig.resolve();
             EngineLogSink logSink = installLogSink(paths.log(), config);
             installLogging(config); // re-bind: System.err is now the capped sink
