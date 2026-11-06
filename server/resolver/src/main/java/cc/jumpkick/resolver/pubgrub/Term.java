@@ -39,12 +39,6 @@ public record Term(String pkg, VersionSet versions, boolean positive) {
         return positive ? versions : versions.complement();
     }
 
-    /** True iff this term and {@code other} together describe an unsatisfiable assignment. */
-    public boolean contradicts(Term other) {
-        if (!pkg.equals(other.pkg)) return false;
-        return intersect(other).isEmpty();
-    }
-
     /**
      * {@code this ∩ other} per PubGrub §3: two negative terms intersect to the negative of their
      * union ({@code ¬A ∩ ¬B = ¬(A ∪ B)}) — a term that still permits the package to be absent;
@@ -60,10 +54,6 @@ public record Term(String pkg, VersionSet versions, boolean positive) {
         }
         VersionSet vs = effectiveVersions().intersect(other.effectiveVersions());
         return new Term(pkg, vs, true);
-    }
-
-    public boolean isEmpty() {
-        return effectiveVersions().isEmpty();
     }
 
     /**
