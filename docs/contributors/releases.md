@@ -8,9 +8,9 @@ What a release may change in the formats projects depend on: [Compatibility](com
 
 | Line | Meaning |
 |------|---------|
-| **`0.50.3`** | The root `jk.toml` version: the next release, never written with `-SNAPSHOT` |
-| Tag **`v0.50.3`** | Cut from that line when it is released |
-| Prior | **`0.50.2`** — previous release; **`0.10.1`** first public |
+| **`version`** in the root `jk.toml` | The next release, never written with `-SNAPSHOT` |
+| Tag **`v<version>`** | Cut from that line when it is released |
+| Prior | The newest entry in the history below; **`0.10.1`** was the first public release |
 | Later | Semver-ish: `0.30.1`, `0.31.0`, … |
 
 The root `jk.toml` `version` is the one place the version is written, and it always names the
