@@ -33,7 +33,7 @@ class CheckoutUntouchedTest {
         Files.writeString(repo.resolve("restored.toml"), "c = 2\n");
         Files.writeString(repo.resolve("idle.toml"), "d = 2\n");
 
-        CheckoutUntouched.Snapshot before = Objects.requireNonNull(CheckoutUntouched.take(repo));
+        CheckoutUntouched.Snapshot before = Objects.requireNonNull(CheckoutUntouched.take(repo, null));
         assertThat(before.dirty()).containsOnlyKeys("dirty.toml", "restored.toml", "idle.toml");
 
         Files.writeString(repo.resolve("clean.toml"), "a = 2\n");
@@ -45,16 +45,41 @@ class CheckoutUntouchedTest {
         Files.writeString(repo.resolve("restored.toml"), "c = 1\n");
         Files.writeString(repo.resolve("untracked.toml"), "e = 1\n");
 
-        CheckoutUntouched.Snapshot after = Objects.requireNonNull(CheckoutUntouched.take(repo));
+        CheckoutUntouched.Snapshot after = Objects.requireNonNull(CheckoutUntouched.take(repo, null));
         assertThat(CheckoutUntouched.changed(before, after))
                 .isEqualTo(List.of("clean.toml", "dirty.toml", "restored.toml"));
         assertThat(CheckoutUntouched.changed(after, after)).isEmpty();
     }
 
     @Test
+    void an_untracked_file_under_the_scope_is_a_change_and_one_elsewhere_or_ignored_is_not(@TempDir Path repo)
+            throws Exception {
+        assumeTrue(git(repo, "init", "-q") == 0, "git is on PATH");
+        Path module = Files.createDirectories(repo.resolve("clients/cli"));
+        Files.writeString(module.resolve("jk.toml"), "name = \"cli\"\n");
+        Files.writeString(repo.resolve(".gitignore"), "target/\n");
+        assertThat(git(repo, "add", ".")).isZero();
+        assertThat(git(repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "init"))
+                .isZero();
+        Files.writeString(module.resolve("scratch.txt"), "the developer's own\n");
+
+        CheckoutUntouched.Snapshot before = Objects.requireNonNull(CheckoutUntouched.take(repo, module));
+        assertThat(before.dirty()).containsOnlyKeys("clients/cli/scratch.txt");
+
+        Files.createDirectories(module.resolve("demo"));
+        Files.writeString(module.resolve("demo/jk.toml"), "name = \"demo\"\n");
+        Files.createDirectories(module.resolve("target"));
+        Files.writeString(module.resolve("target/out.txt"), "built\n");
+        Files.writeString(repo.resolve("elsewhere.txt"), "outside the scope\n");
+
+        CheckoutUntouched.Snapshot after = Objects.requireNonNull(CheckoutUntouched.take(repo, module));
+        assertThat(CheckoutUntouched.changed(before, after)).isEqualTo(List.of("clients/cli/demo/"));
+    }
+
+    @Test
     void outside_a_git_work_tree_there_is_nothing_to_compare(@TempDir Path dir) throws Exception {
         assumeTrue(git(dir, "rev-parse", "--git-dir") > 0, "the temp root is not inside a git work tree");
-        assertThat(CheckoutUntouched.take(dir)).isNull();
+        assertThat(CheckoutUntouched.take(dir, null)).isNull();
     }
 
     private static int git(Path dir, String... args) throws IOException, InterruptedException {

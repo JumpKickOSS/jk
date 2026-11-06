@@ -18,18 +18,25 @@ import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
 /**
- * Fails a test class that modified a tracked file of the jk checkout it runs from.
+ * Fails a test class that modified a tracked file of the jk checkout it runs from, or left a new
+ * untracked one in the test JVM's working directory.
  *
- * <p>A command a test runs in-process works in the test JVM's working directory unless the test
- * hands it {@code -C} or an absolute path, and that directory is the module inside the checkout.
- * A wrong or relative target therefore edits the source tree: {@code jk new} once registered a
- * module into the module's own {@code jk.toml} and rewrote its lock, and nothing failed. This
- * extension compares {@code git status} of the checkout's tracked files before and after each class
+ * <p>The test JVM's working directory is the module inside the checkout, so anything that resolves
+ * a relative path against it, rather than against {@link cc.jumpkick.host.WorkingDirectory} (which
+ * {@link TempWorkingDirectory} pins to a temp directory), edits the source tree: {@code jk new}
+ * once registered a module into the module's own {@code jk.toml} and rewrote its lock, and nothing
+ * failed. This extension compares {@code git status} of the checkout's tracked files before and after each class
  * and fails the class that changed one, naming the files to restore.
  *
+ * <p>Untracked files that {@code .gitignore} does not cover count too, but only under the JVM's
+ * working directory when it lies inside the checkout: that is where a relative path lands, and
+ * scanning only there keeps a class edge near the cost of the tracked scan (about 6 ms against
+ * 4 ms on the jk checkout, where an untracked scan of the whole tree takes about 33 ms). A suite
+ * run with its working directory outside the checkout scans no untracked files.
+ *
  * <p>A file counts as changed when it became dirty, stopped being dirty, or was already dirty and
- * its size or modification time moved. One {@code git status} per class edge, without the
- * optional index lock, so a developer's own git commands never wait on it. Outside a git work tree
+ * its size or modification time moved. Two {@code git status} calls per class edge, without the
+ * optional index lock, so a developer's own git commands never wait on them. Outside a git work tree
  * — a source archive, a host without git — it checks nothing. A file edited by hand while the class
  * runs is reported too: the message says so.
  */
@@ -41,13 +48,16 @@ public final class CheckoutUntouched implements BeforeAllCallback, AfterAllCallb
 
     private static final long GIT_TIMEOUT_SECONDS = 30;
 
-    /** The tracked files that differ from the index or HEAD, each with its size and modification time. */
-    record Snapshot(Path root, Map<String, String> dirty) {}
+    /**
+     * The tracked files that differ from the index or HEAD, and the untracked files under {@code
+     * untrackedScope}, each with its size and modification time.
+     */
+    record Snapshot(Path root, @Nullable Path untrackedScope, Map<String, String> dirty) {}
 
     @Override
     public void beforeAll(ExtensionContext context) {
         Path root = root(context.getRequiredTestClass());
-        Snapshot before = root == null ? null : take(root);
+        Snapshot before = root == null ? null : take(root, untrackedScope(root));
         if (before != null) context.getStore(NS).put(BEFORE, before);
     }
 
@@ -55,17 +65,16 @@ public final class CheckoutUntouched implements BeforeAllCallback, AfterAllCallb
     public void afterAll(ExtensionContext context) {
         Snapshot before = context.getStore(NS).remove(BEFORE, Snapshot.class);
         if (before == null) return;
-        Snapshot after = take(before.root());
+        Snapshot after = take(before.root(), before.untrackedScope());
         if (after == null) return;
         List<String> changed = changed(before, after);
         if (changed.isEmpty()) return;
         throw new AssertionError(context.getRequiredTestClass().getName()
-                + " modified tracked files of the checkout (" + before.root() + "): "
+                + " modified or created files of the checkout (" + before.root() + "): "
                 + String.join(", ", changed)
-                + ". A command run without -C or with a relative path works in the module directory;"
-                + " give it a temp directory. Restore the files with: git checkout -- "
-                + String.join(" ", changed)
-                + " (unless you edited them yourself while the class ran).");
+                + ". A path the test resolves against the JVM's working directory lands in the module"
+                + " directory; give it a temp directory. Restore tracked files with git checkout -- <file>"
+                + " and delete untracked ones (unless you changed them yourself while the class ran).");
     }
 
     /** The files whose state differs between the two snapshots, sorted. */
@@ -91,8 +100,25 @@ public final class CheckoutUntouched implements BeforeAllCallback, AfterAllCallb
         return Files.exists(root.resolve(".git")) ? root : null;
     }
 
-    /** {@code root}'s dirty tracked files now; {@code null} when git cannot say. */
-    static @Nullable Snapshot take(Path root) {
+    /**
+     * The JVM's working directory when it lies inside {@code root}, where an untracked file a test
+     * leaves by a relative path appears; else {@code null}.
+     */
+    static @Nullable Path untrackedScope(Path root) {
+        try {
+            Path cwd = Path.of("").toAbsolutePath().toRealPath();
+            Path real = root.toRealPath();
+            return cwd.startsWith(real) ? cwd : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * {@code root}'s dirty tracked files now, with the untracked files outside ignored paths under
+     * {@code untrackedScope} when it is given; {@code null} when git cannot say.
+     */
+    static @Nullable Snapshot take(Path root, @Nullable Path untrackedScope) {
         String status = git(
                 root,
                 "--no-optional-locks",
@@ -103,6 +129,36 @@ public final class CheckoutUntouched implements BeforeAllCallback, AfterAllCallb
                 "--ignore-submodules=all");
         if (status == null) return null;
         Map<String, String> dirty = new TreeMap<>();
+        collect(root, status, dirty);
+        if (untrackedScope != null) {
+            String untracked = git(
+                    root,
+                    "--no-optional-locks",
+                    "status",
+                    "--porcelain=v1",
+                    "-z",
+                    "--untracked-files=normal",
+                    "--ignore-submodules=all",
+                    "--",
+                    pathspec(root, untrackedScope));
+            if (untracked == null) return null;
+            collect(root, untracked, dirty);
+        }
+        return new Snapshot(root, untrackedScope, dirty);
+    }
+
+    /** {@code dir} spelled from {@code root}, which git reads whatever symlinks lead to either. */
+    private static String pathspec(Path root, Path dir) {
+        try {
+            String rel = root.toRealPath().relativize(dir.toRealPath()).toString();
+            return rel.isEmpty() ? "." : rel;
+        } catch (IOException | IllegalArgumentException e) {
+            return dir.toString();
+        }
+    }
+
+    /** Each path {@code status} names, stamped, into {@code dirty}. */
+    private static void collect(Path root, String status, Map<String, String> dirty) {
         String[] fields = status.split("\0");
         for (int i = 0; i < fields.length; i++) {
             String entry = fields[i];
@@ -113,7 +169,6 @@ public final class CheckoutUntouched implements BeforeAllCallback, AfterAllCallb
             // A rename or copy carries its source as the next field.
             if (index == 'R' || index == 'C') i++;
         }
-        return new Snapshot(root, dirty);
     }
 
     /** Size and modification time, or {@code deleted}. */
