@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceModules;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
@@ -51,7 +52,7 @@ final class AlwaysNativeGraal {
      * ALWAYS.
      */
     static List<Module> fromManifests(Path root) {
-        Path abs = root.toAbsolutePath().normalize();
+        Path abs = WorkingDirectory.resolve(root);
         List<String> rels = TomlScan.scan(ManifestPaths.manifestIn(abs), "workspace.modules")
                 .stringArray("workspace.modules");
         List<Path> dirs = new ArrayList<>();
@@ -76,11 +77,10 @@ final class AlwaysNativeGraal {
      */
     static List<Module> within(List<Module> modules, List<String> selectedDirs) {
         Set<Path> selected = new HashSet<>();
-        for (String dir : selectedDirs)
-            selected.add(Path.of(dir).toAbsolutePath().normalize());
+        for (String dir : selectedDirs) selected.add(WorkingDirectory.resolve(dir));
         List<Module> out = new ArrayList<>();
         for (Module m : modules) {
-            if (selected.contains(m.dir().toAbsolutePath().normalize())) out.add(m);
+            if (selected.contains(WorkingDirectory.resolve(m.dir()))) out.add(m);
         }
         return List.copyOf(out);
     }
@@ -100,12 +100,10 @@ final class AlwaysNativeGraal {
         Map<Path, Integer> byDir = new LinkedHashMap<>();
         for (var listed : rootInfo.moduleToolchains().entrySet()) {
             byDir.put(
-                    Path.of(listed.getKey()).toAbsolutePath().normalize(),
-                    listed.getValue().javaRelease());
+                    WorkingDirectory.resolve(listed.getKey()), listed.getValue().javaRelease());
         }
         if (!rootInfo.workspaceRootDir().isBlank()) {
-            byDir.putIfAbsent(
-                    Path.of(rootInfo.workspaceRootDir()).toAbsolutePath().normalize(), rootInfo.javaRelease());
+            byDir.putIfAbsent(WorkingDirectory.resolve(rootInfo.workspaceRootDir()), rootInfo.javaRelease());
         }
         return withReleases(modules, byDir);
     }
@@ -117,7 +115,7 @@ final class AlwaysNativeGraal {
     static List<Module> withReleases(List<Module> modules, Map<Path, Integer> byDir) {
         List<Module> out = new ArrayList<>();
         for (Module m : modules) {
-            int effective = byDir.getOrDefault(m.dir().toAbsolutePath().normalize(), 0);
+            int effective = byDir.getOrDefault(WorkingDirectory.resolve(m.dir()), 0);
             out.add(effective > 0 ? new Module(m.dir(), m.graalSpec(), effective) : m);
         }
         return List.copyOf(out);

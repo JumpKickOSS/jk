@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.toolchain;
 
+import cc.jumpkick.host.WorkingDirectory;
 import java.nio.file.Path;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,7 +26,7 @@ public final class ShellInstallerBlock {
      * {@code home} are emitted as {@code $HOME/…} so the snippet is username-free.
      */
     public static String render(Shell shell, Path binDir, Path home) {
-        Path jkExe = binDir.toAbsolutePath().normalize().resolve("jk");
+        Path jkExe = WorkingDirectory.resolve(binDir).resolve("jk");
         String command = shell.commandExpr(jkExe, home);
         StringBuilder sb = new StringBuilder();
         sb.append(BEGIN).append('\n');

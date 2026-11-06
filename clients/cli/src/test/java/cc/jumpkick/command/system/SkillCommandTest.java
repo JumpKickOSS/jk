@@ -8,6 +8,7 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.docs.JkSkill;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Exit;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,10 +66,13 @@ class SkillCommandTest {
     void default_install_dir_is_agents_skills_under_the_project(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), "name = \"app\"\n");
         Path nested = Files.createDirectories(dir.resolve("mod"));
-        // The command walks from the cwd. This test calls the resolver with the project as cwd
-        // only when the process cwd is that directory — the helper itself walks from user.dir,
-        // so assert the constant and the written layout instead of chdir.
-        assertThat(JkSkill.INSTALL_DIR).isEqualTo(".agents/skills");
-        assertThat(nested).isDirectory();
+        Path previous = WorkingDirectory.pin(nested);
+        try {
+            Capture.stdout(() -> assertThat(Jk.execute("skill", "install")).isEqualTo(Exit.SUCCESS));
+        } finally {
+            WorkingDirectory.pin(previous);
+        }
+        assertThat(dir.resolve(JkSkill.INSTALL_DIR).resolve("jk/SKILL.md")).isRegularFile();
+        assertThat(nested.resolve(".agents")).doesNotExist();
     }
 }

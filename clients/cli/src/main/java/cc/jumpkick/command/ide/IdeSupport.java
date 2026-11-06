@@ -76,7 +76,7 @@ public final class IdeSupport {
      */
     public static IdeWireModel wireModel(Invocation in, @Nullable IdeChrome chrome) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
-        Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         Path jdksDir = CommonOpts.jdksDirValue(in);
 
         Path startDir = global.workingDir();

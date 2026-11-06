@@ -8,6 +8,7 @@ import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.command.toolchain.NodeCli;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.node.NodeCaches;
@@ -172,7 +173,7 @@ final class NewNode {
      */
     private static int generate(NodeHome home, NodeGenerators.Framework f, Path target, List<String> params)
             throws IOException, InterruptedException {
-        Path parent = Objects.requireNonNull(target.toAbsolutePath().getParent(), "target has a parent");
+        Path parent = Objects.requireNonNull(WorkingDirectory.resolve(target).getParent(), "target has a parent");
         Files.createDirectories(parent);
         String dir = String.valueOf(target.getFileName());
         Map<String, String> env =

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.util.JkDirs;
@@ -268,7 +269,7 @@ public record Session(
     public static Session defaults() {
         return new Session(
                 JkConfig.empty(),
-                Path.of("").toAbsolutePath().normalize(),
+                WorkingDirectory.current(),
                 JkDirs.cache(),
                 null,
                 PluginTuning.NONE,
@@ -302,7 +303,7 @@ public record Session(
     public Session withWorkingDir(Path dir) {
         return new Session(
                 config,
-                dir.toAbsolutePath().normalize(),
+                WorkingDirectory.resolve(dir),
                 cacheDir,
                 jdksDir,
                 jvm,

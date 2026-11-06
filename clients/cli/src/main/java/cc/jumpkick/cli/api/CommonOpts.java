@@ -133,7 +133,7 @@ public final class CommonOpts {
 
     /** The {@code --jdks-dir} override as a path, or {@code null} when the user gave none. */
     public static @Nullable Path jdksDirValue(Invocation in) {
-        return in.value(JDKS_DIR).map(Path::of).orElse(null);
+        return in.value(JDKS_DIR).map(CliPaths::abs).orElse(null);
     }
 
     /** Skip compiling and running tests — shared by build / native / install-style verbs. */

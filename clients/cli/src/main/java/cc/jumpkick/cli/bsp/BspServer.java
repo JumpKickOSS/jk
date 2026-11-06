@@ -5,6 +5,7 @@ import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.ide.BspConnectionFile;
 import cc.jumpkick.ide.IdeSourceRoots;
 import cc.jumpkick.jsonl.JsonFields;
@@ -970,7 +971,7 @@ public final class BspServer {
     }
 
     static String pathUri(Path p) {
-        return p.toAbsolutePath().normalize().toUri().toString();
+        return WorkingDirectory.resolve(p).toUri().toString();
     }
 
     /**

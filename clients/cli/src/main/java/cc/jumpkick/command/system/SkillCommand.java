@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.docs.JkSkill;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -58,8 +59,7 @@ public final class SkillCommand implements CliCommand {
         }
         List<String> pos = in.positionals();
         if (!pos.isEmpty() && "install".equals(pos.get(0))) {
-            Path root = pos.size() > 1 ? Path.of(pos.get(1)) : defaultSkillsRoot();
-            if (!root.isAbsolute()) root = Path.of("").toAbsolutePath().resolve(root);
+            Path root = pos.size() > 1 ? WorkingDirectory.resolve(pos.get(1)) : defaultSkillsRoot();
             try {
                 Path written = JkSkill.install(root);
                 CliOutput.outRaw(written.toString() + "\n");
@@ -88,7 +88,7 @@ public final class SkillCommand implements CliCommand {
 
     /** The workspace root owning the nearest {@code jk.toml} above the cwd, that project, else the cwd. */
     static Path projectRoot() {
-        Path dir = Path.of("").toAbsolutePath();
+        Path dir = WorkingDirectory.current();
         for (Path cursor = dir; cursor != null; cursor = cursor.getParent()) {
             if (Files.isRegularFile(ManifestPaths.manifestIn(cursor))) {
                 return WorkspaceScan.findRoot(cursor).orElse(cursor);
@@ -99,7 +99,7 @@ public final class SkillCommand implements CliCommand {
 
     /** {@code <project>/.agents/skills}, walking up to the nearest {@code jk.toml}, else the cwd. */
     static Path defaultSkillsRoot() {
-        Path dir = Path.of("").toAbsolutePath();
+        Path dir = WorkingDirectory.current();
         for (Path cursor = dir; cursor != null; cursor = cursor.getParent()) {
             if (Files.isRegularFile(ManifestPaths.manifestIn(cursor))) return cursor.resolve(JkSkill.INSTALL_DIR);
         }

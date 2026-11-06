@@ -14,6 +14,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.ProgressRow;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
@@ -297,7 +298,7 @@ public final class CleanCommand implements CliCommand {
      * never point {@code jk clean} outside the workspace.
      */
     static List<Path> resolveModuleDirs(Path workspaceRoot, List<String> modules, List<String> warnings) {
-        Path root = workspaceRoot.toAbsolutePath().normalize();
+        Path root = WorkingDirectory.resolve(workspaceRoot);
         List<Path> dirs = new ArrayList<>();
         for (String module : modules) {
             Path moduleDir = root.resolve(module).normalize();

@@ -14,6 +14,7 @@ import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.config.RepositoriesScan;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
@@ -355,9 +356,9 @@ public final class PublishCommand implements CliCommand {
      * platform, so a release script reads one spelling.
      */
     static String displayPath(Path written, Path workspaceRoot, Path projectDir) {
-        Path p = written.toAbsolutePath().normalize();
-        Path ws = workspaceRoot.toAbsolutePath().normalize();
-        Path proj = projectDir.toAbsolutePath().normalize();
+        Path p = WorkingDirectory.resolve(written);
+        Path ws = WorkingDirectory.resolve(workspaceRoot);
+        Path proj = WorkingDirectory.resolve(projectDir);
         Path shown = p.startsWith(ws) ? ws.relativize(p) : p.startsWith(proj) ? proj.relativize(p) : p;
         return shown.toString().replace(shown.getFileSystem().getSeparator(), "/");
     }

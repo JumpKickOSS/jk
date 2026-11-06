@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.WorkingDirectory;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,7 +71,7 @@ class JkOwnArgsScanTest {
         var cfg = SessionContext.current().config();
         assertThat(cfg.quietOr(false)).isTrue();
         assertThat(cfg.verboseOr(false)).isFalse();
-        assertThat(cfg.dirOr(UNSET)).isEqualTo(Path.of("app"));
+        assertThat(cfg.dirOr(UNSET)).isEqualTo(WorkingDirectory.resolve("app"));
     }
 
     @Test
@@ -84,6 +85,6 @@ class JkOwnArgsScanTest {
 
         var own = Jk.ConfigSwitches.scan(new String[] {"--config-file=own.toml", "--no-config", "build"});
         assertThat(own.noConfig()).isTrue();
-        assertThat(own.explicit()).contains(Path.of("own.toml"));
+        assertThat(own.explicit()).contains(WorkingDirectory.resolve("own.toml"));
     }
 }

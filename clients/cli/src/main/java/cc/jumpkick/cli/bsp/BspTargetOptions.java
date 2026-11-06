@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.bsp;
 
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.nio.file.Path;
@@ -189,6 +190,6 @@ final class BspTargetOptions {
     }
 
     private static String uri(Path p) {
-        return p.toAbsolutePath().normalize().toUri().toString();
+        return WorkingDirectory.resolve(p).toUri().toString();
     }
 }

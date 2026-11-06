@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.cli.engine.EngineProbe;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.wire.EnginePaths;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -185,8 +186,7 @@ public final class DashboardCodeLink {
             if (!note.isEmpty()) query.add("msg=" + encodeSeg(note));
         }
         if (checkoutDir != null) {
-            query.add(
-                    "dir=" + encodeSeg(checkoutDir.toAbsolutePath().normalize().toString()));
+            query.add("dir=" + encodeSeg(WorkingDirectory.resolve(checkoutDir).toString()));
         }
         if (!query.isEmpty()) hash.append('?').append(String.join("&", query));
         String base = httpBase.strip();
@@ -210,9 +210,7 @@ public final class DashboardCodeLink {
     /** Like {@link #urlForSnippet(String, int, int)} with a hover note. */
     public static @Nullable String urlForSnippet(String moduleRelativePath, int line, int col, @Nullable String msg) {
         Scope scope = SCOPE.get();
-        Path checkout = scope != null && scope.checkoutDir != null
-                ? scope.checkoutDir
-                : Path.of("").toAbsolutePath().normalize();
+        Path checkout = scope != null && scope.checkoutDir != null ? scope.checkoutDir : WorkingDirectory.current();
         Path module = scope != null ? scope.moduleDir : null;
         String rel = codePath(checkout, module, moduleRelativePath);
         if (rel == null) return null;
@@ -266,7 +264,7 @@ public final class DashboardCodeLink {
     }
 
     private static @Nullable Path normalize(Path p) {
-        return p == null ? null : p.toAbsolutePath().normalize();
+        return p == null ? null : WorkingDirectory.resolve(p);
     }
 
     private static boolean hasDotDot(String rel) {
@@ -278,8 +276,8 @@ public final class DashboardCodeLink {
 
     private static @Nullable String relativizeUnder(Path root, Path abs) {
         if (root == null || abs == null) return null;
-        Path r = root.toAbsolutePath().normalize();
-        Path a = abs.toAbsolutePath().normalize();
+        Path r = WorkingDirectory.resolve(root);
+        Path a = WorkingDirectory.resolve(abs);
         if (a.equals(r)) return "";
         if (!a.startsWith(r)) return null;
         Path rel = r.relativize(a);

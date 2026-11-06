@@ -49,9 +49,7 @@ public final class McpCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         Path cwd = GlobalOptions.from(in).workingDir();
-        String project = ProjectRoots.find(cwd == null ? Path.of("") : cwd)
-                .map(Path::toString)
-                .orElse(null);
+        String project = ProjectRoots.find(cwd).map(Path::toString).orElse(null);
         new McpBridge(McpCommand::endpoint, project).serve(System.in, System.out);
         return 0;
     }

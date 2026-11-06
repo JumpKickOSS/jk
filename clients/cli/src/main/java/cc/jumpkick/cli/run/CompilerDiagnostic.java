@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.host.WorkingDirectory;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -295,17 +296,15 @@ public final class CompilerDiagnostic {
             }
         }
         try {
-            Path p = Path.of(f);
-            if (Files.isRegularFile(p)) return p.toAbsolutePath().normalize();
+            Path p = WorkingDirectory.resolve(f);
+            if (Files.isRegularFile(p)) return p;
             DashboardCodeLink.Scope scope = DashboardCodeLink.current();
-            Path base = scope != null && scope.checkoutDir() != null
-                    ? scope.checkoutDir()
-                    : Path.of("").toAbsolutePath();
+            Path base = scope != null && scope.checkoutDir() != null ? scope.checkoutDir() : WorkingDirectory.current();
             Path rel = base.resolve(f);
-            if (Files.isRegularFile(rel)) return rel.toAbsolutePath().normalize();
+            if (Files.isRegularFile(rel)) return WorkingDirectory.resolve(rel);
             if (scope != null && scope.moduleDir() != null) {
                 Path m = scope.moduleDir().resolve(f);
-                if (Files.isRegularFile(m)) return m.toAbsolutePath().normalize();
+                if (Files.isRegularFile(m)) return WorkingDirectory.resolve(m);
             }
         } catch (RuntimeException ignored) {
             // leave unread

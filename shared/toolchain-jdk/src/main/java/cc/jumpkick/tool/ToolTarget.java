@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
+import cc.jumpkick.host.WorkingDirectory;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -66,8 +67,8 @@ public sealed interface ToolTarget {
 
         // 2. Existing local paths beat every remote/coordinate interpretation.
         Path asPath = safePath(s);
-        if (asPath != null && Files.exists(asPath)) {
-            if (Files.isDirectory(asPath)) return new Directory(asPath, raw);
+        if (asPath != null && Files.exists(WorkingDirectory.resolve(asPath))) {
+            if (Files.isDirectory(WorkingDirectory.resolve(asPath))) return new Directory(asPath, raw);
             return new UnsupportedFile(asPath, raw);
         }
 

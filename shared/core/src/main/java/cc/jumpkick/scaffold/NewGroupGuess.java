@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.scaffold;
 
+import cc.jumpkick.host.WorkingDirectory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,10 +46,10 @@ public final class NewGroupGuess {
 
     private NewGroupGuess() {}
 
-    /** Convenience entry point that uses the real cwd and {@code $HOME}. */
+    /** Convenience entry point that uses the working directory and {@code $HOME}. */
     public static String guess() {
         return guess(
-                Path.of(".").toAbsolutePath().normalize(),
+                WorkingDirectory.current(),
                 Optional.ofNullable(System.getProperty("user.home"))
                         .map(Path::of)
                         .orElse(null));

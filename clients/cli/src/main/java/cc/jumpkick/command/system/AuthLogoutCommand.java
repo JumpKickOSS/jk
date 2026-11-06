@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.forge.AuthException;
@@ -50,7 +51,7 @@ public final class AuthLogoutCommand implements CliCommand {
     public int run(Invocation in) {
         String provider = in.positionals().get(0);
         String host = in.value("host").orElse(null);
-        Path credentialsDir = in.value("credentials-dir").map(Path::of).orElse(null);
+        Path credentialsDir = in.value("credentials-dir").map(CliPaths::abs).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
 
         ForgeKind kind;

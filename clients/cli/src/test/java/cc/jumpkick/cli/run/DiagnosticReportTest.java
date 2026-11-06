@@ -9,6 +9,7 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.Width;
 import java.nio.file.Path;
@@ -171,7 +172,7 @@ class DiagnosticReportTest {
         assertThat(DiagnosticReport.relativizePathToken("../jk-examples/README.md"))
                 .isEqualTo("../jk-examples/README.md");
         assertThat(DiagnosticReport.relativizePathToken("target/jk-results.md")).isEqualTo("target/jk-results.md");
-        Path abs = Path.of("").toAbsolutePath().resolve("build.gradle");
+        Path abs = WorkingDirectory.current().resolve("build.gradle");
         assertThat(DiagnosticReport.relativizePathToken(abs.toString())).isEqualTo("build.gradle");
     }
 }

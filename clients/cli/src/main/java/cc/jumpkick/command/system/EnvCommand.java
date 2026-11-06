@@ -10,6 +10,7 @@ import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -52,7 +53,7 @@ public final class EnvCommand implements CliCommand {
     @Override
     public int run(Invocation in) {
         GlobalOptions global = GlobalOptions.from(in);
-        Path dir = global.workingDir().toAbsolutePath().normalize();
+        Path dir = WorkingDirectory.resolve(global.workingDir());
         boolean verbose = global.verbose;
         boolean all = in.isSet("all");
         boolean json = global.outputIsJson();
@@ -164,10 +165,10 @@ public final class EnvCommand implements CliCommand {
     }
 
     private static String labelFile(Path file, Path base, String scope) {
-        Path abs = file.toAbsolutePath().normalize();
+        Path abs = WorkingDirectory.resolve(file);
         Path rel;
         try {
-            rel = base.toAbsolutePath().normalize().relativize(abs);
+            rel = WorkingDirectory.resolve(base).relativize(abs);
         } catch (IllegalArgumentException e) {
             rel = abs.getFileName();
         }

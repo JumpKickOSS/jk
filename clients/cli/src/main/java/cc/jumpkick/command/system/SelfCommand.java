@@ -27,6 +27,7 @@ import cc.jumpkick.config.TerminalCapsCache;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Arity;
@@ -129,11 +130,14 @@ public final class SelfCommand extends GroupCommand {
                 return Exit.USAGE;
             }
             Path launcher = JvmClientInstall.writeLauncher(
-                    JkDirs.binDir(), jar.get().toAbsolutePath(), JvmClientInstall.runningJava(), Os.isWindows());
+                    JkDirs.binDir(),
+                    WorkingDirectory.resolve(jar.get()),
+                    JvmClientInstall.runningJava(),
+                    Os.isWindows());
             CommandWedge.printOk(
                     "Self",
                     "wrote " + launcher + " — jk " + JkVersion.VERSION + " on " + JvmClientInstall.runningJava()
-                            + " over " + jar.get().toAbsolutePath());
+                            + " over " + WorkingDirectory.resolve(jar.get()));
             return 0;
         }
 
@@ -333,7 +337,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) throws Exception {
-            Path engineJar = Path.of(in.positionals().get(1));
+            Path engineJar = WorkingDirectory.resolve(in.positionals().get(1));
             if (!Files.isRegularFile(engineJar)) {
                 CommandWedge.printFail("Self", "engine jar not found: " + engineJar);
                 return Exit.SOFTWARE;
@@ -716,8 +720,8 @@ public final class SelfCommand extends GroupCommand {
                                 inflater.toString(),
                                 "cc.jumpkick.engine.EngineMain",
                                 "--inflate-xz",
-                                xzTmp.toAbsolutePath().toString(),
-                                out.toAbsolutePath().toString())
+                                WorkingDirectory.resolve(xzTmp).toString(),
+                                WorkingDirectory.resolve(out).toString())
                         .redirectErrorStream(true)
                         .start();
                 String err = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

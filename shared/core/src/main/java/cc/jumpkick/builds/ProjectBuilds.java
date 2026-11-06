@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.builds;
 
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
@@ -151,9 +152,7 @@ public final class ProjectBuilds {
     }
 
     public static RunDir openRun(Path buildsRoot, String coord, Path projectDir) throws IOException {
-        Path abs = projectDir == null
-                ? Path.of(".").toAbsolutePath().normalize()
-                : projectDir.toAbsolutePath().normalize();
+        Path abs = projectDir == null ? WorkingDirectory.current() : WorkingDirectory.resolve(projectDir);
         ProjectIdentity identity = ProjectIdentity.resolve(abs);
         // Prefer the live coord from the tree when resolve fell back to unknown.
         if ((identity.coord() == null || identity.coord().startsWith("unknown:"))
@@ -389,9 +388,7 @@ public final class ProjectBuilds {
         if (fileName.indexOf('/') >= 0 || fileName.indexOf('\\') >= 0 || fileName.contains("..")) {
             return Optional.empty();
         }
-        Path abs = projectDir == null
-                ? Path.of(".").toAbsolutePath().normalize()
-                : projectDir.toAbsolutePath().normalize();
+        Path abs = projectDir == null ? WorkingDirectory.current() : WorkingDirectory.resolve(projectDir);
         Path home = projectHome(buildsRoot, ProjectIdentity.resolve(abs));
         for (Path run : listRuns(home)) {
             Path f = run.resolve(fileName);

@@ -3,6 +3,7 @@ package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Invocation;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -16,11 +17,7 @@ class ImageTarballPathTest {
                 Invocation.builder().addValue("tarball", "target/ns.tar").build();
 
         assertThat(ImageVerb.tarballPath(in))
-                .isEqualTo(Path.of("")
-                        .toAbsolutePath()
-                        .resolve("target/ns.tar")
-                        .normalize()
-                        .toString());
+                .isEqualTo(WorkingDirectory.current().resolve("target/ns.tar").toString());
         assertThat(Path.of(ImageVerb.tarballPath(in))).isAbsolute();
         assertThat(ImageVerb.tarballPath(Invocation.builder().build())).isNull();
     }

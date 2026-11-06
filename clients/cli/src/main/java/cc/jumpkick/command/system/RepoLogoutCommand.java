@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.Arity;
@@ -46,7 +47,7 @@ public final class RepoLogoutCommand implements CliCommand {
     @Override
     public int run(Invocation in) {
         String id = in.positionals().get(0);
-        Path credentialsDir = in.value("credentials-dir").map(Path::of).orElse(null);
+        Path credentialsDir = in.value("credentials-dir").map(CliPaths::abs).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
 
         RepoCredentialStore store =

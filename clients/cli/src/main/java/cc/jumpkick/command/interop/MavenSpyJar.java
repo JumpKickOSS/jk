@@ -7,6 +7,7 @@ import cc.jumpkick.cli.engine.ReleaseDownloadView;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.repo.RepoArtifactResolver;
@@ -117,7 +118,7 @@ public final class MavenSpyJar {
         candidates.add(expected());
         candidates.addAll(fallbacks);
         for (Path p : candidates) {
-            if (Files.isRegularFile(p)) return Optional.of(p.toAbsolutePath().normalize());
+            if (Files.isRegularFile(p)) return Optional.of(WorkingDirectory.resolve(p));
         }
         return Optional.empty();
     }

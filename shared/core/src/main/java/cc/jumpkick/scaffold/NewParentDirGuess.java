@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.scaffold;
 
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -81,7 +82,7 @@ public final class NewParentDirGuess {
             return homeAbs;
         }
         // No home — last resort is cwd (caller may still refuse non-absolute paths).
-        return Path.of(".").toAbsolutePath().normalize();
+        return WorkingDirectory.current();
     }
 
     /**

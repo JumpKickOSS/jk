@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.api;
 
+import cc.jumpkick.host.WorkingDirectory;
 import java.nio.file.Path;
 
 /** Path-flag hygiene for the wire-only client. */
@@ -16,6 +17,6 @@ public final class CliPaths {
      * for {@code -C}.
      */
     public static Path abs(String path) {
-        return Path.of(path).toAbsolutePath().normalize();
+        return WorkingDirectory.resolve(path);
     }
 }

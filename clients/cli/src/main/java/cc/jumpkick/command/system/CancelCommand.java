@@ -6,6 +6,7 @@ import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -51,7 +52,7 @@ public final class CancelCommand implements CliCommand {
 
     /** The dir jobs are registered under: the workspace root when {@code dir} is inside one. */
     static Path cancelScope(Path dir) {
-        Path normalized = dir.toAbsolutePath().normalize();
+        Path normalized = WorkingDirectory.resolve(dir);
         return WorkspaceScan.findRoot(normalized).orElse(normalized);
     }
 

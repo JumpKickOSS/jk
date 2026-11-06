@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.ProjectRoots;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -101,9 +102,7 @@ public final class ResultsCommand implements CliCommand {
      * else {@code start}. Journal identity is keyed on that root.
      */
     static Path projectRoot(@Nullable Path start) {
-        Path abs = start == null
-                ? Path.of("").toAbsolutePath().normalize()
-                : start.toAbsolutePath().normalize();
+        Path abs = start == null ? WorkingDirectory.current() : WorkingDirectory.resolve(start);
         return ProjectRoots.find(abs).orElse(abs);
     }
 

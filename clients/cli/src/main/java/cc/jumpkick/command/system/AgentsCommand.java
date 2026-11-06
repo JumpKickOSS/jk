@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.command.project.AgentWiring;
 import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.docs.AgentsGuide;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -55,7 +56,7 @@ public final class AgentsCommand implements CliCommand {
     public int run(Invocation in) {
         List<String> pos = in.positionals();
         Path dir = pos.isEmpty() ? SkillCommand.projectRoot() : Path.of(pos.get(0));
-        dir = Path.of("").toAbsolutePath().resolve(dir).normalize();
+        dir = WorkingDirectory.resolve(dir);
         try {
             List<String> lines = in.isSet("remove")
                     ? AgentWiring.remove(dir)

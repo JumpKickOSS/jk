@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
@@ -87,21 +88,18 @@ public final class EngineTestSupport {
     }
 
     /**
-     * {@code -Djk.engine.jar} when set, else the checkout's engine assembly found from {@code
-     * user.dir} upward ({@code server/engine/target/…-all.jar}, then {@code target/dist/lib}).
+     * {@code -Djk.engine.jar} when set, else the checkout's engine assembly ({@code
+     * server/engine/target/…-all.jar}, then {@code target/dist/lib}).
      */
     static @Nullable Path resolveEngineJar() {
         String jarProp = System.getProperty("jk.engine.jar");
         if (jarProp != null && !jarProp.isBlank()) return Path.of(jarProp);
-        Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
         String ver = JkVersion.VERSION;
-        Path walk = cwd;
-        for (int up = 0; up < 3 && walk != null; up++, walk = walk.getParent()) {
-            for (Path cand : List.of(
-                    walk.resolve("server/engine/target/jk-engine-" + ver + "-all.jar"),
-                    walk.resolve("target/dist/lib/jk-engine-" + ver + ".jar"))) {
-                if (Files.isRegularFile(cand)) return cand.normalize();
-            }
+        Path root = RepoRoot.find(EngineTestSupport.class);
+        for (Path cand : List.of(
+                root.resolve("server/engine/target/jk-engine-" + ver + "-all.jar"),
+                root.resolve("target/dist/lib/jk-engine-" + ver + ".jar"))) {
+            if (Files.isRegularFile(cand)) return cand;
         }
         return null;
     }

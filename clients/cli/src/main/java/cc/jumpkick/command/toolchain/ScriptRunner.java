@@ -11,6 +11,7 @@ import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.command.Exit;
@@ -147,7 +148,7 @@ final class ScriptRunner {
         // plain kotlinc can't compile them (they're main-kts constructs), so exec a
         // line-preserving copy with those annotations commented out.
         String source = new String(Files.readAllBytes(script), StandardCharsets.UTF_8);
-        Path execScript = script.toAbsolutePath();
+        Path execScript = WorkingDirectory.resolve(script);
         String neutralized = ScriptHeaderParser.neutralizeKotlinAnnotations(source);
         if (neutralized != null) {
             Path srcDir = stateDir()
@@ -208,7 +209,7 @@ final class ScriptRunner {
         if (classpath.size() == 1) {
             // No extra deps — `java -jar` is cleaner and honors the jar's Class-Path attribute.
             command.add("-jar");
-            command.add(jar.toAbsolutePath().toString());
+            command.add(WorkingDirectory.resolve(jar).toString());
         } else {
             command.add("-cp");
             command.add(Classpaths.join(classpath));
@@ -235,7 +236,13 @@ final class ScriptRunner {
         return EngineClient.runScriptPrepare(
                 EnginePaths.current(),
                 new EngineRequests.ScriptPrepareRequest(
-                        mode, file.toAbsolutePath(), cacheDir(), stateDir(), repoUrl, forceRecompile, extraDeps),
+                        mode,
+                        WorkingDirectory.resolve(file),
+                        cacheDir(),
+                        stateDir(),
+                        repoUrl,
+                        forceRecompile,
+                        extraDeps),
                 steps -> BuildPlanConsole.chooseConsoleListener("script", steps, consoleMode));
     }
 
@@ -285,9 +292,9 @@ final class ScriptRunner {
 
     /** {@code command} with the {@code .env} of the directory jk runs in beneath this environment. */
     private ProcessBuilder processFor(List<String> command) {
-        ProcessBuilder pb = new ProcessBuilder(command);
-        EnvLookup.layerUnder(
-                pb.environment(), EnvLookup.dotEnv(global.workingDir().toAbsolutePath()));
+        ProcessBuilder pb =
+                new ProcessBuilder(command).directory(WorkingDirectory.current().toFile());
+        EnvLookup.layerUnder(pb.environment(), EnvLookup.dotEnv(global.workingDir()));
         return pb;
     }
 }

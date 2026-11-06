@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
@@ -64,18 +65,16 @@ public final class CwdModuleScope {
             @Nullable boolean workspaceRoot,
             String workspaceRootDir,
             @Nullable String projectName) {
-        Path cwd = workingDir.toAbsolutePath().normalize();
+        Path cwd = WorkingDirectory.resolve(workingDir);
         String spec = modulesSpec == null || modulesSpec.isBlank() ? null : modulesSpec;
         if (workspaceRoot) {
-            Path root = blank(workspaceRootDir)
-                    ? cwd
-                    : Path.of(workspaceRootDir).toAbsolutePath().normalize();
+            Path root = blank(workspaceRootDir) ? cwd : WorkingDirectory.resolve(workspaceRootDir);
             return new Resolved(root, cwd, spec, false, null, false);
         }
         if (blank(workspaceRootDir)) {
             return new Resolved(cwd, cwd, spec, false, null, false);
         }
-        Path root = Path.of(workspaceRootDir).toAbsolutePath().normalize();
+        Path root = WorkingDirectory.resolve(workspaceRootDir);
         if (root.equals(cwd)) {
             return new Resolved(root, cwd, spec, false, null, false);
         }

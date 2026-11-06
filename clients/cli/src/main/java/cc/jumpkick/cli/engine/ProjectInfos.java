@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
@@ -95,7 +96,7 @@ public final class ProjectInfos {
 
     private static String key(
             Path dir, @Nullable String modules, @Nullable String affectedSince, boolean affectedWip, boolean counts) {
-        return dir.toAbsolutePath().normalize() + "\0" + (modules == null ? "" : modules) + "\0"
+        return WorkingDirectory.resolve(dir) + "\0" + (modules == null ? "" : modules) + "\0"
                 + (affectedSince == null ? "" : affectedSince) + "\0" + affectedWip + "\0" + counts;
     }
 

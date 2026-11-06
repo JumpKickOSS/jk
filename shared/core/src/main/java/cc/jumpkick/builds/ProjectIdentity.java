@@ -4,6 +4,7 @@ package cc.jumpkick.builds;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -70,7 +71,7 @@ public record ProjectIdentity(
     public ProjectIdentity {
         if (id == null || id.isBlank()) throw new IllegalArgumentException("id");
         if (coord == null || coord.isBlank()) coord = "unknown:unknown";
-        path = canonical(path == null ? Path.of(".") : path);
+        path = canonical(path == null ? WorkingDirectory.current() : path);
         if (source == null) source = Source.PATH;
         id = normalizeId(id);
     }
@@ -81,7 +82,7 @@ public record ProjectIdentity(
      * the links; the absolute normalized path once it is gone.
      */
     public static Path canonical(Path dir) {
-        Path abs = dir.toAbsolutePath().normalize();
+        Path abs = WorkingDirectory.resolve(dir);
         if (!Files.isDirectory(abs)) return abs;
         try {
             return abs.toRealPath();
@@ -101,9 +102,7 @@ public record ProjectIdentity(
      * explicit {@code id} in {@code jk.toml} still wins.
      */
     public static ProjectIdentity resolve(@Nullable Path projectDir, @Nullable Lockfile lock) {
-        Path abs = projectDir == null
-                ? Path.of(".").toAbsolutePath().normalize()
-                : projectDir.toAbsolutePath().normalize();
+        Path abs = projectDir == null ? WorkingDirectory.current() : WorkingDirectory.resolve(projectDir);
         String coord = coordOf(abs);
 
         Optional<String> explicit = explicitId(abs);
@@ -158,9 +157,7 @@ public record ProjectIdentity(
         if (lock.projectId() != null && !lock.projectId().isBlank()) {
             return lock;
         }
-        Path abs = projectDir == null
-                ? Path.of(".").toAbsolutePath().normalize()
-                : projectDir.toAbsolutePath().normalize();
+        Path abs = projectDir == null ? WorkingDirectory.current() : WorkingDirectory.resolve(projectDir);
         Optional<String> recovered = recoverId(abs);
         String id = recovered.orElseGet(ProjectIdentity::mintId);
         return lock.withProjectId(id);

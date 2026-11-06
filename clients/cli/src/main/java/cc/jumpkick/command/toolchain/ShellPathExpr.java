@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.toolchain;
 
+import cc.jumpkick.host.WorkingDirectory;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 
@@ -57,14 +58,14 @@ final class ShellPathExpr {
      */
     static @Nullable String homeRelative(Path path, Path home) {
         if (path == null || home == null) return null;
-        Path abs = path.toAbsolutePath().normalize();
-        Path homeAbs = home.toAbsolutePath().normalize();
+        Path abs = WorkingDirectory.resolve(path);
+        Path homeAbs = WorkingDirectory.resolve(home);
         if (!abs.startsWith(homeAbs)) return null;
         return homeAbs.relativize(abs).toString().replace('\\', '/');
     }
 
     private static String normalizeAbs(Path path) {
-        return path.toAbsolutePath().normalize().toString().replace('\\', '/');
+        return WorkingDirectory.resolve(path).toString().replace('\\', '/');
     }
 
     /** Escape for inclusion inside POSIX double quotes (not including the surrounding quotes). */

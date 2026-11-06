@@ -7,6 +7,7 @@ import cc.jumpkick.cli.CommandDispatch.Split;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.command.toolchain.NodeExecCommand;
 import cc.jumpkick.command.toolchain.NodePassthroughCommand;
+import cc.jumpkick.host.WorkingDirectory;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -61,7 +62,7 @@ class NodePassthroughArgsTest {
         assertThat(l.argv())
                 .containsExactly(program, "-h", "--help", "-q", "-C", "elsewhere", "-n", "20", "--node", "x");
         assertThat(l.node()).isNull();
-        assertThat(l.dir()).isEqualTo(Path.of("").toAbsolutePath().normalize());
+        assertThat(l.dir()).isEqualTo(WorkingDirectory.current().toRealPath());
     }
 
     @Test

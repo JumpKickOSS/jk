@@ -2,6 +2,7 @@
 package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.WorkingDirectory;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -115,8 +116,7 @@ final class WindowsUserPath {
 
     private static Process startPowerShell(Path binDir) throws IOException {
         ProcessBuilder pb = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SCRIPT);
-        pb.environment()
-                .put("JK_ACTIVATE_BIN", binDir.toAbsolutePath().normalize().toString());
+        pb.environment().put("JK_ACTIVATE_BIN", WorkingDirectory.resolve(binDir).toString());
         return pb.redirectErrorStream(false).start();
     }
 

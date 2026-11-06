@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Arity;
@@ -61,10 +62,7 @@ public final class SelfShelveCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException {
-        Path source = Path.of(in.positionals().getFirst())
-                .toAbsolutePath()
-                .normalize()
-                .resolve(RepoArtifactResolver.JK_LOCAL);
+        Path source = WorkingDirectory.resolve(in.positionals().getFirst()).resolve(RepoArtifactResolver.JK_LOCAL);
         if (!Files.isDirectory(source)) {
             CommandWedge.printFail(
                     "Self", "no " + RepoArtifactResolver.JK_LOCAL + " shelf under " + source.getParent());

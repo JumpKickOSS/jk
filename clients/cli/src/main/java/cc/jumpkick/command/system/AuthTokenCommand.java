@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.forge.AuthException;
 import cc.jumpkick.forge.ForgeAuth;
@@ -58,7 +59,7 @@ public final class AuthTokenCommand implements CliCommand {
     public int run(Invocation in) {
         String provider = in.positionals().isEmpty() ? null : in.positionals().get(0);
         String host = in.value("host").orElse(null);
-        Path credentialsDir = in.value("credentials-dir").map(Path::of).orElse(null);
+        Path credentialsDir = in.value("credentials-dir").map(CliPaths::abs).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
 
         AuthCommand.Target target;

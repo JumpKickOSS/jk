@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.compat.PassthroughEnv;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.model.command.Arity;
@@ -59,9 +60,7 @@ public final class GradleCommand implements CliCommand {
         boolean acceptUnverified = CommonOpts.acceptUnverifiedTool(in);
         List<String> args = in.positionals();
 
-        Path projectDir = directory != null
-                ? directory.toAbsolutePath().normalize()
-                : Path.of(".").toAbsolutePath().normalize();
+        Path projectDir = directory != null ? WorkingDirectory.resolve(directory) : WorkingDirectory.current();
         Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.tools();
 
         Path gradleBin = MvnCommand.provision(projectDir, toolsRoot, noDiscover, acceptUnverified, true);

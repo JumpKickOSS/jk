@@ -6,6 +6,7 @@ import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
@@ -303,7 +304,7 @@ public final class JkEnv {
     /** Walk up from {@code cwd} until a {@code jk.toml} is found or root is reached. */
     static Optional<Path> findProjectRoot(Path cwd) {
         if (cwd == null) return Optional.empty();
-        var p = cwd.toAbsolutePath().normalize();
+        var p = WorkingDirectory.resolve(cwd);
         while (p != null) {
             if (Files.isRegularFile(p.resolve(ManifestPaths.MANIFEST))) return Optional.of(p);
             p = p.getParent();

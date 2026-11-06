@@ -7,8 +7,11 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.command.project.NewCommand;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SearchCeiling;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.testing.RepoRoot;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -210,6 +213,19 @@ class NewModuleTest {
         assertThat(built.project().group()).isEqualTo("com.solo");
         assertThat(built.project().version()).isEqualTo("0.1.0");
         assertThat(Files.readString(tempDir.resolve("jk.toml"))).isEqualTo(rootBefore);
+    }
+
+    @Test
+    void a_relative_target_lands_in_the_temp_working_directory_not_the_module_directory() throws IOException {
+        Path cwd = WorkingDirectory.current();
+        assertThat(cwd).startsWith(ShortTempDirs.root());
+
+        int exit = Jk.execute("new", "--group", "com.acme", "demo");
+
+        assertThat(exit).isZero();
+        assertThat(cwd.resolve("demo/jk.toml")).isRegularFile();
+        assertThat(RepoRoot.find(NewModuleTest.class).resolve("clients/cli/demo"))
+                .doesNotExist();
     }
 
     @Test

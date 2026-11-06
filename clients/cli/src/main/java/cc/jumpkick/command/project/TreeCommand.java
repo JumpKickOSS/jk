@@ -21,6 +21,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Arity;
@@ -162,7 +163,7 @@ public final class TreeCommand implements CliCommand {
      * foo}, {@code foo/bar}) that must contain {@code jk.toml}.
      */
     static TreeDir resolveTreeDir(Path cwd, @Nullable String spec) throws IOException {
-        Path start = cwd.toAbsolutePath().normalize();
+        Path start = WorkingDirectory.resolve(cwd);
         if (spec == null || spec.isBlank()) {
             Path project = nearestProject(start);
             if (project == null) {
@@ -199,8 +200,8 @@ public final class TreeCommand implements CliCommand {
         int n = Math.min(dirs.size(), names.size());
         for (int i = 0; i < n; i++) {
             Path dir = Path.of(dirs.get(i));
-            if (!dir.isAbsolute()) dir = root.resolve(dir).toAbsolutePath().normalize();
-            else dir = dir.toAbsolutePath().normalize();
+            if (!dir.isAbsolute()) dir = WorkingDirectory.resolve(root.resolve(dir));
+            else dir = WorkingDirectory.resolve(dir);
             String name = names.get(i);
             String last = dir.getFileName() == null ? "" : dir.getFileName().toString();
             if (want.equalsIgnoreCase(name) || want.equalsIgnoreCase(last)) hits.add(dir);
@@ -225,7 +226,7 @@ public final class TreeCommand implements CliCommand {
             names.add(n == null || n.isBlank() ? root.getFileName().toString() : n);
         } else {
             for (String rel : rels) {
-                Path d = root.resolve(rel).toAbsolutePath().normalize();
+                Path d = WorkingDirectory.resolve(root.resolve(rel));
                 dirs.add(d.toString());
                 String n = TomlScan.scan(ManifestPaths.manifestIn(d), "name").get("name");
                 names.add(n == null || n.isBlank() ? d.getFileName().toString() : n);
@@ -260,7 +261,7 @@ public final class TreeCommand implements CliCommand {
 
     /** Workspace root when {@code project} is a member or the root itself; otherwise the project. */
     static Path workspaceOrProject(Path project) {
-        Path dir = project.toAbsolutePath().normalize();
+        Path dir = WorkingDirectory.resolve(project);
         return WorkspaceScan.owningRoot(dir).orElse(dir);
     }
 
