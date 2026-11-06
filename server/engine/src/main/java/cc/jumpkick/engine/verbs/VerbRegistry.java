@@ -56,6 +56,7 @@ public final class VerbRegistry {
                 new GenerateVerb(host),
                 new NewProjectVerb(host),
                 new NewProjectFormVerb(host),
+                new TemplateLintVerb(host),
                 new IdeModelVerb(host),
                 new DenyCheckVerb(host),
                 new GuardFreezeVerb(host),

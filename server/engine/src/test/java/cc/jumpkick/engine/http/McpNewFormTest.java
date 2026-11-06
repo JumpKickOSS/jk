@@ -96,7 +96,7 @@ class McpNewFormTest {
                 name = "$name$"
                 motto = "$motto$"
                 db = "$database$"
-                $if(database_postgres.truthy)$
+                $if(cache)$
                 cache = "$cache$"
                 $endif$
                 libs = "$libs$"

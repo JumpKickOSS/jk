@@ -31,13 +31,15 @@ public final class TemplateAnswers {
     /**
      * {@code params} with every ask settled and bound (unchanged for a template with no
      * descriptor): a parameter answers the ask of its key, an
-     * unanswered or hidden ask takes its default, and every other parameter passes through.
+     * unanswered or hidden ask takes its default, and every other parameter passes through. An ask
+     * left with no value maps to {@code null}, so {@code $if(key)$} is false where the template
+     * reads it, and each of its {@code <key>_<option>} bindings is {@code no}.
      *
      * @throws IllegalArgumentException naming each ask whose answer does not fit, or that is
      *     required and unanswered
      */
-    public static Map<String, String> bind(JkTemplateToml.@Nullable Meta meta, Map<String, String> params) {
-        Map<String, String> out = new LinkedHashMap<>(params);
+    public static Map<String, @Nullable String> bind(JkTemplateToml.@Nullable Meta meta, Map<String, String> params) {
+        Map<String, @Nullable String> out = new LinkedHashMap<>(params);
         if (meta == null) return out;
         Optional<Step> step = meta.step();
         if (step.isEmpty()) return out;
@@ -59,7 +61,8 @@ public final class TemplateAnswers {
         for (Field f : step.get().fields()) {
             Object value = check.values().get(f.key());
             if (value == null) {
-                out.remove(f.key());
+                out.put(f.key(), null);
+                for (String binding : JkTemplateToml.bindingNames(f)) out.put(binding, "no");
                 continue;
             }
             out.put(f.key(), text(value));

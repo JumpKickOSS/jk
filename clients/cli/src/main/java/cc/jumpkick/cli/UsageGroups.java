@@ -41,8 +41,20 @@ public final class UsageGroups {
             new CommandGroup(
                     "Project commands:",
                     List.of(
-                            "new", "init", "add", "remove", "lock", "update", "sync", "deny", "tree", "why", "explain",
-                            "audit", "verify")),
+                            "new",
+                            "init",
+                            "template",
+                            "add",
+                            "remove",
+                            "lock",
+                            "update",
+                            "sync",
+                            "deny",
+                            "tree",
+                            "why",
+                            "explain",
+                            "audit",
+                            "verify")),
             new CommandGroup(
                     "Toolchain commands:",
                     List.of("jdk", "node", "npx", "npm", "tool", "trust", "shell", "activate", "deactivate")),

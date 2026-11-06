@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -55,7 +56,7 @@ class TemplateAnswersTest {
 
     @Test
     void defaults_bind_every_option_of_a_choice_and_bools_as_yes_or_no() {
-        Map<String, String> bound = TemplateAnswers.bind(META, Map.of("name", "demo"));
+        Map<String, @Nullable String> bound = TemplateAnswers.bind(META, Map.of("name", "demo"));
         assertThat(bound)
                 .containsEntry("name", "demo")
                 .containsEntry("database", "postgres")
@@ -72,7 +73,7 @@ class TemplateAnswersTest {
 
     @Test
     void answers_from_flags_are_typed_and_bound() {
-        Map<String, String> bound = TemplateAnswers.bind(
+        Map<String, @Nullable String> bound = TemplateAnswers.bind(
                 META,
                 Map.of("database", "mysql", "extras", "dev-tools,actuator", "native", "yes", "tagline", "Hi there"));
         assertThat(bound)
@@ -88,7 +89,8 @@ class TemplateAnswersTest {
 
     @Test
     void a_hidden_ask_takes_its_default() {
-        Map<String, String> bound = TemplateAnswers.bind(META, Map.of("database", "none", "migrations", "liquibase"));
+        Map<String, @Nullable String> bound =
+                TemplateAnswers.bind(META, Map.of("database", "none", "migrations", "liquibase"));
         assertThat(bound).containsEntry("database_none", "yes").containsEntry("migrations", "flyway");
     }
 
@@ -124,6 +126,64 @@ class TemplateAnswersTest {
                 .hasMessageContaining("region needs a value")
                 .hasMessageContaining("-p region=eu|us");
         assertThat(TemplateAnswers.bind(meta, Map.of("region", "eu"))).containsEntry("region_eu", "yes");
+    }
+
+    @Test
+    void a_hidden_ask_with_no_default_is_unset_and_its_guard_is_false(@TempDir Path temp) throws Exception {
+        JkTemplateToml.Meta meta = JkTemplateToml.parse("""
+                language = "java"
+                framework = "none"
+                name = "x"
+
+                [[ask]]
+                key = "database"
+                label = "Database"
+                kind = "choice"
+                options = ["none", "postgres"]
+                default = "none"
+
+                [[ask]]
+                key = "db_name"
+                label = "Database name"
+                kind = "text"
+                when = "database != 'none'"
+
+                [[ask]]
+                key = "engine"
+                label = "Engine"
+                kind = "choice"
+                options = ["fast", "safe"]
+                when = "database != 'none'"
+                """, "t.toml");
+        Map<String, @Nullable String> bound = TemplateAnswers.bind(meta, Map.of("name", "demo"));
+        assertThat(bound)
+                .containsEntry("db_name", null)
+                .containsEntry("engine", null)
+                .containsEntry("engine_fast", "no")
+                .containsEntry("engine_safe", "no");
+
+        Path g8 = temp.resolve("t.g8/src/main/g8");
+        Files.createDirectories(g8);
+        Files.writeString(g8.resolve("jk.toml"), """
+                name = "$name$"
+                $if(db_name)$
+                db = "$db_name$"
+                $endif$
+                $if(engine_fast.truthy)$
+                fast = true
+                $endif$
+                """);
+        Path dest = temp.resolve("out");
+        Giter8Apply.apply(temp.resolve("t.g8"), dest, bound);
+        assertThat(dest.resolve("jk.toml")).content().isEqualTo("name = \"demo\"\n");
+
+        Path shown = temp.resolve("shown");
+        Giter8Apply.apply(
+                temp.resolve("t.g8"),
+                shown,
+                TemplateAnswers.bind(
+                        meta, Map.of("name", "demo", "database", "postgres", "db_name", "app", "engine", "fast")));
+        assertThat(shown.resolve("jk.toml")).content().isEqualTo("name = \"demo\"\ndb = \"app\"\nfast = true\n");
     }
 
     @Test

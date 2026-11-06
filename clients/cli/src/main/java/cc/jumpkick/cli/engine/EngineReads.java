@@ -52,6 +52,8 @@ import cc.jumpkick.wire.protocol.ProjectInfoRequest;
 import cc.jumpkick.wire.protocol.ProtoJobs;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.ProvisionProgressEvent;
+import cc.jumpkick.wire.protocol.TemplateLintAck;
+import cc.jumpkick.wire.protocol.TemplateLintRequest;
 import cc.jumpkick.wire.protocol.TreeRequest;
 import cc.jumpkick.wire.protocol.WhyReport;
 import cc.jumpkick.wire.protocol.WhyRequest;
@@ -410,6 +412,15 @@ final class EngineReads {
                 EngineProtocol.NEW_PROJECT_FORM_ACK,
                 "new-project-form request",
                 NewProjectFormAck::decode);
+    }
+
+    static TemplateLintAck templateLint(EnginePaths.Paths paths, TemplateLintRequest req) throws IOException {
+        return request(
+                paths,
+                req.encode(),
+                EngineProtocol.TEMPLATE_LINT_ACK,
+                "template-lint request",
+                TemplateLintAck::decode);
     }
 
     /** One engine-hosted generator run: file payloads back, guards/writes stay client-side. */

@@ -6,6 +6,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | Command | What it does | Details |
 |---------|--------------|---------|
 | `jk new` / `jk init` | Scaffold a project | [Templates](templates.md) |
+| `jk template lint` | Lint template directories the way `jk new`'s catalogue does; non-zero on any failure | [Templates](templates.md#template-questions-jk-templatetoml) |
 | `jk add` / `jk remove` | Edit dependencies | [Dependencies](dependencies.md) |
 | `jk lock` | Resolve and write `jk-lock.toml` (keeps pins; `-F` moves opt-in selectors) | [Lockfile](lockfile.md) |
 | `jk sync` | The build's lock and sync phase on its own: every dependency, tool and JDK on disk | [Lockfile](lockfile.md) |

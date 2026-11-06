@@ -70,7 +70,7 @@ class RequestJsonTest {
     @Test
     void every_job_request_round_trips_its_defaults() throws Exception {
         List<Class<?>> records = requestRecords();
-        assertThat(records).hasSize(42);
+        assertThat(records).hasSize(43);
         for (Class<?> type : records) {
             Object original = defaultInstance(type);
             String encoded = (String) type.getMethod("encode").invoke(original);

@@ -22,7 +22,7 @@ final class Giter8Render {
 
     private Giter8Render() {}
 
-    static String content(String template, Map<String, String> props) throws IOException {
+    static String content(String template, Map<String, @Nullable String> props) throws IOException {
         return render(template, props, false);
     }
 
@@ -30,11 +30,12 @@ final class Giter8Render {
      * Render a template-relative path. {@code null} means omit the file (failed {@code $if$}
      * without a {@code .} flatten).
      */
-    static @Nullable String path(String template, Map<String, String> props) throws IOException {
+    static @Nullable String path(String template, Map<String, @Nullable String> props) throws IOException {
         return collapse(render(rewritePathFormats(template), props, true));
     }
 
-    private static String render(String template, Map<String, String> props, boolean pathMode) throws IOException {
+    private static String render(String template, Map<String, @Nullable String> props, boolean pathMode)
+            throws IOException {
         if (template == null || template.isEmpty()) return template == null ? "" : template;
         STGroup group = new STGroup('$', '$');
         group.registerRenderer(Object.class, new Giter8Formats());
@@ -61,9 +62,11 @@ final class Giter8Render {
             }
         });
         ST st = new ST(group, template);
-        Map<String, String> attrs = pathMode ? pathAttrs(props) : props;
-        for (Map.Entry<String, String> e : attrs.entrySet()) {
-            st.add(e.getKey(), new Giter8Value(e.getValue()));
+        Map<String, @Nullable String> attrs = pathMode ? pathAttrs(props) : props;
+        for (Map.Entry<String, @Nullable String> e : attrs.entrySet()) {
+            // A property with no value is still defined, so $if(key)$ reads it as false.
+            String value = e.getValue();
+            st.add(e.getKey(), value == null ? null : new Giter8Value(value));
         }
         String out;
         try {
@@ -92,12 +95,13 @@ final class Giter8Render {
         return sb.toString();
     }
 
-    private static Map<String, String> pathAttrs(Map<String, String> props) {
-        Map<String, String> out = new LinkedHashMap<>(props);
-        for (Map.Entry<String, String> e : props.entrySet()) {
+    private static Map<String, @Nullable String> pathAttrs(Map<String, @Nullable String> props) {
+        Map<String, @Nullable String> out = new LinkedHashMap<>(props);
+        for (Map.Entry<String, @Nullable String> e : props.entrySet()) {
             String key = e.getKey();
-            if ("package".equals(key) || key.endsWith(".package")) {
-                out.put(key, e.getValue().replace('.', '/'));
+            String value = e.getValue();
+            if (value != null && ("package".equals(key) || key.endsWith(".package"))) {
+                out.put(key, value.replace('.', '/'));
             }
         }
         return out;
