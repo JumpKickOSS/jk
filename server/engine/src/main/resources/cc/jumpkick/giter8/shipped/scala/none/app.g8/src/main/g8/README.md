@@ -15,8 +15,5 @@ jk image         # a container image with a JRE and an AOT cache
 $endif$
 ```
 
-Every package is `@NullMarked` (JSpecify): Scala cannot annotate a package, so its
-`package-info.java` sits beside the Scala sources, which compile it with them.
-
 `jk test` is the fast tier; `jk test -p integration` (or `network`, `slow`, `bench`) runs the
 tests tagged with that cost. `jk add <library>` adds a dependency at its newest stable release.

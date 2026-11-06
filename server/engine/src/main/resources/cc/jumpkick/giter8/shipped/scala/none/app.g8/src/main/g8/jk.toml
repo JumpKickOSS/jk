@@ -25,10 +25,7 @@ base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 aot-cache = true
 
 $endif$
-# The library starter pack wants every package @NullMarked. Scala cannot annotate a package, so a
-# package-info.java in the Java sources carries it.
 [dependencies]
-jspecify = "1.0.1"
 $if(deps_guava.truthy)$
 guava = "33.8.0-jre"
 $endif$

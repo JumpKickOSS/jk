@@ -155,8 +155,8 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 |------|-----------|-----------|--------|-----------|
 | `cli` | none | java, kotlin | Simple executable | `library` (java), house rules (kotlin) |
 | `cli-native` | none | java | Interactive Java CLI with JLine | house rules |
-| `app` | none | java, kotlin | Blank application: a main and its test; asks for common libraries, a fat jar and a native binary | `library` |
-| `library` | none | java, kotlin | Published library: sources and javadoc jars (Dokka's for Kotlin), `[build-info]`, unit test; the Java one a `@NullMarked` API; asks for common libraries | `library` |
+| `app` | none | java, kotlin, groovy, scala | Blank application: a main and its test; asks for common libraries, a fat jar and a native binary | `library` |
+| `library` | none | java, kotlin, scala | Published library: sources and javadoc jars (Dokka's for Kotlin, scaladoc's for Scala), `[build-info]`, unit test; the Java one a `@NullMarked` API; asks for common libraries | `library` |
 | `ktor-3` | none | kotlin | Ktor + Koin + Exposed | house rules |
 | `hello` | spring-boot | java, kotlin | Plugin hello app | `spring` |
 | `webmvc` | spring-boot | java, kotlin | Clean-architecture WebMVC workspace | `spring`, `monorepo` |
@@ -302,7 +302,9 @@ Every template also declares test tiers (`[test] exclude-tags` with one profile 
 `[format]` style, and, for a runnable app on the JVM, an `[image]` table (`cli-native` has none: its
 native binary ships as itself). Every Java template declares [`[nullness]`](build.md#null-checking-nullness)
 and marks each package it generates `@NullMarked`, so NullAway checks the project from the first
-build. The Spring Boot and `library`
+build. Nullness is Java's alone: the Kotlin, Scala and Groovy templates carry no JSpecify, no
+`package-info` and no NullAway, and the `library` pack asks `@NullMarked` only of a package that
+holds a Java class. The Spring Boot and `library`
 templates carry a [`[build-info]`](packaging.md#build-info-gitproperties-and-boots-build-infoproperties)
 table, so the jar records the commit it was built from (`git.properties`, and Boot's
 `META-INF/build-info.properties` for `/actuator/info`). None ships an `AGENTS.md`: `jk new`
