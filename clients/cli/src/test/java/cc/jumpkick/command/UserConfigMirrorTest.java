@@ -331,6 +331,79 @@ class UserConfigMirrorTest {
         assertNoRepositoryDialed();
     }
 
+    @Test
+    void an_offline_add_pins_the_newest_stable_a_file_mirror_lists(@TempDir Path dir) throws Exception {
+        Path disk = dir.resolve("mirror");
+        Map<String, byte[]> served = new LinkedHashMap<>();
+        MavenStub stub = new MavenStub(served);
+        for (String v : List.of("1.0", "1.2", "1.10", "2.0-RC1")) {
+            stub.pom(CENTRAL_LIB, "central-lib", v, MavenStub.emptyPom(CENTRAL_LIB, "central-lib", v));
+        }
+        served.keySet().removeIf(path -> path.contains("maven-metadata"));
+        write(disk, served);
+        Path project = Files.createDirectories(dir.resolve("project"));
+        bareManifest(project);
+        userConfig(origins() + mirrorOf("*", disk.toUri().toString()));
+
+        int[] exit = {-1};
+        String out =
+                output(() -> exit[0] = run("add", "--offline", CENTRAL_LIB + ":central-lib", "-C", project.toString()));
+
+        assertThat(exit[0]).as(out).isZero();
+        assertThat(project.resolve("jk.toml"))
+                .content()
+                .contains("central-lib = \"" + CENTRAL_LIB + ":central-lib:1.10\"");
+
+        // An exact version the mirror on disk lacks is refused offline, naming the newest it holds.
+        String before = Files.readString(project.resolve("jk.toml"));
+        out = output(() -> exit[0] = run("add", "--offline", CENTRAL_LIB + ":other:1.0", "-C", project.toString()));
+        assertThat(exit[0]).as(out).isNotZero();
+        out = output(
+                () -> exit[0] = run("add", "--offline", CENTRAL_LIB + ":central-lib:9.9", "-C", project.toString()));
+        assertThat(exit[0]).as(out).isNotZero();
+        assertThat(out)
+                .contains("no " + CENTRAL_LIB
+                        + ":central-lib:9.9 in the configured repositories; the newest release is 1.10");
+        assertThat(project.resolve("jk.toml")).content().isEqualTo(before);
+        assertThat(origins.requested()).isEmpty();
+        assertNoRepositoryDialed();
+    }
+
+    @Test
+    void an_offline_add_through_an_https_mirror_asks_it_nothing(@TempDir Path dir) throws Exception {
+        Path project = Files.createDirectories(dir.resolve("project"));
+        bareManifest(project);
+        String before = Files.readString(project.resolve("jk.toml"));
+        userConfig(origins() + mirrorOf("*", "https://mirror.example.invalid/maven2/"));
+
+        int[] exit = {-1};
+        String out =
+                output(() -> exit[0] = run("add", "--offline", CENTRAL_LIB + ":central-lib", "-C", project.toString()));
+
+        assertThat(exit[0]).as(out).isNotZero();
+        assertThat(out).contains("offline").contains(CENTRAL_LIB + ":central-lib:<version>");
+        assertThat(project.resolve("jk.toml")).content().isEqualTo(before);
+
+        // An exact version is not checked offline: the lock reports it.
+        out = output(
+                () -> exit[0] = run("add", "--offline", CENTRAL_LIB + ":central-lib:9.9", "-C", project.toString()));
+        assertThat(exit[0]).as(out).isZero();
+        assertThat(project.resolve("jk.toml")).content().contains(CENTRAL_LIB + ":central-lib:9.9");
+        assertThat(origins.requested()).isEmpty();
+        assertThat(proxy.hosts()).doesNotContain("mirror.example.invalid");
+        assertNoRepositoryDialed();
+    }
+
+    /** A project with no dependencies, for {@code jk add} to edit. */
+    private static void bareManifest(Path dir) throws IOException {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "mirrored"
+                version = "0.1.0"
+                java = 25
+                """);
+    }
+
     /** Every library {@link #exactManifest} needs, with the JUnit defaults, as a repository tree under {@code disk}. */
     private static Path publishTo(Path disk) throws IOException {
         Map<String, byte[]> served = new LinkedHashMap<>();

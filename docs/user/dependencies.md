@@ -30,7 +30,14 @@ publishes is refused as `no com.ninjasquad:springmockk in the configured reposit
 com.ninja-squad:springmockk?`, naming a module the local artifact store or the library catalog holds
 under a group or artifact that differs only by punctuation or a character or two. An exact version
 the repositories do not serve is refused with the newest release they do. A repository that cannot
-be reached, or an offline run, skips the check and the lock reports it.
+be reached skips the check and the lock reports it.
+
+Offline (`--offline`), `jk add` reads only repositories and mirrors whose URL is `file:`, as an
+offline resolve does ([Repositories § Offline](repositories.md#offline)). Given no version it pins
+the newest stable release those list; when the coordinate is also asked of a repository reached
+over the network, and no `file:` one lists it, it is refused with the explicit
+`group:artifact:<version>` to pass instead. An exact version is checked when every repository the
+coordinate is asked of is `file:`; otherwise the check is skipped and the lock reports it.
 
 A project with [guards](guards.md) may carry `depend` rules — banned coordinates, scopes a
 library must stay in, version floors, licence and snapshot policy. `jk add` and `jk remove`
