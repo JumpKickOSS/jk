@@ -85,13 +85,17 @@ public final class ModuleOrder {
     /**
      * Prereq dirs for the members {@code m} reaches only through a published POM edge. The
      * resolver serves that edge from the member, so the member's output is on this module's
-     * classpath and has to be built first — nothing in {@code m}'s own dependencies says so.
+     * classpath and has to be built first — nothing in {@code m}'s own dependencies says so. The
+     * walk starts from every dependency {@link #declared} names, a {@code [variants]} value's
+     * included, whichever value a build selects.
      */
     public static Set<Path> substitutedPrereqs(
             @Nullable Path root, Path moduleDir, JkBuild m, Collection<Scope> scopes, Map<String, Path> dirByCoord) {
         if (root == null) return Set.of();
+        List<Dependency> declared = new ArrayList<>();
+        for (Scope scope : scopes) declared.addAll(declared(m, scope));
         Set<Path> out = new LinkedHashSet<>();
-        for (String member : PomSubstitution.membersBehindPublishedEdges(root, m, scopes, dirByCoord.keySet())) {
+        for (String member : PomSubstitution.membersBehindPublishedEdges(root, declared, dirByCoord.keySet())) {
             Path dir = dirByCoord.get(member);
             if (dir != null && !dir.equals(moduleDir)) out.add(dir);
         }

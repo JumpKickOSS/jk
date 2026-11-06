@@ -213,8 +213,9 @@ A member's own coordinate is the member's everywhere. A dependency whose POM ask
 `group:artifact` the workspace builds — `hbase-server` depending on `org.apache.hadoop:hadoop-common`
 inside the Hadoop reactor — is served by the member, as Maven's reactor stands in for a published
 artifact of the same coordinate: the lock carries no row for it, nothing only that published POM
-pulled is locked, and every classpath reads the member's output. The lock's notes name the first
-POM that asked.
+pulled is locked, and every classpath reads the member's output, so the member builds first, a
+dependency only a `[variants]` value declares included. The lock's notes name the first POM that
+asked.
 
 A member's platform BOMs — the root's `[platform-dependencies]`, its own, the BOM a framework
 table such as `[spring-boot]` injects, and those of the siblings it depends on — constrain that
