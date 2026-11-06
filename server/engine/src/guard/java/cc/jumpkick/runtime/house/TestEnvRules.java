@@ -78,6 +78,8 @@ final class TestEnvRules {
     private static final Map<String, Set<String>> COMPUTED = Map.of(
             "clients/cli/src/test/java/cc/jumpkick/cli/api/ClientEnvForwardTest.java | e.getKey()",
             Set.copyOf(BuildEnv.MACHINE),
+            "clients/cli/src/test/java/cc/jumpkick/command/project/TemplateCatalogE2eTest.java | var",
+            Set.of("ANDROID_HOME", "ANDROID_SDK_ROOT"),
             "clients/intellij/src/test/java/cc/jumpkick/idea/InstalledJk.java | name",
             Set.of("JK_HOME", "JK_STORE_DIR"),
             "server/engine/src/test/java/cc/jumpkick/runtime/TrainAotCacheE2eTest.java | env",
