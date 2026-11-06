@@ -244,9 +244,9 @@ The engine runs under its `max-heap-mb` cap with `-XX:+ExitOnOutOfMemoryError` a
 `~/.jk/state/engine/java_pid<pid>.hprof` (beside the engine log, one file per exit) and ends
 the process; the next `jk` command starts a fresh engine and prints one line naming the dump.
 `jk engine status` and `jk doctor` show the newest dump while one exists; the engine deletes
-dumps older than seven days between builds. Raise `[engine] max-heap-mb` (or `JK_ENGINE_MAX_HEAP_MB`) and run
-`jk engine stop` to apply it, or shrink what the engine holds with `jk cache prune`. Open
-the `.hprof` with any Java heap analyser.
+dumps older than seven days between builds. The engine sizes its work to its heap, so an exit on
+`OutOfMemoryError` is a jk bug: run `jk cache clean`, and report the heap dump. Open the `.hprof`
+with any Java heap analyser.
 
 ### Worker containment
 
