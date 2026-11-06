@@ -2,6 +2,7 @@
 package cc.jumpkick.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -15,15 +16,10 @@ import org.junit.jupiter.api.io.TempDir;
  * {@link CliOutput#handOffTerminal} is the one place a CLI command gives this terminal to a child
  *: restore the terminal out of jk's own mode, then start the child on inherited stdio.
  *
- * <p>Ten sites spelled that pair themselves and three of them — {@code jk gradle}, {@code jk mvn},
- * {@code jk self update}'s engine takeover — did only the second half. G27
- * (`checkOneTerminalHandoff`) is what keeps an eleventh site from doing the same; this asserts what
- * the owner actually does, which a text scan cannot.
- *
- * <p>The restore half has no observable effect in a test JVM — {@code Terminals.restoreForChild()}
- * is a documented no-op when no native session was ever opened, and there is no seam to inject one
- * (owns that gap). So this pins the half that *is* observable, and says plainly that it is
- * a half.
+ * <p>The guard {@code checkOneTerminalHandoff} keeps other sites from spelling the pair
+ * themselves; this asserts what the owner does, which a text scan cannot. The restore half has no
+ * observable effect in a test JVM ({@code Terminals.restoreForChild()} is a no-op when no native
+ * session was opened), so only the inherited-stdio half is pinned here.
  */
 class TerminalHandoffTest {
 
@@ -62,31 +58,46 @@ class TerminalHandoffTest {
 
     /**
      * A child given the terminal under test reads end-of-input, so a REPL or a prompt ends instead
-     * of waiting on the test JVM's stdin. The child reads one byte and exits 0 only on EOF; it is
-     * stopped at the deadline when its read blocks.
+     * of waiting on the test JVM's stdin. The child is a class already compiled onto the test
+     * classpath, so its start is a JVM start and nothing more; it marks that it started, reads one
+     * byte and exits 0 only on EOF. A child that started and is still reading is the defect; one
+     * that never started within the wait says nothing about stdin, and the test is aborted.
      */
     @Test
     void a_child_that_reads_the_handed_off_stdin_finishes_under_test(@TempDir Path dir) throws Exception {
         Path java = JdkFingerprint.tool(Path.of(System.getProperty("java.home")), "java");
-        Path source = dir.resolve("ReadsStdin.java");
-        Files.writeString(source, """
-                class ReadsStdin {
-                    public static void main(String[] args) throws Exception {
-                        System.exit(System.in.read() == -1 ? 0 : 3);
-                    }
-                }
-                """);
+        Path started = dir.resolve("started");
 
-        Process child = CliOutput.handOffTerminal(new ProcessBuilder(java.toString(), source.toString()));
+        Process child = CliOutput.handOffTerminal(new ProcessBuilder(
+                java.toString(),
+                "-Xshare:auto",
+                "-XX:TieredStopAtLevel=1",
+                "-XX:+UseSerialGC",
+                "-cp",
+                System.getProperty("java.class.path"),
+                ReadsStdin.class.getName(),
+                started.toString()));
         try {
-            assertThat(child.waitFor(60, TimeUnit.SECONDS))
-                    .describedAs("the child is still waiting for input on the test JVM's stdin")
+            boolean exited = child.waitFor(15, TimeUnit.SECONDS);
+            if (!exited) {
+                assumeTrue(Files.exists(started), "the child JVM did not start within 15 s on this host");
+            }
+            assertThat(exited)
+                    .describedAs("the child started and is still waiting for input on the test JVM's stdin")
                     .isTrue();
             assertThat(child.exitValue())
                     .describedAs("the child read input, not end-of-input")
                     .isZero();
         } finally {
             child.destroyForcibly();
+        }
+    }
+
+    /** Marks that it started in the file {@code args[0]}, then exits 0 only when stdin is at end-of-input. */
+    public static final class ReadsStdin {
+        public static void main(String[] args) throws Exception {
+            Files.writeString(Path.of(args[0]), "started");
+            System.exit(System.in.read() == -1 ? 0 : 3);
         }
     }
 }
