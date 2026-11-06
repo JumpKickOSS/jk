@@ -320,12 +320,13 @@ together, so an engine still draining after `jk engine stop` and the engine that
 never hold more between them than one engine could alone. Host-wide are the budget, its
 twice-the-budget overbooking cap, the running-JVM cap, the compiler lane count, and the free
 memory overbooking reads. Each engine records its line in `<state>/engine/worker-leases` —
-its budget, the bytes it holds, its running JVMs, and the pid of each worker it forked — and
-counts the others' lines before it grants a lease or starts a lane; the leased total and the
-JVM count on the Workers line, and the Waiting line's `held by other engines 3.0 GiB`,
-include them. The budget is the one the engine that was there first recorded: an engine
-started with a different `JK_WORKER_BUDGET_MB` says so once in the engine log, shows
-`(another engine's)`, and uses the recorded budget until that engine is gone. A line whose
+its budget, its running-JVM cap, the bytes it holds, its running JVMs, how many leases it has
+queued, and the pid of each worker it forked — and counts the others' lines before it grants
+a lease or starts a lane; the leased total and the JVM count on the Workers line, and the
+Waiting line's `held by other engines 3.0 GiB`, include them. The budget and the running-JVM
+cap are the ones the engine that was there first recorded: an engine started with a different
+`JK_WORKER_BUDGET_MB` or CPU quota says so once in the engine log, shows `(another engine's)`
+for the budget, and uses the recorded limits until that engine is gone. A line whose
 engine is gone — it crashed, or was killed — is dropped by the next engine that reads the
 file, and the workers it names that still run are killed, with what they started: nothing
 can read their output, and their memory would otherwise be counted by nobody. A worker is
@@ -408,8 +409,9 @@ read from the engine process, the same way as `JK_WORKER_BUDGET_MB`: `jk engine 
 start the next command with the variable set. `CI` is inherited by that process for the same
 reason; a worker does not see it unless the module inherits the engine's whole environment.
 
-An idle compiler lane holds its lease only while nothing else is waiting. When a fork is
-queued, or another job needs a lane and the lane budget is full, the idle lane exits and
+An idle compiler lane holds its lease only while nothing else is waiting. When a fork of any
+engine of the host is queued, or another job needs a lane and the lane budget is full, the
+idle lane exits and
 the next compile starts a new one. Lanes are one budget for the whole engine, shared by
 every job: the cores the other engines of the host leave free of their running JVMs, and how
 many lane leases fit in what they leave of the budget, never fewer than one. A job on its own
@@ -418,7 +420,8 @@ still gets every lane that fits. `JK_COMPILE_LANES` pins the count for measureme
 Forked JVMs that are actually running are also capped at the machine's online processors,
 or at the cgroup CPU quota when that quota is finite, separate from the memory lease, so
 several jobs cannot start one JVM per core each and thrash. The cap counts every engine's
-running JVMs, so a draining engine and its successor share it. A process's
+running JVMs, so a draining engine and its successor share it, and like the budget it is the
+one the engine that was there first recorded. A process's
 `-XX:ActiveProcessorCount` is its own share of the machine and does not lower this cap.
 jk's compiler and plugin workers run ParallelGC with `-XX:ActiveProcessorCount` set to their
 share of the cores; a worker whose collector is left to the JVM (`[jvm] gc = "default"`) gets

@@ -47,7 +47,7 @@ class HostLeasesBenchTest {
         for (int i = 0; i < ROUNDS; i++) {
             long bytes = rewrite ? 1L + i : 1L;
             long start = System.nanoTime();
-            share.publish(new HostLeases.Line(1L << 30, bytes, 1, List.of()));
+            share.publish(new HostLeases.Line(1L << 30, 8, bytes, 1, 0, List.of()));
             share.fresh();
             nanos[i] = System.nanoTime() - start;
         }
@@ -96,7 +96,7 @@ class HostLeasesBenchTest {
         public static void main(String[] args) {
             HostLeases share = HostLeases.forThisProcess(Path.of(args[0]));
             for (long i = 1; ; i++) {
-                share.publish(new HostLeases.Line(1L << 30, i, 1, List.of()));
+                share.publish(new HostLeases.Line(1L << 30, 8, i, 1, 0, List.of()));
             }
         }
     }

@@ -255,16 +255,16 @@ public final class JavaCompilerHost {
     }
 
     /**
-     * An idle lane should exit: a fork is waiting for memory, or the lane budget is full while
-     * some pool still has work queued.
+     * An idle lane should exit: a fork of this engine or of another engine of the host is waiting
+     * for memory or a JVM slot, or the lane budget is full while some pool still has work queued.
      */
     static boolean shouldShedIdleLane() {
         return shouldShedIdleLane(WorkerLeases.engine());
     }
 
-    /** As {@link #shouldShedIdleLane()}, watching {@code leases}'s queue. */
+    /** As {@link #shouldShedIdleLane()}, watching {@code leases}'s queue and the host's. */
     static boolean shouldShedIdleLane(WorkerLeases.Ledger leases) {
-        if (leases.queued() > 0) return true;
+        if (leases.queued() > 0 || leases.otherEnginesWaiting() > 0) return true;
         if (ENGINE_LANES.get() < laneBudget(leases)) return false;
         for (Lanes pool : ENGINE_POOLS) {
             if (pool.queued() > 0) return true;

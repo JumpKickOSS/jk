@@ -4,7 +4,6 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -66,9 +65,9 @@ import org.jspecify.annotations.Nullable;
  * <p>The budget, its cap and the JVM slot cap bound the host, not one process. An engine process
  * {@linkplain #shareHost joins} its state directory's {@link HostLeases}, and each grant counts the
  * bytes and JVMs every other engine of that directory holds, so a displaced engine still draining
- * and its successor together stay inside them. They lease against one budget, the one the engine
- * that was there first recorded. A ledger that joins nothing, as in a test JVM, counts only its own
- * leases against its own budget.
+ * and its successor together stay inside them. They lease against one budget and one JVM cap, the
+ * ones the engine that was there first recorded. A ledger that joins nothing, as in a test JVM,
+ * counts only its own leases against its own limits.
  */
 public final class WorkerLeases {
 
@@ -105,9 +104,6 @@ public final class WorkerLeases {
 
     /** Holders {@link Snapshot#waiting()} names before it counts the rest. */
     private static final int HOLDERS_SHOWN = 3;
-
-    /** A finished wait shorter than this is recorded and not printed. */
-    private static final long OUTPUT_AFTER_NANOS = 500_000_000L;
 
     /**
      * Reserved bytes, including the lease being granted, stay at or under this many times the
@@ -194,29 +190,12 @@ public final class WorkerLeases {
         return Math.max(GIB, tenth);
     }
 
-    /** {@code waited 3s for memory}, or {@code waited 1.5s for memory}. */
-    public static String waitedPhrase(long nanos) {
-        double seconds = Math.max(0, nanos) / 1_000_000_000.0;
-        String text = seconds >= 10
-                ? String.format(Locale.ROOT, "%.0f", seconds)
-                : String.format(Locale.ROOT, "%.1f", seconds);
-        if (text.endsWith(".0")) text = text.substring(0, text.length() - 2);
-        return "waited " + text + "s for memory";
-    }
-
     /** {@code 512 MiB} or {@code 1.5 GiB}. */
     public static String format(long bytes) {
         if (bytes >= GIB) {
             return String.format(Locale.ROOT, "%.1f GiB", bytes / (double) GIB);
         }
         return Math.max(0, bytes / MIB) + " MiB";
-    }
-
-    /**
-     * The line a waiting fork shows: {@code waiting for memory: need 512 MiB, free 128 MiB}.
-     */
-    public static String waitingLine(long needBytes, long freeBytes) {
-        return "waiting for memory: need " + format(needBytes) + ", free " + format(Math.max(0, freeBytes));
     }
 
     /**
@@ -378,6 +357,11 @@ public final class WorkerLeases {
             return others().jvms();
         }
 
+        /** Leases the other engines of this host have queued, read at most 250 ms ago; {@code 0} when shared with none. */
+        public int otherEnginesWaiting() {
+            return others().waiting();
+        }
+
         /** Under the lock: record this ledger's line for the other engines. */
         private void publish() {
             HostLeases h = host;
@@ -386,20 +370,22 @@ public final class WorkerLeases {
 
         /**
          * Under the lock: what this ledger records for the other engines, with {@code granting}'s
-         * lease and slot counted when it is about to be taken.
+         * lease and slot counted, and its place in the queue not, when it is about to be taken.
          */
         private HostLeases.Line line(@Nullable Waiter granting) {
             long bytes = charged();
             int jvms = jvmRunning;
+            int waiting = queue.size();
             if (granting != null) {
                 bytes += granting.demand.bytes;
                 if (granting.demand.cpuSlot) jvms++;
+                if (queue.peekFirst() == granting) waiting--;
             }
             List<HostLeases.Worker> workers = new ArrayList<>();
             for (Waiter w : held) {
                 if (w.pid > 0) workers.add(new HostLeases.Worker(w.pid, w.startedAtMillis));
             }
-            return new HostLeases.Line(ownCapacityBytes(), bytes, jvms, workers);
+            return new HostLeases.Line(ownCapacityBytes(), ownCpuCap(), bytes, jvms, waiting, workers);
         }
 
         /** This process's own budget, before any other engine's recorded one replaces it. */
@@ -417,9 +403,19 @@ public final class WorkerLeases {
             return h == null ? own : h.budget(own);
         }
 
-        /** How many forked JVMs may run at once. */
-        public int cpuCap() {
+        /** This process's own JVM cap, before any other engine's recorded one replaces it. */
+        private int ownCpuCap() {
             return Math.max(1, cpus.getAsInt());
+        }
+
+        /**
+         * How many forked JVMs may run at once: this ledger's own cap, or, when it shares the host, the
+         * cap the first engine there recorded.
+         */
+        public int cpuCap() {
+            int own = ownCpuCap();
+            HostLeases h = host;
+            return h == null ? own : h.cpuCap(own);
         }
 
         public Snapshot snapshot() {
@@ -521,6 +517,7 @@ public final class WorkerLeases {
                 refuseIfItNeverFits(waiter);
                 if (grantIfHead(waiter)) return finish(waiter, 0, false);
                 queue.addLast(waiter);
+                publish();
                 queued = true;
                 deadlineNanos = waitAtMost.toNanos();
             }
@@ -529,7 +526,7 @@ public final class WorkerLeases {
                 synchronized (lock) {
                     free = Math.max(0, capacityBytes() - hostCharged());
                 }
-                reportWaiting(waiter.demand.bytes, free);
+                MemoryNotes.reportWaiting(waiter.demand.bytes, free);
             }
             long lastReport = Clock.SYSTEM.nanos();
             try {
@@ -541,6 +538,7 @@ public final class WorkerLeases {
                         if (waiter.cancelled || requestEnded(requestId)) {
                             queue.remove(waiter);
                             grantQueued();
+                            publish();
                             lock.notifyAll();
                             throw new InterruptedException("cancelled while waiting for memory");
                         }
@@ -560,7 +558,7 @@ public final class WorkerLeases {
                     if (granted) break;
                     long now = Clock.SYSTEM.nanos();
                     if (lastReport == 0 || now - lastReport >= REPORT_EVERY_NANOS) {
-                        reportWaiting(need, free);
+                        MemoryNotes.reportWaiting(need, free);
                         lastReport = now;
                     }
                 }
@@ -569,6 +567,7 @@ public final class WorkerLeases {
                     queue.remove(waiter);
                     if (waiter.granted) release(waiter);
                     grantQueued();
+                    publish();
                     lock.notifyAll();
                 }
                 throw e;
@@ -581,7 +580,7 @@ public final class WorkerLeases {
             if (waiter.requestId != null && waitedNanos > 0) {
                 waited.computeIfAbsent(waiter.requestId, id -> new AtomicLong()).addAndGet(waitedNanos);
             }
-            if (queued) noteGranted(waiter, waitedNanos);
+            if (queued) MemoryNotes.noteGranted(waitedNanos);
             return new Grant(this, waiter);
         }
 
@@ -606,7 +605,7 @@ public final class WorkerLeases {
         private void giveUp(Waiter waiter, long deadlineNanos) {
             long budget = capacityBytes();
             boolean slot = waiter.demand.cpuSlot && hostJvms() >= cpuCap();
-            String phrase = waitedPhrase(deadlineNanos);
+            String phrase = MemoryNotes.waitedPhrase(deadlineNanos);
             if (slot) phrase = phrase.replace("for memory", "for a JVM slot");
             throw new LeaseRefused(ownerOf(waiter) + " " + phrase + " and gave up: " + waitLine(waiter, budget, true));
         }
@@ -624,6 +623,7 @@ public final class WorkerLeases {
                 Waiter head = queue.peekFirst();
                 if (head.cancelled) {
                     queue.pollFirst();
+                    publish();
                     continue;
                 }
                 if (!admit(head)) {
@@ -964,14 +964,6 @@ public final class WorkerLeases {
         }
     }
 
-    /** The step's output carries the wait; its label stays the step's own ("compiling", …). */
-    private static void reportWaiting(long need, long free) {
-        String line = waitingLine(need, free);
-        Log.info("jk engine: " + line);
-        TaskContext ctx = StepScope.current();
-        if (ctx != null) ctx.output(line);
-    }
-
     /**
      * The engine-log line for one overbooked grant, after the bytes have been taken: what is leased
      * against the budget and its cap, and the sample that allowed it.
@@ -987,26 +979,6 @@ public final class WorkerLeases {
                 + format(headroomBytes(budget)) + " headroom and pressure is low (psi some "
                 + String.format(Locale.ROOT, "%.2f", reading.someAvg10())
                 + " full " + String.format(Locale.ROOT, "%.2f", reading.fullAvg10()) + ")";
-    }
-
-    private static void noteGranted(Waiter waiter, long waitedNanos) {
-        if (waitedNanos <= 0) return;
-        Log.info("jk engine: " + waitedPhrase(waitedNanos));
-        TaskContext ctx = StepScope.current();
-        if (ctx == null) return;
-        recordWait(ctx, waitedNanos);
-    }
-
-    /**
-     * Count {@code waitedNanos} on {@code ctx}. Half a second or more is also a line on the step's
-     * output and one share of the results' single wait line.
-     */
-    static void recordWait(TaskContext ctx, long waitedNanos) {
-        if (ctx == null || waitedNanos <= 0) return;
-        ctx.waited(Duration.ofNanos(waitedNanos));
-        if (waitedNanos < OUTPUT_AFTER_NANOS) return;
-        ctx.output(waitedPhrase(waitedNanos));
-        MemoryNotes.add(ctx, waitedNanos);
     }
 
     /**

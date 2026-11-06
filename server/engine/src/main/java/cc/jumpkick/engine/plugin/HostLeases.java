@@ -24,11 +24,13 @@ import org.jspecify.annotations.Nullable;
  * a displaced engine still draining and the successor that took over lease from one total.
  *
  * <p>{@value #FILE} under the engine directory has one line per live engine, {@code <pid>
- * <start-epoch-millis> <budget> <bytes> <jvms>} followed by {@code <pid>:<start-epoch-millis>} for
- * each worker it forked, and is replaced whole under {@code worker-leases.lock}. Each engine writes
- * only its own line, only when it changed, and keeps it where it is: the first line's budget is the
- * one every engine leases against, so an engine started with another {@code JK_WORKER_BUDGET_MB}
- * uses the budget of the engine that was there first, until that engine is gone.
+ * <start-epoch-millis> <budget> <cpu-cap> <bytes> <jvms> <waiting>} followed by {@code
+ * <pid>:<start-epoch-millis>} for each worker it forked, and is replaced whole under {@code
+ * worker-leases.lock}. {@code <waiting>} counts the leases the engine has queued. Each engine writes
+ * only its own line, only when it changed, and keeps it where it is: the first line's budget and
+ * JVM cap are the ones every engine leases against, so an engine started with another {@code
+ * JK_WORKER_BUDGET_MB} or CPU quota uses the limits of the engine that was there first, until that
+ * engine is gone.
  *
  * <p>A reader drops every line whose process is gone or whose pid now names a process started at
  * another time, and stops the workers that line names which still run: their engine cannot read
@@ -46,8 +48,11 @@ final class HostLeases {
     /** A cached reading of the other engines is reused for this long to refuse a lease. */
     private static final long FRESH_NANOS = 250_000_000L;
 
-    /** What this engine records: its own budget, its charged bytes, its running JVMs, its workers. */
-    record Line(long budgetBytes, long bytes, int jvms, List<Worker> workers) {
+    /**
+     * What this engine records: its own budget and JVM cap, its charged bytes, its running JVMs, its
+     * queued leases, its workers.
+     */
+    record Line(long budgetBytes, int cpuCap, long bytes, int jvms, int waiting, List<Worker> workers) {
         Line {
             workers = List.copyOf(workers);
         }
@@ -83,11 +88,11 @@ final class HostLeases {
     }
 
     /**
-     * The other engines' charged bytes and running JVMs, and the budget the file records: the first
-     * live line's, this engine's own included.
+     * The other engines' charged bytes, running JVMs and queued leases, and the budget and JVM cap the
+     * file records: the first live line's, this engine's own included; {@code 0} when none is.
      */
-    record Reading(long bytes, int jvms, long budgetBytes) {
-        static final Reading NONE = new Reading(0, 0, 0);
+    record Reading(long bytes, int jvms, int waiting, long budgetBytes, int cpuCap) {
+        static final Reading NONE = new Reading(0, 0, 0, 0, 0);
     }
 
     private final Path file;
@@ -105,6 +110,7 @@ final class HostLeases {
     private boolean read;
     private boolean warned;
     private boolean budgetNoted;
+    private boolean cpuCapNoted;
 
     /**
      * {@code self}'s line in {@code engineDir}'s file. {@code alive} decides which other lines still
@@ -157,7 +163,7 @@ final class HostLeases {
     Reading fresh() {
         synchronized (state) {
             Line mine = published;
-            return exchange(o -> mine != null ? mine : new Line(0, 0, 0, List.of()));
+            return exchange(o -> mine != null ? mine : new Line(0, 0, 0, 0, 0, List.of()));
         }
     }
 
@@ -177,13 +183,23 @@ final class HostLeases {
         }
     }
 
+    /** The JVM cap every engine leases against: the recorded one, or {@code own} before any is. */
+    int cpuCap(int own) {
+        synchronized (state) {
+            int recorded = last.cpuCap();
+            return read && recorded > 0 ? recorded : own;
+        }
+    }
+
     private Reading exchangeLocked(Function<Reading, Line> mine) throws IOException {
         List<String> kept = new ArrayList<>();
         int selfAt = -1;
         boolean changed = false;
         long bytes = 0;
         int jvms = 0;
+        int waiting = 0;
         long budget = 0;
+        int cpus = 0;
         long firstOwner = 0;
         for (String raw : lines()) {
             if (raw.isBlank()) continue;
@@ -204,28 +220,29 @@ final class HostLeases {
                 reclaim(e);
                 continue;
             }
-            if (budget == 0) {
-                budget = e.line.budgetBytes();
-                firstOwner = e.owner.pid();
-            }
+            if (firstOwner == 0) firstOwner = e.owner.pid();
+            if (budget == 0) budget = e.line.budgetBytes();
+            if (cpus == 0) cpus = e.line.cpuCap();
             kept.add(raw.trim());
             bytes = saturatingAdd(bytes, e.line.bytes());
-            jvms = (int) Math.min(Integer.MAX_VALUE, (long) jvms + e.line.jvms());
+            jvms = saturatingAdd(jvms, e.line.jvms());
+            waiting = saturatingAdd(waiting, e.line.waiting());
         }
         if (selfAt < 0) {
             selfAt = kept.size();
             kept.add("");
         }
         boolean firstIsSelf = selfAt == 0;
-        Reading others = new Reading(bytes, jvms, firstIsSelf ? 0 : budget);
+        Reading others =
+                firstIsSelf ? new Reading(bytes, jvms, waiting, 0, 0) : new Reading(bytes, jvms, waiting, budget, cpus);
         last = others;
         read = true;
         Line line = mine.apply(others);
         if (firstIsSelf) {
-            others = new Reading(bytes, jvms, line.budgetBytes());
+            others = new Reading(bytes, jvms, waiting, line.budgetBytes(), line.cpuCap());
             last = others;
         } else {
-            noteBudget(budget, line.budgetBytes(), firstOwner);
+            noteRecorded(others, line, firstOwner);
         }
         if (changed || !line.equals(published)) {
             kept.set(selfAt, render(self, line));
@@ -238,13 +255,21 @@ final class HostLeases {
         return others;
     }
 
-    /** Once per engine: say that another engine's budget is the one leased against. */
-    private void noteBudget(long recorded, long own, long owner) {
-        if (budgetNoted || recorded <= 0 || recorded == own) return;
-        budgetNoted = true;
-        Log.info("jk engine: leasing workers against the " + WorkerLeases.format(recorded)
-                + " budget engine pid " + owner + " recorded, not this engine's " + WorkerLeases.format(own)
-                + "; one budget holds for every engine of this host until that engine is gone");
+    /** Once per engine and limit: say that another engine's budget or JVM cap is the one leased against. */
+    private void noteRecorded(Reading recorded, Line own, long owner) {
+        if (!budgetNoted && recorded.budgetBytes() > 0 && recorded.budgetBytes() != own.budgetBytes()) {
+            budgetNoted = true;
+            Log.info("jk engine: leasing workers against the " + WorkerLeases.format(recorded.budgetBytes())
+                    + " budget engine pid " + owner + " recorded, not this engine's "
+                    + WorkerLeases.format(own.budgetBytes())
+                    + "; one budget holds for every engine of this host until that engine is gone");
+        }
+        if (!cpuCapNoted && recorded.cpuCap() > 0 && recorded.cpuCap() != own.cpuCap()) {
+            cpuCapNoted = true;
+            Log.info("jk engine: running at most " + recorded.cpuCap() + " JVMs, the cap engine pid " + owner
+                    + " recorded, not this engine's " + own.cpuCap()
+                    + "; one cap holds for every engine of this host until that engine is gone");
+        }
     }
 
     private void reclaim(Entry e) {
@@ -270,9 +295,13 @@ final class HostLeases {
                 .append(' ')
                 .append(Math.max(0, line.budgetBytes()))
                 .append(' ')
+                .append(Math.max(0, line.cpuCap()))
+                .append(' ')
                 .append(Math.max(0, line.bytes()))
                 .append(' ')
-                .append(Math.max(0, line.jvms()));
+                .append(Math.max(0, line.jvms()))
+                .append(' ')
+                .append(Math.max(0, line.waiting()));
         for (Worker w : line.workers()) {
             out.append(' ').append(w.pid()).append(':').append(w.startedAtMillis());
         }
@@ -290,6 +319,10 @@ final class HostLeases {
     private static long saturatingAdd(long a, long b) {
         long sum = a + b;
         return sum < 0 ? Long.MAX_VALUE : sum;
+    }
+
+    private static int saturatingAdd(int a, int b) {
+        return (int) Math.min(Integer.MAX_VALUE, (long) a + b);
     }
 
     /**
@@ -327,25 +360,31 @@ final class HostLeases {
 
     /** One engine's line. */
     private record Entry(Owner owner, Line line) {
+
+        /** The fixed fields ahead of the workers: pid, start, budget, cap, bytes, JVMs, waiting. */
+        private static final int FIELDS = 7;
+
         static @Nullable Entry parse(String raw) {
             String[] parts = raw.trim().split("\\s+");
-            if (parts.length < 5) return null;
+            if (parts.length < FIELDS) return null;
             try {
                 long pid = Long.parseLong(parts[0]);
                 long started = Long.parseLong(parts[1]);
                 long budget = Long.parseLong(parts[2]);
-                long bytes = Long.parseLong(parts[3]);
-                int jvms = Integer.parseInt(parts[4]);
-                if (pid <= 0 || budget < 0 || bytes < 0 || jvms < 0) return null;
+                int cpus = Integer.parseInt(parts[3]);
+                long bytes = Long.parseLong(parts[4]);
+                int jvms = Integer.parseInt(parts[5]);
+                int waiting = Integer.parseInt(parts[6]);
+                if (pid <= 0 || budget < 0 || cpus < 0 || bytes < 0 || jvms < 0 || waiting < 0) return null;
                 List<Worker> workers = new ArrayList<>();
-                for (int i = 5; i < parts.length; i++) {
+                for (int i = FIELDS; i < parts.length; i++) {
                     int colon = parts[i].indexOf(':');
                     if (colon <= 0) return null;
                     workers.add(new Worker(
                             Long.parseLong(parts[i].substring(0, colon)),
                             Long.parseLong(parts[i].substring(colon + 1))));
                 }
-                return new Entry(new Owner(pid, started), new Line(budget, bytes, jvms, workers));
+                return new Entry(new Owner(pid, started), new Line(budget, cpus, bytes, jvms, waiting, workers));
             } catch (NumberFormatException e) {
                 return null;
             }
