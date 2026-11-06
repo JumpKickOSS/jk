@@ -12,11 +12,12 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * This module's fetch memos are cleared between tests in one JVM. Nothing here clears them —
- * {@code RepoProcessCacheReset} is discovered for the suite, so deleting it fails the second test.
+ * This module's fetch memos are cleared between tests in one JVM. Nothing here clears them: the
+ * suite's {@code SessionBoundary} drops {@code RepoProcessMemosGlobal}, so unregistering it fails
+ * the second test.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class RepoProcessCacheResetTest {
+class RepoProcessMemosGlobalTest {
 
     @Test
     @Order(1)

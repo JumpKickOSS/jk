@@ -113,6 +113,19 @@ final class EngineAotTrainer {
         }
     }
 
+    /** Whether this process tried a recording, and whether {@link #stop} ran: both set for good. */
+    record Latches(boolean attempted, boolean stopping) {}
+
+    static Latches latches() {
+        return new Latches(ATTEMPTED.get(), stopping);
+    }
+
+    /** Put both latches back, for a test JVM whose every in-process engine shutdown sets them. */
+    static void restore(Latches latches) {
+        ATTEMPTED.set(latches.attempted());
+        stopping = latches.stopping();
+    }
+
     /** A job arrived while a recording step was in flight. */
     static final class Yielded extends Exception {
         Yielded() {

@@ -50,7 +50,8 @@ public interface BoundedGlobal {
 
     /**
      * Put the global back. Receives whatever {@link #capture()} returned, or {@code null} for a
-     * restore-only global — in which case this should drop the memo rather than set a value.
+     * restore-only global — in which case this should drop the memo rather than set a value. A
+     * restore-only global is dropped when a test or container starts as well as when it finishes.
      */
     void restore(@Nullable Object captured);
 }

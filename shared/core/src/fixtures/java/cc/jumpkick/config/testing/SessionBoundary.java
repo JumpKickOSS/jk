@@ -40,7 +40,9 @@ import org.junit.platform.launcher.TestPlan;
  * silently, and this class says so in its summary rather than implying coverage it does not have.
  *
  * <p>Restores put back the <em>prior value</em> rather than resetting to a default: a reset is not
- * a restore, and would clobber state a legitimate ambient setup had installed.
+ * a restore, and would clobber state a legitimate ambient setup had installed. A restore-only global
+ * has no prior value, so it is dropped when each test and container starts as well as when it
+ * finishes: a memo a background thread filled between two tests is not the next test's either.
  *
  * <p>Containers are bounded as well as tests. An install from a {@code @BeforeAll} would otherwise
  * outlive its class and reach every class scheduled after it in the same worker — which is what the
@@ -75,7 +77,9 @@ public final class SessionBoundary implements TestExecutionListener {
     public void executionStarted(TestIdentifier id) {
         Map<String, Optional<Object>> snapshot = new ConcurrentHashMap<>();
         for (BoundedGlobal g : globals) {
-            snapshot.put(g.name(), g.capture());
+            Optional<Object> value = g.capture();
+            if (value.isEmpty()) g.restore(null);
+            snapshot.put(g.name(), value);
         }
         taken.put(id.getUniqueId(), snapshot);
     }

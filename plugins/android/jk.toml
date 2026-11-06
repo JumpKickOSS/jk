@@ -30,6 +30,7 @@ options = [
 ]
 
 [test-dependencies]
+jk-core = { workspace = true, fixtures = true }
 jk-plugin-sdk = { workspace = true, fixtures = true }
 jk-client-io = { workspace = true, fixtures = true }
 assertj-core = "3.27.7"

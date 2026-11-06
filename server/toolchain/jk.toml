@@ -36,6 +36,7 @@ options = [
 ]
 
 [test-dependencies]
+jk-core = { workspace = true, fixtures = true }
 jk-host = { workspace = true, fixtures = true }
 jk-client-io = { workspace = true, fixtures = true }
 jk-resolver = { workspace = true, fixtures = true }

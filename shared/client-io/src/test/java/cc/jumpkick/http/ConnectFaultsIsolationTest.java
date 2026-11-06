@@ -9,8 +9,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
 /**
- * The connect-fault memo is cleared between tests in one JVM. Nothing here registers a listener —
- * {@code ConnectFaultsReset} is discovered for the suite, so deleting it fails the second test.
+ * The connect-fault memo is cleared between tests in one JVM. Nothing here clears it: the suite's
+ * {@code SessionBoundary} drops {@code ConnectFaultsGlobal}, so unregistering it fails the second
+ * test.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ConnectFaultsIsolationTest {
