@@ -1,0 +1,59 @@
+# The new-project corpus of kotlin/spring-boot/hello: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+layout = traditional
+--- files
+.gitignore
+AGENTS.md
+jk-guards.toml
+jk.toml
+src/main/kotlin/com/acme/Application.kt
+src/main/resources/application.properties
+src/test/kotlin/com/acme/ApplicationTest.kt
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+kotlin = "…"
+
+[application]
+main = "com.acme.ApplicationKt"
+
+[spring-boot]
+version = "…"
+
+[dependencies]
+starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+kotlin-reflect = { group = "org.jetbrains.kotlin" }
+
+[dev-dependencies]
+devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }
+
+=== layout=simple
+layout = simple
+--- files
+.gitignore
+AGENTS.md
+jk-guards.toml
+jk.toml
+resources/application.properties
+src/com/acme/Application.kt
+test/src/com/acme/ApplicationTest.kt
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+kotlin = "…"
+
+[application]
+main = "com.acme.ApplicationKt"
+
+[spring-boot]
+version = "…"
+
+[dependencies]
+starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+kotlin-reflect = { group = "org.jetbrains.kotlin" }
+
+[dev-dependencies]
+devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }
