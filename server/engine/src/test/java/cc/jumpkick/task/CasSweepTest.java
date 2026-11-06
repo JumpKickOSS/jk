@@ -88,7 +88,7 @@ class CasSweepTest {
 
     /** Bump mtime far enough into the past to clear MIN_AGE_FOR_SWEEP. */
     private static void backdate(Path file) throws IOException {
-        long past = System.currentTimeMillis() - Sweep.MIN_AGE_FOR_SWEEP.toMillis() - 60_000L;
+        long past = System.currentTimeMillis() - Cas.MIN_AGE_FOR_SWEEP.toMillis() - 60_000L;
         Files.setLastModifiedTime(file, FileTime.fromMillis(past));
     }
 }

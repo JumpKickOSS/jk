@@ -3,7 +3,9 @@ package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.GraphCacheKeys;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -12,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -68,6 +71,50 @@ class ActionCachePruneTest {
 
         assertThat(olderKey).doesNotExist();
         assertThat(recentKey).as("used recently, whatever the pointer names").exists();
+        assertThat(report.deletedKeys()).isEqualTo(1);
+    }
+
+    /**
+     * The order across kinds: a graph fragment and a build's outputs share one queue by last use,
+     * so the older fragment goes before a younger build output and the younger fragment outlives an
+     * older one.
+     */
+    @Test
+    void graph_fragments_and_build_outputs_go_in_one_last_use_order(@TempDir Path root) throws IOException {
+        Cas cas = new Cas(root);
+        Path ancientBuild = key(root, "build-ancient", "compile-main@a", ANCIENT, blob(cas, 100_000, 'a', ANCIENT));
+        Path olderGraph = fragment(root, "graph-older", OLDER, blob(cas, 100_000, 'g', OLDER));
+        Path oldBuild = key(root, "build-old", "compile-main@b", OLD, blob(cas, 100_000, 'b', OLD));
+        Path recentGraph = fragment(root, "graph-recent", RECENT, blob(cas, 100_000, 'r', RECENT));
+
+        var report = ActionCachePrune.run(root, cas, budgetOnly(250_000), Set.of(), false);
+
+        assertThat(ancientBuild).doesNotExist();
+        assertThat(olderGraph)
+                .as("a fragment is not kept ahead of a younger build output")
+                .doesNotExist();
+        assertThat(oldBuild).exists();
+        assertThat(recentGraph).as("nor taken ahead of an older one").exists();
+        assertThat(report.deletedKeys()).isEqualTo(2);
+    }
+
+    /**
+     * Two records stored together and left alone for a month go together, unless something read
+     * one: a lookup marks it used, and the window pass then takes only the other.
+     */
+    @Test
+    void a_record_read_lately_outlives_an_unread_one_of_the_same_age(@TempDir Path root) throws IOException {
+        Cas cas = new Cas(root);
+        long age = Duration.ofDays(31).toMillis();
+        Path read = key(root, "key-read", "compile-main@read", age, blob(cas, 1_000, 'r', age));
+        Path unread = key(root, "key-unread", "compile-main@unread", age, blob(cas, 1_000, 'u', age));
+
+        assertThat(new ActionCache(cas, root.resolve("actions")).lookup("key-read"))
+                .isPresent();
+        var report = ActionCachePrune.run(root, cas, windows(0L), Set.of(), false);
+
+        assertThat(unread).doesNotExist();
+        assertThat(read).exists();
         assertThat(report.deletedKeys()).isEqualTo(1);
     }
 
@@ -555,6 +602,19 @@ class ActionCachePruneTest {
         Files.createDirectories(keyFile.getParent());
         Files.writeString(keyFile, body.toString(), StandardCharsets.UTF_8);
         pointAt(cacheRoot, taskId, actionKey);
+        backdate(keyFile, ageMillis);
+        return keyFile;
+    }
+
+    /** Write a code-graph fragment record as the graph worker does: one output and no task pointer. */
+    private static Path fragment(Path cacheRoot, String actionKey, long ageMillis, String sha) throws IOException {
+        Path keyFile = cacheRoot.resolve("actions").resolve("keys").resolve(actionKey);
+        Files.createDirectories(keyFile.getParent());
+        Files.writeString(
+                keyFile,
+                ActionRecordText.render(
+                        GraphCacheKeys.DECLARATIONS, actionKey, Map.of(), Map.of(GraphCacheKeys.OUTPUT, sha), Set.of()),
+                StandardCharsets.UTF_8);
         backdate(keyFile, ageMillis);
         return keyFile;
     }

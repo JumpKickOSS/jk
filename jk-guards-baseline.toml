@@ -749,7 +749,7 @@ population = { examined = 4 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1407, sites = 102544 }
+"server/engine" = { classes = 1466, sites = 106315 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 59, sites = 3494 }
 "server/resolver" = { classes = 123, sites = 7334 }
@@ -1154,10 +1154,6 @@ reason = "pure move: the runtime split re-keyed the sites into runtime.workspace
 in     = "server/engine"
 at     = "cc.jumpkick.runtime.workspace.WorkspaceLock#recordLockSuccess(Ljava/nio/file/Path;J)V -> java.lang.System#currentTimeMillis()J"
 reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.task.ActionCache#stampUsed(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.task.ActionCachePrune#run(Ljava/nio/file/Path;Lcc/jumpkick/cache/Cas;Lcc/jumpkick/task/ActionCachePrune$Policy;Ljava/util/Set;Z)Lcc/jumpkick/task/ActionCachePrune$Report; -> java.lang.System#currentTimeMillis()J"

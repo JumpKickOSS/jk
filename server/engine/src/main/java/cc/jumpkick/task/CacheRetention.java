@@ -26,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  * runs at the idle boundary after a build and on its 12 h maintenance tick. There is no second call
  * site and no CLI-only path — that is the whole point of the class.
  *
- * <p>No window and no cap takes an entry younger than {@link Sweep#MIN_AGE_FOR_SWEEP}. The two
+ * <p>No window and no cap takes an entry younger than {@link Cas#MIN_AGE_FOR_SWEEP}. The two
  * reset instruments do, because what they clear is a hard link or a derived snapshot that the next
  * build recreates, and half a tier is not a state worth aiming for. The prune holds the cache
  * locks, but a second engine sharing the root holds none of them and may be mid-write, so every
@@ -98,7 +98,7 @@ public final class CacheRetention {
             throws IOException {
         if (!Files.isDirectory(cacheRoot)) return Report.EMPTY;
         long now = System.currentTimeMillis();
-        long grace = Sweep.MIN_AGE_FOR_SWEEP.toMillis();
+        long grace = Cas.MIN_AGE_FOR_SWEEP.toMillis();
 
         int files = 0;
         long bytes = 0L;

@@ -11,6 +11,7 @@ import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -32,9 +33,9 @@ import org.jspecify.annotations.Nullable;
  * and the keys of the compiles that produced it, which cover its sources and classpath, so a fact is
  * reused only where that compile would be. Each entry is a key record under {@code
  * actions/keys/} with one output, the fragment's compact JSON in the cache CAS, so {@code jk cache
- * clean}, the budget and the sweep treat it as any other entry. No task pointer names one, so under
- * a full budget they are evicted before a build's own outputs. Entries read or written are kept in
- * memory for the workspace until a refresh no longer needs them.
+ * clean}, the budget and the sweep treat it as any other entry: a read marks it used, from memory
+ * or from disk, and the prune takes it in last-use order with a build's own outputs. Entries read
+ * or written are kept in memory for the workspace until a refresh no longer needs them.
  */
 final class FragmentCache {
 
@@ -42,6 +43,9 @@ final class FragmentCache {
     private final @Nullable Cas cas;
     private final Map<String, Fragment> declared = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Fragment>> compiled = new ConcurrentHashMap<>();
+
+    /** When this cache last marked each entry read or wrote it, so a hit from memory stats nothing. */
+    private final Map<String, Long> marked = new ConcurrentHashMap<>();
 
     private FragmentCache(@Nullable Path cacheRoot) {
         this.keys = cacheRoot == null ? null : ActionTree.KEYS.under(CacheTree.ACTIONS.under(cacheRoot));
@@ -62,7 +66,10 @@ final class FragmentCache {
     @Nullable
     Fragment declarations(String key, String rel) {
         Fragment held = declared.get(key);
-        if (held != null) return held;
+        if (held != null) {
+            markRead(key);
+            return held;
+        }
         Object tree = load(key);
         if (tree == null) return null;
         try {
@@ -88,7 +95,10 @@ final class FragmentCache {
     @Nullable
     Map<String, Fragment> classes(String key) {
         Map<String, Fragment> held = compiled.get(key);
-        if (held != null) return held;
+        if (held != null) {
+            markRead(key);
+            return held;
+        }
         if (!(load(key) instanceof Map<?, ?> byFile)) return null;
         try {
             Map<String, Fragment> out = new LinkedHashMap<>();
@@ -121,6 +131,20 @@ final class FragmentCache {
     void retain(Set<String> declarationKeys, Set<String> classKeys) {
         declared.keySet().retainAll(declarationKeys);
         compiled.keySet().retainAll(classKeys);
+        marked.keySet().removeIf(k -> !declarationKeys.contains(k) && !classKeys.contains(k));
+    }
+
+    /**
+     * Refreshes {@code key}'s eviction age at most once per {@link ActionRecordText#READ_REFRESH},
+     * however often a resident worker answers it from memory.
+     */
+    private void markRead(String key) {
+        if (keys == null) return;
+        long now = Clock.SYSTEM.millis();
+        Long last = marked.get(key);
+        if (last != null && now - last < ActionRecordText.READ_REFRESH.toMillis()) return;
+        ActionRecordText.markRead(keys.resolve(key));
+        marked.put(key, now);
     }
 
     private @Nullable Object load(String key) {
@@ -129,7 +153,9 @@ final class FragmentCache {
             String record = Files.readString(keys.resolve(key), StandardCharsets.UTF_8);
             String sha = ActionRecordText.parse(record).outputs().get(GraphCacheKeys.OUTPUT);
             if (sha == null) return null;
-            return MiniJson.parse(new String(cas.read(sha), StandardCharsets.UTF_8));
+            Object tree = MiniJson.parse(new String(cas.read(sha), StandardCharsets.UTF_8));
+            markRead(key);
+            return tree;
         } catch (NoSuchFileException absent) {
             return null;
         } catch (IOException | RuntimeException unreadable) {
@@ -149,6 +175,7 @@ final class FragmentCache {
             AtomicWrites.replace(
                     keys.resolve(key),
                     ActionRecordText.render(task, key, inputs, Map.of(GraphCacheKeys.OUTPUT, sha), Set.of()));
+            marked.put(key, Clock.SYSTEM.millis());
         } catch (IOException | RuntimeException failed) {
             Log.debug("graph: cache entry " + key + " not written", failed);
         }
