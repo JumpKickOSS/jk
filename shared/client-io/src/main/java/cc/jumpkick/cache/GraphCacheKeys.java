@@ -27,7 +27,7 @@ public final class GraphCacheKeys {
      * Bumped whenever what makes a fragment changes (any extractor, the mapping of compiled facts),
      * so fragments an older version cached are not reused.
      */
-    public static final String VERSION = "11";
+    public static final String VERSION = "12";
 
     /** The task a declarations record names. */
     public static final String DECLARATIONS = "graph-declarations";
@@ -53,8 +53,8 @@ public final class GraphCacheKeys {
     }
 
     /**
-     * The key of the compiled facts of one module's {@code sourceSet} classes ({@code main} or {@code
-     * test}), from the action keys of the compiles that wrote them, which cover its sources and
+     * The key of the compiled facts of one module's {@code sourceSet} classes ({@code main}, {@code
+     * test} or {@code guard}), from the action keys of the compiles that wrote them, which cover its sources and
      * classpath; {@code null} when no compile stamped the set, which is then never cached.
      */
     public static @Nullable String classes(String modulePrefix, String sourceSet, Collection<String> compileKeys) {

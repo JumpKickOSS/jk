@@ -134,7 +134,7 @@ class GraphClassFactsCurrencyTest {
     /**
      * A test compile leaves only the default suite's classes, so another suite's sources are named
      * until a compile that selected it ({@code jk guard} compiles the integration suite too) leaves
-     * its classes; the guard suite's classes are never read, so it is always named.
+     * its classes; the guard suite is named until {@code jk guard} leaves its own classes.
      */
     @Test
     void a_suite_the_test_classes_were_not_compiled_for_is_named_uncompiled(@TempDir Path tmp) throws Exception {
@@ -175,12 +175,15 @@ class GraphClassFactsCurrencyTest {
         Files.writeString(testClasses.resolve(".jk-suites"), "test,integration");
         Path guard = Files.createDirectories(tmp.resolve("src/guard/java/demo"));
         Files.writeString(guard.resolve("AppRules.java"), "package demo; class AppRules {}\n");
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+                .as("no guard classes yet")
+                .containsExactly("src/guard");
         Path guardClasses =
                 Files.createDirectories(BuildLayout.guardClassesDir(tmp).resolve("demo"));
         Files.write(guardClasses.resolve("AppRules.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
         assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
-                .as("the graph does not read the guard suite's classes")
-                .containsExactly("src/guard");
+                .as("compiled by jk guard into its own classes")
+                .isEmpty();
     }
 
     /**

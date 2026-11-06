@@ -72,7 +72,7 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Runs one {@code jk graph} operation: brings every module's main and test facts index current
+ * Runs one {@code jk graph} operation: brings every module's main, test and guard facts index current
  * (only changed class files are read), then hands the graph worker their paths. The worker stays
  * warm between operations ({@link WarmWorkers}) with the graph in its memory. Operations on
  * one workspace run one at a time, since each may rewrite the stored graph.
@@ -260,7 +260,7 @@ public final class GraphRunner {
             BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
             String arg =
                     moduleArg(root, module.getKey(), module.getValue().project().name());
-            if (uncompiledSuites(module.getKey(), layout.testClassesDir()).contains(TestSuites.DEFAULT)) {
+            if (uncompiledSuites(module.getKey(), layout).contains(TestSuites.DEFAULT)) {
                 tests.add(arg);
             }
             if (!hasClasses(layout.classesDir())) {
@@ -312,19 +312,22 @@ public final class GraphRunner {
 
     /**
      * The test suites of the module at {@code dir} that have sources and no classes the graph reads:
-     * each suite {@code testClasses} was not compiled for (a test compile compiles the default suite
-     * only, {@code jk guard} the integration suite with it), and the guard suite, whose classes the
-     * graph does not read. Only the default suite is compiled for a question.
+     * each suite its test classes were not compiled for (a test compile compiles the default suite
+     * only, {@code jk guard} the integration suite with it), and the guard suite until {@code jk
+     * guard} compiles it into its own classes. Only the default suite is compiled for a question.
      */
-    static List<String> uncompiledSuites(Path dir, Path testClasses) {
+    static List<String> uncompiledSuites(Path dir, BuildLayout layout) {
         try {
             boolean compact = ModuleLayout.isCompact(dir);
+            Path testClasses = layout.testClassesDir();
             Set<String> compiled = hasClasses(testClasses) ? PlannerTest.compiledSuites(testClasses) : Set.of();
             List<String> out = new ArrayList<>();
             for (String suite : TestSuites.discover(dir, compact)) {
                 if (!compiled.contains(suite)) out.add(suite);
             }
-            if (TestSuites.hasGuardSuite(dir, compact)) out.add(TestSuites.GUARD);
+            if (TestSuites.hasGuardSuite(dir, compact) && !hasClasses(layout.guardClassesDir())) {
+                out.add(TestSuites.GUARD);
+            }
             return out;
         } catch (RuntimeException unreadable) {
             Log.debug("graph: cannot list the test sources under " + dir, unreadable);
@@ -665,13 +668,13 @@ public final class GraphRunner {
 
     /**
      * The facts-index rows the graph reads ({@code index \t modulePrefix \t sourceSet \t digest \t
-     * classes \t stale \t compileKeys}, one per module's main and test classes, {@code index} empty
+     * classes \t stale \t compileKeys}, one per module's class set ({@link #classSets}), {@code index} empty
      * for a set left unindexed because the cache holds its facts, {@code digest} the set's cache key
      * when a compile stamped it, {@code stale} the workspace-relative sources edited since the build
      * and {@code compileKeys} the action keys the compiles stamped on the classes, each joined by
      * {@link #STALE_SEPARATOR}), the modules whose
      * classes it does not read, the edited sources whose own classes it skips, and the modules with
-     * main sources and no main classes and the test sets ({@link #testSet}) with no test classes.
+     * main sources and no main classes and the test suites ({@link #testSet}) with no classes.
      */
     record ClassIndexes(List<String> rows, List<String> leftOut, List<String> edited, List<String> uncompiled) {
         static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of(), List.of(), List.of());
@@ -703,11 +706,11 @@ public final class GraphRunner {
             String name = rel.isEmpty() ? String.valueOf(module.getKey().getFileName()) : rel;
             if (!hasClasses(layout.classesDir()) && hasMainSources(module.getKey())) uncompiled.add(name);
             boolean compact = ModuleLayout.isCompact(module.getKey());
-            for (String suite : uncompiledSuites(module.getKey(), layout.testClassesDir())) {
+            for (String suite : uncompiledSuites(module.getKey(), layout)) {
                 uncompiled.add(testSet(rel, compact, suite));
             }
-            boolean compiled = Files.isDirectory(layout.classesDir()) || Files.isDirectory(layout.testClassesDir());
-            if (!compiled) continue;
+            Map<String, Path> sets = classSets(layout);
+            if (sets.values().stream().noneMatch(Files::isDirectory)) continue;
             Set<String> stale = ModuleInputProvenance.staleSources(root, module.getKey(), module.getValue());
             if (stale == null) {
                 leftOut.add(name);
@@ -717,8 +720,9 @@ public final class GraphRunner {
             String staleField = String.join(STALE_SEPARATOR, staleRel);
             List<String> rows = new ArrayList<>();
             try {
-                for (String set : List.of("main", "test")) {
-                    Path classes = set.equals("main") ? layout.classesDir() : layout.testClassesDir();
+                for (Map.Entry<String, Path> classSet : sets.entrySet()) {
+                    String set = classSet.getKey();
+                    Path classes = classSet.getValue();
                     if (!Files.isDirectory(classes)) continue;
                     List<String> keys = compileKeys(classes);
                     String key = GraphCacheKeys.classes(prefix, set, keys);
@@ -746,6 +750,18 @@ public final class GraphRunner {
             edited.addAll(staleRel);
         }
         return new ClassIndexes(out, leftOut, edited, uncompiled);
+    }
+
+    /**
+     * A module's class sets by the name a row gives them: its main classes, its test classes (the
+     * default suite and those compiled with it) and its guard suite's.
+     */
+    static Map<String, Path> classSets(BuildLayout layout) {
+        Map<String, Path> out = new LinkedHashMap<>();
+        out.put("main", layout.classesDir());
+        out.put("test", layout.testClassesDir());
+        out.put(TestSuites.GUARD, layout.guardClassesDir());
+        return out;
     }
 
     /** The action keys of the compiles whose output {@code classes} is, from the stamps they left in it. */

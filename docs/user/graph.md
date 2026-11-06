@@ -80,8 +80,8 @@ compiled are compiled the same way, in a job of their own after the main sources
 as a `compile`), so a fresh checkout's callers include its tests; when that compile cannot run, the
 line names their directory (`core/src/test`). Only the default suite is compiled for a question:
 another suite (`core/src/integration`) is named the same way until a run that compiles it, such as
-`jk guard`, leaves its classes, and `core/src/guard` is always named, since the graph does not read
-the guard suite's classes. An edited test is not compiled for a question: it is named with the
+`jk guard`, leaves its classes, and so is the guard suite (`core/src/guard`) until `jk guard`
+compiles it into `target/guard/classes`, which the graph reads too. An edited test is not compiled for a question: it is named with the
 edited files. A module whose class
 files the build did not write, or that is being built while the graph refreshes, contributes what
 its sources declare, and the answer says which modules those are. `jk build` brings the compiled

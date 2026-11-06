@@ -5,7 +5,9 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
@@ -87,10 +89,14 @@ public final class ModuleInputProvenance {
         return name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy");
     }
 
-    /** Each JVM source under the module's source roots, module-relative path to digest. */
+    /** Each JVM source under the module's source roots and its guard suite's, module-relative path to digest. */
     private static Map<String, String> jvmSources(Path moduleDir) throws IOException {
         Map<String, String> out = new TreeMap<>();
-        for (Path root : ModuleLayoutPlugins.fingerprintRoots(moduleDir, false)) {
+        List<Path> roots = new ArrayList<>(ModuleLayoutPlugins.fingerprintRoots(moduleDir, false));
+        for (Path guard : TestSuites.javaRoots(moduleDir, ModuleLayout.isCompact(moduleDir), TestSuites.GUARD)) {
+            if (roots.stream().noneMatch(guard::startsWith)) roots.add(guard);
+        }
+        for (Path root : roots) {
             if (!Files.isDirectory(root)) continue;
             PathUtil.forEachRegularFile(root, (file, attrs) -> {
                 if (!jvmSource(file)) return;
@@ -104,6 +110,13 @@ public final class ModuleInputProvenance {
     /** The trees and jars a record covers, relative to the module's target dir. */
     private static List<Path> trees(BuildLayout layout) {
         return List.of(norm(layout.classesDir()), norm(layout.testClassesDir()), norm(layout.testFixturesClassesDir()));
+    }
+
+    /** The trees {@link #classesFile} covers: the record's, and the guard suite's, which the graph reads too. */
+    private static List<Path> graphTrees(BuildLayout layout) {
+        List<Path> out = new ArrayList<>(trees(layout));
+        out.add(norm(layout.guardClassesDir()));
+        return out;
     }
 
     private static List<Path> jars(BuildLayout layout, JkBuild build) {
@@ -169,7 +182,7 @@ public final class ModuleInputProvenance {
         Classes record = readClasses(target);
         if (record == null || record.sources().isEmpty()) return null;
         try {
-            for (Path tree : trees(layout)) {
+            for (Path tree : graphTrees(layout)) {
                 if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
                 boolean[] foreign = {false};
                 PathUtil.forEachRegularFile(tree, (file, attrs) -> {
@@ -218,7 +231,7 @@ public final class ModuleInputProvenance {
                         .append(rel)
                         .append('\n'));
                 Map<String, String> digests = new TreeMap<>();
-                for (Path tree : trees(layout)) {
+                for (Path tree : graphTrees(layout)) {
                     if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
                     PathUtil.forEachRegularFile(tree, (file, attrs) -> {
                         if (BuildStamps.isStampFile(file.getFileName().toString())) return;

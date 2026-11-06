@@ -32,8 +32,13 @@ final class RenameHints {
         return miss + SUGGESTION + String.join(" or ", close) + "? Pass that.";
     }
 
-    /** {@code error}, and, unless it already names the method meant, the modules with no compiled classes. */
-    static String withUnbuilt(String error, List<String> unbuilt) {
+    /**
+     * {@code error}, and, unless it already names the method meant, the modules with no compiled
+     * classes ({@code prefix set}) that a build compiles: every set but the guard suite.
+     */
+    static String withUnbuilt(String error, List<String> sets) {
+        List<String> unbuilt =
+                sets.stream().filter(set -> !set.endsWith(" guard")).toList();
         if (unbuilt.isEmpty() || error.contains(SUGGESTION)) return error;
         String names = String.join(", ", unbuilt.subList(0, Math.min(SHOWN, unbuilt.size())));
         String more = unbuilt.size() > SHOWN ? " and " + (unbuilt.size() - SHOWN) + " more" : "";

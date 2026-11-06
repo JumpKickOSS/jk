@@ -69,8 +69,8 @@ public final class GraphBuild {
 
     /**
      * One module's class set: its facts index ({@code null} when the engine left it unindexed because
-     * the cache holds the set's facts), the module's path prefix, its source set ({@code main} or
-     * {@code test}), the digest a graph is linked from and the class count, the workspace-relative
+     * the cache holds the set's facts), the module's path prefix, its class set ({@code main},
+     * {@code test} or {@code guard}), the digest a graph is linked from and the class count, the workspace-relative
      * sources edited since those classes were built, whose own classes are skipped (their source scan
      * answers for them), and the action keys of the compiles whose output the set is (none when no jk
      * compile stamped it).
