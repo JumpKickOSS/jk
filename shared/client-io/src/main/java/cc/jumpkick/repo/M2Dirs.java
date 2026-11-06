@@ -29,6 +29,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class M2Dirs {
 
+    /** The system property that names the local repository ahead of every other source; tests set it. */
+    public static final String LOCAL_PROPERTY = "jk.m2.local";
+
     private M2Dirs() {}
 
     public static Path localRepository() {
@@ -42,7 +45,7 @@ public final class M2Dirs {
      * this entry point.
      */
     static Path localRepository(@Nullable String override) {
-        String prop = System.getProperty("jk.m2.local");
+        String prop = System.getProperty(LOCAL_PROPERTY);
         if (prop != null && !prop.isBlank()) return Path.of(prop.trim());
         if (override != null && !override.isBlank()) return Path.of(override.trim());
         String mavenProp = System.getProperty("maven.repo.local");

@@ -25,7 +25,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -52,11 +51,6 @@ class ShelfPinsTest {
         System.setProperty(
                 "jk.m2.local",
                 JkStores.store().resolve("repos").resolve("central").toString());
-    }
-
-    @AfterEach
-    void forgetLocalRepository() {
-        System.clearProperty("jk.m2.local");
     }
 
     @Test

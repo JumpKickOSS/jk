@@ -45,7 +45,6 @@ class CachePlansM2CleanTest {
 
     @AfterEach
     void tearDown() {
-        System.clearProperty("jk.m2.local");
         System.clearProperty("jk.m2.auto-clean");
     }
 

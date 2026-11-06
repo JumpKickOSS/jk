@@ -1,3 +1,4 @@
 cc.jumpkick.http.testing.ConnectFaultsGlobal
 cc.jumpkick.resolve.testing.ResolveProcessCacheGlobal
 cc.jumpkick.m2.testing.MavenSettingsGlobal
+cc.jumpkick.m2.testing.MavenLocalRepoGlobal

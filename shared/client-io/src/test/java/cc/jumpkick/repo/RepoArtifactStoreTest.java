@@ -20,7 +20,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -443,11 +442,6 @@ class RepoArtifactStoreTest {
     private static RepoArtifactStore centralOver(Path cache, Path m2) {
         System.setProperty("jk.m2.local", m2.toString());
         return RepoArtifactStore.forRepository(cache, "central", CENTRAL);
-    }
-
-    @AfterEach
-    void clearM2() {
-        System.clearProperty("jk.m2.local");
     }
 
     @Test

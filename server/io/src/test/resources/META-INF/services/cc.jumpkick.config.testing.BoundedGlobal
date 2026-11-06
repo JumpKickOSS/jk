@@ -2,3 +2,4 @@ cc.jumpkick.http.testing.ConnectFaultsGlobal
 cc.jumpkick.repo.testing.RepoProcessMemosGlobal
 cc.jumpkick.config.testing.JkEnvGlobal
 cc.jumpkick.m2.testing.MavenSettingsGlobal
+cc.jumpkick.m2.testing.MavenLocalRepoGlobal

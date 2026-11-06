@@ -53,7 +53,6 @@ class EngineServerRequestTest extends EngineServerHarness {
      */
     @Test
     void lock_request_resolves_and_writes_the_lockfile_over_the_socket() throws Exception {
-        String previousM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", shortTempDir().toString()); // never touch the real ~/.m2
         HttpServer repo = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         try {
@@ -180,8 +179,6 @@ class EngineServerRequestTest extends EngineServerHarness {
             serverThread.join(5_000);
         } finally {
             repo.stop(0);
-            if (previousM2 != null) System.setProperty("jk.m2.local", previousM2);
-            else System.clearProperty("jk.m2.local");
             LockfileReader.clearCache();
         }
     }
@@ -491,7 +488,6 @@ class EngineServerRequestTest extends EngineServerHarness {
      */
     @Test
     void tool_resolve_request_resolves_and_fetches_over_the_socket() throws Exception {
-        String previousM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", shortTempDir().toString()); // never touch the real ~/.m2
         HttpServer repo = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         try {
@@ -559,8 +555,6 @@ class EngineServerRequestTest extends EngineServerHarness {
             serverThread.join(5_000);
         } finally {
             repo.stop(0);
-            if (previousM2 != null) System.setProperty("jk.m2.local", previousM2);
-            else System.clearProperty("jk.m2.local");
         }
     }
 

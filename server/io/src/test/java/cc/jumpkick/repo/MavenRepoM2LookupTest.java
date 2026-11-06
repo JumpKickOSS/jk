@@ -70,7 +70,6 @@ class MavenRepoM2LookupTest {
     @AfterEach
     void stop() {
         server.stop(0);
-        System.clearProperty("jk.m2.local");
         SessionContext.reset();
     }
 

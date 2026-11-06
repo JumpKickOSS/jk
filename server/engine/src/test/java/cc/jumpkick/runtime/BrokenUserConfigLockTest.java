@@ -11,8 +11,6 @@ import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -37,8 +35,6 @@ class BrokenUserConfigLockTest {
     /** Fresh per run, so neither the process memos nor a warm store can answer for the stub. */
     private final String version = MavenStub.freshVersion();
 
-    private @Nullable String priorM2;
-
     @TempDir
     Path tmp;
 
@@ -48,7 +44,6 @@ class BrokenUserConfigLockTest {
         System.setProperty("jk.env.JK_HOME", home.toString());
         // The test JVM's JK_M2_LOCAL is shared with every other test; a real POM cached there
         // would stand in for the stub's.
-        priorM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", tmp.resolve("m2").toString());
         System.setProperty(
                 MavenSettings.SETTINGS_PROPERTY,
@@ -61,16 +56,6 @@ class BrokenUserConfigLockTest {
                 .leaf(GROUP, ARTIFACT, version)
                 .leaf("org.junit.jupiter", "junit-jupiter", "6.1.0")
                 .leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
-    }
-
-    @AfterEach
-    void restore() {
-        restore("jk.m2.local", priorM2);
-    }
-
-    private static void restore(String property, @Nullable String prior) {
-        if (prior == null) System.clearProperty(property);
-        else System.setProperty(property, prior);
     }
 
     @Test

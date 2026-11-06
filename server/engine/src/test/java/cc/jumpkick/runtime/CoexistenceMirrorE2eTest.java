@@ -77,8 +77,6 @@ class CoexistenceMirrorE2eTest {
     /** The corporate repository. It answers for Central; the build never addresses Central itself. */
     private final Nexus nexus = new Nexus();
 
-    private @Nullable String priorM2;
-
     @BeforeAll
     static void engineShadowSource() {
         ShadowManifests.install(dir -> List.of());
@@ -95,7 +93,6 @@ class CoexistenceMirrorE2eTest {
         // The tier's local repository and its store's Central tree are the one every sandbox shares:
         // an artifact found there would answer without reaching the mirror, and the one only the
         // mirror hosts, with its memos, would land there.
-        priorM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", CACHE.resolve("m2").toAbsolutePath().toString());
         System.setProperty(
                 "jk.env.JK_STORE_DIR", CACHE.resolve("store").toAbsolutePath().toString());
@@ -105,8 +102,6 @@ class CoexistenceMirrorE2eTest {
     @AfterEach
     void stop() {
         nexus.stop();
-        if (priorM2 == null) System.clearProperty("jk.m2.local");
-        else System.setProperty("jk.m2.local", priorM2);
         SessionContext.reset();
     }
 

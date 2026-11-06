@@ -44,11 +44,8 @@ class UpdateRequestWireTest extends EngineServerHarness {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
-    private @Nullable String previousM2;
-
     @BeforeEach
     void isolate() throws IOException {
-        previousM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", shortTempDir().toString()); // never touch the real ~/.m2
         System.setProperty(
                 "jk.env.JK_STORE_DIR", shortTempDir().resolve("store").toString());
@@ -56,8 +53,6 @@ class UpdateRequestWireTest extends EngineServerHarness {
 
     @AfterEach
     void release() {
-        if (previousM2 != null) System.setProperty("jk.m2.local", previousM2);
-        else System.clearProperty("jk.m2.local");
         LockfileReader.clearCache();
     }
 

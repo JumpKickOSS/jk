@@ -14,8 +14,6 @@ import cc.jumpkick.wire.protocol.ExecPlan;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -157,23 +155,17 @@ class ExecPlansProductBinTest {
                         List.of(artifact("org.tomlj:tomlj:jar:", "1.1.1", mirrored, List.of()))),
                 dir.resolve("jk-lock.toml"));
 
-        String prevM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.env.JK_STORE_DIR", store.toString());
         System.setProperty("jk.m2.local", m2.toString());
-        try {
-            ExecPlan plan =
-                    ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
+        ExecPlan plan = ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
 
-            assertThat(plan.error()).isNull();
-            assertThat(store.resolve("repos/central").resolve(rel))
-                    .as("nothing is copied into the store")
-                    .doesNotExist();
-            assertThat(plan.launcherScript())
-                    .contains(mirrored.toAbsolutePath().normalize().toString())
-                    .contains(AppLauncher.NATIVE_ACCESS_FLAG);
-        } finally {
-            restore("jk.m2.local", prevM2);
-        }
+        assertThat(plan.error()).isNull();
+        assertThat(store.resolve("repos/central").resolve(rel))
+                .as("nothing is copied into the store")
+                .doesNotExist();
+        assertThat(plan.launcherScript())
+                .contains(mirrored.toAbsolutePath().normalize().toString())
+                .contains(AppLauncher.NATIVE_ACCESS_FLAG);
     }
 
     /**
@@ -232,11 +224,6 @@ class ExecPlansProductBinTest {
                 .doesNotContain(root.resolve("core/target").toString());
     }
 
-    private static void restore(String property, @Nullable String previous) {
-        if (previous != null) System.setProperty(property, previous);
-        else System.clearProperty(property);
-    }
-
     private static Path putJar(Path store, String relative) throws Exception {
         return putJar(store, "central", relative);
     }
@@ -289,10 +276,5 @@ class ExecPlansProductBinTest {
     private static void centralIsTheLocalRepository(Path store) {
         System.setProperty(
                 "jk.m2.local", store.resolve("repos").resolve("central").toString());
-    }
-
-    @AfterEach
-    void forgetLocalRepository() {
-        System.clearProperty("jk.m2.local");
     }
 }
