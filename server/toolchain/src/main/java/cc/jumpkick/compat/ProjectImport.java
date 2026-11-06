@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
+import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.gradle.GradleBuildImport;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.library.LibraryCatalog;
@@ -11,6 +12,7 @@ import cc.jumpkick.mvn.DeclaredPins;
 import cc.jumpkick.mvn.FrontendCollector;
 import cc.jumpkick.mvn.FrontendFiles;
 import cc.jumpkick.mvn.PomImporter;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MarkdownReports;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
@@ -76,6 +78,7 @@ public final class ProjectImport {
             Map<String, JkBuild> modules = new LinkedHashMap<>();
             ImportReport importReport;
             FrontendFiles frontend = FrontendFiles.NONE;
+            List<UserConfigEditor.RepositoryTable> machineRepositories = List.of();
 
             if (filename.endsWith("pom.xml")) {
                 FrontendCollector frontends = new FrontendCollector();
@@ -94,6 +97,7 @@ public final class ProjectImport {
                 root = result.root();
                 modules.putAll(result.modules());
                 importReport = result.report();
+                machineRepositories = result.machineRepositories();
             } else {
                 return new Outcome(Exit.USAGE, 0, "unrecognised source: " + source.getFileName(), List.of());
             }
@@ -133,6 +137,7 @@ public final class ProjectImport {
                     Files.writeString(e.getKey(), e.getValue(), StandardCharsets.UTF_8);
                     wrote.add(e.getKey());
                 }
+                importReport = machineRepositories(importReport, machineRepositories, JkDirs.userConfigFile(), wrote);
                 importReport = raisedAt(importReport, raise, out, modules.isEmpty());
             }
 
@@ -213,6 +218,32 @@ public final class ProjectImport {
      * {@code jk.toml} in a scratch directory and written back, so it matches what an import in place
      * writes.
      */
+    /**
+     * {@code report} after appending each of {@code tables} to {@code configFile}, with a row for a
+     * table left out because the file already declares a repository of that name.
+     */
+    private static ImportReport machineRepositories(
+            ImportReport report, List<UserConfigEditor.RepositoryTable> tables, Path configFile, List<Path> wrote)
+            throws IOException {
+        if (tables.isEmpty()) return report;
+        ImportReport.Builder out = ImportReport.builder();
+        for (ImportReport.Issue issue : report.issues()) {
+            if (issue.severity() == ImportReport.Severity.ERROR) out.error(issue.message());
+            else out.warning(issue.message());
+        }
+        boolean written = false;
+        for (UserConfigEditor.RepositoryTable table : tables) {
+            if (UserConfigEditor.addRepository(configFile, table)) {
+                written = true;
+            } else {
+                out.warning(configFile + " already declares the repository `" + table.name() + "`; it is left as it"
+                        + " is, so check that it carries the credential for " + table.url() + ".");
+            }
+        }
+        if (written) wrote.add(configFile);
+        return out.build();
+    }
+
     private static ImportReport raisedAt(ImportReport report, PinRaise raise, Path out, boolean single)
             throws IOException {
         Path dir = Objects.requireNonNull(out.toAbsolutePath().getParent());

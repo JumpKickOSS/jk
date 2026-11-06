@@ -17,7 +17,32 @@ import org.jspecify.annotations.Nullable;
  * {@code dependencyManagement} block imports and the tasks its scripts register. Read from the
  * JSON the fork leaves behind.
  */
-record GradleModel(String gradleVersion, String rootName, List<String> settingsRepositories, List<Project> projects) {
+record GradleModel(
+        String gradleVersion, String rootName, List<Repository> settingsRepositories, List<Project> projects) {
+
+    /**
+     * A Maven repository a project or the settings declare: {@code groups} are the groups its
+     * {@code content { }} filter includes ({@code g.*} for a group with its subgroups), {@code
+     * unmappedContent} the filters that name less than a whole group.
+     */
+    record Repository(
+            String url,
+            String name,
+            List<String> groups,
+            List<String> unmappedContent,
+            @Nullable Credential credential) {}
+
+    /**
+     * A repository's credential as the names of the environment variables holding it, never its
+     * value. {@code kind} is {@code header} (one secret), {@code password} (a username and a
+     * secret) or the Gradle type of another; {@code username} is a literal username no variable
+     * holds. A null name is a value no variable of the build's environment holds.
+     */
+    record Credential(
+            String kind,
+            @Nullable String secretEnv,
+            @Nullable String usernameEnv,
+            @Nullable String username) {}
 
     /** One Gradle project; {@code dir} is root-relative with {@code /} separators, empty for the root. */
     record Project(
@@ -37,7 +62,7 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
             @Nullable String mainClass,
             boolean bootBuildInfo,
             Map<String, String> manifest,
-            List<String> repositories,
+            List<Repository> repositories,
             List<SourceSet> sourceSets,
             List<Configuration> configurations,
             Map<String, String> managedVersions,
@@ -175,6 +200,15 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
     static final String RELOCATIONS = "relocations";
     static final String RESOLVED = "resolved";
     static final String REPOSITORIES = "repositories";
+    static final String CREDENTIAL = "credential";
+    static final String GROUPS = "groups";
+    static final String KIND = "kind";
+    static final String NAME = "name";
+    static final String SECRET_ENV = "secretEnv";
+    static final String UNMAPPED_CONTENT = "unmappedContent";
+    static final String URL = "url";
+    static final String USERNAME = "username";
+    static final String USERNAME_ENV = "usernameEnv";
     static final String REQUIRED = "required";
     static final String RESOURCES = "resources";
     static final String ROOT_NAME = "rootName";
@@ -198,8 +232,28 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
         return new GradleModel(
                 Jsonl.topStr(json, GRADLE) == null ? "" : Jsonl.requiredStr(json, GRADLE),
                 Jsonl.topStr(json, ROOT_NAME) == null ? "" : Jsonl.requiredStr(json, ROOT_NAME),
-                Jsonl.strArray(json, SETTINGS_REPOSITORIES),
+                repositories(json, SETTINGS_REPOSITORIES),
                 projects);
+    }
+
+    private static List<Repository> repositories(String json, String key) {
+        List<Repository> out = new ArrayList<>();
+        for (String r : Jsonl.objectArray(json, key)) {
+            String c = Jsonl.nested(r, CREDENTIAL);
+            out.add(new Repository(
+                    str(r, URL),
+                    str(r, NAME),
+                    Jsonl.strArray(r, GROUPS),
+                    Jsonl.strArray(r, UNMAPPED_CONTENT),
+                    c == null
+                            ? null
+                            : new Credential(
+                                    str(c, KIND),
+                                    Jsonl.topStr(c, SECRET_ENV),
+                                    Jsonl.topStr(c, USERNAME_ENV),
+                                    Jsonl.topStr(c, USERNAME))));
+        }
+        return out;
     }
 
     private static Project parseProject(String p) {
@@ -256,7 +310,7 @@ record GradleModel(String gradleVersion, String rootName, List<String> settingsR
                 Jsonl.topStr(p, MAIN_CLASS),
                 Jsonl.bool(p, BOOT_BUILD_INFO, false),
                 Jsonl.strMap(p, MANIFEST),
-                Jsonl.strArray(p, REPOSITORIES),
+                repositories(p, REPOSITORIES),
                 sourceSets,
                 configurations,
                 Jsonl.strMap(p, MANAGED_VERSIONS),

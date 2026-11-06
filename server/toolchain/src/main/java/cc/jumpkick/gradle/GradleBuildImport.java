@@ -2,6 +2,7 @@
 package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.mvn.PomImporter;
 import java.io.IOException;
@@ -23,8 +24,16 @@ import org.jspecify.annotations.Nullable;
  */
 public final class GradleBuildImport {
 
-    /** The root manifest, the members keyed by root-relative path (empty for one project), and the rows. */
-    public record Result(JkBuild root, Map<String, JkBuild> modules, ImportReport report) {}
+    /**
+     * The root manifest, the members keyed by root-relative path (empty for one project), the rows,
+     * and the {@code ~/.jk/config.toml} tables carrying the credentials the build reads from the
+     * environment.
+     */
+    public record Result(
+            JkBuild root,
+            Map<String, JkBuild> modules,
+            ImportReport report,
+            List<UserConfigEditor.RepositoryTable> machineRepositories) {}
 
     /** Reads the evaluated project model of the build rooted at {@code buildRoot}, as the init script's JSON. */
     public interface ModelSource {
@@ -126,6 +135,6 @@ public final class GradleBuildImport {
             if (issue.severity() == ImportReport.Severity.ERROR) report.error(issue.message());
             else report.warning(issue.message());
         }
-        return new Result(scanned.jkBuild(), Map.of(), report.build());
+        return new Result(scanned.jkBuild(), Map.of(), report.build(), List.of());
     }
 }
