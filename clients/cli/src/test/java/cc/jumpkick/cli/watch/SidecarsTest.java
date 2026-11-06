@@ -241,7 +241,6 @@ class SidecarsTest {
             }
             assertThat(hosts).containsExactly("web.example.test:8080");
         } finally {
-            System.clearProperty("jk.env.JK_HOME");
             proxy.stop(0);
         }
     }

@@ -48,8 +48,6 @@ class McpUpdateTest {
 
     @AfterEach
     void release() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
-        System.clearProperty("jk.env.JK_CACHE_DIR");
         LockfileReader.clearCache();
     }
 

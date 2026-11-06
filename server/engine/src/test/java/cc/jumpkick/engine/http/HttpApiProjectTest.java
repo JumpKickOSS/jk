@@ -406,82 +406,76 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
     void api_project_file_needs_a_checkout_selector_when_the_id_has_two() throws Exception {
         System.setProperty(
                 "jk.env.JK_STATE_DIR", stateDir.resolve("two-checkouts-state").toString());
-        try {
-            String id = "aabbccddeeff00112233445566778899";
-            Path a = sharedIdCheckout("wt-a", id, "class Main { int a; }\n");
-            Path b = sharedIdCheckout("wt-b", id, "class Main { int b; }\n");
+        String id = "aabbccddeeff00112233445566778899";
+        Path a = sharedIdCheckout("wt-a", id, "class Main { int a; }\n");
+        Path b = sharedIdCheckout("wt-b", id, "class Main { int b; }\n");
 
-            HttpResponse<String> listing = get("/api/project?project=" + id);
-            assertThat(listing.statusCode()).isEqualTo(200);
-            assertThat(listing.body())
-                    .contains("\"checkouts\":[")
-                    .contains("\"dir\":\"" + json(a) + "\"")
-                    .contains("\"dir\":\"" + json(b) + "\"")
-                    .contains("\"lastBuilt\":")
-                    .doesNotContain("\"coord\":\"g:n\",\"dir\"");
-            assertThat(Jsonl.topStr(listing.body(), "dir"))
-                    .as("no checkout is implied")
-                    .isNull();
+        HttpResponse<String> listing = get("/api/project?project=" + id);
+        assertThat(listing.statusCode()).isEqualTo(200);
+        assertThat(listing.body())
+                .contains("\"checkouts\":[")
+                .contains("\"dir\":\"" + json(a) + "\"")
+                .contains("\"dir\":\"" + json(b) + "\"")
+                .contains("\"lastBuilt\":")
+                .doesNotContain("\"coord\":\"g:n\",\"dir\"");
+        assertThat(Jsonl.topStr(listing.body(), "dir"))
+                .as("no checkout is implied")
+                .isNull();
 
-            HttpResponse<String> card = get("/api/project?project=" + id + "&dir=" + encDir(b));
-            assertThat(card.statusCode()).isEqualTo(200);
-            assertThat(Jsonl.topStr(card.body(), "dir")).isEqualTo(b.toString());
-            assertThat(card.body()).contains("\"coord\":\"g:n\"").contains("\"checkouts\":[");
+        HttpResponse<String> card = get("/api/project?project=" + id + "&dir=" + encDir(b));
+        assertThat(card.statusCode()).isEqualTo(200);
+        assertThat(Jsonl.topStr(card.body(), "dir")).isEqualTo(b.toString());
+        assertThat(card.body()).contains("\"coord\":\"g:n\"").contains("\"checkouts\":[");
 
-            HttpResponse<String> files = get("/api/project/files?project=" + id);
-            assertThat(files.statusCode()).isEqualTo(400);
-            assertThat(files.body())
-                    .contains("2 live checkouts")
-                    .contains("\"checkouts\":[")
-                    .contains(json(a));
-            assertThat(get("/api/project/files?project=" + id + "&dir=" + encDir(b))
-                            .statusCode())
-                    .isEqualTo(200);
-            HttpResponse<String> stranger =
-                    get("/api/project/files?project=" + id + "&dir=" + encDir(stateDir.resolve("two-checkouts-state")));
-            assertThat(stranger.statusCode()).isEqualTo(404);
-            assertThat(stranger.body()).contains("not a live checkout");
+        HttpResponse<String> files = get("/api/project/files?project=" + id);
+        assertThat(files.statusCode()).isEqualTo(400);
+        assertThat(files.body())
+                .contains("2 live checkouts")
+                .contains("\"checkouts\":[")
+                .contains(json(a));
+        assertThat(get("/api/project/files?project=" + id + "&dir=" + encDir(b)).statusCode())
+                .isEqualTo(200);
+        HttpResponse<String> stranger =
+                get("/api/project/files?project=" + id + "&dir=" + encDir(stateDir.resolve("two-checkouts-state")));
+        assertThat(stranger.statusCode()).isEqualTo(404);
+        assertThat(stranger.body()).contains("not a live checkout");
 
-            HttpResponse<String> fileB =
-                    get("/api/project/file?project=" + id + "&path=src%2FMain.java&dir=" + encDir(b));
-            assertThat(fileB.statusCode()).isEqualTo(200);
-            assertThat(fileB.body()).contains("int b;");
-            String etagB = fileB.body().replaceAll("(?s).*\"etag\":\"([0-9a-f]+)\".*", "$1");
-            String etagA = get("/api/project/file?project=" + id + "&path=src%2FMain.java&dir=" + encDir(a))
-                    .body()
-                    .replaceAll("(?s).*\"etag\":\"([0-9a-f]+)\".*", "$1");
-            assertThat(etagA).isNotEqualTo(etagB);
+        HttpResponse<String> fileB = get("/api/project/file?project=" + id + "&path=src%2FMain.java&dir=" + encDir(b));
+        assertThat(fileB.statusCode()).isEqualTo(200);
+        assertThat(fileB.body()).contains("int b;");
+        String etagB = fileB.body().replaceAll("(?s).*\"etag\":\"([0-9a-f]+)\".*", "$1");
+        String etagA = get("/api/project/file?project=" + id + "&path=src%2FMain.java&dir=" + encDir(a))
+                .body()
+                .replaceAll("(?s).*\"etag\":\"([0-9a-f]+)\".*", "$1");
+        assertThat(etagA).isNotEqualTo(etagB);
 
-            HttpResponse<String> unselected = putFile("{\"project\":\"" + id + "\",\"path\":\"src/Main.java\","
-                    + "\"content\":\"class Main { int guess; }\\n\"}");
-            assertThat(unselected.statusCode()).isEqualTo(400);
-            assertThat(unselected.body()).contains("\"checkouts\":[");
-            assertThat(Files.readString(a.resolve("src/Main.java"))).isEqualTo("class Main { int a; }\n");
-            assertThat(Files.readString(b.resolve("src/Main.java"))).isEqualTo("class Main { int b; }\n");
+        HttpResponse<String> unselected = putFile("{\"project\":\"" + id + "\",\"path\":\"src/Main.java\","
+                + "\"content\":\"class Main { int guess; }\\n\"}");
+        assertThat(unselected.statusCode()).isEqualTo(400);
+        assertThat(unselected.body()).contains("\"checkouts\":[");
+        assertThat(Files.readString(a.resolve("src/Main.java"))).isEqualTo("class Main { int a; }\n");
+        assertThat(Files.readString(b.resolve("src/Main.java"))).isEqualTo("class Main { int b; }\n");
 
-            HttpResponse<String> wrongEtag = putFile("{\"project\":\"" + id + "\",\"dir\":\"" + json(b)
-                    + "\",\"path\":\"src/Main.java\",\"content\":\"class Main { int b2; }\\n\",\"etag\":\"" + etagA
-                    + "\"}");
-            assertThat(wrongEtag.statusCode())
-                    .as("the etag is checked against the named tree")
-                    .isEqualTo(409);
+        HttpResponse<String> wrongEtag = putFile("{\"project\":\"" + id + "\",\"dir\":\"" + json(b)
+                + "\",\"path\":\"src/Main.java\",\"content\":\"class Main { int b2; }\\n\",\"etag\":\"" + etagA
+                + "\"}");
+        assertThat(wrongEtag.statusCode())
+                .as("the etag is checked against the named tree")
+                .isEqualTo(409);
 
-            HttpResponse<String> saved = putFile("{\"project\":\"" + id + "\",\"dir\":\"" + json(b)
-                    + "\",\"path\":\"src/Main.java\",\"content\":\"class Main { int b2; }\\n\",\"etag\":\"" + etagB
-                    + "\"}");
-            assertThat(saved.statusCode()).isEqualTo(200);
-            assertThat(Jsonl.topStr(saved.body(), "dir")).isEqualTo(b.toString());
-            assertThat(Files.readString(b.resolve("src/Main.java"))).isEqualTo("class Main { int b2; }\n");
-            assertThat(Files.readString(a.resolve("src/Main.java"))).isEqualTo("class Main { int a; }\n");
+        HttpResponse<String> saved = putFile("{\"project\":\"" + id + "\",\"dir\":\"" + json(b)
+                + "\",\"path\":\"src/Main.java\",\"content\":\"class Main { int b2; }\\n\",\"etag\":\"" + etagB
+                + "\"}");
+        assertThat(saved.statusCode()).isEqualTo(200);
+        assertThat(Jsonl.topStr(saved.body(), "dir")).isEqualTo(b.toString());
+        assertThat(Files.readString(b.resolve("src/Main.java"))).isEqualTo("class Main { int b2; }\n");
+        assertThat(Files.readString(a.resolve("src/Main.java"))).isEqualTo("class Main { int a; }\n");
 
-            // One worktree deleted: the id implies the other again, selector or not.
-            PathUtil.deleteRecursively(a);
-            assertThat(Jsonl.topStr(get("/api/project?project=" + id).body(), "dir"))
-                    .isEqualTo(b.toString());
-            assertThat(get("/api/project/files?project=" + id).statusCode()).isEqualTo(200);
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
-        }
+        // One worktree deleted: the id implies the other again, selector or not.
+        PathUtil.deleteRecursively(a);
+        assertThat(Jsonl.topStr(get("/api/project?project=" + id).body(), "dir"))
+                .isEqualTo(b.toString());
+        assertThat(get("/api/project/files?project=" + id).statusCode()).isEqualTo(200);
     }
 
     /** A checkout whose manifest pins {@code id}, recorded in the id's identity file. */
@@ -534,47 +528,43 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
         Path buildsRoot = stateDir.resolve("decode-state");
         Path buildsDir = buildsRoot.resolve("builds");
         System.setProperty("jk.env.JK_STATE_DIR", buildsRoot.toString());
-        try {
-            Path checkout = stateDir.resolve("src-decode");
-            Files.createDirectories(checkout.resolve("src"));
-            Files.writeString(checkout.resolve("jk.toml"), """
-                    group = "g"
-                    name = "n"
-                    version = "1"
-                    """);
-            Files.writeString(checkout.resolve("src/A+B.java"), "class APlusB {}\n");
-            Files.writeString(checkout.resolve("src/A&B.java"), "class AAmpB {}\n");
-            Files.writeString(checkout.resolve("src/A%2.java"), "class APct {}\n");
-            var identity = ProjectIdentity.resolve(checkout);
-            ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
-            String id = identity.id();
+        Path checkout = stateDir.resolve("src-decode");
+        Files.createDirectories(checkout.resolve("src"));
+        Files.writeString(checkout.resolve("jk.toml"), """
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        Files.writeString(checkout.resolve("src/A+B.java"), "class APlusB {}\n");
+        Files.writeString(checkout.resolve("src/A&B.java"), "class AAmpB {}\n");
+        Files.writeString(checkout.resolve("src/A%2.java"), "class APct {}\n");
+        var identity = ProjectIdentity.resolve(checkout);
+        ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
+        String id = identity.id();
 
-            // Exactly what code.js's encodeURIComponent sends for each listed path.
-            HttpResponse<String> plus = get("/api/project/file?project=" + id + "&path=src%2FA%2BB.java");
-            assertThat(plus.statusCode()).as("plus sign survives one decode").isEqualTo(200);
-            assertThat(plus.body()).contains("class APlusB");
+        // Exactly what code.js's encodeURIComponent sends for each listed path.
+        HttpResponse<String> plus = get("/api/project/file?project=" + id + "&path=src%2FA%2BB.java");
+        assertThat(plus.statusCode()).as("plus sign survives one decode").isEqualTo(200);
+        assertThat(plus.body()).contains("class APlusB");
 
-            HttpResponse<String> amp = get("/api/project/file?project=" + id + "&path=src%2FA%26B.java");
-            assertThat(amp.statusCode())
-                    .as("encoded ampersand does not split the value")
-                    .isEqualTo(200);
-            assertThat(amp.body()).contains("class AAmpB");
+        HttpResponse<String> amp = get("/api/project/file?project=" + id + "&path=src%2FA%26B.java");
+        assertThat(amp.statusCode())
+                .as("encoded ampersand does not split the value")
+                .isEqualTo(200);
+        assertThat(amp.body()).contains("class AAmpB");
 
-            HttpResponse<String> pct = get("/api/project/file?project=" + id + "&path=src%2FA%252.java");
-            assertThat(pct.statusCode())
-                    .as("literal percent decodes once, not twice")
-                    .isEqualTo(200);
-            assertThat(pct.body()).contains("class APct");
+        HttpResponse<String> pct = get("/api/project/file?project=" + id + "&path=src%2FA%252.java");
+        assertThat(pct.statusCode())
+                .as("literal percent decodes once, not twice")
+                .isEqualTo(200);
+        assertThat(pct.body()).contains("class APct");
 
-            // Double-encoded traversal decodes ONCE to the literal filename "%2e%2e/jk.toml" —
-            // not a ".." segment — so the correct answer is "no such file" (404). Anything else
-            // would mean a second decode happened somewhere.
-            assertThat(get("/api/project/file?project=" + id + "&path=%252e%252e%2Fjk.toml")
-                            .statusCode())
-                    .isEqualTo(404);
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
-        }
+        // Double-encoded traversal decodes ONCE to the literal filename "%2e%2e/jk.toml" —
+        // not a ".." segment — so the correct answer is "no such file" (404). Anything else
+        // would mean a second decode happened somewhere.
+        assertThat(get("/api/project/file?project=" + id + "&path=%252e%252e%2Fjk.toml")
+                        .statusCode())
+                .isEqualTo(404);
     }
 
     @Test

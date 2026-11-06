@@ -78,22 +78,15 @@ class CommandDispatchEnvelopeTest {
                 throw new IOException("No such file or directory");
             }
         };
-        String previous = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
-        try {
-            String err = Capture.stderr(() -> CommandDispatch.dispatch(missing, "jk missing", List.of(), false));
-            assertThat(err).isEqualTo("\nerror: No such file or directory\n\n");
-            assertThat(Files.readString(state.resolve(CliFailure.LOG_NAME)))
-                    .contains("java.io.IOException: No such file or directory")
-                    .contains("at cc.jumpkick.cli.CommandDispatchEnvelopeTest");
+        String err = Capture.stderr(() -> CommandDispatch.dispatch(missing, "jk missing", List.of(), false));
+        assertThat(err).isEqualTo("\nerror: No such file or directory\n\n");
+        assertThat(Files.readString(state.resolve(CliFailure.LOG_NAME)))
+                .contains("java.io.IOException: No such file or directory")
+                .contains("at cc.jumpkick.cli.CommandDispatchEnvelopeTest");
 
-            String verbose =
-                    Capture.stderr(() -> CommandDispatch.dispatch(missing, "jk missing", List.of("-v"), false));
-            assertThat(verbose).contains("at cc.jumpkick.cli.CommandDispatchEnvelopeTest");
-        } finally {
-            if (previous == null) System.clearProperty("jk.env.JK_STATE_DIR");
-            else System.setProperty("jk.env.JK_STATE_DIR", previous);
-        }
+        String verbose = Capture.stderr(() -> CommandDispatch.dispatch(missing, "jk missing", List.of("-v"), false));
+        assertThat(verbose).contains("at cc.jumpkick.cli.CommandDispatchEnvelopeTest");
     }
 
     @Test

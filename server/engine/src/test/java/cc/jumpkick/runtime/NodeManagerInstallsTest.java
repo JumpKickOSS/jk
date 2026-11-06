@@ -66,7 +66,6 @@ class NodeManagerInstallsTest {
     @TempDir
     Path tmp;
 
-    private final List<String> overlays = new ArrayList<>();
     private @Nullable NpmRegistryStub main;
     private @Nullable NpmRegistryStub scope;
     private @Nullable Supplier<NodeProvisioning> production;
@@ -76,7 +75,6 @@ class NodeManagerInstallsTest {
         if (main != null) main.close();
         if (scope != null) scope.close();
         if (production != null) PlannerNodeSetup.provisioning = production;
-        for (String name : overlays) System.clearProperty("jk.env." + name);
     }
 
     /**
@@ -242,7 +240,6 @@ class NodeManagerInstallsTest {
 
     private void overlay(String name, String value) {
         System.setProperty("jk.env." + name, value);
-        overlays.add(name);
     }
 
     private BuildPlan plan(Path web, Session session) {

@@ -19,7 +19,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,18 +32,9 @@ class JkEnvNodeTest {
     @TempDir
     Path tmp;
 
-    private @Nullable String priorStore;
-
     @BeforeEach
     void store() {
-        priorStore = System.getProperty(STORE);
         System.setProperty(STORE, tmp.resolve("store").toString());
-    }
-
-    @AfterEach
-    void restore() {
-        if (priorStore == null) System.clearProperty(STORE);
-        else System.setProperty(STORE, priorStore);
     }
 
     @Test

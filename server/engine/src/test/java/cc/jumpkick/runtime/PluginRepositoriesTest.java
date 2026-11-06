@@ -216,26 +216,22 @@ class PluginRepositoriesTest {
                 token = "${cmd:%s}"
                 """.formatted(helper));
         System.setProperty("jk.env.JK_HOME", tmp.toString());
-        try {
-            // An earlier command resolved the credential; the value is cached for its time to live.
-            inRequest(() -> assertThat(secrets(routes(tmp).forHandOff())).containsOnly("token-1"));
+        // An earlier command resolved the credential; the value is cached for its time to live.
+        inRequest(() -> assertThat(secrets(routes(tmp).forHandOff())).containsOnly("token-1"));
 
-            inRequest(() -> {
-                PluginRepositories routed = routes(tmp);
-                assertThat(secrets(routed.routes()))
-                        .as("the step's own plan reads the cached value")
-                        .containsOnly("token-1");
-                assertThat(secrets(routed.forHandOff()))
-                        .as("the fork is handed a fresh one")
-                        .containsOnly("token-2");
-                assertThat(secrets(routes(tmp).forHandOff()))
-                        .as("a second fork in the same command shares that run")
-                        .containsOnly("token-2");
-            });
-            assertThat(Files.readString(count).strip()).isEqualTo("2");
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-        }
+        inRequest(() -> {
+            PluginRepositories routed = routes(tmp);
+            assertThat(secrets(routed.routes()))
+                    .as("the step's own plan reads the cached value")
+                    .containsOnly("token-1");
+            assertThat(secrets(routed.forHandOff()))
+                    .as("the fork is handed a fresh one")
+                    .containsOnly("token-2");
+            assertThat(secrets(routes(tmp).forHandOff()))
+                    .as("a second fork in the same command shares that run")
+                    .containsOnly("token-2");
+        });
+        assertThat(Files.readString(count).strip()).isEqualTo("2");
     }
 
     private static PluginRepositories routes(Path tmp) {

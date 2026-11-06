@@ -25,7 +25,6 @@ class ProjectIdsTest {
 
     @AfterEach
     void restoreState() {
-        System.clearProperty("jk.env.JK_STATE_DIR");
         ProjectIds.clear();
     }
 

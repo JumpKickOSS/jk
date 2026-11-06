@@ -59,7 +59,6 @@ class NodeRegistryAuthTest {
     private HttpServer registry;
     private final List<String> authorizations = new ArrayList<>();
     private Supplier<NodeProvisioning> production;
-    private final List<String> overlays = new ArrayList<>();
 
     @BeforeEach
     void setUp() throws Exception {
@@ -121,7 +120,6 @@ class NodeRegistryAuthTest {
     void tearDown() {
         if (registry != null) registry.stop(0);
         if (production != null) PlannerNodeSetup.provisioning = production;
-        for (String name : overlays) System.clearProperty("jk.env." + name);
     }
 
     @Test
@@ -154,7 +152,6 @@ class NodeRegistryAuthTest {
 
     private void overlay(String name, String value) {
         System.setProperty("jk.env." + name, value);
-        overlays.add(name);
     }
 
     private BuildPlan plan(Path web, Session session) {

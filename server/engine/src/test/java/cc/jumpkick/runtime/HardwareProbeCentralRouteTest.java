@@ -27,13 +27,11 @@ class HardwareProbeCentralRouteTest {
     @TempDir
     Path tmp;
 
-    private @Nullable String priorHome;
     private @Nullable String priorSettings;
     private Path config = Path.of("config.toml");
 
     @BeforeEach
     void isolate() throws Exception {
-        priorHome = System.getProperty("jk.env.JK_HOME");
         priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
         Path home = Files.createDirectories(tmp.resolve("home"));
         config = home.resolve("config.toml");
@@ -46,13 +44,8 @@ class HardwareProbeCentralRouteTest {
 
     @AfterEach
     void restore() {
-        restore("jk.env.JK_HOME", priorHome);
-        restore(MavenSettings.SETTINGS_PROPERTY, priorSettings);
-    }
-
-    private static void restore(String property, @Nullable String prior) {
-        if (prior == null) System.clearProperty(property);
-        else System.setProperty(property, prior);
+        if (priorSettings == null) System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
+        else System.setProperty(MavenSettings.SETTINGS_PROPERTY, priorSettings);
     }
 
     @Test

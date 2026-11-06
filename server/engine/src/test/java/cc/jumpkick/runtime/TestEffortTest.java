@@ -19,8 +19,6 @@ class TestEffortTest {
     @TempDir
     Path hostStateDir;
 
-    private String prevStateDir;
-
     /**
      * Pin state + builds, the same way {@link EffortWeightsStepEtaTest} and {@link NativeEffortTest}
      * do and for the same reason: every cold rung here ends at {@code Calibration.load()}, so without
@@ -33,15 +31,12 @@ class TestEffortTest {
      */
     @BeforeEach
     void isolateHostState() {
-        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", hostStateDir.toString());
         Calibration.invalidateMemo();
     }
 
     @AfterEach
     void restoreHostState() {
-        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
         Calibration.invalidateMemo();
     }
 

@@ -37,7 +37,6 @@ class AddPingProbeTest {
     private final String version = "1." + Long.toString(System.nanoTime(), 36);
 
     private @Nullable String priorSettings;
-    private @Nullable String priorHome;
 
     @TempDir
     Path tmp;
@@ -45,7 +44,6 @@ class AddPingProbeTest {
     @BeforeEach
     void isolate() throws Exception {
         priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
-        priorHome = System.getProperty("jk.env.JK_HOME");
         Path home = Files.createDirectories(tmp.resolve("home"));
         Files.writeString(home.resolve("config.toml"), """
                 [repositories.corp]
@@ -65,7 +63,6 @@ class AddPingProbeTest {
     @AfterEach
     void restore() {
         restore(MavenSettings.SETTINGS_PROPERTY, priorSettings);
-        restore("jk.env.JK_HOME", priorHome);
     }
 
     private static void restore(String property, @Nullable String prior) {

@@ -39,7 +39,6 @@ class InstallPlansWorkerStagingTest {
         shelveWorker(store);
         put(store, "central", MavenLayout.artifactPath(LIB), "lib-bytes");
 
-        String prev = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_STORE_DIR", store.toAbsolutePath().toString());
         try {
             // Offline: the remotes are unreachable, exactly the first launch this staging exists for.
@@ -74,8 +73,6 @@ class InstallPlansWorkerStagingTest {
             assertThat(names).containsExactly("jk-foo-1.0.jar", "lib-1.0.jar");
         } finally {
             PomRuntimeClasspath.clearResolveCacheForTests();
-            if (prev != null) System.setProperty("jk.env.JK_STORE_DIR", prev);
-            else System.clearProperty("jk.env.JK_STORE_DIR");
         }
     }
 

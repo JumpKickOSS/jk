@@ -59,22 +59,16 @@ class AgentsCommandTest {
                 version = "1.0"
                 java = 25
                 """);
-        String prev = System.getProperty("jk.env.JK_HOME");
         System.setProperty("jk.env.JK_HOME", home.toString());
-        try {
-            int[] exit = new int[1];
-            String err = Capture.stderr(() -> {
-                exit[0] = Jk.execute("agents", dir.toString());
-            });
+        int[] exit = new int[1];
+        String err = Capture.stderr(() -> {
+            exit[0] = Jk.execute("agents", dir.toString());
+        });
 
-            assertThat(exit[0]).isEqualTo(Exit.CONFIG);
-            assertThat(err).contains(config + ":1:");
-            assertThat(dir.resolve(AgentsGuide.FILE))
-                    .as("the guide's format line depends on the manifest, which cannot be read")
-                    .doesNotExist();
-        } finally {
-            if (prev == null) System.clearProperty("jk.env.JK_HOME");
-            else System.setProperty("jk.env.JK_HOME", prev);
-        }
+        assertThat(exit[0]).isEqualTo(Exit.CONFIG);
+        assertThat(err).contains(config + ":1:");
+        assertThat(dir.resolve(AgentsGuide.FILE))
+                .as("the guide's format line depends on the manifest, which cannot be read")
+                .doesNotExist();
     }
 }

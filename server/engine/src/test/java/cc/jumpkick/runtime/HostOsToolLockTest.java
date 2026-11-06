@@ -21,7 +21,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -63,11 +62,6 @@ class HostOsToolLockTest {
         for (String os : List.of("linux", "osx", "windows")) {
             upstream.bytes(MavenStub.path(GROUP, "binary", "2.0", "-" + os + ".jar"), body(os));
         }
-    }
-
-    @AfterEach
-    void releaseStoreOverride() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
     }
 
     @Test

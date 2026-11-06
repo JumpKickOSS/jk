@@ -120,22 +120,15 @@ class ExecPlansProductBinTest {
                                 artifact("com.other:noise:jar:", "9.0", noise, List.of()))),
                 root.resolve("jk-lock.toml"));
 
-        String prev = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_STORE_DIR", store.toString());
-        try {
-            ExecPlan plan =
-                    ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
+        ExecPlan plan = ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
 
-            assertThat(plan.error()).isNull();
-            assertThat(plan.launcherScript())
-                    .contains("jk-cli-0.1.0.jar")
-                    .contains(cli.toString())
-                    .contains(leaf.toString())
-                    .doesNotContain("noise-9.0.jar");
-        } finally {
-            if (prev != null) System.setProperty("jk.env.JK_STORE_DIR", prev);
-            else System.clearProperty("jk.env.JK_STORE_DIR");
-        }
+        assertThat(plan.error()).isNull();
+        assertThat(plan.launcherScript())
+                .contains("jk-cli-0.1.0.jar")
+                .contains(cli.toString())
+                .contains(leaf.toString())
+                .doesNotContain("noise-9.0.jar");
     }
 
     /**
@@ -164,7 +157,6 @@ class ExecPlansProductBinTest {
                         List.of(artifact("org.tomlj:tomlj:jar:", "1.1.1", mirrored, List.of()))),
                 dir.resolve("jk-lock.toml"));
 
-        String prevStore = System.getProperty("jk.env.JK_STORE_DIR");
         String prevM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.env.JK_STORE_DIR", store.toString());
         System.setProperty("jk.m2.local", m2.toString());
@@ -180,7 +172,6 @@ class ExecPlansProductBinTest {
                     .contains(mirrored.toAbsolutePath().normalize().toString())
                     .contains(AppLauncher.NATIVE_ACCESS_FLAG);
         } finally {
-            restore("jk.env.JK_STORE_DIR", prevStore);
             restore("jk.m2.local", prevM2);
         }
     }
@@ -227,24 +218,18 @@ class ExecPlansProductBinTest {
                 new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of()),
                 root.resolve("jk-lock.toml"));
 
-        String prevStore = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_STORE_DIR", store.toString());
-        try {
-            ExecPlan before =
-                    ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
-            assertThat(before.launcherScript())
-                    .as("until the shelf has the sibling, its target/ jar is the entry")
-                    .contains(builtCore.toAbsolutePath().normalize().toString());
+        ExecPlan before =
+                ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
+        assertThat(before.launcherScript())
+                .as("until the shelf has the sibling, its target/ jar is the entry")
+                .contains(builtCore.toAbsolutePath().normalize().toString());
 
-            Path shelvedCore = putJar(store, "jk-local", "cc/jumpkick/core/0.1.0/core-0.1.0.jar");
-            ExecPlan after =
-                    ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
-            assertThat(after.launcherScript())
-                    .contains(shelvedCore.toString())
-                    .doesNotContain(root.resolve("core/target").toString());
-        } finally {
-            restore("jk.env.JK_STORE_DIR", prevStore);
-        }
+        Path shelvedCore = putJar(store, "jk-local", "cc/jumpkick/core/0.1.0/core-0.1.0.jar");
+        ExecPlan after = ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
+        assertThat(after.launcherScript())
+                .contains(shelvedCore.toString())
+                .doesNotContain(root.resolve("core/target").toString());
     }
 
     private static void restore(String property, @Nullable String previous) {

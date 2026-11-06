@@ -105,24 +105,18 @@ class EngineServerMetricsTest extends EngineServerHarness {
         // No calibration pass either: the idle boundary would start one in this throwaway home.
         Files.writeString(
                 processHome.resolve("config.toml"), "[engine]\nauto-warmup = false\n\n[metrics]\nmax-age-days = 1\n");
-        String previous = System.getProperty(HOME_OVERLAY);
         System.setProperty(HOME_OVERLAY, processHome.toString());
-        try {
-            assertThat(JkDirs.userConfigFile()).isEqualTo(processHome.resolve("config.toml"));
+        assertThat(JkDirs.userConfigFile()).isEqualTo(processHome.resolve("config.toml"));
 
-            Path kept = seededEngineStore(shortTempDir(), false);
-            assertThat(BuildMetrics.load(kept).entries())
-                    .as("the process home's one-day window never reaches the engine")
-                    .isNotEmpty();
+        Path kept = seededEngineStore(shortTempDir(), false);
+        assertThat(BuildMetrics.load(kept).entries())
+                .as("the process home's one-day window never reaches the engine")
+                .isNotEmpty();
 
-            Path pruned = seededEngineStore(shortTempDir(), true);
-            assertThat(BuildMetrics.load(pruned).entries())
-                    .as("the engine's own one-day window evicts the three-day-old runs")
-                    .isEmpty();
-        } finally {
-            if (previous == null) System.clearProperty(HOME_OVERLAY);
-            else System.setProperty(HOME_OVERLAY, previous);
-        }
+        Path pruned = seededEngineStore(shortTempDir(), true);
+        assertThat(BuildMetrics.load(pruned).entries())
+                .as("the engine's own one-day window evicts the three-day-old runs")
+                .isEmpty();
     }
 
     private static final String HOME_OVERLAY = "jk.env.JK_HOME";

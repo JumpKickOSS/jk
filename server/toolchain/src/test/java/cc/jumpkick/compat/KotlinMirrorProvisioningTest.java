@@ -11,12 +11,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -29,13 +27,6 @@ class KotlinMirrorProvisioningTest {
 
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
-
-    private final List<String> overlays = new ArrayList<>();
-
-    @AfterEach
-    void clear() {
-        overlays.forEach(name -> System.clearProperty("jk.env." + name));
-    }
 
     @Test
     void the_compiler_comes_from_the_mirror_with_its_token_and_reports_total_then_install(@TempDir Path tmp)
@@ -79,9 +70,8 @@ class KotlinMirrorProvisioningTest {
         assertThat(events).anyMatch(e -> e.startsWith("install Kotlin"));
     }
 
-    private void overlay(String name, String value) {
+    private static void overlay(String name, String value) {
         System.setProperty("jk.env." + name, value);
-        overlays.add(name);
     }
 
     private static byte[] zip(String top, String name, String body) throws IOException {

@@ -94,24 +94,20 @@ class ProjectIdentityTest {
         // Coord is display metadata, not identity material: renaming project
         // group/name must not split a lockless project into two dashboard projects.
         System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
-        try {
-            Files.writeString(dir.resolve("jk.toml"), """
-                    group = "com.example"
-                    name = "demo"
-                    version = "0.1.0"
-                    """);
-            ProjectIdentity before = ProjectIdentity.resolve(dir);
-            Files.writeString(dir.resolve("jk.toml"), """
-                    group = "org.renamed"
-                    name = "other"
-                    version = "0.1.0"
-                    """);
-            ProjectIdentity after = ProjectIdentity.resolve(dir);
-            assertThat(after.id()).isEqualTo(before.id());
-            assertThat(after.coord()).isEqualTo("org.renamed:other");
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
-        }
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "demo"
+                version = "0.1.0"
+                """);
+        ProjectIdentity before = ProjectIdentity.resolve(dir);
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "org.renamed"
+                name = "other"
+                version = "0.1.0"
+                """);
+        ProjectIdentity after = ProjectIdentity.resolve(dir);
+        assertThat(after.id()).isEqualTo(before.id());
+        assertThat(after.coord()).isEqualTo("org.renamed:other");
     }
 
     @Test
@@ -120,19 +116,15 @@ class ProjectIdentityTest {
         // enrichment) must resolve to the id recorded in identity.toml, not a fresh hash that
         // matches no project home.
         System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
-        try {
-            Path checkout = tmp.resolve("workspace");
-            String recorded = "aabbccddeeff00112233445566778899";
-            ProjectIdentity identity = new ProjectIdentity(
-                    recorded, "com.example:demo", checkout, ProjectIdentity.Source.PATH, null, null);
-            ProjectIdentity.IdentityFile.write(
-                    stateDir.resolve("builds").resolve("projects").resolve(recorded), identity);
-            // The checkout directory does not even exist — resolution still recovers the id.
-            ProjectIdentity resolved = ProjectIdentity.resolve(checkout);
-            assertThat(resolved.id()).isEqualTo(recorded);
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
-        }
+        Path checkout = tmp.resolve("workspace");
+        String recorded = "aabbccddeeff00112233445566778899";
+        ProjectIdentity identity =
+                new ProjectIdentity(recorded, "com.example:demo", checkout, ProjectIdentity.Source.PATH, null, null);
+        ProjectIdentity.IdentityFile.write(
+                stateDir.resolve("builds").resolve("projects").resolve(recorded), identity);
+        // The checkout directory does not even exist — resolution still recovers the id.
+        ProjectIdentity resolved = ProjectIdentity.resolve(checkout);
+        assertThat(resolved.id()).isEqualTo(recorded);
     }
 
     @Test
@@ -204,34 +196,29 @@ class ProjectIdentityTest {
     void a_rebuild_inside_the_grain_leaves_the_identity_file_alone(@TempDir Path tmp, @TempDir Path stateDir)
             throws Exception {
         System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
-        try {
-            String id = "aabbccddeeff00112233445566778899";
-            Path a = Files.createDirectories(tmp.resolve("wt-a"));
-            Path home = ProjectBuilds.projectHome(id);
-            Path file = home.resolve(ProjectBuilds.IDENTITY);
-            FakeClock clock = new FakeClock();
-            ProjectIdentity.IdentityFile.write(home, identityAt(id, a), clock);
-            String first = Files.readString(file);
-            FileTime sentinel =
-                    FileTime.fromMillis(Files.getLastModifiedTime(file).toMillis() - 60_000);
-            Files.setLastModifiedTime(file, sentinel);
+        String id = "aabbccddeeff00112233445566778899";
+        Path a = Files.createDirectories(tmp.resolve("wt-a"));
+        Path home = ProjectBuilds.projectHome(id);
+        Path file = home.resolve(ProjectBuilds.IDENTITY);
+        FakeClock clock = new FakeClock();
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, a), clock);
+        String first = Files.readString(file);
+        FileTime sentinel = FileTime.fromMillis(Files.getLastModifiedTime(file).toMillis() - 60_000);
+        Files.setLastModifiedTime(file, sentinel);
 
-            clock.advance(Duration.ofMinutes(4));
-            ProjectIdentity.IdentityFile.write(home, identityAt(id, a), clock);
-            assertThat(Files.readString(file)).isEqualTo(first);
-            assertThat(Files.getLastModifiedTime(file)).as("not rewritten").isEqualTo(sentinel);
+        clock.advance(Duration.ofMinutes(4));
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, a), clock);
+        assertThat(Files.readString(file)).isEqualTo(first);
+        assertThat(Files.getLastModifiedTime(file)).as("not rewritten").isEqualTo(sentinel);
 
-            clock.advance(Duration.ofMinutes(2));
-            ProjectIdentity.IdentityFile.write(home, identityAt(id, a), clock);
-            assertThat(ProjectIdentity.IdentityFile.read(home)
-                            .orElseThrow()
-                            .checkouts()
-                            .getFirst()
-                            .lastBuilt())
-                    .isEqualTo(FakeClock.START.plus(Duration.ofMinutes(6)));
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
-        }
+        clock.advance(Duration.ofMinutes(2));
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, a), clock);
+        assertThat(ProjectIdentity.IdentityFile.read(home)
+                        .orElseThrow()
+                        .checkouts()
+                        .getFirst()
+                        .lastBuilt())
+                .isEqualTo(FakeClock.START.plus(Duration.ofMinutes(6)));
     }
 
     /** A CI host's thousand checkouts of one project leave the newest few, the writer's own first. */
@@ -239,70 +226,61 @@ class ProjectIdentityTest {
     void identity_file_keeps_only_the_most_recently_built_checkouts(@TempDir Path tmp, @TempDir Path stateDir)
             throws Exception {
         System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
-        try {
-            String id = "aabbccddeeff00112233445566778899";
-            Path home = ProjectBuilds.projectHome(id);
-            FakeClock clock = new FakeClock();
-            int jobs = ProjectIdentity.IdentityFile.MAX_CHECKOUTS + 20;
-            for (int i = 0; i < jobs; i++) {
-                Path job = Files.createDirectories(tmp.resolve("job-" + i));
-                ProjectIdentity.IdentityFile.write(home, identityAt(id, job), clock);
-                clock.advance(Duration.ofMinutes(10));
-            }
-            Path last = tmp.resolve("job-" + (jobs - 1));
-            var kept = ProjectIdentity.IdentityFile.read(home).orElseThrow().checkouts();
-            assertThat(kept).hasSize(ProjectIdentity.IdentityFile.MAX_CHECKOUTS);
-            assertThat(kept.stream().map(ProjectIdentity.Checkout::path))
-                    .contains(last.toAbsolutePath().normalize())
-                    .doesNotContain(tmp.resolve("job-0").toAbsolutePath().normalize());
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
+        String id = "aabbccddeeff00112233445566778899";
+        Path home = ProjectBuilds.projectHome(id);
+        FakeClock clock = new FakeClock();
+        int jobs = ProjectIdentity.IdentityFile.MAX_CHECKOUTS + 20;
+        for (int i = 0; i < jobs; i++) {
+            Path job = Files.createDirectories(tmp.resolve("job-" + i));
+            ProjectIdentity.IdentityFile.write(home, identityAt(id, job), clock);
+            clock.advance(Duration.ofMinutes(10));
         }
+        Path last = tmp.resolve("job-" + (jobs - 1));
+        var kept = ProjectIdentity.IdentityFile.read(home).orElseThrow().checkouts();
+        assertThat(kept).hasSize(ProjectIdentity.IdentityFile.MAX_CHECKOUTS);
+        assertThat(kept.stream().map(ProjectIdentity.Checkout::path))
+                .contains(last.toAbsolutePath().normalize())
+                .doesNotContain(tmp.resolve("job-0").toAbsolutePath().normalize());
     }
 
     @Test
     void identity_file_keeps_every_live_checkout_and_prunes_dead_ones(@TempDir Path tmp, @TempDir Path stateDir)
             throws Exception {
         System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
-        try {
-            String id = "aabbccddeeff00112233445566778899";
-            Path a = Files.createDirectories(tmp.resolve("wt-a"));
-            Path b = Files.createDirectories(tmp.resolve("wt-b"));
-            Path home = ProjectBuilds.projectHome(id);
-            ProjectIdentity.IdentityFile.write(home, identityAt(id, a));
-            ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
+        String id = "aabbccddeeff00112233445566778899";
+        Path a = Files.createDirectories(tmp.resolve("wt-a"));
+        Path b = Files.createDirectories(tmp.resolve("wt-b"));
+        Path home = ProjectBuilds.projectHome(id);
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, a));
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
 
-            ProjectIdentity.IdentityFile both =
-                    ProjectIdentity.IdentityFile.read(home).orElseThrow();
-            assertThat(both.checkouts()).hasSize(2);
-            assertThat(both.checkouts().stream().map(ProjectIdentity.Checkout::path))
-                    .containsExactly(
-                            a.toAbsolutePath().normalize(), b.toAbsolutePath().normalize());
-            assertThat(both.checkouts())
-                    .allSatisfy(c -> assertThat(c.lastBuilt()).isNotNull());
-            String text = Files.readString(home.resolve(ProjectBuilds.IDENTITY));
-            assertThat(text).contains("[[checkout]]").contains("last-built = ");
-            assertThat(text.substring(0, text.indexOf("[[checkout]]")))
-                    .as("no path scalar beside the set")
-                    .doesNotContain("path =");
-            assertThat(ProjectIdentity.checkoutsForId(id)).hasSize(2);
+        ProjectIdentity.IdentityFile both =
+                ProjectIdentity.IdentityFile.read(home).orElseThrow();
+        assertThat(both.checkouts()).hasSize(2);
+        assertThat(both.checkouts().stream().map(ProjectIdentity.Checkout::path))
+                .containsExactly(
+                        a.toAbsolutePath().normalize(), b.toAbsolutePath().normalize());
+        assertThat(both.checkouts()).allSatisfy(c -> assertThat(c.lastBuilt()).isNotNull());
+        String text = Files.readString(home.resolve(ProjectBuilds.IDENTITY));
+        assertThat(text).contains("[[checkout]]").contains("last-built = ");
+        assertThat(text.substring(0, text.indexOf("[[checkout]]")))
+                .as("no path scalar beside the set")
+                .doesNotContain("path =");
+        assertThat(ProjectIdentity.checkoutsForId(id)).hasSize(2);
 
-            // A build in b after a's worktree was deleted drops a from the set.
-            Files.delete(a);
-            ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
-            ProjectIdentity.IdentityFile pruned =
-                    ProjectIdentity.IdentityFile.read(home).orElseThrow();
-            assertThat(pruned.checkouts().stream().map(ProjectIdentity.Checkout::path))
-                    .containsExactly(b.toAbsolutePath().normalize());
+        // A build in b after a's worktree was deleted drops a from the set.
+        Files.delete(a);
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
+        ProjectIdentity.IdentityFile pruned =
+                ProjectIdentity.IdentityFile.read(home).orElseThrow();
+        assertThat(pruned.checkouts().stream().map(ProjectIdentity.Checkout::path))
+                .containsExactly(b.toAbsolutePath().normalize());
 
-            // A recorded checkout that vanished without a later write is still not live.
-            Files.delete(b);
-            assertThat(ProjectIdentity.checkoutsForId(id)).isEmpty();
-            assertThat(ProjectIdentity.IdentityFile.read(home).orElseThrow().checkouts())
-                    .hasSize(1);
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
-        }
+        // A recorded checkout that vanished without a later write is still not live.
+        Files.delete(b);
+        assertThat(ProjectIdentity.checkoutsForId(id)).isEmpty();
+        assertThat(ProjectIdentity.IdentityFile.read(home).orElseThrow().checkouts())
+                .hasSize(1);
     }
 
     @Test

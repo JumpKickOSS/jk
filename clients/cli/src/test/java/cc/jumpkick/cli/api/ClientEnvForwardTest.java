@@ -84,17 +84,11 @@ class ClientEnvForwardTest {
         System.setProperty("jk.env.DOCKER_HOST", "unix:///run/user/1000/podman/podman.sock");
         System.setProperty("jk.env.TESTCONTAINERS_RYUK_DISABLED", "true");
         System.setProperty("jk.env.DOCKER_BUILDKIT", "1");
-        try {
-            assertThat(ClientEnvForward.resolve())
-                    .containsEntry("DOCKER_HOST", "unix:///run/user/1000/podman/podman.sock")
-                    .containsEntry("TESTCONTAINERS_RYUK_DISABLED", "true")
-                    .doesNotContainKey("DOCKER_BUILDKIT");
-            assertThat(ClientEnvForward.names()).doesNotContainAnyElementsOf(BuildEnv.CONTAINER);
-        } finally {
-            System.clearProperty("jk.env.DOCKER_HOST");
-            System.clearProperty("jk.env.TESTCONTAINERS_RYUK_DISABLED");
-            System.clearProperty("jk.env.DOCKER_BUILDKIT");
-        }
+        assertThat(ClientEnvForward.resolve())
+                .containsEntry("DOCKER_HOST", "unix:///run/user/1000/podman/podman.sock")
+                .containsEntry("TESTCONTAINERS_RYUK_DISABLED", "true")
+                .doesNotContainKey("DOCKER_BUILDKIT");
+        assertThat(ClientEnvForward.names()).doesNotContainAnyElementsOf(BuildEnv.CONTAINER);
     }
 
     /**
@@ -107,19 +101,13 @@ class ClientEnvForwardTest {
         System.setProperty("jk.env.https_proxy", "http://this-network.proxy:3128");
         System.setProperty("jk.env.NO_PROXY", ".corp");
         System.setProperty("jk.env.ftp_proxy", "http://not-a-name-jk-reads:1");
-        try {
-            assertThat(ClientEnvForward.resolve())
-                    .containsEntry("https_proxy", "http://this-network.proxy:3128")
-                    .containsEntry("NO_PROXY", ".corp")
-                    .doesNotContainKey("ftp_proxy");
-            // Off the machine list on purpose: that list's length is the reproducibility budget,
-            // and these ride by name.
-            assertThat(ClientEnvForward.names()).doesNotContainAnyElementsOf(BuildEnv.PROXY);
-        } finally {
-            System.clearProperty("jk.env.https_proxy");
-            System.clearProperty("jk.env.NO_PROXY");
-            System.clearProperty("jk.env.ftp_proxy");
-        }
+        assertThat(ClientEnvForward.resolve())
+                .containsEntry("https_proxy", "http://this-network.proxy:3128")
+                .containsEntry("NO_PROXY", ".corp")
+                .doesNotContainKey("ftp_proxy");
+        // Off the machine list on purpose: that list's length is the reproducibility budget,
+        // and these ride by name.
+        assertThat(ClientEnvForward.names()).doesNotContainAnyElementsOf(BuildEnv.PROXY);
     }
 
     /**
@@ -132,17 +120,11 @@ class ClientEnvForwardTest {
         System.setProperty("jk.env.DISPLAY", ":99");
         System.setProperty("jk.env.XAUTHORITY", "/tmp/xvfb-run.abc/Xauthority");
         System.setProperty("jk.env.DESKTOP_SESSION", "gnome");
-        try {
-            assertThat(ClientEnvForward.resolve())
-                    .containsEntry("DISPLAY", ":99")
-                    .containsEntry("XAUTHORITY", "/tmp/xvfb-run.abc/Xauthority")
-                    .doesNotContainKey("DESKTOP_SESSION");
-            assertThat(ClientEnvForward.names()).doesNotContainAnyElementsOf(BuildEnv.DISPLAY);
-        } finally {
-            System.clearProperty("jk.env.DISPLAY");
-            System.clearProperty("jk.env.XAUTHORITY");
-            System.clearProperty("jk.env.DESKTOP_SESSION");
-        }
+        assertThat(ClientEnvForward.resolve())
+                .containsEntry("DISPLAY", ":99")
+                .containsEntry("XAUTHORITY", "/tmp/xvfb-run.abc/Xauthority")
+                .doesNotContainKey("DESKTOP_SESSION");
+        assertThat(ClientEnvForward.names()).doesNotContainAnyElementsOf(BuildEnv.DISPLAY);
     }
 
     @Test
@@ -153,18 +135,13 @@ class ClientEnvForwardTest {
         // it, it enters no action key, and no test JVM is seeded with it.
         System.setProperty("jk.env.JK_REPO_X_TOKEN", "t0k3n");
         System.setProperty("jk.env.JK_REPO_X_HOST", "repo.example:8443");
-        try {
-            assertThat(ClientEnvForward.resolve())
-                    .containsEntry("JK_REPO_X_TOKEN", "t0k3n")
-                    .containsEntry("JK_REPO_X_HOST", "repo.example:8443");
-            // A command's own resolution of a declared reference wins over the forward set.
-            assertThat(ClientEnvForward.layerUnder(Map.of("JK_REPO_X_TOKEN", "declared")))
-                    .containsEntry("JK_REPO_X_TOKEN", "declared")
-                    .containsEntry("JK_REPO_X_HOST", "repo.example:8443");
-        } finally {
-            System.clearProperty("jk.env.JK_REPO_X_TOKEN");
-            System.clearProperty("jk.env.JK_REPO_X_HOST");
-        }
+        assertThat(ClientEnvForward.resolve())
+                .containsEntry("JK_REPO_X_TOKEN", "t0k3n")
+                .containsEntry("JK_REPO_X_HOST", "repo.example:8443");
+        // A command's own resolution of a declared reference wins over the forward set.
+        assertThat(ClientEnvForward.layerUnder(Map.of("JK_REPO_X_TOKEN", "declared")))
+                .containsEntry("JK_REPO_X_TOKEN", "declared")
+                .containsEntry("JK_REPO_X_HOST", "repo.example:8443");
     }
 
     /**
@@ -175,24 +152,16 @@ class ClientEnvForwardTest {
     @Test
     void it_forwards_the_managed_jdk_root_so_the_engine_looks_where_this_shell_installs() {
         System.setProperty("jk.env.JK_JDKS_DIR", "/srv/runtimes/jdks");
-        try {
-            var resolved = ClientEnvForward.resolve();
-            assertThat(resolved).containsEntry("JK_JDKS_DIR", "/srv/runtimes/jdks");
-            assertThat(ClientEnvForward.names()).doesNotContain("JK_JDKS_DIR");
-        } finally {
-            System.clearProperty("jk.env.JK_JDKS_DIR");
-        }
+        var resolved = ClientEnvForward.resolve();
+        assertThat(resolved).containsEntry("JK_JDKS_DIR", "/srv/runtimes/jdks");
+        assertThat(ClientEnvForward.names()).doesNotContain("JK_JDKS_DIR");
     }
 
     /** The engine decides by the caller's whole shell; a name off every forward list still rides it. */
     @Test
     void the_shell_carries_what_no_forward_list_names() {
         System.setProperty("jk.env.CI", "true");
-        try {
-            assertThat(ClientEnvForward.shell()).containsEntry("CI", "true");
-            assertThat(ClientEnvForward.resolve()).doesNotContainKey("CI");
-        } finally {
-            System.clearProperty("jk.env.CI");
-        }
+        assertThat(ClientEnvForward.shell()).containsEntry("CI", "true");
+        assertThat(ClientEnvForward.resolve()).doesNotContainKey("CI");
     }
 }

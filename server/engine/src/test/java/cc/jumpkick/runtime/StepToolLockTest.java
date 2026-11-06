@@ -30,7 +30,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -83,11 +82,6 @@ class StepToolLockTest {
             published.put(host, body);
             upstream.bytes(exePath(host), body);
         }
-    }
-
-    @AfterEach
-    void releaseStoreOverride() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
     }
 
     @Test

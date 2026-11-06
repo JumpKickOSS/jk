@@ -59,7 +59,6 @@ class OsvClientProxyTest {
                     .isEqualTo(List.of("GHSA-via-proxy"));
             assertThat(hosts).containsExactly("osv.example.test /v1/querybatch");
         } finally {
-            System.clearProperty("jk.env.JK_HOME");
             proxy.stop(0);
         }
     }

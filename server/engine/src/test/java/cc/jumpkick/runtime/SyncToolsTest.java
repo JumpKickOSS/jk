@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -88,11 +87,6 @@ class SyncToolsTest {
                 .leaf(GROUP, "kit-data", "1.0")
                 .bytes(MavenStub.path(GROUP, "kit-data", "1.0", ".jar"), bytes("data"));
         http.serve("/rules.xml", "<rules/>");
-    }
-
-    @AfterEach
-    void releaseStoreOverride() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
     }
 
     @Test

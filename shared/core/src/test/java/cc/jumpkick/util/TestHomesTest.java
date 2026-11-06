@@ -44,11 +44,7 @@ class TestHomesTest {
     @Test
     void the_root_moves_with_jk_home(@TempDir Path tmp) {
         System.setProperty("jk.env.JK_HOME", tmp.resolve("relocated").toString());
-        try {
-            assertThat(TestHomes.root()).isEqualTo(tmp.resolve("relocated").resolve("test-homes"));
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-        }
+        assertThat(TestHomes.root()).isEqualTo(tmp.resolve("relocated").resolve("test-homes"));
     }
 
     /**
@@ -119,21 +115,17 @@ class TestHomesTest {
     @Test
     void a_green_runs_slot_is_discarded_unless_another_launch_holds_it(@TempDir Path tmp) throws Exception {
         System.setProperty("jk.env.JK_HOME", tmp.resolve("jk-home").toString());
-        try {
-            Path module = Files.createDirectories(tmp.resolve("module"));
-            Path slot = TestHomes.slotFor(module);
-            Files.createDirectories(slot.resolve("home/store"));
-            try (TestHomes.Hold other = TestHomes.hold(slot)) {
-                assertThat(TestHomes.discard(module)).isFalse();
-                assertThat(slot).exists();
-            }
-
-            assertThat(TestHomes.discard(module)).isTrue();
-            assertThat(slot).doesNotExist();
-            assertThat(TestHomes.discard(module)).as("nothing to discard").isFalse();
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
+        Path module = Files.createDirectories(tmp.resolve("module"));
+        Path slot = TestHomes.slotFor(module);
+        Files.createDirectories(slot.resolve("home/store"));
+        try (TestHomes.Hold other = TestHomes.hold(slot)) {
+            assertThat(TestHomes.discard(module)).isFalse();
+            assertThat(slot).exists();
         }
+
+        assertThat(TestHomes.discard(module)).isTrue();
+        assertThat(slot).doesNotExist();
+        assertThat(TestHomes.discard(module)).as("nothing to discard").isFalse();
     }
 
     /** Nothing else writes here, so an unstamped directory is a crashed run's leftover. */
@@ -320,28 +312,20 @@ class TestHomesTest {
     @Test
     void every_due_launch_reaps_what_went_stale_since_the_last_quiet_pass(@TempDir Path tmp) throws Exception {
         System.setProperty("jk.env.JK_HOME", tmp.resolve("relocated").toString());
-        try {
-            Path root = Files.createDirectories(TestHomes.root());
-            Path module = Files.createDirectories(tmp.resolve("module"));
-            long t0 = System.currentTimeMillis();
-            TestHomes.prepareSlot(module, at(t0));
-            Path stale = Files.createDirectories(root.resolve("cccccccccccc"));
-            TestHomes.stamp(stale, root);
-            age(stale.resolve(".used-at"), Duration.ofDays(TestHomes.KEEP_DAYS + 1));
+        Path root = Files.createDirectories(TestHomes.root());
+        Path module = Files.createDirectories(tmp.resolve("module"));
+        long t0 = System.currentTimeMillis();
+        TestHomes.prepareSlot(module, at(t0));
+        Path stale = Files.createDirectories(root.resolve("cccccccccccc"));
+        TestHomes.stamp(stale, root);
+        age(stale.resolve(".used-at"), Duration.ofDays(TestHomes.KEEP_DAYS + 1));
 
-            TestHomes.prepareSlot(module, at(t0 + 1000));
-            assertThat(stale)
-                    .as("a launch right after a quiet pass skips its own")
-                    .isDirectory();
+        TestHomes.prepareSlot(module, at(t0 + 1000));
+        assertThat(stale).as("a launch right after a quiet pass skips its own").isDirectory();
 
-            TestHomes.prepareSlot(module, at(t0 + TestHomes.REAP_EVERY_MILLIS));
-            assertThat(stale)
-                    .as("the next due launch reaps it, in the same JVM")
-                    .doesNotExist();
-            assertThat(TestHomes.slotFor(module).resolve(".used-at")).isRegularFile();
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-        }
+        TestHomes.prepareSlot(module, at(t0 + TestHomes.REAP_EVERY_MILLIS));
+        assertThat(stale).as("the next due launch reaps it, in the same JVM").doesNotExist();
+        assertThat(TestHomes.slotFor(module).resolve(".used-at")).isRegularFile();
     }
 
     /** A pass that removed something, or left the root over the cap, is followed by a full pass at the next launch. */

@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -48,11 +47,6 @@ class LockTrustPipelineTest {
         upstream = new MavenStub(http)
                 .leaf("org.junit.jupiter", "junit-jupiter", "6.1.0")
                 .leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
-    }
-
-    @AfterEach
-    void releaseStoreOverride() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
     }
 
     @Test

@@ -26,7 +26,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -84,11 +83,6 @@ class ToolClosureLockTest {
                           <groupId>com.example.gen</groupId><artifactId>gen-core</artifactId><version>2.0</version>
                         </project>""")
                 .bytes(MavenStub.path(GROUP, "gen-core", "2.0", ".jar"), bytes("core"));
-    }
-
-    @AfterEach
-    void releaseStoreOverride() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
     }
 
     @Test

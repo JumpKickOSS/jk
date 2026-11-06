@@ -13,9 +13,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.jspecify.annotations.Nullable;
@@ -41,16 +38,14 @@ class MavenDistNativeMirrorTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
-    private final List<String> properties =
-            List.of("jk.env.JK_HOME", "jk.env.JK_REPO_CORP_TOKEN", MavenSettings.SETTINGS_PROPERTY);
-    private final Map<String, @Nullable String> prior = new HashMap<>();
+    private @Nullable String priorSettings;
 
     @TempDir
     Path tmp;
 
     @BeforeEach
     void isolate() throws IOException {
-        for (String p : properties) prior.put(p, System.getProperty(p));
+        priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
         Path home = Files.createDirectories(tmp.resolve("home"));
         Files.writeString(home.resolve("config.toml"), """
                 [repositories.corp]
@@ -67,11 +62,8 @@ class MavenDistNativeMirrorTest {
 
     @AfterEach
     void restore() {
-        for (String p : properties) {
-            String was = prior.get(p);
-            if (was == null) System.clearProperty(p);
-            else System.setProperty(p, was);
-        }
+        if (priorSettings == null) System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
+        else System.setProperty(MavenSettings.SETTINGS_PROPERTY, priorSettings);
     }
 
     @Test

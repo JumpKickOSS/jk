@@ -9,7 +9,6 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.wire.EnginePaths;
 import java.nio.file.Files;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -23,20 +22,11 @@ class EngineStopNotRunningTest {
     @RegisterExtension
     final ShortTempDirs tempDirs = new ShortTempDirs("jks-");
 
-    private String prevState;
-
     @BeforeEach
     void isolateState() throws Exception {
-        prevState = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty(
                 "jk.env.JK_STATE_DIR",
                 Files.createDirectories(tempDirs.create()).toString());
-    }
-
-    @AfterEach
-    void restoreState() {
-        if (prevState == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevState);
     }
 
     @Test

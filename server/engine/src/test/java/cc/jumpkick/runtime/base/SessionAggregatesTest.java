@@ -23,12 +23,10 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class SessionAggregatesTest {
 
-    private String previousStateDir;
     private Session previousSession;
 
     @BeforeEach
     void isolate() {
-        previousStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         previousSession = SessionContext.current();
     }
 
@@ -37,8 +35,6 @@ class SessionAggregatesTest {
         SessionContext.install(previousSession);
         SessionAggregates.maxBytesForTest(-1);
         SessionAggregates.clear();
-        if (previousStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", previousStateDir);
     }
 
     private static Path checkout(Path state, String name) throws Exception {

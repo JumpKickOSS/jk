@@ -50,7 +50,6 @@ class SidePathMirrorsTest {
     private final String version = "1." + Long.toString(System.nanoTime(), 36);
 
     private @Nullable String priorSettings;
-    private @Nullable String priorHome;
 
     @TempDir
     Path tmp;
@@ -58,7 +57,6 @@ class SidePathMirrorsTest {
     @BeforeEach
     void isolate() throws Exception {
         priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
-        priorHome = System.getProperty("jk.env.JK_HOME");
         Path home = Files.createDirectories(tmp.resolve("home"));
         Files.writeString(home.resolve("config.toml"), "");
         System.setProperty("jk.env.JK_HOME", home.toString());
@@ -70,13 +68,8 @@ class SidePathMirrorsTest {
 
     @AfterEach
     void restore() {
-        restore(MavenSettings.SETTINGS_PROPERTY, priorSettings);
-        restore("jk.env.JK_HOME", priorHome);
-    }
-
-    private static void restore(String property, @Nullable String prior) {
-        if (prior == null) System.clearProperty(property);
-        else System.setProperty(property, prior);
+        if (priorSettings == null) System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
+        else System.setProperty(MavenSettings.SETTINGS_PROPERTY, priorSettings);
     }
 
     private void mirrorEverythingToTheStub() throws Exception {

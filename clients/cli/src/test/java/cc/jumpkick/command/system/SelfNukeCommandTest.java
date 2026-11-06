@@ -54,19 +54,12 @@ class SelfNukeCommandTest {
     @org.junit.jupiter.api.io.TempDir
     Path isolatedHome;
 
-    private String prevHome;
-    private String prevState;
-    private String prevStore;
-
     @org.junit.jupiter.api.BeforeEach
     void isolateHome() throws IOException {
         // The suite's layout, read before the overlay hides it: self nuke is engine-hosted, and the
         // isolated home needs a REAL launchable engine (EngineTestExtension materialized the suite's
         // in beforeAll). A stub jar here just reproduces "no build engine" (exit 1).
         IsolatedEngineHome.Suite suite = IsolatedEngineHome.Suite.current();
-        prevHome = System.getProperty("jk.env.JK_HOME");
-        prevState = System.getProperty("jk.env.JK_STATE_DIR");
-        prevStore = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_HOME", isolatedHome.toString());
         System.setProperty(
                 "jk.env.JK_STATE_DIR",
@@ -85,16 +78,6 @@ class SelfNukeCommandTest {
     private void keepTemplatesLocal() throws IOException {
         Path none = isolatedHome.resolve("no-catalog-here");
         Files.writeString(JkDirs.current().userConfigFilePath(), "[templates]\nofficial = \"" + none.toUri() + "\"\n");
-    }
-
-    @org.junit.jupiter.api.AfterEach
-    void restoreHome() {
-        if (prevHome == null) System.clearProperty("jk.env.JK_HOME");
-        else System.setProperty("jk.env.JK_HOME", prevHome);
-        if (prevState == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevState);
-        if (prevStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
-        else System.setProperty("jk.env.JK_STORE_DIR", prevStore);
     }
 
     /** A store/cache nuke that fails the way an unstartable engine fails, and counts being asked. */
@@ -603,64 +586,52 @@ class SelfNukeCommandTest {
 
     @Test
     void a_refused_store_row_never_reaches_the_delegated_storage_nuke() throws Exception {
-        String prev = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_STORE_DIR", isolatedHome.toString());
-        try {
-            Files.createDirectories(JkDirs.current().configDir().resolve("demo"));
-            var hosted = new SelfNukeCommand.Hosted() {
-                boolean storageAsked;
+        Files.createDirectories(JkDirs.current().configDir().resolve("demo"));
+        var hosted = new SelfNukeCommand.Hosted() {
+            boolean storageAsked;
 
-                @Override
-                public int storage() {
-                    storageAsked = true;
-                    return 0;
-                }
+            @Override
+            public int storage() {
+                storageAsked = true;
+                return 0;
+            }
 
-                @Override
-                public int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped) {
-                    return 0;
-                }
-            };
-            String err = captureText(() -> runNuke(hosted, true));
-            assertThat(hosted.storageAsked)
-                    .as("a store row the guards refused must not be handed to jk storage nuke")
-                    .isFalse();
-            assertThat(TestAnsi.strip(err)).contains("refusing to nuke the artifact store");
-        } finally {
-            if (prev == null) System.clearProperty("jk.env.JK_STORE_DIR");
-            else System.setProperty("jk.env.JK_STORE_DIR", prev);
-        }
+            @Override
+            public int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped) {
+                return 0;
+            }
+        };
+        String err = captureText(() -> runNuke(hosted, true));
+        assertThat(hosted.storageAsked)
+                .as("a store row the guards refused must not be handed to jk storage nuke")
+                .isFalse();
+        assertThat(TestAnsi.strip(err)).contains("refusing to nuke the artifact store");
     }
 
     @Test
     void a_refused_cache_row_never_reaches_the_delegated_cache_nuke() throws Exception {
-        String prev = System.getProperty("jk.env.JK_CACHE_DIR");
         System.setProperty("jk.env.JK_CACHE_DIR", isolatedHome.toString());
-        try {
-            Files.createDirectories(JkDirs.current().configDir().resolve("demo"));
-            var hosted = new SelfNukeCommand.Hosted() {
-                boolean cacheAsked;
+        Files.createDirectories(JkDirs.current().configDir().resolve("demo"));
+        var hosted = new SelfNukeCommand.Hosted() {
+            boolean cacheAsked;
 
-                @Override
-                public int storage() {
-                    return 0;
-                }
+            @Override
+            public int storage() {
+                return 0;
+            }
 
-                @Override
-                public int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped) {
-                    cacheAsked = true;
-                    return 0;
-                }
-            };
-            String err = captureText(() -> runNuke(hosted, true));
-            assertThat(hosted.cacheAsked)
-                    .as("a cache row the guards refused must not be handed to jk cache nuke")
-                    .isFalse();
-            assertThat(TestAnsi.strip(err)).contains("refusing to nuke the cache tier");
-        } finally {
-            if (prev == null) System.clearProperty("jk.env.JK_CACHE_DIR");
-            else System.setProperty("jk.env.JK_CACHE_DIR", prev);
-        }
+            @Override
+            public int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped) {
+                cacheAsked = true;
+                return 0;
+            }
+        };
+        String err = captureText(() -> runNuke(hosted, true));
+        assertThat(hosted.cacheAsked)
+                .as("a cache row the guards refused must not be handed to jk cache nuke")
+                .isFalse();
+        assertThat(TestAnsi.strip(err)).contains("refusing to nuke the cache tier");
     }
 
     @Test
@@ -668,17 +639,11 @@ class SelfNukeCommandTest {
         // The --cache shortcut bypasses the plan table, but not the guards: the shared nuke
         // deletes whatever root it is handed, so a JK_CACHE_DIR mis-pointed at the umbrella home
         // must be refused before it reaches the shared code path.
-        String prev = System.getProperty("jk.env.JK_CACHE_DIR");
         System.setProperty("jk.env.JK_CACHE_DIR", isolatedHome.toString());
-        try {
-            Files.createDirectories(JkDirs.current().productLibDir());
-            int exit = capture(() -> Jk.execute("self", "nuke", "--cache", "-y"));
-            assertThat(exit).isNotZero();
-            assertThat(JkDirs.current().productLibDir()).isDirectory();
-        } finally {
-            if (prev == null) System.clearProperty("jk.env.JK_CACHE_DIR");
-            else System.setProperty("jk.env.JK_CACHE_DIR", prev);
-        }
+        Files.createDirectories(JkDirs.current().productLibDir());
+        int exit = capture(() -> Jk.execute("self", "nuke", "--cache", "-y"));
+        assertThat(exit).isNotZero();
+        assertThat(JkDirs.current().productLibDir()).isDirectory();
     }
 
     @Test

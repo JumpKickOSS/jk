@@ -3,3 +3,4 @@ cc.jumpkick.config.testing.StoreWriteGateGlobal
 cc.jumpkick.http.testing.ConnectFaultsGlobal
 cc.jumpkick.resolve.testing.ResolveProcessCacheGlobal
 cc.jumpkick.engine.EngineAotTrainerGlobal
+cc.jumpkick.config.testing.JkEnvGlobal

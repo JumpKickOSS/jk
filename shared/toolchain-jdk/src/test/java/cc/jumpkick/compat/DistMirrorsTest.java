@@ -110,15 +110,9 @@ class DistMirrorsTest {
 
     @Test
     void the_resolvers_build_their_urls_under_the_configured_base() {
-        String previous = System.getProperty("jk.env.JK_KOTLIN_DIST_MIRROR");
         System.setProperty("jk.env.JK_KOTLIN_DIST_MIRROR", "https://nexus.corp/kotlin");
-        try {
-            assertThat(KotlinResolver.distributionFor("2.4.10").downloadUri())
-                    .hasToString("https://nexus.corp/kotlin/v2.4.10/kotlin-compiler-2.4.10.zip");
-        } finally {
-            if (previous == null) System.clearProperty("jk.env.JK_KOTLIN_DIST_MIRROR");
-            else System.setProperty("jk.env.JK_KOTLIN_DIST_MIRROR", previous);
-        }
+        assertThat(KotlinResolver.distributionFor("2.4.10").downloadUri())
+                .hasToString("https://nexus.corp/kotlin/v2.4.10/kotlin-compiler-2.4.10.zip");
     }
 
     private MavenSettings settings(String xml) throws Exception {

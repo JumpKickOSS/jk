@@ -130,39 +130,34 @@ class IdleHousekeepingTest {
             @TempDir Path home, @TempDir Path roots) throws Exception {
         System.setProperty("jk.env.JK_HOME", home.toAbsolutePath().toString());
         System.setProperty("jk.env.JK_AUTO_PRUNE", "true");
-        try {
-            Path cache = roots.resolve("cache");
-            Files.createDirectories(cache.resolve("actions/keys"));
-            Files.writeString(cache.resolve("actions/keys/task1"), "x");
-            Path engineDir = Files.createDirectories(roots.resolve("engine"));
-            Path dump = engineDir.resolve("0123456789abcdef.hprof");
-            Files.writeString(dump, "old");
-            Files.setLastModifiedTime(dump, FileTime.fromMillis(0));
-            List<String> log = new CopyOnWriteArrayList<>();
-            AtomicBoolean drained = new AtomicBoolean();
-            IdleHousekeeping housekeeping = new IdleHousekeeping(
-                    new AtomicInteger(0),
-                    new ReentrantReadWriteLock(),
-                    new JkHistoryConfig(false, 30, 512),
-                    new BuildJournal(roots.resolve("builds")),
-                    () -> roots.resolve("metrics.jsonl"),
-                    () -> BuildMetrics.Limits.DEFAULTS,
-                    engineDir,
-                    System::currentTimeMillis,
-                    log::add,
-                    () -> false,
-                    () -> true,
-                    () -> drained.set(true));
-            housekeeping.maybeEnqueuePrune(cache);
+        Path cache = roots.resolve("cache");
+        Files.createDirectories(cache.resolve("actions/keys"));
+        Files.writeString(cache.resolve("actions/keys/task1"), "x");
+        Path engineDir = Files.createDirectories(roots.resolve("engine"));
+        Path dump = engineDir.resolve("0123456789abcdef.hprof");
+        Files.writeString(dump, "old");
+        Files.setLastModifiedTime(dump, FileTime.fromMillis(0));
+        List<String> log = new CopyOnWriteArrayList<>();
+        AtomicBoolean drained = new AtomicBoolean();
+        IdleHousekeeping housekeeping = new IdleHousekeeping(
+                new AtomicInteger(0),
+                new ReentrantReadWriteLock(),
+                new JkHistoryConfig(false, 30, 512),
+                new BuildJournal(roots.resolve("builds")),
+                () -> roots.resolve("metrics.jsonl"),
+                () -> BuildMetrics.Limits.DEFAULTS,
+                engineDir,
+                System::currentTimeMillis,
+                log::add,
+                () -> false,
+                () -> true,
+                () -> drained.set(true));
+        housekeeping.maybeEnqueuePrune(cache);
 
-            housekeeping.maybeIdleBoundary();
+        housekeeping.maybeIdleBoundary();
 
-            assertThat(drained).as("the last plan still ends the drain").isTrue();
-            assertThat(log).noneMatch(line -> line.contains("prune"));
-            assertThat(dump).as("the successor's boundary retires it").exists();
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-            System.clearProperty("jk.env.JK_AUTO_PRUNE");
-        }
+        assertThat(drained).as("the last plan still ends the drain").isTrue();
+        assertThat(log).noneMatch(line -> line.contains("prune"));
+        assertThat(dump).as("the successor's boundary retires it").exists();
     }
 }

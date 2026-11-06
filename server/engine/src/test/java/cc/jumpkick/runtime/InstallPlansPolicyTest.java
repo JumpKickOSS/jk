@@ -17,7 +17,6 @@ import cc.jumpkick.wire.runtime.ModuleOutcome.Installed.Change;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,22 +29,14 @@ class InstallPlansPolicyTest {
     @TempDir
     Path tmp;
 
-    private String previousStore;
     private Path m2Dir;
     private Path cache;
 
     @BeforeEach
     void isolateTheStore() {
-        previousStore = System.getProperty(STORE_PROPERTY);
         System.setProperty(STORE_PROPERTY, tmp.resolve("store").toAbsolutePath().toString());
         m2Dir = tmp.resolve("m2");
         cache = tmp.resolve("cache");
-    }
-
-    @AfterEach
-    void restoreTheStore() {
-        if (previousStore != null) System.setProperty(STORE_PROPERTY, previousStore);
-        else System.clearProperty(STORE_PROPERTY);
     }
 
     private JkBuild project(String version) {

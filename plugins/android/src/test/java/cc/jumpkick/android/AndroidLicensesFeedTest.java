@@ -59,7 +59,6 @@ class AndroidLicensesFeedTest {
                     .containsEntry("android-sdk-preview-license", "Preview terms");
             assertThat(hosts).containsExactly("dl.example.test");
         } finally {
-            System.clearProperty("jk.env.JK_HOME");
             proxy.stop(0);
         }
     }

@@ -26,8 +26,6 @@ class EffortWeightsStepEtaTest {
     @TempDir
     Path hostStateDir;
 
-    private String prevStateDir;
-
     /**
      * Pin state + builds, the same way {@link NativeEffortTest} does and for the same reason. Cold
      * pricing consults {@code Calibration.load()} before its uncalibrated baselines, so without
@@ -42,7 +40,6 @@ class EffortWeightsStepEtaTest {
      */
     @BeforeEach
     void isolateHostState() {
-        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", hostStateDir.toString());
         Calibration.invalidateMemo();
         BuildMetrics.clearSessionAggregatesMemo();
@@ -50,8 +47,6 @@ class EffortWeightsStepEtaTest {
 
     @AfterEach
     void restoreHostState() {
-        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
         Calibration.invalidateMemo();
         BuildMetrics.clearSessionAggregatesMemo();
     }

@@ -357,7 +357,6 @@ class EffortWeightsTest {
     void heavy_step_blip_rejection_prefers_the_mean_over_a_fast_over_floor_last(@TempDir Path state) throws Exception {
         // The old `|| last >= 5_000` escape made the mean*0.25 rejection dead for heavy
         // steps — one 6s mostly-warmed native run replaced a stable 60s mean.
-        String prev = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", state.resolve("state").toString());
         BuildMetrics.clearSessionAggregatesMemo();
         try {
@@ -379,8 +378,6 @@ class EffortWeightsTest {
                     () -> StepWalls.stepOkAvgMillisOwn(null, moduleDir.toString(), "native-image"));
             assertThat(wall).isEqualTo(60_000L);
         } finally {
-            if (prev == null) System.clearProperty("jk.env.JK_STATE_DIR");
-            else System.setProperty("jk.env.JK_STATE_DIR", prev);
             BuildMetrics.clearSessionAggregatesMemo();
         }
     }

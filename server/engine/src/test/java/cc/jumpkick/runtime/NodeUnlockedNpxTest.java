@@ -23,7 +23,6 @@ import cc.jumpkick.run.BuildPlanResult;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,7 +48,6 @@ class NodeUnlockedNpxTest {
     @TempDir
     Path tmp;
 
-    private final List<String> overlays = new ArrayList<>();
     private @Nullable NpmRegistryStub registry;
     private @Nullable Supplier<NodeProvisioning> production;
 
@@ -57,7 +55,6 @@ class NodeUnlockedNpxTest {
     void tearDown() {
         if (registry != null) registry.close();
         if (production != null) PlannerNodeSetup.provisioning = production;
-        for (String name : overlays) System.clearProperty("jk.env." + name);
     }
 
     @Test
@@ -167,7 +164,6 @@ class NodeUnlockedNpxTest {
 
     private void overlay(String name, String value) {
         System.setProperty("jk.env." + name, value);
-        overlays.add(name);
     }
 
     private static int major(String version) {

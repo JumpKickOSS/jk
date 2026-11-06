@@ -229,28 +229,22 @@ class JdkInventoryTest {
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
     void the_inventory_and_its_lock_are_owner_only(@TempDir Path tmp) throws IOException {
-        String prior = System.getProperty(STATE_PROPERTY);
         System.setProperty(STATE_PROPERTY, tmp.resolve("state").toString());
-        try {
-            Path jdks = Files.createDirectories(tmp.resolve("jdks"));
-            Path javaHome = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium");
-            JdkInventory inv = new JdkInventory(jdks, JkDirs.state().resolve(JdkInventory.FILE_NAME));
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path javaHome = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium");
+        JdkInventory inv = new JdkInventory(jdks, JkDirs.state().resolve(JdkInventory.FILE_NAME));
 
-            inv.setDefault(new InstalledJdk("temurin-25.0.4", javaHome));
+        inv.setDefault(new InstalledJdk("temurin-25.0.4", javaHome));
 
-            Path lock = inv.file().resolveSibling(JdkInventory.FILE_NAME + ".lock");
-            assertThat(lock).exists();
-            for (Path file : List.of(inv.file(), lock)) {
-                assertThat(Files.getPosixFilePermissions(file))
-                        .as(file.getFileName().toString())
-                        .isEqualTo(PosixFilePermissions.fromString("rw-------"));
-            }
-            assertThat(Files.getPosixFilePermissions(JkDirs.state()))
-                    .isEqualTo(PosixFilePermissions.fromString("rwx------"));
-        } finally {
-            if (prior == null) System.clearProperty(STATE_PROPERTY);
-            else System.setProperty(STATE_PROPERTY, prior);
+        Path lock = inv.file().resolveSibling(JdkInventory.FILE_NAME + ".lock");
+        assertThat(lock).exists();
+        for (Path file : List.of(inv.file(), lock)) {
+            assertThat(Files.getPosixFilePermissions(file))
+                    .as(file.getFileName().toString())
+                    .isEqualTo(PosixFilePermissions.fromString("rw-------"));
         }
+        assertThat(Files.getPosixFilePermissions(JkDirs.state()))
+                .isEqualTo(PosixFilePermissions.fromString("rwx------"));
     }
 
     private static Path fakeJdk(Path home, String version, String implementor) throws IOException {

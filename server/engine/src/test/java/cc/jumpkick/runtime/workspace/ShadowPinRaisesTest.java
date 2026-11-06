@@ -64,7 +64,6 @@ class ShadowPinRaisesTest {
 
     @AfterEach
     void releaseStoreOverride() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
         ShadowManifests.install(dir -> List.of());
     }
 

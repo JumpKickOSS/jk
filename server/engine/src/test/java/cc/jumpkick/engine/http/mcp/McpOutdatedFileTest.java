@@ -7,7 +7,6 @@ import cc.jumpkick.runtime.workspace.JkOutdatedMarkdown;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,12 +21,6 @@ class McpOutdatedFileTest {
     void isolate() {
         System.setProperty("jk.env.JK_STORE_DIR", isolated.resolve("store").toString());
         System.setProperty("jk.env.JK_CACHE_DIR", isolated.resolve("cache").toString());
-    }
-
-    @AfterEach
-    void release() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
-        System.clearProperty("jk.env.JK_CACHE_DIR");
     }
 
     @Test

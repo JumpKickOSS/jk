@@ -58,9 +58,9 @@ class HardwareProbeStoreTest {
 
     /** Point the artifact store, the Maven local repository and the cache root at this test's dirs. */
     private void redirectRoots(Path store, Path m2, Path cache) {
-        set("jk.env.JK_STORE_DIR", store.toAbsolutePath().toString());
+        System.setProperty("jk.env.JK_STORE_DIR", store.toAbsolutePath().toString());
         set("jk.m2.local", m2.toAbsolutePath().toString());
-        set("jk.env.JK_CACHE_DIR", cache.toAbsolutePath().toString());
+        System.setProperty("jk.env.JK_CACHE_DIR", cache.toAbsolutePath().toString());
     }
 
     @Test

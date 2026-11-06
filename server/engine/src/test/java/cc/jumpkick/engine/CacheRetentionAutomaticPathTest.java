@@ -47,15 +47,10 @@ class CacheRetentionAutomaticPathTest {
         System.setProperty("jk.env.JK_AUTO_PRUNE", "true");
         // No host calibration after the prune: it would run a real warmup on this machine.
         Files.writeString(home.resolve("config.toml"), "[engine]\nauto-warmup = false\n");
-        try {
-            IdleHousekeeping housekeeping = idle(cache, log);
-            housekeeping.maybeEnqueuePrune(cache);
+        IdleHousekeeping housekeeping = idle(cache, log);
+        housekeeping.maybeEnqueuePrune(cache);
 
-            housekeeping.run();
-        } finally {
-            System.clearProperty("jk.env.JK_HOME");
-            System.clearProperty("jk.env.JK_AUTO_PRUNE");
-        }
+        housekeeping.run();
 
         assertThat(overBudget).as("a cap is reachable from the boundary").doesNotExist();
         assertThat(abandoned)

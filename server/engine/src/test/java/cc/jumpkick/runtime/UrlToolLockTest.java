@@ -22,7 +22,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -61,11 +60,6 @@ class UrlToolLockTest {
         http.serve("/rules-" + host + ".xml", "rules for " + host);
         // Another OS's file is published too; the third OS's is not, and gets no row.
         http.serve("/rules-" + (host.equals("linux") ? "osx" : "linux") + ".xml", "rules elsewhere");
-    }
-
-    @AfterEach
-    void releaseStoreOverride() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
     }
 
     @Test

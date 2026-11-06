@@ -26,19 +26,14 @@ class StepWallLadderTest {
     @TempDir
     Path state;
 
-    private String prevStateDir;
-
     @BeforeEach
     void isolateState() {
-        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", state.resolve("state").toString());
         BuildMetrics.clearSessionAggregatesMemo();
     }
 
     @AfterEach
     void restoreState() {
-        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
         BuildMetrics.clearSessionAggregatesMemo();
     }
 

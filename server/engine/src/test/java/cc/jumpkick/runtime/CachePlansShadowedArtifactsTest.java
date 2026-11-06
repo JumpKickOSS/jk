@@ -24,20 +24,17 @@ class CachePlansShadowedArtifactsTest {
     Path tmp;
 
     private Path store;
-    private String priorStore;
 
     @BeforeEach
     void setUp() {
         store = tmp.resolve("store");
-        priorStore = System.setProperty("jk.env.JK_STORE_DIR", store.toString());
+        System.setProperty("jk.env.JK_STORE_DIR", store.toString());
         System.setProperty("jk.m2.local", tmp.resolve("m2").toString());
     }
 
     @AfterEach
     void tearDown() {
         System.clearProperty("jk.m2.local");
-        if (priorStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
-        else System.setProperty("jk.env.JK_STORE_DIR", priorStore);
     }
 
     private Path leave(String origin, String treeId) throws Exception {

@@ -18,7 +18,6 @@ import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,19 +32,10 @@ class SelfShelveCommandTest {
     @TempDir
     Path isolatedHome;
 
-    private String prevHome;
-
     @BeforeEach
     void isolateHome() {
-        prevHome = System.getProperty("jk.env.JK_HOME");
         System.setProperty("jk.env.JK_HOME", isolatedHome.toString());
         CliOutput.beginCommand(false);
-    }
-
-    @AfterEach
-    void restoreHome() {
-        if (prevHome == null) System.clearProperty("jk.env.JK_HOME");
-        else System.setProperty("jk.env.JK_HOME", prevHome);
     }
 
     @Test

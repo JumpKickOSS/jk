@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,11 +26,8 @@ class PluginCommandFallbackTest {
     @TempDir
     Path project;
 
-    private @Nullable String prevHome;
-
     @BeforeEach
     void isolateHome() throws Exception {
-        prevHome = System.getProperty("jk.env.JK_HOME");
         System.setProperty("jk.env.JK_HOME", home.toString());
         Files.writeString(project.resolve("jk.toml"), """
                 group = "g"
@@ -39,12 +35,6 @@ class PluginCommandFallbackTest {
                 version = "1.0"
                 java = 25
                 """);
-    }
-
-    @AfterEach
-    void restoreHome() {
-        if (prevHome == null) System.clearProperty("jk.env.JK_HOME");
-        else System.setProperty("jk.env.JK_HOME", prevHome);
     }
 
     @Test

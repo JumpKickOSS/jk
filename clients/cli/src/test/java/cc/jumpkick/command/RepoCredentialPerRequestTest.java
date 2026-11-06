@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -44,12 +43,6 @@ class RepoCredentialPerRequestTest {
 
     @RegisterExtension
     final MockMavenServer maven = new MockMavenServer();
-
-    @AfterEach
-    void clearSeam() {
-        System.clearProperty(TOKEN);
-        System.clearProperty(HOST);
-    }
 
     @Test
     void two_resolves_with_different_repo_tokens_against_one_engine_each_send_their_own(@TempDir Path tempDir)

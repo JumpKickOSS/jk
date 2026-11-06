@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -60,11 +59,6 @@ class LockFreshenTest {
         // Injected test-framework defaults must resolve like in the resolver test harness.
         upstream.leaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
         upstream.leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
-    }
-
-    @AfterEach
-    void releaseStoreOverride() {
-        System.clearProperty("jk.env.JK_STORE_DIR");
     }
 
     /**

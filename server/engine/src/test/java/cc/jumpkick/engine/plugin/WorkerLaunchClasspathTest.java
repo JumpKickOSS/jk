@@ -76,7 +76,6 @@ class WorkerLaunchClasspathTest {
         Files.createDirectories(hostCodecJar.getParent());
         Files.writeString(hostCodecJar, "host");
 
-        String prevHome = System.getProperty("jk.env.JK_HOME");
         String prevHost = System.getProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY);
         try {
             System.setProperty("jk.env.JK_HOME", sandbox.toString());
@@ -96,8 +95,6 @@ class WorkerLaunchClasspathTest {
             assertThat(cp.indexOf(sdkAbs)).isLessThan(cp.indexOf(depAbs));
             assertThat(cp.indexOf(hostCodecAbs)).isLessThan(cp.indexOf(depAbs));
         } finally {
-            if (prevHome == null) System.clearProperty("jk.env.JK_HOME");
-            else System.setProperty("jk.env.JK_HOME", prevHome);
             if (prevHost == null) System.clearProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY);
             else System.setProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY, prevHost);
         }

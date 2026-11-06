@@ -9,7 +9,6 @@ import cc.jumpkick.model.command.Exit;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -20,18 +19,9 @@ class CliFailureTest {
     @TempDir
     Path state;
 
-    private String previousState;
-
     @BeforeEach
     void isolateState() {
-        previousState = System.getProperty("jk.env.JK_STATE_DIR");
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
-    }
-
-    @AfterEach
-    void restoreState() {
-        if (previousState == null) System.clearProperty("jk.env.JK_STATE_DIR");
-        else System.setProperty("jk.env.JK_STATE_DIR", previousState);
     }
 
     @Test
