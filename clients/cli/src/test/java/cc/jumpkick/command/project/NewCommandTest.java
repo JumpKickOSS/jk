@@ -224,6 +224,10 @@ class NewCommandTest {
         assertThat(JkBuildParser.parse(target.resolve("jk.toml")).project().isGroovy())
                 .isTrue();
         assertThat(target.resolve("src/main/groovy/com/example/Main.groovy")).isRegularFile();
+        // Nullness is Java's: a Groovy or Scala scaffold carries no JSpecify and no package-info.
+        assertThat(target.resolve("src/main/groovy/com/example/package-info.groovy"))
+                .doesNotExist();
+        assertThat(Files.readString(target.resolve("jk.toml"))).doesNotContain("jspecify");
 
         Path sc = tempDir.resolve("sc");
         run = jk("new", "--group", "com.example", "--lang", "scala", "--no-module", sc.toString());
@@ -231,7 +235,8 @@ class NewCommandTest {
         assertThat(JkBuildParser.parse(sc.resolve("jk.toml")).project().isScala())
                 .isTrue();
         assertThat(sc.resolve("src/main/scala/com/example/Main.scala")).isRegularFile();
-        assertThat(sc.resolve("src/main/scala/com/example/package-info.java")).isRegularFile();
+        assertThat(sc.resolve("src/main/scala/com/example/package-info.java")).doesNotExist();
+        assertThat(Files.readString(sc.resolve("jk.toml"))).doesNotContain("jspecify");
 
         Run clojure = jk(
                 "new",

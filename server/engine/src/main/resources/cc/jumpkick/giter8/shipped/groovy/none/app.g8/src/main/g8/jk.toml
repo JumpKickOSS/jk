@@ -18,9 +18,7 @@ name      = "$name$"
 base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 aot-cache = true
 
-# The library starter pack wants every package @NullMarked (package-info.groovy).
 [dependencies]
-jspecify = "1.0.1"
 $if(deps_guava.truthy)$
 guava = "33.8.0-jre"
 $endif$
