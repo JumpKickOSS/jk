@@ -8,6 +8,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -63,6 +64,11 @@ import org.jspecify.annotations.Nullable;
  * JK_WORKER_BUDGET_MB} applies to that instance, its CPU cap is the host's core count, a waiting
  * lease is abandoned once {@link JobWorkers#ended} says the request was shut down, and a lease past
  * the budget is granted only when {@link OverbookSignals#live()} says the host has room.
+ *
+ * <p>The budget and the cap bound the host, not one process. An engine process {@linkplain
+ * #shareHost joins} its state directory's {@link HostLeases}, and each grant counts what every other
+ * engine of that directory holds, so a displaced engine still draining and its successor together
+ * stay inside them. A ledger that joins nothing, as in a test JVM, counts only its own leases.
  */
 public final class WorkerLeases {
 
@@ -129,6 +135,14 @@ public final class WorkerLeases {
     public static Ledger engine() {
         Ledger r = replaced;
         return r != null ? r : PROCESS;
+    }
+
+    /**
+     * Count every engine of {@code engineDir} against this process's ledger from now on. Only the
+     * engine process calls this, before it forks a worker; a test JVM's ledger stays its own.
+     */
+    public static void shareHost(Path engineDir) {
+        PROCESS.shareHost(HostLeases.forThisProcess(engineDir));
     }
 
     /** Test seam: {@link #engine()} answers {@code ledger}, or this process's own when {@code null}. */
@@ -225,7 +239,8 @@ public final class WorkerLeases {
 
     /**
      * What {@code jk engine status} prints. {@code leasedBytes} charges each worker the larger of its
-     * lease and its last measured resident set. {@code overbookedBytes} is the part of {@code
+     * lease and its last measured resident set, and adds what the other engines of this host hold.
+     * {@code overbookedBytes} is the part of {@code
      * leasedBytes} above {@code budgetBytes}, or {@code 0} when the charged total fits. {@code
      * waiting} names what the head of the queue needs and who holds the memory; {@code ""} when
      * nothing is queued. {@code overLease} names the workers {@linkplain WorkerRss#farOverLease far over
@@ -285,6 +300,7 @@ public final class WorkerLeases {
         private Duration waitAtMost = WAIT_AT_MOST;
         private @Nullable Duration sampleEvery;
         private boolean sampling;
+        private @Nullable HostLeases host;
 
         /**
          * {@code ended} is true once that request has been shut down. A lease waiting for it is
@@ -331,6 +347,15 @@ public final class WorkerLeases {
             return this;
         }
 
+        /** Count the other engines {@code share} records in every grant, and record this ledger's bytes there. */
+        Ledger shareHost(HostLeases share) {
+            synchronized (lock) {
+                this.host = Objects.requireNonNull(share, "share");
+                share.publish(charged());
+            }
+            return this;
+        }
+
         /** Fail a lease that has waited {@code most} without being granted. */
         public Ledger waitAtMost(Duration most) {
             synchronized (lock) {
@@ -342,6 +367,24 @@ public final class WorkerLeases {
         /** Bytes charged against the budget: each held lease, or its worker's resident set when larger. */
         private long charged() {
             return leased + excess;
+        }
+
+        /** Under the lock: {@link #charged()} plus what the other engines of this host hold, as last read. */
+        private long hostCharged() {
+            long sum = charged() + others();
+            return sum < 0 ? Long.MAX_VALUE : sum;
+        }
+
+        /** Under the lock: what other engines of this host hold, as last read; {@code 0} when shared with none. */
+        private long others() {
+            HostLeases h = host;
+            return h == null ? 0 : h.recentOthers();
+        }
+
+        /** Under the lock: record {@link #charged()} for the other engines. */
+        private void publish() {
+            HostLeases h = host;
+            if (h != null) h.publish(charged());
         }
 
         /** Bytes this ledger will hand out. */
@@ -357,7 +400,10 @@ public final class WorkerLeases {
         public Snapshot snapshot() {
             synchronized (lock) {
                 long budget = capacityBytes();
-                long charged = charged();
+                HostLeases h = host;
+                long others = h == null ? 0 : h.freshOthers();
+                long charged = charged() + others;
+                if (charged < 0) charged = Long.MAX_VALUE;
                 long over = charged > budget ? charged - budget : 0;
                 return new Snapshot(
                         budget,
@@ -456,7 +502,7 @@ public final class WorkerLeases {
             if (queued) {
                 long free;
                 synchronized (lock) {
-                    free = Math.max(0, capacityBytes() - charged());
+                    free = Math.max(0, capacityBytes() - hostCharged());
                 }
                 reportWaiting(waiter.demand.bytes, free);
             }
@@ -484,7 +530,7 @@ public final class WorkerLeases {
                             }
                         }
                         need = waiter.demand.bytes;
-                        free = Math.max(0, capacityBytes() - charged());
+                        free = Math.max(0, capacityBytes() - hostCharged());
                     }
                     if (granted) break;
                     long now = Clock.SYSTEM.nanos();
@@ -579,7 +625,7 @@ public final class WorkerLeases {
                 resident += w.demand.bytes;
                 if (w.yieldAsked) yielding += w.demand.bytes;
             }
-            long charged = charged();
+            long charged = hostCharged();
             if (resident == 0 || head.demand.bytes > cap - (charged - resident)) return;
             List<Waiter> ask = new ArrayList<>();
             for (Waiter w : held) {
@@ -634,7 +680,7 @@ public final class WorkerLeases {
             } else {
                 line.append(format(head.demand.bytes))
                         .append(" (")
-                        .append(format(Math.max(0, budget - charged())))
+                        .append(format(Math.max(0, budget - hostCharged())))
                         .append(" free");
                 if (nameBudget) line.append(" of the ").append(format(budget)).append(" worker budget");
                 line.append(')');
@@ -643,6 +689,8 @@ public final class WorkerLeases {
             for (Waiter w : held) {
                 holders.computeIfAbsent(ownerOf(w), Holder::new).add(w);
             }
+            long others = others();
+            if (others > 0) holders.computeIfAbsent(OTHER_ENGINES, Holder::new).bytes += others;
             if (holders.isEmpty()) return line.toString();
             List<Holder> ranked = new ArrayList<>(holders.values());
             ranked.sort((a, b) -> Long.compare(b.bytes, a.bytes));
@@ -665,24 +713,41 @@ public final class WorkerLeases {
          * ledger has signals — the host sample covers the new lease's worst case and the reserved
          * total stays inside {@link #OVERBOOK_CAP_FACTOR} times the budget. Existing forks are not
          * re-charged here: the sample's free bytes are their real usage.
+         *
+         * <p>With a {@link HostLeases} share both totals include the other engines. A recent reading
+         * of them may refuse; a grant is decided on a fresh one, under the share's file lock, and the
+         * new total is recorded before the lock is let go.
          */
         private boolean admit(Waiter waiter) {
             if (waiter.demand.cpuSlot && jvmRunning >= cpuCap()) return false;
+            HostLeases h = host;
+            if (h == null) return admit(waiter, 0);
+            if (!admit(waiter, h.recentOthers())) return false;
+            boolean[] granted = {false};
+            h.exchange(others -> {
+                granted[0] = admit(waiter, others);
+                return charged() + (granted[0] ? waiter.demand.bytes : 0);
+            });
+            return granted[0];
+        }
+
+        /** Under the lock: {@link #admit(Waiter)} with {@code others} bytes held by other engines. */
+        private boolean admit(Waiter waiter, long others) {
             long cap = capacityBytes();
-            long charged = charged();
+            long charged = charged() + Math.max(0, others);
+            if (charged < 0) charged = Long.MAX_VALUE;
             if (charged <= cap && waiter.demand.bytes <= cap - charged) {
                 waiter.overbooked = false;
                 return true;
             }
-            return overbook(waiter, cap);
+            return overbook(waiter, cap, charged);
         }
 
-        private boolean overbook(Waiter waiter, long cap) {
+        private boolean overbook(Waiter waiter, long cap, long charged) {
             if (cap <= 0) return false;
             long bytes = waiter.demand.bytes;
             long ceiling = overbookCeiling(cap);
             if (overLeaseCount > 0) return false;
-            long charged = charged();
             if (bytes > ceiling || charged > ceiling - bytes) return false;
             OverbookSignals.Reading reading = readSignals();
             if (!reading.enabled() || !reading.pressureLow()) return false;
@@ -716,7 +781,7 @@ public final class WorkerLeases {
             Log.info("jk engine: "
                     + overbookedLine(
                             waiter.demand.bytes,
-                            charged(),
+                            hostCharged(),
                             cap,
                             new OverbookSignals.Reading(
                                     true, waiter.sampleFree, waiter.sampleSome, waiter.sampleFull)));
@@ -731,6 +796,7 @@ public final class WorkerLeases {
             excess = Math.max(0, excess - waiter.excess());
             if (waiter.overLease) overLeaseCount = Math.max(0, overLeaseCount - 1);
             if (waiter.demand.cpuSlot) jvmRunning = Math.max(0, jvmRunning - 1);
+            publish();
             if (waiter.named) {
                 Log.info("jk engine: " + waiter.label() + " exited; resident set peaked at " + format(waiter.peakRss)
                         + ", leased " + format(waiter.demand.bytes));
@@ -776,6 +842,7 @@ public final class WorkerLeases {
                         warnOn.add(step != null && warnedSteps.add(step) ? step : null);
                     }
                 }
+                publish();
                 grantQueued();
                 lock.notifyAll();
             }
@@ -958,6 +1025,9 @@ public final class WorkerLeases {
         long budget = Math.max(0, cap);
         return budget > Long.MAX_VALUE / OVERBOOK_CAP_FACTOR ? Long.MAX_VALUE : budget * OVERBOOK_CAP_FACTOR;
     }
+
+    /** The holder {@link Snapshot#waiting()} names for leases of other engines of this host. */
+    private static final String OTHER_ENGINES = "other engines";
 
     /** One owner's held leases, as {@link Snapshot#waiting()} names them. */
     private static final class Holder {
