@@ -3,7 +3,7 @@
 A jk build plugin authored **outside** the jk tree, compiled against the published SDK
 coordinate `cc.jumpkick:jk-plugin-sdk:<version>` — the shape every plugin not shipped inside jk
 takes. It owns the `[hello]` table, contributes a javac flag declaratively, and carries a code
-layer jk forks as a worker.
+layer jk forks as a worker, which adds a `jk hello` command.
 
 ```text
 jk.toml                                   # depends on cc.jumpkick:jk-plugin-sdk:<version>
@@ -31,6 +31,17 @@ pinned at the running jk's version, and the lock says so in a note. The javac fl
 and is part of its compile key. The code layer forks only after `jk trust plugin sha256:<hex>` — a path pin is trusted
 by its bytes, the sha256 its `[plugins]` row carries, and jk refuses untrusted third-party code with that exact
 remedy.
+
+Once trusted, the plugin's command runs in the consumer like any jk command, forked with the same
+SDK floor as its build steps:
+
+```console
+$ jk hello
+hi, world
+```
+
+A worker that dies before it answers (a missing class, a crash in a static initializer) fails the
+command with the last lines of its stderr.
 
 ## Where the SDK comes from
 

@@ -78,6 +78,8 @@ class ThirdPartyPluginTest {
                     String spec = Files.readString(Path.of(args[0]));
                     if (spec.contains("\\"op\\":\\"describe\\"")) {
                         System.out.println("##HELLO:{\\"t\\":\\"command\\",\\"name\\":\\"hello\\",\\"description\\":\\"Say hello\\"}");
+                    } else if (spec.contains("--crash")) {
+                        throw new IllegalStateException("hello worker cannot start: no greeting");
                     } else if (spec.contains("\\"op\\":\\"command\\"")) {
                         System.out.println("##HELLO:{\\"t\\":\\"command-out\\",\\"line\\":\\"hello from the plugin worker\\"}");
                     }
@@ -204,6 +206,14 @@ class ThirdPartyPluginTest {
         assertThat(report.error()).isNull();
         assertThat(report.exit()).isZero();
         assertThat(report.output()).containsExactly("hello from the plugin worker");
+
+        // 6. A worker that dies before it speaks the protocol fails the command with its stderr.
+        var crashed = PluginCommands.run(project, cache, "hello", List.of("--crash"));
+        assertThat(crashed.found()).isTrue();
+        assertThat(crashed.exit()).isEqualTo(1);
+        assertThat(crashed.error())
+                .contains("plugin worker hello failed (exit 1)")
+                .contains("java.lang.IllegalStateException: hello worker cannot start: no greeting");
     }
 
     /**

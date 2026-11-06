@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,17 +13,23 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Host-side driver for a forked plugin's JSONL protocol ({@code ##PREFIX:{"t":…}}). Registers
- * handlers by type and runs via {@link PluginProcess}.
+ * handlers by type and runs via {@link PluginProcess}. The last {@link #TAIL_LINES} non-protocol
+ * lines are kept ({@link #tail}): stderr is merged into them, so a plugin that dies before it
+ * speaks the protocol (a missing class, a crash in {@code main}) is still diagnosable.
  */
 public final class PluginClient {
 
     /** The canonical message-type discriminator field name. */
     public static final String TYPE = "t";
 
+    /** How many trailing non-protocol lines {@link #tail} keeps. */
+    public static final int TAIL_LINES = 20;
+
     private final String prefix;
     private final Map<String, Consumer<String>> handlers = new HashMap<>();
     private @Nullable Consumer<String> onOther;
     private @Nullable Consumer<String> passthrough;
+    private final ArrayDeque<String> tail = new ArrayDeque<>();
 
     /** A client for a plugin using the canonical {@code "t"} discriminator and the given prefix. */
     public PluginClient(String prefix) {
@@ -49,12 +56,19 @@ public final class PluginClient {
 
     /** Fork {@code command}, dispatch its protocol stream, and return the process exit code. */
     public int run(List<String> command) throws IOException, InterruptedException {
-        return PluginProcess.run(command, prefix, this::dispatch, passthrough);
+        return PluginProcess.run(command, prefix, this::dispatch, this::passthroughLine);
     }
 
     /** As {@link #run(List)} with the child's {@link WorkerEnv}. */
     public int run(List<String> command, WorkerEnv env) throws IOException, InterruptedException {
-        return PluginProcess.run(command, env, prefix, this::dispatch, passthrough);
+        return PluginProcess.run(command, env, prefix, this::dispatch, this::passthroughLine);
+    }
+
+    /** The last {@link #TAIL_LINES} non-protocol lines of the last run, stdout and stderr merged, oldest first. */
+    public List<String> tail() {
+        synchronized (tail) {
+            return List.copyOf(tail);
+        }
     }
 
     /**
@@ -67,7 +81,15 @@ public final class PluginClient {
     public int converseNoSlot(
             List<String> command, WorkerEnv env, BiConsumer<String, PluginProcess.Conversation> onMessage)
             throws IOException, InterruptedException {
-        return PluginProcess.converseNoSlot(command, env, prefix, onMessage, passthrough);
+        return PluginProcess.converseNoSlot(command, env, prefix, onMessage, this::passthroughLine);
+    }
+
+    private void passthroughLine(String line) {
+        synchronized (tail) {
+            if (tail.size() >= TAIL_LINES) tail.removeFirst();
+            tail.addLast(line);
+        }
+        if (passthrough != null) passthrough.accept(line);
     }
 
     private void dispatch(String json) {

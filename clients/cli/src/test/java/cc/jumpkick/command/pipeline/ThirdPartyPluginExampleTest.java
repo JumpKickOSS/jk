@@ -30,8 +30,8 @@ import org.junit.jupiter.api.io.TempDir;
  * this tree meets it: the SDK and its one dependency are published to a Maven repository with
  * {@code jk publish} — the release step, aimed at a {@code file://} repository here — the sample
  * locks and builds against that repository alone, and a consumer project pins the resulting jar,
- * has its {@code [hello]} table validated by the plugin's schema, and builds with the plugin's
- * javac contribution and its trusted code layer.
+ * has its {@code [hello]} table validated by the plugin's schema, builds with the plugin's
+ * javac contribution and its trusted code layer, and runs the plugin's {@code jk hello} command.
  *
  * <p>The SDK bytes are the ones this checkout's own build packaged, so the test needs a prior
  * {@code jk build} and skips without one rather than inventing an SDK.
@@ -159,6 +159,14 @@ class ThirdPartyPluginExampleTest {
         assertThat(carriesMethodParameters(appClass)).as("first build").isTrue();
         buildGreen(app, "second build");
         assertThat(carriesMethodParameters(appClass)).as("second build").isTrue();
+
+        // 4. The plugin's contributed command forks with the same SDK floor as its steps, and
+        // greets with the consumer's [hello] table.
+        int[] commandExit = new int[1];
+        Capture.Streams command = Capture.both(
+                (Runnable) () -> commandExit[0] = run("--no-ansi", "-C", app.toString(), "hello", "consumer"));
+        assertThat(commandExit[0]).as(command.out() + command.err()).isEqualTo(0);
+        assertThat(command.out()).contains("hi, consumer");
     }
 
     /** {@code jk build -S} of {@code app}, its output the message when the exit is not 0. */

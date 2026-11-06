@@ -44,7 +44,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -896,11 +895,7 @@ public final class PluginBuild {
             @Nullable Consumer<String> onLabel,
             @Nullable Consumer<String> onDiagnostic)
             throws IOException, InterruptedException {
-        Path jar = workerJarFor(active, cache);
         List<String> collected = new ArrayList<>();
-        // Non-protocol output (stack traces land here — stderr is merged by PluginProcess).
-        // Kept so a worker that dies without reporting a protocol error is still diagnosable.
-        ArrayDeque<String> tail = new ArrayDeque<>();
         @Nullable String[] error = new String[1];
         PluginClient client = new PluginClient(code(active).protocolPrefix())
                 .on("label", line -> {
@@ -911,28 +906,41 @@ public final class PluginBuild {
                     if (onDiagnostic != null) onDiagnostic.accept(line);
                     else collected.add(line);
                 })
-                .onOther(collected::add)
-                .passthrough(line -> {
-                    if (tail.size() >= 20) tail.removeFirst();
-                    tail.addLast(line);
-                });
-        int exit;
-        // The worker's own downloads (a step that declared repositories) on the run's board.
-        try (PluginTransfers ignored = PluginTransfers.relay(client)) {
-            exit = client.run(
-                    PluginLaunch.javaCommand(jar, spec, code(active).protocolPrefix(), sdkFloor(active)), env);
-        }
+                .onOther(collected::add);
+        int exit = fork(active, cache, spec, client, env);
         if (error[0] != null) {
             throw new IOException(error[0]);
         }
         if (exit != 0) {
-            String detail = tail.isEmpty() ? "" : "\n" + String.join("\n", tail);
-            throw new IOException("plugin worker "
-                    + active.manifest().id()
-                    + " "
-                    + WorkerContainment.failure(exit, "failed (exit " + exit + ")")
-                    + detail);
+            throw new IOException(failure(active, exit, client));
         }
         return collected;
+    }
+
+    /**
+     * Fork the plugin's worker on {@code spec}, dispatching its replies to {@code client}: the
+     * worker jar plus the SDK floor its consumer's lock carries ({@link #sdkFloor}), with the
+     * worker's own downloads on the run's board. Every fork of a code plugin — describe, step,
+     * command — goes through here, so they all launch on one classpath.
+     */
+    static int fork(ActivePlugin active, Path cache, Path spec, PluginClient client, WorkerEnv env)
+            throws IOException, InterruptedException {
+        Path jar = workerJarFor(active, cache);
+        List<String> command = PluginLaunch.javaCommand(jar, spec, code(active).protocolPrefix(), sdkFloor(active));
+        try (PluginTransfers ignored = PluginTransfers.relay(client)) {
+            return client.run(command, env);
+        }
+    }
+
+    /**
+     * The message for a worker that exited {@code exit} (non-zero) without a protocol error: its
+     * fate, then the tail of its output — stderr is merged there, so a worker that died before it
+     * spoke (a missing class, a crash in {@code main}) says why.
+     */
+    static String failure(ActivePlugin active, int exit, PluginClient client) {
+        List<String> tail = client.tail();
+        String detail = tail.isEmpty() ? "" : "\n" + String.join("\n", tail);
+        return "plugin worker " + active.manifest().id() + " "
+                + WorkerContainment.failure(exit, "failed (exit " + exit + ")") + detail;
     }
 }

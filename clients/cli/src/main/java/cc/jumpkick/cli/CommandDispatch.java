@@ -387,11 +387,11 @@ public final class CommandDispatch {
             // not get the envelope or the PlainAscii rewrite.
             CliOutput.beginCommand(pluginArgsAskJson(args));
             try {
+                for (String line : report.output()) CliOutput.out(line);
                 if (report.error() != null) {
                     CommandWedge.printFail(command, report.error());
-                    return 1;
+                    return report.exit() != 0 ? report.exit() : 1;
                 }
-                for (String line : report.output()) CliOutput.out(line);
                 return report.exit();
             } finally {
                 CliOutput.closeEnvelope();
