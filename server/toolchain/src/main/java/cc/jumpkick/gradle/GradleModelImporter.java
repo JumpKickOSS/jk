@@ -107,6 +107,8 @@ final class GradleModelImporter {
 
     /** Plugin class-name prefixes the probed ids already account for. */
     private static final List<String> MAPPED_PLUGIN_CLASSES = List.of(
+            // Its arguments reach [javac] args (or [nullness]) through the compile tasks.
+            "net.ltgt.gradle.errorprone",
             "org.jetbrains.kotlin.gradle",
             "org.springframework.boot.gradle",
             "io.spring.gradle.dependencymanagement",
