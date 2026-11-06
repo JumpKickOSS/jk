@@ -311,6 +311,13 @@ class EngineTakeoverTest {
                     null));
             old.releasePlanSlotForTests();
             assertThat(oldRun.done().await(20, TimeUnit.SECONDS)).isTrue();
+            // The successor folds the run when the final drain-status reaches its connection
+            // thread, which can be after the displaced engine has exited.
+            waitUntil(Duration.ofSeconds(10), () -> newer.sessionsForTests()
+                    .session(id, 0, 10)
+                    .map(pg -> pg.episodes().stream()
+                            .anyMatch(e -> e.get("runs") instanceof Number n && n.intValue() == 1))
+                    .orElse(false));
 
             SessionLog.Page page =
                     requireNonNull(newer.sessionsForTests().session(id, 0, 10).orElse(null));
