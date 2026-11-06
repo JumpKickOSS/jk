@@ -5,18 +5,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.PublishedSdk;
 import cc.jumpkick.form.Field;
 import cc.jumpkick.form.Option;
 import cc.jumpkick.giter8.JkTemplateToml;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.RepoRoot;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.TestFactory;
@@ -27,9 +33,10 @@ import org.junit.jupiter.api.io.TempDir;
  * scaffolded with {@code jk new -t <path>} in each layout it declares, and the project it writes
  * passes {@code jk build}, {@code jk test} and {@code jk guard} with no edits — the contract the
  * catalog's README promises. A template that asks questions is scaffolded once more with every
- * option on, so a binding only a non-default answer reaches is built too. A template that stops
- * compiling, fails NullAway or its own rule pack, or ships a red sample test fails here under its
- * own id and layout, with the command's console.
+ * option on, so a binding only a non-default answer reaches is built too. A plugin template builds
+ * against the SDK this checkout publishes, and its jar is checked for a plugin's shape. A template
+ * that stops compiling, fails NullAway or its own rule pack, or ships a red sample test fails here
+ * under its own id and layout, with the command's console.
  *
  * <p>Slow tier: each scaffold resolves its framework's closure (Spring Boot, Ktor, JLine, Error
  * Prone) and builds and tests a whole project, minutes in all — framework end to end that breaks
@@ -42,8 +49,13 @@ class TemplateCatalogE2eTest {
     private static final Pattern LAYOUTS = Pattern.compile("(?m)^layouts\\s*=\\s*\\[([^]]*)]");
     private static final Pattern QUOTED = Pattern.compile("\"([^\"]+)\"");
 
+    /** The SDK pin a plugin template writes: this jk's own version. */
+    private static final String SDK_PIN = "cc.jumpkick:jk-plugin-sdk:" + JkVersion.VERSION + "\"";
+
     @TempDir
     Path scratch;
+
+    private @Nullable String sdkRepo;
 
     @TestFactory
     Stream<DynamicTest> every_template_scaffolds_builds_tests_and_guards_clean_in_each_layout() throws IOException {
@@ -136,8 +148,63 @@ class TemplateCatalogE2eTest {
         assertThat(project.resolve("jk.toml"))
                 .as("%s (%s) writes a jk.toml at the project root", id, layout)
                 .exists();
-        for (String verb : List.of("build", "test", "guard")) {
-            jk(id, layout, "-C", project.toString(), verb);
+        boolean pinsSdk = Files.readString(project.resolve("jk.toml")).contains(SDK_PIN);
+        Path userConfig = JkDirs.userConfigFile();
+        String priorConfig = Files.isRegularFile(userConfig) ? Files.readString(userConfig) : null;
+        if (pinsSdk) {
+            Files.writeString(userConfig, (priorConfig == null ? "" : priorConfig) + """
+
+                    [repositories.jumpkick]
+                    url    = "%s"
+                    groups = ["cc.jumpkick", "cc.jumpkick.*"]
+                    """.formatted(sdkRepo()));
+        }
+        try {
+            for (String verb : List.of("build", "test", "guard")) {
+                jk(id, layout, "-C", project.toString(), verb);
+            }
+        } finally {
+            if (pinsSdk) {
+                if (priorConfig != null) Files.writeString(userConfig, priorConfig);
+                else Files.delete(userConfig);
+            }
+        }
+        if (Files.isRegularFile(project.resolve("src/main/resources/jk-plugin.toml"))) {
+            assertPluginJar(project, id, layout);
+        }
+    }
+
+    /**
+     * The checkout's SDK, published once for the suite: a plugin template pins the SDK at this jk's
+     * version, which jumpkick.build serves for a release and nothing serves for a checkout, so this
+     * repository stands in for jumpkick, from the user's config, while that scaffold builds.
+     */
+    private String sdkRepo() throws IOException {
+        if (sdkRepo == null)
+            sdkRepo = PublishedSdk.publish(scratch.resolve("sdk"), JkVersion.VERSION)
+                    .toString();
+        return sdkRepo;
+    }
+
+    /** A plugin scaffold's jar is a plugin: the manifest at its root, the service file, the SDK's worker host. */
+    private static void assertPluginJar(Path project, String id, String layout) throws IOException {
+        Path jar;
+        try (Stream<Path> jars = Files.list(project.resolve("target"))) {
+            jar = jars.filter(p -> p.getFileName().toString().matches("demo-[0-9.]+\\.jar"))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(id + " (" + layout + ") builds no jar under target/"));
+        }
+        try (JarFile jf = new JarFile(jar.toFile())) {
+            assertThat(jf.getEntry("jk-plugin.toml"))
+                    .as("%s (%s): jk-plugin.toml at the jar root", id, layout)
+                    .isNotNull();
+            assertThat(jf.getEntry("META-INF/services/cc.jumpkick.plugin.Plugin"))
+                    .as("%s (%s): the service file", id, layout)
+                    .isNotNull();
+            Manifest manifest = jf.getManifest();
+            assertThat(manifest == null ? null : manifest.getMainAttributes().getValue("Main-Class"))
+                    .as("%s (%s): a plugin jar's entry is the SDK's worker host", id, layout)
+                    .isEqualTo("cc.jumpkick.plugin.process.PluginMain");
         }
     }
 

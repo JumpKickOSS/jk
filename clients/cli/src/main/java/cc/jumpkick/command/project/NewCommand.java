@@ -47,6 +47,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class NewCommand implements CliCommand {
 
+    /** The template {@code -P} names: a build-plugin authoring project. */
+    static final String PLUGIN_TEMPLATE = "plugin";
+
     @Override
     public String name() {
         return "new";
@@ -84,13 +87,13 @@ public final class NewCommand implements CliCommand {
                         "--layout"),
                 Opt.flag("The app template (the default); --no-executable is -t library.", "-e", "--executable")
                         .negate(),
+                Opt.flag("The build-plugin template: -t plugin.", "-P", "--plugin"),
                 Opt.value("<fw>", "Swap web/ for this front end", "-f", "--frontend"),
                 Opt.flag("Force a standalone project (not a module).", "-N", "--no-module"),
                 Opt.flag("", "--no-member").hide(), // undocumented synonym for --no-module
                 // Former blank-project flags: each is refused with the answer that replaces it.
                 Opt.flag("", "-A", "--assembly").hide(),
                 Opt.flag("", "-n", "--native").hide(),
-                Opt.flag("", "-P", "--plugin").hide(),
                 Opt.value("<deps>", "", "-d", "--deps").hide(),
                 Opt.value("<module>", "", "-m", "--kotlin-module").hide());
     }
@@ -295,12 +298,13 @@ public final class NewCommand implements CliCommand {
                     + " (jk new -t app --help lists them); jk add <library> adds any other";
         }
         if (kotlinModule != null) return c + "--kotlin-module is gone: set module = \"<name>\" in the new jk.toml";
-        if (plugin) {
-            return c + "--plugin is gone: no catalogue template scaffolds a build plugin yet; start from"
-                    + " jk's third-party-plugin example (docs/user/examples/third-party-plugin)";
+        String executableFlag = executable == null ? null : executable ? "-e" : "--no-executable";
+        if (plugin && executableFlag != null) {
+            return c + executableFlag + " names a template, and so does --plugin; keep one";
         }
-        if (executable != null && templateRef != null && !templateRef.isBlank()) {
-            return c + (executable ? "-e" : "--no-executable") + " names a template, and so does -t; keep one";
+        String templateFlag = plugin ? "--plugin" : executableFlag;
+        if (templateFlag != null && templateRef != null && !templateRef.isBlank()) {
+            return c + templateFlag + " names a template, and so does -t; keep one";
         }
         if (jdk != null && javaLevel(jdk) == null) {
             return c + "--jdk sets the template's java = N, so it takes a Java major (--jdk 25); pin a"
@@ -315,10 +319,11 @@ public final class NewCommand implements CliCommand {
         return s.matches("[1-9][0-9]*") && Project.majorOf(s) > 0 ? s : null;
     }
 
-    /** The template the flags name: {@code -t}, or {@code -e} / {@code --no-executable}; else none. */
+    /** The template the flags name: {@code -t}, {@code -P}, or {@code -e} / {@code --no-executable}; else none. */
     @Nullable
     String template() {
         if (templateRef != null && !templateRef.isBlank()) return templateRef;
+        if (plugin) return PLUGIN_TEMPLATE;
         if (executable != null) return executable ? NewProjectStep.DEFAULT_TEMPLATE : "library";
         return null;
     }

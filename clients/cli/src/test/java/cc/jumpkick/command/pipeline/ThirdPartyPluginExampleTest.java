@@ -6,6 +6,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.testing.PublishedSdk;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.RepoRoot;
@@ -47,22 +48,8 @@ class ThirdPartyPluginExampleTest {
     @Test
     void a_plugin_compiled_against_the_published_sdk_loads_in_a_consumer_build(@TempDir Path dir) throws Exception {
         // 1. The release step: the SDK's dependency, then the SDK, into one Maven repository.
-        Path repo = Files.createDirectories(dir.resolve("sdk-repo"));
-        URI repoUrl = repo.toUri();
-        publish(
-                dir.resolve("host"),
-                "jk-host",
-                "The JDK-only floor every plugin worker shares",
-                "[dependencies]\njspecify = \"1.0.1\"\n",
-                ROOT.resolve("shared/host"),
-                repoUrl);
-        publish(
-                dir.resolve("sdk"),
-                "jk-plugin-sdk",
-                "Plugin SPI",
-                "[dependencies]\njk-host = \"cc.jumpkick:jk-host:" + VERSION + "\"\n",
-                ROOT.resolve("shared/plugin-sdk"),
-                repoUrl);
+        URI repoUrl = PublishedSdk.publish(dir, VERSION);
+        Path repo = Path.of(repoUrl);
         Path sdkPom = repo.resolve("cc/jumpkick/jk-plugin-sdk/" + VERSION + "/jk-plugin-sdk-" + VERSION + ".pom");
         assertThat(sdkPom).exists();
         assertThat(Files.readString(sdkPom)).contains("<artifactId>jk-host</artifactId>");
@@ -71,7 +58,7 @@ class ThirdPartyPluginExampleTest {
 
         // 2. The sample, as committed, locked against that repository alone and built.
         Path plugin = dir.resolve("hello-plugin");
-        copyTree(EXAMPLE, plugin);
+        PublishedSdk.copyTree(EXAMPLE, plugin);
         // The sample pins the last released SDK; the test compiles it against the SDK it just built.
         Path manifest = plugin.resolve("jk.toml");
         Path pluginToml = plugin.resolve("src/main/resources/jk-plugin.toml");
@@ -185,45 +172,5 @@ class ThirdPartyPluginExampleTest {
     /** javac writes the {@code MethodParameters} attribute only under {@code -parameters}. */
     private static boolean carriesMethodParameters(Path classFile) throws IOException {
         return new String(Files.readAllBytes(classFile), StandardCharsets.ISO_8859_1).contains("MethodParameters");
-    }
-
-    /**
-     * A standalone project shaped like the workspace module — same coordinate, description,
-     * dependencies and sources — built and published with {@code jk publish}, which builds first.
-     * {@code cc.jumpkick} resolves from {@code repoUrl}, where the SDK's own dependency lands first.
-     */
-    private static void publish(Path project, String name, String description, String deps, Path module, URI repoUrl)
-            throws IOException {
-        copyTree(module.resolve("src/main"), project.resolve("src/main"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group       = "cc.jumpkick"
-                name        = "%s"
-                version     = "%s"
-                description = "%s"
-                java        = 17
-                %s
-                [repositories.jumpkick]
-                url    = "%s"
-                groups = ["cc.jumpkick", "cc.jumpkick.*"]
-                """.formatted(name, VERSION, description, deps, repoUrl));
-        assertThat(run(
-                        "publish",
-                        "-C",
-                        project.toString(),
-                        "--repo-url",
-                        repoUrl.toString(),
-                        "--skip-tests",
-                        "--allow-snapshot"))
-                .isEqualTo(0);
-    }
-
-    private static void copyTree(Path from, Path to) throws IOException {
-        try (Stream<Path> walk = Files.walk(from)) {
-            for (Path p : walk.toList()) {
-                Path target = to.resolve(from.relativize(p).toString());
-                if (Files.isDirectory(p)) Files.createDirectories(target);
-                else Files.copy(p, target);
-            }
-        }
     }
 }

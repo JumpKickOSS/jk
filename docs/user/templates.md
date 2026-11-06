@@ -5,6 +5,7 @@ jk new                       # on a terminal: the new-project form
 jk new my-app                # the app template; without a terminal, with its defaults
 jk new my-app --dir ~/src    # ~/src/my-app: --dir (-C) is the parent directory
 jk new -t library my-lib
+jk new -P my-plugin          # a build plugin: the plugin template
 jk new -t cli my-app
 jk new -t spring-boot/hello my-api
 jk new -t quarkus/hello my-api
@@ -55,7 +56,7 @@ The flags of the former blank-project scaffolder:
 | `-d`, `--deps` | refused: `-p deps=guava,commons-lang,commons-io`; `jk add` for any other |
 | `--jdk <major>` | the template's `java`; a vendor spec is refused (pin it in `jk.toml` after) |
 | `-m`, `--kotlin-module` | refused: set `module` in the new `jk.toml` |
-| `-P`, `--plugin` | refused: no template scaffolds a build plugin yet; start from [third-party-plugin](examples/third-party-plugin/) |
+| `-P`, `--plugin` | `-t plugin`: a build-plugin authoring project |
 
 **`jk new -t <template> --help`** follows the command's own help with the template's questions, one
 line each, generated from its form:
@@ -157,6 +158,7 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 | `cli-native` | none | java | Interactive Java CLI with JLine | house rules |
 | `app` | none | java, kotlin, groovy, scala | Blank application: a main and its test; asks for common libraries, a fat jar and a native binary | `library` |
 | `library` | none | java, kotlin, scala | Published library: sources and javadoc jars (Dokka's for Kotlin, scaladoc's for Scala), `[build-info]`, unit test; the Java one a `@NullMarked` API; asks for common libraries | `library` |
+| `plugin` | none | java | Build plugin (`jk new -P`): the `jk-plugin.toml` manifest, its service file, a `@NullMarked` `Plugin` class and its test, compiled against the SDK of the jk that scaffolds it | `library` |
 | `ktor-3` | none | kotlin | Ktor + Koin + Exposed | house rules |
 | `hello` | spring-boot | java, kotlin | Plugin hello app | `spring` |
 | `webmvc` | spring-boot | java, kotlin | Clean-architecture WebMVC workspace | `spring`, `monorepo` |
