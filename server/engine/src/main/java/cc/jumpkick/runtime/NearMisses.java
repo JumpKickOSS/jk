@@ -23,14 +23,15 @@ public final class NearMisses {
     /** At most this many coordinates are named. */
     static final int MAX = 2;
 
+    /** A near group is at most this many edits from the one asked for, once both are {@linkplain #squash squashed}. */
+    private static final int GROUP_EDITS = 2;
+
     private NearMisses() {}
 
     /** Near misses of {@code group:artifact} among the store under {@code store} and {@code catalog}. */
     public static List<String> of(String group, String artifact, @Nullable Path store, LibraryCatalog catalog) {
         Set<String> known = new LinkedHashSet<>();
-        if (store != null) {
-            for (RepoArtifactStore.Module m : RepoArtifactStore.allModules(store)) known.add(m.moduleKey());
-        }
+        if (store != null) known.addAll(RepoArtifactStore.moduleKeys(store, near(group, artifact)));
         for (String name : catalog.names()) {
             catalog.lookup(name).ifPresent(m -> known.add(m.moduleKey()));
         }
@@ -53,7 +54,7 @@ public final class NearMisses {
             boolean sameGroup = squash(g).equals(wantGroup);
             if (sameArtifact && sameGroup) {
                 if (!exact.contains(key)) exact.add(key);
-            } else if (sameArtifact && distance(squash(g), wantGroup) <= 2) {
+            } else if (sameArtifact && distance(squash(g), wantGroup) <= GROUP_EDITS) {
                 if (!close.contains(key)) close.add(key);
             }
         }
@@ -71,8 +72,45 @@ public final class NearMisses {
         return sb.toString();
     }
 
+    /**
+     * The store modules {@link #among} can name for {@code group:artifact}: the same artifact under
+     * a group within {@link #GROUP_EDITS}. A group directory is entered only while its path is that
+     * close to some prefix of the group, since no longer path can come closer to the whole.
+     */
+    /** The filter {@link #of} walks the store with for {@code group:artifact}. */
+    static RepoArtifactStore.ModuleFilter near(String group, String artifact) {
+        return new Near(group, artifact);
+    }
+
+    private static final class Near implements RepoArtifactStore.ModuleFilter {
+        private final String group;
+        private final String artifact;
+
+        Near(String group, String artifact) {
+            this.group = squash(group);
+            this.artifact = squash(artifact);
+        }
+
+        @Override
+        public boolean mayHold(String groupPrefix) {
+            int closest = Integer.MAX_VALUE;
+            for (int d : lastRow(squash(groupPrefix), group)) closest = Math.min(closest, d);
+            return closest <= GROUP_EDITS;
+        }
+
+        @Override
+        public boolean wants(String g, String a) {
+            return squash(a).equals(artifact) && distance(squash(g), group) <= GROUP_EDITS;
+        }
+    }
+
     /** Levenshtein distance between {@code a} and {@code b}. */
     private static int distance(String a, String b) {
+        return lastRow(a, b)[b.length()];
+    }
+
+    /** The distances from {@code a} to each prefix of {@code b}, the empty one first. */
+    private static int[] lastRow(String a, String b) {
         int[] prev = new int[b.length() + 1];
         int[] cur = new int[b.length() + 1];
         for (int j = 0; j <= b.length(); j++) prev[j] = j;
@@ -86,6 +124,6 @@ public final class NearMisses {
             prev = cur;
             cur = t;
         }
-        return prev[b.length()];
+        return prev;
     }
 }
