@@ -256,9 +256,9 @@ final class GraphRename {
             String file = l.facts().sourceFile();
             return file == null
                     ? null
-                    : GraphBuild.find(
+                    : ClassSources.find(
                             byName,
-                            GraphBuild.own(graph.modules(), l.prefix(), l.sourceSet()),
+                            ClassSources.own(graph.modules(), l.prefix(), l.sourceSet()),
                             pkg(l.facts().name()),
                             file);
         }
