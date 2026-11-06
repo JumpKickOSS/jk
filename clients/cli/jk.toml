@@ -157,4 +157,8 @@ env = [
   # The GraalVM a native end-to-end test links with (TemplateCatalogE2eTest, slow tier), when the
   # shell running jk names one; unset, that test skips by assumption.
   "GRAALVM_HOME",
+  # The Android SDK the slow template build looks for before building the android template
+  # (TemplateCatalogE2eTest); unset, it falls back to the store's managed SDK or skips.
+  "ANDROID_HOME",
+  "ANDROID_SDK_ROOT",
 ]
