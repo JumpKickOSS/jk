@@ -215,7 +215,11 @@ allow-unverified = true
 
 Both are refused on `central`: Maven Central serves https and publishes a checksum for every
 artifact, so the opt-in would only ever hide an attack. `file://` repositories are local disk
-with no network path, so neither key applies to them.
+with no network path, so neither key applies to them. A `file://` repository with no
+`maven-metadata.xml` for a module — a Maven local repository, a jk store tree — lists the module's
+version directories instead, each one that holds its `<artifact>-<version>.pom`, so `latest`, `^`,
+`~` and ranges resolve through it; a `-SNAPSHOT` directory follows the
+[release and snapshot policy](#release-and-snapshot-policy) like a catalog's entry.
 
 ## Release and snapshot policy
 
