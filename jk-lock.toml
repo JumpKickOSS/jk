@@ -1,10 +1,10 @@
 version = 1
-generated-by = "jk 0.50.3-SNAPSHOT"
-generated-by-build = "0be5674be3a6"
-generated-by-build-time = "2026-11-05T05:03:57Z"
+generated-by = "jk 0.50.4-SNAPSHOT"
+generated-by-build = "e835998ba965"
+generated-by-build-time = "2026-11-05T23:48:52Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "27a87f9b50845f82ea504b3e3f73d05151d344e9937d9fa59dd0802ab9edc282"
+manifests-sha256 = "3d957aec4c264458cb73d03cd2963b78f0ec1cd876bc126cb102aa9cfa8711da"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]

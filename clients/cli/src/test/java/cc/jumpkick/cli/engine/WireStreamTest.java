@@ -70,7 +70,7 @@ class WireStreamTest {
     void the_jid_is_a_live_cancel_handle_for_the_whole_job_stream() throws Exception {
         // This set is exactly what EngineCancel.cancelBestEffortForInterrupt reads on Ctrl-C, and
         // it is the only handle that reaches a verb whose journal dir is the cache rather than the
-        // user's project — jk cache prune, jk tool resolve, jk tool run <script>.
+        // user's project — jk cache clean, jk tool resolve, jk tool run <script>.
         List<Set<Long>> seenMidStream = new ArrayList<>();
         BufferedReader reader = stream(
                 ProtoLifecycle.jobStart(77, "cache", "/cache", 0),

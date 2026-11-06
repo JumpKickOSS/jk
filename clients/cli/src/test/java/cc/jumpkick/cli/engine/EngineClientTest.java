@@ -331,7 +331,7 @@ class EngineClientTest {
 
     @Test
     void a_cache_prune_registers_its_jid_as_the_ctrl_c_cancel_handle() throws Exception {
-        // jk cache prune's request carries no dir, so the engine journals it against the cache
+        // jk cache clean's request carries no dir, so the engine journals it against the cache
         // path: Ctrl-C's dir-scoped cancel can never match it and the jid from job-start is the
         // only handle that reaches the job. Same for jk tool resolve and jk tool run <script>.
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());

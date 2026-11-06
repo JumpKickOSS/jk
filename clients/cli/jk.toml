@@ -134,7 +134,7 @@ env = [
   { TERM = "xterm-256color", CI = "false", NO_COLOR = "", JK_NERD_FONT = "false" },
   # An in-process engine under test shares the module's sandbox JK_HOME store, and the resident
   # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible
-  # files for its own explicit prune request. Explicit `jk cache prune` is unaffected.
+  # files for its own explicit prune request. Explicit `jk cache clean` is unaffected.
   { JK_AUTO_PRUNE = "false" },
   # The JDK probe chain is the machine's unless narrowed. A jdk verb under test would otherwise
   # list, default to, write pointers at or uninstall the developer's own sdkman/mise/OS installs.
