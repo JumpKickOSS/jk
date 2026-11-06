@@ -42,8 +42,9 @@ jk new: name must match [a-z][a-z0-9-]*; got 'MyApp' (--name <name>)
 ```
 
 A name is lowercase letters, digits and `-`, starting with a letter: it is the directory, the
-artifact and the image name. `--jdk 21` sets the template's `java = 21`; a module takes its
-workspace's `java` and language unless a flag says otherwise.
+artifact and the image name. A standalone project's `java` is the major of the machine's default
+JDK (`jk jdk default`), or the template's own when there is none; `--jdk 21` sets `java = 21`. A
+module takes its workspace's `java` and language unless a flag says otherwise.
 
 The flags of the former blank-project scaffolder:
 

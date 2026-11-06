@@ -212,7 +212,8 @@ Every project comes from a template ([Templates](templates.md)): `jk new` with n
 template, `-t library` the blank library. On a terminal it asks for a template and its questions;
 without one the flags and the form's defaults answer them, and a required field with neither is an
 error naming its flag. A template writes the level as `java = N` and no toolchain pin, so the host
-JDK compiles to it; `--jdk 21` sets that level.
+JDK compiles to it: the major of the default JDK (`jk jdk default`), the template's own with none,
+the workspace's for a module; `--jdk 21` sets that level.
 
 ## Related
 

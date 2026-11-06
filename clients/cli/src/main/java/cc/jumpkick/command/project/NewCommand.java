@@ -453,8 +453,14 @@ public final class NewCommand implements CliCommand {
             NewChrome.projectExists(a.name(), parent != null, init);
             return Exit.CONFIG;
         }
+        Map<String, String> settled = new LinkedHashMap<>(a.params());
+        // A standalone project targets the machine's default JDK; a module keeps the workspace's level.
+        if (parent == null && !settled.containsKey("java")) {
+            String host = NewHostJava.major();
+            if (host != null) settled.put("java", host);
+        }
         List<String> pairs = new ArrayList<>();
-        a.params().forEach((k, v) -> pairs.add(k + "=" + v));
+        settled.forEach((k, v) -> pairs.add(k + "=" + v));
         return NewTemplate.apply(new NewTemplate.Args(
                 a.template(),
                 pairs,

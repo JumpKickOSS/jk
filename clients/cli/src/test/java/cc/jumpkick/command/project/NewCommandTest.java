@@ -7,6 +7,8 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.jdk.InstalledJdk;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Workspace;
@@ -22,12 +24,36 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
 class NewCommandTest {
+
+    @TempDir
+    Path jdks;
+
+    /** No default JDK unless a test records one, so a project gets the template's own java. */
+    @BeforeEach
+    void noDefaultJdk() {
+        JdkInventory none = new JdkInventory(jdks.resolve("jdks"), jdks.resolve("jk-jdks.toml"));
+        NewHostJava.inventory = () -> none;
+    }
+
+    @AfterEach
+    void hostInventory() {
+        NewHostJava.inventory = JdkInventory::current;
+    }
+
+    /** Records {@code id} as the machine's default JDK. */
+    private void defaultJdk(String id) throws IOException {
+        JdkInventory inv = new JdkInventory(jdks.resolve("jdks"), jdks.resolve("jk-jdks.toml"));
+        inv.setDefault(new InstalledJdk(id, jdks.resolve("jdks").resolve(id)));
+        NewHostJava.inventory = () -> inv;
+    }
 
     @Test
     void with_no_terminal_and_no_template_jk_new_scaffolds_the_app_template_with_its_defaults(@TempDir Path tempDir)
@@ -130,6 +156,55 @@ class NewCommandTest {
         assertThat(run.exit()).as(run.err()).isZero();
         assertThat(JkBuildParser.parse(target.resolve("jk.toml")).project().java())
                 .isEqualTo(21);
+    }
+
+    @Test
+    void a_project_targets_the_default_jdk_s_major_and_jdk_overrides_it(@TempDir Path tempDir) throws IOException {
+        defaultJdk("temurin-21.0.7");
+        Path demo = tempDir.resolve("demo");
+        Run run = jk("new", "--no-module", demo.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(JkBuildParser.parse(demo.resolve("jk.toml")).project().java())
+                .isEqualTo(21);
+
+        Path pinned = tempDir.resolve("pinned");
+        run = jk("new", "--jdk", "17", "--no-module", pinned.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(JkBuildParser.parse(pinned.resolve("jk.toml")).project().java())
+                .isEqualTo(17);
+    }
+
+    @Test
+    void a_module_keeps_the_workspace_s_java_whatever_the_default_jdk(@TempDir Path tempDir) throws IOException {
+        defaultJdk("temurin-21.0.7");
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "ws"
+                version  = "0.1.0"
+                java     = 17
+
+                [workspace]
+                modules = []
+                """);
+        Path app = tempDir.resolve("app");
+        Run run = jk("new", app.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(Files.readString(app.resolve("jk.toml"))).contains("java = 17");
+
+        // A workspace that names no level leaves its module the template's own.
+        Path plain = Files.createDirectories(tempDir.resolve("plain"));
+        Files.writeString(plain.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "plain"
+                version  = "0.1.0"
+
+                [workspace]
+                modules = []
+                """);
+        Path lib = plain.resolve("lib");
+        run = jk("new", lib.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(Files.readString(lib.resolve("jk.toml"))).contains("java = 25");
     }
 
     @Test
