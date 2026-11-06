@@ -61,15 +61,13 @@ public final class ArtifactLocator {
     }
 
     /**
-     * @param source the lock row's {@code "<name>+<url>"} source; a bare {@code jk-local} or a
-     *     synthetic source reads the first-party shelf only
+     * @param source the lock row's {@code "<name>+<url>"} source, read through {@link
+     *     RepoArtifactStore#forSource}; null or a bare {@code jk-local} reads the first-party shelf
      */
     public Optional<Path> locate(
             @Nullable String source, @Nullable String relativePath, @Nullable String expectedSha256) {
         if (expectedSha256 == null || expectedSha256.isBlank() || relativePath == null) return Optional.empty();
-        String repoName = source == null ? null : RepoArtifactResolver.repoName(source);
-        boolean storeOnly = !RepoArtifactResolver.isNamedRemote(repoName);
-        RepoArtifactStore store = storeOnly || source == null
+        RepoArtifactStore store = source == null
                 ? RepoArtifactStore.forStoreId(storeRoot, RepoArtifactResolver.JK_LOCAL)
                 : RepoArtifactStore.forSource(storeRoot, source, m2integration);
         return fromStore(store, relativePath, expectedSha256);

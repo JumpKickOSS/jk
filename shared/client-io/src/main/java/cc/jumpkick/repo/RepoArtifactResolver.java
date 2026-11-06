@@ -12,10 +12,10 @@ import org.jspecify.annotations.Nullable;
 public final class RepoArtifactResolver {
 
     /**
-     * Repo-source-name prefix for a synthetic git-materialized repo ({@code git:<coord>:<version>}).
-     * This is a <em>repo source name</em> concept — distinct from {@code Dependency.GIT_PREFIX}, which
-     * is a module-coordinate placeholder. Written by the git-source materializer when it registers the
-     * repo, read back here to exclude such repos from the named-remote fast path.
+     * Repo-source-name prefix for the {@code file:} repository a git or path dependency is built into
+     * ({@code git:<coord>:<version>}). A <em>repo source name</em>, distinct from {@code
+     * Dependency.GIT_PREFIX}, which is a module-coordinate placeholder. Its store is keyed by that
+     * repository's URL like any other ({@link RepoArtifactStore#forSource}).
      */
     public static final String GIT_SOURCE_PREFIX = "git:";
 
@@ -34,10 +34,9 @@ public final class RepoArtifactResolver {
     }
 
     /**
-     * True for a <em>named remote</em> repo — one whose store under {@code repos/<name>/} holds a
-     * jar fetched from that repository. {@link #JK_LOCAL} and {@code git:} sources are first-party /
-     * synthesized and never live in the Maven local repository. A user remote named {@code local}
-     * is a normal named remote.
+     * True for a <em>named remote</em>: a repository a project declared, which may publish sources
+     * jars and be refreshed. {@link #JK_LOCAL} and the {@code git:} repositories jk builds git and
+     * path dependencies into are not. A user remote named {@code local} is a normal named remote.
      */
     public static boolean isNamedRemote(@Nullable String repoName) {
         return repoName != null

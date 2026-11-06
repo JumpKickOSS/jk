@@ -129,6 +129,31 @@ class ArtifactLocatorTest {
                 .isEmpty();
     }
 
+    /**
+     * A git or path dependency is built into a {@code file:} repository and locked from it; the
+     * lock's fetch stored the jar under that repository's origin, and the locator reads it there.
+     */
+    @Test
+    void a_row_from_the_repository_a_path_dependency_was_built_into_is_found_where_its_fetch_stored_it()
+            throws Exception {
+        Path store = dir.resolve("store");
+        Path built = dir.resolve("path-artifacts/repo");
+        String rel = "com/acme/lib/1.0/lib-1.0.jar";
+        Files.createDirectories(built.resolve(rel).getParent());
+        Path jar = Files.writeString(built.resolve(rel), "path-built");
+        String hex = Hashing.sha256Hex(jar);
+        String name = RepoArtifactResolver.GIT_SOURCE_PREFIX + "com.acme:lib:1.0";
+        RepoArtifactStore.forRepository(store, name, built.toUri()).materialize(rel, jar, hex);
+
+        Path found = new ArtifactLocator(store, true)
+                .locate(row(name + "+" + built.toUri(), hex))
+                .orElseThrow();
+
+        assertThat(found).hasContent("path-built");
+        assertThat(found).startsWith(store.resolve("repos"));
+        assertThat(store.resolve("repos/jk-local").resolve(rel)).doesNotExist();
+    }
+
     private static Lockfile.Artifact row(String source, String hex) {
         return new Lockfile.Artifact(
                 "com.acme:lib", "1.0", source, "sha256:" + hex, null, List.of(Scope.MAIN), List.of());

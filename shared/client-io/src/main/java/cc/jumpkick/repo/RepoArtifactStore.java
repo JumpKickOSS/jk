@@ -189,8 +189,10 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * The store a lockfile {@code source} ({@code "<name>+<url>"}) names: the identity of its URL
-     * for a named remote, the first-party shelf for {@code jk-local} and synthetic sources.
+     * The store a lockfile {@code source} ({@code "<name>+<url>"}) names: the identity of its URL,
+     * the one {@link #forRepository} gave the repository that fetched the row, whatever the name
+     * (a declared remote, or the {@code file:} repository a git or path dependency was built into).
+     * A source with no URL, such as a bare {@code jk-local}, names the first-party shelf.
      */
     public static RepoArtifactStore forSource(Path cacheRoot, String source) {
         return forSource(cacheRoot, source, true);
@@ -200,7 +202,9 @@ public final class RepoArtifactStore {
     public static RepoArtifactStore forSource(Path cacheRoot, String source, boolean m2integration) {
         RepoSource parsed = RepoSource.parse(source);
         String name = parsed.name();
-        if (!RepoArtifactResolver.isNamedRemote(name)) return forStoreId(cacheRoot, RepoArtifactResolver.JK_LOCAL);
+        if (name == null || RepoArtifactResolver.isFirstPartyStoreName(name)) {
+            return forStoreId(cacheRoot, RepoArtifactResolver.JK_LOCAL);
+        }
         String url = parsed.url();
         try {
             return forRepository(cacheRoot, Objects.requireNonNull(name), new URI(url.strip()), m2integration);

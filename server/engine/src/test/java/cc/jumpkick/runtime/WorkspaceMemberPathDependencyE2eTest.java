@@ -30,7 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 class WorkspaceMemberPathDependencyE2eTest {
 
     @Test
-    void a_members_path_dependency_outside_the_workspace_locks_onto_its_classpath(@TempDir Path tmp) throws Exception {
+    void a_members_path_dependency_outside_the_workspace_locks_and_builds(@TempDir Path tmp) throws Exception {
         Path cache = TestCaches.dir("member-path-dependency-cache");
         Path outside = Files.createDirectories(tmp.resolve("outside/src/main/java/o"));
         Files.writeString(tmp.resolve("outside/jk.toml"), """
@@ -71,6 +71,10 @@ class WorkspaceMemberPathDependencyE2eTest {
 
         String tree = GraphOps.treeRender(app, 0, false, false, List.of(), FeatureSelection.DEFAULTS);
         assertThat(tree).as(tree).contains("⟦go⟧:⟦aoutside⟧:⟦v1.0.0⟧").doesNotContain("missing");
+
+        WorkspaceResult built = WorkspaceExecute.buildWorkspace(request(ws, cache), WorkspaceBuildListener.NOOP);
+        assertThat(built.errors()).isEmpty();
+        assertThat(built.success()).isTrue();
     }
 
     @Test

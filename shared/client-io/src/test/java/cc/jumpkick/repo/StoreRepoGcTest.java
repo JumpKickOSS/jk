@@ -7,6 +7,7 @@ import cc.jumpkick.host.Hashing;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -63,5 +64,29 @@ class StoreRepoGcTest {
         assertThat(report.deleted()).isEqualTo(1);
         assertThat(shelf).exists();
         assertThat(vendor).exists();
+    }
+
+    @Test
+    void an_artifact_of_a_file_origin_that_no_longer_holds_it_stays() throws Exception {
+        Path origin = Files.createDirectories(store.resolve("built/repo"));
+        String gone = "t/lib/1.0/lib-1.0.jar";
+        String held = "t/lib/2.0/lib-2.0.jar";
+        RepoArtifactStore repo = RepoArtifactStore.forRepository(store, "git:t:lib:1.0", origin.toUri());
+        Path tree = Objects.requireNonNull(repo.root());
+        for (String rel : new String[] {gone, held}) {
+            Path built = origin.resolve(rel);
+            Files.createDirectories(built.getParent());
+            Files.writeString(built, rel);
+            repo.materialize(rel, built, Hashing.sha256Hex(built));
+            Files.setLastModifiedTime(
+                    ArtifactMemo.jkPath(tree, rel), FileTime.fromMillis(System.currentTimeMillis() - 400 * DAY));
+        }
+        Files.delete(origin.resolve(gone));
+
+        StoreRepoGc.Report report = StoreRepoGc.run(store, 1.0, System.currentTimeMillis(), false);
+
+        assertThat(report.deleted()).isEqualTo(1);
+        assertThat(tree.resolve(gone)).as("the store holds its only copy").exists();
+        assertThat(tree.resolve(held)).as("its origin can serve it again").doesNotExist();
     }
 }
