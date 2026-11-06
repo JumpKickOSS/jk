@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.intellij;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicZip;
-import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -73,27 +72,21 @@ final class PluginZip {
         io.produced(jar);
     }
 
-    /** Jar {@code classesDir} with {@code plugin.xml} replaced by {@code pluginXml}; no build stamps. */
+    /**
+     * Jar {@code classesDir}'s content files ({@link TreeContent}: no build stamps, no {@code .jk-*}
+     * scratch directories, every other file) with {@code plugin.xml} replaced by {@code pluginXml}.
+     */
     static void writeJar(Path classesDir, Path jar, byte[] pluginXml) throws IOException {
         // Entries in the order of their names, not of Path, which compares without case on Windows:
         // the same classes make the same jar on every host.
         Map<String, Path> files = new TreeMap<>();
-        PathUtil.forEachRegularFile(
-                classesDir,
-                (file, attrs) ->
-                        files.put(classesDir.relativize(file).toString().replace('\\', '/'), file));
+        TreeContent.forEach(classesDir, (rel, file, attrs) -> files.put(rel, file));
         try (ZipOutputStream out = new ZipOutputStream(DeterministicZip.archiveStream(jar))) {
             for (Map.Entry<String, Path> file : files.entrySet()) {
                 String rel = file.getKey();
-                if (BuildStamps.isStampFile(rel) || isScratch(rel)) continue;
                 if (rel.equals(PLUGIN_XML)) ZIP.writeEntry(out, rel, pluginXml);
                 else ZIP.writeEntry(out, rel, file.getValue());
             }
         }
-    }
-
-    /** A {@code .jk-*} plugin scratch path: build bookkeeping, not plugin content. */
-    private static boolean isScratch(String rel) {
-        return rel.startsWith(".jk-") || rel.contains("/.jk-");
     }
 }

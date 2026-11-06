@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -67,7 +67,7 @@ final class AarPackager {
                 String rel = classesDir.relativize(file).toString().replace('\\', '/');
                 String name = file.getFileName().toString();
                 if (name.equals("R.class") || (name.startsWith("R$") && name.endsWith(".class"))) continue;
-                if (BuildStamps.isStampFile(rel)) continue;
+                if (!TreeContent.isContent(rel)) continue;
                 ZIP.writeEntry(zip, rel, file);
             }
         }

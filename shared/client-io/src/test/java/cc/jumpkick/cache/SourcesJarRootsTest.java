@@ -40,4 +40,25 @@ class SourcesJarRootsTest {
         assertThat(names).filteredOn("p/package-info.java"::equals).hasSize(1);
         assertThat(packageInfo).isEqualTo("package p;");
     }
+
+    /**
+     * The jar holds what the step's key fingerprints each root by: dot-files included, a {@code
+     * .jk-*} scratch directory left out.
+     */
+    @Test
+    void dot_files_ship_and_a_scratch_directory_does_not(@TempDir Path tmp) throws Exception {
+        Path java = Files.createDirectories(tmp.resolve("src/main/java/p"));
+        Files.writeString(java.resolve("A.java"), "package p; class A {}");
+        Files.writeString(java.resolve(".jk-notes.toml"), "n = 1");
+        Path scratch = Files.createDirectories(tmp.resolve("src/main/java/.jk-scratch"));
+        Files.writeString(scratch.resolve("X.java"), "class X {}");
+
+        byte[] jar = SourcesJar.build(List.of(tmp.resolve("src/main/java")));
+
+        List<String> names = new ArrayList<>();
+        try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(jar))) {
+            for (ZipEntry e; (e = zin.getNextEntry()) != null; ) names.add(e.getName());
+        }
+        assertThat(names).contains("p/A.java", "p/.jk-notes.toml").noneMatch(n -> n.startsWith(".jk-scratch"));
+    }
 }

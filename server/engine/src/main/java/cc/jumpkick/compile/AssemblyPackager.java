@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicZip;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -58,7 +57,6 @@ public final class AssemblyPackager {
             for (PackagedTree.Entry e : request.classes().entries()) {
                 String name = e.name();
                 if (name.equals("META-INF/MANIFEST.MF")) continue;
-                if (BuildStamps.isStampFile(name)) continue; // freshness stamp, not jar content
                 Path file = e.file();
                 byte[] bytes = e.bytes();
                 emitter.emit(

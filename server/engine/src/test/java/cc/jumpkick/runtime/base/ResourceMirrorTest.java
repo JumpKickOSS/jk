@@ -99,6 +99,45 @@ class ResourceMirrorTest {
         assertThat(classes.resolve("com/example/App.class")).isRegularFile();
     }
 
+    /**
+     * Dot-file resources are resources: a template's {@code .jk-template.toml} is mirrored, edited
+     * and removed like any other file, and an orphaned one is adopted and removed. Only a {@code
+     * .jk-*} directory, a plugin's scratch, is left where it is.
+     */
+    @Test
+    void a_dot_file_resource_is_mirrored_and_pruned_and_only_a_scratch_dir_is_left_alone(@TempDir Path tmp)
+            throws Exception {
+        Path res = tmp.resolve("src/main/resources");
+        Path template = res.resolve("templates/java/app/default.g8/.jk-template.toml");
+        Files.createDirectories(res.resolve("templates/java/app/default.g8"));
+        Files.writeString(template, "title = \"one\"\n");
+        Files.writeString(res.resolve(".hidden"), "h");
+        Path classes = tmp.resolve("classes");
+        Path copied = classes.resolve("templates/java/app/default.g8/.jk-template.toml");
+        Files.createDirectories(classes.resolve(".jk-bootstrap"));
+        Files.writeString(classes.resolve(".jk-bootstrap/repo.jar"), "scratch");
+        Files.writeString(classes.resolve(".jk-orphan.toml"), "orphan");
+        Path ledger = tmp.resolve("incremental/" + ResourceMirror.LEDGER);
+
+        assertThat(ResourceMirror.sync(List.of(res), classes, ledger, true))
+                .containsExactly(".hidden", "templates/java/app/default.g8/.jk-template.toml");
+        assertThat(copied).hasContent("title = \"one\"");
+        assertThat(classes.resolve(".jk-orphan.toml"))
+                .as("a .jk-* file no root holds is an orphaned resource")
+                .doesNotExist();
+        assertThat(classes.resolve(".jk-bootstrap/repo.jar"))
+                .as("a .jk-* directory is scratch")
+                .isRegularFile();
+
+        Files.writeString(template, "title = \"edited\"\n");
+        assertThat(ResourceMirror.syncChanges(List.of(res), classes, ledger)).isEqualTo(1);
+        assertThat(copied).hasContent("title = \"edited\"");
+
+        Files.delete(template);
+        ResourceMirror.sync(List.of(res), classes, ledger);
+        assertThat(copied).doesNotExist();
+    }
+
     @Test
     void a_file_the_compile_rewrote_is_not_adopted(@TempDir Path tmp) throws Exception {
         Path classes = tmp.resolve("classes");

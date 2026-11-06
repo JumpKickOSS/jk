@@ -45,6 +45,8 @@ class PluginZipTest {
                 </idea-plugin>
                 """);
         io.entry("gson-2.13.2.jar", "com.google.code.gson", "gson", "2.13.2");
+        FakeBuildIo.write(io.classesDir().resolve("templates/app/.jk-template.toml"), "title = \"t\"\n");
+        FakeBuildIo.write(io.classesDir().resolve(".jk-scratch/repo.jar"), "scratch");
 
         PluginZip.produce(io);
 
@@ -63,8 +65,9 @@ class PluginZipTest {
                     }
                 }
                 assertThat(entries)
-                        .as("no build stamp ships")
-                        .containsExactly(PluginZip.PLUGIN_XML, "cc/example/Action.class");
+                        .as("no build stamp or scratch directory ships; a .jk-* file is content")
+                        .containsExactly(
+                                PluginZip.PLUGIN_XML, "cc/example/Action.class", "templates/app/.jk-template.toml");
                 assertThat(pluginXml).contains("<version>1.4.0</version>", "<idea-version since-build=\"262\"/>");
             }
         }

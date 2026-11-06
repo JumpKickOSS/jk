@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.TreeContent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -80,9 +81,9 @@ public final class CasPrewriter implements AutoCloseable {
         if (!Files.exists(outputDir)) return outputs;
         try (Stream<Path> stream = Files.find(outputDir, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
             for (Path file : (Iterable<Path>) stream::iterator) {
-                if (BuildStamps.isStampFile(file.getFileName().toString())) continue;
-
                 String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
+                // What ActionCache.store would keep of the same tree.
+                if (!TreeContent.isContent(relPath)) continue;
                 // Authoritative pass always content-hashes, and this is deliberately NOT routed
                 // through FileHashMemo. tried that and
                 // CasPrewriterTest.finish_rehashes_when_content_changes_without_size_mtime_change

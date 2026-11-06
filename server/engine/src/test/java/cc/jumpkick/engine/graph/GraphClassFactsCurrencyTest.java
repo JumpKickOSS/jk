@@ -13,6 +13,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleInputProvenance;
+import cc.jumpkick.runtime.PlannerTest;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.wire.protocol.GraphAck;
 import java.nio.charset.StandardCharsets;
@@ -160,19 +161,19 @@ class GraphClassFactsCurrencyTest {
                 .as("no suite marker: the default suite's classes")
                 .containsExactly("src/integration");
 
-        Files.writeString(testClasses.resolve(".jk-suites"), "test");
+        Files.writeString(PlannerTest.suiteMarker(testClasses), "test");
         assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .containsExactly("src/integration");
-        Files.writeString(testClasses.resolve(".jk-suites"), "test,integration");
+        Files.writeString(PlannerTest.suiteMarker(testClasses), "test,integration");
         assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .as("compiled with the default suite")
                 .isEmpty();
-        Files.writeString(testClasses.resolve(".jk-suites"), "integration");
+        Files.writeString(PlannerTest.suiteMarker(testClasses), "integration");
         assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())
                 .as("a run of the integration suite alone leaves the default suite's tests uncompiled")
                 .containsExactly("src/test");
 
-        Files.writeString(testClasses.resolve(".jk-suites"), "test,integration");
+        Files.writeString(PlannerTest.suiteMarker(testClasses), "test,integration");
         Path guard = Files.createDirectories(tmp.resolve("src/guard/java/demo"));
         Files.writeString(guard.resolve("AppRules.java"), "package demo; class AppRules {}\n");
         assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiledNames())

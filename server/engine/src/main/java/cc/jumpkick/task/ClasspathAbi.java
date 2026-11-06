@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.TreeContent;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -194,8 +195,7 @@ public final class ClasspathAbi {
         for (Map.Entry<String, String> output : outputs.entrySet()) {
             String slashed = output.getKey().replace('\\', '/');
             if (!slashed.endsWith(".class")) continue;
-            if (BuildStamps.isStampFile(slashed)) continue;
-            if (ActionCache.hasJkScratchSegment(Path.of(slashed))) continue;
+            if (!TreeContent.isContent(slashed)) continue;
             classes.put(slashed, output.getValue());
         }
         Lines digest = new Lines();
@@ -249,11 +249,8 @@ public final class ClasspathAbi {
         List<Path> classes = new ArrayList<>();
         // Guard G45: the walk already read each entry's attributes, so ask for them once rather
         // than re-resolving the path to ask again.
-        PathUtil.forEachRegularFile(root, (f, a) -> {
-            if (BuildStamps.isStampFile(f.getFileName().toString())) return;
-            if (ActionCache.hasJkScratchSegment(root.relativize(f))) return;
-            if (!f.getFileName().toString().endsWith(".class")) return;
-            classes.add(f);
+        TreeContent.forEach(root, (rel, f, a) -> {
+            if (rel.endsWith(".class")) classes.add(f);
         });
         classes.sort(Comparator.comparing(p -> root.relativize(p).toString().replace('\\', '/')));
         for (Path f : classes) {

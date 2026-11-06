@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.quarkus;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.TreeContent;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -49,7 +49,7 @@ final class AppJar {
         try (Stream<Path> files = Files.find(dir, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
             files.forEach(file -> {
                 String name = dir.relativize(file).toString().replace('\\', '/');
-                if (!BuildStamps.isStampFile(name)) byName.put(name, file);
+                if (TreeContent.isContent(name)) byName.put(name, file);
             });
         }
         return byName;

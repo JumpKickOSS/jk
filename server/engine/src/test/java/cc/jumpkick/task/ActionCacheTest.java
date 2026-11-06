@@ -9,7 +9,9 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -211,13 +213,38 @@ class ActionCacheTest {
         Files.createDirectories(outputs.resolve(".jk-quarkus-bootstrap/m2/g/a/1"));
         Files.writeString(outputs.resolve("quarkus-run.jar"), "RUN");
         Files.writeString(outputs.resolve(".jk-quarkus-bootstrap/m2/g/a/1/a-1.jar"), "PRIVATE");
-        Files.writeString(outputs.resolve(".jk-note"), "PRIVATE-FILE");
 
         cache.store("quarkus-augment", "key-jk", Map.of("src/App.java", "abc"), outputs);
 
         var record = cache.lookup("key-jk").orElseThrow();
         // plugin-private `.jk-*` scratch never enters the action record or the CAS walk.
         assertThat(record.outputs()).containsOnlyKeys("quarkus-run.jar");
+    }
+
+    /**
+     * Only a {@code .jk-*} directory is scratch. A file named {@code .jk-*} (a template's
+     * {@code .jk-template.toml}) and any other dot-file are outputs: a classes tree restored from
+     * the record has to hold what the packager ships from the live one.
+     */
+    @Test
+    void store_keeps_dot_files_and_jk_named_files(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path outputs = tempDir.resolve("classes");
+        Files.createDirectories(outputs.resolve("templates/java/app/default.g8"));
+        Files.writeString(outputs.resolve("templates/java/app/default.g8/.jk-template.toml"), "title = \"t\"\n");
+        Files.writeString(outputs.resolve(".DS_Store"), "finder");
+        Files.writeString(outputs.resolve(BuildStamps.JAVA), "STAMP");
+
+        cache.store("copy-resources", "key-dot", Map.of(), outputs);
+
+        assertThat(cache.lookup("key-dot").orElseThrow().outputs())
+                .containsOnlyKeys("templates/java/app/default.g8/.jk-template.toml", ".DS_Store");
+        PathUtil.deleteRecursively(outputs);
+        assertThat(cache.restore(cache.lookup("key-dot").orElseThrow(), outputs))
+                .isTrue();
+        assertThat(outputs.resolve("templates/java/app/default.g8/.jk-template.toml"))
+                .hasContent("title = \"t\"");
     }
 
     @Test

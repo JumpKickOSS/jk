@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.image.ImageConfig;
 import com.google.cloud.tools.jib.api.CacheDirectoryCreationException;
 import com.google.cloud.tools.jib.api.Containerizer;
@@ -471,7 +471,7 @@ public final class ImageBuilder {
         files.sort(Comparator.comparing(p -> classesDir.relativize(p).toString()));
         for (Path file : files) {
             String rel = classesDir.relativize(file).toString().replace(File.separatorChar, '/');
-            if (BuildStamps.isStampFile(rel)) continue;
+            if (!TreeContent.isContent(rel)) continue;
             layer.addEntry(file, target.resolve(rel));
         }
         return layer.build();

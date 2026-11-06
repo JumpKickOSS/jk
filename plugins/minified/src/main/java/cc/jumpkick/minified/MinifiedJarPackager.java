@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.minified;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.surface.DynamicSurface;
@@ -450,7 +450,7 @@ final class MinifiedJarPackager {
                     .toList();
             for (Path file : files) {
                 String name = classesDir.relativize(file).toString().replace('\\', '/');
-                if (BuildStamps.isStampFile(name)) continue;
+                if (!TreeContent.isContent(name)) continue;
                 ZIP.writeEntry(jos, name, file);
             }
         }
