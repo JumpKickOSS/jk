@@ -6,7 +6,9 @@ import cc.jumpkick.engine.plugin.HostPressure;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
+import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WarmLinger;
+import cc.jumpkick.engine.plugin.WorkerCommands;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.CacheTree;
@@ -16,10 +18,8 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.util.JkDirs;
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -140,7 +140,9 @@ final class KtsSession {
     private static volatile Clock clock = Clock.SYSTEM;
 
     private final Process process;
-    private final BufferedWriter toChild;
+
+    /** Where requests go. The host's stdin is closed, so a script that reads it reads end-of-input. */
+    private final WorkerCommands toChild;
 
     /**
      * Replies, one line each, moved off the pipe by a reader thread so a request can wait for the
@@ -154,9 +156,9 @@ final class KtsSession {
     /** The idle reaper, woken to leave when the session ends before its timeout. */
     private @Nullable Thread reaper;
 
-    private KtsSession(Process process) {
+    private KtsSession(Process process, WorkerCommands toChild) {
         this.process = process;
-        this.toChild = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
+        this.toChild = toChild;
         BufferedReader fromChild =
                 new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         // A platform thread, not a virtual one: the read parks natively on the pipe for as long as
@@ -219,10 +221,11 @@ final class KtsSession {
         }
     }
 
-    /** Forget {@code session} as the shared host and let its reaper go. Under {@link #LOCK}. */
+    /** Forget {@code session} as the shared host, let its reaper go and close its channel. Under {@link #LOCK}. */
     private static void drop(KtsSession session) {
         if (current == session) current = null;
         session.dismissReaper();
+        session.toChild.close();
     }
 
     /** Shut the session down, if one is running: the engine-stop drain, and the test seam. */
@@ -239,8 +242,8 @@ final class KtsSession {
      * Test seam: a session on {@code process} with its reader running and no handshake made — for
      * measuring what the reader costs the JVM around it against a child that says nothing.
      */
-    static void attachForTests(Process process) {
-        new KtsSession(process);
+    static void attachForTests(Process process) throws IOException {
+        new KtsSession(process, WorkerCommands.open());
     }
 
     /** Test seam: whether a host is running. */
@@ -266,19 +269,19 @@ final class KtsSession {
     private void exit() {
         dismissReaper();
         try {
-            toChild.write("EXIT\n");
-            toChild.flush();
+            toChild.send("EXIT");
             if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
-        } catch (IOException | InterruptedException e) {
+        } catch (RuntimeException | InterruptedException e) {
             process.destroyForcibly();
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+        } finally {
+            toChild.close();
         }
     }
 
     private String request(Path script, Path projectDir, Path outDir, BooleanSupplier cancelled)
             throws IOException, InterruptedException, SessionDied, Refused {
-        toChild.write("RUN\t" + script + "\t" + projectDir + "\t" + outDir + "\n");
-        toChild.flush();
+        toChild.send("RUN\t" + script + "\t" + projectDir + "\t" + outDir);
         String reply = awaitReply(script, cancelled);
         if (EOF.equals(reply)) throw new SessionDied(drain());
         if (reply.startsWith("BUSY "))
@@ -334,9 +337,8 @@ final class KtsSession {
      */
     private void cancelInFlight() throws InterruptedException {
         try {
-            toChild.write("CANCEL\n");
-            toChild.flush();
-        } catch (IOException e) {
+            toChild.send("CANCEL");
+        } catch (RuntimeException e) {
             process.destroyForcibly();
             process.waitFor(5, TimeUnit.SECONDS);
             return;
@@ -442,18 +444,30 @@ final class KtsSession {
 
     private static KtsSession startBound() throws IOException, InterruptedException {
         AtomicReference<@Nullable KtsSession> started = new AtomicReference<>();
-        Process p = JobWorkers.startResident(
-                hostProcess(), new WorkerLeases.Resident(LEASE_NAME, () -> yieldLease(started)));
+        WorkerCommands commands = WorkerCommands.open();
+        ProcessBuilder pb = hostProcess();
+        List<String> command = new ArrayList<>(pb.command());
+        command.addAll(commands.args());
+        pb.command(command);
+        Process p;
+        try {
+            p = JobWorkers.startResident(pb, new WorkerLeases.Resident(LEASE_NAME, () -> yieldLease(started)));
+        } catch (IOException | RuntimeException e) {
+            commands.close();
+            throw e;
+        }
+        PluginProcess.closeStdin(p);
         try {
             registerShutdownHook();
             HostPressure.register(LEASE_NAME, KtsSession::shedIdle);
-            KtsSession session = new KtsSession(p);
+            KtsSession session = new KtsSession(p, commands);
             started.set(session);
             String ready = session.replies.poll(START_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-            if (!"READY".equals(ready)) {
+            // The host connects before it says READY, so the connection is already waiting.
+            if (!"READY".equals(ready) || !commands.connect(START_TIMEOUT)) {
                 String said = ready == null
                         ? " within " + START_TIMEOUT.toSeconds() + " s"
-                        : EOF.equals(ready) ? "" : " (said: " + ready + ")";
+                        : EOF.equals(ready) || "READY".equals(ready) ? "" : " (said: " + ready + ")";
                 throw new IllegalStateException("[build] logic: the .kts host did not start" + said);
             }
             // Idle reaper of the shared .kts host; reads no session.
@@ -461,6 +475,7 @@ final class KtsSession {
             return session;
         } catch (Throwable t) {
             p.destroyForcibly();
+            commands.close();
             throw t;
         }
     }

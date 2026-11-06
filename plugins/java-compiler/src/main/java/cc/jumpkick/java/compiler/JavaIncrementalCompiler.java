@@ -5,13 +5,12 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
+import cc.jumpkick.plugin.process.CommandChannel;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -35,11 +34,14 @@ public final class JavaIncrementalCompiler implements Plugin {
 
     @Override
     public int run(List<String> args, ProtocolWriter out) throws Exception {
-        if (args.size() == 1 && "--pull".equals(args.get(0))) {
-            return pull(out);
+        if (!args.isEmpty() && "--pull".equals(args.get(0))) {
+            try (BufferedReader commands = CommandChannel.connect(args)) {
+                return pull(out, commands);
+            }
         }
         if (args.size() != 1) {
-            System.err.println("usage: jk-java-compiler <spec-file>|@<spec-file>|--pull");
+            System.err.println(
+                    "usage: jk-java-compiler <spec-file>|@<spec-file>|--pull --commands=<host>:<port> --token=<hex>");
             return Exit.USAGE;
         }
         String specArg = args.get(0);
@@ -49,10 +51,10 @@ public final class JavaIncrementalCompiler implements Plugin {
 
     /**
      * Job-scoped loop: emit {@code ready}, read {@code COMPILE}/{@code PLAN} {@code <spec>} or
-     * {@code DONE} from stdin. Stays up across modules so Zinc's startup is paid once per job.
+     * {@code DONE} from the engine's command channel. Stays up across modules so Zinc's startup is
+     * paid once per job.
      */
-    static int pull(ProtocolWriter out) throws Exception {
-        BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+    static int pull(ProtocolWriter out, BufferedReader in) throws Exception {
         int worst = 0;
         while (true) {
             out.emit(PluginReply.ready());

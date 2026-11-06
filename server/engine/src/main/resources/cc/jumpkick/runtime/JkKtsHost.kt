@@ -6,9 +6,12 @@
 // provisioned Kotlin compiler into <store>/tools/kts-host/<hash>/, once, and KtsSession runs it
 // as a child process. It is a resource rather than a Java text block so it stays readable Kotlin.
 //
-// Protocol, one request per line on stdin, one reply per line on stdout:
+// Requests come one per line over the engine's command channel, a loopback socket named by the
+// arguments --commands=<host>:<port> and --token=<hex>: the host connects, sends the token as its
+// first line, then reads requests from it. Its stdin is closed, so a script that reads System.in,
+// or a child it starts with an inherited stdin, reads end-of-input. One reply per line on stdout:
 //
-//     READY                                        (emitted once, at startup)
+//     READY                                        (emitted once, at startup, once connected)
 //     RUN <script>\t<projectDir>\t<outDir>   ->    OK <base64 output>
 //                                                  FAIL <base64 output + error>
 //                                                  CANCELLED
@@ -23,14 +26,19 @@
 // that control lines cannot be corrupted by a script that prints. jk surfaces it only on
 // failure, which is what the forked kotlinc host did.
 //
-// The script runs on a worker thread while the main thread keeps reading stdin, which is what
+// The script runs on a worker thread while the main thread keeps reading requests, which is what
 // lets a CANCEL arrive mid-script. A script that ignores the interrupt never answers; the engine
 // then kills this host after its cancel grace and the next build starts a fresh one.
 package cc.jumpkick.kts
 
+import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.io.PrintStream
+import java.net.InetAddress
+import java.net.Socket
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Base64
@@ -117,7 +125,7 @@ private fun cacheKey(source: SourceCode, @Suppress("UNUSED_PARAMETER") cfg: Scri
 
 private fun encode(s: String): String = Base64.getEncoder().encodeToString(s.toByteArray())
 
-/** What the main loop reacts to: a control line, the end of stdin, or a finished script. */
+/** What the main loop reacts to: a control line, the end of the requests, or a finished script. */
 private sealed interface Event
 
 private data class Command(val line: String) : Event
@@ -171,10 +179,25 @@ private fun loadDir(): File {
     return File(root, ProcessHandle.current().pid().toString())
 }
 
-fun main() {
+/** Connects to the engine's command channel that [args] name and proves the connection with its token. */
+private fun connect(args: Array<String>): BufferedReader {
+    val address = args.firstOrNull { it.startsWith("--commands=") }?.removePrefix("--commands=")
+    val token = args.firstOrNull { it.startsWith("--token=") }?.removePrefix("--token=")
+    require(address != null && token != null) { "jk kts host: needs --commands=<host>:<port> and --token=<hex>" }
+    val colon = address.lastIndexOf(':')
+    val host = address.substring(0, colon).removePrefix("[").removeSuffix("]")
+    val socket = Socket(InetAddress.getByName(host), address.substring(colon + 1).toInt())
+    val hello = OutputStreamWriter(socket.getOutputStream(), Charsets.US_ASCII)
+    hello.write(token + "\n")
+    hello.flush()
+    return BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
+}
+
+fun main(args: Array<String>) {
     // Captured before anything can redirect it: control lines must never mix with script output.
     val control = System.out
     val realErr = System.err
+    val requests = connect(args)
 
     val cacheDir =
         File(System.getenv("JK_KTS_CACHE") ?: (System.getProperty("java.io.tmpdir") + File.separator + "jk-kts-cache"))
@@ -203,14 +226,16 @@ fun main() {
     val host = BasicJvmScriptingHost(hostConfig)
 
     val events = LinkedBlockingQueue<Event>()
-    thread(isDaemon = true, name = "jk-kts-stdin") {
+    thread(isDaemon = true, name = "jk-kts-requests") {
+        // A channel the engine dropped ends the requests the way a closed one does.
+        val line = { runCatching { requests.readLine() }.getOrNull() }
         while (true) {
-            val line = readlnOrNull()
-            if (line == null) {
+            val next = line()
+            if (next == null) {
                 events.put(Eof)
                 return@thread
             }
-            events.put(Command(line))
+            events.put(Command(next))
         }
     }
     val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "jk-kts-script").apply { isDaemon = true } }

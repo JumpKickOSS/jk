@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.FakeWorkerShell;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
@@ -139,11 +140,11 @@ class FormatHeapRetryTest {
      * every heap. A heap that suffices logs a 180 MiB peak to the GC log jk asked for.
      */
     private static Path fakeJava(Path dir, String mode, int files) throws Exception {
-        assumeTrue(Files.isExecutable(Path.of("/bin/sh")), "POSIX shell required");
+        assumeTrue(Files.isExecutable(Path.of("/bin/bash")), "bash required");
         Path bin = Files.createDirectories(dir.resolve("jdk/bin"));
         Path java = bin.resolve("java");
-        String script = """
-                #!/bin/sh
+        String script = FakeWorkerShell.SHEBANG + "\n" + """
+                @CONNECT@
                 mx=""
                 gc=""
                 for a in "$@"; do
@@ -160,7 +161,7 @@ class FormatHeapRetryTest {
                 if [ -n "$gc" ] && [ "$small" = 0 ]; then
                   printf '%s\\n' '[0.2s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 180M->20M(256M) 1.0ms' > "$gc"
                 fi
-                while read -r cmd; do
+                while read -r cmd <&3; do
                   [ "$cmd" = "DONE" ] && exit 0
                   if [ "MODE" = "always" ] || [ "$small" = 1 ]; then
                     printf '%s\\n' '##JKFMT:{"t":"file","path":"F0.java","status":"clean"}'
@@ -178,7 +179,10 @@ class FormatHeapRetryTest {
                 """;
         Files.writeString(
                 java,
-                script.replace("DIR", dir.toString()).replace("MODE", mode).replace("FILES", String.valueOf(files)));
+                script.replace("@CONNECT@", FakeWorkerShell.CONNECT)
+                        .replace("DIR", dir.toString())
+                        .replace("MODE", mode)
+                        .replace("FILES", String.valueOf(files)));
         Files.setPosixFilePermissions(
                 java,
                 Set.of(

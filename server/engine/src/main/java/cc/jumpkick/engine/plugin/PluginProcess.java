@@ -5,13 +5,12 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,7 +26,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Parent-side child-JVM plugin driver: fork, split protocol lines from chatter, wait for exit.
- * {@link #run} is fire-and-read; {@link #converse} is two-way over stdin.
+ * {@link #run} is fire-and-read; {@link #converse} is two-way, its commands sent over a {@link
+ * WorkerCommands} channel. Every worker starts with its stdin closed.
  */
 public final class PluginProcess {
 
@@ -51,12 +51,12 @@ public final class PluginProcess {
         }
     }
 
-    /** A handle for talking back to a running plugin over its stdin. */
+    /** A handle for talking back to a running plugin over its command channel. */
     public interface Conversation {
-        /** Send one line to the plugin's stdin (a newline is appended and flushed). */
+        /** Send one command line to the plugin (a newline is appended and flushed). */
         void send(String line);
 
-        /** Close the plugin's stdin, signalling end-of-input (EOF). */
+        /** Close the plugin's command channel, signalling end-of-input (EOF). */
         void closeInput();
     }
 
@@ -114,25 +114,19 @@ public final class PluginProcess {
             @Nullable Consumer<String> onPassthrough,
             LearnedHeaps heaps)
             throws IOException, InterruptedException {
-        return converse(
-                command,
-                env,
-                workDir,
-                prefix,
-                (json, convo) -> onProtocol.accept(json),
-                onPassthrough,
-                /* closeStdinImmediately */ true,
-                0L,
-                heaps);
+        ProcessBuilder pb = builder(command, env);
+        if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
+        return fork(pb, prefix, onProtocol, onPassthrough, null, 0L, heaps, ORPHAN_DRAIN_GRACE_MS);
     }
 
     /**
      * Fork {@code command} and drive a two-way conversation: each protocol line is delivered to
-     * {@code onProtocol} along with a {@link Conversation} for sending commands back to the plugin's
-     * stdin.
+     * {@code onProtocol} along with a {@link Conversation} for sending commands back to the plugin. The
+     * commands travel on a {@link WorkerCommands} channel whose two arguments are appended to {@code
+     * command}; the plugin's stdin is closed.
      *
-     * <p>Reading stdout and writing stdin both happen on the calling thread, so the plugin must
-     * alternate (await input → emit → await input) rather than flood stdout while blocked on stdin
+     * <p>Reading stdout and sending commands both happen on the calling thread, so the plugin must
+     * alternate (await input → emit → await input) rather than flood stdout while blocked on input,
      * which the pull protocol does (it emits {@code ready}, then waits for the next command). Run one
      * {@code converse} per worker on its own thread for parallel pull queues.
      *
@@ -170,28 +164,7 @@ public final class PluginProcess {
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(command, env, workDir, prefix, onProtocol, onPassthrough, false);
-    }
-
-    private static int converse(
-            List<String> command,
-            WorkerEnv env,
-            @Nullable Path workDir,
-            String prefix,
-            BiConsumer<String, Conversation> onProtocol,
-            @Nullable Consumer<String> onPassthrough,
-            boolean closeStdinImmediately)
-            throws IOException, InterruptedException {
-        return converse(
-                command,
-                env,
-                workDir,
-                prefix,
-                onProtocol,
-                onPassthrough,
-                closeStdinImmediately,
-                0L,
-                LearnedHeaps.engine());
+        return converse(command, env, workDir, prefix, onProtocol, onPassthrough, 0L, LearnedHeaps.engine());
     }
 
     /**
@@ -206,7 +179,14 @@ public final class PluginProcess {
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(builder(command, env), prefix, onProtocol, onPassthrough, false, 0L);
+        return converse(
+                builder(command, env),
+                prefix,
+                onProtocol,
+                onPassthrough,
+                0L,
+                LearnedHeaps.engine(),
+                ORPHAN_DRAIN_GRACE_MS);
     }
 
     /**
@@ -224,22 +204,12 @@ public final class PluginProcess {
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough,
-            boolean closeStdinImmediately,
             long idleTimeoutMs)
             throws IOException, InterruptedException {
-        return converse(
-                command,
-                env,
-                workDir,
-                prefix,
-                onProtocol,
-                onPassthrough,
-                closeStdinImmediately,
-                idleTimeoutMs,
-                LearnedHeaps.engine());
+        return converse(command, env, workDir, prefix, onProtocol, onPassthrough, idleTimeoutMs, LearnedHeaps.engine());
     }
 
-    /** As {@link #converse(List, WorkerEnv, Path, String, BiConsumer, Consumer, boolean, long)}, recording learned peaks on {@code heaps}. */
+    /** As {@link #converse(List, WorkerEnv, Path, String, BiConsumer, Consumer, long)}, recording learned peaks on {@code heaps}. */
     public static int converse(
             List<String> command,
             WorkerEnv env,
@@ -247,21 +217,12 @@ public final class PluginProcess {
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough,
-            boolean closeStdinImmediately,
             long idleTimeoutMs,
             LearnedHeaps heaps)
             throws IOException, InterruptedException {
         ProcessBuilder pb = builder(command, env);
         if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
-        return converse(
-                pb,
-                prefix,
-                onProtocol,
-                onPassthrough,
-                closeStdinImmediately,
-                idleTimeoutMs,
-                heaps,
-                ORPHAN_DRAIN_GRACE_MS);
+        return converse(pb, prefix, onProtocol, onPassthrough, idleTimeoutMs, heaps, ORPHAN_DRAIN_GRACE_MS);
     }
 
     /** As the watchdog overload with the orphan drain grace given in millis (tests). */
@@ -278,7 +239,6 @@ public final class PluginProcess {
                 prefix,
                 onProtocol,
                 null,
-                false,
                 idleTimeoutMs,
                 LearnedHeaps.engine(),
                 orphanDrainGraceMs);
@@ -296,31 +256,46 @@ public final class PluginProcess {
         return pb;
     }
 
+    /** Open the conversation's channel, name it in the worker's arguments, and fork the worker. */
     private static int converse(
             ProcessBuilder pb,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough,
-            boolean closeStdinImmediately,
-            long idleTimeoutMs)
+            long idleTimeoutMs,
+            LearnedHeaps heaps,
+            long orphanDrainGraceMs)
             throws IOException, InterruptedException {
-        return converse(
-                pb,
-                prefix,
-                onProtocol,
-                onPassthrough,
-                closeStdinImmediately,
-                idleTimeoutMs,
-                LearnedHeaps.engine(),
-                ORPHAN_DRAIN_GRACE_MS);
+        WorkerCommands commands = WorkerCommands.open();
+        List<String> command = new ArrayList<>(pb.command());
+        command.addAll(commands.args());
+        pb.command(command);
+        try {
+            return fork(
+                    pb,
+                    prefix,
+                    json -> onProtocol.accept(json, commands),
+                    onPassthrough,
+                    commands,
+                    idleTimeoutMs,
+                    heaps,
+                    orphanDrainGraceMs);
+        } finally {
+            commands.close();
+        }
     }
 
-    private static int converse(
+    /**
+     * Fork {@code pb} with its stdin closed, pump its output until it ends, and return its exit code.
+     * {@code commands}, when the worker has a channel, is closed when the pump ends, so a worker that
+     * waits for its next command reads end-of-input and exits.
+     */
+    private static int fork(
             ProcessBuilder pb,
             String prefix,
-            BiConsumer<String, Conversation> onProtocol,
+            Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough,
-            boolean closeStdinImmediately,
+            @Nullable WorkerCommands commands,
             long idleTimeoutMs,
             LearnedHeaps heaps,
             long orphanDrainGraceMs)
@@ -339,6 +314,9 @@ public final class PluginProcess {
             argfile.delete();
             throw e;
         }
+        // Commands, if any, travel on their own channel: code the worker runs that reads System.in,
+        // and every child that inherits it, reads end-of-input instead of hanging on an open pipe.
+        closeStdin(process);
         final AtomicLong lastLineAt = new AtomicLong(Clock.SYSTEM.millis());
         Thread watchdog = idleTimeoutMs > 0 ? startWatchdog(process, lastLineAt, idleTimeoutMs) : null;
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the
@@ -362,14 +340,7 @@ public final class PluginProcess {
         AtomicReference<IOException> pumpError = new AtomicReference<>();
         AtomicReference<RuntimeException> handlerError = new AtomicReference<>();
         CountDownLatch pumpDone = new CountDownLatch(1);
-        try (BufferedWriter stdin =
-                new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
-            Conversation convo = conversationOver(stdin);
-            // One-shot plugins never read stdin; close it so accidental System.in.readLine()
-            // (confirm prompts in suite tests) gets EOF instead of hanging on an open pipe.
-            if (closeStdinImmediately) {
-                convo.closeInput();
-            }
+        try (commands) {
             Thread pump = SessionContext.startPlatform("jk-worker-pump", () -> {
                 try {
                     while (true) {
@@ -393,7 +364,7 @@ public final class PluginProcess {
                                 continue;
                             }
                             if (at > 0 && onPassthrough != null) onPassthrough.accept(line.substring(0, at));
-                            onProtocol.accept(line.substring(at + prefix.length()), convo);
+                            onProtocol.accept(line.substring(at + prefix.length()));
                         } catch (RuntimeException e) {
                             // A handler that throws is the parent's bug, and the conversation ends
                             // on it by name. Left to escape, it would only kill this thread: the
@@ -467,7 +438,7 @@ public final class PluginProcess {
             try {
                 if (watchdog != null) watchdog.interrupt();
                 if (process.isAlive() || hasLiveDescendant(process)) {
-                    // A worker whose stdin we closed is already exiting. Killing it now records
+                    // A worker whose command channel we closed is already exiting. Killing it now records
                     // SIGKILL, and a compiler lane that left to free memory looks like a crash.
                     try {
                         if (!process.waitFor(1, TimeUnit.SECONDS)) forceStop(process);
@@ -484,29 +455,13 @@ public final class PluginProcess {
         return process.waitFor();
     }
 
-    /** The handle a protocol handler talks back through: one line per send, flushed, on the child's stdin. */
-    private static Conversation conversationOver(BufferedWriter stdin) {
-        return new Conversation() {
-            @Override
-            public void send(String line) {
-                try {
-                    stdin.write(line);
-                    stdin.write('\n');
-                    stdin.flush();
-                } catch (IOException ignored) {
-                    // Plugin is gone / pipe broken; the read loop will end.
-                }
-            }
-
-            @Override
-            public void closeInput() {
-                try {
-                    stdin.close();
-                } catch (IOException ignored) {
-                    // Already closed is fine.
-                }
-            }
-        };
+    /** Give {@code process} end-of-input on its stdin; commands never travel there. */
+    public static void closeStdin(Process process) {
+        try {
+            process.getOutputStream().close();
+        } catch (IOException ignored) {
+            // Already closed: the process is gone.
+        }
     }
 
     /**

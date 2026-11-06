@@ -58,18 +58,11 @@ public final class PluginClient {
     }
 
     /**
-     * Two-way pull protocol: each protocol message is delivered to {@code onMessage} with a {@link
-     * PluginProcess.Conversation} for sending commands back to the plugin's stdin. The registered
-     * {@link #on} handlers are not used in this mode (the caller dispatches on the message itself).
-     */
-    public int converse(List<String> command, BiConsumer<String, PluginProcess.Conversation> onMessage)
-            throws IOException, InterruptedException {
-        return PluginProcess.converse(command, prefix, onMessage, passthrough);
-    }
-
-    /**
-     * As {@link #converse(List, BiConsumer)} for a worker kept across many exchanges. The memory
-     * lease is taken when the process starts and held until it exits.
+     * Two-way pull protocol for a worker kept across many exchanges: each protocol message is
+     * delivered to {@code onMessage} with a {@link PluginProcess.Conversation} for sending commands
+     * back to the plugin over its command channel. The registered {@link #on} handlers are not used
+     * in this mode (the caller dispatches on the message itself). The memory lease is taken when the
+     * process starts and held until it exits.
      */
     public int converseNoSlot(
             List<String> command, WorkerEnv env, BiConsumer<String, PluginProcess.Conversation> onMessage)

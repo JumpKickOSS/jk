@@ -12,9 +12,9 @@ import java.io.PrintStream;
  * <p><strong>Every line is flushed, and that is not negotiable.</strong> It looks like an obvious
  * batching target — a 2,471-test run emits ~8,000 events — and it is not one.
  *
- * <p>The pull protocol has the plugin <em>emit {@code ready} and then block reading stdin</em>, which
- * {@code PluginProcess.converse} documents from the host side: reading stdout and writing stdin both
- * happen on one host thread, so the plugin must alternate rather than flood. A buffered {@code ready}
+ * <p>The pull protocol has the plugin <em>emit {@code ready} and then block reading its command
+ * channel</em>, which {@code PluginProcess.converse} documents from the host side: reading stdout and
+ * sending commands both happen on one host thread, so the plugin must alternate rather than flood. A buffered {@code ready}
  * therefore never reaches the host, the host never sends the next command, and both sides wait
  * forever. That is a deadlock, not a slow build.
  *

@@ -4,13 +4,9 @@ package cc.jumpkick.testrunner;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
+import cc.jumpkick.plugin.process.CommandChannel;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.InetAddress;
-import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -126,17 +122,9 @@ public final class TestRunner implements Plugin {
      * JVM's stdin to, gets end-of-input instead of the command stream.
      */
     private static int runPullMode(Args args, EventWriter writer) throws Exception {
-        String commands = Objects.requireNonNull(args.commands);
-        int colon = commands.lastIndexOf(':');
-        String host = commands.substring(0, colon).replace("[", "").replace("]", "");
-        int port = Integer.parseInt(commands.substring(colon + 1));
-        try (var socket = new Socket(InetAddress.getByName(host), port)) {
-            var hello = new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.US_ASCII);
-            hello.write(Objects.requireNonNull(args.token) + "\n");
-            hello.flush();
-            try (var in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
-                return runPullMode(args, writer, in);
-            }
+        try (BufferedReader in =
+                CommandChannel.connect(Objects.requireNonNull(args.commands), Objects.requireNonNull(args.token))) {
+            return runPullMode(args, writer, in);
         }
     }
 
@@ -215,10 +203,10 @@ public final class TestRunner implements Plugin {
                     listOnly = true;
                 } else if (a.equals("--pull")) {
                     pull = true;
-                } else if (a.startsWith("--commands=")) {
-                    commands = a.substring("--commands=".length());
-                } else if (a.startsWith("--token=")) {
-                    token = a.substring("--token=".length());
+                } else if (a.startsWith(CommandChannel.COMMANDS)) {
+                    commands = a.substring(CommandChannel.COMMANDS.length());
+                } else if (a.startsWith(CommandChannel.TOKEN)) {
+                    token = a.substring(CommandChannel.TOKEN.length());
                 } else if (a.startsWith("--worker=")) {
                     workerId = Integer.parseInt(a.substring("--worker=".length()));
                 } else if (a.startsWith("--include-tags=")) {

@@ -110,7 +110,8 @@ public final class PluginProtocol {
 
     /**
      * {@code PluginMain --serve}: the worker stays up between specs. It says {@link #READY}, reads
-     * {@code RUN <spec-file>} or {@code DONE} from stdin, runs each spec and answers {@link #EXITED}.
+     * {@code RUN <spec-file>} or {@code DONE} from the {@link cc.jumpkick.plugin.process.CommandChannel}
+     * the arguments after this one name, runs each spec and answers {@link #EXITED}.
      */
     public static final String SERVE = "--serve";
 
