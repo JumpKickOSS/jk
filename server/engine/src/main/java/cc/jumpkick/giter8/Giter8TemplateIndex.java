@@ -258,7 +258,7 @@ public final class Giter8TemplateIndex {
         if (!Files.isDirectory(tmpl)) return null;
         String name = JkTemplateToml.nameFromDir(tmpl.getFileName().toString());
         if (name == null) return null;
-        Optional<JkTemplateToml.Meta> meta = JkTemplateToml.tryRead(tmpl);
+        Optional<JkTemplateToml.Meta> meta = JkTemplateToml.loadOrRefuse(tmpl);
         if (meta.isEmpty()) return null;
         if (JkTemplateToml.matching(meta.get(), lang, framework, name).isEmpty()) return null;
         JkTemplateToml.Meta m = meta.get();

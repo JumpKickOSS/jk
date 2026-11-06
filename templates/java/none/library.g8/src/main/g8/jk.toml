@@ -3,6 +3,20 @@ name = "$name$"
 version = "0.1.0"
 java = $java$
 
+$if(deps_guava.truthy || deps_commons_lang.truthy || deps_commons_io.truthy)$
+[dependencies]
+$if(deps_guava.truthy)$
+guava = "33.8.0-jre"
+$endif$
+$if(deps_commons_lang.truthy)$
+commons-lang3 = "3.21.0"
+$endif$
+$if(deps_commons_io.truthy)$
+commons-io = "2.22.0"
+$endif$
+# `jk add <library>` adds another at its newest stable release.
+
+$endif$
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
 [nullness]

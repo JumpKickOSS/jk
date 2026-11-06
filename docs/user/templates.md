@@ -91,7 +91,8 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 |------|-----------|-----------|--------|-----------|
 | `cli` | none | java, kotlin | Simple executable | `library` (java), house rules (kotlin) |
 | `cli-native` | none | java | Interactive Java CLI with JLine | house rules |
-| `library` | none | java, kotlin | Published library: sources and javadoc jars (Dokka's for Kotlin), `[build-info]`, unit test; the Java one a `@NullMarked` API | `library` |
+| `app` | none | java, kotlin | Blank application: a main and its test; asks for common libraries, a fat jar and a native binary | `library` |
+| `library` | none | java, kotlin | Published library: sources and javadoc jars (Dokka's for Kotlin), `[build-info]`, unit test; the Java one a `@NullMarked` API; asks for common libraries | `library` |
 | `ktor-3` | none | kotlin | Ktor + Koin + Exposed | house rules |
 | `hello` | spring-boot | java, kotlin | Plugin hello app | `spring` |
 | `webmvc` | spring-boot | java, kotlin | Clean-architecture WebMVC workspace | `spring`, `monorepo` |
@@ -105,6 +106,78 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 
 `webapp --frontend <framework>` swaps the Vite/React `web` module for another front end, generated
 as below; the default stays the offline Vite/React one.
+
+## Template questions (`.jk-template.toml`)
+
+Every template root holds a `.jk-template.toml`: its identity, which must match its
+`<lang>/<framework>/<name>.g8` path, and the questions it asks beyond the ones every project shares.
+
+```toml
+language = "java"
+framework = "spring-boot"
+name = "webmvc"
+description = "Clean-architecture WebMVC workspace"
+layouts = ["traditional", "simple"]
+internal = ["boot_version"]          # default.properties entries that are not questions
+
+[[ask]]
+key = "database"
+label = "Database"
+kind = "choice"
+options = ["none", { id = "postgres", label = "PostgreSQL" }, "mysql"]
+default = "postgres"
+
+[[ask]]
+key = "migrations"
+label = "Migrations"
+kind = "choice"
+options = ["flyway", "liquibase"]
+default = "flyway"
+when = "database != 'none'"
+
+[[ask]]
+key = "native"
+label = "Build a native binary"
+kind = "bool"
+default = false
+advanced = true
+```
+
+| Attribute | Meaning |
+|-----------|---------|
+| `key` | the Giter8 property the answer sets |
+| `label`, `help` | one short line each; `label` is required |
+| `kind` | `text`, `bool`, `choice` or `multi` |
+| `options` | for `choice` and `multi`: ids, or `{ id, label, help }` tables |
+| `default` | a string, a boolean (`bool`) or a list of ids (`multi`); without one the ask is required |
+| `required` | defaults to `true` exactly when there is no `default` |
+| `pattern` | a regex a `text` answer must match |
+| `when` | a condition on earlier asks (`==`, `!=`, `in [...]`, `&&`, `\|\|`, `!`); a hidden ask takes its default |
+| `advanced` | not prompted; its default applies unless `-p` sets it |
+
+`-p key=value` answers an ask: `true`/`false` (or `yes`/`no`) for a `bool`, comma-separated ids for
+a `multi`. An answer that does not fit is refused with the values it takes
+(`database must be one of none, postgres, mysql; got 'oracle' (-p database=none|postgres|mysql)`).
+
+**Giter8 bindings.** StringTemplate conditionals test truthiness only, so the engine sets more than
+the answer itself: for a `choice`, `<key>_<option>` is `yes` for the chosen option and `no` for the
+rest (`database_postgres`); for a `multi`, the same for each selected option, with the answer
+itself the selected ids joined by commas; a `bool` is `yes` or `no`. A character an option id may
+hold but a property name may not (`-`, `.`) becomes `_`: option `commons-lang` binds
+`deps_commons_lang`. Templates write `$if(database_postgres.truthy)$` and keep no logic of their
+own.
+
+**Catalogue lint.** The engine checks every template it loads, and refuses one that fails with a
+message naming the property; a refused template is left out of the catalogue and is not applied:
+
+- every property in `default.properties` is reserved, an `[[ask]]` key, or listed in `internal`;
+- an ask is not a reserved key, and a value `default.properties` also gives it equals its default;
+- every `internal` entry is set in `default.properties`, and is neither reserved nor asked;
+- every `when` names earlier asks only, and every `default` is one of its `options`;
+- no `<key>_<option>` binding names another property.
+
+Reserved properties are jk's own: `name`, `organization`, `package`, `group`, `java`,
+`jk_languages`, `jk_layout`, `jk_version`, `name_normalized`, `simple` and `verbatim`.
 
 ## Node front ends (`--lang node`)
 

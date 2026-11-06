@@ -12,7 +12,9 @@ import cc.jumpkick.giter8.Giter8Apply;
 import cc.jumpkick.giter8.Giter8Maven;
 import cc.jumpkick.giter8.Giter8ShortNames;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.giter8.JkTemplateToml;
 import cc.jumpkick.giter8.PluginTemplates;
+import cc.jumpkick.giter8.TemplateAnswers;
 import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -267,10 +269,19 @@ public final class NewProjectOps {
                 params.putIfAbsent(Giter8ShortNames.LAYOUT_SIMPLE, "yes");
             }
             try {
+                Map<String, String> bound;
+                try {
+                    // The catalogue lint again, for a template reached by path or URL rather than
+                    // through the index; then the asks settle and bind.
+                    bound = TemplateAnswers.bind(
+                            JkTemplateToml.load(templateRoot).orElse(null), params);
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException("template " + prep.template() + ": " + e.getMessage(), e);
+                }
                 Giter8Apply.apply(
                         templateRoot,
                         target,
-                        params,
+                        bound,
                         Giter8Maven.fromRepositories(
                                 () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()), offline));
             } catch (IOException e) {

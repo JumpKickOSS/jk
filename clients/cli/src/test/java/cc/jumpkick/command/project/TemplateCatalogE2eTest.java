@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.form.Field;
+import cc.jumpkick.form.Option;
+import cc.jumpkick.giter8.JkTemplateToml;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,8 +26,10 @@ import org.junit.jupiter.api.io.TempDir;
  * Every template under the repository's {@code templates/} (the tree the public catalog mirrors) is
  * scaffolded with {@code jk new -t <path>} in each layout it declares, and the project it writes
  * passes {@code jk build}, {@code jk test} and {@code jk guard} with no edits — the contract the
- * catalog's README promises. A template that stops compiling, fails NullAway or its own rule pack,
- * or ships a red sample test fails here under its own id and layout, with the command's console.
+ * catalog's README promises. A template that asks questions is scaffolded once more with every
+ * option on, so a binding only a non-default answer reaches is built too. A template that stops
+ * compiling, fails NullAway or its own rule pack, or ships a red sample test fails here under its
+ * own id and layout, with the command's console.
  *
  * <p>Slow tier: each scaffold resolves its framework's closure (Spring Boot, Ktor, JLine, Error
  * Prone) and builds and tests a whole project, minutes in all — framework end to end that breaks
@@ -55,9 +60,17 @@ class TemplateCatalogE2eTest {
         for (Path template : templates) {
             readEveryFile(template);
             String id = root.relativize(template).toString().replace('\\', '/').replaceAll("\\.g8$", "");
-            for (String layout : layouts(template.resolve(".jk-template.toml"))) {
+            List<String> layouts = layouts(template.resolve(".jk-template.toml"));
+            for (String layout : layouts) {
                 tests.add(DynamicTest.dynamicTest(
-                        id + " (" + layout + ")", () -> scaffoldAndCheck(template, id, layout)));
+                        id + " (" + layout + ")", () -> scaffoldAndCheck(template, id, layout, List.of())));
+            }
+            List<String> everyOption = everyOption(template);
+            if (!everyOption.isEmpty()) {
+                String layout = layouts.getFirst();
+                tests.add(DynamicTest.dynamicTest(
+                        id + " (" + layout + ", every option)",
+                        () -> scaffoldAndCheck(template, id, layout, everyOption)));
             }
         }
         return tests.stream();
@@ -87,11 +100,39 @@ class TemplateCatalogE2eTest {
         return layouts.isEmpty() ? List.of("traditional") : layouts;
     }
 
-    private void scaffoldAndCheck(Path template, String id, String layout) throws IOException {
-        Path project = scratch.resolve(id.replace('/', '-') + "-" + layout);
+    /**
+     * The {@code -p} flags that turn on every option the template asks for, beside the defaults the
+     * plain scaffold takes: each bool on, each multi with all its options, each choice its last
+     * option. A binding no default reaches still has to render a project that builds.
+     */
+    static List<String> everyOption(Path template) throws IOException {
+        JkTemplateToml.Meta meta = JkTemplateToml.load(template).orElseThrow();
+        List<String> flags = new ArrayList<>();
+        for (Field f : meta.asks()) {
+            String value =
+                    switch (f.kind()) {
+                        case BOOL -> "true";
+                        case MULTI ->
+                            String.join(
+                                    ",", f.options().stream().map(Option::id).toList());
+                        case CHOICE -> f.options().getLast().id();
+                        default -> null;
+                    };
+            if (value == null) continue;
+            flags.add("-p");
+            flags.add(f.key() + "=" + value);
+        }
+        return flags;
+    }
+
+    private void scaffoldAndCheck(Path template, String id, String layout, List<String> params) throws IOException {
+        Path project = scratch.resolve(id.replace('/', '-') + "-" + layout + (params.isEmpty() ? "" : "-options"));
         // The layout is passed explicitly: what the scaffold is checked in is the template's own
         // declaration, not whichever default `jk new` picks.
-        jk(id, layout, "new", "-t", template.toString(), "-L", layout, "-N", "--name", "demo", project.toString());
+        List<String> args = new ArrayList<>(List.of("new", "-t", template.toString(), "-L", layout, "-N"));
+        args.addAll(params);
+        args.addAll(List.of("--name", "demo", project.toString()));
+        jk(id, layout, args.toArray(String[]::new));
         assertThat(project.resolve("jk.toml"))
                 .as("%s (%s) writes a jk.toml at the project root", id, layout)
                 .exists();

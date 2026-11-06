@@ -9,7 +9,6 @@ import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -19,6 +18,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -87,14 +87,9 @@ public final class PluginTemplates {
         if (!Files.isDirectory(tmpl)) return null;
         String name = JkTemplateToml.nameFromDir(tmpl.getFileName().toString());
         if (name == null) return null;
-        Path metaFile = tmpl.resolve(JkTemplateToml.FILE_NAME);
-        if (!Files.isRegularFile(metaFile)) return null;
-        JkTemplateToml.Meta meta;
-        try {
-            meta = JkTemplateToml.parse(Files.readString(metaFile, StandardCharsets.UTF_8), metaFile.toString());
-        } catch (IOException | IllegalArgumentException e) {
-            return null;
-        }
+        Optional<JkTemplateToml.Meta> loaded = JkTemplateToml.loadOrRefuse(tmpl);
+        if (loaded.isEmpty()) return null;
+        JkTemplateToml.Meta meta = loaded.get();
         if (JkTemplateToml.matching(meta, lang, framework, name).isEmpty()) return null;
         return new TemplateSpec(
                 TemplateSpec.idOf(lang, framework, name),
