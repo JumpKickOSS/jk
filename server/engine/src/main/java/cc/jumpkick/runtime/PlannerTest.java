@@ -41,6 +41,7 @@ import cc.jumpkick.runtime.base.TestFailureSource;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.LangCompile;
 import cc.jumpkick.task.MirroredOutputs;
@@ -157,6 +158,8 @@ public final class PlannerTest {
                             && (javaTests || !src.ktTest().isEmpty());
                     Path gvTestOut = mixedTestGv ? ctx.require(LAYOUT).groovyTestClassesDir() : testClasses;
                     Path ktTestOut = mixedTest ? ctx.require(LAYOUT).kotlinTestClassesDir() : testClasses;
+                    // The stamps' instant: before any test compiler reads its first source.
+                    long readClock = FreshnessStamp.clockNow(testClasses);
                     // Kotlin first, then Groovy against its output (Gradle's order), then Java against both.
                     compileKotlinTests(
                             ctx, in, cas, actionCache, src, baseCp, ktTestOut, testClasses, mixedTest && javaTests);
@@ -194,6 +197,8 @@ public final class PlannerTest {
                             mixedTestGv);
                     Files.createDirectories(testClasses);
                     Files.writeString(testClasses.resolve(SUITE_MARKER), selectionKey);
+                    TestClassStamps.write(
+                            ctx, src.javacSources(), src.ktTest(), src.gvTest(), baseCp, testClasses, readClock);
                     ctx.progress(1);
                 })
                 .build();
