@@ -138,6 +138,7 @@ function sourcePhrase(source) {
   if (source === 'host') return '(host)';
   if (source === 'cgroup') return '(cgroup)';
   if (source === 'override') return '(override JK_WORKER_BUDGET_MB)';
+  if (source === 'shared') return "(another engine's)";
   return '(' + source + ')';
 }
 

@@ -319,6 +319,15 @@ class WorkerLeasesOverbookTest {
     }
 
     @Test
+    void free_memory_in_a_workers_group_is_no_more_than_the_host_has_available() {
+        // Another engine's workers sit outside this group but inside the host's MemAvailable.
+        assertThat(OverbookSignals.hostFree(12 * GIB, 3 * GIB)).isEqualTo(3 * GIB);
+        assertThat(OverbookSignals.hostFree(2 * GIB, 30 * GIB)).isEqualTo(2 * GIB);
+        assertThat(OverbookSignals.hostFree(2 * GIB, -1)).isEqualTo(2 * GIB);
+        assertThat(OverbookSignals.hostFree(-1, 30 * GIB)).isEqualTo(-1);
+    }
+
+    @Test
     void the_engine_log_line_names_the_grant_and_the_sample() {
         String line = WorkerLeases.overbookedLine(
                 672L << 20,

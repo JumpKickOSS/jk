@@ -145,7 +145,9 @@ public final class WorkerContainment {
         /** The enclosing cgroup's {@code memory.max} was the tighter input. */
         CGROUP("cgroup"),
         /** {@link #BUDGET_ENV} replaced the host number for this process. */
-        OVERRIDE("override");
+        OVERRIDE("override"),
+        /** Another engine of this host recorded the budget first; every engine leases against it. */
+        SHARED("shared");
 
         private final String wire;
 

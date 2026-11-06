@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
-import cc.jumpkick.config.AvailableCpus;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.StepScope;
@@ -65,10 +63,12 @@ import org.jspecify.annotations.Nullable;
  * lease is abandoned once {@link JobWorkers#ended} says the request was shut down, and a lease past
  * the budget is granted only when {@link OverbookSignals#live()} says the host has room.
  *
- * <p>The budget and the cap bound the host, not one process. An engine process {@linkplain
- * #shareHost joins} its state directory's {@link HostLeases}, and each grant counts what every other
- * engine of that directory holds, so a displaced engine still draining and its successor together
- * stay inside them. A ledger that joins nothing, as in a test JVM, counts only its own leases.
+ * <p>The budget, its cap and the JVM slot cap bound the host, not one process. An engine process
+ * {@linkplain #shareHost joins} its state directory's {@link HostLeases}, and each grant counts the
+ * bytes and JVMs every other engine of that directory holds, so a displaced engine still draining
+ * and its successor together stay inside them. They lease against one budget, the one the engine
+ * that was there first recorded. A ledger that joins nothing, as in a test JVM, counts only its own
+ * leases against its own budget.
  */
 public final class WorkerLeases {
 
@@ -120,8 +120,8 @@ public final class WorkerLeases {
      * most every two seconds; that read honors {@code JK_WORKER_BUDGET_MB}.
      */
     private static final Ledger PROCESS = new Ledger(
-                    new ProcessBudget(),
-                    WorkerLeases::forkCpuCap,
+                    new EngineLimits.Budget(),
+                    EngineLimits::forkCpuCap,
                     JobWorkers::ended,
                     OverbookSignals.live(),
                     MemoryProbe::rssBytes)
@@ -148,24 +148,6 @@ public final class WorkerLeases {
     /** Test seam: {@link #engine()} answers {@code ledger}, or this process's own when {@code null}. */
     public static void engineForTests(@Nullable Ledger ledger) {
         replaced = ledger;
-    }
-
-    /**
-     * How many forked JVMs may run at once: the host's processors, narrowed to a finite cgroup CPU
-     * quota. {@link Runtime#availableProcessors()} is the wrong reading. An engine in a JVM started
-     * with {@code -XX:ActiveProcessorCount} (a batch worker's share, or a user's {@code jvm-args})
-     * would read that pin, and with no quota {@link AvailableCpus#count()} reports it. A cap of one lets a resident script host or
-     * compiler hold the only slot until its idle timeout, and the next fork waits out that timeout.
-     */
-    static int forkCpuCap() {
-        return forkCpuCap(HostProcessors.count(), AvailableCpus.quota());
-    }
-
-    /** {@link #forkCpuCap()} for a known host size and quota. {@code quota <= 0} means unlimited. */
-    static int forkCpuCap(int hostProcessors, int cgroupQuota) {
-        int host = Math.max(1, hostProcessors);
-        if (cgroupQuota > 0) return Math.min(host, cgroupQuota);
-        return host;
     }
 
     /** Resident bytes above {@code xmxBytes} that the lease reserves. */
@@ -347,11 +329,11 @@ public final class WorkerLeases {
             return this;
         }
 
-        /** Count the other engines {@code share} records in every grant, and record this ledger's bytes there. */
+        /** Count the other engines {@code share} records in every grant, and record this ledger's line there. */
         Ledger shareHost(HostLeases share) {
             synchronized (lock) {
                 this.host = Objects.requireNonNull(share, "share");
-                share.publish(charged());
+                share.publish(line(null));
             }
             return this;
         }
@@ -371,25 +353,68 @@ public final class WorkerLeases {
 
         /** Under the lock: {@link #charged()} plus what the other engines of this host hold, as last read. */
         private long hostCharged() {
-            long sum = charged() + others();
+            long sum = charged() + others().bytes();
             return sum < 0 ? Long.MAX_VALUE : sum;
         }
 
-        /** Under the lock: what other engines of this host hold, as last read; {@code 0} when shared with none. */
-        private long others() {
-            HostLeases h = host;
-            return h == null ? 0 : h.recentOthers();
+        /** Under the lock: JVMs running on this host, this ledger's and the other engines' as last read. */
+        private int hostJvms() {
+            return (int) Math.min(Integer.MAX_VALUE, (long) jvmRunning + others().jvms());
         }
 
-        /** Under the lock: record {@link #charged()} for the other engines. */
+        /** What other engines of this host hold, as last read; nothing when shared with none. */
+        private HostLeases.Reading others() {
+            HostLeases h = host;
+            return h == null ? HostLeases.Reading.NONE : h.recent();
+        }
+
+        /** Bytes the other engines of this host hold, read at most 250 ms ago; {@code 0} when shared with none. */
+        public long otherEnginesBytes() {
+            return others().bytes();
+        }
+
+        /** JVMs the other engines of this host run, read at most 250 ms ago; {@code 0} when shared with none. */
+        public int otherEnginesJvms() {
+            return others().jvms();
+        }
+
+        /** Under the lock: record this ledger's line for the other engines. */
         private void publish() {
             HostLeases h = host;
-            if (h != null) h.publish(charged());
+            if (h != null) h.publish(line(null));
         }
 
-        /** Bytes this ledger will hand out. */
-        public long capacityBytes() {
+        /**
+         * Under the lock: what this ledger records for the other engines, with {@code granting}'s
+         * lease and slot counted when it is about to be taken.
+         */
+        private HostLeases.Line line(@Nullable Waiter granting) {
+            long bytes = charged();
+            int jvms = jvmRunning;
+            if (granting != null) {
+                bytes += granting.demand.bytes;
+                if (granting.demand.cpuSlot) jvms++;
+            }
+            List<HostLeases.Worker> workers = new ArrayList<>();
+            for (Waiter w : held) {
+                if (w.pid > 0) workers.add(new HostLeases.Worker(w.pid, w.startedAtMillis));
+            }
+            return new HostLeases.Line(ownCapacityBytes(), bytes, jvms, workers);
+        }
+
+        /** This process's own budget, before any other engine's recorded one replaces it. */
+        private long ownCapacityBytes() {
             return Math.max(0, capacity.getAsLong());
+        }
+
+        /**
+         * Bytes this ledger will hand out: its own budget, or, when it shares the host, the budget the
+         * first engine there recorded.
+         */
+        public long capacityBytes() {
+            long own = ownCapacityBytes();
+            HostLeases h = host;
+            return h == null ? own : h.budget(own);
         }
 
         /** How many forked JVMs may run at once. */
@@ -399,10 +424,10 @@ public final class WorkerLeases {
 
         public Snapshot snapshot() {
             synchronized (lock) {
-                long budget = capacityBytes();
                 HostLeases h = host;
-                long others = h == null ? 0 : h.freshOthers();
-                long charged = charged() + others;
+                HostLeases.Reading others = h == null ? HostLeases.Reading.NONE : h.fresh();
+                long budget = capacityBytes();
+                long charged = charged() + others.bytes();
                 if (charged < 0) charged = Long.MAX_VALUE;
                 long over = charged > budget ? charged - budget : 0;
                 return new Snapshot(
@@ -410,7 +435,7 @@ public final class WorkerLeases {
                         charged,
                         over,
                         queue.size(),
-                        jvmRunning,
+                        hostJvms(),
                         cpuCap(),
                         waitingLine(budget),
                         overLeaseLine());
@@ -580,7 +605,7 @@ public final class WorkerLeases {
         /** Under the lock: {@code waiter} reached its deadline. */
         private void giveUp(Waiter waiter, long deadlineNanos) {
             long budget = capacityBytes();
-            boolean slot = waiter.demand.cpuSlot && jvmRunning >= cpuCap();
+            boolean slot = waiter.demand.cpuSlot && hostJvms() >= cpuCap();
             String phrase = waitedPhrase(deadlineNanos);
             if (slot) phrase = phrase.replace("for memory", "for a JVM slot");
             throw new LeaseRefused(ownerOf(waiter) + " " + phrase + " and gave up: " + waitLine(waiter, budget, true));
@@ -616,7 +641,7 @@ public final class WorkerLeases {
          * forks that are working still hold what the head needs, residents are left alone.
          */
         private void reclaimFor(Waiter head) {
-            if (head.demand.cpuSlot && jvmRunning >= cpuCap()) return;
+            if (head.demand.cpuSlot && hostJvms() >= cpuCap()) return;
             long cap = capacityBytes();
             long resident = 0;
             long yielding = 0;
@@ -671,9 +696,9 @@ public final class WorkerLeases {
          */
         private String waitLine(Waiter head, long budget, boolean nameBudget) {
             StringBuilder line = new StringBuilder("needs ");
-            if (head.demand.cpuSlot && jvmRunning >= cpuCap()) {
+            if (head.demand.cpuSlot && hostJvms() >= cpuCap()) {
                 line.append("a JVM slot (")
-                        .append(jvmRunning)
+                        .append(hostJvms())
                         .append('/')
                         .append(cpuCap())
                         .append(" running)");
@@ -689,7 +714,7 @@ public final class WorkerLeases {
             for (Waiter w : held) {
                 holders.computeIfAbsent(ownerOf(w), Holder::new).add(w);
             }
-            long others = others();
+            long others = others().bytes();
             if (others > 0) holders.computeIfAbsent(OTHER_ENGINES, Holder::new).bytes += others;
             if (holders.isEmpty()) return line.toString();
             List<Holder> ranked = new ArrayList<>(holders.values());
@@ -714,27 +739,27 @@ public final class WorkerLeases {
          * total stays inside {@link #OVERBOOK_CAP_FACTOR} times the budget. Existing forks are not
          * re-charged here: the sample's free bytes are their real usage.
          *
-         * <p>With a {@link HostLeases} share both totals include the other engines. A recent reading
-         * of them may refuse; a grant is decided on a fresh one, under the share's file lock, and the
-         * new total is recorded before the lock is let go.
+         * <p>With a {@link HostLeases} share the bytes, the cap and the JVM slots include the other
+         * engines. A recent reading of them may refuse; a grant is decided on a fresh one, under the
+         * share's file lock, and the new line is recorded before the lock is let go.
          */
         private boolean admit(Waiter waiter) {
-            if (waiter.demand.cpuSlot && jvmRunning >= cpuCap()) return false;
             HostLeases h = host;
-            if (h == null) return admit(waiter, 0);
-            if (!admit(waiter, h.recentOthers())) return false;
+            if (h == null) return admit(waiter, HostLeases.Reading.NONE);
+            if (!admit(waiter, h.recent())) return false;
             boolean[] granted = {false};
             h.exchange(others -> {
                 granted[0] = admit(waiter, others);
-                return charged() + (granted[0] ? waiter.demand.bytes : 0);
+                return line(granted[0] ? waiter : null);
             });
             return granted[0];
         }
 
-        /** Under the lock: {@link #admit(Waiter)} with {@code others} bytes held by other engines. */
-        private boolean admit(Waiter waiter, long others) {
+        /** Under the lock: {@link #admit(Waiter)} with {@code others} held by other engines. */
+        private boolean admit(Waiter waiter, HostLeases.Reading others) {
+            if (waiter.demand.cpuSlot && (long) jvmRunning + others.jvms() >= cpuCap()) return false;
             long cap = capacityBytes();
-            long charged = charged() + Math.max(0, others);
+            long charged = charged() + Math.max(0, others.bytes());
             if (charged < 0) charged = Long.MAX_VALUE;
             if (charged <= cap && waiter.demand.bytes <= cap - charged) {
                 waiter.overbooked = false;
@@ -878,12 +903,17 @@ public final class WorkerLeases {
         }
 
         private void watch(Waiter waiter, long pid, String what, @Nullable TaskContext step) {
+            long started = ProcessHandle.of(pid)
+                    .map(p -> HostLeases.Owner.of(p).startedAtMillis())
+                    .orElse(0L);
             Duration every = null;
             synchronized (lock) {
                 if (waiter.released) return;
                 waiter.pid = pid;
+                waiter.startedAtMillis = started;
                 waiter.what = what;
                 waiter.step = step;
+                publish();
                 if (sampleEvery != null && !sampling) {
                     sampling = true;
                     every = sampleEvery;
@@ -931,23 +961,6 @@ public final class WorkerLeases {
             long fitted = clampXmx(xmx, cap);
             long bytes = Math.min(cap, jvmLease(fitted));
             return new Demand(bytes, fitted, true, fitted < xmx || bytes < jvmLease(xmx), false, false);
-        }
-    }
-
-    /** The engine ledger's capacity: {@link WorkerContainment#budgetBytes()}, cached for two seconds. */
-    private static final class ProcessBudget implements LongSupplier {
-        private volatile long bytes;
-        private volatile long atNanos;
-
-        @Override
-        public long getAsLong() {
-            long now = Clock.SYSTEM.nanos();
-            long cached = bytes;
-            if (cached > 0 && now - atNanos < 2_000_000_000L) return cached;
-            long measured = WorkerContainment.budgetBytes();
-            bytes = measured;
-            atNanos = now;
-            return measured;
         }
     }
 
@@ -1071,6 +1084,9 @@ public final class WorkerLeases {
 
         /** The forked process, once {@link Grant#watch} names it; {@code -1} before. */
         long pid = -1;
+
+        /** When {@link #pid} started, in epoch milliseconds; {@code 0} when the OS did not say. */
+        long startedAtMillis;
 
         String what = "worker";
 

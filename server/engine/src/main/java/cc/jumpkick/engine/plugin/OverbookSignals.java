@@ -17,7 +17,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Live memory signals a {@link WorkerLeases.Ledger} reads before granting a lease the reservation
  * budget cannot hold. The sample is host pressure, and free bytes that already count running forks
- * at their real usage.
+ * at their real usage: the host's {@code MemAvailable}, which sees the workers of every engine, and
+ * in cgroup mode no more than this engine's workers group has left under its {@code memory.max}.
  *
  * <p>Readings are reused for {@link #CACHE_NANOS}. A grant checks the cached sample under the ledger
  * lock; the cache is what keeps that check from reading {@code /proc} on every fork.
@@ -145,20 +146,16 @@ public final class OverbookSignals {
                 ? WorkerContainment.workersGroup()
                 : null;
         boolean cgroup = workers != null;
-        long free = -1L;
-        boolean availableReadable = false;
-        if (workers != null) {
-            free = cgroupFree(readText(workers.resolve("memory.max")), readText(workers.resolve("memory.current")));
-        } else {
-            String meminfo = readText(MEMINFO);
-            if (meminfo != null) {
-                long avail = MemoryProbe.meminfoValueBytes(meminfo, "MemAvailable");
-                if (avail >= 0) {
-                    availableReadable = true;
-                    free = avail;
-                }
-            }
-        }
+        long available = -1L;
+        String meminfo = readText(MEMINFO);
+        if (meminfo != null) available = MemoryProbe.meminfoValueBytes(meminfo, "MemAvailable");
+        boolean availableReadable = available >= 0;
+        long free = workers != null
+                ? hostFree(
+                        cgroupFree(
+                                readText(workers.resolve("memory.max")), readText(workers.resolve("memory.current"))),
+                        available)
+                : available;
         Pressure host = parsePressure(readText(PRESSURE));
         if (workers != null) {
             String groupText = readText(workers.resolve("memory.pressure"));
@@ -181,6 +178,15 @@ public final class OverbookSignals {
         long current = parseLimit(currentText);
         if (max < 0 || current < 0 || current > max) return -1L;
         return max - current;
+    }
+
+    /**
+     * Free bytes in cgroup mode: the workers group's {@code cgroupFree}, lowered to the host's
+     * {@code available} when that is readable. {@code -1} when the group has no room to report.
+     */
+    static long hostFree(long cgroupFree, long available) {
+        if (cgroupFree < 0) return -1L;
+        return available >= 0 ? Math.min(cgroupFree, available) : cgroupFree;
     }
 
     /** The worse of the two, or {@code null} when the host sample is missing. */

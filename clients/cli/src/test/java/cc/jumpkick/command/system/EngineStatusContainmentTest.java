@@ -41,6 +41,8 @@ class EngineStatusContainmentTest {
         assertThat(EngineStatusCommand.describeWorkers(3 * GIB / 2, 672L << 20, 0, 3, "override", 2, 8, true))
                 .isEqualTo(
                         "1.5 GiB budget (override JK_WORKER_BUDGET_MB), 672 MiB leased, 0 MiB overbooked, 3 queued, 2/8 JVMs, overbooking off");
+        assertThat(EngineStatusCommand.describeWorkers(4 * GIB, GIB, 0, 0, "shared", 1, 8, false))
+                .isEqualTo("4.0 GiB budget (another engine's), 1.0 GiB leased, 0 MiB overbooked, 0 queued, 1/8 JVMs");
         assertThat(EngineStatusCommand.describeWorkers(14 * GIB, GIB, -1, 0, null, -1, -1, false))
                 .isEqualTo("14.0 GiB budget, 1.0 GiB leased, 0 MiB overbooked, 0 queued");
         assertThat(EngineStatusCommand.describeWorkers(14 * GIB, GIB, 0, 1, "cgroup", -1, -1, true))

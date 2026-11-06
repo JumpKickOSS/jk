@@ -33,15 +33,15 @@ class WorkerLeasesTest {
 
     @Test
     void fork_cap_follows_the_host_when_nothing_quotas_the_cgroup() {
-        assertThat(WorkerLeases.forkCpuCap(24, -1)).isEqualTo(24);
-        assertThat(WorkerLeases.forkCpuCap(24, 0)).isEqualTo(24);
-        assertThat(WorkerLeases.forkCpuCap(0, -1)).isEqualTo(1);
+        assertThat(EngineLimits.forkCpuCap(24, -1)).isEqualTo(24);
+        assertThat(EngineLimits.forkCpuCap(24, 0)).isEqualTo(24);
+        assertThat(EngineLimits.forkCpuCap(0, -1)).isEqualTo(1);
     }
 
     @Test
     void fork_cap_narrows_to_a_finite_cgroup_quota() {
-        assertThat(WorkerLeases.forkCpuCap(24, 2)).isEqualTo(2);
-        assertThat(WorkerLeases.forkCpuCap(4, 8)).isEqualTo(4);
+        assertThat(EngineLimits.forkCpuCap(24, 2)).isEqualTo(2);
+        assertThat(EngineLimits.forkCpuCap(4, 8)).isEqualTo(4);
     }
 
     @Test
