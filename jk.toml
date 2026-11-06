@@ -137,10 +137,21 @@ fast-method-budget = "5s"
 # The documented push gate, run before pushing main. Walled off from the release site:
 # a test that needs a published jk release is a `network` test, since the version under test is not
 # published until it ships.
+#
+# A hung test fails instead of stalling the gate: every test and lifecycle method stops at 5m, five
+# times the slowest integration method on a loaded host (about 1m), and well inside the worker's
+# 10m idle watchdog. The method runs on a separate thread, so the failure is reported even when the
+# hang ignores interrupts (a blocking read); the thread dump printed first names where it hung.
+# An explicit @Timeout keeps its own value.
 [profiles.integration]
 include-tags = ["integration"]
 exclude-tags = ["slow", "network", "live", "bench"]
 env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }
+jvm-args = [
+  "-Djunit.jupiter.execution.timeout.default=5m",
+  "-Djunit.jupiter.execution.timeout.thread.mode.default=SEPARATE_THREAD",
+  "-Djunit.jupiter.execution.timeout.threaddump.enabled=true",
+]
 
 # Framework / language end-to-end: does an Android / Grails / Scala / KSP / Protobuf
 # project still build all the way through. Off the gate — what it asserts breaks when a

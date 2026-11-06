@@ -40,7 +40,7 @@ public enum EventType {
 
     /**
      * Pull-mode signal: this worker finished its current class and is ready for another. Parent
-     * replies on the worker's stdin with a {@code RUN <fqcn>} line or {@code DONE} to terminate. The
+     * replies on the worker's command socket with a {@code RUN <fqcn>} line or {@code DONE} to terminate. The
      * {@code w} field on every event already identifies which worker it is.
      */
     READY,

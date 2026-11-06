@@ -199,7 +199,11 @@ public final class PluginLoader {
                 onPassthrough);
     }
 
-    /** As {@link #converse} with an inactivity watchdog — see {@link PluginProcess#converse}. */
+    /**
+     * As {@link #converse} with an inactivity watchdog (see {@link PluginProcess#converse}),
+     * recording learned peaks on {@code heaps}. {@code closeStdinImmediately} gives the child an
+     * already-closed stdin, for a caller that talks to it over a channel of its own.
+     */
     public static int converse(
             Path javaHome,
             String classpath,
@@ -210,33 +214,7 @@ public final class PluginLoader {
             @Nullable Path workDir,
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough,
-            long idleTimeoutMs)
-            throws IOException, InterruptedException {
-        return converse(
-                javaHome,
-                classpath,
-                jvmFlags,
-                prefix,
-                args,
-                env,
-                workDir,
-                onProtocol,
-                onPassthrough,
-                idleTimeoutMs,
-                LearnedHeaps.engine());
-    }
-
-    /** As {@link #converse(Path, String, List, String, List, WorkerEnv, Path, BiConsumer, Consumer, long)}, recording learned peaks on {@code heaps}. */
-    public static int converse(
-            Path javaHome,
-            String classpath,
-            List<String> jvmFlags,
-            String prefix,
-            List<String> args,
-            WorkerEnv env,
-            @Nullable Path workDir,
-            BiConsumer<String, PluginProcess.Conversation> onProtocol,
-            @Nullable Consumer<String> onPassthrough,
+            boolean closeStdinImmediately,
             long idleTimeoutMs,
             LearnedHeaps heaps)
             throws IOException, InterruptedException {
@@ -247,7 +225,7 @@ public final class PluginLoader {
                 prefix,
                 onProtocol,
                 onPassthrough,
-                false,
+                closeStdinImmediately,
                 idleTimeoutMs,
                 heaps);
     }

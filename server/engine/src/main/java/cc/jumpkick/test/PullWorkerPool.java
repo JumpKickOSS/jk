@@ -194,7 +194,7 @@ final class PullWorkerPool {
 
     /**
      * The pull protocol's parent side: each {@code ready} pulls the next class from the shared
-     * queue onto the child's stdin ({@code DONE} once the queue is empty, which also sets {@code
+     * queue onto the worker's command channel ({@code DONE} once the queue is empty, which also sets {@code
      * done}: the worker owes nothing more); every other event is the aggregator's. A throw from
      * here ends the conversation as a {@link PluginProcess.HandlerFailure}.
      */
@@ -224,7 +224,7 @@ final class PullWorkerPool {
     /**
      * Per-worker reader thread. Reads the child's stdout line-by-line. On each {@code ready} event,
      * dispatch the next class from the shared queue (or {@code DONE} when the queue is empty) by
-     * writing one line to the child's stdin. Non-protocol lines are user test output — passed through
+     * writing one line to the worker's {@link PullCommands} channel. Non-protocol lines are user test output — passed through
      * to the parent's stdout, tagged with the worker id. A handler that throws ends the worker with
      * {@code -1} and leaves its exception in {@code handlerFailure} for the summary to name; any
      * other parent-side throw ends it with {@code -1} and its stack in the worker's output.
@@ -240,18 +240,24 @@ final class PullWorkerPool {
             AtomicReference<String> lastClass,
             AtomicReference<@Nullable RuntimeException> handlerFailure,
             AtomicReference<List<String>> command) {
-        BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, done, lastClass);
+        BiConsumer<String, PluginProcess.Conversation> pull = pullHandler(queue, aggregator, done, lastClass);
         Consumer<String> passthrough = line -> {
             crash.add(line);
             aggregator.userOutput(line);
         };
 
-        try {
+        try (PullCommands commands = PullCommands.open()) {
+            // Commands travel on their own socket and the worker's stdin is closed at start, so
+            // nothing the tests run can block on the parent's pipe or read a command meant for
+            // the runner.
+            BiConsumer<String, PluginProcess.Conversation> handler = (json, stdin) -> pull.accept(json, commands);
+            List<String> workerArgs = new ArrayList<>(args);
+            workerArgs.addAll(commands.args());
             WorkerEnv testEnv = launcher.testEnv();
             Path tmp = TestTmpDir.forWorker(launcher.testTmpDir(), workerId, totalWorkers);
             WorkerEnv env = totalWorkers > 1 && tmp != null ? TestWorkerEnv.forWorker(testEnv, workerId, tmp) : testEnv;
             List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
-            command.set(PluginLoader.command(javaHome, classpath, flags, args));
+            command.set(PluginLoader.command(javaHome, classpath, flags, workerArgs));
             HeapScope.Key key = SuiteRetry.key(
                     SuiteRetry.project(launcher.inferredModuleDir()), moduleLabel, JvmOptions.hostFeature(javaHome));
             if (key == null) {
@@ -261,11 +267,12 @@ final class PullWorkerPool {
                         // N test JVMs run at once → divide the heap cap by N so they fit.
                         flags,
                         JUnitLauncher.PROTOCOL_PREFIX,
-                        args,
+                        workerArgs,
                         env,
                         launcher.workDir(),
                         handler,
                         passthrough,
+                        true,
                         TestWorkerEnv.idleTimeoutMs(),
                         launcher.heaps());
             }
@@ -277,11 +284,12 @@ final class PullWorkerPool {
                                 classpath,
                                 flags,
                                 JUnitLauncher.PROTOCOL_PREFIX,
-                                args,
+                                workerArgs,
                                 env,
                                 launcher.workDir(),
                                 handler,
                                 passthrough,
+                                true,
                                 TestWorkerEnv.idleTimeoutMs(),
                                 launcher.heaps()));
             } catch (IOException | InterruptedException | RuntimeException e) {

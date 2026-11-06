@@ -78,6 +78,9 @@ class JshellCommandTest {
     void jshell_missing_classes_with_no_build_fails(@TempDir Path tempDir) throws Exception {
         run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
         ScaffoldTestSupport.writeEmptyLock(tempDir);
+        assertThat(tempDir.resolve("target/classes"))
+                .describedAs("jk new compiled nothing, so --no-build has no classes to start JShell on")
+                .doesNotExist();
         int exit = run("jshell", "--no-build", "-C", tempDir.toString());
         assertThat(exit).isNotZero();
     }

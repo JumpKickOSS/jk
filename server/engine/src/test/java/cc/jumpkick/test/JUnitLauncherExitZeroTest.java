@@ -95,12 +95,11 @@ class JUnitLauncherExitZeroTest {
      * is sent green and exits 0 without reading on to {@code DONE}.
      */
     private static Path fakeJdk(Path dir) throws Exception {
-        assumeTrue(Files.isExecutable(Path.of("/bin/sh")), "POSIX shell required");
+        assumeTrue(Files.isExecutable(Path.of("/bin/bash")), "bash required");
         Path home = dir.resolve("jdk");
         Path bin = Files.createDirectories(home.resolve("bin"));
         Path java = bin.resolve("java");
-        String script = """
-                #!/bin/sh
+        String script = FakePullWorker.SHEBANG + "\n" + """
                 e() { printf '%s\\n' "##JKT:$1"; }
                 t() { e "{\\"event\\":\\"finished\\",\\"type\\":\\"TEST\\",\\"status\\":\\"SUCCESSFUL\\",\\"uniqueId\\":\\"[engine:junit-jupiter]/[class:$1]/[method:t()]\\",\\"testClass\\":\\"$1\\",\\"testMethod\\":\\"t()\\",\\"duration_ms\\":1}"; }
                 case " $* " in
@@ -111,8 +110,9 @@ class JUnitLauncherExitZeroTest {
                     e '{"event":"discovery_total","classes":3,"tests":3}'
                     exit 0 ;;
                   *" --pull "*)
+                    @CONNECT@
                     e '{"event":"ready"}'
-                    read -r line
+                    read -r line <&3
                     t "${line#RUN }"
                     exit 0 ;;
                   *)
@@ -121,7 +121,7 @@ class JUnitLauncherExitZeroTest {
                     t demo.B
                     exit 0 ;;
                 esac
-                """;
+                """.replace("@CONNECT@", FakePullWorker.CONNECT);
         Files.writeString(java, script);
         Files.setPosixFilePermissions(
                 java,
