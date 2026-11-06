@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Fixture test for scripts/templates-sync.sh, on a throwaway templates/ tree and catalog: a matching
 # catalog passes --check; a changed, missing or extra file and a missing or orphaned README row fail it
-# with the path named; a sync makes it match, leaves README.md and LICENSE alone, and a second sync
-# changes nothing.
+# with the path named; a sync makes it match, leaves README.md, LICENSE and a worktree's .git file
+# alone, and a second sync changes nothing.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -56,6 +56,12 @@ passes_check "a synced removal"
 
 grep -qx 'license' "$CAT/LICENSE" || { echo "test-templates-sync: LICENSE was touched" >&2; exit 1; }
 [ -f "$CAT/.git/HEAD" ] || { echo "test-templates-sync: .git was touched" >&2; exit 1; }
+
+# A worktree checkout of the catalog has a .git file, not a directory: a sync leaves it alone too.
+WT="$WORK/worktree"
+cp -R "$CAT" "$WT" && rm -rf "$WT/.git" && printf 'gitdir: /elsewhere\n' >"$WT/.git"
+sync "$WT" || { echo "test-templates-sync: sync into a worktree failed:" >&2; cat "$WORK/last.log" >&2; exit 1; }
+[ -f "$WT/.git" ] || { echo "test-templates-sync: a worktree's .git file was removed" >&2; exit 1; }
 
 before="$(cd "$CAT" && find . -type f -exec cksum {} + | LC_ALL=C sort)"
 resync
