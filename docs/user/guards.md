@@ -139,7 +139,7 @@ Every key the loader accepts, by kind; `common` keys apply to every kind.
 | annotate | require |  | string | annotation that must be present |
 | annotate | forbid |  | string | annotation that must not be present |
 | annotate | on | yes | string | the element the rule reads [package \| class \| method \| field \| parameter \| test-class] |
-| annotate | matching |  | table | a classes-style predicate narrowing the elements |
+| annotate | matching |  | table | a classes-style predicate narrowing the elements, e.g. { source-language = "java" } |
 | annotate | with-value |  | string | an attribute value the annotation must carry |
 | classes | that | yes | table | predicates selecting classes; each negatable with a leading ! |
 | classes | should | yes | table | predicates every selected class must satisfy |
@@ -230,6 +230,16 @@ findings in the XML reports the [`[lint]`](lint.md) steps leave under each modul
 count rises above its entry while the entry follows the count down. `lint.checkstyle`, `lint.pmd`,
 `lint.spotbugs` and `lint.detekt` count one tool's report alone. A module with no report is skipped;
 no report anywhere is `not-evaluated`, naming the file looked for.
+
+The class predicates `classes` reads in `that` and `annotate` reads in `matching` are `reside-in` (a
+package pattern), `annotated-with`, `implement`, `extend`, `assignable-to`, `are` or `be`
+(`interface`, `abstract`, `enum`, `record`, `annotation`, `public`, `final`, `nested`, `top-level`,
+`static`, `tests`), `named` (a glob over the simple name), `name-matching` (a regex over the binary
+name), `simple-name-ending-with` and `source-language` (`java`, `kotlin`, `scala` or `groovy`, read
+from the class file's `SourceFile` attribute). Each takes a string or a list, and a leading `!`
+negates a value. The `library` pack's `null-marked-packages` uses `matching = { source-language =
+"java" }`: JSpecify nullness is checked by javac plugins, so a package of Kotlin, Scala or Groovy
+classes alone needs no `@NullMarked` package-info, and a package with one Java class in it does.
 
 ## Reading a failure
 

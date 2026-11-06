@@ -16,6 +16,7 @@ import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.model.GuardsConfig;
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,11 +53,16 @@ class AnnotateEvaluatorTest {
     }
 
     private static Evaluation run(Path dir, String body, FactsIndex idx, FactsIndex... testIdx) throws Exception {
-        Files.writeString(
-                dir.resolve(GuardsPresence.RULES_FILE), "[guards.r]\nkind = \"annotate\"\nwhy = \"w\"\n" + body);
+        return evaluate(dir, "[guards.r]\nkind = \"annotate\"\nwhy = \"w\"\n" + body, "r", idx, testIdx);
+    }
+
+    /** Rule {@code id} of the rules file {@code rules}, evaluated over {@code idx}. */
+    private static Evaluation evaluate(Path dir, String rules, String id, FactsIndex idx, FactsIndex... testIdx)
+            throws Exception {
+        Files.writeString(dir.resolve(GuardsPresence.RULES_FILE), rules);
         LoadResult load = GuardRules.load(dir, GuardsConfig.ABSENT);
         assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
-        Rule rule = load.rules().rule("r").orElseThrow();
+        Rule rule = load.rules().rule(id).orElseThrow();
         FactsIndex tests = testIdx.length == 0 ? null : testIdx[0];
         Path classpath = nullMarkedOnClasspath(dir);
         EvalContext ctx = new EvalContext(
@@ -232,6 +238,93 @@ class AnnotateEvaluatorTest {
         LoadResult load = GuardRules.load(dir, GuardsConfig.ABSENT);
         assertThat(load.rules().rule("r").orElseThrow().instead())
                 .isEqualTo("annotate the package-info.java with @NullMarked");
+    }
+
+    /** A class {@code internal} as its compiler leaves it: the {@code SourceFile} attribute, and Kotlin's metadata. */
+    private static ClassFacts compiledFrom(String internal, String sourceFile) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, internal, null, "java/lang/Object", null);
+        cw.visitSource(sourceFile, null);
+        if (sourceFile.endsWith(".kt")) {
+            cw.visitAnnotation("Lkotlin/Metadata;", true).visitEnd();
+        }
+        cw.visitEnd();
+        return FactsExtractor.extract(cw.toByteArray());
+    }
+
+    /** {@code pkg}'s package-info, compiled from Java and carrying {@code @NullMarked}. */
+    private static ClassFacts nullMarkedPackageInfo(String pkg) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(
+                Opcodes.V17,
+                Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE | Opcodes.ACC_SYNTHETIC,
+                pkg + "/package-info",
+                null,
+                "java/lang/Object",
+                null);
+        cw.visitSource("package-info.java", null);
+        cw.visitAnnotation("Lorg/jspecify/annotations/NullMarked;", true).visitEnd();
+        cw.visitEnd();
+        return FactsExtractor.extract(cw.toByteArray());
+    }
+
+    private static FactsIndex index(ClassFacts... classes) {
+        Map<String, ClassFacts> m = new LinkedHashMap<>();
+        for (ClassFacts c : classes) m.put(c.name(), c);
+        return new FactsIndex(m, Map.of(), "");
+    }
+
+    @Test
+    void source_language_reads_the_source_file_attribute(@TempDir Path dir) throws Exception {
+        FactsIndex idx = index(
+                compiledFrom("a/J", "J.java"),
+                compiledFrom("a/K", "K.kt"),
+                compiledFrom("a/S", "S.scala"),
+                compiledFrom("a/G", "G.groovy"));
+        String rule = "forbid = \"java.lang.Deprecated\"\non = \"class\"\n";
+        for (String language : List.of("java", "kotlin", "scala", "groovy")) {
+            Evaluation e = run(dir, rule + "matching = { source-language = \"" + language + "\" }\n", idx);
+            assertThat(e.population()).as(language).containsEntry("elements", 1L);
+        }
+        Evaluation notJava = run(dir, rule + "matching = { source-language = \"!java\" }\n", idx);
+        assertThat(notJava.population()).containsEntry("elements", 3L);
+        Evaluation unknown = run(dir, rule + "matching = { source-language = \"cobol\" }\n", idx);
+        assertThat(unknown.outcome()).isEqualTo(Outcome.SCANNER_FAILED);
+        assertThat(unknown.note()).contains("source-language = \"cobol\"").contains("java, kotlin, scala, groovy");
+    }
+
+    @Test
+    void the_library_packs_null_marked_rule_judges_only_packages_with_a_java_class(@TempDir Path dir) throws Exception {
+        String pack = Files.readString(RepoRoot.file(
+                AnnotateEvaluatorTest.class, "server/guard/packs/library/src/main/resources/jk-guards.toml"));
+        String id = "null-marked-packages";
+
+        FactsIndex otherLanguages = index(
+                compiledFrom("com/acme/kotlin/Greeter", "Greeter.kt"),
+                compiledFrom("com/acme/kotlin/GreeterKt", "Greeter.kt"),
+                compiledFrom("com/acme/scala/Greeter", "Greeter.scala"),
+                compiledFrom("com/acme/scala/Greeter$", "Greeter.scala"),
+                compiledFrom("com/acme/groovy/Greeter", "Greeter.groovy"));
+        Evaluation alone = evaluate(dir, pack, id, otherLanguages);
+        assertThat(alone.outcome())
+                .as("Kotlin, Scala and Groovy packages need no @NullMarked")
+                .isEqualTo(Outcome.CLEAN);
+        assertThat(alone.population()).containsEntry("elements", 0L);
+
+        Evaluation java = evaluate(dir, pack, id, index(compiledFrom("com/acme/java/Greeter", "Greeter.java")));
+        assertThat(java.observations()).singleElement().satisfies(o -> {
+            assertThat(o.key()).isEqualTo("com.acme.java");
+            assertThat(o.detail()).contains("has no package-info.java");
+        });
+
+        ClassFacts scala = compiledFrom("com/acme/mixed/Greeter", "Greeter.scala");
+        ClassFacts javaBeside = compiledFrom("com/acme/mixed/Names", "Names.java");
+        Evaluation mixed = evaluate(dir, pack, id, index(scala, javaBeside));
+        assertThat(mixed.observations()).extracting(Observation::key).containsExactly("com.acme.mixed");
+        Evaluation mixedMarked =
+                evaluate(dir, pack, id, index(scala, javaBeside, nullMarkedPackageInfo("com/acme/mixed")));
+        assertThat(mixedMarked.outcome()).isEqualTo(Outcome.CLEAN);
+        assertThat(mixedMarked.population()).containsEntry("elements", 1L);
     }
 
     @Test

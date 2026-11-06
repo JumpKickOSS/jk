@@ -62,7 +62,7 @@ final class AnnotateEvaluator implements Evaluator {
             facts = test;
         }
         // Nothing the predicate selects leaves nothing to judge, whether or not the annotation is
-        // on the classpath: a library pack's Java-only rule passes a module of Kotlin classes alone.
+        // on the classpath: a library pack's Java-only rule passes a module of Scala classes alone.
         if (matching.predicate() != null && facts.classList().stream().noneMatch(matching::test)) {
             return Evaluation.of(
                     Map.of("elements", 0L, "classes", (long) facts.classes().size()), List.of());

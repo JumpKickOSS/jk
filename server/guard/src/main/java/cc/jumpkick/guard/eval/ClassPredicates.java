@@ -29,6 +29,8 @@ import org.tomlj.TomlTable;
  *   <li>{@code named}: a glob over the simple name ({@code *Test}, {@code *Impl});
  *       {@code name-matching}: a regex over the binary name; {@code simple-name-ending-with}
  *   <li>{@code assignable-to}: either of the two hierarchy predicates
+ *   <li>{@code source-language}: {@code java kotlin scala groovy}, read from the class file's
+ *       {@code SourceFile} attribute; a class compiled without one has no source language
  * </ul>
  */
 final class ClassPredicates {
@@ -43,7 +45,11 @@ final class ClassPredicates {
             "be",
             "named",
             "name-matching",
-            "simple-name-ending-with");
+            "simple-name-ending-with",
+            "source-language");
+
+    /** The languages {@code source-language} understands, each read off the source file's extension. */
+    static final List<String> LANGUAGES = List.of("java", "kotlin", "scala", "groovy");
 
     /** The shapes {@code are} / {@code be} / {@code have-modifier} understand. */
     static final List<String> SHAPES = List.of(
@@ -82,7 +88,11 @@ final class ClassPredicates {
                 boolean negate = raw.startsWith("!");
                 String v = negate ? raw.substring(1) : raw;
                 Predicate<ClassFacts> p = one(key, v, types);
-                if (p == null) return new Compiled(null, "predicate " + key + " = \"" + raw + "\" is not understood");
+                if (p == null) {
+                    String known =
+                            key.equals("source-language") ? "; languages are " + String.join(", ", LANGUAGES) : "";
+                    return new Compiled(null, "predicate " + key + " = \"" + raw + "\" is not understood" + known);
+                }
                 all.add(negate ? p.negate() : p);
             }
         }
@@ -117,6 +127,7 @@ final class ClassPredicates {
             }
             case "simple-name-ending-with" -> c -> simpleName(c).endsWith(v);
             case "named" -> c -> Rule.globMatches(v, simpleName(c));
+            case "source-language" -> LANGUAGES.contains(v) ? c -> v.equals(sourceLanguage(c)) : null;
             default -> shape(v);
         };
     }
@@ -124,6 +135,24 @@ final class ClassPredicates {
     static String simpleName(ClassFacts c) {
         String name = c.binaryName();
         return name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1);
+    }
+
+    /**
+     * The language a class was compiled from, by the extension of its {@code SourceFile} attribute:
+     * every JVM compiler names the source there, so one attribute tells Java from Kotlin, Scala and
+     * Groovy. {@code null} when the attribute is absent or names another language.
+     */
+    static @Nullable String sourceLanguage(ClassFacts c) {
+        String file = c.sourceFile();
+        if (file == null) return null;
+        String ext = file.substring(file.lastIndexOf('.') + 1);
+        return switch (ext) {
+            case "java" -> "java";
+            case "kt", "kts" -> "kotlin";
+            case "scala", "sc" -> "scala";
+            case "groovy", "gvy", "gy", "gsh" -> "groovy";
+            default -> null;
+        };
     }
 
     /** The predicate for one shape name, or {@code null} for a name outside {@link #SHAPES}. */
