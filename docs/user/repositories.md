@@ -164,6 +164,13 @@ in the mirrored repository's store as it would online. A repository or mirror re
 answers instead, and a coordinate it never served is not found. Offline, a `file:` repository's
 version list is its own and what the store holds from it, together.
 
+`jk add` (and MCP `deps`) offline read the same `file:` repositories: a coordinate without a
+version is pinned to the newest stable release they list, and an exact version is checked against
+them when every repository the coordinate is asked of is `file:`. A remote repository's version
+list is not guessed from the store: with no `file:` repository listing the coordinate, an offline
+`jk add group:artifact` is refused and asks for the version, and an exact version is written
+unchecked for the lock to report.
+
 ## Exclusive groups (your internals)
 
 When you declare an **internal** repository next to a public one, bind *your* Maven

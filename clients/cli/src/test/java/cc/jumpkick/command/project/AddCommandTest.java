@@ -4,6 +4,7 @@ package cc.jumpkick.command.project;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Workspace;
@@ -299,8 +300,11 @@ class AddCommandTest {
                 """);
         String before = Files.readString(tmp.resolve("jk.toml"));
 
-        int exit = Jk.execute("add", "--offline", "com.foo.off:bar", "-C", tmp.toString());
-        assertThat(exit).isEqualTo(64);
+        int[] exit = {-1};
+        Capture.Streams out =
+                Capture.both(() -> exit[0] = Jk.execute("add", "--offline", "com.foo.off:bar", "-C", tmp.toString()));
+        assertThat(exit[0]).isNotZero();
+        assertThat(out.out() + out.err()).contains("offline").contains("com.foo.off:bar:<version>");
         assertThat(Files.readString(tmp.resolve("jk.toml"))).isEqualTo(before);
     }
 

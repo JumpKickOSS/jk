@@ -16,6 +16,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PlatformConstraints;
 import cc.jumpkick.version.Versions;
@@ -23,6 +24,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -103,8 +105,9 @@ public final class StableVersions {
     /**
      * Refuses an exact {@code version} of {@code group:artifact} that no repository {@code
      * manifest} declares serves, before it is written: a POM lookup, not a resolve. Any other
-     * selector, a snapshot, an offline session, or a repository that cannot be reached passes; the
-     * lock reports those.
+     * selector, a snapshot, or a repository that cannot be reached passes; the lock reports those.
+     * Offline the check runs only when every repository the coordinate is asked of is {@linkplain
+     * MavenRepo#local local}, so it reads the disk and never the network; otherwise it passes too.
      *
      * @throws IOException naming the newest release when the coordinate has others, else the
      *     message of {@link #newest} for a coordinate with no versions at all
@@ -114,8 +117,7 @@ public final class StableVersions {
         String version = exact.version();
         if (Dependency.MANAGED_KEYWORD.equals(version)
                 || UnresolvedPins.LITERAL.equals(version)
-                || version.endsWith("-SNAPSHOT")
-                || SessionContext.current().config().offlineOr(false)) {
+                || version.endsWith("-SNAPSHOT")) {
             return;
         }
         JkBuild project = JkBuildParser.parse(manifest);
@@ -123,6 +125,10 @@ public final class StableVersions {
         if (workspaceMember(dir, project, group, artifact)) return;
         JkBuild effective = LockPlans.applyWorkspaceContextIfModule(dir, project);
         RepoGroup repos = RepoGroupBuilder.buildFor(effective, null, JkStores.storeCas());
+        if (offline()) {
+            List<MavenRepo> asked = repos.repositoriesFor(Coordinate.of(group, artifact, version));
+            if (asked.isEmpty() || !asked.stream().allMatch(MavenRepo::local)) return;
+        }
         List<String> available;
         try {
             if (repos.tryFetchPom(Coordinate.of(group, artifact, version)).isPresent()) return;
@@ -173,17 +179,22 @@ public final class StableVersions {
     }
 
     /**
-     * Newest stable release of {@code group:artifact} in {@code repos}.
+     * Newest stable release of {@code group:artifact} in {@code repos}. Offline only the {@linkplain
+     * MavenRepo#local local} repositories the coordinate is asked of answer, from the disk: what the
+     * store holds from a remote repository is no account of its current release.
      *
      * @throws IOException when no repository could be reached, none advertises the coordinate, or
-     *     every advertised release is a pre-release; a coordinate with no versions names the near
-     *     miss the local store or the catalog knows ({@link NearMisses})
+     *     every advertised release is a pre-release; offline, when no local repository lists it; a
+     *     coordinate with no versions names the near miss the local store or the catalog knows
+     *     ({@link NearMisses})
      */
     public static String newest(RepoGroup repos, String group, String artifact) throws IOException {
         String coord = group + ":" + artifact;
-        List<String> available;
+        @Nullable List<String> available;
         try {
-            available = repos.availableVersions(Coordinate.of(group, artifact, "0"));
+            available = offline()
+                    ? localVersions(repos, group, artifact)
+                    : repos.availableVersions(Coordinate.of(group, artifact, "0"));
         } catch (IOException e) {
             throw new IOException(
                     "could not look up the current version of " + coord + " (" + e.getMessage()
@@ -193,6 +204,11 @@ public final class StableVersions {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted while looking up the current version of " + coord, e);
         }
+        if (available == null) {
+            throw new IOException("offline: no file: repository lists " + coord
+                    + ", and a remote one is asked nothing; pass the version you want explicitly as " + coord
+                    + ":<version>");
+        }
         String stable = newestOf(available, true);
         if (stable != null) return stable;
         String any = newestOf(available, false);
@@ -201,6 +217,30 @@ public final class StableVersions {
                     + " — pass it explicitly, e.g. " + coord + ":" + any);
         }
         throw new IOException(noSuchModule(group, artifact));
+    }
+
+    /**
+     * The releases the {@linkplain MavenRepo#local local} repositories {@code group:artifact} is
+     * asked of list, read from the disk; null when none of them is local, or none lists the
+     * coordinate while a remote one, asked nothing offline, might.
+     */
+    private static @Nullable List<String> localVersions(RepoGroup repos, String group, String artifact)
+            throws IOException, InterruptedException {
+        Coordinate coord = Coordinate.of(group, artifact, "0");
+        List<MavenRepo> asked = repos.repositoriesFor(coord);
+        LinkedHashSet<String> union = new LinkedHashSet<>();
+        boolean anyLocal = false;
+        for (MavenRepo repo : asked) {
+            if (!repo.local() || !repo.servesReleases()) continue;
+            anyLocal = true;
+            union.addAll(repo.availableVersions(coord));
+        }
+        if (!anyLocal || (union.isEmpty() && !asked.stream().allMatch(MavenRepo::local))) return null;
+        return List.copyOf(union);
+    }
+
+    private static boolean offline() {
+        return SessionContext.current().config().offlineOr(false);
     }
 
     /**

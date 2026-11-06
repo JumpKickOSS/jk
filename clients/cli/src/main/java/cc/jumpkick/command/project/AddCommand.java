@@ -42,8 +42,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * {@code jk add}: Maven coord, catalog name, or local workspace module ({@code :name}/path) into
  * {@code jk.toml}. A coordinate without a version is pinned to its newest stable release, looked
- * up engine-side in the project's repositories; the file never carries {@code latest}. {@code
- * --ping} checks availability only.
+ * up engine-side in the project's repositories (offline, in those on this disk alone); the file
+ * never carries {@code latest}. {@code --ping} checks availability only.
  */
 public final class AddCommand implements CliCommand {
 
@@ -151,14 +151,6 @@ public final class AddCommand implements CliCommand {
         if (!Files.exists(file)) return ManifestEditRefusal.print("Add", dir);
         Scope scope = resolveScope();
         if (scope == null) return Exit.USAGE;
-        if (parsed.versionLiteral() == null && global.offline) {
-            CommandWedge.printFail(
-                    "Add",
-                    "offline: cannot look up the current version of " + parsed.group() + ":" + parsed.name()
-                            + "; pass an explicit version (" + parsed.group() + ":" + parsed.name()
-                            + ":1.2.3 or --ver 1.2.3)");
-            return Exit.USAGE;
-        }
         String version;
         try {
             version = EngineEdits.applyDetail(

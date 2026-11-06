@@ -4,6 +4,9 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.base.EditOps;
@@ -12,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -184,5 +188,55 @@ class StableVersionsTest {
                 .doesNotContain("latest");
         assertThat(String.valueOf(out.get("notes"))).contains("add com.acme:thing:1.2.0");
         assertThat(Files.readString(dir.resolve(ManifestPaths.MANIFEST))).doesNotContain("thing =");
+    }
+
+    /**
+     * Offline, a {@code file:} repository is on this disk and still answers: the newest stable it
+     * lists is the number written, and an exact version or module it lacks is refused as online.
+     */
+    @Test
+    void offline_a_file_repository_still_answers_the_newest_and_the_existence_check(@TempDir Path tmp)
+            throws Exception {
+        Path manifest = project(tmp).resolve(ManifestPaths.MANIFEST);
+        assertThat(offline(() -> StableVersions.versionToWrite(manifest, "com.acme", "thing", "latest")))
+                .isEqualTo("1.2.0");
+        assertThatThrownBy(() -> offline(() -> {
+                    StableVersions.requireExists(manifest, "com.acme", "thing", "9.9.9");
+                    return null;
+                }))
+                .isInstanceOf(IOException.class)
+                .hasMessage("no com.acme:thing:9.9.9 in the configured repositories; the newest release is 1.2.0");
+        assertThatThrownBy(() -> offline(() -> {
+                    StableVersions.requireExists(manifest, "com.acme", "nothing", "4.0.2");
+                    return null;
+                }))
+                .isInstanceOf(IOException.class)
+                .hasMessageStartingWith("no com.acme:nothing in the configured repositories; ");
+        offline(() -> {
+            StableVersions.requireExists(manifest, "com.acme", "thing", "1.0.0");
+            return null;
+        });
+    }
+
+    /**
+     * Offline, a coordinate also asked of a remote repository is not looked up there: the newest is
+     * refused with the explicit form to pass, and an exact version passes for the lock to report.
+     */
+    @Test
+    void offline_a_remote_repository_is_asked_nothing(@TempDir Path tmp) throws Exception {
+        Path manifest = project(tmp).resolve(ManifestPaths.MANIFEST);
+        assertThatThrownBy(() -> offline(() -> StableVersions.versionToWrite(manifest, "org.other", "lib", "latest")))
+                .isInstanceOf(IOException.class)
+                .hasMessageStartingWith("offline: no file: repository lists org.other:lib")
+                .hasMessageContaining("org.other:lib:<version>");
+        offline(() -> {
+            StableVersions.requireExists(manifest, "org.other", "lib", "9.9.9");
+            return null;
+        });
+    }
+
+    private static <T> T offline(Callable<T> body) throws Exception {
+        return SessionContext.where(
+                Session.defaults().withConfig(JkConfig.empty().withOffline(true)), body);
     }
 }
