@@ -170,10 +170,10 @@ class RepoGroupVersionsCacheTest {
 
     @Test
     void offline_and_online_sessions_never_share_a_memoized_answer(@TempDir Path tmp) throws Exception {
-        Path repoDir = tmp.resolve("repo");
-        writeMeta(repoDir, "com.example", "lib", "1.0", "2.0");
-        Cas cas = new Cas(tmp.resolve("cas"));
-        RepoGroup group = new RepoGroup(List.of(new MavenRepo("local", repoDir.toUri(), new Http(), cas)));
+        // A remote: a file:// directory is read offline as online, and its answers are never memoized.
+        RemoteStub remote = new RemoteStub("offline.example.test");
+        new MavenStub(remote.served).metadata("com.example", "lib", "1.0", "2.0");
+        RepoGroup group = new RepoGroup(List.of(remote.repo(tmp, "remote")));
         Coordinate coord = Coordinate.of("com.example", "lib", "0");
 
         try {
