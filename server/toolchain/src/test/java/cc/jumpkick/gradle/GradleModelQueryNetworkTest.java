@@ -260,7 +260,11 @@ class GradleModelQueryNetworkTest {
                 .orElseThrow();
         assertThat(bind.version().raw()).as(rows.toString()).isEqualTo("4.0.5");
         assertThat(Objects.requireNonNull(appBuild.project().groovy()).raw()).isEqualTo("5.0.2");
-        assertThat(appBuild.project().java()).isEqualTo(17);
+        assertThat(result.root().project().java()).isEqualTo(17);
+        assertThat(appBuild.project().java()).as("inherited from the root").isZero();
+        assertThat(appBuild.build().javac().args())
+                .as("--release is jk's to pass")
+                .isEmpty();
     }
 
     private static JkBuild module(GradleBuildImport.Result result, String path) {

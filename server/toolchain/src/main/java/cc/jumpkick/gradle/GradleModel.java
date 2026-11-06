@@ -74,7 +74,16 @@ record GradleModel(
             /** The xjc plugin's configuration; null when the project does not apply it. */
             @Nullable Xjc xjc,
             /** {@code group:artifact} → the highest version the project's classpaths resolve it to. */
-            Map<String, String> resolved) {
+            Map<String, String> resolved,
+            /** What {@code compileJava} hands javac, argument providers included; null without the task. */
+            @Nullable List<String> mainCompilerArgs,
+            /** What {@code compileTestJava} hands javac; null without the task. */
+            @Nullable List<String> testCompilerArgs,
+            /** The {@code test} task's own JVM settings; null without the task. */
+            @Nullable TestTask test,
+            /** {@code base.archivesName}; null without the base plugin. */
+            @Nullable String archivesName,
+            List<Publication> publications) {
 
         boolean isRoot() {
             return dir.isEmpty();
@@ -105,7 +114,8 @@ record GradleModel(
             "org.jetbrains.kotlin.multiplatform");
 
     /** The java extension: toolchain language version, source/target compatibility, {@code --release}. */
-    record Java(int toolchain, int source, int target, int release) {}
+    /** {@code vendor} is the toolchain's {@code JvmVendorSpec} when the build names one, else null. */
+    record Java(int toolchain, @Nullable String vendor, int source, int target, int release) {}
 
     /**
      * The {@code com.github.bjornvester.xjc} extension: the schema directory, the one package the
@@ -200,6 +210,20 @@ record GradleModel(
     static final String RELOCATIONS = "relocations";
     static final String RESOLVED = "resolved";
     static final String REPOSITORIES = "repositories";
+    static final String ARCHIVES_NAME = "archivesName";
+    static final String ARTIFACT_ID = "artifactId";
+    static final String COMPILE_JAVA = "compileJava";
+    static final String COMPILE_TEST_JAVA = "compileTestJava";
+    static final String COMPILER_ARGS = "compilerArgs";
+    static final String GROUP_ID = "groupId";
+    static final String JVM_ARGS = "jvmArgs";
+    static final String POM_DESCRIPTION = "pomDescription";
+    static final String POM_NAME = "pomName";
+    static final String POM_URL = "pomUrl";
+    static final String PUBLICATIONS = "publications";
+    static final String SYSTEM_PROPERTIES = "systemProperties";
+    static final String TEST = "test";
+    static final String VENDOR = "vendor";
     static final String CREDENTIAL = "credential";
     static final String GROUPS = "groups";
     static final String KIND = "kind";
@@ -224,6 +248,18 @@ record GradleModel(
     static final String TOOLCHAIN = "toolchain";
     static final String TYPE = "type";
     static final String XJC = "xjc";
+
+    /** The {@code test} task's system properties with string values, and its JVM arguments. */
+    record TestTask(Map<String, String> systemProperties, List<String> jvmArgs) {}
+
+    /** A {@code MavenPublication}: its coordinates and the POM metadata it sets. */
+    record Publication(
+            String name,
+            String groupId,
+            String artifactId,
+            @Nullable String pomName,
+            @Nullable String pomDescription,
+            @Nullable String pomUrl) {}
 
     /** Parse the JSON the init script wrote. */
     static GradleModel parse(String json) {
@@ -286,11 +322,24 @@ record GradleModel(
                     Jsonl.strArray(r, INCLUDES),
                     Jsonl.strArray(r, EXCLUDES)));
         }
+        String compilerArgs = Jsonl.nested(p, COMPILER_ARGS);
+        String testJson = Jsonl.nested(p, TEST);
+        List<Publication> publications = new ArrayList<>();
+        for (String pub : Jsonl.objectArray(p, PUBLICATIONS)) {
+            publications.add(new Publication(
+                    str(pub, NAME),
+                    str(pub, GROUP_ID),
+                    str(pub, ARTIFACT_ID),
+                    Jsonl.topStr(pub, POM_NAME),
+                    Jsonl.topStr(pub, POM_DESCRIPTION),
+                    Jsonl.topStr(pub, POM_URL)));
+        }
         String javaJson = Jsonl.nested(p, JAVA);
         Java java = javaJson == null
                 ? null
                 : new Java(
                         Jsonl.intValue(javaJson, TOOLCHAIN, 0),
+                        Jsonl.topStr(javaJson, VENDOR),
                         major(Jsonl.topStr(javaJson, SOURCE_COMPATIBILITY)),
                         major(Jsonl.topStr(javaJson, TARGET_COMPATIBILITY)),
                         Jsonl.intValue(javaJson, RELEASE, 0));
@@ -319,7 +368,18 @@ record GradleModel(
                 tasks,
                 relocations,
                 xjc(Jsonl.nested(p, XJC)),
-                resolved(Jsonl.strArray(p, RESOLVED)));
+                resolved(Jsonl.strArray(p, RESOLVED)),
+                compilerArgs == null || !Jsonl.has(compilerArgs, COMPILE_JAVA)
+                        ? null
+                        : Jsonl.strArray(compilerArgs, COMPILE_JAVA),
+                compilerArgs == null || !Jsonl.has(compilerArgs, COMPILE_TEST_JAVA)
+                        ? null
+                        : Jsonl.strArray(compilerArgs, COMPILE_TEST_JAVA),
+                testJson == null
+                        ? null
+                        : new TestTask(Jsonl.strMap(testJson, SYSTEM_PROPERTIES), Jsonl.strArray(testJson, JVM_ARGS)),
+                Jsonl.topStr(p, ARCHIVES_NAME),
+                publications);
     }
 
     private static @Nullable Xjc xjc(@Nullable String json) {

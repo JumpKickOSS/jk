@@ -15,6 +15,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.PomMetadata;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.ReleaseSources;
@@ -28,6 +29,7 @@ import cc.jumpkick.model.Workspace;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.MinimalToml;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -83,6 +85,7 @@ public final class JkBuildRenderer {
         renderMultiRelease(sb, jkBuild.build().multiRelease());
         renderProfiles(sb, jkBuild);
         renderFeatures(sb, jkBuild);
+        renderPublish(sb, jkBuild.publish());
         renderRepositories(sb, jkBuild.repositories());
         renderDependencies(sb, jkBuild, catalog);
         return sb.toString();
@@ -628,6 +631,50 @@ public final class JkBuildRenderer {
                     .append(quote(entry.module() + ":" + versionLiteral(version)))
                     .append('\n');
         }
+    }
+
+    /** {@code [publish]}: the POM metadata and the release target, never a secret. */
+    private static void renderPublish(StringBuilder sb, @Nullable PomMetadata publish) {
+        if (publish == null || publish.isEmpty()) return;
+        sb.append("\n[publish]\n");
+        if (publish.name() != null)
+            sb.append("name = ").append(quote(publish.name())).append('\n');
+        if (publish.url() != null)
+            sb.append("url = ").append(quote(publish.url())).append('\n');
+        if (!publish.licenses().isEmpty()) {
+            List<String> licenses = new ArrayList<>();
+            for (PomMetadata.License l : publish.licenses()) {
+                Map<String, String> t = new LinkedHashMap<>();
+                t.put("name", l.name());
+                if (l.url() != null) t.put("url", l.url());
+                licenses.add(inlineTable(t));
+            }
+            sb.append("licenses = [").append(String.join(", ", licenses)).append("]\n");
+        }
+        if (!publish.developers().isEmpty()) {
+            List<String> developers = new ArrayList<>();
+            for (PomMetadata.Developer d : publish.developers()) {
+                Map<String, String> t = new LinkedHashMap<>();
+                t.put("id", d.id());
+                if (d.name() != null) t.put("name", d.name());
+                if (d.email() != null) t.put("email", d.email());
+                developers.add(inlineTable(t));
+            }
+            sb.append("developers = [").append(String.join(", ", developers)).append("]\n");
+        }
+        PomMetadata.Scm scm = publish.scm();
+        if (scm != null) {
+            Map<String, String> t = new LinkedHashMap<>();
+            if (scm.url() != null) t.put("url", scm.url());
+            if (scm.connection() != null) t.put("connection", scm.connection());
+            if (scm.developerConnection() != null) t.put("developer-connection", scm.developerConnection());
+            if (!t.isEmpty()) sb.append("scm = ").append(inlineTable(t)).append('\n');
+        }
+        if (publish.repository() != null)
+            sb.append("repository = ").append(quote(publish.repository())).append('\n');
+        if (publish.sign()) sb.append("sign = true\n");
+        if (publish.keyFile() != null)
+            sb.append("key-file = ").append(quote(publish.keyFile())).append('\n');
     }
 
     private static void renderRepositories(StringBuilder sb, List<RepositorySpec> repos) {
