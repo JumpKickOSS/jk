@@ -19,6 +19,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
@@ -34,6 +35,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -231,6 +233,7 @@ public final class PlannerGuardSuite {
                     Path genDir = layout.generatedSourcesDir("annotations", "guard");
                     Files.createDirectories(genDir);
                     Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
+                    long readClock = FreshnessStamp.clockNow(out);
                     ctx.label("compiling " + sources.size() + " guard sources");
                     JavaCompile.Result r = JavaCompile.run(
                             taskId,
@@ -259,6 +262,18 @@ public final class PlannerGuardSuite {
                         }
                         throw new RuntimeException("guard suite javac reported errors");
                     }
+                    // The stamp names the compile that wrote the tree, as compile-java's does: the
+                    // code graph keys the suite's compiled facts by it.
+                    FreshnessStamp.write(
+                            out,
+                            BuildStamps.JAVA,
+                            TaskNames.COMPILE_GUARD,
+                            r.actionKey(),
+                            sources,
+                            request.classpath(),
+                            ctx.require(RELEASE),
+                            "",
+                            readClock);
                     if (r.cacheHit()) {
                         ctx.label("cache hit " + r.actionKey().substring(0, 8));
                         ctx.cached();
