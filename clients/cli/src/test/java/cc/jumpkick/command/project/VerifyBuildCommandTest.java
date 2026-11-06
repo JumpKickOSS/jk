@@ -103,23 +103,22 @@ class VerifyBuildCommandTest {
     }
 
     @Test
-    void the_scratch_copy_leaves_the_code_graph_behind(@TempDir Path tempDir) throws IOException {
+    void the_scratch_copy_carries_jk_and_leaves_build_output_and_its_graph_behind(@TempDir Path tempDir)
+            throws IOException {
         Path project = tempDir.resolve("project");
         Files.createDirectories(project.resolve("src/main/java/example"));
         Files.writeString(project.resolve("jk.toml"), "name = \"widget\"\n");
         Files.writeString(project.resolve("src/main/java/example/Hello.java"), "package example; class Hello {}");
-        Files.createDirectories(project.resolve(".jk/graph"));
-        Files.writeString(project.resolve(".jk/graph/graph.jsonl"), "{}\n");
         Files.createDirectories(project.resolve(".jk/scripts"));
         Files.writeString(project.resolve(".jk/scripts/gen.java"), "class Gen {}");
         Files.createDirectories(project.resolve("target/classes"));
+        Files.createDirectories(project.resolve("target/graph"));
+        Files.writeString(project.resolve("target/graph/graph.bin"), "graph");
         Path scratch = tempDir.resolve("scratch");
 
         VerifyBuildCommand.copyProjectTree(project, scratch);
 
-        // The graph is rewritten in the background after every build and is no build input; the
-        // rest of .jk/ is the project's build logic and travels with the sources.
-        assertThat(scratch.resolve(".jk/graph")).doesNotExist();
+        // .jk/ is the project's build logic and travels with the sources.
         assertThat(scratch.resolve(".jk/scripts/gen.java")).exists();
         assertThat(scratch.resolve("src/main/java/example/Hello.java")).exists();
         assertThat(scratch.resolve("target")).doesNotExist();

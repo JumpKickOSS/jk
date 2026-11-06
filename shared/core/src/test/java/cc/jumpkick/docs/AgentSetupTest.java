@@ -33,7 +33,8 @@ class AgentSetupTest {
                 .contains("mcp__jk")
                 .contains("Bash(jk *)")
                 .contains("enabledMcpjsonServers")
-                .contains(AgentSetup.HOOK_COMMAND);
+                .contains(AgentSetup.HOOK_COMMAND)
+                .doesNotContain("deny");
         assertThat(AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CLAUDE)))
                 .isEmpty();
         assertThat(Files.readString(dir.resolve(".claude/settings.json"))).isEqualTo(settings);
@@ -53,8 +54,7 @@ class AgentSetupTest {
         Object permissions = MiniJson.get(root, "permissions");
         assertThat(strings(MiniJson.list(permissions, "allow")))
                 .containsExactly("Bash(git *)", "mcp__jk", "Bash(jk *)");
-        assertThat(strings(MiniJson.list(permissions, "deny")))
-                .containsExactly("Read(.env)", AgentSetup.GRAPH_STORE_DENY);
+        assertThat(strings(MiniJson.list(permissions, "deny"))).containsExactly("Read(.env)");
         assertThat(MiniJson.list(MiniJson.get(root, "hooks"), "PreToolUse")).hasSize(2);
     }
 

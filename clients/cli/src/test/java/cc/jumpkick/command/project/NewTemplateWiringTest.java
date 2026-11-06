@@ -36,7 +36,8 @@ class NewTemplateWiringTest {
         assertThat(target.resolve("CLAUDE.md")).isRegularFile();
         assertThat(target.resolve(".mcp.json")).isRegularFile();
         assertThat(target.resolve(".claude/settings.json")).isRegularFile();
-        assertThat(target.resolve(".jk/graph")).isDirectory();
+        assertThat(target.resolve("target/graph/graph.bin")).isRegularFile();
+        assertThat(target.resolve(".jk/graph")).doesNotExist();
         assertThat(target.resolve(".gitignore")).content().contains("target/");
     }
 
@@ -51,7 +52,7 @@ class NewTemplateWiringTest {
         assertThat(target.resolve(AgentsGuide.FILE)).isRegularFile();
         assertThat(target.resolve("CLAUDE.md")).doesNotExist();
         assertThat(target.resolve(".mcp.json")).doesNotExist();
-        assertThat(target.resolve(".jk/graph")).doesNotExist();
+        assertThat(target.resolve("target/graph")).doesNotExist();
         assertThat(target.resolve(".gitignore")).isRegularFile();
     }
 
@@ -65,7 +66,8 @@ class NewTemplateWiringTest {
 
         assertThat(target.resolve("CLAUDE.md")).isRegularFile();
         assertThat(target.resolve(".mcp.json")).isRegularFile();
-        assertThat(target.resolve(".jk/graph")).isDirectory();
+        assertThat(target.resolve("target/graph/graph.bin")).isRegularFile();
+        assertThat(target.resolve(".jk/graph")).doesNotExist();
     }
 
     @Test
@@ -99,7 +101,7 @@ class NewTemplateWiringTest {
         assertThat(target.resolve(AgentsGuide.FILE)).doesNotExist();
         assertThat(target.resolve("CLAUDE.md")).doesNotExist();
         assertThat(target.resolve(".mcp.json")).doesNotExist();
-        assertThat(target.resolve(".jk/graph")).doesNotExist();
+        assertThat(target.resolve("target/graph")).doesNotExist();
         assertThat(target.resolve(".gitignore")).doesNotExist();
     }
 

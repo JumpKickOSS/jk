@@ -82,7 +82,6 @@ the task names it: no file needs finding or opening first.
   method of the same name is not this one). Edit only the comment or doc lines its answer lists, if
   they mean the method.
 - jk `skill` only when a verdict names a topic.
-- `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
 """
 
 # arm: build tool, extra MCP servers, jk graph tools hidden, hooks installed in the sandbox, prompt addition

@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -121,20 +122,38 @@ import java.util.List;
             paths.add(f.toString());
         }
         Files.writeString(dir.resolve("README.md"), "# Shop\n\nTotals come from `OrderService`.\n");
-        Path classes = Files.createDirectories(dir.resolve("target/classes"));
-        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
-        List<String> args = new ArrayList<>(List.of("-g", "-d", classes.toString()));
-        args.addAll(paths);
-        assertThat(javac.run(null, null, null, args.toArray(String[]::new))).isZero();
+        compile(dir);
         return dir;
+    }
+
+    /** Compiles the root module's main sources into target/classes, as a build would. */
+    private static void compile(Path dir) throws IOException {
+        Path classes = Files.createDirectories(dir.resolve("target/classes"));
+        List<String> args = new ArrayList<>(List.of("-g", "-d", classes.toString()));
+        try (var walk = Files.walk(dir.resolve("src/main/java"))) {
+            walk.filter(p -> p.toString().endsWith(".java")).forEach(p -> args.add(p.toString()));
+        }
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        assertThat(javac.run(null, null, null, args.toArray(String[]::new))).isZero();
     }
 
     /** The engine's half: the root module's facts index, brought current from target/classes. */
     private static List<GraphBuild.ClassIndex> indexes(Path root, Set<String> stale) throws IOException {
+        return indexes(root, stale, List.of());
+    }
+
+    /** As the engine reads a class set a compile stamped with {@code compileKeys}. */
+    private static List<GraphBuild.ClassIndex> indexes(Path root, Set<String> stale, List<String> compileKeys)
+            throws IOException {
         Path classes = root.resolve("target/classes");
         FactsIndexing.Ensured e =
                 FactsIndexing.ensure(classes, FactsIndexing.indexPath(root.resolve("target"), "main"));
-        return List.of(new GraphBuild.ClassIndex(e.index(), "", e.bodyDigest(), e.classes(), stale));
+        return List.of(new GraphBuild.ClassIndex(e.index(), "", e.bodyDigest(), e.classes(), stale, compileKeys));
+    }
+
+    /** A workspace's own cache root, where the walk does not reach. */
+    private static Path cache(Path root) {
+        return root.resolve("target/jk-cache");
     }
 
     private static GraphBuild.Result refresh(Path root, boolean rebuild) throws IOException {
@@ -145,7 +164,7 @@ import java.util.List;
         return GraphBuild.refresh(
                 root,
                 root.resolve("target/graph"),
-                root.resolve(".jk/graph"),
+                cache(root),
                 indexes(root, stale),
                 Modules.NONE,
                 NO_NODE,
@@ -388,120 +407,197 @@ import java.util.List;
     }
 
     /**
-     * The graph is committed: one line per file under .jk/graph/, with the attributes that merge
-     * it by lines, and a refresh with nothing changed leaves the committed bytes alone.
+     * The graph is build output: a refresh writes nothing in the tree outside target/, and removes
+     * a tree store under .jk/graph/ when it finds one, leaving the rest of .jk/ alone.
      */
     @Test
-    void theStoreIsCommittedUnderDotJkAndAnUnchangedTreeLeavesItAlone(@TempDir Path dir) throws IOException {
+    void aRefreshWritesNothingInTheTreeAndRemovesATreeStore(@TempDir Path dir) throws IOException {
         GraphMemory.clear();
         Path root = workspace(dir);
+        Files.createDirectories(root.resolve(".jk/graph/src"));
+        Files.writeString(root.resolve(".jk/graph/graph.jsonl"), "{\"jk-graph\":1}\n");
+        Files.writeString(root.resolve(".jk/graph/.gitattributes"), "graph.jsonl merge=union\n");
+        Files.createDirectories(root.resolve(".jk/scripts"));
+        Files.writeString(root.resolve(".jk/scripts/count.kts"), "println(1)\n");
+        List<String> before = treeFiles(root);
         refresh(root, false);
-        Path store = root.resolve(".jk/graph/" + FragmentStore.FILE);
-        assertThat(store).exists();
-        assertThat(Files.readString(root.resolve(".jk/graph/.gitattributes"))).isEqualTo(FragmentStore.ATTRIBUTES_TEXT);
-        assertThat(Files.readString(root.resolve(".jk/graph/.ignore"))).isEqualTo("graph.jsonl\n");
-        List<String> lines = Files.readAllLines(store);
-        assertThat(lines.getFirst()).isEqualTo(FragmentStore.HEADER);
-        assertThat(lines)
-                .anyMatch(l -> l.startsWith("{\"p\":\"src/main/java/com/acme/shop/OrderService.java\"")
-                        && l.contains("\"c\":"));
-        List<String> paths = lines.stream()
-                .skip(1)
-                .map(l -> l.substring(6, l.indexOf('"', 6)))
-                .toList();
-        assertThat(paths).isSorted();
-        FileTime written = Files.getLastModifiedTime(store);
-        byte[] before = Files.readAllBytes(store);
-        GraphMemory.clear();
-        refresh(root, true);
-        assertThat(Files.readAllBytes(store)).isEqualTo(before);
-        assertThat(Files.getLastModifiedTime(store)).isEqualTo(written);
+        assertThat(root.resolve(".jk/graph")).doesNotExist();
+        assertThat(treeFiles(root))
+                .containsExactlyElementsOf(
+                        before.stream().filter(f -> !f.startsWith(".jk/graph/")).toList());
+        assertThat(cache(root).resolve("actions/keys")).isNotEmptyDirectory();
+    }
+
+    /** Every file under {@code root} outside target/, as sorted relative paths. */
+    private static List<String> treeFiles(Path root) throws IOException {
+        try (var walk = Files.walk(root)) {
+            return walk.filter(Files::isRegularFile)
+                    .map(p -> root.relativize(p).toString().replace('\\', '/'))
+                    .filter(rel -> !rel.startsWith("target/"))
+                    .sorted()
+                    .toList();
+        }
     }
 
     /**
-     * A checkout that has never been built answers from the committed store: no file is extracted
-     * again, and the compiled facts whoever committed it built come with it.
+     * A second checkout of the same tree, a worktree or a fresh clone, extracts nothing the first
+     * did: the declarations come from the action cache. Compiled facts come from a compile: none
+     * before this checkout compiles, and when it does, the cached ones of that compile's keys.
      */
     @Test
-    void aFreshCheckoutAnswersFromTheCommittedStoreWithItsCompiledFacts(@TempDir Path dir) throws IOException {
+    void aSecondCheckoutExtractsNothingAndTakesCompiledFactsOnlyFromItsOwnCompile(@TempDir Path dir)
+            throws IOException {
         GraphMemory.clear();
+        Path shared = dir.resolve("cache");
         Path built = workspace(Files.createDirectories(dir.resolve("built")));
+        GraphBuild.Result first = GraphBuild.refresh(
+                built,
+                built.resolve("target/graph"),
+                shared,
+                indexes(built, Set.of(), List.of("compile-key-1")),
+                Modules.NONE,
+                NO_NODE,
+                false,
+                GraphBuild.Progress.NONE,
+                LATER);
+        assertThat(first.extracted()).isEqualTo(first.files());
         GraphNode compiled = Objects.requireNonNull(
-                refresh(built, false).graph().node("src_main_java_com_acme_shop_orderservice_orderservice_total"));
+                first.graph().node("src_main_java_com_acme_shop_orderservice_orderservice_total"));
         assertThat(compiled.extra()).containsKey(Linker.DESCRIPTORS);
         Path fresh = dir.resolve("fresh");
-        try (var walk = Files.walk(built)) {
-            for (Path p : walk.toList()) {
-                Path rel = built.relativize(p);
-                if (rel.startsWith("target")) continue;
-                Path to = fresh.resolve(rel.toString());
-                if (Files.isDirectory(p)) Files.createDirectories(to);
-                else Files.copy(p, to);
-            }
-        }
+        copyWithoutTarget(built, fresh);
+
         GraphMemory.clear();
-        GraphBuild.Result r = GraphBuild.refresh(
+        GraphBuild.Result unbuilt = GraphBuild.refresh(
                 fresh,
                 fresh.resolve("target/graph"),
-                fresh.resolve(".jk/graph"),
+                shared,
                 List.of(),
                 Modules.NONE,
                 NO_NODE,
                 false,
                 GraphBuild.Progress.NONE,
                 LATER);
-        assertThat(r.extracted()).isZero();
-        GraphNode total =
-                Objects.requireNonNull(r.graph().node("src_main_java_com_acme_shop_orderservice_orderservice_total"));
-        assertThat(total.extra().get(Linker.DESCRIPTORS))
-                .isEqualTo(compiled.extra().get(Linker.DESCRIPTORS));
-        assertThat(edge(r.graph(), "orderservice_audit", "baseservice_log", "calls"))
-                .isTrue();
-        assertThat(Files.readAllBytes(fresh.resolve(".jk/graph/" + FragmentStore.FILE)))
-                .isEqualTo(Files.readAllBytes(built.resolve(".jk/graph/" + FragmentStore.FILE)));
-    }
+        assertThat(unbuilt.extracted()).isZero();
+        assertThat(Objects.requireNonNull(
+                                unbuilt.graph().node("src_main_java_com_acme_shop_orderservice_orderservice_total"))
+                        .extra())
+                .doesNotContainKey(Linker.DESCRIPTORS);
 
-    /**
-     * Two branches that each changed a file merge by keeping both lines; the line whose hash
-     * matches the tree is the one read, and the next write keeps only it. Compiled facts of bytes
-     * the tree no longer holds are not used.
-     */
-    @Test
-    void aUnionMergedStoreUsesTheLineThatMatchesTheTree(@TempDir Path dir) throws IOException {
+        // Its compile hits the same key: the facts come from the cache, not from its index.
         GraphMemory.clear();
-        Path root = workspace(dir);
-        refresh(root, false);
-        Path store = root.resolve(".jk/graph/" + FragmentStore.FILE);
-        String line = Files.readAllLines(store).stream()
-                .filter(l -> l.contains("\"p\":\"src/main/java/com/acme/shop/PriceCalculator.java\""))
-                .findFirst()
-                .orElseThrow();
-        String other = line.replaceFirst("\"s\":\"[0-9a-f]+\"", "\"s\":\"0000000000000000\"");
-        Files.writeString(store, Files.readString(store) + other + "\n");
-        GraphMemory.clear();
-        Path cut = root.resolve("src/main/java/com/acme/shop/PriceCalculator.java");
-        Files.writeString(cut, Files.readString(cut).replace("public long sum(", "public long add("));
-        GraphBuild.Result r = GraphBuild.refresh(
-                root,
-                root.resolve("target/graph"),
-                root.resolve(".jk/graph"),
-                indexes(root, Set.of("src/main/java/com/acme/shop/PriceCalculator.java")),
+        GraphBuild.Result restored = GraphBuild.refresh(
+                fresh,
+                fresh.resolve("target/graph"),
+                shared,
+                List.of(new GraphBuild.ClassIndex(
+                        fresh.resolve("target/no-index"), "", "digest", 7, Set.of(), List.of("compile-key-1"))),
                 Modules.NONE,
                 NO_NODE,
                 false,
                 GraphBuild.Progress.NONE,
                 LATER);
-        assertThat(r.extracted()).isEqualTo(1);
-        assertThat(r.graph().node("src_main_java_com_acme_shop_pricecalculator_pricecalculator_add"))
-                .isNotNull();
-        assertThat(Objects.requireNonNull(
-                                r.graph().node("src_main_java_com_acme_shop_pricecalculator_pricecalculator_add"))
-                        .extra())
-                .doesNotContainKey(Linker.DESCRIPTORS);
-        assertThat(Files.readAllLines(store))
-                .filteredOn(l -> l.contains("\"p\":\"src/main/java/com/acme/shop/PriceCalculator.java\""))
-                .hasSize(1)
-                .allMatch(l -> !l.contains("\"c\":"));
+        assertThat(restored.extracted()).isZero();
+        GraphNode total = Objects.requireNonNull(
+                restored.graph().node("src_main_java_com_acme_shop_orderservice_orderservice_total"));
+        assertThat(total.extra().get(Linker.DESCRIPTORS))
+                .isEqualTo(compiled.extra().get(Linker.DESCRIPTORS));
+        assertThat(edge(restored.graph(), "orderservice_audit", "baseservice_log", "calls"))
+                .isTrue();
+    }
+
+    /**
+     * An unchanged file's compiled facts depend on the classpath it was compiled against: when
+     * BaseService gains an overload that OrderService's same source now binds to, a call edge from
+     * the compile of another tree must not stand in for the compile of this one.
+     */
+    @Test
+    void anUnchangedFileKeepsNoCompiledCallFromACompileAgainstAnotherClasspath(@TempDir Path dir) throws IOException {
+        GraphMemory.clear();
+        Map<String, String> before = new HashMap<>(SOURCES);
+        before.put("BaseService.java", """
+                package com.acme.shop;
+
+                public abstract class BaseService {
+                    protected void log(Object message) {
+                        System.out.println(message);
+                    }
+                }
+                """);
+        Path shared = dir.resolve("cache");
+        Path built = workspace(Files.createDirectories(dir.resolve("built")), before);
+        GraphBuild.Result first = GraphBuild.refresh(
+                built,
+                built.resolve("target/graph"),
+                shared,
+                indexes(built, Set.of(), List.of("compile-key-1")),
+                Modules.NONE,
+                NO_NODE,
+                false,
+                GraphBuild.Progress.NONE,
+                LATER);
+        assertThat(auditToLog(first.graph())).contains("(Ljava/lang/String;)V>(Ljava/lang/Object;)V");
+        Path fresh = dir.resolve("fresh");
+        copyWithoutTarget(built, fresh);
+        Path base = fresh.resolve("src/main/java/com/acme/shop/BaseService.java");
+        Files.writeString(base, Files.readString(base).replace("""
+                    protected void log(Object message) {""", """
+                    protected void log(String message) {
+                        System.out.println(message);
+                    }
+
+                    protected void log(Object message) {"""));
+        GraphMemory.clear();
+        GraphBuild.Result unbuilt = GraphBuild.refresh(
+                fresh,
+                fresh.resolve("target/graph"),
+                shared,
+                List.of(),
+                Modules.NONE,
+                NO_NODE,
+                false,
+                GraphBuild.Progress.NONE,
+                LATER);
+        assertThat(auditToLog(unbuilt.graph())).doesNotContain("(Ljava/lang/String;)V>(Ljava/lang/Object;)V");
+
+        // The real compile against the new BaseService binds the overload, under its own key.
+        compile(fresh);
+        GraphMemory.clear();
+        GraphBuild.Result rebuilt = GraphBuild.refresh(
+                fresh,
+                fresh.resolve("target/graph"),
+                shared,
+                indexes(fresh, Set.of(), List.of("compile-key-2")),
+                Modules.NONE,
+                NO_NODE,
+                false,
+                GraphBuild.Progress.NONE,
+                LATER);
+        assertThat(auditToLog(rebuilt.graph()))
+                .contains("(Ljava/lang/String;)V>(Ljava/lang/String;)V")
+                .doesNotContain("(Ljava/lang/String;)V>(Ljava/lang/Object;)V");
+    }
+
+    /** The overloads every compiled call from OrderService.audit to BaseService.log joins. */
+    private static List<String> auditToLog(CodeGraph g) {
+        return g.edges().stream()
+                .filter(e -> e.source().endsWith("orderservice_audit")
+                        && e.target().endsWith("baseservice_log")
+                        && e.relation().equals("calls"))
+                .flatMap(e -> e.overloads().stream())
+                .toList();
+    }
+
+    private static void copyWithoutTarget(Path from, Path to) throws IOException {
+        try (var walk = Files.walk(from)) {
+            for (Path p : walk.toList()) {
+                Path rel = from.relativize(p);
+                if (rel.startsWith("target")) continue;
+                Path dest = to.resolve(rel.toString());
+                if (Files.isDirectory(p)) Files.createDirectories(dest);
+                else Files.copy(p, dest);
+            }
+        }
     }
 
     /** -n answers from what was written; with nothing written it says so rather than build one. */
@@ -709,7 +805,7 @@ import java.util.List;
         return new GraphService.Workspace(
                 root,
                 root.resolve("target/graph"),
-                root.resolve(".jk/graph"),
+                cache(root),
                 indexes(root, Set.of()),
                 Modules.NONE,
                 NO_NODE,

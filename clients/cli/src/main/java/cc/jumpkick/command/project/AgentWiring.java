@@ -6,6 +6,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
+import cc.jumpkick.layout.GraphLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.GraphAck;
@@ -55,9 +56,7 @@ public final class AgentWiring {
     public static List<String> run(Path dir, AgentSetup.Mode mode) throws IOException {
         List<String> lines = AgentSetup.install(dir, mode, hosts());
         boolean project = Files.isRegularFile(ManifestPaths.manifestIn(dir));
-        if (mode != AgentSetup.Mode.NONE
-                && project
-                && !Files.isDirectory(dir.resolve(".jk").resolve("graph"))) {
+        if (mode != AgentSetup.Mode.NONE && project && !GraphLayout.built(dir)) {
             seedGraph(dir);
         }
         return lines;

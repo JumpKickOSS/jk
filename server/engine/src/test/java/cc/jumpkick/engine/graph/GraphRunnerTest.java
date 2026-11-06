@@ -3,19 +3,21 @@ package cc.jumpkick.engine.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.GraphLayout;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphProgress;
 import cc.jumpkick.wire.protocol.GraphRequest;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import javax.tools.ToolProvider;
@@ -179,10 +181,6 @@ class GraphRunnerTest {
                 List.of());
     }
 
-    /**
-     * A build keeps an existing graph current and makes none: the first graph question makes one,
-     * and deleting .jk/graph/ is how a project stops.
-     */
     @Test
     void aStaleModuleIsCompiledByItsPathSoTwoOfOneNameAreNotAmbiguous(@TempDir Path tmp) {
         assertThat(GraphRunner.moduleArg(tmp, tmp.resolve("plugins/quarkus"), "quarkus"))
@@ -192,40 +190,49 @@ class GraphRunnerTest {
         assertThat(GraphRunner.moduleArg(tmp, tmp, "root")).isEqualTo("root");
     }
 
+    /**
+     * A build keeps an existing graph current and makes none: the first graph question makes one,
+     * and {@code jk clean} is how a checkout stops. Nothing of the graph's is written in the tree.
+     */
     @Test
-    void aBuildRefreshesOnlyAGraphTheProjectHas(@TempDir Path tmp) throws Exception {
+    void aBuildRefreshesOnlyAGraphTheCheckoutHas(@TempDir Path tmp) throws Exception {
         Path root = workspace(tmp);
+        Files.createDirectories(root.resolve(".jk/graph/src"));
+        Files.writeString(root.resolve(".jk/graph/graph.jsonl"), "{}\n");
         GraphRunner.refreshExisting(root);
         assertThat(GraphRunner.hasGraph(root)).isFalse();
 
         assertThat(GraphRunner.run(request(root, "build", List.of()), p -> {}).error())
                 .isNull();
         assertThat(GraphRunner.hasGraph(root)).isTrue();
-        // Beside the build scripts, never one of them: only .jk/scripts/ is build-logic input.
-        assertThat(BuildLogicToml.dirs(root)).isEmpty();
-        Path store = root.resolve(".jk/graph/" + GraphRunner.STORE);
+        assertThat(root.resolve(".jk")).as("a tree store found is removed").isEmptyDirectory();
         Files.writeString(
                 root.resolve("src/main/java/com/acme/shop/PriceCalculator.java"),
                 Files.readString(root.resolve("src/main/java/com/acme/shop/PriceCalculator.java")) + "// edited\n");
-        String before = Files.readString(store);
+        byte[] before = snapshot(root);
         GraphRunner.refreshExisting(root);
-        assertThat(Files.readString(store)).isNotEqualTo(before);
+        assertThat(snapshot(root)).isNotEqualTo(before);
 
         // After a build the refresh runs behind the verdict, and still lands.
         Files.writeString(
                 root.resolve("src/main/java/com/acme/shop/PriceCalculator.java"),
                 Files.readString(root.resolve("src/main/java/com/acme/shop/PriceCalculator.java")) + "// again\n");
-        String refreshed = Files.readString(store);
+        byte[] refreshed = snapshot(root);
         GraphRunner.refreshAfterBuild(root);
         long deadline = System.currentTimeMillis() + 60_000;
-        while (Files.readString(store).equals(refreshed) && System.currentTimeMillis() < deadline) {
+        while (Arrays.equals(snapshot(root), refreshed) && System.currentTimeMillis() < deadline) {
             Thread.sleep(100);
         }
-        assertThat(Files.readString(store)).isNotEqualTo(refreshed);
+        assertThat(snapshot(root)).isNotEqualTo(refreshed);
+        assertThat(root.resolve(".jk")).isEmptyDirectory();
 
-        PathUtil.deleteRecursively(root.resolve(".jk/graph"));
+        PathUtil.deleteRecursively(GraphRunner.outputDir(root));
         GraphRunner.refreshExisting(root);
         assertThat(GraphRunner.hasGraph(root)).isFalse();
+    }
+
+    private static byte[] snapshot(Path root) throws IOException {
+        return Files.readAllBytes(GraphRunner.outputDir(root).resolve(GraphLayout.SNAPSHOT));
     }
 
     /**
@@ -245,13 +252,12 @@ class GraphRunnerTest {
         GraphRunner.compiler(javac);
         Path calculator = root.resolve("src/main/java/com/acme/shop/PriceCalculator.java");
         Files.writeString(calculator, Files.readString(calculator) + "// edited after the build\n");
-        Path store = root.resolve(".jk/graph/" + GraphRunner.STORE);
-        String before = Files.readString(store);
+        byte[] before = snapshot(root);
 
         GraphRunner.refreshExisting(root);
 
         assertThat(javac.runs).as("the post-build refresh submits no compile").isEmpty();
-        assertThat(Files.readString(store)).as("and still refreshes the graph").isNotEqualTo(before);
+        assertThat(snapshot(root)).as("and still refreshes the graph").isNotEqualTo(before);
         GraphAck asked = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
         assertThat(asked.error()).isNull();
         assertThat(javac.runs).as("a question compiles the moved module").hasSize(1);
@@ -265,9 +271,9 @@ class GraphRunnerTest {
         assertThat(built.error()).isNull();
         assertThat(built.files()).isEqualTo(4);
         assertThat(built.classes()).isEqualTo(2);
-        assertThat(built.extracted()).isEqualTo(4);
+        // Declarations another run already cached on this machine are read, not extracted.
+        assertThat(built.extracted()).isBetween(0, 4);
         assertThat(progress).isNotEmpty();
-        assertThat(root.resolve(".jk/graph/" + GraphRunner.STORE)).isRegularFile();
         assertThat(GraphRunner.hasGraph(root)).isTrue();
 
         GraphAck query = GraphRunner.run(request(root, "query", List.of("order service total")), p -> {});

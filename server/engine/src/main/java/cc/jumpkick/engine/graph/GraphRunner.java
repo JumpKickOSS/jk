@@ -4,7 +4,6 @@ package cc.jumpkick.engine.graph;
 import cc.jumpkick.builds.GraphRefreshSlot;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
-import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.GraphConfig;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
@@ -26,11 +25,13 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.GraphLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -41,7 +42,9 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.base.PluginLaunch;
+import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.util.FileLocks;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphProgress;
 import cc.jumpkick.wire.protocol.GraphRequest;
@@ -88,25 +91,17 @@ public final class GraphRunner {
         }
     }
 
-    /**
-     * The file the worker always writes at the top of {@link #sharedDir}: a workspace with one has
-     * a graph, and keeps it current. Deleting the directory is how a project stops.
-     */
-    static final String STORE = "graph.jsonl";
-
     /** Where this checkout keeps the linked graph and its file stats: build output, gone with {@code jk clean}. */
     public static Path outputDir(Path root) {
-        return BuildLayout.moduleTargetDir(root).resolve("graph");
+        return GraphLayout.dir(root);
     }
 
-    /** Where a project commits its graph, shared by everyone who checks it out. */
-    public static Path sharedDir(Path root) {
-        return root.resolve(BuildLogicToml.JK_DIR).resolve("graph");
-    }
-
-    /** Whether the project has a graph: one it committed, or one the first graph question made here. */
+    /**
+     * Whether this checkout has a graph, which builds then keep current: the first graph question
+     * makes one, and {@code jk clean} is how a checkout stops until the next.
+     */
     public static boolean hasGraph(Path root) {
-        return Files.isRegularFile(sharedDir(root).resolve(STORE));
+        return GraphLayout.built(root);
     }
 
     public static GraphAck run(GraphRequest req, Consumer<GraphProgress> progress)
@@ -225,8 +220,7 @@ public final class GraphRunner {
 
     /**
      * Refresh the workspace's graph when it has one, after a build that succeeded: the graph an
-     * agent reads next, and the one committed with the change, is the tree the build just compiled,
-     * not the one before it. A workspace with no graph gets none: the first graph question makes
+     * agent reads next is the tree the build just compiled, not the one before it. A workspace with no graph gets none: the first graph question makes
      * one. Best-effort: a refresh that fails is logged, and the next graph operation refreshes anyway.
      *
      * <p>It compiles nothing, even over sources that moved since the classes: a compile it submitted
@@ -448,6 +442,7 @@ public final class GraphRunner {
                 : List.of();
         boolean apis = "read".equals(r.op()) || "find".equals(r.op());
         return specWriter(root, r, indexes, modules, scripts)
+                .configString("cache", JkDirs.cache().toString())
                 .configList("rules", rules)
                 .configList("libraries", apis ? libraryRows(root) : List.of())
                 .configString("apiCache", apis ? JkStores.resolve("graph-api").toString() : null)
@@ -467,7 +462,6 @@ public final class GraphRunner {
                 .op(PluginProtocol.OP_COMMAND, "graph", "jk-graph")
                 .configString("root", root.toString())
                 .configString("out", outputDir(root).toString())
-                .configString("shared", sharedDir(root).toString())
                 .configString("op", Objects.requireNonNull(r.op()))
                 .configList("args", r.args())
                 .configString("mode", r.mode() == null ? "bfs" : r.mode())
@@ -493,15 +487,16 @@ public final class GraphRunner {
 
     /**
      * The facts-index rows the graph reads ({@code index \t modulePrefix \t digest \t classes \t
-     * stale}, one per module's main and test classes, {@code stale} the workspace-relative sources
-     * edited since the build, joined by {@link #STALE_SEPARATOR}), the modules whose classes it does
-     * not read, and the edited sources whose own classes it skips.
+     * stale \t compileKeys}, one per module's main and test classes, {@code stale} the
+     * workspace-relative sources edited since the build and {@code compileKeys} the action keys the
+     * compiles stamped on the classes, each joined by {@link #STALE_SEPARATOR}), the modules whose
+     * classes it does not read, and the edited sources whose own classes it skips.
      */
     record ClassIndexes(List<String> rows, List<String> leftOut, List<String> edited) {
         static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of(), List.of());
     }
 
-    /** Between the paths of a row's stale field: a character no source path holds. */
+    /** Between the entries of a row's stale and compile-key fields: a character no path or key holds. */
     static final String STALE_SEPARATOR = "\u001f";
 
     /**
@@ -538,8 +533,8 @@ public final class GraphRunner {
                     if (!Files.isDirectory(classes)) continue;
                     FactsIndexing.Ensured e =
                             FactsIndexing.ensure(classes, FactsIndexing.indexPath(layout.buildDir(), set));
-                    rows.add(
-                            e.index() + "\t" + prefix + "\t" + e.bodyDigest() + "\t" + e.classes() + "\t" + staleField);
+                    rows.add(e.index() + "\t" + prefix + "\t" + e.bodyDigest() + "\t" + e.classes() + "\t" + staleField
+                            + "\t" + String.join(STALE_SEPARATOR, compileKeys(classes)));
                 }
             } catch (IOException | RuntimeException unreadable) {
                 leftOut.add(name);
@@ -553,6 +548,15 @@ public final class GraphRunner {
             edited.addAll(staleRel);
         }
         return new ClassIndexes(out, leftOut, edited);
+    }
+
+    /** The action keys of the compiles whose output {@code classes} is, from the stamps they left in it. */
+    static List<String> compileKeys(Path classes) {
+        List<String> out = new ArrayList<>();
+        for (String stamp : List.of(BuildStamps.JAVA, BuildStamps.KOTLIN, BuildStamps.GROOVY)) {
+            FreshnessStamp.stampedKey(classes, stamp).ifPresent(out::add);
+        }
+        return out;
     }
 
     /** {@code ack} with the modules and edited sources whose compiled facts were left out named in its note. */

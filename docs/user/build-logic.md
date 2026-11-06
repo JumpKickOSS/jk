@@ -8,8 +8,8 @@ top-level stem scripts on build (action-cached). Prefer plugins for heavy/reusab
 `.jk/scripts/` for small project-local codegen.
 
 **`.jk/` is a project's checked-in jk state, one subdirectory per concern:** `.jk/scripts/`
-holds the build scripts, `.jk/graph/` the [code graph](graph.md). Nothing in `.jk/` is
-generated output, and only `.jk/scripts/` is a build input: a file anywhere else under `.jk/`
+holds the build scripts. Nothing in `.jk/` is generated output (the [code graph](graph.md) lives
+under `target/` and in the action cache), and only `.jk/scripts/` is a build input: a file anywhere else under `.jk/`
 changes no cache key. A script left at the top of `.jk/` does not run; the build names it
 once and points at `.jk/scripts/`.
 

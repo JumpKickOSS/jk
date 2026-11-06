@@ -55,7 +55,6 @@ or a change to a Java method, use it, not Grep or file reads:
   and every caller in one call, then runs the edited tests and guard: when its answer says the task
   is done, it is. Do not grep for the old name afterwards.
 - Who calls `T.m`: `callers` once. Its list is complete, from the compiled classes.
-- `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
 """
 
 # A leaner Cursor rule under test: the generic wording plus exact call shapes and what a TIMEOUT means.
@@ -71,7 +70,6 @@ facts and final: do not grep or re-read to check them.
   and `run(kind="guard")`. When both say OK, the task is done.
 - Who calls `T.m`: `callers(address="T.m")` once, and use its list as the answer.
 - An answer `TIMEOUT … jid=N` means the job is still running: call `run(jid=N)` until it says OK or FAIL.
-- `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
 """
 
 # Cursor's project permissions: reading Java source is denied, so the graph is the way in.

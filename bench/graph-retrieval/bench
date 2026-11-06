@@ -689,8 +689,8 @@ def index(names: list[str], out_dir: Path, runs: int) -> None:
 def jk_snapshot(path: Path) -> dict:
     """jk's linked graph, read from the `graph.bin` every `jk graph` command loads, as node-link JSON.
 
-    `.jk/graph/graph.jsonl` holds each file's unlinked fragment and its compiled facts' mentions
-    (`Type#member` strings); the linker binds those to nodes and writes the result here, so reading
+    The fragments in the action cache hold each file's unlinked declarations and its compiled facts'
+    mentions (`Type#member` strings); the linker binds those to nodes and writes the result here, so reading
     this file is reading the edges `jk graph callers` walks, without re-implementing the linker or
     paying a CLI call per method. Layout (GraphSnapshot.java): magic JKGS, format 1, the key, a
     string table, nodes (id, label, file_type, source_file, source_location, extra), edges (source,

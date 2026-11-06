@@ -711,6 +711,10 @@ in     = "plugins/graph -> shared/core"
 reason = "the graph worker walks with the workspace's skip rules and writes its outputs atomically"
 
 [[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/graph -> shared/client-io"
+reason = "the graph worker keeps its fragments as action-cache entries: the cache CAS and the one key-record format"
+
+[[guards.plugin-sdk-boundary.allow]]
 in     = "plugins/auditor -> shared/core"
 reason = "the auditor reads the canonical lockfile and emits the shared audit report"
 

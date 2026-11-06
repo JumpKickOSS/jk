@@ -69,8 +69,8 @@ all named entities: the cost of one correct fact.
 `edges` compares each graph's `calls` edges with the compiler's, both mapped to (file, type, member;
 a constructor or initializer is the type): precision and recall per repo. jk's are read from
 `target/graph/graph.bin` after a `jk graph build`: the linked graph every `jk graph` command loads,
-so the edges `callers` walks. `.jk/graph/graph.jsonl` is not read: it holds each file's unlinked
-fragment and compiled `Type#member` mentions, which only the linker binds. graphify's are its
+so the edges `callers` walks. The fragments in the action cache are not read: they hold each file's
+unlinked declarations and compiled `Type#member` mentions, which only the linker binds. graphify's are its
 `graphify-out/graph.json`.
 
 `index` times a full index and an incremental one after a one-line edit to one main source file:

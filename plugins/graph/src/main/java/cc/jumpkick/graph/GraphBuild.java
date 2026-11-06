@@ -15,6 +15,7 @@ import cc.jumpkick.codegraph.extract.Extractors;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AtomicWrites;
@@ -27,6 +28,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,14 +41,13 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One refresh of a workspace's graph, in the graph worker. Walks the tree once and compares every
- * file's stat with the last build's; when nothing moved, the class indexes are the ones the last
- * graph was built from and the committed store is the one it was linked from, the stored snapshot
- * is the answer. Otherwise every changed file is hashed and, unless the committed store holds its
- * bytes, extracted again (in parallel), the class facts are mapped, and the graph is linked and
- * written: the committed store under {@code .jk/graph/} ({@link FragmentStore}), and this
- * checkout's {@code graph.bin} and {@code files.tsv} under {@code target/graph/}. A file whose
- * classes this checkout has not built, or built from other bytes, takes the compiled facts the
- * store holds for its bytes, so a fresh checkout answers from the facts of whoever built last.
+ * file's stat with the last build's; when nothing moved and the class indexes are the ones the last
+ * graph was built from, the stored snapshot is the answer. Otherwise every changed file is hashed
+ * and, unless the action cache holds its declarations ({@link FragmentCache}), extracted again (in
+ * parallel); each class set's compiled facts come from the cache under its compile's keys, or are
+ * mapped from its facts index and cached; and the graph is linked and written to this checkout's
+ * {@code graph.bin} and {@code files.tsv} under {@code target/graph/}. Compiled facts come only
+ * from this checkout's own classes: a file whose classes it has not built has none.
  */
 public final class GraphBuild {
 
@@ -68,12 +69,15 @@ public final class GraphBuild {
 
     /**
      * One module's class set: its facts index, the module's path prefix, the index's digest and
-     * class count, and the workspace-relative sources edited since those classes were built, whose
-     * own classes are skipped (their source scan answers for them).
+     * class count, the workspace-relative sources edited since those classes were built, whose own
+     * classes are skipped (their source scan answers for them), and the action keys of the compiles
+     * whose output the set is (none when no jk compile stamped it).
      */
-    public record ClassIndex(Path index, String modulePrefix, String digest, int classes, Set<String> stale) {
+    public record ClassIndex(
+            Path index, String modulePrefix, String digest, int classes, Set<String> stale, List<String> compileKeys) {
         public ClassIndex {
             stale = Set.copyOf(stale);
+            compileKeys = List.copyOf(compileKeys);
         }
     }
 
@@ -88,23 +92,27 @@ public final class GraphBuild {
             boolean changed,
             @Nullable String commit) {}
 
+    /**
+     * Refreshes {@code root}'s graph into {@code out}; {@code cache} is the cache root whose action
+     * index holds the fragments, {@code null} for none.
+     */
     public static Result refresh(
             Path root,
             Path out,
-            Path shared,
+            @Nullable Path cache,
             List<ClassIndex> indexes,
             Modules modules,
             ScriptReader scripts,
             boolean rebuild,
             Progress progress)
             throws IOException {
-        return refresh(root, out, shared, indexes, modules, scripts, rebuild, progress, Clock.SYSTEM);
+        return refresh(root, out, cache, indexes, modules, scripts, rebuild, progress, Clock.SYSTEM);
     }
 
     static Result refresh(
             Path root,
             Path out,
-            Path shared,
+            @Nullable Path cache,
             List<ClassIndex> indexes,
             Modules modules,
             ScriptReader scripts,
@@ -114,6 +122,7 @@ public final class GraphBuild {
             throws IOException {
         long start = clock.nanos();
         Path base = root.toAbsolutePath().normalize();
+        dropTreeStore(base);
         List<GraphSources.Source> sources = GraphSources.walk(base);
         // A copy: the stats in memory change only once the graph they describe is written, so a
         // refresh that fails part-way never lets the next one serve the graph from before it.
@@ -154,8 +163,7 @@ public final class GraphBuild {
         String commit = GitHead.read(base);
         String extractors = Extractors.VERSION + (scripts.active() ? "+oxc" : "");
         String inputs = inputs(shas);
-        GraphSnapshot.Key key = new GraphSnapshot.Key(
-                extractors, sources.size(), linkedFrom(classDigest, FragmentStore.stamp(shared)), inputs, commit);
+        GraphSnapshot.Key key = new GraphSnapshot.Key(extractors, sources.size(), classDigest, inputs, commit);
         boolean sameFiles = changed.isEmpty() && unreadable.isEmpty() && stats.size() == sources.size();
         if (!rebuild && sameFiles) {
             CodeGraph stored = snapshot(out, key);
@@ -169,11 +177,17 @@ public final class GraphBuild {
                 return new Result(stored, sources.size(), 0, classes(indexes), out, millis, false, commit);
             }
         }
-        FragmentStore store = rebuild ? FragmentStore.empty() : GraphMemory.store(out, shared);
+        FragmentCache fragmentCache = GraphMemory.fragments(out, cache);
         List<String> unread = new ArrayList<>();
         for (GraphSources.Source s : sources) {
             String sha = shas.get(s.rel());
-            if (sha != null && ScriptReader.handles(s.rel()) && store.get(key(s.rel(), sha, scripts)) == null) {
+            if (sha != null
+                    && ScriptReader.handles(s.rel())
+                    && (rebuild
+                            || fragmentCache.declarations(
+                                            FragmentCache.declarationsKey(s.rel(), sha, scripts.flavor(s.rel())),
+                                            s.rel())
+                                    == null)) {
                 unread.add(s.rel());
             }
         }
@@ -181,20 +195,24 @@ public final class GraphBuild {
         Map<String, Fragment> oxc = scripts.read(base, unread);
         AtomicInteger extracted = new AtomicInteger();
         Map<String, Fragment> fragments = new ConcurrentHashMap<>();
-        Map<String, String> keys = new ConcurrentHashMap<>();
+        Set<String> declarationKeys = ConcurrentHashMap.newKeySet();
         sources.parallelStream().forEach(s -> {
             String sha = shas.get(s.rel());
             if (sha == null) return;
-            String k = key(s.rel(), sha, scripts);
-            Fragment stored = store.get(k);
+            String flavor = scripts.flavor(s.rel());
+            String k = FragmentCache.declarationsKey(s.rel(), sha, flavor);
+            Fragment stored = rebuild ? null : fragmentCache.declarations(k, s.rel());
             Fragment read = oxc.get(s.rel());
             Fragment f = stored != null ? stored : read != null ? read : extract(s, changed.get(s.rel()));
             if (stored == null) {
-                if (read == null) k = FragmentStore.key(s.rel(), sha, "");
-                store.put(k, f);
+                if (read == null && !flavor.isEmpty()) {
+                    flavor = "";
+                    k = FragmentCache.declarationsKey(s.rel(), sha, flavor);
+                }
+                fragmentCache.putDeclarations(k, s.rel(), sha, flavor, f);
                 extracted.incrementAndGet();
             }
-            keys.put(s.rel(), k);
+            declarationKeys.add(k);
             if (!f.nodes().isEmpty()) fragments.put(s.rel(), f);
             progress.file(s.rel(), stored == null);
         });
@@ -205,32 +223,24 @@ public final class GraphBuild {
         }
         progress.phase("map compiled classes");
         Map<String, Fragment> built = new HashMap<>();
-        int classes = mapClasses(sources, indexes, built);
-        List<FragmentStore.Row> rows = new ArrayList<>();
+        Set<String> classKeys = new HashSet<>();
+        mapClasses(sources, indexes, fragmentCache, rebuild, classKeys, built);
         for (GraphSources.Source s : sources) {
-            String k = keys.get(s.rel());
-            String sha = shas.get(s.rel());
-            if (k == null || sha == null) continue;
             Fragment compiled = built.get(s.rel());
-            if (compiled == null) compiled = store.classes(s.rel(), sha);
-            if (compiled != null) all.add(compiled);
-            rows.add(new FragmentStore.Row(s.rel(), k, compiled));
+            if (compiled != null && shas.containsKey(s.rel())) all.add(compiled);
         }
+        fragmentCache.retain(declarationKeys, classKeys);
         progress.phase("link");
         CodeGraph graph = Linker.link(all);
         graph.modules(modules);
         graph.stale(stale(base, graph.stale()));
         progress.phase("write graph");
-        store.save(shared, rows, modules);
-        GraphMemory.savedStore(out, shared, store);
-        GraphSnapshot.Key written = new GraphSnapshot.Key(
-                extractors, sources.size(), linkedFrom(classDigest, FragmentStore.stamp(shared)), inputs, commit);
-        write(out, graph, written);
-        GraphMemory.sawGraph(out, graph, written);
+        write(out, graph, key);
+        GraphMemory.sawGraph(out, graph, key);
         stats.save(out, sources);
         GraphMemory.savedStats(out, stats);
         long millis = (clock.nanos() - start) / 1_000_000;
-        return new Result(graph, sources.size(), extracted.get(), classes, out, millis, true, commit);
+        return new Result(graph, sources.size(), extracted.get(), classes(indexes), out, millis, true, commit);
     }
 
     /**
@@ -246,9 +256,18 @@ public final class GraphBuild {
                 .toList();
     }
 
-    /** The store key of a file's fragment: an oxc read is kept apart from a scanner read of the same bytes. */
-    private static String key(String rel, String sha, ScriptReader scripts) {
-        return FragmentStore.key(rel, sha, scripts.flavor(rel));
+    /**
+     * {@code .jk/graph/} under {@code root}: a tree store of the graph jk does not write, removed when
+     * a refresh finds one so the checkout holds nothing of the graph's to commit.
+     */
+    static void dropTreeStore(Path root) {
+        Path dir = root.resolve(".jk").resolve("graph");
+        if (!Files.isDirectory(dir)) return;
+        try {
+            PathUtil.deleteRecursivelyOrThrow(dir);
+        } catch (IOException | RuntimeException failed) {
+            Log.debug("graph: cannot remove " + dir, failed);
+        }
     }
 
     /**
@@ -261,11 +280,6 @@ public final class GraphBuild {
             all.append(e.getKey()).append('\t').append(e.getValue()).append('\n');
         }
         return Hashing.sha256Hex(all.toString());
-    }
-
-    /** What a graph was linked from: the class indexes and modules, and the committed store's files as they stood. */
-    private static String linkedFrom(String classDigest, String storeStamp) {
-        return Hashing.sha256Hex(classDigest + "\n" + storeStamp);
     }
 
     /** The stored graph when its key matches, else {@code null}: from memory while it is current. */
@@ -315,11 +329,18 @@ public final class GraphBuild {
     }
 
     /**
-     * Puts each class index's mapping into {@code bySource}, one fragment per source file the
-     * classes came from; returns the class count.
+     * Puts each class set's compiled facts into {@code bySource}, one fragment per source file the
+     * classes came from, leaving out the sources edited since the build. A set a compile stamped is
+     * read from the cache under its compile keys, or mapped from its facts index and cached there
+     * (unless {@code rebuild}, which maps every set again); its cache key goes into {@code used}.
      */
-    private static int mapClasses(
-            List<GraphSources.Source> sources, List<ClassIndex> indexes, Map<String, Fragment> bySource) {
+    private static void mapClasses(
+            List<GraphSources.Source> sources,
+            List<ClassIndex> indexes,
+            FragmentCache cache,
+            boolean rebuild,
+            Set<String> used,
+            Map<String, Fragment> bySource) {
         Map<String, List<String>> byName = new HashMap<>();
         for (GraphSources.Source s : sources) {
             if (Extractors.isJvmSource(s.rel())) {
@@ -327,21 +348,24 @@ public final class GraphBuild {
                         .add(s.rel());
             }
         }
-        int classes = 0;
         for (ClassIndex c : indexes) {
-            try {
-                var index = FactsFormat.read(c.index());
-                classes += index.classes().size();
-                Fragment mapped = JvmFacts.map(index, (pkg, file) -> {
-                    String rel = find(byName, c.modulePrefix(), pkg, file);
-                    return rel == null || c.stale().contains(rel) ? null : rel;
-                });
-                split(mapped).forEach((rel, f) -> bySource.merge(rel, f, GraphBuild::concat));
-            } catch (IOException | RuntimeException unreadable) {
-                Log.debug("graph: class facts unreadable at " + c.index(), unreadable);
+            String key = FragmentCache.classesKey(c);
+            Map<String, Fragment> byFile = key == null || rebuild ? null : cache.classes(key);
+            if (byFile == null) {
+                try {
+                    var index = FactsFormat.read(c.index());
+                    byFile = split(JvmFacts.map(index, (pkg, file) -> find(byName, c.modulePrefix(), pkg, file)));
+                } catch (IOException | RuntimeException unreadable) {
+                    Log.debug("graph: class facts unreadable at " + c.index(), unreadable);
+                    continue;
+                }
+                if (key != null) cache.putClasses(key, c.compileKeys(), byFile);
             }
+            if (key != null) used.add(key);
+            byFile.forEach((rel, f) -> {
+                if (!c.stale().contains(rel)) bySource.merge(rel, f, GraphBuild::concat);
+            });
         }
-        return classes;
     }
 
     /**

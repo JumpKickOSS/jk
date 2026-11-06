@@ -56,10 +56,8 @@ class WalkSkipTest {
     }
 
     @Test
-    void the_code_graph_under_jk_is_no_key_input_and_the_rest_of_jk_is(@TempDir Path dir) {
-        assertThat(WalkSkip.workspaceKey(dir.resolve(".jk/graph"))).isTrue();
+    void everything_under_jk_is_a_key_input(@TempDir Path dir) {
         assertThat(WalkSkip.workspaceKey(dir.resolve(".jk/ci"))).isFalse();
         assertThat(WalkSkip.workspaceKey(dir.resolve(".jk/scripts"))).isFalse();
-        assertThat(WalkSkip.workspaceKey(dir.resolve("src/main/java/graph"))).isFalse();
     }
 }

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * The code graph worker: one walk of the tree, per-file extraction reused across runs by
- * content, compiled class facts mapped to calls and references, then linked, clustered and written
- * to {@code .jk/graph/} (committed) and {@code target/graph/} (this checkout's). See {@code docs/user/graph.md}.
+ * The code graph worker: one walk of the tree, per-file extraction and compiled class facts reused
+ * from the action cache, then linked, clustered and written to {@code target/graph/}. See {@code
+ * docs/user/graph.md}.
  */
 @NullMarked
 package cc.jumpkick.graph;

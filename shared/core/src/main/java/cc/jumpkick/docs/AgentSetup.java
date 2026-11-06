@@ -38,9 +38,6 @@ public final class AgentSetup {
     static final String OPENCODE_JSON = "opencode.json";
     static final String OPENCODE_JSONC = "opencode.jsonc";
 
-    /** The graph's committed store is jk's to read; an agent that opens it is checking the graph by hand. */
-    static final String GRAPH_STORE_DENY = "Read(.jk/graph/**)";
-
     /** agy's always-on workspace rule, as measured: without it agy reads every file the graph names. */
     static final String AGY_RULES_FILE = ".agents/rules/jk.md";
 
@@ -58,7 +55,6 @@ public final class AgentSetup {
               method of the same name is not this one). Edit only the comment or doc lines its answer lists, if
               they mean the method.
             - jk `skill` only when a verdict names a topic.
-            - `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
             """;
 
     /** Cursor's always-on rule, as measured: without it Cursor greps before it calls {@code rename}. */
@@ -76,7 +72,6 @@ public final class AgentSetup {
               and every caller in one call, then runs the edited tests and guard: when its answer says the task
               is done, it is. Do not grep for the old name afterwards.
             - Who calls `T.m`: `callers` once. Its list is complete, from the compiled classes.
-            - `.jk/graph/` is jk's graph store, read by jk only: do not open or search it.
             """;
 
     /** An agent jk can tell is on this machine, by its CLI on {@code PATH} (or, for Claude Code, its shell). */
@@ -303,11 +298,6 @@ public final class AgentSetup {
                 allow.removeAll(List.of("mcp__" + SERVER, "Bash(jk *)"));
                 if (allow.isEmpty()) permissions.remove("allow");
             }
-            List<Object> deny = existingArray(permissions, "deny");
-            if (deny != null) {
-                deny.remove(GRAPH_STORE_DENY);
-                if (deny.isEmpty()) permissions.remove("deny");
-            }
             if (permissions.isEmpty()) root.remove("permissions");
         }
         List<Object> enabled = existingArray(root, "enabledMcpjsonServers");
@@ -390,7 +380,6 @@ public final class AgentSetup {
 
     private static void claudeSettings(Map<String, Object> root) throws IOException {
         addAll(array(object(root, "permissions"), "allow"), List.of("mcp__" + SERVER, "Bash(jk *)"));
-        addAll(array(object(root, "permissions"), "deny"), List.of(GRAPH_STORE_DENY));
         addAll(array(root, "enabledMcpjsonServers"), List.of(SERVER));
         List<Object> pre = array(object(root, "hooks"), "PreToolUse");
         if (pre.stream().noneMatch(AgentSetup::runsHook)) {

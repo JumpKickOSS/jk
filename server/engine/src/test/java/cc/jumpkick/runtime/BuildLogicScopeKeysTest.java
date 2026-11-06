@@ -85,8 +85,8 @@ class BuildLogicScopeKeysTest {
     }
 
     /**
-     * {@code .jk/} beside the scripts is jk's own state: a code graph refreshed, a CI pin bumped, a
-     * script left at the top of {@code .jk/}. None of it is a build-logic input of either scope.
+     * {@code .jk/} beside the scripts is jk's own state: a CI pin bumped, a script left at the top of
+     * {@code .jk/}. None of it is a build-logic input of either scope.
      */
     @Test
     void files_under_jk_outside_scripts_move_no_key(@TempDir Path dir) throws Exception {
@@ -96,8 +96,6 @@ class BuildLogicScopeKeysTest {
         String module = String.join("\n", BuildLogicSupport.projectInputTokens(project));
         String workspace = String.join("\n", BuildLogicSupport.scriptWorkspaceTokens(project));
 
-        Files.createDirectories(project.resolve(".jk/graph"));
-        Files.writeString(project.resolve(".jk/graph/graph.jsonl"), "{\"jk-graph\":1}\n");
         Files.createDirectories(project.resolve(".jk/ci"));
         Files.writeString(project.resolve(".jk/ci/ci-bootstrap-version"), "0.50.0\n");
         Files.writeString(project.resolve(".jk/after-build.groovy"), "// at the top: not read\n");

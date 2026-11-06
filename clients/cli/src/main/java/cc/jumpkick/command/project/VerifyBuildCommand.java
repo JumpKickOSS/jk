@@ -15,7 +15,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -355,9 +354,9 @@ public final class VerifyBuildCommand implements CliCommand {
     // ---- scratch checkout ---------------------------------------------------
 
     /**
-     * Copy the project tree into the scratch root, excluding {@code .git}, every module's {@code
-     * target/} output tree (a directory named {@code target} whose parent holds a {@code jk.toml})
-     * and the code graph under {@code .jk/graph/}. Attributes (mtimes) are preserved so the copied
+     * Copy the project tree into the scratch root, excluding {@code .git} and every module's {@code
+     * target/} output tree (a directory named {@code target} whose parent holds a {@code jk.toml}).
+     * Attributes (mtimes) are preserved so the copied
      * {@code jk.toml}↔{@code jk-lock.toml} freshness relationship survives; {@link #touchLockfiles}
      * then bumps the locks regardless.
      */
@@ -366,16 +365,14 @@ public final class VerifyBuildCommand implements CliCommand {
     }
 
     /**
-     * True for directories the scratch copy must not carry: VCS metadata, build outputs, and the
-     * code graph. The graph is no input of the build, and the refresh that follows every successful
-     * build rewrites it in the background, so a copy started right after {@code jk build} walks a
-     * directory whose staged files are being renamed into place. A scratch tree that carried it
-     * would also have a graph of its own, and the scratch build would start a refresh (and the
-     * compile job a refresh may submit) in a directory verify deletes when it is done.
+     * True for directories the scratch copy must not carry: VCS metadata and build outputs, the code
+     * graph's under {@code target/graph/} among them. A scratch tree that carried a graph would start
+     * a refresh after its build (and the compile job a refresh may submit) in a directory verify
+     * deletes when it is done.
      */
     private static boolean skip(Path d) {
         String name = d.getFileName() == null ? "" : d.getFileName().toString();
-        if (name.equals(".git") || WalkSkip.jkGraph(d)) return true;
+        if (name.equals(".git")) return true;
         return name.equals(BuildLayout.TARGET)
                 && d.getParent() != null
                 && Files.exists(ManifestPaths.manifestIn(d.getParent()));
