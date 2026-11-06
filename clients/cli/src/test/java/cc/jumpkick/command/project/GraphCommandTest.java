@@ -104,7 +104,8 @@ class GraphCommandTest {
 
     @Test
     void theBuildSummaryNamesWhatWasRead() {
-        GraphAck ack = new GraphAck(null, "", 61_304, 167_942, 5_419, 0, 4_917, 460, "/w/target/graph", null);
+        GraphAck ack =
+                new GraphAck(null, "", 61_304, 167_942, 5_419, 0, 4_917, 460, "/w/target/graph", null, List.of());
         assertThat(GraphOpCommand.summary(ack))
                 .contains("61,304 nodes · 167,942 edges from 5,419 files (none changed, 4,917 classes)");
     }

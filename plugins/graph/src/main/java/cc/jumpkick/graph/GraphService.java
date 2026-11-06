@@ -184,9 +184,7 @@ public final class GraphService {
                         arg(a, 0, "a method"),
                         EnvValues.parseBool(r.options().get("transitive")).orElse(false) ? r.maxHops() : 1,
                         r.budget());
-            case "rename" ->
-                GraphRename.rename(
-                        w.root(), g, w.indexes(), arg(a, 0, "a method"), arg(a, 1, "the new name"), r.budget());
+            case "rename" -> GraphRename.rename(w, g, arg(a, 0, "a method"), arg(a, 1, "the new name"), r.budget());
             case "rules" -> RulesFor.answer(g, w.root(), arg(a, 0, "a file"), w.guardRules());
             case "find" -> find(w, g, scope, r, a);
             case "read" ->
