@@ -11,6 +11,7 @@ import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoIdentity;
+import cc.jumpkick.util.StoreWriteGate;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
 import java.net.URI;
@@ -21,10 +22,17 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class CacheInventoryOpsTest {
+
+    /** The store wipes here set an engine-lifetime flag that switches off later classes' background writers. */
+    @AfterEach
+    void forgetWipe() {
+        StoreWriteGate.resetForTests();
+    }
 
     @Test
     void usage_of_empty_cache_is_zero(@TempDir Path cache) throws Exception {
