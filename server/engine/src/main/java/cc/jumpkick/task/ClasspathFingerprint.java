@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.TreeContent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,8 +25,9 @@ import org.jspecify.annotations.Nullable;
  * path, so an absent jar is the same absence in every checkout and still distinct from its
  * neighbours.
  *
- * <p>Every walk here drops {@link BuildStamps#isStampFile stamp files}: build-host metadata that
- * lives inside the classes tree, is not code, and whose content changes every build.
+ * <p>Every walk here takes what {@link TreeContent} calls content, the same file set the packagers
+ * write and the action cache stores: stamps and {@code .jk-*} scratch directories are left out,
+ * every other file — dot-files included — is in.
  */
 public final class ClasspathFingerprint {
 
@@ -109,9 +109,7 @@ public final class ClasspathFingerprint {
         List<String> files = new ArrayList<>();
         for (Map.Entry<String, String> e : relPathToSha256.entrySet()) {
             String rel = e.getKey().replace('\\', '/');
-            if (rel.isEmpty()) continue;
-            if (BuildStamps.isStampFile(rel)) continue;
-            if (ActionCache.hasJkScratchSegment(Path.of(rel))) continue;
+            if (rel.isEmpty() || !TreeContent.isContent(rel)) continue;
             if (e.getValue() == null || e.getValue().isBlank()) continue;
             files.add(rel + ":" + e.getValue());
         }
@@ -141,9 +139,7 @@ public final class ClasspathFingerprint {
         if (compileOutputs != null) {
             for (Map.Entry<String, String> e : compileOutputs.entrySet()) {
                 String rel = e.getKey().replace('\\', '/');
-                if (rel.isEmpty()) continue;
-                if (BuildStamps.isStampFile(rel)) continue;
-                if (ActionCache.hasJkScratchSegment(Path.of(rel))) continue;
+                if (rel.isEmpty() || !TreeContent.isContent(rel)) continue;
                 if (e.getValue() == null || e.getValue().isBlank()) continue;
                 digests.put(rel, e.getValue());
             }
@@ -151,7 +147,7 @@ public final class ClasspathFingerprint {
         if (resourceRoots != null) {
             for (Path root : resourceRoots) {
                 if (root == null || !Files.isDirectory(root)) continue;
-                hashInto(root, digests, false);
+                hashInto(root, digests);
             }
         }
         digests.putAll(copiedFiles);
@@ -166,29 +162,23 @@ public final class ClasspathFingerprint {
     public static String entryProjectedAfterResourceCopy(Path classesDir, List<Path> resourceRoots) throws IOException {
         Map<String, String> digests = new TreeMap<>();
         if (classesDir != null && Files.isDirectory(classesDir)) {
-            hashInto(classesDir, digests, true);
+            hashInto(classesDir, digests);
         }
         return entryFromCompileAndResources(digests, resourceRoots);
     }
 
     /**
-     * Memoized content digest of every regular file under {@code root}, keyed by forward-slash
-     * relative path. {@code skipScratch} additionally drops {@code .jk-*} plugin scratch, which is
-     * output content in a classes tree but never in a resource root.
+     * Memoized content digest of every {@link TreeContent} file under {@code root}, keyed by
+     * forward-slash relative path: the walk the packagers read the same tree with.
      */
-    private static void hashInto(Path root, Map<String, String> digests, boolean skipScratch) throws IOException {
-        // Through PathUtil rather than a hand-rolled walkFileTree: a directory read is a native
-        // call the virtual-thread scheduler does not compensate for, so a walk holds its carrier
+    private static void hashInto(Path root, Map<String, String> digests) throws IOException {
+        // Through PathUtil (under TreeContent) rather than a hand-rolled walkFileTree: a directory
+        // read is a native call the virtual-thread scheduler does not compensate for, so a walk holds its carrier
         // until it ends. This is the largest walk a forecast runs, and the forecast now runs a
         // wave of them at once — without the helper's periodic yield they would leave every other
         // virtual thread in the engine unscheduled for as long as the wave lasts.
-        PathUtil.forEachRegularFile(root, (f, attrs) -> {
-            if (BuildStamps.isStampFile(f.getFileName().toString())) return;
-            Path rel = root.relativize(f);
-            if (skipScratch && ActionCache.hasJkScratchSegment(rel)) return;
-            digests.put(
-                    rel.toString().replace('\\', '/'),
-                    FileHashMemo.contentHash(f.toAbsolutePath().normalize(), attrs));
+        TreeContent.forEach(root, (rel, f, attrs) -> {
+            digests.put(rel, FileHashMemo.contentHash(f.toAbsolutePath().normalize(), attrs));
         });
     }
 
@@ -218,7 +208,7 @@ public final class ClasspathFingerprint {
             // Through entryFromOutputDigests so a live tree and the same tree read back out of an
             // action record cannot drift: one place decides what a directory token is.
             Map<String, String> digests = new TreeMap<>();
-            hashInto(abs, digests, true);
+            hashInto(abs, digests);
             return entryFromOutputDigests(digests);
         }
         // Raw content for jars and non-jars alike: deterministic packaging makes raw stable, and

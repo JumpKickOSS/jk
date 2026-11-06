@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicZip;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -38,7 +37,6 @@ public final class JarPackager {
             for (PackagedTree.Entry e : request.tree().entries()) {
                 String name = e.name();
                 if (name.equals("META-INF/MANIFEST.MF")) continue; // already written
-                if (BuildStamps.isStampFile(name)) continue; // build-host artefact, not jar content
                 written.add(name);
                 zip.writeParentDirs(jos, name, dirs);
                 if (e.file() != null) zip.writeEntry(jos, name, e.file());

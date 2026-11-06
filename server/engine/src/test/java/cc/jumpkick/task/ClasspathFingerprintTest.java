@@ -84,6 +84,42 @@ class ClasspathFingerprintTest {
         assertThat(reconstructed).isEqualTo(live);
     }
 
+    /**
+     * A dot-file resource ({@code .jk-template.toml}) is part of a tree's token in every form the
+     * package key reads it — live, from a compile record plus resource roots, and projected over a
+     * live tree — and the three agree. Only a {@code .jk-*} directory is left out.
+     */
+    @Test
+    void dot_files_are_tree_content_and_only_a_jk_scratch_dir_is_not(@TempDir Path dir) throws Exception {
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        write(classes.resolve("a/A.class"), "AAAA");
+        Path res = Files.createDirectories(dir.resolve("resources"));
+        write(res.resolve("t/.jk-template.toml"), "title = 1\n");
+        write(res.resolve(".DS_Store"), "finder");
+        write(classes.resolve("t/.jk-template.toml"), "title = 1\n");
+        write(classes.resolve(".DS_Store"), "finder");
+        String live = ClasspathFingerprint.entry(classes);
+        Map<String, String> compileOut = Map.of("a/A.class", Hashing.sha256Hex(classes.resolve("a/A.class")));
+        assertThat(ClasspathFingerprint.entryFromCompileAndResources(compileOut, List.of(res)))
+                .isEqualTo(live);
+        assertThat(ClasspathFingerprint.entryProjectedAfterResourceCopy(classes, List.of(res)))
+                .isEqualTo(live);
+
+        write(classes.resolve(".jk-scratch/repo/x.jar"), "scratch");
+        assertThat(ClasspathFingerprint.entry(classes))
+                .as("a .jk-* directory is scratch")
+                .isEqualTo(live);
+
+        write(classes.resolve("t/.jk-template.toml"), "title = 2, edited\n");
+        assertThat(ClasspathFingerprint.entry(classes))
+                .as("an edit to the dot-file alone moves the token")
+                .isNotEqualTo(live);
+        write(classes.resolve("t/.jk-template.toml"), "title = 1\n");
+        assertThat(ClasspathFingerprint.entry(classes))
+                .as("and its revert moves it back")
+                .isEqualTo(live);
+    }
+
     @Test
     void stamp_files_are_excluded_from_output_digest_fingerprints(@TempDir Path dir) throws Exception {
         Path classes = Files.createDirectories(dir.resolve("classes"));

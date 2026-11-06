@@ -2,16 +2,16 @@
 package cc.jumpkick.cache;
 
 import cc.jumpkick.host.DeterministicZip;
-import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.TreeContent;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
@@ -53,12 +53,11 @@ public final class SourcesJar {
     }
 
     private static void appendTree(JarOutputStream jos, Path root, Set<String> written) throws IOException {
-        List<Path> entries = new ArrayList<>();
-        PathUtil.forEachRegularFile(root, (file, attrs) -> entries.add(file));
-        Collections.sort(entries);
-        for (Path file : entries) {
-            String name = root.relativize(file).toString().replace('\\', '/');
-            if (written.add(name)) ZIP.writeEntry(jos, name, file);
+        // The files the step's key fingerprints each root by: its content files, in name order.
+        Map<String, Path> entries = new TreeMap<>();
+        TreeContent.forEach(root, (name, file, attrs) -> entries.put(name, file));
+        for (Map.Entry<String, Path> e : entries.entrySet()) {
+            if (written.add(e.getKey())) ZIP.writeEntry(jos, e.getKey(), e.getValue());
         }
     }
 }

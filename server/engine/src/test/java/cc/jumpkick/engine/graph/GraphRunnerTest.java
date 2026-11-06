@@ -15,6 +15,7 @@ import cc.jumpkick.layout.GraphLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleInputProvenance;
+import cc.jumpkick.runtime.PlannerTest;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.wire.protocol.GraphAck;
@@ -362,7 +363,7 @@ class GraphRunnerTest {
                         root.resolve("target/classes").toString(),
                         it.resolve("CalcIT.java").toString());
         assertThat(exit).isZero();
-        Files.writeString(testClasses.resolve(".jk-suites"), "test,integration");
+        Files.writeString(PlannerTest.suiteMarker(testClasses), "test,integration");
         BuildGraph.Result graph =
                 BuildGraph.resolve(root, JkBuildParser.parse(Files.readString(root.resolve("jk.toml"))));
         ModuleInputProvenance.recordClasses(

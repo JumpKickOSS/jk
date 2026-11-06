@@ -2,12 +2,11 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.host.PathUtil;
-import java.io.File;
+import cc.jumpkick.host.TreeContent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -19,8 +18,10 @@ import org.jspecify.annotations.Nullable;
  * The files a packager writes as entries, by entry name: one classes tree, or a module's classes
  * with trees laid over it (a plugin's contributed classes), read where they lie rather than copied
  * into one directory first. Laying a tree over replaces an entry of the same name, as a copy would;
- * an entry can also be set to bytes or removed. Files are the entries, a link to one read through
- * as {@link PathUtil#forEachRegularFile} reads it; a directory is implied by the files under it.
+ * an entry can also be set to bytes or removed. A tree's entries are its {@link TreeContent} files
+ * — the set its fingerprint covers, so a package key names exactly what is packed — a link to one
+ * read through as {@link PathUtil#forEachRegularFile} reads it; a directory is implied by the
+ * files under it.
  */
 public final class PackagedTree {
 
@@ -35,7 +36,7 @@ public final class PackagedTree {
         this.entries = entries;
     }
 
-    /** Every regular file under {@code dir}, listed when a packager reads it. */
+    /** Every content file under {@code dir}, listed when a packager reads it. */
     public static PackagedTree of(Path dir) {
         return new PackagedTree(Objects.requireNonNull(dir, "dir"), null);
     }
@@ -116,11 +117,6 @@ public final class PackagedTree {
     }
 
     private static void addTree(Map<String, Entry> into, Path tree, Predicate<Path> skip) throws IOException {
-        List<Path> files = new ArrayList<>();
-        PathUtil.forEachRegularFile(tree, skip, (file, attrs) -> files.add(file));
-        for (Path file : files) {
-            String name = tree.relativize(file).toString().replace(File.separatorChar, '/');
-            into.put(name, new Entry(name, file, null));
-        }
+        TreeContent.forEach(tree, skip, (name, file, attrs) -> into.put(name, new Entry(name, file, null)));
     }
 }

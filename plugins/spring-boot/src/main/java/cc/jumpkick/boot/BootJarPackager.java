@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.boot;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.TreeContent;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -85,7 +85,7 @@ public final class BootJarPackager {
                 for (Path file : files) {
                     String name = normalize(root, file);
                     if (name.equals("META-INF/MANIFEST.MF")) continue;
-                    if (BuildStamps.isStampFile(name)) continue;
+                    if (!TreeContent.isContent(name)) continue;
                     if (!classEntries.add(name)) continue;
                     zip.writeParentDirs(jos, CLASSES_PREFIX + name, dirsWritten);
                     zip.writeEntryStreaming(jos, CLASSES_PREFIX + name, Files.newInputStream(file));

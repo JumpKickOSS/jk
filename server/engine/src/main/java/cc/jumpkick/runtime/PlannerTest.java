@@ -71,15 +71,24 @@ public final class PlannerTest {
 
     private PlannerTest() {}
 
-    /** Where compile-test records the suite selection that produced {@code target/test-classes}. */
-    private static final String SUITE_MARKER = ".jk-suites";
+    /**
+     * The suffix of the file beside {@code target/test-classes} where compile-test records the suite
+     * selection that produced the tree. Beside the tree, not in it: everything in the tree is its
+     * content, keyed, stored and packed.
+     */
+    private static final String SUITE_MARKER = ".suites";
+
+    /** The suite marker of {@code testClasses}: {@code test-classes.suites} beside it. */
+    public static Path suiteMarker(Path testClasses) {
+        return testClasses.resolveSibling(testClasses.getFileName() + SUITE_MARKER);
+    }
 
     /**
      * The suites whose sources compiled into {@code testClasses}, as its suite marker records them;
      * the default suite alone when there is no marker.
      */
     public static Set<String> compiledSuites(Path testClasses) {
-        Path marker = testClasses.resolve(SUITE_MARKER);
+        Path marker = suiteMarker(testClasses);
         try {
             if (!Files.isRegularFile(marker)) return Set.of(TestSuites.DEFAULT);
             Set<String> out = new TreeSet<>();
@@ -196,7 +205,7 @@ public final class PlannerTest {
                             mixedTest,
                             mixedTestGv);
                     Files.createDirectories(testClasses);
-                    Files.writeString(testClasses.resolve(SUITE_MARKER), selectionKey);
+                    Files.writeString(suiteMarker(testClasses), selectionKey);
                     TestClassStamps.write(
                             ctx, src.javacSources(), src.ktTest(), src.gvTest(), baseCp, testClasses, readClock);
                     ctx.progress(1);
@@ -327,13 +336,12 @@ public final class PlannerTest {
     /**
      * All suites share target/test-classes and run-tests scans it: when the SELECTION changes, wipe the
      * shared output and the per-language merge sources, or the previous selection's classes and
-     * copied resources keep running/shadowing under the new one indefinitely. {@value #SUITE_MARKER}
-     * records the selection that produced the tree (excluded from action stores/fingerprints by
-     * the .jk- rule).
+     * copied resources keep running/shadowing under the new one indefinitely. The {@link
+     * #suiteMarker} beside the tree records the selection that produced it.
      */
     private static void resetOnSelectionChange(TaskContext ctx, Path testClasses, String selectionKey)
             throws IOException {
-        Path suiteMarker = testClasses.resolve(SUITE_MARKER);
+        Path suiteMarker = suiteMarker(testClasses);
         String prevSelection =
                 Files.isRegularFile(suiteMarker) ? Files.readString(suiteMarker).trim() : null;
         if (prevSelection != null && !prevSelection.equals(selectionKey)) {

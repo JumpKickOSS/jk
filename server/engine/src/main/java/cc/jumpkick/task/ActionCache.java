@@ -10,6 +10,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
@@ -234,13 +235,10 @@ public final class ActionCache {
             List<Path> files = new ArrayList<>();
             try (Stream<Path> stream = Files.find(outputDir, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
                 for (Path file : (Iterable<Path>) stream::iterator) {
-                    // FreshnessStamp's sentinels (.jstamp/.kstamp) live inside
-                    // outputDir but aren't action outputs — exclude them so we
-                    // don't accidentally cache a stamp from a previous run.
-                    if (BuildStamps.isStampFile(file.getFileName().toString())) continue;
-                    // `.jk-*` scratch (a plugin's private bootstrap repo/staging — the
-                    // plugin-sdk copyTree convention) is never an action output.
-                    if (hasJkScratchSegment(outputDir.relativize(file))) continue;
+                    // Freshness stamps and `.jk-*` scratch directories (a plugin's private
+                    // bootstrap repo/staging) are never action outputs; every other file is,
+                    // dot-files included — the same set a key fingerprints and a packager ships.
+                    if (!TreeContent.isContent(outputDir.relativize(file))) continue;
                     files.add(file);
                 }
             }
@@ -350,14 +348,6 @@ public final class ActionCache {
         // File.setExecutable does nothing there. The !isWindows() guard already skips the 64x call on
         // the platform where it costs, which is the whole reason the ban has an exception here.
         return !Os.isWindows() && Files.isExecutable(file);
-    }
-
-    /** True when any path segment starts with {@code .jk-} — plugin-private scratch, never cached. */
-    static boolean hasJkScratchSegment(Path rel) {
-        for (Path seg : rel) {
-            if (seg.toString().startsWith(".jk-")) return true;
-        }
-        return false;
     }
 
     /**

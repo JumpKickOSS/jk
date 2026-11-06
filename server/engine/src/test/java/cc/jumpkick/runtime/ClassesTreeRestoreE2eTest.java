@@ -137,6 +137,42 @@ class ClassesTreeRestoreE2eTest {
         assertThat(classesIn(lib.mainJar())).as("jar after the plain build").isEqualTo(whole);
     }
 
+    /**
+     * A resource dot-file is in the jar's key: editing only a template's {@code .jk-template.toml}
+     * packages a jar that carries the edit, and the revert brings back the original jar byte for
+     * byte, never the edited jar stored under the original key.
+     */
+    @Test
+    void editing_only_a_resource_dot_file_repackages_and_its_revert_restores_the_original_jar(@TempDir Path tmp)
+            throws Exception {
+        Path cache = TestCaches.dir("classes-tree-dotfile-cache");
+        Path ws = workspace(tmp, REVISION_A);
+        lock(ws, cache);
+        String entry = "templates/java/app/default.g8/.jk-template.toml";
+        Path template = ws.resolve("lib/resources").resolve(entry);
+        Files.createDirectories(ws.resolve("lib/resources/templates/java/app/default.g8"));
+        Files.writeString(template, "title = \"one\"\n");
+        BuildLayout lib = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")));
+
+        build(ws, cache, "original");
+        byte[] original = Files.readAllBytes(lib.mainJar());
+        assertThat(new String(classFromJar(lib.mainJar(), entry), StandardCharsets.UTF_8))
+                .isEqualTo("title = \"one\"\n");
+
+        Files.writeString(template, "title = \"edited\"\n");
+        build(ws, cache, "dot-file edited");
+        assertThat(lib.classesDir().resolve(entry)).hasContent("title = \"edited\"");
+        assertThat(new String(classFromJar(lib.mainJar(), entry), StandardCharsets.UTF_8))
+                .as("the jar carries the edit, not the jar restored under the unedited key")
+                .isEqualTo("title = \"edited\"\n");
+
+        Files.writeString(template, "title = \"one\"\n");
+        build(ws, cache, "dot-file reverted");
+        assertThat(Files.readAllBytes(lib.mainJar()))
+                .as("the revert restores the original jar, byte for byte")
+                .isEqualTo(original);
+    }
+
     private static TaskForecast.Module forecast(Path ws, Path cache, String module) throws IOException {
         BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();

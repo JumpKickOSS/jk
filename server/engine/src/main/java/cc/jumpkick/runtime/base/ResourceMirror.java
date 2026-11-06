@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StatIdentity;
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -150,23 +150,12 @@ public final class ResourceMirror {
         Set<String> out = new TreeSet<>();
         PathUtil.forEachRegularFile(classes, (file, attrs) -> {
             String rel = classes.relativize(file).toString().replace('\\', '/');
-            if (rel.endsWith(".class") || BuildStamps.isStampFile(rel)) return;
+            if (rel.endsWith(".class") || !TreeContent.isContent(rel)) return;
             if (rel.endsWith(".kotlin_module") || rel.endsWith(".tasty")) return;
-            if (merged.contains(rel) || scratch(rel)) return;
+            if (merged.contains(rel)) return;
             out.add(rel);
         });
         return out;
-    }
-
-    private static boolean scratch(String rel) {
-        for (int start = 0; start <= rel.length(); ) {
-            int slash = rel.indexOf('/', start);
-            String seg = slash < 0 ? rel.substring(start) : rel.substring(start, slash);
-            if (seg.startsWith(".jk-")) return true;
-            if (slash < 0) break;
-            start = slash + 1;
-        }
-        return false;
     }
 
     private static Set<String> previous(Path ledger) throws IOException {

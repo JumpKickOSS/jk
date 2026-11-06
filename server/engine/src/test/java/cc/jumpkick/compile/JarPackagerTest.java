@@ -3,7 +3,12 @@ package cc.jumpkick.compile;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.PackagingKeys;
+import cc.jumpkick.task.ClasspathFingerprint;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -17,6 +22,7 @@ import java.util.Map;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.jar.JarInputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -229,6 +235,70 @@ class JarPackagerTest {
         assertThat(Files.readAllBytes(jarA))
                 .as("two builds of the same sources produce the same bytes")
                 .isEqualTo(Files.readAllBytes(jarB));
+    }
+
+    /**
+     * The package step keys on the classes tree's token and packs that tree. A template's
+     * {@code .jk-template.toml} (or any other dot-file resource) is packed, so it has to move the
+     * key: an edit to it alone must name a new jar, and the revert must name the original one
+     * again, with the original bytes.
+     */
+    @Test
+    void a_resource_dot_file_moves_the_jar_key_and_the_jar_and_its_revert_moves_both_back(@TempDir Path tempDir)
+            throws Exception {
+        Path module = Files.createDirectories(tempDir.resolve("lib"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "lib"
+                version = "1.0.0"
+                java    = 25
+                """);
+        JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
+        Path classes = module.resolve("target/classes");
+        Files.createDirectories(classes.resolve("com/example"));
+        Files.writeString(classes.resolve("com/example/Lib.class"), "javac output");
+        Path template = classes.resolve("templates/java/app/default.g8/.jk-template.toml");
+        Files.createDirectories(classes.resolve("templates/java/app/default.g8"));
+        Files.writeString(template, "title = \"one\"\n");
+        Files.writeString(classes.resolve(".DS_Store"), "finder");
+        Path jar = module.resolve("target/lib-1.0.0.jar");
+
+        Packaged original = pack(module, project, classes, jar);
+        assertThat(entry(original.bytes(), "templates/java/app/default.g8/.jk-template.toml"))
+                .isEqualTo("title = \"one\"\n");
+        assertThat(entry(original.bytes(), ".DS_Store")).isEqualTo("finder");
+
+        Files.writeString(template, "title = \"edited\"\n");
+        Packaged edited = pack(module, project, classes, jar);
+        assertThat(edited.key())
+                .as("an edit to the dot-file alone names a new jar")
+                .isNotEqualTo(original.key());
+        assertThat(entry(edited.bytes(), "templates/java/app/default.g8/.jk-template.toml"))
+                .isEqualTo("title = \"edited\"\n");
+
+        Files.writeString(template, "title = \"one\"\n");
+        Packaged reverted = pack(module, project, classes, jar);
+        assertThat(reverted.key()).as("the revert names the original jar").isEqualTo(original.key());
+        assertThat(reverted.bytes()).as("with the original bytes").isEqualTo(original.bytes());
+    }
+
+    private record Packaged(String key, byte[] bytes) {}
+
+    /** The package step's key over {@code classes} as the live step derives it, and the jar it packs. */
+    private static Packaged pack(Path module, JkBuild project, Path classes, Path jar) throws IOException {
+        String key = PackagingKeys.packageJar(jar, module, project, ClasspathFingerprint.entry(classes), "", null)
+                .key();
+        new JarPackager().packageJar(JarPackager.JarRequest.of(classes, jar));
+        return new Packaged(key, Files.readAllBytes(jar));
+    }
+
+    private static String entry(byte[] jar, String name) throws IOException {
+        try (JarInputStream in = new JarInputStream(new ByteArrayInputStream(jar))) {
+            for (JarEntry e = in.getNextJarEntry(); e != null; e = in.getNextJarEntry()) {
+                if (e.getName().equals(name)) return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        }
+        throw new AssertionError(name + " is not in the jar");
     }
 
     private static void writeStamps(Path classes, String body) throws IOException {
