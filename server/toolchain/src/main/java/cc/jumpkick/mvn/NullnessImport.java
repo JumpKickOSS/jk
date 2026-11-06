@@ -67,7 +67,7 @@ public final class NullnessImport {
         else byScope.put(Scope.PROCESSOR, kept);
         report.warning("NullAway runs through Error Prone here, so the import writes `[nullness]`: the table brings"
                 + " Error Prone, NullAway and JSpecify at jk's versions and the flags they need, in place of the"
-                + " POM's `-Xplugin:ErrorProne` argument and its processor paths.");
+                + " build's `-Xplugin:ErrorProne` argument and its processor paths.");
         return build.withDependencies(new JkBuild.Dependencies(byScope))
                 .withBuild(build.build().withJavac(rest).withNullness(nullness));
     }

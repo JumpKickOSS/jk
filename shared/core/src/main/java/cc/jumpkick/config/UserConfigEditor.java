@@ -66,6 +66,25 @@ public final class UserConfigEditor {
         return repositories != null && repositories.keySet().contains(name);
     }
 
+    /**
+     * Whether {@code configFile} declares {@code table}'s repository at {@code table}'s URL, as an
+     * earlier import wrote it or the user did; a trailing {@code /} is not a difference.
+     */
+    public static boolean declaresRepositoryAt(Path configFile, RepositoryTable table) throws IOException {
+        if (!Files.isRegularFile(configFile)) return false;
+        TomlParseResult parsed = Toml.parse(Files.readString(configFile, StandardCharsets.UTF_8));
+        if (parsed.hasErrors()) return false;
+        TomlTable repositories = parsed.getTable("repositories");
+        if (repositories == null) return false;
+        Object declared = repositories.get(List.of(table.name()));
+        String url = declared instanceof TomlTable t ? t.getString("url") : declared instanceof String u ? u : null;
+        return url != null && stripSlash(url).equals(stripSlash(table.url().toString()));
+    }
+
+    private static String stripSlash(String url) {
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
     /** Pure text transform for tests: {@code toml} with {@code table} appended. */
     static String appendRepository(String toml, RepositoryTable table) {
         StringBuilder sb = new StringBuilder(toml);

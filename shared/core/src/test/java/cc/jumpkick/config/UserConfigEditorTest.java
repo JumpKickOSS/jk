@@ -155,4 +155,15 @@ class UserConfigEditorTest {
         assertThat(UserConfigEditor.addRepository(config, GITLAB)).isTrue();
         assertThat(Files.readString(config)).startsWith("[repositories.gitlab]\n");
     }
+
+    /** A re-import finds the table it wrote; the same name at another URL is not that table. */
+    @Test
+    void a_repository_declared_at_the_same_url_is_recognised(@TempDir Path home) throws Exception {
+        Path config = home.resolve("config.toml");
+        UserConfigEditor.addRepository(config, GITLAB);
+
+        assertThat(UserConfigEditor.declaresRepositoryAt(config, GITLAB)).isTrue();
+        Files.writeString(config, "[repositories]\ngitlab = \"https://elsewhere.example/\"\n");
+        assertThat(UserConfigEditor.declaresRepositoryAt(config, GITLAB)).isFalse();
+    }
 }

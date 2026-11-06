@@ -235,7 +235,7 @@ public final class ProjectImport {
         for (UserConfigEditor.RepositoryTable table : tables) {
             if (UserConfigEditor.addRepository(configFile, table)) {
                 written = true;
-            } else {
+            } else if (!UserConfigEditor.declaresRepositoryAt(configFile, table)) {
                 out.warning(configFile + " already declares the repository `" + table.name() + "`; it is left as it"
                         + " is, so check that it carries the credential for " + table.url() + ".");
             }
