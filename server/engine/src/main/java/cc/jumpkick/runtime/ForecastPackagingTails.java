@@ -99,16 +99,19 @@ final class ForecastPackagingTails {
         String dokkaVersion = prepared.ktSrc().isEmpty()
                 ? null
                 : DokkaResolver.version(project, RepoGroupBuilder.buildFor(project, null, cas));
+        // Scala sources (in a module without Kotlin) make it a scaladoc run at the compiler's release.
+        List<Path> scalaSources = PlannerJavadoc.scaladocSources(prepared.mainSrc(), prepared.ktSrc());
+        String scalaVersion = scalaSources.isEmpty() ? null : PlannerJavadoc.scaladocVersion(project, prepared.lock());
         String jdKey = PackagingKeys.javadoc(
                         layout.javadocJar(),
                         dir,
                         javaSources,
-                        prepared.ktSrc(),
+                        scalaSources.isEmpty() ? prepared.ktSrc() : scalaSources,
                         classpath,
                         abiToken,
                         options,
                         prepared.javaHome(),
-                        PlannerJavadoc.dokkaToken(project, dokkaVersion))
+                        PlannerJavadoc.docToolToken(project, dokkaVersion, scalaVersion))
                 .key();
         return ForecastSteps.present(actionCache, jdKey)
                 ? new TaskForecast.Task(

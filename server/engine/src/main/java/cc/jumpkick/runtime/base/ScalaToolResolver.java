@@ -105,6 +105,16 @@ public final class ScalaToolResolver {
         return jars;
     }
 
+    /** The {@code scaladoc_3} module that documents a Scala 3 module's TASTy. */
+    public static final String SCALADOC_MODULE = "org.scala-lang:scaladoc_3";
+
+    /** Resolve and fetch the scaladoc closure matching {@code scalaVersion}, for a forked scaladoc's {@code -cp}. */
+    public static List<Path> resolveScaladoc(RepoGroup repos, Cas cas, String scalaVersion)
+            throws IOException, InterruptedException {
+        return ToolClosure.resolve(
+                repos, cas, "scaladoc", "Scaladoc", SCALADOC_MODULE, ScalaResolver.floored(scalaVersion));
+    }
+
     /**
      * The compiler closure a build already fetched for {@code scalaVersion}, or empty: the IDE
      * model reads what the store holds and never downloads a compiler.

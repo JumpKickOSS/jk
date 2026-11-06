@@ -7,6 +7,7 @@ import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_SOURCES;
 import static cc.jumpkick.runtime.BuildPlanner.KOTLIN_SOURCES;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
+import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
@@ -17,14 +18,18 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JavadocJar;
 import cc.jumpkick.compile.DokkaTool;
 import cc.jumpkick.compile.JavadocTool;
+import cc.jumpkick.compile.ScaladocTool;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.DokkaResolver;
+import cc.jumpkick.runtime.base.ScalaToolResolver;
+import cc.jumpkick.scala.ScalaResolver;
 import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.InputGuard;
 import java.io.IOException;
@@ -37,9 +42,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code package-javadoc} step body: javadoc over the module's Java sources — Dokka over a
- * module with Kotlin sources, its Java sources included — into a scratch tree, zipped as {@code
- * <artifact>-<version>-javadoc.jar}. A module with neither language, or with no public or protected
- * type, gets a README-only jar, which Maven Central accepts. Cached under the key
+ * module with Kotlin sources, its Java sources included, and scaladoc over a module with Scala
+ * sources — into a scratch tree, zipped as {@code <artifact>-<version>-javadoc.jar}. A module with
+ * none of those languages, or with no public or protected type, gets a README-only jar, which
+ * Maven Central accepts. Cached under the key
  * {@link PackagingKeys#javadoc} derives for both this step and {@code jk explain}.
  *
  * <p>Only {@link JavadocMode#STRICT} lets javadoc fail the step. Under the lenient default every
@@ -53,8 +59,8 @@ final class PlannerJavadoc {
     /** Diagnostic code for every javadoc warning and error in the results. */
     static final String CODE = "javadoc";
 
-    static final String NO_JAVA_SOURCES = "The module has no Java or Kotlin sources to document; javadoc reads"
-            + " Java and Dokka reads Kotlin, and jk does not run a Groovy documentation tool.";
+    static final String NO_JAVA_SOURCES = "The module has no Java, Kotlin or Scala sources to document; javadoc"
+            + " reads Java, Dokka reads Kotlin and scaladoc reads Scala, and jk does not run a Groovy documentation tool.";
 
     static final String NO_PUBLIC_API =
             "The module declares no public or protected types; javadoc has nothing to document.";
@@ -85,10 +91,13 @@ final class PlannerJavadoc {
         JkBuild project = ctx.require(PROJECT);
         BuildLayout layout = ctx.require(LAYOUT);
         Path javadocJar = layout.javadocJar();
-        List<Path> sources = ctx.require(JAVA_SOURCES).stream()
+        List<Path> javaAndScala = ctx.require(JAVA_SOURCES);
+        List<Path> sources = javaAndScala.stream()
                 .filter(p -> p.toString().endsWith(".java"))
                 .toList();
         List<Path> kotlinSources = ctx.get(KOTLIN_SOURCES).orElse(List.of());
+        List<Path> scalaSources = scaladocSources(javaAndScala, kotlinSources);
+        String scalaVersion = scalaSources.isEmpty() ? null : scaladocVersion(project, ctx.require(LOCKFILE));
         // What javac saw, plus the module's own classes: a Java source may name a Kotlin type.
         List<Path> classpath = new ArrayList<>(ctx.require(CLASSPATH));
         classpath.add(ctx.require(MAIN_CLASSES));
@@ -102,19 +111,20 @@ final class PlannerJavadoc {
         // Kotlin sources make it a Dokka run; the release documents with is part of the key.
         RepoGroup repos = kotlinSources.isEmpty() ? null : RepoGroupBuilder.buildFor(project, null, cas);
         String dokkaVersion = repos == null ? null : DokkaResolver.version(project, repos);
+        List<Path> otherSources = scalaSources.isEmpty() ? kotlinSources : scalaSources;
         List<Path> guarded = new ArrayList<>(sources);
-        guarded.addAll(kotlinSources);
+        guarded.addAll(otherSources);
         InputGuard guard = InputGuard.of(guarded);
         PackagingKeys.Keyed keyed = PackagingKeys.javadoc(
                 javadocJar,
                 layout.moduleRoot(),
                 sources,
-                kotlinSources,
+                otherSources,
                 classpath,
                 ClasspathAbi::token,
                 options,
                 javaHome,
-                dokkaToken(project, dokkaVersion));
+                docToolToken(project, dokkaVersion, scalaVersion));
         Path artifactDir = javadocJar.getParent();
         if (restorePackaged(cache, keyed.key(), artifactDir)) {
             ctx.label(javadocJar.getFileName() + " up-to-date");
@@ -130,6 +140,9 @@ final class PlannerJavadoc {
             List<Path> documented = new ArrayList<>(kotlinSources);
             documented.addAll(sources);
             documentWithDokka(ctx, mode, project, layout, tool, documented, classpath, javaHome, release, javadocJar);
+        } else if (scalaVersion != null) {
+            ctx.label("scaladoc " + javadocJar.getFileName());
+            documentWithScaladoc(ctx, mode, project, layout, cas, classpath, javaHome, javadocJar);
         } else if (sources.isEmpty()) {
             ctx.label("javadoc " + javadocJar.getFileName());
             JavadocJar.writeReadme(NO_JAVA_SOURCES, javadocJar);
@@ -150,10 +163,65 @@ final class PlannerJavadoc {
         ctx.progress(1);
     }
 
-    /** The key token naming the Dokka release and format, or null when javadoc documents the module. */
-    static @Nullable String dokkaToken(JkBuild project, @Nullable String dokkaVersion) {
-        if (dokkaVersion == null) return null;
-        return dokkaVersion + ":" + project.build().dokka().format().wireName();
+    /**
+     * The key token naming the tool that documents the module in javadoc's place — Dokka's release
+     * and format, or scaladoc's release — or null when javadoc documents it.
+     */
+    static @Nullable String docToolToken(
+            JkBuild project, @Nullable String dokkaVersion, @Nullable String scaladocVersion) {
+        if (dokkaVersion != null)
+            return "dokka " + dokkaVersion + ":"
+                    + project.build().dokka().format().wireName();
+        if (scaladocVersion != null) return "scaladoc " + scaladocVersion;
+        return null;
+    }
+
+    /** The Scala sources scaladoc documents: none when the module has Kotlin, which Dokka documents. */
+    static List<Path> scaladocSources(List<Path> javaAndScala, List<Path> kotlinSources) {
+        if (!kotlinSources.isEmpty()) return List.of();
+        return javaAndScala.stream()
+                .filter(p -> p.toString().endsWith(".scala"))
+                .toList();
+    }
+
+    /** The scaladoc release: the one matching the module's Scala compiler. */
+    static String scaladocVersion(JkBuild project, @Nullable Lockfile lock) {
+        return ScalaResolver.floored(ScalaCompile.version(project, lock));
+    }
+
+    /**
+     * Fork scaladoc over the module's TASTy, with the Scala stdlib its compile put on the classpath;
+     * the same verdict table as javadoc decides {@code jar}.
+     */
+    private static void documentWithScaladoc(
+            TaskContext ctx,
+            JavadocMode mode,
+            JkBuild project,
+            BuildLayout layout,
+            Cas cas,
+            List<Path> classpath,
+            Path javaHome,
+            Path jar)
+            throws Exception {
+        ScalaCompile.Setup scala = ScalaCompile.prepare(project, ctx.require(LOCKFILE), cas);
+        List<Path> tool =
+                ScalaToolResolver.resolveScaladoc(RepoGroupBuilder.buildFor(project, null, cas), cas, scala.version());
+        List<Path> docClasspath = new ArrayList<>(scala.libraryJars());
+        for (Path p : classpath) {
+            if (!docClasspath.contains(p)) docClasspath.add(p);
+        }
+        Path out = layout.apidocsDir();
+        PathUtil.deleteRecursivelyOrThrow(out);
+        Files.createDirectories(out);
+        JavadocTool.Result r = ScaladocTool.run(
+                javaHome,
+                tool,
+                out,
+                project.project().name(),
+                project.project().version(),
+                ctx.require(MAIN_CLASSES),
+                docClasspath);
+        writeJar("scaladoc", ctx, mode, r, out, jar);
     }
 
     /** Fork Dokka over the Kotlin and Java sources; the same verdict table as javadoc decides {@code jar}. */

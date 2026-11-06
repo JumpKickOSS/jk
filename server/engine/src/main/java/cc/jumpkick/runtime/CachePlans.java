@@ -380,7 +380,8 @@ public final class CachePlans {
         Set<String> slugs = new LinkedHashSet<>();
         for (BuildTool tool : BuildTool.values()) slugs.add(tool.slug());
         // The closures and builds the resolvers keep beside them, each stamped where it is used.
-        slugs.addAll(List.of("scala", "ksp", "kotlin-bta", "kts-host", "groovy", "dokka-analysis", "dokka-javadoc"));
+        slugs.addAll(List.of(
+                "scala", "ksp", "kotlin-bta", "kts-host", "groovy", "dokka-analysis", "dokka-javadoc", "scaladoc"));
         slugs.add("graph-oxc");
         // Tool closures and lock-closure repositories: link farms over the store, stamped on every hand-out.
         slugs.add(ToolClosures.FAMILY);
