@@ -168,6 +168,33 @@ class JdkResolutionTest {
     }
 
     @Test
+    void a_lock_suggestion_below_the_java_release_installs_the_release_rather_than_compiling_on_it(@TempDir Path tmp)
+            throws IOException {
+        Path jdks = jdks(tmp);
+        makeJdk(jdks, "temurin-25.0.3");
+        // The lock was written on 25 before any 26 was installed; java = 26 cannot compile on it.
+        var req = req(tmp).lockJdk("temurin", "25.0.3").projectJavaRelease(26).build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.jdkOpt()).isEmpty();
+        assertThat(r.wouldInstall()).isTrue();
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.JAVA_RELEASE_FLOOR);
+        assertThat(r.installSpec()).isEqualTo(">=26");
+    }
+
+    @Test
+    void a_lock_suggestion_below_the_java_release_settles_on_an_installed_jdk_at_the_release(@TempDir Path tmp)
+            throws IOException {
+        Path jdks = jdks(tmp);
+        makeJdk(jdks, "temurin-25.0.3");
+        Path j26 = makeJdk(jdks, "temurin-26.0.1");
+        var req = req(tmp).lockJdk("temurin", "25.0.3").projectJavaRelease(26).build();
+
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(r.jdkOpt().orElseThrow().home()).isEqualTo(j26);
+    }
+
+    @Test
     void jre_only_home_is_not_accepted_as_current_or_java_home(@TempDir Path tmp) throws IOException {
         Path jdks = jdks(tmp);
         Path real = makeJdk(jdks, "temurin-25.0.3");

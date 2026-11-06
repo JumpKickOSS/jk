@@ -128,7 +128,7 @@ public final class JdkResolution {
         if ((r = jdkVersionFile(req.projectDir(), reg, canInstall)) != null) return r;
         JdkPin lockJdk = req.lockJdk();
         boolean lockRequires = lockJdk != null && lockJdk.hasRequirement();
-        if (lockRequires && (r = lockfile(lockJdk, reg, canInstall)) != null) return r;
+        if (lockRequires && (r = lockfile(lockJdk, reg, canInstall, 0)) != null) return r;
         // An unsatisfied lock suggestion is a floor, not a skip — on the build path as much as the
         // hook. The tiers that choose for the user may only pick a JDK that still meets it.
         String lockFloor = lockJdk == null || lockJdk.suggestedVersion().isEmpty() ? null : lockJdk.suggestedVersion();
@@ -136,7 +136,9 @@ public final class JdkResolution {
         // the lock (a workspace's, for a member), so it neither outranks nor floors that choice.
         if ((r = named(req.projectJdkSpec(), Tier.PROJECT_TOML, reg, canInstall, lockRequires ? lockFloor : null))
                 != null) return r;
-        if (!lockRequires && (r = lockfile(lockJdk, reg, canInstall)) != null) return r;
+        // A suggestion only records what built the lock, so it never picks a JDK too old to compile
+        // the manifest's java level: a lock written on 25 must not hold a java = 26 build to 25.
+        if (!lockRequires && (r = lockfile(lockJdk, reg, canInstall, req.projectJavaRelease())) != null) return r;
 
         // project.java floor: only when nothing is explicitly pinned and the
         // requested language level is newer than the latest LTS — then we need a
@@ -251,11 +253,13 @@ public final class JdkResolution {
      * Lock {@code [jdk]} pin. A {@code required-*} field must be matched exactly; a suggestion is
      * only a floor on the major. Build: unsatisfied → would install. Hook: unsatisfied → fall
      * through with a major floor, unless the pin states a requirement, which a fall-through would
-     * quietly ignore.
+     * quietly ignore. Only installs whose major is at least {@code javaRelease} are candidates; 0
+     * admits every one.
      */
-    private static @Nullable Resolved lockfile(@Nullable JdkPin pin, JdkRegistry reg, boolean canInstall) {
+    private static @Nullable Resolved lockfile(
+            @Nullable JdkPin pin, JdkRegistry reg, boolean canInstall, int javaRelease) {
         if (pin == null) return null;
-        Optional<JdkHit> hit = LockPinMatch.choose(reg.listHits(), pin);
+        Optional<JdkHit> hit = LockPinMatch.choose(atRelease(reg.listHits(), javaRelease), pin);
         if (hit.isPresent()) {
             return Resolved.found(installed(hit.get().home()), Tier.LOCKFILE, LockPinMatch.installSpec(pin));
         }
@@ -266,6 +270,16 @@ public final class JdkResolution {
             return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(pin));
         }
         return null;
+    }
+
+    private static List<JdkHit> atRelease(List<JdkHit> hits, int javaRelease) {
+        if (javaRelease <= 0) return hits;
+        List<JdkHit> out = new ArrayList<>();
+        for (JdkHit h : hits) {
+            Integer major = JdkKeywords.leadingMajor(h.version());
+            if (major != null && major >= javaRelease) out.add(h);
+        }
+        return out;
     }
 
     private static List<JdkHit> meetingFloor(List<JdkHit> hits, String lockedVersion) {
