@@ -11,18 +11,17 @@ import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A {@link Fragment} in the form a project commits under {@code .jk/graph/}: rows in a fixed order,
- * so equal fragments are equal bytes.
+ * A {@link Fragment} in the form the action cache keeps it: rows in a fixed order, so equal
+ * fragments are equal bytes.
  */
 public final class GraphJson {
 
     private GraphJson() {}
 
     /**
-     * One fragment of {@code file} in the form a project commits: rows instead of objects, a value
-     * left out where it is the default or the file itself, and every id that starts with the
-     * fragment's first node id written from {@code ~}, so a file's line holds its long id prefix
-     * once. {@code {"b":base,"n":[[id,label,type,location,extra,file]…],"e":[[source,target,
+     * One fragment of {@code file} in its cached form: rows instead of objects, a value left out
+     * where it is the default or the file itself, and every id that starts with the fragment's first
+     * node id written from {@code ~}, so a fragment holds its long id prefix once. {@code {"b":base,"n":[[id,label,type,location,extra,file]…],"e":[[source,target,
      * relation,confidence,location,context,extra,score,weight,file]…],"m":[[source,kind,text,line,
      * relation,context,overload]…]}}, each row without its trailing nulls and each empty list left out.
      */

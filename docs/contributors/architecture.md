@@ -694,7 +694,7 @@ to residual so both end on time with `R → 0`. See [progress-contract.md](progr
 
 ### Project build logic (`.jk/scripts/`)
 
-`.jk/` is a project's checked-in jk state, one subdirectory per concern (`scripts/`, `graph/`);
+`.jk/` is a project's checked-in jk state, one subdirectory per concern (`scripts/`, `ci/`);
 only `.jk/scripts/` next to a module's `jk.toml` is build logic (overridable via `[build].logic`):
 `before-compile.groovy` / `.kts` and sibling stems. Scripts left at the top of `.jk/` do not run;
 the build names them once (`BuildLogicToml.strayScripts`).

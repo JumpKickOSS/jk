@@ -26,29 +26,14 @@ public final class WalkSkip {
     /**
      * {@code target}, {@code .git}, {@code .gradle}, {@code .idea}, {@code node_modules} by name,
      * Gradle's {@code build/} by position ({@link OutputDirs#isBuildOutputDir}): a package named
-     * {@code build} under {@code src/} is walked. Also {@code .jk/graph/} ({@link #jkGraph}).
+     * {@code build} under {@code src/} is walked.
      */
     private static final Set<String> WORKSPACE_KEY =
             Set.of(BuildLayout.TARGET, ".git", ".gradle", ".idea", "node_modules");
 
     public static boolean workspaceKey(Path dir) {
         Path name = dir.getFileName();
-        return name != null
-                && (WORKSPACE_KEY.contains(name.toString()) || OutputDirs.isBuildOutputDir(dir) || jkGraph(dir));
-    }
-
-    /**
-     * {@code .jk/graph/}: jk's index of the checkout's code, rewritten whenever the graph refreshes,
-     * so never an input of a key over that checkout (guard's text view skips it too).
-     */
-    public static boolean jkGraph(Path dir) {
-        Path name = dir.getFileName();
-        Path parent = dir.getParent();
-        return name != null
-                && name.toString().equals("graph")
-                && parent != null
-                && parent.getFileName() != null
-                && parent.getFileName().toString().equals(".jk");
+        return name != null && (WORKSPACE_KEY.contains(name.toString()) || OutputDirs.isBuildOutputDir(dir));
     }
 
     /** {@link #workspaceKey} plus {@code out}. */

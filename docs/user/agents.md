@@ -21,7 +21,7 @@ never edits it. A file jk cannot parse as strict JSON is left as it was, with a 
 
 | When | What happens |
 |------|--------------|
-| `jk new`, `jk init`, `jk import` | `AGENTS.md` with jk's section, the files of each agent in use, and a first code graph (`.jk/graph/`). |
+| `jk new`, `jk init`, `jk import` | `AGENTS.md` with jk's section, the files of each agent in use, and a first code graph (under `target/`, not committed). |
 | `jk agents [dir]` | The same, on demand, at the workspace root (or `dir`). Prints what it did. |
 | `jk agents --all` | Every supported agent, not only those in use here. |
 | `jk agents --remove` | jk's entries out of all of the above; a file left empty is deleted. |
@@ -39,7 +39,7 @@ when the calling shell belongs to it, or when its CLI is on `PATH` (`claude`, `c
 | A project that existed before this | `jk agents` |
 | Wire every supported agent, not only the ones here | `jk agents --all` |
 | Codex, or any agent jk does not write files for | `codex mcp add jk -- jk mcp`, or `jk mcp` in the client's MCP settings |
-| Commit the generated files | `git add AGENTS.md CLAUDE.md .mcp.json .claude .cursor .vscode .gemini opencode.json .jk/graph` (only the ones that exist) |
+| Commit the generated files | `git add AGENTS.md CLAUDE.md .mcp.json .claude .cursor .vscode .gemini opencode.json` (only the ones that exist) |
 | Undo it | `jk agents --remove` |
 
 Claude Code, Cursor, VS Code, Gemini CLI and opencode have project files written for them (below).

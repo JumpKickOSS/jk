@@ -42,9 +42,9 @@ not re-read the files it names. Keep that sentence on every graph answer.
 **One number per job.** An MCP reply names a job by its `jid` only, and `run(jid=N)`, `run(run=N)` and a
 duplicate `run(kind=…)` all wait on that job. Two numbers for one job send agents chasing the wrong one.
 
-**Keep the store out of sight.** `.jk/graph/` is jk's store: its `.ignore` keeps it out of searches,
-every `graph.jsonl` opens with a note naming the tools to ask instead, Claude Code's settings deny
-reading it, and the agy and Cursor rules say not to open it.
+**Nothing of the graph's is in the tree.** Its fragments live in the action cache and the linked
+graph under `target/`, which agents' searches already skip, so no file or rule has to keep an agent
+out of a store.
 
 **Generic wording beats coercion.** A plain sentence in a tool answer moves every agent at once; a
 rule written for one agent rarely transfers and is often worse than none. Prefer changing the answer.
@@ -56,7 +56,7 @@ rule written for one agent rarely transfers and is often worse than none. Prefer
 
 | Agent | Loads `AGENTS.md` | Its own file | MCP | Notes |
 |---|---|---|---|---|
-| Claude Code | yes | `CLAUDE.md` imports `AGENTS.md`; `.claude/settings.json` (allow-list, hook, graph-store deny) | `.mcp.json` | Uses the graph as shipped |
+| Claude Code | yes | `CLAUDE.md` imports `AGENTS.md`; `.claude/settings.json` (allow-list, hook) | `.mcp.json` | Uses the graph as shipped |
 | Cursor | yes | `.cursor/rules/jk.mdc` (required) | `.cursor/mcp.json` | Cancels an MCP call at 60 s, so `run` answers `TIMEOUT … run(jid=N)` by 55 s; looks up each tool's schema before its first use (a turn each); its CLI takes ~11 s to start |
 | Codex | yes, natively | none | user-level: `codex mcp add jk -- jk mcp` | No file tools: reads and searches through its shell (`zsh -lc '…'`) and edits with `apply_patch` |
 | grok | only in a trusted folder | `.grok/rules/*.md` (not needed) | its config | Reaches MCP tools through `search_tool`/`use_tool` |

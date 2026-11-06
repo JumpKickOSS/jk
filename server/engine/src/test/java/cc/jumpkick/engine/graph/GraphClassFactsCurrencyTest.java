@@ -53,7 +53,7 @@ class GraphClassFactsCurrencyTest {
                 tmp, graph, Set.of(tmp.toAbsolutePath().normalize()));
 
         GraphRunner.ClassIndexes built = GraphRunner.classIndexes(tmp);
-        assertThat(built.rows()).hasSize(1).allSatisfy(row -> assertThat(row).endsWith("\t"));
+        assertThat(built.rows()).hasSize(1).allSatisfy(row -> assertThat(row).endsWith("\t\t"));
         assertThat(built.leftOut()).isEmpty();
         assertThat(built.edited()).isEmpty();
 
@@ -62,7 +62,7 @@ class GraphClassFactsCurrencyTest {
         assertThat(edited.rows())
                 .as("App's classes still hold: only Util's are older than their source")
                 .hasSize(1)
-                .allSatisfy(row -> assertThat(row).endsWith("\tsrc/main/java/demo/Util.java"));
+                .allSatisfy(row -> assertThat(row).endsWith("\tsrc/main/java/demo/Util.java\t"));
         assertThat(edited.leftOut()).isEmpty();
         assertThat(edited.edited()).containsExactly("src/main/java/demo/Util.java");
         assertThat(GraphRunner.withNote(ack(), edited.leftOut(), edited.edited())

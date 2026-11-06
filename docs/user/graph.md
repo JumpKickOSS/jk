@@ -6,7 +6,7 @@ and call edges from the compiled classes. Every answer names a symbol as `Owner.
 it at `file:line`.
 
 ```bash
-jk graph                                   # build or refresh the graph (.jk/graph/, committed)
+jk graph                                   # build or refresh the graph (target/graph/)
 jk graph query "how is the order total computed"
 jk graph read OrderService.total           # that method's source, not the whole file
 jk graph read OrderService -w structure    # the type's declarations without bodies
@@ -47,16 +47,23 @@ first sentence of its doc comment. `read`, `find` and the search use them.
 
 ## How it stays current
 
-A project has a graph once the first `jk graph` command or MCP `callers` call makes one; nothing
+A checkout has a graph once the first `jk graph` command or MCP `callers` call makes one; nothing
 builds it before that. From then on it is kept current: every `jk graph` command refreshes it before
 answering, and a build or `jk guard` that succeeds refreshes it right after it reports, so the graph
-an agent reads, and the one committed with a change, is the tree as it stands. That refresh writes
-under `target/` after the build has returned; `jk clean` waits for it (up to two minutes) rather
-than deleting the tree under it, but a script that removes `target/` itself can race it. To stop, delete
-`.jk/graph/`: a project without one gets none until the next graph question. Files are compared by their stat identity (size, modification and change time, file id),
-then by content hash; only changed files are read again, and a file that will not read contributes
-nothing, its earlier facts included. A refresh that fails leaves the previous graph and its state
-as they were.
+an agent reads is the tree as it stands. That refresh writes under `target/` after the build has
+returned; `jk clean` waits for it (up to two minutes) rather than deleting the tree under it, but a
+script that removes `target/` itself can race it. `jk clean` is also how a checkout stops: it has no
+graph until the next graph question. Files are compared by their stat identity (size, modification
+and change time, file id), then by content hash; only changed files are read again, and a file that
+will not read contributes nothing, its earlier facts included. A refresh that fails leaves the
+previous graph and its state as they were.
+
+What each file declares is kept in the [action cache](cache.md), keyed by the file's path, content
+hash and the extractor's version, so another worktree, branch or fresh clone on the machine reads
+none of the files the first already read. A module's compiled facts are kept there too, keyed by the
+compile that produced its classes, which covers its classpath: a checkout takes them only for
+classes that compile would give it, never from a compile against other dependencies. A checkout
+that has not compiled a module answers for it from what the sources declare until it does.
 
 A class's compiled facts (calls, overrides, exact lines) are read only while its source is the one
 the module's last successful build compiled. A question asked after an edit to a module's main
@@ -199,21 +206,12 @@ per line with its `file:line`. It follows edge direction; `-U` ignores it, and `
 
 ## Outputs
 
-`.jk/graph/` at the workspace root is the graph the project commits, shared by everyone who checks
-it out: one `graph.jsonl` per module, at the module's path below `.jk/graph/`, with one line per file
-in path order. It sits beside the build scripts (`.jk/scripts/`) and is never one of the build's
-inputs. A line holds what the file declares and, once someone has built it, the facts its
-compiled classes gave, keyed by the file's content hash. A fresh checkout answers from those lines
-without reading a file again or compiling: a line whose hash matches the file is used as is, and a
-file that changed is read again. One edit changes one line. The `.gitattributes` jk writes beside
-them merges them line by line (`merge=union`), hides them from text diffs and marks them generated, and
-its `.ignore` keeps them out of ripgrep and the agent search tools built on it;
-after a merge the line that matches the tree is used and the next refresh drops the other. A refresh
-that changes nothing leaves the files untouched.
-
-`target/graph/` holds this checkout's state, gone with `jk clean`: `graph.bin` (the linked graph)
-and `files.tsv` (each file's stat, so a refresh reads only what moved). None of it is an exchange
-format.
+The graph is build output: nothing of it is in the tree or committed. `target/graph/` holds this
+checkout's state, gone with `jk clean`: `graph.bin` (the linked graph) and `files.tsv` (each file's
+stat, so a refresh reads only what moved). The fragments it is linked from are action-cache entries,
+one per file and one per compiled class set, shared by every checkout on the machine and reclaimed
+by `jk cache clean` like any other. None of it is an exchange format. A `.jk/graph/` directory left
+in a checkout is removed by the next refresh.
 
 ## Settings
 

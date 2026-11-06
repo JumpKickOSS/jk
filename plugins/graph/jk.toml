@@ -6,6 +6,7 @@ jk-plugin-sdk.workspace = true
 jk-code-graph.workspace = true
 jk-guards-junit.workspace = true
 jk-core.workspace = true
+jk-client-io.workspace = true
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }

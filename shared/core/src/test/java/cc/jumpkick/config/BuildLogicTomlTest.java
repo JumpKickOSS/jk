@@ -102,7 +102,7 @@ class BuildLogicTomlTest {
     @Test
     void only_jk_scripts_is_build_logic_and_jk_alone_is_not() throws IOException {
         manifest("name = \"demo\"\n");
-        Files.createDirectories(dir.resolve(".jk/graph"));
+        Files.createDirectories(dir.resolve(".jk/ci"));
         Files.createDirectories(dir.resolve("jk"));
         assertThat(BuildLogicToml.resolve(dir)).isEmpty();
         assertThat(BuildLogicToml.dirs(dir)).isEmpty();

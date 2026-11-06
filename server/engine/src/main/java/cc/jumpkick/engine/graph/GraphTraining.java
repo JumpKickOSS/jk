@@ -50,6 +50,7 @@ final class GraphTraining {
         Files.write(
                 spec,
                 GraphRunner.specWriter(root, request, List.of(), List.of(), null)
+                        .configString("cache", scratch.resolve("cache").toString())
                         .lines(),
                 StandardCharsets.UTF_8);
         PluginLoader.sealNetworkPolicy(spec);

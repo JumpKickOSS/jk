@@ -92,25 +92,30 @@ public final class GraphWorker implements Plugin {
     }
 
     /**
-     * {@code index \t modulePrefix \t digest \t classes \t stale}, one per class set; {@code stale}
-     * is the workspace-relative sources edited since the build, joined by {@code U+001F}.
+     * {@code index \t modulePrefix \t digest \t classes \t stale \t compileKeys}, one per class set;
+     * {@code stale} is the workspace-relative sources edited since the build and {@code compileKeys}
+     * the action keys of the compiles that wrote the set, each joined by {@code U+001F}.
      */
     static List<GraphBuild.ClassIndex> indexes(PluginConfig c) {
         List<GraphBuild.ClassIndex> out = new ArrayList<>();
         for (String row : c.stringList("classIndexes")) {
             String[] f = row.split("\t", -1);
-            if (f.length != 5) continue;
-            Set<String> stale = f[4].isEmpty() ? Set.of() : Set.of(f[4].split("\u001f"));
-            out.add(new GraphBuild.ClassIndex(Path.of(f[0]), f[1], f[2], Integer.parseInt(f[3]), stale));
+            if (f.length != 6) continue;
+            out.add(new GraphBuild.ClassIndex(
+                    Path.of(f[0]), f[1], f[2], Integer.parseInt(f[3]), joined(f[4]), List.copyOf(joined(f[5]))));
         }
         return out;
+    }
+
+    private static Set<String> joined(String field) {
+        return field.isEmpty() ? Set.of() : Set.of(field.split("\u001f"));
     }
 
     static GraphService.Workspace workspace(PluginConfig c) {
         return new GraphService.Workspace(
                 Path.of(c.string("root")),
                 Path.of(c.string("out")),
-                Path.of(c.string("shared")),
+                c.stringOpt("cache").map(Path::of).orElse(null),
                 indexes(c),
                 modules(c),
                 new ScriptReader(
