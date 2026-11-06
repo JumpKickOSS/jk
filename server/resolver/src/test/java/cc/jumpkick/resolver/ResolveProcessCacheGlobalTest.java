@@ -13,11 +13,12 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Process resolve memos are cleared between tests in one JVM. Nothing here clears them —
- * {@code ResolveProcessCacheReset} is discovered for the suite, so deleting it fails the second test.
+ * Process resolve memos are cleared between tests in one JVM. Nothing here clears them: the suite's
+ * {@code SessionBoundary} drops {@code ResolveProcessCacheGlobal}, so unregistering it fails the
+ * second test.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class ResolveProcessCacheResetTest {
+class ResolveProcessCacheGlobalTest {
 
     @Test
     @Order(1)

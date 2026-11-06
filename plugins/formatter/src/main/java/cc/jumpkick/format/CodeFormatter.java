@@ -78,6 +78,11 @@ public final class CodeFormatter implements Plugin {
         return !leftThreadsBehind;
     }
 
+    /** Put the flag back, for a test JVM whose timeout tests abandon threads on purpose. */
+    static void restoreLeftThreadsBehind(boolean left) {
+        leftThreadsBehind = left;
+    }
+
     @Override
     public int run(List<String> args, ProtocolWriter out) throws Exception {
         if (args.isEmpty()) {
