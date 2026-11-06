@@ -1,2 +1,3 @@
 cc.jumpkick.http.testing.ConnectFaultsGlobal
 cc.jumpkick.config.testing.JkEnvGlobal
+cc.jumpkick.m2.testing.MavenSettingsGlobal

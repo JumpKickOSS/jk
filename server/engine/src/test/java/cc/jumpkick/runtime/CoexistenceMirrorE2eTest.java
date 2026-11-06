@@ -77,7 +77,6 @@ class CoexistenceMirrorE2eTest {
     /** The corporate repository. It answers for Central; the build never addresses Central itself. */
     private final Nexus nexus = new Nexus();
 
-    private @Nullable String priorSettings;
     private @Nullable String priorM2;
 
     @BeforeAll
@@ -87,7 +86,6 @@ class CoexistenceMirrorE2eTest {
 
     @BeforeEach
     void start() throws IOException {
-        priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
         // The process memos are keyed by the repository, which a mirror does not change: a launcher
         // another test in this JVM resolved would answer here without a request reaching the mirror.
         RepoGroup.clearProcessFetchCache();
@@ -107,8 +105,6 @@ class CoexistenceMirrorE2eTest {
     @AfterEach
     void stop() {
         nexus.stop();
-        if (priorSettings == null) System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
-        else System.setProperty(MavenSettings.SETTINGS_PROPERTY, priorSettings);
         if (priorM2 == null) System.clearProperty("jk.m2.local");
         else System.setProperty("jk.m2.local", priorM2);
         SessionContext.reset();

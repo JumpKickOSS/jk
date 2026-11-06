@@ -240,7 +240,6 @@ class MavenRepoTest {
                     .as("the local repository holds no jk file")
                     .doesNotExist();
         } finally {
-            System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
             restoreM2Local(previous);
         }
     }

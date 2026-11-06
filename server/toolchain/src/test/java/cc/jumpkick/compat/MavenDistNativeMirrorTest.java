@@ -15,8 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -38,14 +36,11 @@ class MavenDistNativeMirrorTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
-    private @Nullable String priorSettings;
-
     @TempDir
     Path tmp;
 
     @BeforeEach
     void isolate() throws IOException {
-        priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
         Path home = Files.createDirectories(tmp.resolve("home"));
         Files.writeString(home.resolve("config.toml"), """
                 [repositories.corp]
@@ -58,12 +53,6 @@ class MavenDistNativeMirrorTest {
         System.setProperty(
                 MavenSettings.SETTINGS_PROPERTY,
                 tmp.resolve("absent-settings.xml").toString());
-    }
-
-    @AfterEach
-    void restore() {
-        if (priorSettings == null) System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
-        else System.setProperty(MavenSettings.SETTINGS_PROPERTY, priorSettings);
     }
 
     @Test

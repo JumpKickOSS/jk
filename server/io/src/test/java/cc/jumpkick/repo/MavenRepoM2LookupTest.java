@@ -71,7 +71,6 @@ class MavenRepoM2LookupTest {
     void stop() {
         server.stop(0);
         System.clearProperty("jk.m2.local");
-        System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
         SessionContext.reset();
     }
 

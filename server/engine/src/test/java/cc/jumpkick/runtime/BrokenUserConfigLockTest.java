@@ -37,7 +37,6 @@ class BrokenUserConfigLockTest {
     /** Fresh per run, so neither the process memos nor a warm store can answer for the stub. */
     private final String version = MavenStub.freshVersion();
 
-    private @Nullable String priorSettings;
     private @Nullable String priorM2;
 
     @TempDir
@@ -45,7 +44,6 @@ class BrokenUserConfigLockTest {
 
     @BeforeEach
     void isolate() throws Exception {
-        priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
         Path home = Files.createDirectories(tmp.resolve("home"));
         System.setProperty("jk.env.JK_HOME", home.toString());
         // The test JVM's JK_M2_LOCAL is shared with every other test; a real POM cached there
@@ -67,7 +65,6 @@ class BrokenUserConfigLockTest {
 
     @AfterEach
     void restore() {
-        restore(MavenSettings.SETTINGS_PROPERTY, priorSettings);
         restore("jk.m2.local", priorM2);
     }
 

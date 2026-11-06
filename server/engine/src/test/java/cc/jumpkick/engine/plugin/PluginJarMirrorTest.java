@@ -51,7 +51,9 @@ class PluginJarMirrorTest {
         Path home = Files.createDirectories(tmp.resolve("home"));
         config = home.resolve("config.toml");
         System.setProperty("jk.env.JK_HOME", home.toString());
-        set(MavenSettings.SETTINGS_PROPERTY, tmp.resolve("absent-settings.xml").toString());
+        System.setProperty(
+                MavenSettings.SETTINGS_PROPERTY,
+                tmp.resolve("absent-settings.xml").toString());
         set(PluginJar.OFFICIAL_REPO_URL_PROPERTY, official.baseUrl());
         set(PluginJar.PUBLISHER.jarProperty(), null);
     }
