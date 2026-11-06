@@ -3,6 +3,7 @@ package cc.jumpkick.cli.api;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.util.DirKeys;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -56,12 +57,12 @@ public final class PathDisplay {
      * root} that contains it, else absolute. Always forward-slashed whatever the host separator is,
      * so one project reads the same in output, diagnostics and docs on every OS.
      *
-     * @param target the path to render (relative paths resolve against the JVM cwd)
+     * @param target the path to render (relative paths resolve against {@link WorkingDirectory})
      * @param workingDir the command's working directory (see {@link GlobalOptions#workingDir()}); may
-     *     be {@code null} to use the JVM cwd
+     *     be {@code null} to use {@link WorkingDirectory#current()}
      */
     public static String of(Path target, @Nullable Path workingDir) {
-        Path abs = target.toAbsolutePath().normalize();
+        Path abs = WorkingDirectory.resolve(target);
         Path anchor = closestAnchor(abs, workingDir);
         // DirKeys rewrites only real Windows paths — a POSIX file named a\b displays verbatim.
         if (anchor == null) return DirKeys.slashes(abs.toString());
@@ -83,7 +84,7 @@ public final class PathDisplay {
     }
 
     private static Path cwd(@Nullable Path workingDir) {
-        return (workingDir != null ? workingDir : Path.of("")).toAbsolutePath().normalize();
+        return workingDir != null ? WorkingDirectory.resolve(workingDir) : WorkingDirectory.current();
     }
 
     private static @Nullable Path workspaceRoot(Path abs) {

@@ -13,6 +13,7 @@ import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -180,8 +181,8 @@ public final class ActivateCommand implements CliCommand {
 
     /** True when the home jk runs from is {@code $HOME/.jk}, the one home an rc block may name unasked. */
     private static boolean isDefaultHome() {
-        Path live = JkDirs.home().toAbsolutePath().normalize();
-        Path dflt = home().resolve(JkDirs.HOME_DIR).toAbsolutePath().normalize();
+        Path live = WorkingDirectory.resolve(JkDirs.home());
+        Path dflt = WorkingDirectory.resolve(home().resolve(JkDirs.HOME_DIR));
         return live.equals(dflt);
     }
 
@@ -195,7 +196,7 @@ public final class ActivateCommand implements CliCommand {
         ShellCompletions.writeAll(commands.get());
         NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Theme t = Theme.active();
-        Path jkExe = JkDirs.binDir().toAbsolutePath().normalize().resolve("jk");
+        Path jkExe = WorkingDirectory.resolve(JkDirs.binDir()).resolve("jk");
         CommandWedge.envelopeStart();
         CliOutput.out(JkWedge.chipLine(
                 Glyphs.BANG,
@@ -345,7 +346,7 @@ public final class ActivateCommand implements CliCommand {
             // On Windows the shim is a .cmd and never a symlink, so the old isExecutable arm paid the
             // 64x access check on every probe to learn what its extension already said.
             if (Files.isSymbolicLink(shim) || PathUtil.isRunnable(shim)) {
-                return shim.toAbsolutePath().normalize().toString();
+                return WorkingDirectory.resolve(shim).toString();
             }
         } catch (RuntimeException ignored) {
             // fall through
@@ -356,7 +357,7 @@ public final class ActivateCommand implements CliCommand {
             if (cmd.isPresent()) {
                 var path = Path.of(cmd.get());
                 if (path.getFileName() != null && path.getFileName().toString().contains("jk"))
-                    return path.toAbsolutePath().toString();
+                    return WorkingDirectory.resolve(path).toString();
             }
         } catch (RuntimeException ignored) {
         }

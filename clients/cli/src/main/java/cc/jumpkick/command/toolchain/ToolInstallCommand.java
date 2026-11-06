@@ -18,6 +18,7 @@ import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.ManifestPaths;
@@ -334,12 +335,10 @@ public final class ToolInstallCommand implements CliCommand {
         if (m2Intent && classified instanceof ToolTarget.RunnableFile file) {
             // Coordinate flags = "store this artifact in the local cache" (the mvn install
             // equivalent), not "give me a launcher".
-            return appInstallDelegate()
-                    .installFromFile(base.resolve(file.path()).toAbsolutePath().normalize());
+            return appInstallDelegate().installFromFile(WorkingDirectory.resolve(base.resolve(file.path())));
         }
         if (m2Intent && classified instanceof ToolTarget.UnsupportedFile file) {
-            return appInstallDelegate()
-                    .installFromFile(base.resolve(file.path()).toAbsolutePath().normalize());
+            return appInstallDelegate().installFromFile(WorkingDirectory.resolve(base.resolve(file.path())));
         }
         if (classified instanceof ToolTarget.RunnableFile file) {
             Path resolved = base.resolve(file.path()).normalize();
@@ -352,12 +351,13 @@ public final class ToolInstallCommand implements CliCommand {
             }
             return installFile(
                     resolved,
-                    new ToolProvenance("file", coord, resolved.toAbsolutePath().toString()),
+                    new ToolProvenance(
+                            "file", coord, WorkingDirectory.resolve(resolved).toString()),
                     fileWith,
                     List.of());
         }
         if (classified instanceof ToolTarget.Directory dir) {
-            Path projectDir = base.resolve(dir.path()).toAbsolutePath().normalize();
+            Path projectDir = WorkingDirectory.resolve(base.resolve(dir.path()));
             if (!Files.isRegularFile(ManifestPaths.manifestIn(projectDir))) {
                 CommandWedge.printFail(
                         "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project.");
@@ -486,7 +486,7 @@ public final class ToolInstallCommand implements CliCommand {
             prep = EngineClient.runScriptPrepare(
                     EnginePaths.current(),
                     new EngineRequests.ScriptPrepareRequest(
-                            mode, file.toAbsolutePath(), cacheDir, stateDir, repoUrl, false, with),
+                            mode, WorkingDirectory.resolve(file), cacheDir, stateDir, repoUrl, false, with),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-install", steps, consoleMode));
         } catch (IOException e) {
             CommandWedge.printFail("Tool", e.getMessage());

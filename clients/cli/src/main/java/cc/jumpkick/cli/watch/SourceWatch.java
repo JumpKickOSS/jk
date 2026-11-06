@@ -3,6 +3,7 @@ package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
@@ -72,11 +73,10 @@ public final class SourceWatch implements AutoCloseable {
             throws IOException {
         WatchService ws = FileSystems.getDefault().newWatchService();
         Set<Path> skip = new HashSet<>();
-        for (Path p : skipped) skip.add(p.toAbsolutePath().normalize());
+        for (Path p : skipped) skip.add(WorkingDirectory.resolve(p));
         SourceWatch sw = new SourceWatch(ws, projectDir, debounceMillis, skip);
-        sw.wholeDir = roots.stream().anyMatch(r -> r.toAbsolutePath()
-                .normalize()
-                .equals(projectDir.toAbsolutePath().normalize()));
+        sw.wholeDir = roots.stream()
+                .anyMatch(r -> WorkingDirectory.resolve(r).normalize().equals(WorkingDirectory.resolve(projectDir)));
         for (Path root : roots) {
             if (Files.isDirectory(root)) sw.registerTree(root);
             else if (Files.isRegularFile(root) && root.getParent() != null) sw.registerDir(root.getParent());
@@ -130,8 +130,7 @@ public final class SourceWatch implements AutoCloseable {
 
     /** A tree no change under wakes the loop: build output, an install, VCS, or one the caller named. */
     private boolean skip(Path dir) {
-        return WalkSkip.workspaceKey(dir)
-                || skipped.contains(dir.toAbsolutePath().normalize());
+        return WalkSkip.workspaceKey(dir) || skipped.contains(WorkingDirectory.resolve(dir));
     }
 
     private void registerDir(Path dir) throws IOException {

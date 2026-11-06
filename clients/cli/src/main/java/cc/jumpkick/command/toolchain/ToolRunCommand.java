@@ -21,6 +21,7 @@ import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.ManifestPaths;
@@ -163,7 +164,7 @@ public final class ToolRunCommand implements CliCommand {
             return null;
         }
         try {
-            Path start = cwd.toAbsolutePath().normalize();
+            Path start = WorkingDirectory.resolve(cwd);
             Path wsRoot = null;
             if (Files.isRegularFile(ManifestPaths.manifestIn(start))) {
                 var peek = ProjectInfos.orNull(start);
@@ -457,7 +458,7 @@ public final class ToolRunCommand implements CliCommand {
             }
             return new ScriptRunner(
                             global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile, fileWith, List.of())
-                    .run(file.path(), toolArgs);
+                    .run(WorkingDirectory.resolve(file.path()), toolArgs);
         }
         if (classified instanceof ToolTarget.Directory dir) {
             return runDirectory(global.workingDir().resolve(dir.path()).normalize(), toolArgs);
@@ -547,6 +548,6 @@ public final class ToolRunCommand implements CliCommand {
 
     /** The {@code .env} of the directory jk runs in, as {@code jk env} lists it. */
     private Map<String, String> dotEnv() {
-        return EnvLookup.dotEnv(global.workingDir().toAbsolutePath().normalize());
+        return EnvLookup.dotEnv(WorkingDirectory.resolve(global.workingDir()));
     }
 }

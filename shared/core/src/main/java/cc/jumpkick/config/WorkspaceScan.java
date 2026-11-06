@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.config.StampedMemo.FileStamp;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,7 +44,7 @@ public final class WorkspaceScan {
     public static List<String> modulesListed(Path jkToml) {
         FileStamp stamp = FileStamp.of(jkToml);
         if (stamp == null) return List.of();
-        Path key = jkToml.toAbsolutePath().normalize();
+        Path key = WorkingDirectory.resolve(jkToml);
         Scanned kept = SCANNED.get(key);
         if (kept != null && kept.stamp().equals(stamp)) return kept.modules();
         List<String> modules =
@@ -62,7 +63,7 @@ public final class WorkspaceScan {
      */
     public static Optional<Path> findEnclosingWorkspace(Path dir) {
         SearchCeiling ceiling = SearchCeiling.current();
-        Path candidate = dir.toAbsolutePath().normalize();
+        Path candidate = WorkingDirectory.resolve(dir);
         for (int depth = 0; depth < MAX_DEPTH; depth++) {
             Path parent = ceiling.above(candidate);
             if (parent == null) break;
@@ -80,7 +81,7 @@ public final class WorkspaceScan {
      */
     public static Optional<Path> findRoot(Path moduleDir) {
         SearchCeiling ceiling = SearchCeiling.current();
-        Path normalized = moduleDir.toAbsolutePath().normalize();
+        Path normalized = WorkingDirectory.resolve(moduleDir);
         Path candidate = normalized;
         for (int depth = 0; depth < MAX_DEPTH; depth++) {
             Path parent = ceiling.above(candidate);
@@ -104,7 +105,7 @@ public final class WorkspaceScan {
      * not one of its own {@code workspace.modules}, so {@code findRoot} answers empty there.
      */
     public static Optional<Path> owningRoot(Path dir) {
-        Path normalized = dir.toAbsolutePath().normalize();
+        Path normalized = WorkingDirectory.resolve(dir);
         return isWorkspaceRoot(normalized) ? Optional.of(normalized) : findRoot(normalized);
     }
 

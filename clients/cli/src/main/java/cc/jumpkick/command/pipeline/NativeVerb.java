@@ -7,6 +7,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.layout.NativePreflight;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
@@ -98,15 +99,15 @@ final class NativeVerb implements BuildVerb {
         }
         List<Path> selected = selection.confines()
                 ? selection.dirs().stream()
-                        .map(d -> Path.of(d).toAbsolutePath().normalize())
+                        .map(d -> WorkingDirectory.resolve(d))
                         .toList()
                 : null;
         List<Path> candidates = new ArrayList<>();
-        if (run.standalone()) candidates.add(entryDir.toAbsolutePath().normalize());
+        if (run.standalone()) candidates.add(WorkingDirectory.resolve(entryDir));
         for (String rel : rootInfo.moduleDirs()) {
             Path moduleDir = Path.of(rel).isAbsolute()
                     ? Path.of(rel).normalize()
-                    : entryDir.resolve(rel).toAbsolutePath().normalize();
+                    : WorkingDirectory.resolve(entryDir.resolve(rel));
             if (selected == null || selected.contains(moduleDir)) candidates.add(moduleDir);
         }
         Set<Path> eligible;

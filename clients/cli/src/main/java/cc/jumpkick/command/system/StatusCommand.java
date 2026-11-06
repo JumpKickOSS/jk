@@ -16,6 +16,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
@@ -70,7 +71,7 @@ public final class StatusCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
         boolean globalOnly = in.has("global");
-        Path cwd = Path.of("").toAbsolutePath().normalize();
+        Path cwd = WorkingDirectory.current();
         EnginePaths.Paths paths = EnginePaths.current();
 
         // Collect under a live CommandWedge spinner; settle when ready (same line chrome).

@@ -10,6 +10,7 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.terminal.Terminals;
@@ -304,14 +305,14 @@ public final class Jk {
                         color = JkConfig.ColorChoice.parse(args[++i]).orElse(null);
                 }
                 case "-C", "--dir" -> {
-                    if (i + 1 < end) directory = Path.of(args[++i]);
+                    if (i + 1 < end) directory = WorkingDirectory.resolve(args[++i]);
                 }
                 default -> {
                     if (a.startsWith("--color=")) {
                         color = JkConfig.ColorChoice.parse(a.substring("--color=".length()))
                                 .orElse(null);
                     } else if (a.startsWith("--dir=")) {
-                        directory = Path.of(a.substring("--dir=".length()));
+                        directory = WorkingDirectory.resolve(a.substring("--dir=".length()));
                     }
                 }
             }
@@ -346,7 +347,7 @@ public final class Jk {
         ConfigSwitches switches = ConfigSwitches.scan(args);
         Path cwd;
         try {
-            cwd = Path.of("").toAbsolutePath();
+            cwd = WorkingDirectory.current();
         } catch (Error e) {
             // The native image answers a vanished working directory with an Error from properties
             // initialisation; the shell is sitting in a directory that no longer exists.
@@ -379,9 +380,9 @@ public final class Jk {
                 if ("--no-config".equals(a)) {
                     noConfig = true;
                 } else if ("--config-file".equals(a) && i + 1 < end) {
-                    explicit = Optional.of(Path.of(args[++i]));
+                    explicit = Optional.of(WorkingDirectory.resolve(args[++i]));
                 } else if (a.startsWith("--config-file=")) {
-                    explicit = Optional.of(Path.of(a.substring("--config-file=".length())));
+                    explicit = Optional.of(WorkingDirectory.resolve(a.substring("--config-file=".length())));
                 }
             }
             return new ConfigSwitches(noConfig, explicit);

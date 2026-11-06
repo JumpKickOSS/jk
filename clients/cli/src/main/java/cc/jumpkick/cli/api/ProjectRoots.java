@@ -3,6 +3,7 @@ package cc.jumpkick.cli.api;
 
 import cc.jumpkick.config.ConfigSources;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.WorkingDirectory;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -15,7 +16,7 @@ public final class ProjectRoots {
 
     /** Empty when no {@code jk.toml} is at or above {@code start}. */
     public static Optional<Path> find(Path start) {
-        Path abs = start.toAbsolutePath().normalize();
+        Path abs = WorkingDirectory.resolve(start);
         Path toml = ConfigSources.findProjectConfig(abs);
         if (toml == null) return Optional.empty();
         Path dir = Objects.requireNonNull(toml.getParent(), "jk.toml dir");

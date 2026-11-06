@@ -11,6 +11,7 @@ import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -532,7 +533,7 @@ public final class SelfNukeCommand implements CliCommand {
             Guards guards,
             boolean delegated) {
         if (path == null) return false;
-        Path norm = path.toAbsolutePath().normalize();
+        Path norm = WorkingDirectory.resolve(path);
         if (conflicts(norm, guards.bin())
                 || conflicts(norm, guards.jdks())
                 || conflicts(norm, guards.productLib())
@@ -604,10 +605,10 @@ public final class SelfNukeCommand implements CliCommand {
     /** Prefer {@code ~/…} when under the user home directory. */
     static String displayPath(Path path) {
         if (path == null) return "";
-        String abs = path.toAbsolutePath().normalize().toString();
+        String abs = WorkingDirectory.resolve(path).toString();
         String home = System.getProperty("user.home");
         if (home != null && !home.isBlank()) {
-            String h = Path.of(home).toAbsolutePath().normalize().toString();
+            String h = WorkingDirectory.resolve(home).toString();
             if (abs.equals(h)) return "~";
             if (abs.startsWith(h + "/")) return "~" + abs.substring(h.length());
             if (abs.regionMatches(true, 0, h, 0, h.length())
@@ -651,7 +652,7 @@ public final class SelfNukeCommand implements CliCommand {
                     // fall through
                 }
             }
-            return p.toAbsolutePath().normalize();
+            return WorkingDirectory.resolve(p);
         }
     }
 
@@ -663,6 +664,6 @@ public final class SelfNukeCommand implements CliCommand {
     }
 
     private static @Nullable Path abs(Path p) {
-        return p == null ? null : p.toAbsolutePath().normalize();
+        return p == null ? null : WorkingDirectory.resolve(p);
     }
 }

@@ -91,6 +91,7 @@ import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -253,11 +254,8 @@ public final class CommandDispatch {
             // present, and never by SPAWNING an engine for a typo: the hosted attempt requires a
             // live socket; the test seam runs in-process.
             // The project is the one every command works in: -C/--dir when given, else the cwd.
-            Path dir = SessionContext.current()
-                    .config()
-                    .dirOr(Path.of(""))
-                    .toAbsolutePath()
-                    .normalize();
+            Path dir =
+                    WorkingDirectory.resolve(SessionContext.current().config().dirOr(WorkingDirectory.current()));
             Integer pluginExit = tryPluginCommand(dir, command, all.subList(commandAt + 1, all.size()));
             if (pluginExit != null) return pluginExit;
             return null; // let the caller show top-level help

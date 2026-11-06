@@ -9,6 +9,7 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.Spinner;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
@@ -117,7 +118,7 @@ public final class EnsureFreshLock {
             boolean ownSpinner,
             @Nullable URI repoUrl) {
         if (projectDir == null) return Exit.SUCCESS; // no project, nothing to freshen
-        Path dir = projectDir.toAbsolutePath().normalize();
+        Path dir = WorkingDirectory.resolve(projectDir);
         if (!ManifestPaths.describesProject(dir)) {
             return Exit.SUCCESS; // caller already validated project
         }

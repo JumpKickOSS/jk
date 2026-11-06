@@ -6,6 +6,7 @@ import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Signals;
@@ -174,7 +175,7 @@ public final class GlobalCancel {
             invocationDir = null;
         }
         if (invocationDir == null) {
-            invocationDir = Path.of("").toAbsolutePath().normalize();
+            invocationDir = WorkingDirectory.current();
         }
         Path dir = WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
         Thread rpc = Thread.ofPlatform()

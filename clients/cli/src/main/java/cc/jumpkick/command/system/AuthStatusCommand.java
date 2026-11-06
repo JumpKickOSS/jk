@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -51,7 +52,7 @@ public final class AuthStatusCommand implements CliCommand {
     public int run(Invocation in) {
         String provider = in.positionals().isEmpty() ? null : in.positionals().get(0);
         String host = in.value("host").orElse(null);
-        Path credentialsDir = in.value("credentials-dir").map(Path::of).orElse(null);
+        Path credentialsDir = in.value("credentials-dir").map(CliPaths::abs).orElse(null);
 
         List<ForgeKind> kinds =
                 (provider != null) ? List.of(AuthCommand.requireKind(provider)) : List.of(ForgeKind.values());

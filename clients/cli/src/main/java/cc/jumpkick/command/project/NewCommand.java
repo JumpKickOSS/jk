@@ -13,6 +13,7 @@ import cc.jumpkick.config.SearchCeiling;
 import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Form;
 import cc.jumpkick.form.FormCommand;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.Project;
@@ -226,8 +227,8 @@ public final class NewCommand implements CliCommand {
     public static Optional<Path> detectParentDir(Path startDir, @Nullable Path home, boolean noModule) {
         if (noModule) return Optional.empty();
         SearchCeiling ceiling = SearchCeiling.current();
-        Path normHome = home == null ? null : home.toAbsolutePath().normalize();
-        for (Path dir = startDir.toAbsolutePath().normalize(); dir != null; dir = ceiling.above(dir)) {
+        Path normHome = home == null ? null : WorkingDirectory.resolve(home);
+        for (Path dir = WorkingDirectory.resolve(startDir); dir != null; dir = ceiling.above(dir)) {
             if (Files.exists(dir.resolve(ManifestPaths.MANIFEST))) return Optional.of(dir);
             if (Files.exists(dir.resolve(".git"))) return Optional.empty(); // exited the repo
             if (dir.equals(normHome)) return Optional.empty(); // hit $HOME
@@ -518,10 +519,9 @@ public final class NewCommand implements CliCommand {
      * the module's path relative to the root, as written.
      */
     static String registerModule(Path root, Path moduleDir) throws IOException {
-        Path base = root.toAbsolutePath().normalize();
-        String rel = base.relativize(moduleDir.toAbsolutePath().normalize())
-                .toString()
-                .replace('\\', '/');
+        Path base = WorkingDirectory.resolve(root);
+        String rel =
+                base.relativize(WorkingDirectory.resolve(moduleDir)).toString().replace('\\', '/');
         EngineEdits.apply(base.resolve(ManifestPaths.MANIFEST), "register-workspace-module", List.of(rel));
         return rel;
     }

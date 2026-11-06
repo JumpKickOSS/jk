@@ -8,6 +8,7 @@ import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
@@ -118,7 +119,7 @@ final class InitNode {
     }
 
     private static String leaf(Path dir) {
-        Path n = dir.toAbsolutePath().normalize().getFileName();
+        Path n = WorkingDirectory.resolve(dir).getFileName();
         return n == null ? "app" : n.toString();
     }
 }

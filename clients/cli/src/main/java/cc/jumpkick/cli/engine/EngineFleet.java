@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -246,10 +247,10 @@ public final class EngineFleet {
      */
     static boolean belongsToThisHome(String commandLine, Path homeDir, @Nullable Path state) {
         if (commandLine == null || commandLine.isBlank() || homeDir == null) return false;
-        Path home = homeDir.toAbsolutePath().normalize();
-        Path ownState = state == null ? null : state.toAbsolutePath().normalize();
+        Path home = WorkingDirectory.resolve(homeDir);
+        Path ownState = state == null ? null : WorkingDirectory.resolve(state);
         Path inferred = homeFromCommandLine(commandLine);
-        if (inferred != null && inferred.toAbsolutePath().normalize().equals(home)) return true;
+        if (inferred != null && WorkingDirectory.resolve(inferred).equals(home)) return true;
         Path engineState = stateFromCommandLine(commandLine);
         if (engineState != null
                 && (engineState.startsWith(home) || (ownState != null && engineState.startsWith(ownState)))) {
@@ -332,7 +333,7 @@ public final class EngineFleet {
      */
     static @Nullable Path engineHome(String commandLine) {
         Path fromJar = homeFromCommandLine(commandLine);
-        if (fromJar != null) return fromJar.toAbsolutePath().normalize();
+        if (fromJar != null) return WorkingDirectory.resolve(fromJar);
         Path state = stateFromCommandLine(commandLine);
         if (state == null || state.getFileName() == null) return null;
         if (!state.getFileName().toString().equals("state")) return null;
@@ -586,9 +587,9 @@ public final class EngineFleet {
         if (!isResidentEngine(commandLine)) return false;
         Path engineHome = homeFromCommandLine(commandLine);
         if (engineHome == null) return false;
-        Path normalized = engineHome.toAbsolutePath().normalize();
-        return normalized.equals(retired.engineHome().toAbsolutePath().normalize())
-                && !normalized.equals(currentHome.toAbsolutePath().normalize());
+        Path normalized = WorkingDirectory.resolve(engineHome);
+        return normalized.equals(WorkingDirectory.resolve(retired.engineHome()))
+                && !normalized.equals(WorkingDirectory.resolve(currentHome));
     }
 
     /**

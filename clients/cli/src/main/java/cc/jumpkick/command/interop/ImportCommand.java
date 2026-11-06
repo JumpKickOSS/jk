@@ -8,6 +8,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.project.AgentWiring;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -109,7 +110,8 @@ public final class ImportCommand implements CliCommand {
             return Exit.USAGE;
         }
 
-        Path projectDir = Objects.requireNonNull(source.toAbsolutePath().getParent(), "project dir");
+        Path projectDir =
+                Objects.requireNonNull(WorkingDirectory.resolve(source).getParent(), "project dir");
         Path target = out != null ? out : projectDir.resolve(ManifestPaths.MANIFEST);
         if (Files.exists(target) && !overwrite && !dryRun) {
             CommandWedge.printFail(
@@ -137,8 +139,8 @@ public final class ImportCommand implements CliCommand {
             outcome = EngineClient.runImport(
                     EnginePaths.current(),
                     new EngineRequests.ImportRequest(
-                            source.toAbsolutePath(),
-                            target.toAbsolutePath(),
+                            WorkingDirectory.resolve(source),
+                            WorkingDirectory.resolve(target),
                             projectDir,
                             JkDirs.tmp(),
                             overwrite,

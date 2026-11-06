@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.script.ScriptHeader;
@@ -85,7 +86,7 @@ final class UrlToolSource {
         byte[] body = get(http, uri);
         String name = fileName(uri, body);
         Files.createDirectories(dir);
-        Path root = dir.toAbsolutePath().normalize();
+        Path root = WorkingDirectory.resolve(dir);
         Path file = root.resolve(name).normalize();
         if (!file.startsWith(root)) {
             throw new IOException("remote script name escapes its cache directory: " + name);

@@ -5,6 +5,7 @@ import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.engine.JvmClient;
 import cc.jumpkick.command.toolchain.JkxLink;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -182,7 +183,7 @@ public final class JvmClientInstall {
 
     /** The POSIX launcher: plain {@code sh}, so a host without bash runs it. */
     static String renderPosix(Path jar, Path java) {
-        String jarPath = jar.toAbsolutePath().toString();
+        String jarPath = WorkingDirectory.resolve(jar).toString();
         return "#!/bin/sh\n"
                 + "# " + JkOwnership.GENERATED_BY + " — do not edit. The JumpKick client on a JVM;"
                 + " `jk self update` rewrites this file.\n"
@@ -207,7 +208,7 @@ public final class JvmClientInstall {
      * line: a label is looked up by name, which the replacement carries too.
      */
     static String renderWindows(Path jar, Path java) {
-        String jarPath = jar.toAbsolutePath().toString();
+        String jarPath = WorkingDirectory.resolve(jar).toString();
         return "@echo off\r\n"
                 + "rem " + JkOwnership.GENERATED_BY + " -- do not edit. The JumpKick client on a JVM;"
                 + " `jk self update` rewrites this file.\r\n"

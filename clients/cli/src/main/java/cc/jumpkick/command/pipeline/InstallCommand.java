@@ -30,6 +30,7 @@ import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
@@ -388,10 +389,10 @@ public final class InstallCommand {
             return Exit.CONFIG;
         }
         List<Path> moduleDirs = new ArrayList<>();
-        if (!root.workspaceRoot()) moduleDirs.add(wsRoot.toAbsolutePath().normalize());
+        if (!root.workspaceRoot()) moduleDirs.add(WorkingDirectory.resolve(wsRoot));
         for (String rel : root.moduleDirs()) {
             Path d = Path.of(rel).isAbsolute() ? Path.of(rel) : wsRoot.resolve(rel);
-            moduleDirs.add(d.toAbsolutePath().normalize());
+            moduleDirs.add(WorkingDirectory.resolve(d));
         }
         // One projectInfo request per module: the Graal scan, the product-lib stale check and the
         // copy step after the build all read the same parsed-manifest summary, and every call is a full
@@ -703,9 +704,8 @@ public final class InstallCommand {
 
     /** {@code path} with the user's home shown as {@code ~}, painted as a path. */
     private static String home(Path path) {
-        Path home =
-                Path.of(System.getProperty("user.home", "")).toAbsolutePath().normalize();
-        Path abs = path.toAbsolutePath().normalize();
+        Path home = WorkingDirectory.resolve(System.getProperty("user.home", ""));
+        Path abs = WorkingDirectory.resolve(path);
         String shown = abs.startsWith(home)
                 ? "~/" + home.relativize(abs).toString().replace(File.separatorChar, '/')
                 : abs.toString();
@@ -983,8 +983,8 @@ public final class InstallCommand {
         // <bin>. A native binary lands directly in the PATH bin dir, so its parent is that bin dir —
         // treating it as the app name wrote a junk config/bin/config.toml.
         Path grand = parent.getParent();
-        Path productLib = JkDirs.current().productLibDir().toAbsolutePath().normalize();
-        if (grand == null || !grand.toAbsolutePath().normalize().equals(productLib)) return;
+        Path productLib = WorkingDirectory.resolve(JkDirs.current().productLibDir());
+        if (grand == null || !WorkingDirectory.resolve(grand).equals(productLib)) return;
         String bin = parent.getFileName().toString();
         if (bin.isBlank()) return;
         Map<String, String> keys = new LinkedHashMap<>(AppInstallConfig.jkConfigProperties());

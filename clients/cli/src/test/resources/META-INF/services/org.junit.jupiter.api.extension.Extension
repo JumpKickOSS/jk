@@ -1,2 +1,3 @@
 cc.jumpkick.cli.engine.EngineTestExtension
 cc.jumpkick.testing.CheckoutUntouched
+cc.jumpkick.testing.TempWorkingDirectory

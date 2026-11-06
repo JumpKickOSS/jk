@@ -5,6 +5,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInstallListener;
 import cc.jumpkick.jdk.JdkInstaller;
@@ -167,7 +168,7 @@ public final class JdkInstallView implements JdkInstallListener, AutoCloseable {
     /** Render an absolute path with {@code $HOME} collapsed to {@code ~}. */
     public static String tildeCollapse(Path path) {
         String home = System.getProperty("user.home");
-        String abs = path.toAbsolutePath().toString();
+        String abs = WorkingDirectory.resolve(path).toString();
         if (home != null && !home.isBlank() && abs.startsWith(home)) {
             return "~" + abs.substring(home.length());
         }

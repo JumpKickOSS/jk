@@ -14,6 +14,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.command.EngineEdits;
 import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
@@ -466,8 +467,7 @@ public final class AddCommand implements CliCommand {
                     throw new IllegalArgumentException("empty version after '@' in: " + coord);
                 }
                 String library = nonBlank(libraryFlag, libraryKey);
-                var catalog = LibraryCatalog.forProject(
-                        Path.of(".").toAbsolutePath().normalize(), CliOutput.stderr()::println);
+                var catalog = LibraryCatalog.forProject(WorkingDirectory.current(), CliOutput.stderr()::println);
                 var catalogHit = catalog.lookup(libraryKey);
                 String group = nonBlank(
                         groupFlag, catalogHit.map(LibraryCatalog.Module::group).orElse(null));

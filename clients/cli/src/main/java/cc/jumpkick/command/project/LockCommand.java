@@ -109,7 +109,8 @@ public final class LockCommand implements CliCommand {
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.libraryRegistryUrl =
                 in.value("library-registry-url").map(URI::create).orElse(null);
-        this.libraryCacheFile = in.value("library-cache-file").map(Path::of).orElse(null);
+        this.libraryCacheFile =
+                in.value("library-cache-file").map(CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();

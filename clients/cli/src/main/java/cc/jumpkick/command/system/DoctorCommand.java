@@ -22,6 +22,7 @@ import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.JsonFields;
@@ -734,7 +735,7 @@ public final class DoctorCommand implements CliCommand {
 
     private static Check checkLock() {
         try {
-            Path cwd = Path.of(System.getProperty("user.dir", "."));
+            Path cwd = WorkingDirectory.current();
             Path lock = LockPaths.lockFile(cwd);
             Path proj = lock.getParent();
             if (!Files.isRegularFile(lock))
@@ -753,7 +754,7 @@ public final class DoctorCommand implements CliCommand {
     /** The Maven local repository's copies of this project's locked POMs and jars, checked against their {@code .sha1}. */
     private static Check checkM2() {
         try {
-            Path lock = LockPaths.lockFile(Path.of(System.getProperty("user.dir", ".")));
+            Path lock = LockPaths.lockFile(WorkingDirectory.current());
             if (!Files.isRegularFile(lock)) return new Check(Status.OK, "m2", "no jk-lock.toml to check against");
             return checkM2(M2Dirs.localRepository(), M2Integrity.lockPaths(LockfileReader.read(lock)));
         } catch (IOException | RuntimeException e) {

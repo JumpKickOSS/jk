@@ -28,6 +28,7 @@ import cc.jumpkick.command.ModuleSelectors;
 import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.BuildVerbCommand;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -152,7 +153,7 @@ public final class ExplainCommand implements CliCommand {
             // Resolve a relative --graph-out against the INVOCATION dir before graphDir is
             // rehomed to the workspace root for member cwds.
             String graphOutPath = graphOut(in)
-                    .map(o -> startDir.resolve(o).toAbsolutePath().normalize().toString())
+                    .map(o -> WorkingDirectory.resolve(startDir.resolve(o)).toString())
                     .orElse(null);
             return emitModuleGraph(graphDir, graphFmt, modulesSpec, affectedSinceEarly, graphOutPath);
         }
@@ -261,7 +262,7 @@ public final class ExplainCommand implements CliCommand {
                 Path m = Path.of(raw);
                 Path rel;
                 try {
-                    rel = graphDir.toAbsolutePath().normalize().relativize(m);
+                    rel = WorkingDirectory.resolve(graphDir).relativize(m);
                 } catch (IllegalArgumentException e) {
                     rel = m;
                 }
@@ -773,14 +774,14 @@ public final class ExplainCommand implements CliCommand {
             return Exit.CONFIG;
         }
         String graph = ack.graph();
-        Path root = startDir.toAbsolutePath().normalize();
+        Path root = WorkingDirectory.resolve(startDir);
         if (outputPath != null && !outputPath.isBlank()) {
             Path out = Path.of(outputPath);
             if (!out.isAbsolute()) out = root.resolve(out);
             Path parent = out.getParent();
             if (parent != null) Files.createDirectories(parent);
             Files.writeString(out, graph);
-            CommandWedge.printOk("Explain", "wrote " + out.toAbsolutePath().normalize());
+            CommandWedge.printOk("Explain", "wrote " + WorkingDirectory.resolve(out));
         } else {
             CliOutput.out(graph.endsWith("\n") ? graph.substring(0, graph.length() - 1) : graph);
         }

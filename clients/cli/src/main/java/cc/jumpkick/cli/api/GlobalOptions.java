@@ -8,6 +8,7 @@ import cc.jumpkick.config.Jobs;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
@@ -124,13 +125,13 @@ public final class GlobalOptions {
     public Path workingDir() {
         Path raw = dir;
         if (raw == null) {
-            raw = SessionContext.current().config().dirOr(Path.of(""));
+            raw = SessionContext.current().config().dirOr(WorkingDirectory.current());
         }
         // Canonicalize symlinks (macOS /tmp → /private/tmp, symlinked checkouts): action-cache
         // task pointers hash this path's TEXT, and the build verbs already realpath their dir
         // a command that didn't (explain) queried a different identity than the build stored,
         // reporting a full rebuild right after a green build.
-        Path abs = raw.toAbsolutePath().normalize();
+        Path abs = WorkingDirectory.resolve(raw);
         try {
             return abs.toRealPath();
         } catch (IOException e) {

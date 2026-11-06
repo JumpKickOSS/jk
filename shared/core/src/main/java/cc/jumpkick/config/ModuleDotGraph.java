@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
@@ -100,7 +101,7 @@ public final class ModuleDotGraph {
     /** Single-module project: one node, no edges. */
     public static GraphData singleModuleData(JkBuild build, Path projectDir) {
         Objects.requireNonNull(build, "build");
-        Path dir = projectDir != null ? projectDir.toAbsolutePath().normalize() : Path.of(".");
+        Path dir = projectDir != null ? WorkingDirectory.resolve(projectDir) : Path.of(".");
         String label = coordOf(build, dir);
         return new GraphData(false, List.of(new Node("m0", label, ".")), List.of());
     }

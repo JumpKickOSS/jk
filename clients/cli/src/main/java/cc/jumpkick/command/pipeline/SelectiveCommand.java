@@ -10,6 +10,7 @@ import cc.jumpkick.cli.api.Reentry;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
@@ -147,7 +148,7 @@ public final class SelectiveCommand implements CliCommand {
         }
         Set<Path> selectedDirs = new LinkedHashSet<>();
         for (String d : selected.moduleDirs()) {
-            selectedDirs.add(Path.of(d).toAbsolutePath().normalize());
+            selectedDirs.add(WorkingDirectory.resolve(d));
         }
         if (into != null) into.addAll(selectedDirs);
         List<String> rels = toRelPaths(dir, selectedDirs);
@@ -366,10 +367,10 @@ public final class SelectiveCommand implements CliCommand {
     }
 
     private static List<String> toRelPaths(Path root, Set<Path> dirs) {
-        Path abs = root.toAbsolutePath().normalize();
+        Path abs = WorkingDirectory.resolve(root);
         List<String> out = new ArrayList<>();
         for (Path d : dirs) {
-            Path n = d.toAbsolutePath().normalize();
+            Path n = WorkingDirectory.resolve(d);
             if (n.equals(abs)) out.add(".");
             else {
                 try {

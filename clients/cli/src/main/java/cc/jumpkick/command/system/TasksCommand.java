@@ -12,6 +12,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.command.ModuleSelectors;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -229,7 +230,7 @@ public final class TasksCommand implements CliCommand {
     }
 
     private static Map<Path, ProjectInfo> resolveModules(Invocation in, Path startDir) {
-        Path root = startDir.toAbsolutePath().normalize();
+        Path root = WorkingDirectory.resolve(startDir);
         String modulesSpec = CommonOpts.modulesSpec(in);
         String affected = in.value("affected-since").orElse(null);
         boolean affectedWip = in.isSet("affected");
@@ -241,7 +242,7 @@ public final class TasksCommand implements CliCommand {
                 && !peek.workspaceRoot()
                 && !peek.workspaceRootDir().isBlank()
                 && ModuleSelectors.anySelector(modulesSpec, affected, affectedWip)) {
-            root = Path.of(peek.workspaceRootDir()).toAbsolutePath().normalize();
+            root = WorkingDirectory.resolve(peek.workspaceRootDir());
         }
         var info = ProjectInfos.orError(root, modulesSpec, affected, affectedWip);
         if (info.error() != null && !info.error().isBlank()) {
@@ -250,11 +251,11 @@ public final class TasksCommand implements CliCommand {
         Map<Path, ProjectInfo> out = new LinkedHashMap<>();
         if (info.moduleDirs().isEmpty()) {
             var self = ProjectInfos.orNull(startDir);
-            if (self != null) out.put(startDir.toAbsolutePath().normalize(), self);
+            if (self != null) out.put(WorkingDirectory.resolve(startDir), self);
             return out;
         }
         for (String d : info.moduleDirs()) {
-            Path abs = Path.of(d).toAbsolutePath().normalize();
+            Path abs = WorkingDirectory.resolve(d);
             var mod = ProjectInfos.orNull(abs);
             if (mod != null) out.put(abs, mod);
         }
@@ -277,8 +278,8 @@ public final class TasksCommand implements CliCommand {
             return EngineClient.explain(
                     EnginePaths.current(),
                     new EngineRequests.ExplainRequest(
-                            startDir.toAbsolutePath().normalize(),
-                            cache.toAbsolutePath().normalize(),
+                            WorkingDirectory.resolve(startDir),
+                            WorkingDirectory.resolve(cache),
                             1,
                             false,
                             null,
@@ -303,10 +304,10 @@ public final class TasksCommand implements CliCommand {
                 || plan.modules().isEmpty()) {
             return "unknown (engine offline or forecast failed — try `jk explain`)";
         }
-        Path abs = modDir.toAbsolutePath().normalize();
+        Path abs = WorkingDirectory.resolve(modDir);
         TaskForecast.Module mod = null;
         for (TaskForecast.Module m : plan.modules()) {
-            if (m.dir() != null && m.dir().toAbsolutePath().normalize().equals(abs)) {
+            if (m.dir() != null && WorkingDirectory.resolve(m.dir()).equals(abs)) {
                 mod = m;
                 break;
             }

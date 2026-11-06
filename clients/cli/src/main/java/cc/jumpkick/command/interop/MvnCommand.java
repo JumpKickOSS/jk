@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.PassthroughEnv;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkResolver;
@@ -105,9 +106,7 @@ public final class MvnCommand implements CliCommand {
         this.acceptUnverified = CommonOpts.acceptUnverifiedTool(in);
         this.args = in.positionals();
 
-        Path projectDir = directory != null
-                ? directory.toAbsolutePath().normalize()
-                : Path.of(".").toAbsolutePath().normalize();
+        Path projectDir = directory != null ? WorkingDirectory.resolve(directory) : WorkingDirectory.current();
         Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.tools();
 
         // Provision Maven engine-side, get back the bin path.

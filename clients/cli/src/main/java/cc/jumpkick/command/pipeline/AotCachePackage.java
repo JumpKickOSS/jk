@@ -10,6 +10,7 @@ import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -311,7 +312,7 @@ public final class AotCachePackage {
                 run          = "%s %s -jar %s"
                 """.formatted(
                         cacheFile,
-                        sourceJar.toAbsolutePath(),
+                        WorkingDirectory.resolve(sourceJar),
                         appSha,
                         currentLockSha(projectDir),
                         java,
@@ -355,11 +356,11 @@ public final class AotCachePackage {
                 java,
                 "-Djarmode=tools",
                 "-jar",
-                bootJar.toAbsolutePath().toString(),
+                WorkingDirectory.resolve(bootJar).toString(),
                 "extract",
                 "--force",
                 "--destination",
-                outDir.toAbsolutePath().toString());
+                WorkingDirectory.resolve(outDir).toString());
         Process process = new ProcessBuilder(command)
                 .directory(projectDir.toFile())
                 .redirectErrorStream(true)

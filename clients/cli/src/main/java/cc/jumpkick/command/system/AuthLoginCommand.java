@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.OpenBrowser;
 import cc.jumpkick.cli.theme.Theme;
@@ -71,7 +72,7 @@ public final class AuthLoginCommand implements CliCommand {
         String host = in.value("host").orElse(null);
         boolean withToken = in.isSet("with-token");
         this.scope = in.value("scope").orElse(null);
-        Path credentialsDir = in.value("credentials-dir").map(Path::of).orElse(null);
+        Path credentialsDir = in.value("credentials-dir").map(CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
 
         AuthCommand.Target target;

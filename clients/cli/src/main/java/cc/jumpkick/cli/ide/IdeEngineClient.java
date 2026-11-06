@@ -8,6 +8,7 @@ import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.BuildPlanListener;
@@ -60,9 +61,9 @@ public class IdeEngineClient {
 
     /** Subclassed by BSP/IDE tests that stub engine calls. */
     protected IdeEngineClient(Path projectDir, Path cacheDir, @Nullable Path jdksDir) {
-        this.projectDir = projectDir.toAbsolutePath().normalize();
-        this.cacheDir = cacheDir.toAbsolutePath().normalize();
-        this.jdksDir = jdksDir == null ? null : jdksDir.toAbsolutePath().normalize();
+        this.projectDir = WorkingDirectory.resolve(projectDir);
+        this.cacheDir = WorkingDirectory.resolve(cacheDir);
+        this.jdksDir = jdksDir == null ? null : WorkingDirectory.resolve(jdksDir);
     }
 
     /** Open a session on {@code projectDir} using the default jk cache. */
@@ -206,9 +207,9 @@ public class IdeEngineClient {
             return new BuildOutcome(false, 0, 0, List.of(info.error()));
         }
         List<String> modules =
-                moduleDir == null || moduleDir.toAbsolutePath().normalize().equals(projectDir)
+                moduleDir == null || WorkingDirectory.resolve(moduleDir).equals(projectDir)
                         ? List.of()
-                        : List.of(moduleDir.toAbsolutePath().normalize().toString());
+                        : List.of(WorkingDirectory.resolve(moduleDir).toString());
         Session session = SessionContext.current();
         Session scoped = session.withDebugJvm(debug)
                 .withParallelTests(debug == null && session.parallelTests())
@@ -270,7 +271,7 @@ public class IdeEngineClient {
             @Nullable DebugJvm debug)
             throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
-        Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
+        Path mod = moduleDir == null ? projectDir : WorkingDirectory.resolve(moduleDir);
         BuildOutcome built = buildModule(mod, progress);
         if (!built.success()) return built;
 
@@ -322,7 +323,7 @@ public class IdeEngineClient {
      * {@code $/cancelRequest}. Does not spawn an engine solely to cancel.
      */
     public void cancel(@Nullable Path moduleDir) {
-        Path dir = moduleDir != null ? moduleDir.toAbsolutePath().normalize() : projectDir;
+        Path dir = moduleDir != null ? WorkingDirectory.resolve(moduleDir) : projectDir;
         try {
             EngineCancel.cancelForDir(EnginePaths.current(), dir.toString());
         } catch (IOException ignored) {
