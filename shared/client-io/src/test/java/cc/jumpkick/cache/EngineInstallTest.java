@@ -229,6 +229,25 @@ class EngineInstallTest {
         assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("0.12.0");
     }
 
+    @Test
+    void a_snapshot_engine_replaces_its_own_release_when_asked_and_the_release_replaces_the_snapshot(@TempDir Path dir)
+            throws Exception {
+        Path home = Files.createDirectories(dir.resolve("home"));
+        var cas = new Cas(home.resolve("cache"));
+        var store = install(home);
+        store.materializeFromFiles("0.50.4", cas, Files.writeString(dir.resolve("release.jar"), "release"));
+
+        assertThatThrownBy(() -> store.materializeFromFiles(
+                        "0.50.4-SNAPSHOT", cas, Files.writeString(dir.resolve("snap.jar"), "snapshot")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("refusing to replace");
+        store.materializeFromFiles("0.50.4-SNAPSHOT", cas, dir.resolve("snap.jar"), true);
+        assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("0.50.4-SNAPSHOT");
+
+        store.materializeFromFiles("0.50.4", cas, dir.resolve("release.jar"));
+        assertThat(store.currentInstall().orElseThrow().version()).isEqualTo("0.50.4");
+    }
+
     /**
      * Every engine-install version shape, ascending. Ordering is {@link Versions#compare} — the
      * product's one version comparator — so this table is the contract the downgrade guard and the

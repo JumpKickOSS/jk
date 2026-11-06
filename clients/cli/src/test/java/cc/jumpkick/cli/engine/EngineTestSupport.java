@@ -66,7 +66,10 @@ public final class EngineTestSupport {
                 Path cacheRoot = JkDirs.cache();
                 Files.createDirectories(cacheRoot);
                 Cas cas = new Cas(cacheRoot);
-                install.materializeFromFiles(JkVersion.VERSION, cas, engineJar);
+                // The test home serves exactly the engine under test, so an install another kind of
+                // run left (a plain test run stamps the release version, a snapshot run the
+                // -SNAPSHOT one, which orders older) is replaced rather than refused.
+                install.materializeFromFiles(JkVersion.VERSION, cas, engineJar, true);
                 if (bitsChanged) {
                     // Same version string, different bits: a resident engine surviving from a
                     // previous test invocation still serves the OLD jar off its socket — the
