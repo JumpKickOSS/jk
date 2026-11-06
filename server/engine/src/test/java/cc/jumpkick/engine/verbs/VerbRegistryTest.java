@@ -31,6 +31,7 @@ class VerbRegistryTest {
                         "test",
                         "guard",
                         "compile",
+                        "test-compile",
                         "image",
                         "install",
                         "snapshot",

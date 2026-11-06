@@ -13,6 +13,11 @@ import org.jspecify.annotations.Nullable;
 public enum WorkspaceTarget {
     /** {@code jk compile}. */
     COMPILE(Phase.COMPILE, Tests.NOT_RUN),
+    /**
+     * A graph question's compile of a module whose tests never compiled: {@code jk compile} and the
+     * test compile, no test run. Journaled as a {@code compile}.
+     */
+    TEST_COMPILE(Phase.TEST, Tests.COMPILED),
     /** {@code jk test}: packages only the modules a sibling's tests consume. */
     TEST(Phase.TEST, Tests.ALWAYS),
     /** {@code jk build}: the module's jar and the deliveries its manifest declares. */
@@ -56,7 +61,9 @@ public enum WorkspaceTarget {
         /** Tests run; {@code --skip-tests} opts out. */
         UNLESS_SKIPPED,
         /** The goal runs no tests; {@code jk test} is how to ask for them. */
-        NOT_RUN
+        NOT_RUN,
+        /** The tests compile and none runs. */
+        COMPILED
     }
 
     private final @Nullable Phase through;
@@ -85,6 +92,7 @@ public enum WorkspaceTarget {
     public String jobKind() {
         return switch (this) {
             case PACKAGE, RUN -> "build";
+            case TEST_COMPILE -> "compile";
             case RESHELVE -> "install";
             default -> name().toLowerCase(Locale.ROOT);
         };
@@ -107,7 +115,8 @@ public enum WorkspaceTarget {
         return this == TEST;
     }
 
+    /** True when the goal stops after compiling: no test runs and nothing is packaged. */
     public boolean compileOnly() {
-        return this == COMPILE;
+        return this == COMPILE || this == TEST_COMPILE;
     }
 }

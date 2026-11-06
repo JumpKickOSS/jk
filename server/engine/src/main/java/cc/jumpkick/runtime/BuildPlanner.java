@@ -258,7 +258,8 @@ public final class BuildPlanner {
             String variant,
             @Nullable Map<String, String> clientEnv,
             boolean ephemeralActions,
-            SiblingArtifacts.Gate siblings) {
+            SiblingArtifacts.Gate siblings,
+            boolean compileTests) {
 
         /**
          * Variant and client env from the session; durable action cache. Commands that install a
@@ -300,7 +301,8 @@ public final class BuildPlanner {
                     session.variant(),
                     session.clientEnv(),
                     false,
-                    SiblingArtifacts.NONE);
+                    SiblingArtifacts.NONE,
+                    false);
         }
 
         /** Copy with {@link #ephemeralActions()} set ({@code jk verify} scratch rebuild). */
@@ -324,7 +326,8 @@ public final class BuildPlanner {
                     variant,
                     clientEnv,
                     ephemeralActions,
-                    siblings);
+                    siblings,
+                    compileTests);
         }
 
         /**
@@ -362,7 +365,8 @@ public final class BuildPlanner {
                     variant == null ? "" : variant,
                     clientEnv == null ? Map.of() : clientEnv,
                     ephemeralActions,
-                    siblings);
+                    siblings,
+                    compileTests);
         }
 
         /** Copy with {@link #workerCount()} set (request-level {@code --workers}). */
@@ -386,7 +390,8 @@ public final class BuildPlanner {
                     variant,
                     clientEnv,
                     ephemeralActions,
-                    siblings);
+                    siblings,
+                    compileTests);
         }
 
         /** Copy with {@link #profileName()} set (request-level {@code --profile}). */
@@ -410,7 +415,8 @@ public final class BuildPlanner {
                     variant,
                     clientEnv,
                     ephemeralActions,
-                    siblings);
+                    siblings,
+                    compileTests);
         }
 
         /** Copy carrying the project/workspace module set — set by the estimate paths (explain/build). */
@@ -434,7 +440,36 @@ public final class BuildPlanner {
                     variant,
                     clientEnv,
                     ephemeralActions,
-                    siblings);
+                    siblings,
+                    compileTests);
+        }
+
+        /**
+         * Copy with {@link #compileTests()} set: a compile-only plan that also compiles the tests and
+         * runs none, the {@code TEST_COMPILE} goal's.
+         */
+        public Inputs withCompileTests(boolean compileTests) {
+            return new Inputs(
+                    dir,
+                    cache,
+                    buildFile,
+                    lockFile,
+                    lockDir,
+                    workerCount,
+                    estimatedTestCount,
+                    profileName,
+                    jdksDir,
+                    skipTests,
+                    verbose,
+                    testOnly,
+                    compileOnly,
+                    projectModules,
+                    session,
+                    variant,
+                    clientEnv,
+                    ephemeralActions,
+                    siblings,
+                    compileTests);
         }
 
         /**
@@ -462,7 +497,8 @@ public final class BuildPlanner {
                     variant,
                     clientEnv,
                     ephemeralActions,
-                    siblings);
+                    siblings,
+                    compileTests);
         }
     }
 

@@ -35,6 +35,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.GraphLayout;
 import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -171,13 +172,13 @@ public final class GraphRunner {
 
     /**
      * Brings stale classes up to their sources before a question reads them: what a graph question
-     * runs when a module's main sources moved since its classes, or it has none. {@code null} means
-     * nothing to do or done; otherwise one line, why not ({@code the code does not compile (…)}, a
-     * build running).
+     * runs when a module's main sources moved since its classes, or it has none, and, with {@code
+     * tests}, when a module's tests never compiled. {@code null} means nothing to do or done;
+     * otherwise one line, why not ({@code the code does not compile (…)}, a build running).
      */
     public interface Compiler {
         @Nullable
-        String compile(Path root, List<String> modules) throws InterruptedException;
+        String compile(Path root, List<String> modules, boolean tests) throws InterruptedException;
     }
 
     /** The engine's {@link GraphCompiles}; none in a process with no jobs to submit (a test, a trainer). */
@@ -203,8 +204,9 @@ public final class GraphRunner {
         }
 
         /**
-         * The line naming {@code uncompiled}, the modules still without main classes, else {@code
-         * null}; it carries why the compile did not run unless {@link #line} already does.
+         * The line naming {@code uncompiled}, the modules still without main classes and the test
+         * sets without test classes, else {@code null}; it carries why the compile did not run
+         * unless {@link #line} already does.
          */
         @Nullable
         String uncompiledLine(List<String> uncompiled) {
@@ -220,20 +222,23 @@ public final class GraphRunner {
     /**
      * Compile the modules whose main sources were edited since their classes, or that have main
      * sources and were never compiled, so the calls and overrides an answer reads are the code's as
-     * it stands. An unchanged tree costs the check that finds nothing stale. Test sources are not
-     * compiled here ({@code compile} builds main classes): an edited test keeps the edited-files note.
+     * it stands; then compile the tests of the modules whose tests never compiled, in a job of their
+     * own, so test code that does not compile costs no main class. An unchanged tree costs the check
+     * that finds nothing stale. An edited test is not compiled here: it keeps the edited-files note.
      */
     static Compiled compileStale(Path root) throws InterruptedException {
         Compiler c = compiler;
         if (c == null) return Compiled.NOTHING;
         Map<Path, JkBuild> all = modules(root);
         List<String> stale = new ArrayList<>();
+        List<String> tests = new ArrayList<>();
         boolean earlierClasses = false;
         for (Map.Entry<Path, JkBuild> module : all.entrySet()) {
             BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
             String arg =
                     moduleArg(root, module.getKey(), module.getValue().project().name());
-            if (!Files.isDirectory(layout.classesDir())) {
+            if (!hasClasses(layout.testClassesDir()) && hasTestSources(module.getKey())) tests.add(arg);
+            if (!hasClasses(layout.classesDir())) {
                 if (hasMainSources(module.getKey())) stale.add(arg);
                 continue;
             }
@@ -244,9 +249,14 @@ public final class GraphRunner {
                 earlierClasses = true;
             }
         }
-        if (stale.isEmpty()) return Compiled.NOTHING;
         // One module is the whole project: no filter, so its name need not match how -m spells it.
-        return new Compiled(c.compile(root, all.size() == 1 ? List.of() : stale), earlierClasses);
+        boolean whole = all.size() == 1;
+        if (!stale.isEmpty()) {
+            String why = c.compile(root, whole ? List.of() : stale, false);
+            if (why != null) return new Compiled(why, earlierClasses);
+        }
+        if (tests.isEmpty()) return Compiled.NOTHING;
+        return new Compiled(c.compile(root, whole ? List.of() : tests, true), false);
     }
 
     /** Whether the module at {@code dir} has a JVM source among its main sources: one a compile makes classes of. */
@@ -259,6 +269,35 @@ public final class GraphRunner {
             Log.debug("graph: cannot list the sources under " + src, unreadable);
             return false;
         }
+    }
+
+    /**
+     * Whether a compile wrote a class into {@code classes}: a compile that failed leaves the
+     * directory, empty, so the directory alone does not say the sources were ever compiled.
+     */
+    static boolean hasClasses(Path classes) {
+        try {
+            return PathUtil.anyRegularFile(
+                    classes, d -> false, f -> f.getFileName().toString().endsWith(".class"));
+        } catch (IOException | RuntimeException unreadable) {
+            Log.debug("graph: cannot list the classes under " + classes, unreadable);
+            return false;
+        }
+    }
+
+    /** Whether the module at {@code dir} has sources in its default test suite: what a test compile compiles. */
+    static boolean hasTestSources(Path dir) {
+        try {
+            return TestSuites.discover(dir, ModuleLayout.isCompact(dir)).contains(TestSuites.DEFAULT);
+        } catch (RuntimeException unreadable) {
+            Log.debug("graph: cannot list the test sources under " + dir, unreadable);
+            return false;
+        }
+    }
+
+    /** How an answer names a module's tests: the directory of their sources, so they can be searched. */
+    static String testSet(String rel, boolean compact) {
+        return (rel.isEmpty() ? "" : rel + "/") + (compact ? TestSuites.DEFAULT : "src/" + TestSuites.DEFAULT);
     }
 
     private static boolean jvmSource(Path file) {
@@ -576,7 +615,7 @@ public final class GraphRunner {
      * and {@code compileKeys} the action keys the compiles stamped on the classes, each joined by
      * {@link #STALE_SEPARATOR}), the modules whose
      * classes it does not read, the edited sources whose own classes it skips, and the modules with
-     * main sources and no main classes.
+     * main sources and no main classes and the test sets ({@link #testSet}) with no test classes.
      */
     record ClassIndexes(List<String> rows, List<String> leftOut, List<String> edited, List<String> uncompiled) {
         static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of(), List.of(), List.of());
@@ -592,8 +631,8 @@ public final class GraphRunner {
      * ({@link ModuleInputProvenance#staleSources}) contributes what it says; every other class of
      * the module keeps its compiled facts, so one edit does not take its neighbours' calls with it.
      * A call, an override or a line read off a class older than its own source would be a false
-     * answer, so the answer names what it skipped, and the modules with main sources it has no
-     * classes of. A set whose compiled facts the cache at {@code cache} holds under its compile keys
+     * answer, so the answer names what it skipped, and the modules and test sets with sources it has
+     * no classes of. A set whose compiled facts the cache at {@code cache} holds under its compile keys
      * is not indexed, unless {@code index}: the graph worker reads those facts from the cache.
      */
     static ClassIndexes classIndexes(Path root, Path cache, boolean index) {
@@ -606,7 +645,10 @@ public final class GraphRunner {
             String rel = root.relativize(module.getKey()).toString().replace('\\', '/');
             String prefix = rel.isEmpty() ? "" : rel + "/";
             String name = rel.isEmpty() ? String.valueOf(module.getKey().getFileName()) : rel;
-            if (!Files.isDirectory(layout.classesDir()) && hasMainSources(module.getKey())) uncompiled.add(name);
+            if (!hasClasses(layout.classesDir()) && hasMainSources(module.getKey())) uncompiled.add(name);
+            if (!hasClasses(layout.testClassesDir()) && hasTestSources(module.getKey())) {
+                uncompiled.add(testSet(rel, ModuleLayout.isCompact(module.getKey())));
+            }
             boolean compiled = Files.isDirectory(layout.classesDir()) || Files.isDirectory(layout.testClassesDir());
             if (!compiled) continue;
             Set<String> stale = ModuleInputProvenance.staleSources(root, module.getKey(), module.getValue());

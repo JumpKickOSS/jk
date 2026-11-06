@@ -49,7 +49,7 @@ class GraphCompilesTest {
                 () -> List.of(building("build")),
                 jid -> Optional.empty(),
                 ticking());
-        assertThat(compiles.compile(ROOT, List.of())).isEqualTo("a build of this checkout is running");
+        assertThat(compiles.compile(ROOT, List.of(), false)).isEqualTo("a build of this checkout is running");
         assertThat(submitted).isEmpty();
     }
 
@@ -65,11 +65,17 @@ class GraphCompilesTest {
                 List::of,
                 jid -> jid == 9 ? Optional.of(green) : Optional.empty(),
                 ticking());
-        assertThat(compiles.compile(ROOT, List.of("core"))).isNull();
-        assertThat(submitted).singleElement().satisfies(spec -> {
+        assertThat(compiles.compile(ROOT, List.of("core"), false)).isNull();
+        assertThat(compiles.compile(ROOT, List.of("app"), true)).isNull();
+        assertThat(submitted).hasSize(2);
+        assertThat(submitted.getFirst()).satisfies(spec -> {
             assertThat(spec.kind()).isEqualTo("compile");
             assertThat(spec.modules()).containsExactly("core");
             assertThat(spec.origin().trigger()).isEqualTo("graph");
+        });
+        assertThat(submitted.getLast()).satisfies(spec -> {
+            assertThat(spec.kind()).as("tests that never compiled").isEqualTo("test-compile");
+            assertThat(spec.modules()).containsExactly("app");
         });
     }
 

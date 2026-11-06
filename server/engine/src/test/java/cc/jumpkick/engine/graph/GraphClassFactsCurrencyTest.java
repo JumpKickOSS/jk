@@ -91,7 +91,7 @@ class GraphClassFactsCurrencyTest {
     }
 
     @Test
-    void a_module_with_main_sources_and_no_classes_is_named_uncompiled(@TempDir Path tmp) throws Exception {
+    void a_module_or_test_set_with_sources_and_no_classes_is_named_uncompiled(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
                 group = "t"
                 name = "app"
@@ -108,9 +108,27 @@ class GraphClassFactsCurrencyTest {
         assertThat(fresh.rows()).isEmpty();
         assertThat(fresh.leftOut()).isEmpty();
 
-        Files.createDirectories(BuildLayout.moduleTargetDir(tmp).resolve("classes"));
+        Path classes = Files.createDirectories(BuildLayout.moduleTargetDir(tmp).resolve("classes"));
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+                .as("a compile that failed leaves the directory empty")
+                .containsExactly(String.valueOf(tmp.getFileName()));
+        Files.createDirectories(classes.resolve("demo"));
+        Files.write(classes.resolve("demo/App.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
         assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
                 .isEmpty();
+
+        Path test = Files.createDirectories(tmp.resolve("src/test/java/demo"));
+        Files.writeString(test.resolve("AppTest.java"), "package demo; class AppTest {}\n");
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+                .as("tests that never compiled are named by their directory")
+                .containsExactly("src/test");
+        Path testClasses =
+                Files.createDirectories(BuildLayout.moduleTargetDir(tmp).resolve("test-classes/demo"));
+        Files.write(testClasses.resolve("AppTest.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+                .isEmpty();
+        assertThat(GraphRunner.testSet("core", false)).isEqualTo("core/src/test");
+        assertThat(GraphRunner.testSet("core", true)).isEqualTo("core/test");
     }
 
     /**

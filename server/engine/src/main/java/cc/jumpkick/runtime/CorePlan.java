@@ -502,11 +502,19 @@ final class CorePlan {
      * compiles against this module's {@code target/classes}, a processor sibling is found through
      * the service registration the copy lands there, and a tree published without them is one
      * the next build rewrites under its consumers' keys. Everything later depends on these steps.
+     * A goal that compiles the tests ({@link cc.jumpkick.wire.runtime.WorkspaceTarget#TEST_COMPILE})
+     * adds the test compile, run by nothing.
      */
     private BuildPlan.Builder compileOnlyPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
         b.addTask(s.copyResources());
         List<String> leaves = new ArrayList<>();
+        boolean tests = in.compileTests();
+        if (tests) {
+            if (s.hasFixtures()) b.addTask(s.compileTestFixtures());
+            b.addTask(s.compileTest());
+            leaves.add(TaskNames.COMPILE_TEST);
+        }
         if (useJava) {
             b.addTask(s.writeStamp());
             leaves.add(TaskNames.WRITE_STAMP);
@@ -536,7 +544,7 @@ final class CorePlan {
         if (transform != null) leaves.add("plugin-" + transform.name());
         b.addTask(Task.builder(BuildPlanner.COMPILE_JOIN)
                 .forecast(StepForecast.RIDES)
-                .stage(transform == null ? BuildStage.COMPILE : BuildStage.PACKAGE)
+                .stage(transform != null ? BuildStage.PACKAGE : tests ? BuildStage.TEST : BuildStage.COMPILE)
                 .requires(leaves.toArray(String[]::new))
                 .weight(0)
                 .ticks(0)

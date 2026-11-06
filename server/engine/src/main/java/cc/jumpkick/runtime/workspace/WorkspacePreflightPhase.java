@@ -405,7 +405,7 @@ public final class WorkspacePreflightPhase {
      */
     static @Nullable WorkspaceTarget coreTarget(WorkspaceTarget target) {
         return switch (target) {
-            case COMPILE, TEST -> target;
+            case COMPILE, TEST_COMPILE, TEST -> target;
             case RESHELVE, SYNC -> null;
             default -> WorkspaceTarget.PACKAGE;
         };
