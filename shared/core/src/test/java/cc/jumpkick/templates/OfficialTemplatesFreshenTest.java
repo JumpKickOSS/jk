@@ -419,6 +419,7 @@ class OfficialTemplatesFreshenTest {
             assertTrue(Files.isDirectory(clone.resolve("java/spring/hello.g8")), "a user action repopulates");
         } finally {
             pool.shutdownNow();
+            StoreWriteGate.resetForTests();
             if (prev == null) System.clearProperty("jk.env.JK_STORE_DIR");
             else System.setProperty("jk.env.JK_STORE_DIR", prev);
         }

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.FakeClock;
+import cc.jumpkick.util.StoreWriteGate;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -65,6 +66,9 @@ class StoreFeedRefreshTest {
 
     @BeforeEach
     void startServer() throws Exception {
+        // A store wipe earlier in this test JVM stands every feed refresh down for the process's
+        // life; this class measures the refresh, so it starts from an unwiped gate.
+        StoreWriteGate.resetForTests();
         libHits.set(0);
         jdkHits.set(0);
         lastIfNoneMatch = null;
