@@ -71,7 +71,8 @@ public final class PluginTemplates {
                         if (framework.startsWith(".") || !JkTemplateToml.isKebab(framework)) continue;
                         try (var tmpls = Files.list(frameworkDir)) {
                             for (Path tmpl : tmpls.toList()) {
-                                TemplateSpec spec = specFromRoot(pluginId, lang, framework, tmpl);
+                                TemplateSpec spec =
+                                        specFromRoot(TemplateSpec.SOURCE_PLUGIN, pluginId, lang, framework, tmpl);
                                 if (spec != null) out.add(spec);
                             }
                         }
@@ -84,7 +85,9 @@ public final class PluginTemplates {
         return out;
     }
 
-    static @Nullable TemplateSpec specFromRoot(String pluginId, String lang, String framework, Path tmpl) {
+    /** The picker row for the template tree {@code tmpl} a jar holds; {@code root} stays unset. */
+    static @Nullable TemplateSpec specFromRoot(
+            String source, @Nullable String pluginId, String lang, String framework, Path tmpl) {
         if (!Files.isDirectory(tmpl)) return null;
         String name = JkTemplateToml.nameFromDir(tmpl.getFileName().toString());
         if (name == null) return null;
@@ -99,7 +102,7 @@ public final class PluginTemplates {
                 framework,
                 meta.description(),
                 meta.layouts(),
-                TemplateSpec.SOURCE_PLUGIN,
+                source,
                 pluginId,
                 null);
     }

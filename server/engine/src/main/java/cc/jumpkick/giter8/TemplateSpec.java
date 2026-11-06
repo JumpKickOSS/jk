@@ -26,6 +26,8 @@ public record TemplateSpec(
     public static final String SOURCE_PLUGIN = "plugin";
     public static final String SOURCE_CATALOG = "catalog";
     public static final String SOURCE_LOCAL = "local";
+    /** In jk's own distribution ({@link ShippedTemplates}): served when no catalogue copy is. */
+    public static final String SOURCE_SHIPPED = "shipped";
 
     public TemplateSpec {
         Objects.requireNonNull(name, "name");

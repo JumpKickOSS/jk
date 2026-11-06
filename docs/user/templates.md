@@ -125,6 +125,11 @@ Local path, `owner/repo`, or git/HTTPS URI also work.
 Official catalog: [JumpKickOSS/jk-templates](https://github.com/JumpKickOSS/jk-templates)
 (overridable). Plugin jars may overlay the same `(language, framework, name)`.
 
+jk ships `app` and `library` (framework `none`, every language that has them) in its own
+distribution, so `jk new` works on a fresh home with no catalogue clone and no network. A
+catalogue copy of the same id wins; jk's copy serves only an id the catalogue lacks, and the
+template list names it with source `shipped`.
+
 ```toml
 # ~/.jk/config.toml
 [templates]
