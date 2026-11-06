@@ -13,6 +13,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
@@ -23,6 +24,18 @@ import org.jspecify.annotations.Nullable;
  * reads verify the hash. Puts never hard-link external paths into the store (see {@link #putFile}).
  */
 public final class Cas {
+
+    /**
+     * How long a freshly-written CAS object, key record or incremental tree is unconditionally
+     * protected from the sweep and the prune, even if no surviving root references it.
+     *
+     * <p>Closes the window between "writer A puts an object into the CAS" and "writer B writes the
+     * root that references it" — most relevantly a {@code jk sync} that fetches deps but has no
+     * associated build yet, or any future CAS writer that hasn't been taught to root its outputs. One
+     * hour is generous enough to cover an interactive workflow but short enough that genuine garbage
+     * doesn't survive long.
+     */
+    public static final Duration MIN_AGE_FOR_SWEEP = Duration.ofHours(1);
 
     /**
      * Staging-name discriminator. Every writer stages under {@code sha256/} as {@code

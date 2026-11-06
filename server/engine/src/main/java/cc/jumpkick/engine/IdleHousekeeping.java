@@ -16,7 +16,6 @@ import cc.jumpkick.runtime.CachePlans;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.task.AbiMemo;
-import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CachePruneScheduler;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.JkDirs;
@@ -296,9 +295,8 @@ public final class IdleHousekeeping {
 
     /**
      * Drop process-wide memos whose payoff is intra-build so the trailing GC has something to
-     * reclaim: resolve memos (rebuilt cheaply from the on-disk caches), the action-cache last-use
-     * stamp memo (so a long-lived engine re-stamps rather than freezing the ranking), the metrics
-     * aggregate, and any unclaimed test-wall snapshots. All are optimisations, never correctness.
+     * reclaim: resolve memos (rebuilt cheaply from the on-disk caches), the metrics aggregate, and
+     * any unclaimed test-wall snapshots. All are optimisations, never correctness.
      *
      * <p>The file-hash and ABI memos are persisted here rather than dropped: they do not grow with
      * the number of builds, and their whole payoff is the build after this one.
@@ -320,7 +318,6 @@ public final class IdleHousekeeping {
         try {
             FileHashMemo.flush();
             AbiMemo.flush();
-            ActionCache.clearStampCache();
             BuildMetrics.clearSessionAggregatesMemo();
             if (historyEnabled) TestClassWalls.takeAll();
         } catch (RuntimeException e) {

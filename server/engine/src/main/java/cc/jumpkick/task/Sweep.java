@@ -3,7 +3,6 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.host.Hashing;
 import java.nio.file.Path;
-import java.time.Duration;
 
 /**
  * Constants + small helpers shared by {@link CasSweep} and {@link ActionCachePrune}.
@@ -14,18 +13,6 @@ import java.time.Duration;
  * those roots are {@code cc.jumpkick.host.ActionTree}'s, not this class's.
  */
 public final class Sweep {
-
-    /**
-     * How long a freshly-written CAS object is unconditionally protected from the sweep, even if no
-     * surviving root references it.
-     *
-     * <p>Closes the window between "writer A puts an object into the CAS" and "writer B writes the
-     * root that references it" — most relevantly a {@code jk sync} that fetches deps but has no
-     * associated build yet, or any future CAS writer that hasn't been taught to root its outputs. One
-     * hour is generous enough to cover an interactive workflow but short enough that genuine garbage
-     * doesn't survive long.
-     */
-    public static final Duration MIN_AGE_FOR_SWEEP = Duration.ofHours(1);
 
     private Sweep() {}
 

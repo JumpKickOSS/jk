@@ -169,28 +169,40 @@ its count cap do.
 
 ### What goes first
 
-Within a tier, **superseded entries** go first: a key that is neither its task’s current
-pointer nor in its generation list can never be hit again, so it is free to take. After
-that, **oldest last use**.
+Within a tier, **oldest last use** goes first, and nothing else ranks. A key the task pointer
+no longer names is not dead: a revert, a branch switch or a sibling worktree names it again,
+and the pointer only says which checkout stored last.
 
-Last *use*, not last write: a cache hit re-stamps the key record (coarsened to an hour, so
-a build that looks the same entry up several times pays one write). A module you rebuild
-hourly therefore leaves dead keys that sort old, while a module you never touch but always
-hit sorts young and survives — the reverse of ranking by store time.
+Last *use*, not last write: a cache hit marks the key record used. Restoring a build's outputs
+and a graph question reading a stored [graph](graph.md) fragment both count. The mark is
+refreshed at most **once per half grace** (every 30 minutes, half the hour below), so a hit
+costs a stat and at most one hit in that half hour costs a write, and a record in use always
+looks younger than the grace that protects it from the prune. A module you rebuild hourly therefore leaves dead keys that sort old,
+while a module you never touch but always hit sorts young and survives — the reverse of
+ranking by store time.
+
+Graph fragments share the action tier and its order with build outputs; they are not taken
+first. They are small, so evicting them would free little, and each one lost costs a
+re-extraction the next graph question pays for.
 
 Blob timestamps are deliberately never consulted. The CAS is write-once, so a blob’s mtime
 is when those bytes were *first* seen; an old blob under a young key means “still current”,
 and ranking on it would evict exactly the wrong entries.
 
 Deleting an entry removes its action key, its task pointer, and every blob no surviving key
-still references. Entries and blobs touched in the last hour are never evicted, so a cache
-under constant write pressure can sit above its budget until the machine goes quiet.
+still references. Entries and blobs touched in the last hour (the grace) are never evicted, so a
+cache under constant write pressure can sit above its budget until the machine goes quiet.
+
+Another engine sharing the cache root holds none of this engine's locks, so its prune can still
+take a blob a restore is about to read or is reading. That restore is a cache miss: the step runs
+again, and none of the record's outputs is left half laid. A blob unlinked while the copy holds
+it open is read to the end; a copy that fails or comes up short fails its digest check.
 
 Class-C outputs (native images, OCI tarballs, fat/minified jars) keep at most **2**
 generations of action keys (**1** for OCI) **per checkout**: two worktrees of one project on
 different branches each keep their own, so neither evicts the other's image on an alternate
-build. There is no separate Class-C size share and no Class-C TTL — a replaced generation is
-simply superseded, which is already the front of the queue.
+build. There is no separate Class-C size share and no Class-C TTL — a generation trimmed off
+every checkout's list goes at once, and the rest take their turn by last use.
 
 ### Cadence
 

@@ -12,7 +12,7 @@ import java.util.Set;
 
 /**
  * CAS mark-and-sweep against a live ref set. Never deletes objects newer than sweep start or younger
- * than {@link Sweep#MIN_AGE_FOR_SWEEP} (concurrent-write and stamp-race safety).
+ * than {@link Cas#MIN_AGE_FOR_SWEEP} (concurrent-write and stamp-race safety).
  *
  * <p>Does not touch Maven-layout jars under {@code repos/} — those are independent copies, not
  * hard links into this CAS.
@@ -30,7 +30,7 @@ public final class CasSweep {
      */
     public static Report sweep(Cas cas, Set<String> liveRefs, boolean dryRun) throws IOException {
         long sweepStartMillis = System.currentTimeMillis();
-        long minAgeMillis = Sweep.MIN_AGE_FOR_SWEEP.toMillis();
+        long minAgeMillis = Cas.MIN_AGE_FOR_SWEEP.toMillis();
 
         Path shaRoot = cas.root().resolve("sha256");
         if (!Files.isDirectory(shaRoot)) {

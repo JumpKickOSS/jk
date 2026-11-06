@@ -53,13 +53,14 @@ import org.jspecify.annotations.Nullable;
  * actions/}, a large workspace's Zinc state could push the total over the line and the prune would
  * evict every action key and still be over.
  *
- * <p><b>Order within a tier.</b> Superseded entries first — a key that is neither its task's current
- * pointer nor in its generation list can never be hit again, so it is free to take. Then oldest
- * mtime, which {@link ActionCache#lookup} keeps as <em>last use</em>: a hit re-stamps the key
- * (coarsened to an hour, deduped per engine), so a stable module that hits daily sorts young and a
- * churning module's dead keys sort old. The blob mtimes are deliberately not consulted: the CAS is
- * write-once, so a blob's mtime is its <em>first</em> store time, and an old blob under a young key
- * means "still current, first seen long ago".
+ * <p><b>Order within a tier.</b> Oldest last use first, and nothing else. A key record's mtime is
+ * its last use: every reader marks a hit ({@link cc.jumpkick.cache.ActionRecordText#markRead}, at
+ * most once per half grace), so a stable module that hits daily sorts young and a churning module's dead
+ * keys sort old. The code graph's fragments are action-tier entries like any other and take their
+ * turn in the same order: they are small, so taking them first would free little and cost a
+ * re-extraction of what graph questions read every day. The blob mtimes are deliberately not
+ * consulted: the CAS is write-once, so a blob's mtime is its <em>first</em> store time, and an old
+ * blob under a young key means "still current, first seen long ago".
  *
  * <p>Runs after {@link CasSweep} in the same pass so reclaimed garbage covers the shortfall before
  * anything live is evicted.
@@ -163,7 +164,7 @@ public final class ActionCachePrune {
      * blobs a same-pass {@link CasSweep} claimed — excluded from both the measured total and the
      * candidate blobs so a dry run reports the same numbers as a real one.
      *
-     * <p>Entries and blobs touched within {@link Sweep#MIN_AGE_FOR_SWEEP} are never taken: the
+     * <p>Entries and blobs touched within {@link Cas#MIN_AGE_FOR_SWEEP} are never taken: the
      * caller's locks keep this engine's builds out of the way, but a second engine sharing the cache
      * root holds none of them and may be mid-{@link ActionCache#restore}. Every budget here is
      * therefore soft — under continuous write pressure a final size above the budget is a legitimate
@@ -172,7 +173,7 @@ public final class ActionCachePrune {
     public static Report run(Path cacheRoot, Cas cacheCas, Policy policy, Set<String> alreadyFreedShas, boolean dryRun)
             throws IOException {
         long now = System.currentTimeMillis();
-        long grace = Sweep.MIN_AGE_FOR_SWEEP.toMillis();
+        long grace = Cas.MIN_AGE_FOR_SWEEP.toMillis();
         Path actionsDir = CacheTree.ACTIONS.under(cacheRoot);
         if (!Files.isDirectory(actionsDir)) return Report.EMPTY;
 
@@ -243,7 +244,7 @@ public final class ActionCachePrune {
         return freed;
     }
 
-    /** Trim the memo tier to {@code max} surviving records, superseded and coldest first. */
+    /** Trim the memo tier to {@code max} surviving records, least recently used first. */
     private static long capMemos(List<Entry> memos, int max, Evictor evictor) throws IOException {
         if (max <= 0) return 0L;
         long alive = memos.stream().filter(e -> !e.deleted()).count();
@@ -462,8 +463,7 @@ public final class ActionCachePrune {
      * is parsed as the walk meets it, so the pass holds one record's text at a time.
      */
     private static Scan scanActions(Path actionsDir, Path keysDir, Path tasksDir, Blobs blobs) throws IOException {
-        // A null pointer set means "could not tell": every key then counts as current, so the
-        // secondary sort degrades to plain oldest-first instead of marking the whole cache free.
+        // A null pointer set means "could not tell": every key then counts as current.
         Set<String> live = livePointers(tasksDir);
         List<Entry> entries = new ArrayList<>();
         long[] bytes = {0L};
@@ -530,9 +530,10 @@ public final class ActionCachePrune {
 
     /**
      * Every action key some task still points at: the current {@code tasks/<taskId>} pointer plus
-     * the generations a Class-C task retains. Anything else is superseded — its inputs have changed,
-     * so no future lookup can name it — and goes first. {@code null} when the pointers could not be
-     * read, which the caller reads as "assume nothing is superseded".
+     * the generations a Class-C task retains. Anything else is superseded, which does not move it in
+     * the eviction order; it only tells {@link #deleteKey} that a pointer naming it now was
+     * republished by a concurrent store. {@code null} when the pointers could not be read, which the
+     * caller reads as "assume nothing is superseded".
      */
     private static @Nullable Set<String> livePointers(Path tasksDir) throws IOException {
         Set<String> live = new HashSet<>();
@@ -615,7 +616,7 @@ public final class ActionCachePrune {
     /**
      * Stamp an incremental tree as used now, before a compile reads or rewrites it. A prune — this
      * engine's or another's sharing the cache — takes no tree younger than {@link
-     * Sweep#MIN_AGE_FOR_SWEEP}, so the stamp holds the tree for the compile's duration. A tree not
+     * Cas#MIN_AGE_FOR_SWEEP}, so the stamp holds the tree for the compile's duration. A tree not
      * there yet needs none: the directories the compile creates are its first stamp.
      */
     static void markInUse(Path stateDir) throws IOException {
@@ -643,9 +644,9 @@ public final class ActionCachePrune {
     }
 
     /**
-     * Unlink one entry after re-reading the key and its pointer. A key {@code stampUsed} or
-     * replaced inside the grace window stays, and so does a pointer that was republished onto a
-     * key the scan had classified as superseded. A cold key the budget chose — the pointer still
+     * Unlink one entry after re-reading the key and its pointer. A key marked read or replaced
+     * inside the grace window stays, and so does a pointer that was republished onto a key the scan
+     * had classified as superseded. A cold key the budget chose — the pointer still
      * names it, and the scan already knew that — is removed with its pointer. Returns false when
      * the re-read says a concurrent store won.
      *

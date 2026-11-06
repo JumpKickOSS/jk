@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.host.time.Clock;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -20,6 +26,30 @@ import org.jspecify.annotations.Nullable;
 public final class ActionRecordText {
 
     private ActionRecordText() {}
+
+    /**
+     * How old a record's mtime may grow before a read refreshes it: half the grace in which the
+     * prune takes nothing ({@link Cas#MIN_AGE_FOR_SWEEP}), so a record in active use always looks
+     * younger than the grace, and another engine's prune never takes it mid-restore.
+     */
+    public static final Duration READ_REFRESH = Cas.MIN_AGE_FOR_SWEEP.dividedBy(2);
+
+    /**
+     * Marks the key record at {@code record} as used now: its mtime is the last use the prune ranks
+     * by, and a read changes nothing else. Writes only when the mtime is {@link #READ_REFRESH} or
+     * more old, so a record hit on every build costs one stat a hit and at most one write per
+     * {@code READ_REFRESH}, whichever engine or worker reads it. Best-effort: a read-only cache root, or a record a concurrent prune
+     * just took, keeps its previous rank.
+     */
+    public static void markRead(Path record) {
+        try {
+            long now = Clock.SYSTEM.millis();
+            if (now - Files.getLastModifiedTime(record).toMillis() < READ_REFRESH.toMillis()) return;
+            Files.setLastModifiedTime(record, FileTime.fromMillis(now));
+        } catch (IOException ignored) {
+            // A ranking hint, never correctness.
+        }
+    }
 
     /** One record as read: inputs and outputs by name, the outputs restored executable. */
     public record Parsed(

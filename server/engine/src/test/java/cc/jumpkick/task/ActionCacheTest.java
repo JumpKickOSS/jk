@@ -16,7 +16,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -64,6 +66,36 @@ class ActionCacheTest {
         for (int i = 0; i < count; i++) {
             assertThat(restored.resolve("p" + (i % 20) + "/C" + i + ".class")).hasContent("class body " + i);
         }
+    }
+
+    /**
+     * A hit refreshes its record's eviction age at most once per half grace, so a hot key is not
+     * rewritten on every lookup and a key in use always looks younger than the prune's grace.
+     */
+    @Test
+    void a_hit_refreshes_the_records_age_at_most_once_per_half_grace(@TempDir Path tempDir) throws IOException {
+        ActionCache cache = new ActionCache(new Cas(tempDir.resolve("cas")), tempDir.resolve("actions"));
+        Path outputs = Files.createDirectories(tempDir.resolve("classes"));
+        Files.writeString(outputs.resolve("A.class"), "a");
+        cache.store("compile-java", "hot", Map.of(), outputs);
+        Path record = ActionTree.KEYS.under(tempDir.resolve("actions")).resolve("hot");
+
+        assertThat(ActionRecordText.READ_REFRESH).isLessThan(Cas.MIN_AGE_FOR_SWEEP);
+        long lately = System.currentTimeMillis()
+                - ActionRecordText.READ_REFRESH.dividedBy(2).toMillis();
+        Files.setLastModifiedTime(record, FileTime.fromMillis(lately));
+        assertThat(cache.lookup("hot")).isPresent();
+        assertThat(Files.getLastModifiedTime(record).toMillis())
+                .as("marked within the half grace: the hit writes nothing")
+                .isEqualTo(lately);
+
+        long stale = System.currentTimeMillis() - ActionRecordText.READ_REFRESH.toMillis() - 60_000L;
+        Files.setLastModifiedTime(record, FileTime.fromMillis(stale));
+        assertThat(cache.lookup("hot")).isPresent();
+        assertThat(Files.getLastModifiedTime(record).toMillis())
+                .as("past the half grace: the hit marks it used now")
+                .isGreaterThan(
+                        System.currentTimeMillis() - Duration.ofMinutes(1).toMillis());
     }
 
     /**
