@@ -8,23 +8,15 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.StoreWriteGate;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class HostWarmupTest {
-
-    /** A store wipe earlier in this test JVM stops every warmup step; these tests count the steps that run. */
-    @BeforeEach
-    void unwipedGate() {
-        StoreWriteGate.resetForTests();
-    }
 
     @Test
     void enabled_defaults_true_without_config(@TempDir Path dir) throws Exception {
