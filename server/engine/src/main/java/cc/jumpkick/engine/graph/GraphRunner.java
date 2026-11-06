@@ -44,6 +44,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.runtime.ModuleInputProvenance;
+import cc.jumpkick.runtime.PlannerTest;
 import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.util.FileLocks;
@@ -243,9 +244,10 @@ public final class GraphRunner {
     /**
      * Compile the modules whose main sources were edited since their classes, or that have main
      * sources and were never compiled, so the calls and overrides an answer reads are the code's as
-     * it stands; then compile the tests of the modules whose tests never compiled, in a job of their
-     * own, so test code that does not compile costs no main class. An unchanged tree costs the check
-     * that finds nothing stale. An edited test is not compiled here: it keeps the edited-files note.
+     * it stands; then compile the default test suite of the modules whose default suite never
+     * compiled, in a job of their own, so test code that does not compile costs no main class. An
+     * unchanged tree costs the check that finds nothing stale. An edited test is not compiled here:
+     * it keeps the edited-files note. Another suite is named, not compiled ({@link #uncompiledSuites}).
      */
     static Compiled compileStale(Path root) throws InterruptedException {
         Compiler c = compiler;
@@ -258,7 +260,9 @@ public final class GraphRunner {
             BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
             String arg =
                     moduleArg(root, module.getKey(), module.getValue().project().name());
-            if (!hasClasses(layout.testClassesDir()) && hasTestSources(module.getKey())) tests.add(arg);
+            if (uncompiledSuites(module.getKey(), layout.testClassesDir()).contains(TestSuites.DEFAULT)) {
+                tests.add(arg);
+            }
             if (!hasClasses(layout.classesDir())) {
                 if (hasMainSources(module.getKey())) stale.add(arg);
                 continue;
@@ -306,19 +310,31 @@ public final class GraphRunner {
         }
     }
 
-    /** Whether the module at {@code dir} has sources in its default test suite: what a test compile compiles. */
-    static boolean hasTestSources(Path dir) {
+    /**
+     * The test suites of the module at {@code dir} that have sources and no classes the graph reads:
+     * each suite {@code testClasses} was not compiled for (a test compile compiles the default suite
+     * only, {@code jk guard} the integration suite with it), and the guard suite, whose classes the
+     * graph does not read. Only the default suite is compiled for a question.
+     */
+    static List<String> uncompiledSuites(Path dir, Path testClasses) {
         try {
-            return TestSuites.discover(dir, ModuleLayout.isCompact(dir)).contains(TestSuites.DEFAULT);
+            boolean compact = ModuleLayout.isCompact(dir);
+            Set<String> compiled = hasClasses(testClasses) ? PlannerTest.compiledSuites(testClasses) : Set.of();
+            List<String> out = new ArrayList<>();
+            for (String suite : TestSuites.discover(dir, compact)) {
+                if (!compiled.contains(suite)) out.add(suite);
+            }
+            if (TestSuites.hasGuardSuite(dir, compact)) out.add(TestSuites.GUARD);
+            return out;
         } catch (RuntimeException unreadable) {
             Log.debug("graph: cannot list the test sources under " + dir, unreadable);
-            return false;
+            return List.of();
         }
     }
 
-    /** How an answer names a module's tests: the directory of their sources, so they can be searched. */
-    static String testSet(String rel, boolean compact) {
-        return (rel.isEmpty() ? "" : rel + "/") + (compact ? TestSuites.DEFAULT : "src/" + TestSuites.DEFAULT);
+    /** How an answer names a module's test suite: the directory of its sources, so it can be searched. */
+    static String testSet(String rel, boolean compact, String suite) {
+        return (rel.isEmpty() ? "" : rel + "/") + (compact ? suite : "src/" + suite);
     }
 
     private static boolean jvmSource(Path file) {
@@ -686,8 +702,9 @@ public final class GraphRunner {
             String prefix = rel.isEmpty() ? "" : rel + "/";
             String name = rel.isEmpty() ? String.valueOf(module.getKey().getFileName()) : rel;
             if (!hasClasses(layout.classesDir()) && hasMainSources(module.getKey())) uncompiled.add(name);
-            if (!hasClasses(layout.testClassesDir()) && hasTestSources(module.getKey())) {
-                uncompiled.add(testSet(rel, ModuleLayout.isCompact(module.getKey())));
+            boolean compact = ModuleLayout.isCompact(module.getKey());
+            for (String suite : uncompiledSuites(module.getKey(), layout.testClassesDir())) {
+                uncompiled.add(testSet(rel, compact, suite));
             }
             boolean compiled = Files.isDirectory(layout.classesDir()) || Files.isDirectory(layout.testClassesDir());
             if (!compiled) continue;

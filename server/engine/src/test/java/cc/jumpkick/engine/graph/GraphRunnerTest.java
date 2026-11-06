@@ -312,6 +312,69 @@ class GraphRunnerTest {
     }
 
     /**
+     * A question compiles the default test suite only, so the integration suite of a fresh checkout
+     * stays uncompiled: callers names its directory and is not complete, and a rename does not
+     * claim done. Once a compile that selected the suite leaves its classes, its call is listed and
+     * renamed, and both are complete.
+     */
+    @Test
+    void anIntegrationSuiteWithNoClassesIsNamedAndOnceCompiledItsCallsCount(@TempDir Path tmp) throws Exception {
+        Path root = calcIt(Files.createDirectories(tmp.resolve("fresh")));
+        Javac javac = new Javac();
+        GraphRunner.compiler(javac);
+        GraphAck callers = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        assertThat(callers.error()).isNull();
+        assertThat(javac.tests)
+                .as("the main sources and the default suite: the integration suite is not compiled")
+                .containsExactly(false, true);
+        assertThat(callers.text())
+                .contains("0 in main sources, 0 in tests")
+                .contains("Not complete")
+                .doesNotContain("Complete from the compiled classes");
+        assertThat(callers.note())
+                .isEqualTo("src/integration has no compiled classes, so the calls made there are missing: search it for"
+                        + " calls too");
+
+        GraphAck renamed = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
+        assertThat(renamed.error()).isNull();
+        assertThat(renamed.text())
+                .contains("Not complete: the note below names the modules with no compiled classes.")
+                .doesNotContain("no search needed", "the task is done");
+        assertThat(renamed.uncompiled()).containsExactly("src/integration");
+
+        root = calcIt(Files.createDirectories(tmp.resolve("compiled")));
+        assertThat(GraphRunner.compileStale(root).skipped())
+                .as("the main sources compile")
+                .isNull();
+        Path it = root.resolve("src/integration/java/demo");
+        Path testClasses = Files.createDirectories(root.resolve("target/test-classes"));
+        int exit = ToolProvider.getSystemJavaCompiler()
+                .run(
+                        null,
+                        OutputStream.nullOutputStream(),
+                        OutputStream.nullOutputStream(),
+                        "-g",
+                        "-d",
+                        testClasses.toString(),
+                        "-cp",
+                        root.resolve("target/classes").toString(),
+                        it.resolve("CalcIT.java").toString());
+        assertThat(exit).isZero();
+        Files.writeString(testClasses.resolve(".jk-suites"), "test,integration");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(root, JkBuildParser.parse(Files.readString(root.resolve("jk.toml"))));
+        ModuleInputProvenance.recordClasses(
+                root, graph, Set.of(root.toAbsolutePath().normalize()));
+        GraphAck compiled = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        assertThat(compiled.text())
+                .contains("CalcIT.doubledReturnsTwiceTheValue()")
+                .contains("Complete from the compiled classes");
+        GraphAck done = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
+        assertThat(done.text()).contains("1 call").contains("the task is done");
+        assertThat(it.resolve("CalcIT.java")).content().contains("new Calc().twice(2)");
+    }
+
+    /**
      * Compiled facts the engine finds cached but the worker cannot read by the time it asks are
      * indexed and asked again: the answer still holds the calls.
      */
@@ -427,6 +490,16 @@ class GraphRunnerTest {
                     }
                 }
                 """);
+        return dir;
+    }
+
+    /** {@link #calc} with its only caller in the integration suite; the default suite's test calls nothing. */
+    private static Path calcIt(Path dir) throws Exception {
+        calc(dir);
+        Path it = Files.createDirectories(dir.resolve("src/integration/java/demo"));
+        Path test = dir.resolve("src/test/java/demo/CalcTest.java");
+        Files.writeString(it.resolve("CalcIT.java"), Files.readString(test).replace("CalcTest", "CalcIT"));
+        Files.writeString(test, "package demo;\n\nclass CalcTest {}\n");
         return dir;
     }
 

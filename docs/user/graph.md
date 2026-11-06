@@ -78,8 +78,11 @@ text declares, and every other file of the module keeps its compiled facts, so t
 still there mid-edit; the answer names the edited files. A module's tests that were never
 compiled are compiled the same way, in a job of their own after the main sources (in the history
 as a `compile`), so a fresh checkout's callers include its tests; when that compile cannot run, the
-line names their directory (`core/src/test`). An edited test is not compiled for a question: it is
-named with the edited files. A module whose class
+line names their directory (`core/src/test`). Only the default suite is compiled for a question:
+another suite (`core/src/integration`) is named the same way until a run that compiles it, such as
+`jk guard`, leaves its classes, and `core/src/guard` is always named, since the graph does not read
+the guard suite's classes. An edited test is not compiled for a question: it is named with the
+edited files. A module whose class
 files the build did not write, or that is being built while the graph refreshes, contributes what
 its sources declare, and the answer says which modules those are. `jk build` brings the compiled
 facts back. An unchanged tree answers from
@@ -268,8 +271,9 @@ still cannot be told apart (a method reference to the class's own method, a call
 block, which the compiler copies) is left alone and quoted under the answer, as are the uses of the
 name in a module that may call it but has no compiled classes, so the agent edits those few by hand.
 A rename compiles a never-compiled module, and its tests, first, as a question does; when that
-compile cannot run, the answer says it is not complete, never that the task is done, and the note
-names the modules and test directories whose calls it could not see.
+compile cannot run, or a suite a question does not compile has no classes, the answer says it is
+not complete, never that the task is done, and the note names the modules and test directories
+whose calls it could not see.
 
 It refuses, changing nothing, when a source was edited since the build (build first), when a
 related type already declares the new name with the same parameters, or when the method overrides
