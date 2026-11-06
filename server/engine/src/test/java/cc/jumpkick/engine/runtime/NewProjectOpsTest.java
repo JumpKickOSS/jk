@@ -4,6 +4,8 @@ package cc.jumpkick.engine.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.jdk.InstalledJdk;
+import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
@@ -80,7 +82,17 @@ class NewProjectOpsTest {
         // targetDir wins over parentDir/name for the write location.
         Path custom = temp.resolve("elsewhere/custom-home");
         var created = NewProjectOps.create(new NewProjectOps.Request(
-                "x", temp.toString(), "com.example", "java", "simple", null, true, Map.of(), true, custom.toString()));
+                "x",
+                temp.toString(),
+                "com.example",
+                "java",
+                "simple",
+                null,
+                true,
+                Map.of(),
+                true,
+                custom.toString(),
+                null));
         assertThat(created.path()).isEqualTo(custom.toAbsolutePath().normalize());
         assertThat(custom.resolve("jk.toml")).exists();
         assertThat(temp.resolve("x")).doesNotExist();
@@ -98,7 +110,8 @@ class NewProjectOpsTest {
                         true,
                         Map.of(),
                         false,
-                        "/etc/pwned")))
+                        "/etc/pwned",
+                        null)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("HOME");
     }
@@ -263,6 +276,124 @@ class NewProjectOpsTest {
     }
 
     @Test
+    void a_relative_template_path_resolves_against_the_request_s_cwd_for_the_form_and_the_scaffold(@TempDir Path temp)
+            throws Exception {
+        Path work = Files.createDirectories(temp.resolve("work"));
+        javaTemplate(work.resolve("mine.g8"));
+        Path parent = Files.createDirectories(temp.resolve("apps"));
+
+        NewProjectOps.TemplateForm form = NewProjectOps.templateForm("./mine.g8", null, work);
+        assertThat(form.id()).isEqualTo(work.resolve("mine.g8").toString());
+
+        Path root = NewProjectOps.create(request(parent, "widget", "mine.g8", true, Map.of(), work.toString()))
+                .path();
+        assertThat(root.resolve("jk.toml")).content().contains("name = \"widget\"");
+
+        // The project's parent is not the base: there the same ref names nothing.
+        assertThatThrownBy(() -> NewProjectOps.create(request(parent, "other", "./mine.g8", true, Map.of(), null)))
+                .hasMessageContaining("unknown template ref: ./mine.g8");
+        // Without a cwd the base is parentDir.
+        javaTemplate(parent.resolve("theirs.g8"));
+        assertThat(NewProjectOps.create(request(parent, "third", "theirs.g8", true, Map.of(), null))
+                        .path()
+                        .resolve("jk.toml"))
+                .exists();
+    }
+
+    @Test
+    void a_template_directory_under_cwd_wins_over_the_catalogue_name_it_shares(@TempDir Path temp) throws Exception {
+        Path work = Files.createDirectories(temp.resolve("work"));
+        javaTemplate(work.resolve("app"));
+        Files.createDirectories(work.resolve("library/src"));
+
+        assertThat(NewProjectOps.templateForm("app", null, work).id())
+                .isEqualTo(work.resolve("app").toString());
+        // A directory without a template in it leaves the name to the catalogue.
+        assertThat(NewProjectOps.templateForm("library", null, work).id()).isEqualTo("java/none/library");
+    }
+
+    @Test
+    void a_directory_counts_as_a_template_when_it_holds_a_descriptor_properties_or_a_giter8_tree(@TempDir Path cwd)
+            throws IOException {
+        Files.createDirectories(cwd.resolve("g8/src/main/g8"));
+        Files.createDirectories(cwd.resolve("described"));
+        Files.writeString(cwd.resolve("described/.jk-template.toml"), "name = \"described\"\n");
+        Files.createDirectories(cwd.resolve("props"));
+        Files.writeString(cwd.resolve("props/default.properties"), "name=props\n");
+        Files.createDirectories(cwd.resolve("app/src"));
+
+        assertThat(NewProjectOps.isTemplateRoot(cwd.resolve("described"))).isTrue();
+        assertThat(NewProjectOps.localTemplate("./g8", cwd)).contains(cwd.resolve("g8"));
+        assertThat(NewProjectOps.localTemplate("described", cwd)).contains(cwd.resolve("described"));
+        assertThat(NewProjectOps.localTemplate("props", cwd)).contains(cwd.resolve("props"));
+        assertThat(NewProjectOps.localTemplate(cwd.resolve("props").toString(), Path.of("/")))
+                .contains(cwd.resolve("props"));
+        // Not a template, or not there: the catalogue, a remote or an error decides.
+        assertThat(NewProjectOps.localTemplate("app", cwd)).isEmpty();
+        assertThat(NewProjectOps.localTemplate("spring-boot/hello", cwd)).isEmpty();
+        assertThat(NewProjectOps.localTemplate("https://github.com/acme/t.g8", cwd))
+                .isEmpty();
+    }
+
+    @Test
+    void a_standalone_project_targets_the_default_jdk_s_major_unless_java_is_answered(@TempDir Path temp)
+            throws Exception {
+        Path g8 = javaTemplate(temp.resolve("leveled.g8"));
+        Path parent = Files.createDirectories(temp.resolve("apps"));
+        JdkInventory inventory = new JdkInventory(temp.resolve("jdks"), temp.resolve("jk-jdks.toml"));
+        inventory.setDefault(new InstalledJdk("temurin-21.0.7", temp.resolve("jdks/temurin-21.0.7")));
+        NewProjectJava.inventory(() -> inventory);
+        try {
+            Path standalone = NewProjectOps.create(request(parent, "solo", g8.toString(), true, Map.of(), null))
+                    .path();
+            assertThat(standalone.resolve("jk.toml")).content().contains("java = 21");
+
+            Path answered = NewProjectOps.create(
+                            request(parent, "pinned", g8.toString(), true, Map.of("java", "17"), null))
+                    .path();
+            assertThat(answered.resolve("jk.toml")).content().contains("java = 17");
+
+            // A module keeps what its caller sent, else the template's own.
+            Path module = NewProjectOps.create(request(parent, "member", g8.toString(), false, Map.of(), null))
+                    .path();
+            assertThat(module.resolve("jk.toml")).content().contains("java = 25");
+        } finally {
+            NewProjectJava.inventory(null);
+        }
+
+        NewProjectJava.inventory(() -> new JdkInventory(temp.resolve("none"), temp.resolve("none.toml")));
+        try {
+            Path plain = NewProjectOps.create(request(parent, "plain", g8.toString(), true, Map.of(), null))
+                    .path();
+            assertThat(plain.resolve("jk.toml")).content().contains("java = 25");
+        } finally {
+            NewProjectJava.inventory(null);
+        }
+    }
+
+    /** A Giter8 template at {@code g8} whose {@code jk.toml} carries its name and {@code java} (25 by default). */
+    private static Path javaTemplate(Path g8) throws IOException {
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve("default.properties"), "name=demo\njava=25\n");
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), """
+                name = "$name$"
+                java = $java$
+                """);
+        return g8;
+    }
+
+    private static NewProjectOps.Request request(
+            Path parent,
+            String name,
+            String template,
+            boolean standalone,
+            Map<String, String> params,
+            @Nullable String cwd) {
+        return new NewProjectOps.Request(
+                name, parent.toString(), "com.acme", null, null, template, standalone, params, false, null, cwd);
+    }
+
+    @Test
     void the_shipped_cli_template_scaffolds_its_simple_layout_with_no_layout_given(@TempDir Path temp)
             throws Exception {
         Path cli = RepoRoot.find(NewProjectOpsTest.class).resolve("templates/java/none/cli.g8");
@@ -399,6 +530,7 @@ class NewProjectOpsTest {
                         false,
                         params,
                         false,
+                        null,
                         null))
                 .path();
     }
@@ -429,6 +561,7 @@ class NewProjectOpsTest {
                         false,
                         params,
                         false,
+                        null,
                         null))
                 .path();
         try (var files = Files.walk(root)) {

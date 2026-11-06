@@ -30,6 +30,7 @@ import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -59,6 +60,12 @@ public final class NewProjectOps {
     /** The template parameter (and {@code default.properties} key) naming a template's layout. */
     static final String TEMPLATE_LAYOUT_PARAM = "jk_layout";
 
+    /**
+     * One project to create. {@code cwd} is the caller's working directory, the one base a relative
+     * template path resolves against (as it does when the form is built); {@code null} means
+     * {@code parentDir}. A {@code standalone} project with no {@code java} answer targets the
+     * machine's default JDK ({@link NewProjectJava}); a module keeps whatever its caller sent.
+     */
     public record Request(
             @Nullable String name,
             @Nullable String parentDir,
@@ -69,8 +76,9 @@ public final class NewProjectOps {
             boolean standalone,
             Map<String, String> templateParams,
             boolean relaxParent,
-            @Nullable String targetDir) {
-        /** HTTP/MCP compact shape. */
+            @Nullable String targetDir,
+            @Nullable String cwd) {
+        /** HTTP compact shape: a standalone project, relative template paths against {@code parentDir}. */
         public Request(
                 @Nullable String name,
                 @Nullable String parentDir,
@@ -78,7 +86,7 @@ public final class NewProjectOps {
                 @Nullable String lang,
                 @Nullable String layout,
                 @Nullable String template) {
-            this(name, parentDir, group, lang, layout, template, true, Map.of(), false, null);
+            this(name, parentDir, group, lang, layout, template, true, Map.of(), false, null, null);
         }
     }
 
@@ -98,6 +106,7 @@ public final class NewProjectOps {
     private record Prepared(
             String name,
             Path parent,
+            Path cwd,
             Path target,
             String group,
             @Nullable String lang,
@@ -198,26 +207,18 @@ public final class NewProjectOps {
         if (prep.group() != null && !prep.group().isBlank()) {
             params.putIfAbsent("group", prep.group());
         }
+        if (req.standalone() && !params.containsKey("java")) {
+            String host = NewProjectJava.hostMajor();
+            if (host != null) params.put("java", host);
+        }
         boolean offline = SessionContext.current().config().offlineOr(false);
-        Path templateRoot;
-        Path extracted = null;
         // Resolution lang stays null unless the user asked: a bare name then searches every
         // language, so a kotlin-only template is reached without --lang.
         String langName = prep.lang();
-        var spec = resolveIndexed(prep.template(), langName, prep.parent());
-        if (spec.isPresent() && inJar(spec.get())) {
-            extracted = extract(spec.get());
-            templateRoot = extracted;
-        } else if (spec.isPresent() && spec.get().root() != null) {
-            templateRoot = spec.get().root();
-        } else {
-            templateRoot = resolveTemplate(prep.template(), langName, prep.parent());
-            // resolveTemplate may have freshened the official cache; re-resolve so layout
-            // metadata is honored identically on cold and warm caches.
-            if (spec.isEmpty()) {
-                spec = resolveIndexed(prep.template(), langName, prep.parent());
-            }
-        }
+        Located located = locate(prep.template(), langName, prep.cwd());
+        Path templateRoot = located.root();
+        Path extracted = located.extracted();
+        Optional<TemplateSpec> spec = located.spec();
         Layout layout = templateLayout(req.layout(), params, templateRoot);
         params.put(TEMPLATE_LAYOUT_PARAM, layout.token());
         if (layout == Layout.SIMPLE) {
@@ -316,7 +317,9 @@ public final class NewProjectOps {
                 ? NewProjectStep.DEFAULT_TEMPLATE
                 : req.template().strip();
 
-        return new Prepared(name, parent, target, group, lang, template, req);
+        String cwdRaw = req.cwd() == null ? "" : req.cwd().strip();
+        Path cwd = cwdRaw.isEmpty() ? parent : PathUtil.resolveUserPath(cwdRaw);
+        return new Prepared(name, parent, cwd, target, group, lang, template, req);
     }
 
     /**
@@ -333,32 +336,82 @@ public final class NewProjectOps {
 
     /**
      * Resolves {@code ref} as a create would, reads its descriptor (the catalogue lint included)
-     * and its default layout. Writes nothing; a template in a jar is extracted and removed again.
+     * and its default layout. Writes nothing; a template in a jar is extracted and removed again. A
+     * template directory's id is its absolute path, so a scaffold that sends the id back reaches the
+     * same directory whatever its own base.
      */
     public static TemplateForm templateForm(String ref, @Nullable String lang, Path cwd) throws IOException {
         String langName = lang == null || lang.isBlank() ? null : parseLang(lang);
-        Optional<TemplateSpec> spec = resolveIndexed(ref, langName, cwd);
-        Path root;
-        Path extracted = null;
-        if (spec.isPresent() && inJar(spec.get())) {
-            extracted = extract(spec.get());
-            root = extracted;
-        } else if (spec.isPresent() && spec.get().root() != null) {
-            root = Objects.requireNonNull(spec.get().root());
-        } else {
-            root = resolveTemplate(ref, langName, cwd);
-            if (spec.isEmpty()) spec = resolveIndexed(ref, langName, cwd);
-        }
+        Located located = locate(ref, langName, cwd);
+        Path root = located.root();
+        Path extracted = located.extracted();
+        Optional<TemplateSpec> spec = located.spec();
         try {
             JkTemplateToml.Meta meta = JkTemplateToml.load(root).orElse(null);
             List<String> layouts = spec.map(TemplateSpec::layouts)
                     .orElse(meta == null ? List.of(Layout.TOKEN_TRADITIONAL, Layout.TOKEN_SIMPLE) : meta.layouts());
             String preferred = templateLayout(null, Map.of(), root).token();
             String defaultLayout = layouts.contains(preferred) ? preferred : layouts.getFirst();
-            return new TemplateForm(spec.map(TemplateSpec::id).orElse(ref), layouts, defaultLayout, meta);
+            return new TemplateForm(located.id(ref), layouts, defaultLayout, meta);
         } finally {
             if (extracted != null) PathUtil.deleteRecursivelyOrThrow(extracted);
         }
+    }
+
+    /**
+     * Where a template ref led: the tree to read, the catalogue entry when it is one, and the temp
+     * copy to delete when it came out of a jar.
+     */
+    private record Located(
+            Path root,
+            Optional<TemplateSpec> spec,
+            @Nullable Path extracted,
+            boolean local) {
+        /** The id a form answers with: a directory's absolute path, a catalogue entry's id, else the ref. */
+        String id(String ref) {
+            if (local) return root.toString();
+            return spec.map(TemplateSpec::id).orElse(ref);
+        }
+    }
+
+    /**
+     * Resolves {@code ref} against {@code cwd}: a template directory there first (so a catalogue
+     * name that is also a template directory under {@code cwd} is the directory), then the
+     * catalogue, then a remote clone.
+     */
+    private static Located locate(String ref, @Nullable String lang, Path cwd) throws IOException {
+        Optional<Path> local = localTemplate(ref, cwd);
+        if (local.isPresent()) return new Located(local.get(), Optional.empty(), null, true);
+        Optional<TemplateSpec> spec = resolveIndexed(ref, lang, cwd);
+        if (spec.isPresent() && inJar(spec.get())) {
+            Path extracted = extract(spec.get());
+            return new Located(extracted, spec, extracted, false);
+        }
+        if (spec.isPresent() && spec.get().root() != null) {
+            return new Located(Objects.requireNonNull(spec.get().root()), spec, null, false);
+        }
+        Path root = resolveTemplate(ref, lang, cwd);
+        // resolveTemplate may have freshened the official cache; re-resolve so layout metadata is
+        // honored identically on cold and warm caches.
+        if (spec.isEmpty()) spec = resolveIndexed(ref, lang, cwd);
+        return new Located(root, spec, null, false);
+    }
+
+    /**
+     * {@code ref} as a template directory: absolute, or relative to {@code cwd}. A directory counts
+     * only when it holds a template ({@link #isTemplateRoot}), so a catalogue name that matches some
+     * other directory still reaches the catalogue; a URL is never a directory.
+     */
+    static Optional<Path> localTemplate(String ref, Path cwd) {
+        String r = ref.strip();
+        if (r.isEmpty() || r.contains("://") || r.startsWith("git@")) return Optional.empty();
+        Path dir;
+        try {
+            dir = cwd.resolve(r).toAbsolutePath().normalize();
+        } catch (InvalidPathException e) {
+            return Optional.empty();
+        }
+        return isTemplateRoot(dir) ? Optional.of(dir) : Optional.empty();
     }
 
     /** A template a jar holds (a plugin's, or one jk ships), which is extracted before it is read. */
@@ -409,14 +462,8 @@ public final class NewProjectOps {
     }
 
     static Path resolveTemplate(String ref, @Nullable String lang, Path cwd) throws IOException {
-        Path asPath = Path.of(ref);
-        if (asPath.isAbsolute() && isTemplateRoot(asPath)) {
-            return asPath.normalize();
-        }
-        if (cwd != null) {
-            Path rel = cwd.resolve(ref).normalize();
-            if (Files.isDirectory(rel) && isTemplateRoot(rel)) return rel;
-        }
+        Optional<Path> local = localTemplate(ref, cwd);
+        if (local.isPresent()) return local.get();
 
         boolean twoSegments = ref.matches("[a-z][a-z0-9-]*/[a-z][a-z0-9-]*");
         if (ref.matches("[a-z][a-z0-9-]*") || twoSegments || ref.matches("[a-z]+/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")) {
@@ -550,11 +597,12 @@ public final class NewProjectOps {
         }
     }
 
+    /** A template's directory: it holds a {@code .jk-template.toml}, a {@code default.properties} or {@code src/main/g8}. */
     static boolean isTemplateRoot(Path p) {
         if (p == null || !Files.isDirectory(p)) return false;
-        if (Files.isRegularFile(p.resolve("default.properties"))) return true;
-        if (Files.isDirectory(p.resolve("src/main/g8"))) return true;
-        return Files.isRegularFile(p.resolve("src/main/g8/default.properties"));
+        return Files.isRegularFile(p.resolve(".jk-template.toml"))
+                || Files.isRegularFile(p.resolve("default.properties"))
+                || Files.isDirectory(p.resolve("src/main/g8"));
     }
 
     /**

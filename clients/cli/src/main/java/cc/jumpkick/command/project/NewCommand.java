@@ -103,12 +103,15 @@ public final class NewCommand implements CliCommand {
         return List.of(Param.of("dir", Arity.ZERO_OR_ONE, "Target directory. Default: <dir>/<name>."));
     }
 
-    /** {@code jk new -t <ref> --help}: the template's own questions, generated from its form. */
+    /**
+     * {@code jk new -t <ref> --help}: the template's own questions, generated from its form. A
+     * relative template path is the working directory's, {@code -C}/{@code --dir} included.
+     */
     @Override
     public String helpFor(List<String> args) {
         String template = optionValue(args, "-t", "--template");
         if (template == null || template.isBlank()) return "";
-        Path cwd = Path.of(".").toAbsolutePath().normalize();
+        Path cwd = new GlobalOptions().workingDir();
         try {
             NewProjectFormAck ack = EngineClient.newProjectForm(
                     EnginePaths.current(),
@@ -368,14 +371,6 @@ public final class NewCommand implements CliCommand {
         }
         Map<String, String> params = NewTemplate.params(templateParams);
         if (params == null) return Exit.USAGE;
-        String level = jdk == null ? null : javaLevel(jdk);
-        if (level != null) params.putIfAbsent("java", level);
-        // A module inherits the workspace's compile target, which may sit below its JDK.
-        if (parent != null && parent.javaRelease() > 0) {
-            params.putIfAbsent("java", Integer.toString(parent.javaRelease()));
-        }
-        // A template directory is the working directory's, wherever the project goes.
-        if (templateRef != null) templateRef = NewTemplate.localRef(templateRef, cwd);
         Asker asker = formAsker();
         return runForm(asker, cwd, params);
     }
@@ -444,22 +439,11 @@ public final class NewCommand implements CliCommand {
             return Exit.INTERRUPTED;
         }
         NewForm.Answered a = answered.get();
-        // With no positional the project goes under the settled directory, which may not be the cwd.
-        Path base = cwd;
-        String dir = a.text("dir");
-        if (directory == null && dir != null && !dir.isBlank()) {
-            base = cwd.resolve(dir).normalize();
-            if (!base.equals(defaultParent)) this.parent = resolveParent(base);
-        }
+        Path base = settledBase(cwd, a.text("dir"), defaultParent);
+        Map<String, String> settled = settledParams(a.params());
         if (Files.exists(NewArgs.resolveTarget(directory, base, a.name()).resolve(ManifestPaths.MANIFEST))) {
             NewChrome.projectExists(a.name(), parent != null, init);
             return Exit.CONFIG;
-        }
-        Map<String, String> settled = new LinkedHashMap<>(a.params());
-        // A standalone project targets the machine's default JDK; a module keeps the workspace's level.
-        if (parent == null && !settled.containsKey("java")) {
-            String host = NewHostJava.major();
-            if (host != null) settled.put("java", host);
         }
         List<String> pairs = new ArrayList<>();
         settled.forEach((k, v) -> pairs.add(k + "=" + v));
@@ -472,9 +456,42 @@ public final class NewCommand implements CliCommand {
                 a.text("layout"),
                 directory,
                 base,
+                cwd,
                 parent,
                 global.offline,
                 frontend));
+    }
+
+    /**
+     * Where the project goes once the form settled: with no positional, under the directory answer,
+     * which may not be the cwd. A directory other than {@code defaultParent} may sit in another
+     * workspace, or in none, so the enclosing project is looked up again from there.
+     */
+    Path settledBase(Path cwd, @Nullable String dir, Path defaultParent) {
+        if (directory == null && dir != null && !dir.isBlank()) {
+            Path base = cwd.resolve(dir).normalize();
+            if (!base.equals(defaultParent)) this.parent = resolveParent(base);
+            return base;
+        }
+        return cwd;
+    }
+
+    /**
+     * The template answers the scaffold carries, once the form settled where the project goes and
+     * so which workspace, if any, encloses it (a directory answer may reveal another one, or none).
+     * The {@code java} answer is a {@code -p java=N}, else {@code --jdk}, else a module's workspace
+     * level; a standalone project left without one gets the engine's, the major of the machine's
+     * default JDK.
+     */
+    Map<String, String> settledParams(Map<String, String> answered) {
+        Map<String, String> settled = new LinkedHashMap<>(answered);
+        String level = jdk == null ? null : javaLevel(jdk);
+        if (level != null) settled.putIfAbsent("java", level);
+        // A module inherits the workspace's compile target, which may sit below its JDK.
+        if (parent != null && parent.javaRelease() > 0) {
+            settled.putIfAbsent("java", Integer.toString(parent.javaRelease()));
+        }
+        return settled;
     }
 
     /** A module is written in its workspace's language unless {@code --lang} says otherwise. */

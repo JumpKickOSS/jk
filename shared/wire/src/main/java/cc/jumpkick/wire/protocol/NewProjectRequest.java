@@ -8,8 +8,9 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Scaffold a project from a template (CLI {@code jk new}, HTTP, MCP); no template is the default
- * one. {@code targetDir} rides only when set.
+ * Scaffold a project from a template ({@code jk new}); no template is the default one.
+ * {@code targetDir} and {@code cwd} ride only when set. {@code cwd} is the caller's working
+ * directory, which a relative template path resolves against; without it, {@code parentDir}.
  */
 public record NewProjectRequest(
         @Nullable String name,
@@ -21,7 +22,8 @@ public record NewProjectRequest(
         boolean standalone,
         Map<String, String> templateParams,
         boolean relaxParent,
-        @Nullable String targetDir) {
+        @Nullable String targetDir,
+        @Nullable String cwd) {
 
     public NewProjectRequest {
         templateParams =
@@ -40,6 +42,7 @@ public record NewProjectRequest(
                 .map("templateParams", templateParams)
                 .bool("relaxParent", relaxParent)
                 .optionalNonBlankString("targetDir", targetDir)
+                .optionalNonBlankString("cwd", cwd)
                 .finish();
     }
 
@@ -54,6 +57,7 @@ public record NewProjectRequest(
                 Jsonl.bool(json, "standalone", true),
                 Jsonl.strMap(json, "templateParams"),
                 Jsonl.bool(json, "relaxParent", false),
-                Jsonl.str(json, "targetDir"));
+                Jsonl.str(json, "targetDir"),
+                Jsonl.str(json, "cwd"));
     }
 }
