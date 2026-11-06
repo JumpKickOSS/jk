@@ -362,6 +362,29 @@ public record JkBuild(
                 library);
     }
 
+    /** This build with its {@code [variants]} replaced. */
+    public JkBuild withVariants(Variants variants) {
+        return new JkBuild(
+                project,
+                dependencies,
+                repositories,
+                profiles,
+                features,
+                workspace,
+                manifest,
+                plugins,
+                application,
+                nativeConfig,
+                pluginConfigs,
+                build,
+                format,
+                variants,
+                install,
+                publish,
+                image,
+                library);
+    }
+
     /** This build with its {@code [features]} replaced. */
     public JkBuild withFeatures(Features features) {
         return new JkBuild(

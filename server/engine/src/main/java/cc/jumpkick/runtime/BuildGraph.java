@@ -317,7 +317,7 @@ public final class BuildGraph {
                 for (Dependency d : ModuleOrder.declared(m, scope)) {
                     PathSource source = d.pathSource();
                     if (source == null) continue;
-                    BuildUnit target = units.get(canonical(moduleDir.resolve(source.rawPath())));
+                    BuildUnit target = units.get(canonical(source.dir(moduleDir)));
                     if (target == null || target.dir().equals(moduleDir)) continue;
                     errors.add(m.project().name() + ": `" + d.library() + " = { path = \"" + source.rawPath()
                             + "\" }` names workspace member " + target.coord() + "; write `" + d.library()

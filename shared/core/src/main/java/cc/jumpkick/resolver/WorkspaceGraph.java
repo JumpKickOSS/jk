@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.PathTargets;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -196,7 +197,8 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
                 if (rootBuild != null) {
                     build = WorkspaceLoader.inheritFromRoot(build, rootBuild);
                 }
-                modules.add(new LoadedModule(selection.apply(build), lock));
+                JkBuild selected = selection.apply(build);
+                modules.add(new LoadedModule(dir == null ? selected : PathTargets.named(selected, dir), lock));
             }
         }
         return modules;

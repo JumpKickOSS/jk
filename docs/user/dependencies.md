@@ -430,7 +430,9 @@ mylib = { git = "https://github.com/acme/mylib", tag = "v1.4.0" }
 local = { path = "../sibling" }   # local project with its own jk.toml
 ```
 
-The lock pins the resolved git SHA. Tag moves fail loudly until `jk update -g`.
+The lock pins the resolved git SHA. Tag moves fail loudly until `jk update -g`. A `path` is relative
+to the directory of the `jk.toml` that declares it, a workspace member's own included; `jk tree`
+draws it as the coordinate its target publishes.
 
 Workspace siblings: [Workspaces](workspaces.md).
 

@@ -440,6 +440,46 @@ public record Dependency(
                 impliedBy);
     }
 
+    /** The same edge naming its target {@code group:artifact} {@code module} instead. */
+    public Dependency withModule(String module) {
+        return new Dependency(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures,
+                classifier,
+                exclusions,
+                impliedBy);
+    }
+
+    /** The same edge to the local project at {@code pathSource} instead. */
+    public Dependency withPathSource(PathSource pathSource) {
+        return new Dependency(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                Objects.requireNonNull(pathSource, "pathSource"),
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures,
+                classifier,
+                exclusions,
+                impliedBy);
+    }
+
     /** The same edge as the one a plugin's {@code table} implies rather than a declared one. */
     public Dependency withImpliedBy(String table) {
         return new Dependency(

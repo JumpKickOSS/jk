@@ -63,7 +63,7 @@ final class PathSourceMaterializer {
     }
 
     Materialized materialize(PathSource source) throws IOException, InterruptedException {
-        Path projectDir = lockRootDir.resolve(source.rawPath()).normalize();
+        Path projectDir = source.dir(lockRootDir);
         if (!Files.isDirectory(projectDir)) {
             throw new IOException(
                     "path dependency `" + source.rawPath() + "` does not resolve to a directory (" + projectDir + ")");
