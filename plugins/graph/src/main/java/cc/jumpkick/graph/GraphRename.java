@@ -6,13 +6,10 @@ import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.extract.Extractors;
-import cc.jumpkick.config.ManifestOutline;
 import cc.jumpkick.guard.facts.CallSite;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.MethodFacts;
-import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.Dependency;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -169,7 +166,7 @@ final class GraphRename {
         if (clash != null) return clash;
         Run run = new Run(root, graph, classes, h, target, family, to);
         run.tally();
-        run.unchecked(indexes);
+        run.unchecked(indexes, w.reach());
         run.edit();
         if (run.annotated > run.overriding) {
             return "Not renamed: " + display(target) + " overrides a method outside the workspace (@Override with no"
@@ -302,10 +299,8 @@ final class GraphRename {
         }
 
         /** Quotes the uses of the name in modules that may call the method but have no compiled classes. */
-        void unchecked(List<GraphBuild.ClassIndex> indexes) {
-            String ownerRel = rel(Objects.requireNonNull(classes.get(target.owner())));
-            Set<String> reaching = ownerRel == null ? null : reaching(root, graph.modules(), ownerRel);
-            for (String module : unbuilt(graph, indexes, reaching)) {
+        void unchecked(List<GraphBuild.ClassIndex> indexes, ModuleReach modules) {
+            for (String module : unbuilt(graph, indexes, reach(modules))) {
                 String prefix = module.substring(0, module.lastIndexOf(' '));
                 String set = module.substring(module.lastIndexOf(' ') + 1);
                 for (String rel : jvmFiles) {
@@ -320,6 +315,29 @@ final class GraphRename {
                     if (!uses.isEmpty()) unchecked.put(rel, quote(text, tokens, uses));
                 }
             }
+        }
+
+        /**
+         * The modules that can call the method: those that see a module declaring it or a method it
+         * overrides, since a call through the supertype runs it too; {@code null} for every module,
+         * as when a supertype the workspace's classes do not hold may declare it.
+         */
+        @Nullable
+        Set<String> reach(ModuleReach modules) {
+            Set<String> homes = new TreeSet<>();
+            for (String type : family.keySet()) {
+                homes.add(Objects.requireNonNull(classes.get(type)).prefix());
+                for (String s : h.supers(type)) {
+                    ClassFacts cf = Objects.requireNonNull(classes.get(s)).facts();
+                    List<String> up = new ArrayList<>(cf.interfaces());
+                    String superName = cf.superName();
+                    if (superName != null) up.add(superName);
+                    for (String u : up) {
+                        if (!classes.containsKey(u) && ModuleReach.outsideMayDeclare(u, old)) return null;
+                    }
+                }
+            }
+            return modules.reaching(homes, graph.modules());
         }
 
         /** Chooses each file's edits; nothing is written yet. */
@@ -573,41 +591,6 @@ final class GraphRename {
     private static boolean inModule(Modules modules, String rel, String prefix, String set) {
         Modules.Module m = modules.of(rel);
         return (m == null ? "" : m.prefix()).equals(prefix) && set.equals(ClassSources.set(modules, rel));
-    }
-
-    /**
-     * The modules that can call into the one holding {@code rel}: it and every module that depends
-     * on it, directly or through another, as their manifests say; {@code null} when a manifest
-     * is not TOML, so every module counts.
-     */
-    static @Nullable Set<String> reaching(Path root, Modules modules, String rel) {
-        Modules.Module home = modules.of(rel);
-        if (home == null) return null;
-        Map<String, String> prefixByName = new HashMap<>();
-        Map<String, Set<String>> dependents = new HashMap<>();
-        for (Modules.Module m : modules.list()) {
-            try {
-                ManifestOutline outline = ManifestOutline.read(ManifestPaths.manifestIn(root.resolve(m.prefix())));
-                if (outline.name() != null) prefixByName.put(outline.name(), m.prefix());
-                for (String dep : outline.workspaceDependencies()) {
-                    String name = dep.substring(dep.lastIndexOf(Dependency.WORKSPACE_GROUP_SEPARATOR) + 1);
-                    dependents.computeIfAbsent(name, k -> new TreeSet<>()).add(m.prefix());
-                }
-            } catch (IOException | RuntimeException unreadable) {
-                return null;
-            }
-        }
-        Map<String, String> nameByPrefix = new HashMap<>();
-        prefixByName.forEach((name, prefix) -> nameByPrefix.put(prefix, name));
-        Set<String> out = new LinkedHashSet<>(List.of(home.prefix()));
-        List<String> todo = new ArrayList<>(out);
-        for (int i = 0; i < todo.size(); i++) {
-            String name = nameByPrefix.get(todo.get(i));
-            for (String p : dependents.getOrDefault(name, Set.of())) {
-                if (out.add(p)) todo.add(p);
-            }
-        }
-        return out;
     }
 
     /** The method an address names, or why there is none. */
