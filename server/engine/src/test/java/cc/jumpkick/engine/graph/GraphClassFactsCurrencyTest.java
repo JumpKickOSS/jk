@@ -127,8 +127,60 @@ class GraphClassFactsCurrencyTest {
         Files.write(testClasses.resolve("AppTest.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
         assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
                 .isEmpty();
-        assertThat(GraphRunner.testSet("core", false)).isEqualTo("core/src/test");
-        assertThat(GraphRunner.testSet("core", true)).isEqualTo("core/test");
+        assertThat(GraphRunner.testSet("core", false, "test")).isEqualTo("core/src/test");
+        assertThat(GraphRunner.testSet("core", true, "integration")).isEqualTo("core/integration");
+    }
+
+    /**
+     * A test compile leaves only the default suite's classes, so another suite's sources are named
+     * until a compile that selected it ({@code jk guard} compiles the integration suite too) leaves
+     * its classes; the guard suite's classes are never read, so it is always named.
+     */
+    @Test
+    void a_suite_the_test_classes_were_not_compiled_for_is_named_uncompiled(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "t"
+                name = "app"
+                version = "0.1.0"
+                java = 25
+                """);
+        Path main = Files.createDirectories(tmp.resolve("src/main/java/demo"));
+        Files.writeString(main.resolve("App.java"), "package demo; public class App {}\n");
+        Path classes = Files.createDirectories(BuildLayout.moduleTargetDir(tmp).resolve("classes/demo"));
+        Files.write(classes.resolve("App.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
+        Path test = Files.createDirectories(tmp.resolve("src/test/java/demo"));
+        Files.writeString(test.resolve("AppTest.java"), "package demo; class AppTest {}\n");
+        Path it = Files.createDirectories(tmp.resolve("src/integration/java/demo"));
+        Files.writeString(it.resolve("AppIT.java"), "package demo; class AppIT {}\n");
+        Path testClasses =
+                Files.createDirectories(BuildLayout.moduleTargetDir(tmp).resolve("test-classes"));
+        Files.createDirectories(testClasses.resolve("demo"));
+        Files.write(testClasses.resolve("demo/AppTest.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+                .as("no suite marker: the default suite's classes")
+                .containsExactly("src/integration");
+
+        Files.writeString(testClasses.resolve(".jk-suites"), "test");
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+                .containsExactly("src/integration");
+        Files.writeString(testClasses.resolve(".jk-suites"), "test,integration");
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+                .as("compiled with the default suite")
+                .isEmpty();
+        Files.writeString(testClasses.resolve(".jk-suites"), "integration");
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+                .as("a run of the integration suite alone leaves the default suite's tests uncompiled")
+                .containsExactly("src/test");
+
+        Files.writeString(testClasses.resolve(".jk-suites"), "test,integration");
+        Path guard = Files.createDirectories(tmp.resolve("src/guard/java/demo"));
+        Files.writeString(guard.resolve("AppRules.java"), "package demo; class AppRules {}\n");
+        Path guardClasses =
+                Files.createDirectories(BuildLayout.guardClassesDir(tmp).resolve("demo"));
+        Files.write(guardClasses.resolve("AppRules.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).uncompiled())
+                .as("the graph does not read the guard suite's classes")
+                .containsExactly("src/guard");
     }
 
     /**

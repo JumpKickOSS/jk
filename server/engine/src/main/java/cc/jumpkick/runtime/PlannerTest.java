@@ -73,6 +73,24 @@ public final class PlannerTest {
     /** Where compile-test records the suite selection that produced {@code target/test-classes}. */
     private static final String SUITE_MARKER = ".jk-suites";
 
+    /**
+     * The suites whose sources compiled into {@code testClasses}, as its suite marker records them;
+     * the default suite alone when there is no marker.
+     */
+    public static Set<String> compiledSuites(Path testClasses) {
+        Path marker = testClasses.resolve(SUITE_MARKER);
+        try {
+            if (!Files.isRegularFile(marker)) return Set.of(TestSuites.DEFAULT);
+            Set<String> out = new TreeSet<>();
+            for (String suite : Files.readString(marker).split(",")) {
+                if (!suite.isBlank()) out.add(suite.strip());
+            }
+            return out;
+        } catch (IOException unreadable) {
+            return Set.of(TestSuites.DEFAULT);
+        }
+    }
+
     static Task compileTestStep(BuildPlanner.Ctx cx, boolean hasFixtures, @Nullable PluginDeclarations pluginDecls) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
