@@ -47,6 +47,7 @@ class JUnitLauncherBootCrashTest {
     @Test
     void a_jvm_whose_heap_cannot_be_reserved_fails_with_hotspots_refusal(@TempDir Path dir) throws Exception {
         assumeTrue(Files.isExecutable(Path.of("/bin/sh")), "POSIX shell required");
+        assumeTrue(canLimitVirtualMemory(), "the shell cannot set `ulimit -v` here (macOS refuses it)");
         Path javaHome = shellJava(
                 dir,
                 "ulimit -v 2097152\nexec '" + Path.of(System.getProperty("java.home"), "bin", "java") + "' \"$@\"\n");
@@ -118,5 +119,14 @@ class JUnitLauncherBootCrashTest {
         Files.writeString(java, "#!/bin/sh\n" + script);
         assertThat(java.toFile().setExecutable(true)).isTrue();
         return javaHome;
+    }
+
+    /** Whether {@code /bin/sh} accepts the virtual-memory limit the test starts its JVM under. */
+    private static boolean canLimitVirtualMemory() throws Exception {
+        Process sh = new ProcessBuilder("/bin/sh", "-c", "ulimit -v 2097152")
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        return sh.waitFor() == 0;
     }
 }
