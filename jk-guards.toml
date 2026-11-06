@@ -1407,10 +1407,6 @@ reason = "the owner: manifestIn is written here"
 in     = "shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginTableRegistry.java"
 reason = "recognises jk's own checkout, which carries a written jk.toml by definition"
 
-[[guards.manifest-reader-owner.allow]]
-in     = "shared/core/src/main/java/cc/jumpkick/scaffold/NewScaffolder.java"
-reason = "names the jk.toml the scaffold writes"
-
 # G109. A test that creates a symbolic link is red on every Windows host without
 # SeCreateSymbolicLinkPrivilege — Developer Mode or an elevated shell — which most Windows
 # contributors do not hold. A symlink is a POSIX-only shape in jk anyway: a directory pointer is a

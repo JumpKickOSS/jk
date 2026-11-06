@@ -67,7 +67,7 @@ versions on purpose: `jk outdated`, then `jk update` rewrites the pins and reloc
 jk run -- args…
 ```
 
-Needs `[application] main = "…"` (the `jk new -e` / app templates set this).
+Needs `[application] main = "…"` (the `app` template `jk new` starts from sets it).
 See [Run](run.md).
 
 ## What just happened

@@ -24,9 +24,15 @@ class NewProjectFormTest {
     @Test
     void before_a_template_is_chosen_the_form_is_jks_step_alone() {
         Form form = NewProjectForm.project();
-        assertThat(form.fields()).extracting(Field::key).containsExactly("lang", "template", "name", "group");
+        assertThat(form.fields()).extracting(Field::key).containsExactly("lang", "template", "name", "group", "dir");
         Field template = requireNonNull(form.field("template"));
         assertThat(template.kind()).isEqualTo(FieldKind.SEARCH);
+        assertThat(template.defaultValue()).as("the search preselects app").hasToString("Literal[value=app]");
+        assertThat(template.required()).isFalse();
+        Field dir = requireNonNull(form.field("dir"));
+        assertThat(dir.kind()).isEqualTo(FieldKind.PATH);
+        assertThat(dir.defaultValue()).hasToString("Derived[from=parent-dir]");
+        assertThat(requireNonNull(form.field("name")).pattern()).isEqualTo("[a-z][a-z0-9-]*");
         assertThat(template.sourceFor(Map.of("lang", "kotlin"))).isEqualTo("/api/templates?lang=kotlin");
         assertThat(requireNonNull(form.field("group")).required()).isFalse();
     }
@@ -52,7 +58,7 @@ class NewProjectFormTest {
         assertThat(check.values()).containsEntry("native", true).containsEntry("lang", "kotlin");
         assertThat(NewProjectForm.templateParams(check.values()))
                 .containsEntry("native", "true")
-                .doesNotContainKeys("name", "template", "lang", "layout");
+                .doesNotContainKeys("name", "template", "lang", "layout", "dir");
     }
 
     @Test

@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.command.ScaffoldTestSupport;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -28,7 +29,7 @@ class JshellCommandTest {
     @Test
     @EnabledIf("jshellAvailable")
     void jshell_batch_stdin_exits_zero(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--name", "widget", "--layout", "traditional", tempDir.toString());
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package example; public class Hello { public static int x = 7; }\n");
@@ -76,7 +77,7 @@ class JshellCommandTest {
 
     @Test
     void jshell_missing_classes_with_no_build_fails(@TempDir Path tempDir) throws Exception {
-        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        BlankProject.write("--name", "widget", "--layout", "traditional", tempDir.toString());
         ScaffoldTestSupport.writeEmptyLock(tempDir);
         assertThat(tempDir.resolve("target/classes"))
                 .describedAs("jk new compiled nothing, so --no-build has no classes to start JShell on")

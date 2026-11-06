@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
@@ -26,7 +27,8 @@ class GroovyCompilationTest {
 
     @Test
     void build_packages_scaffolded_groovy_classes_into_jar(@TempDir Path tempDir) throws IOException {
-        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
+        BlankProject.write(
+                "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
         // Traditional layout: packaged Calc.groovy under src/main/groovy.
         assertThat(tempDir.resolve("src/main/groovy/com/example/Calc.groovy")).exists();
 
@@ -96,7 +98,8 @@ class GroovyCompilationTest {
 
     @Test
     void test_runs_the_scaffolded_groovy_junit_test(@TempDir Path tempDir) throws IOException {
-        run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
+        BlankProject.write(
+                "--group", "com.example", "--name", "widget", "--lang", "groovy", "--no-module", tempDir.toString());
 
         // The scaffolded CalcTest passes.
         assertThat(run(
@@ -172,16 +175,8 @@ class GroovyCompilationTest {
         // table + a versionless starter (the plugin auto-imports the Boot BOM) and replace the
         // sample sources with a Groovy @RestController application. Packaging assertion only
         // the app is never booted.
-        run(
-                "new",
-                "--group",
-                "com.example",
-                "--name",
-                "bootapp",
-                "--lang",
-                "groovy",
-                "--no-module",
-                tempDir.toString());
+        BlankProject.write(
+                "--group", "com.example", "--name", "bootapp", "--lang", "groovy", "--no-module", tempDir.toString());
         PathUtil.deleteRecursively(tempDir.resolve("src/test")); // the sample suite; packaging only
         Path toml = tempDir.resolve("jk.toml");
         Files.writeString(toml, Files.readString(toml) + """
@@ -264,16 +259,8 @@ class GroovyCompilationTest {
      * suite (run by {@link #test_runs_the_scaffolded_groovy_junit_test}) and the javadoc jar.
      */
     private static void newGroovyLibrary(Path dir, String name) throws IOException {
-        assertThat(run(
-                        "new",
-                        "--group",
-                        "com.example",
-                        "--name",
-                        name,
-                        "--lang",
-                        "groovy",
-                        "--no-module",
-                        dir.toString()))
+        assertThat(BlankProject.write(
+                        "--group", "com.example", "--name", name, "--lang", "groovy", "--no-module", dir.toString()))
                 .as("jk new")
                 .isEqualTo(0);
         PathUtil.deleteRecursively(dir.resolve("src/test"));

@@ -73,7 +73,8 @@ class FreshEngineHostsTest {
     /**
      * The catalog's git honours {@code [network] proxy} like jk's own requests: with the official
      * catalog left at GitHub, its clone is a CONNECT the proxy sees (and refuses), and {@code jk
-     * new} still makes a project.
+     * new} from a local template still makes a project. (The default template is the catalogue's,
+     * which this home cannot reach.)
      */
     @Test
     @IsolatedHome(officialCatalogFromOrigin = true)
@@ -89,8 +90,18 @@ class FreshEngineHostsTest {
                 url = "%s"
                 mirror-of = ["*"]
                 """.formatted(proxy.url(), mirror.baseUrl()));
+        Path template = dir.resolve("local.g8");
+        Files.createDirectories(template.resolve("src/main/g8"));
+        Files.writeString(template.resolve("default.properties"), "name=demo\n");
+        Files.writeString(template.resolve("src/main/g8/jk.toml"), """
+                group = "com.example"
+                name = "$name$"
+                version = "0.1.0"
+                java = 25
+                """);
 
-        assertThat(run("new", dir.resolve("made").toString(), "-N")).isZero();
+        assertThat(run("new", dir.resolve("made").toString(), "-t", template.toString(), "-N"))
+                .isZero();
         for (int i = 0; i < 600 && !proxy.hosts().contains("github.com"); i++) Thread.sleep(100);
 
         assertThat(proxy.hosts()).as("the official catalog's clone").contains("github.com");

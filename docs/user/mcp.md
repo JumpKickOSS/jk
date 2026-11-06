@@ -228,7 +228,7 @@ The whole registry:
 | **`jdk`** | List / install / uninstall (`confirm=true` for uninstall) |
 | **`node`** | Node.js: `list` (installs, jk's and other managers'), `list-remote` (`lts`, `major`), `install` (`spec`), `uninstall` (`spec` = exact version, `confirm=true`), `which` (`dir`: the project's Node.js), `pin` (`dir`, optional `spec`: writes `jk.toml` and relocks) |
 | **`doctor`** | Host health snapshot |
-| **`new`** | Scaffold, as `jk new` does: `action=templates` lists templates, `action=form` one template's questions, `params` answers them, `preview=true` does not write ([below](#new)) |
+| **`new`** | Scaffold from a template, as `jk new` does (default `app`): `action=templates` lists templates, `action=form` one template's fields, `params` answers its questions, `preview=true` does not write ([below](#new)) |
 | **`publish`** | Validate the publish bundle (dry-run). `upload=true` uploads it to the repository `[publish] repository` names, with the credential `jk repo login` / `JK_REPO_<ID>_*` holds and signing from `[publish]` (`JK_GPG_PASSPHRASE`). An agent never names a URL; a project with no `[publish] repository`, or with `central`, is refused with the fix — Central uploads stay on `jk publish` |
 | **`snapshot`** | The inner-loop install, used as a Maven `-SNAPSHOT` is: the project goes into the local Maven repo as `<version>-SNAPSHOT` and is replaced on each run; a sibling project that must see your edits depends on `g:a:<version>-SNAPSHOT` |
 | **`install`** | Install a release of the project into the local Maven repo (a version is installed once); `action=list` shows jkx tools (tool installs stay CLI-side) |
@@ -252,12 +252,16 @@ as `jk new`.
 
 - `action=templates` lists `{id, language, framework, description}` per template, and nothing
   else: the questions would be paid for on every listing.
-- `action=form, template=<id>` lists that template's questions, one line each, as
+- `action=form, template=<id>` lists that template's form, one line per field, as
   [`jk new --help`](templates.md) prints them: `database: none|postgres|mysql = postgres  # Database`.
-  `layout` is there when the template renders more than one.
-- `new(template, name, params={…})` scaffolds. `params` answers the template's questions (a
-  string, or a boolean for a bool, a list of ids for a multi); `name`, `group`, `lang` and
-  `layout` are arguments of their own. `preview=true` returns the file set and writes nothing.
+  jk's own step comes first, from the same field list `jk new` renders (`lang`, `template`,
+  `name`, `group`, `parentDir`, and `layout` when the template renders more than one), then the
+  template's questions. With no `template` it is the `app` template's form.
+- `new(template, name, params={…})` scaffolds; no `template` is `app`. `params` answers the
+  template's questions (a string, or a boolean for a bool, a list of ids for a multi); `name`
+  (lowercase letters, digits and `-`), `group`, `lang`, `layout` and `parentDir` (the form's
+  `dir`, by default the bound project's parent) are arguments of their own. `preview=true` returns
+  the file set and writes nothing.
 
 A question the call leaves out takes its default; only a required question with no default holds
 the call up, and an agent that passes every answer is never asked anything. What happens to one

@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.cli.testing.TranscriptOf;
 import cc.jumpkick.command.DefaultTestDepsFixture;
@@ -46,7 +47,7 @@ class UpdateCommandTest {
         Path cache = tempDir.resolve("cache");
 
         // Warm cache + journal online.
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         run("add", "--offline", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
         assertThat(run(
                         "update",
@@ -84,7 +85,7 @@ class UpdateCommandTest {
         maven.registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
         // Initial state: no deps.
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         run(
                 "lock",
                 "-C",
@@ -118,7 +119,7 @@ class UpdateCommandTest {
         maven.registerMetadata("com.foo.update", "leaf", "1.0");
         maven.registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
         maven.registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
-        run("new", tempDir.toString());
+        BlankProject.write(tempDir.toString());
         run("add", "--offline", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
 
         int exit = run(

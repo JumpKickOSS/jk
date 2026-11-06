@@ -9,9 +9,11 @@ import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Field;
 import cc.jumpkick.form.FieldLine;
 import cc.jumpkick.form.Form;
+import cc.jumpkick.form.FormCheck;
 import cc.jumpkick.form.FormCommand;
 import cc.jumpkick.form.Option;
 import cc.jumpkick.form.Values;
+import cc.jumpkick.scaffold.NewProjectStep;
 import cc.jumpkick.wire.protocol.NewProjectFormAck;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -25,18 +27,18 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk new} on a terminal: the new-project form the engine serves, walked with the form widgets.
- * jk's step comes first (language, template, name, group); once a template is chosen its own form
- * follows (the layout when it renders more than one, then its {@code [[ask]]}); the walk ends on the
- * command that gives the same project without asking. Flags answer their fields up front, and
+ * {@code jk new}'s one path: the new-project form the engine serves. jk's step comes first
+ * ({@link NewProjectStep}: language, template, name, group, directory); once a template is chosen its
+ * own form follows (the layout when it renders more than one, then its {@code [[ask]]}). On a
+ * terminal the form is walked with the form widgets and ends on the command that gives the same
+ * project without asking; with no terminal the defaults answer what the flags left open, and a
+ * required field with neither is an error naming its flag. Flags answer their fields up front, and
  * {@code -p key=value} answers a template's.
  */
 final class NewForm {
 
     /** The step-1 keys; every other key of the form is a template property, answered by {@code -p}. */
-    static final Set<String> PROJECT_KEYS = Set.of("lang", "template", "name", "group", "layout");
-
-    private static final Set<String> LANGS = Set.of("java", "kotlin", "groovy", "scala");
+    static final Set<String> PROJECT_KEYS = NewProjectStep.KEYS;
 
     private NewForm() {}
 
@@ -52,6 +54,7 @@ final class NewForm {
             @Nullable String template,
             @Nullable String name,
             @Nullable String group,
+            @Nullable String dir,
             @Nullable String layout,
             Map<String, String> params) {
         Given {
@@ -119,14 +122,95 @@ final class NewForm {
         if (values.isEmpty()) return Optional.empty();
         String line = FormCommand.render(command, form, values.get(), flags, derived);
         renderer.summary(line);
+        return Optional.of(new Answered(values.get(), params(form, values.get(), given), line));
+    }
+
+    /**
+     * The form settled without asking: the flags answer their fields and defaults the rest, so no
+     * {@code -t} is the default template.
+     *
+     * @throws Unsettled naming each field the flags and defaults leave unanswered or answer wrongly,
+     *     with the flag that answers it
+     * @throws IOException when the engine cannot serve the form
+     */
+    static Answered settle(
+            Forms forms, Given given, DerivedDefaults derived, String command, Map<String, FormCommand.Flag> flags)
+            throws IOException {
+        NewProjectFormAck first = served(forms.fetch(given.template(), given.lang()));
+        Form form = Form.fromJson(first.form());
+        Map<String, Object> presets = presets(form, given);
+        NewProjectFormAck ack = first;
+        if (given.template() == null) {
+            // jk's step alone names the template (its default when no flag does) and the language.
+            Map<String, Object> project = form.check(presets, derived).values();
+            ack = served(forms.fetch((String) project.get("template"), (String) project.get("lang")));
+            form = Form.fromJson(ack.form());
+            presets = presets(form, given);
+        }
+        Map<String, Object> resolved = resolved(ack);
+        if (given.lang() != null) resolved.remove("lang");
+        presets.putAll(resolved);
+        FormCheck check = form.check(presets, derived);
+        if (!check.ok()) throw new Unsettled(form, check, flags, command);
+        String line = FormCommand.render(command, form, check.values(), flags, derived);
+        return new Answered(check.values(), params(form, check.values(), given), line);
+    }
+
+    /** What the flags and defaults leave unsettled: one line per field, naming the flag that answers it. */
+    static final class Unsettled extends RuntimeException {
+
+        private final List<String> problems;
+        private final String prefix;
+
+        /** {@code command} is the summary's command: {@code jk new}, {@code jk init}, or with the positional. */
+        Unsettled(Form form, FormCheck check, Map<String, FormCommand.Flag> flags, String command) {
+            super(check.problems().getFirst().message());
+            String[] words = command.split(" ");
+            this.prefix = words.length >= 2 ? words[0] + " " + words[1] : command;
+            List<String> out = new ArrayList<>();
+            for (FormCheck.Problem p : check.problems()) {
+                Field f = form.field(p.key());
+                String flag = f == null ? null : flag(f, flags, command);
+                if (flag == null) out.add(p.message());
+                else if (p.message().endsWith(" needs a value")) out.add(p.message() + ": " + flag);
+                else out.add(p.message() + " (" + flag + ")");
+            }
+            this.problems = List.copyOf(out);
+        }
+
+        /** The problems, a line each: {@code jk new: database needs a value: -p database=none|postgres}. */
+        String lines() {
+            StringBuilder out = new StringBuilder();
+            for (String p : problems) {
+                if (!out.isEmpty()) out.append('\n');
+                out.append(prefix).append(": ").append(p);
+            }
+            return out.toString();
+        }
+
+        /** The flag that answers {@code f}: its own spelling, else {@code -p key=…}. */
+        private static String flag(Field f, Map<String, FormCommand.Flag> flags, String command) {
+            String param = FieldLine.param(f);
+            String takes = param.substring(param.indexOf('=') + 1);
+            if (takes.equals("…")) takes = "<" + f.key() + ">";
+            return switch (flags.get(f.key())) {
+                case null -> param;
+                case FormCommand.Flag.Positional p -> command + " " + takes;
+                case FormCommand.Flag.Named n -> n.name() + " " + takes;
+            };
+        }
+    }
+
+    /** The template properties: the form's settled ones, then any other {@code -p} pair as given. */
+    private static Map<String, String> params(Form form, Map<String, Object> values, Given given) {
         Map<String, String> params = new LinkedHashMap<>();
-        for (var e : values.get().entrySet()) {
+        for (var e : values.entrySet()) {
             if (!PROJECT_KEYS.contains(e.getKey())) params.put(e.getKey(), Values.text(e.getValue()));
         }
         for (var e : given.params().entrySet()) {
             if (form.field(e.getKey()) == null) params.put(e.getKey(), e.getValue());
         }
-        return Optional.of(new Answered(values.get(), params, line));
+        return params;
     }
 
     /**
@@ -153,6 +237,7 @@ final class NewForm {
         putIfSet(raw, "template", given.template());
         putIfSet(raw, "name", given.name());
         putIfSet(raw, "group", given.group());
+        putIfSet(raw, "dir", given.dir());
         putIfSet(raw, "layout", given.layout());
         Map<String, Object> out = new LinkedHashMap<>();
         for (Field f : form.fields()) {
@@ -199,7 +284,7 @@ final class NewForm {
         if (id.isEmpty()) return out;
         out.put("template", id);
         String[] parts = id.split("/");
-        if (parts.length == 3 && LANGS.contains(parts[0])) out.put("lang", parts[0]);
+        if (parts.length == 3 && NewProjectStep.LANGS.contains(parts[0])) out.put("lang", parts[0]);
         return out;
     }
 

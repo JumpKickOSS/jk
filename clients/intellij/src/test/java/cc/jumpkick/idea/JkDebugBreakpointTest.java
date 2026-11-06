@@ -81,14 +81,15 @@ public class JkDebugBreakpointTest extends HeavyPlatformTestCase {
     public void test_a_breakpoint_in_a_jk_run_test_stops_the_debugger() throws Exception {
         JkImport.assumeJkOnPath(JkDebugBreakpointTest.class);
         Path parent = createTempDir("jk-debug").toPath();
-        JkCliRunner.Result created = JkCliRunner.run(parent.toFile(), "new", "demo", "--lang", "java");
+        JkCliRunner.Result created =
+                JkCliRunner.run(parent.toFile(), "new", "demo", "--lang", "java", "--group", "com.example");
         assertTrue("jk new: " + created.stderr(), created.ok());
         Path root = parent.resolve("demo");
 
         JkImport.Result imported = JkImport.importProject(getProject(), root.toFile());
         assertNull("sync failed: " + imported.failure(), imported.failure());
 
-        Path source = root.resolve("src/test/java/com/example/CalcTest.java");
+        Path source = root.resolve("src/test/java/com/example/MainTest.java");
         VirtualFile vf = requireNonNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source));
         int line = lineOf(Files.readAllLines(source), "assertEquals(");
         JavaLineBreakpointType type = XDebuggerUtil.getInstance().findBreakpointType(JavaLineBreakpointType.class);

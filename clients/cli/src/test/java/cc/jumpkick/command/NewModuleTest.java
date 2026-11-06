@@ -60,7 +60,7 @@ class NewModuleTest {
     @Test
     void module_inherits_a_divergent_java_release_from_the_parent(@TempDir Path tempDir) throws IOException {
         // Parent runs JDK 25 but targets release 17 — the module must inherit
-        // both, even though the wizard never exposes the release choice.
+        // both, even though the form never asks for the release.
         // (Explicit older `java = 17` is intentional: prove inheritance of a floor, not defaults.)
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group    = "com.acme"
@@ -74,8 +74,8 @@ class NewModuleTest {
         assertThat(Jk.execute("new", module.toString())).isZero();
 
         String toml = Files.readString(module.resolve("jk.toml"));
-        assertThat(toml).doesNotContain("jdk      ="); // the toolchain is the workspace's, inherited unwritten
-        assertThat(toml).contains("java     = 17"); // compile target flowed through
+        assertThat(toml).doesNotContain("jdk "); // the toolchain is the workspace's, inherited unwritten
+        assertThat(toml).contains("java = 17"); // compile target flowed through
         assertThat(JkBuildParser.parse(module.resolve("jk.toml")).project().javaRelease())
                 .isEqualTo(17);
     }

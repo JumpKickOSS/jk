@@ -4,16 +4,22 @@ package cc.jumpkick.command.project;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.model.command.Exit;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -23,132 +29,155 @@ import org.junit.jupiter.api.io.TempDir;
 class NewCommandTest {
 
     @Test
-    void flag_mode_writes_files(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute(
-                "new", "--group", "com.example", "--name", "widget", "--jdk", "25", "--no-module", tempDir.toString());
-        assertThat(exit).isEqualTo(0);
+    void with_no_terminal_and_no_template_jk_new_scaffolds_the_app_template_with_its_defaults(@TempDir Path tempDir)
+            throws IOException {
+        Path target = tempDir.resolve("widget");
+        Run run = jk("new", "--group", "com.example", "--no-module", target.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
 
-        Path buildFile = tempDir.resolve("jk.toml");
-        assertThat(buildFile).exists();
+        Path buildFile = target.resolve("jk.toml");
         // No jk-lock.toml at scaffold time — it's generated on the first build/run.
-        assertThat(tempDir.resolve("jk-lock.toml")).doesNotExist();
-        // Traditional layout is the default: Maven roots exist from the start.
-        assertThat(tempDir.resolve("src/main/java")).isDirectory();
-        assertThat(tempDir.resolve("src/test/java")).isDirectory();
-        assertThat(Files.readString(buildFile)).doesNotContain("layout");
-
+        assertThat(target.resolve("jk-lock.toml")).doesNotExist();
+        assertThat(target.resolve("src/main/java/com/example/Main.java")).isRegularFile();
+        assertThat(target.resolve("src/test/java/com/example/MainTest.java")).isRegularFile();
+        assertThat(target.resolve("AGENTS.md")).isRegularFile();
         JkBuild parsed = JkBuildParser.parse(buildFile);
         assertThat(parsed.project().group()).isEqualTo("com.example");
         assertThat(parsed.project().name()).isEqualTo("widget");
         assertThat(parsed.project().version()).isEqualTo("0.1.0");
-        assertThat(parsed.project().jdk()).isEqualTo("25");
         assertThat(parsed.project().java()).isEqualTo(25);
-        assertThat(parsed.project().isKotlin()).isFalse();
+        assertThat(parsed.mainClass()).isEqualTo("com.example.Main");
+        // The app's questions took their defaults: no fat jar, no native binary, no libraries.
+        assertThat(Files.readString(buildFile))
+                .doesNotContain("assembly = true")
+                .doesNotContain("[native]")
+                .doesNotContain("[dependencies]");
     }
 
-    /** Without {@code --jdk} the manifest carries the level alone: nothing for a reader to learn as a pin. */
     @Test
-    void no_jdk_flag_writes_the_java_level_and_no_toolchain_pin(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute(
+    void with_no_terminal_a_named_template_takes_its_defaults(@TempDir Path tempDir) throws IOException {
+        Path target = tempDir.resolve("lib");
+        Run run = jk("new", "-t", "library", "--group", "com.example", "--no-module", target.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+
+        JkBuild parsed = JkBuildParser.parse(target.resolve("jk.toml"));
+        assertThat(parsed.mainClass()).isNull();
+        assertThat(target.resolve("src/main/java/com/example/Greeter.java")).isRegularFile();
+    }
+
+    @Test
+    void executable_answers_the_template_app_and_no_executable_answers_library(@TempDir Path tempDir)
+            throws IOException {
+        Path app = tempDir.resolve("app");
+        Run run = jk("new", "-e", "--group", "com.example", "--no-module", app.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(JkBuildParser.parse(app.resolve("jk.toml")).mainClass()).isEqualTo("com.example.Main");
+
+        Path lib = tempDir.resolve("lib");
+        run = jk("new", "--no-executable", "--group", "com.example", "--no-module", lib.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(lib.resolve("src/main/java/com/example/Greeter.java")).isRegularFile();
+    }
+
+    @Test
+    void p_answers_the_template_s_questions_the_blank_flags_used_to(@TempDir Path tempDir) throws IOException {
+        Path target = tempDir.resolve("fat");
+        Run run = jk(
                 "new",
-                "--group",
-                "com.example",
-                "--name",
-                "widget",
-                "--lang",
-                "scala",
                 "--no-module",
-                tempDir.toString());
-        assertThat(exit).isEqualTo(0);
-        String toml = Files.readString(tempDir.resolve("jk.toml"));
-        assertThat(toml).contains("java     = ").doesNotContain("jdk      =");
-        assertThat(toml).contains("scala    = ");
-        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).project().jdk())
-                .isNull();
+                "-p",
+                "assembly=true",
+                "-p",
+                "native=true",
+                "-p",
+                "deps=guava",
+                target.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(Files.readString(target.resolve("jk.toml")))
+                .contains("assembly = true")
+                .contains("[native]")
+                .contains("guava = ");
     }
 
     @Test
-    void explicit_vendor_spec_is_preserved_in_jk_toml(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute(
-                "new",
-                "--group",
-                "com.example",
-                "--name",
-                "widget",
-                "--jdk",
-                "corretto-25",
-                "--no-module",
-                tempDir.toString());
-        assertThat(exit).isEqualTo(0);
-
-        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
-        // The vendor survives only because the user typed it on the command line.
-        assertThat(parsed.project().jdk()).isEqualTo("corretto-25");
-        assertThat(parsed.project().jdkMajor()).isEqualTo(25);
-        assertThat(Files.readString(tempDir.resolve("jk.toml"))).contains("jdk      = \"corretto-25\"");
+    void jdk_answers_the_template_s_java_level(@TempDir Path tempDir) throws IOException {
+        Path target = tempDir.resolve("older");
+        Run run = jk("new", "--jdk", "21", "--no-module", target.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(JkBuildParser.parse(target.resolve("jk.toml")).project().java())
+                .isEqualTo(21);
     }
 
     @Test
-    void bare_major_jdk_flag_writes_a_bare_pin(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute(
-                "new", "--group", "com.example", "--name", "widget", "--jdk", "21", "--no-module", tempDir.toString());
-        assertThat(exit).isEqualTo(0);
-        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).project().jdk())
-                .isEqualTo("21");
-    }
-
-    @Test
-    void native_project_keeps_a_normal_jdk_and_writes_no_graal(@TempDir Path tempDir) throws IOException {
-        // A native project's build JDK follows the normal rules (here an explicit
-        // bare major); the GraalVM is never chosen here — it's resolved into jk-lock.toml
-        // when [native] is declared — so no `graal` key lands in jk.toml (it's
-        // defaulted to the "graalvm" spec at parse time instead).
-        int exit = Jk.execute(
-                "new",
-                "--group",
-                "com.example",
-                "--name",
-                "widget",
-                "--native",
-                "--jdk",
-                "21",
-                "--no-module",
-                tempDir.toString());
-        assertThat(exit).isEqualTo(0);
-
-        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
-        assertThat(parsed.project().jdk()).isEqualTo("21"); // not forced to a GraalVM
-        assertThat(parsed.graal()).isEqualTo("graalvm"); // defaulted — no graal key written
-        assertThat(parsed.nativeMode()).isEqualTo(JkBuild.NativeMode.ALWAYS);
-
-        String toml = Files.readString(tempDir.resolve("jk.toml"));
-        assertThat(toml).contains("[native]").contains("enabled    = \"always\"");
-        assertThat(toml).doesNotContain("graal");
-    }
-
-    @Test
-    void point_release_jdk_flag_is_rejected(@TempDir Path tempDir) {
-        var prevErr = System.err;
-        var captured = new ByteArrayOutputStream();
-        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
-        int exit;
-        try {
-            exit = Jk.execute(
-                    "new",
-                    "--group",
-                    "com.example",
-                    "--name",
-                    "widget",
-                    "--jdk",
-                    "25.0.3",
-                    "--no-module",
-                    tempDir.toString());
-        } finally {
-            System.setErr(prevErr);
+    void each_former_blank_flag_that_answers_no_field_is_refused_naming_its_replacement(@TempDir Path tempDir) {
+        Map<List<String>, String> refused = new LinkedHashMap<>();
+        refused.put(List.of("-A"), "-p assembly=true");
+        refused.put(List.of("--native"), "-p native=true");
+        refused.put(List.of("-d", "guava"), "-p deps=guava,commons-lang,commons-io");
+        refused.put(List.of("-m", "core"), "module = \"<name>\"");
+        refused.put(List.of("-P"), "third-party-plugin");
+        refused.put(List.of("--jdk", "temurin-25"), "--jdk 25");
+        refused.put(List.of("-e", "-t", "cli"), "keep one");
+        int i = 0;
+        for (var e : refused.entrySet()) {
+            Path target = tempDir.resolve("p" + i++);
+            List<String> argv = new ArrayList<>(List.of("new", "--no-module"));
+            argv.addAll(e.getKey());
+            argv.add(target.toString());
+            Run run = jk(argv.toArray(String[]::new));
+            assertThat(run.exit()).as(String.join(" ", e.getKey())).isEqualTo(Exit.USAGE);
+            assertThat(run.err())
+                    .as(String.join(" ", e.getKey()))
+                    .startsWith("jk new: ")
+                    .contains(e.getValue());
+            assertThat(target).doesNotExist();
         }
-        assertThat(exit).isEqualTo(64); // EX_USAGE
-        assertThat(captured.toString(StandardCharsets.UTF_8)).contains("point release");
-        assertThat(tempDir.resolve("jk.toml")).doesNotExist();
+    }
+
+    @Test
+    void the_global_dir_is_the_parent_directory_and_a_missing_name_names_its_flag(@TempDir Path tempDir)
+            throws IOException {
+        Run missing = jk("new", "--no-module", "--dir", tempDir.toString());
+        assertThat(missing.exit()).isEqualTo(Exit.USAGE);
+        assertThat(missing.err()).isEqualTo("jk new: name needs a value: jk new <name>");
+
+        Run run = jk("new", "widget", "--no-module", "--dir", tempDir.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(tempDir.resolve("widget/jk.toml")).isRegularFile();
+    }
+
+    @Test
+    void a_name_is_lowercase_and_a_wrong_one_names_its_flag(@TempDir Path tempDir) {
+        Run run = jk("new", "--no-module", tempDir.resolve("MyApp").toString());
+        assertThat(run.exit()).isEqualTo(Exit.USAGE);
+        assertThat(run.err()).contains("jk new: name must match [a-z][a-z0-9-]*; got 'MyApp' (--name <name>)");
+        assertThat(tempDir.resolve("MyApp")).doesNotExist();
+    }
+
+    @Test
+    void a_required_template_question_without_a_flag_or_default_is_an_error_in_the_prd_s_wording(@TempDir Path tempDir)
+            throws IOException {
+        Path g8 = tempDir.resolve("templates/java/none/asking.g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(g8.resolve(".jk-template.toml"), """
+                language = "java"
+                framework = "none"
+                name = "asking"
+                layouts = ["traditional"]
+
+                [[ask]]
+                key = "database"
+                label = "Database"
+                kind = "choice"
+                options = ["none", "postgres", "mysql"]
+                """);
+        Files.writeString(g8.resolve("default.properties"), "name=demo\n");
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name = \"$name$\"\n");
+
+        Run run = jk(
+                "new", "-t", g8.toString(), "--no-module", tempDir.resolve("db").toString());
+        assertThat(run.exit()).isEqualTo(Exit.USAGE);
+        assertThat(run.err()).isEqualTo("jk new: database needs a value: -p database=none|postgres|mysql");
     }
 
     @Test
@@ -176,176 +205,44 @@ class NewCommandTest {
     }
 
     @Test
-    void assembly_implies_executable(@TempDir Path tempDir) throws IOException {
-        // --assembly used to require an explicit --main; now it just implies
-        // --executable and the generated Main FQCN is derived from the group.
-        int exit = Jk.execute(
-                "new",
-                "--group",
-                "com.example",
-                "--name",
-                "widget",
-                "--assembly",
-                "--layout",
-                "traditional",
-                "--no-module",
-                tempDir.toString());
-        assertThat(exit).isEqualTo(0);
-
-        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
-        assertThat(parsed.mainClass()).isEqualTo("com.example.Main");
-        assertThat(parsed.isRunnable()).isTrue();
+    void kotlin_lang_scaffolds_the_kotlin_app(@TempDir Path tempDir) throws IOException {
+        Path target = tempDir.resolve("kt");
+        Run run = jk("new", "--group", "com.example", "--lang", "kotlin", "--no-module", target.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        JkBuild parsed = JkBuildParser.parse(target.resolve("jk.toml"));
+        assertThat(parsed.project().isKotlin()).isTrue();
+        assertThat(parsed.mainClass()).isEqualTo("com.example.MainKt");
+        assertThat(target.resolve("src/main/kotlin/com/example/Main.kt")).isRegularFile();
     }
 
     @Test
-    void executable_writes_derived_main_field(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute(
-                "new",
-                "--group",
-                "com.example",
-                "--name",
-                "widget",
-                "--executable",
-                "--layout",
-                "traditional",
-                "--no-module",
-                tempDir.toString());
-        assertThat(exit).isEqualTo(0);
+    void groovy_lang_scaffolds_the_groovy_app_and_a_language_with_no_template_is_refused(@TempDir Path tempDir)
+            throws IOException {
+        Path target = tempDir.resolve("gv");
+        Run run = jk("new", "--group", "com.example", "--lang", "groovy", "--no-module", target.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(JkBuildParser.parse(target.resolve("jk.toml")).project().isGroovy())
+                .isTrue();
+        assertThat(target.resolve("src/main/groovy/com/example/Main.groovy")).isRegularFile();
 
-        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
-        assertThat(parsed.mainClass()).isEqualTo("com.example.Main");
-        assertThat(parsed.isRunnable()).isTrue();
+        Run scala = jk(
+                "new", "--lang", "scala", "--no-module", tempDir.resolve("sc").toString());
+        assertThat(scala.exit()).isEqualTo(Exit.USAGE);
+        assertThat(scala.err()).contains("jk new: lang must be one of java, kotlin, groovy; got 'scala'");
     }
 
     @Test
-    void executable_simple_layout_writes_packaged_main_fqcn(@TempDir Path tempDir) throws IOException {
-        // Simple layout still packages Main under the group: src/<group>/Main.java
-        // with `package <group>;`. The jk.toml main field must be the FQCN.
-        int exit = Jk.execute(
-                "new",
-                "--group",
-                "com.example",
-                "--name",
-                "widget",
-                "--executable",
-                "--layout",
-                "simple",
-                "--no-module",
-                tempDir.toString());
-        assertThat(exit).isEqualTo(0);
+    void jk_init_takes_the_same_path_in_the_current_directory(@TempDir Path tempDir) throws IOException {
+        Path here = Files.createDirectories(tempDir.resolve("here"));
+        Run run = jk("init", "--group", "com.example", "--no-module", "--dir", here.toString());
+        assertThat(run.exit()).as(run.err()).isZero();
+        assertThat(JkBuildParser.parse(here.resolve("jk.toml")).project().name())
+                .isEqualTo("here");
+        assertThat(here.resolve("src/main/java/com/example/Main.java")).isRegularFile();
 
-        Path main = tempDir.resolve("src/com/example/Main.java");
-        assertThat(main).exists();
-        assertThat(Files.readString(main)).contains("package com.example;");
-
-        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
-        assertThat(parsed.mainClass()).isEqualTo("com.example.Main");
-        assertThat(parsed.isRunnable()).isTrue();
-        assertThat(Files.readString(tempDir.resolve("jk.toml"))).doesNotContain("layout");
-    }
-
-    @Test
-    void executable_default_layout_is_traditional(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute(
-                "new", "--group", "com.example", "--name", "widget", "--executable", "--no-module", tempDir.toString());
-        assertThat(exit).isEqualTo(0);
-
-        Path main = tempDir.resolve("src/main/java/com/example/Main.java");
-        assertThat(main).exists();
-        assertThat(Files.readString(main)).contains("package com.example;");
-        assertThat(Files.readString(tempDir.resolve("jk.toml"))).doesNotContain("layout");
-    }
-
-    @Test
-    void help_lists_traditional_before_simple() {
-        String newHelp =
-                Capture.stdout(() -> assertThat(Jk.execute("new", "--help")).isZero());
-        assertThat(newHelp.replaceAll("\\s+", " "))
-                .contains(
-                        "Tree: traditional (default) | simple | auto; with -t, the template's own jk_layout is the default.");
-        assertThat(newHelp.indexOf("traditional")).isLessThan(newHelp.indexOf("simple"));
-
-        String initHelp =
-                Capture.stdout(() -> assertThat(Jk.execute("init", "--help")).isZero());
-        assertThat(initHelp.replaceAll("\\s+", " "))
-                .contains(
-                        "Tree: traditional (default) | simple | auto; with -t, the template's own jk_layout is the default.");
-        assertThat(initHelp.indexOf("traditional")).isLessThan(initHelp.indexOf("simple"));
-    }
-
-    @Test
-    void unknown_layout_flag_is_usage_error(@TempDir Path tempDir) {
-        String err = Capture.stderr(() -> assertThat(Jk.execute(
-                        "new",
-                        "--group",
-                        "com.example",
-                        "--name",
-                        "widget",
-                        "--layout",
-                        "mill",
-                        "--no-module",
-                        tempDir.toString()))
-                .isEqualTo(64));
-        assertThat(err).contains("layout must be");
-        assertThat(tempDir.resolve("jk.toml")).doesNotExist();
-    }
-
-    @Test
-    void library_when_no_main(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute("new", "--group", "com.example", "--name", "widget", "--no-module", tempDir.toString());
-        assertThat(exit).isEqualTo(0);
-
-        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
-        assertThat(parsed.mainClass()).isNull();
-        assertThat(parsed.isRunnable()).isFalse();
-    }
-
-    @Test
-    void kotlin_lang_writes_kt_sample(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute(
-                "new",
-                "--group",
-                "com.example",
-                "--name",
-                "widget",
-                "--lang",
-                "kotlin",
-                "--executable",
-                "--no-module",
-                tempDir.toString());
-        assertThat(exit).isEqualTo(0);
-
-        // Default layout is traditional: Main.kt lands under src/main/kotlin/<group>.
-        Path app = tempDir.resolve("src/main/kotlin/com/example/Main.kt");
-        assertThat(app).exists();
-        assertThat(Files.readString(app)).contains("package com.example");
-        assertThat(Files.readString(app)).contains("fun main()");
-    }
-
-    @Test
-    void groovy_lang_writes_groovy_sample(@TempDir Path tempDir) throws IOException {
-        int exit = Jk.execute(
-                "new",
-                "--group",
-                "com.example",
-                "--name",
-                "widget",
-                "--lang",
-                "groovy",
-                "--executable",
-                "--no-module",
-                tempDir.toString());
-        assertThat(exit).isEqualTo(0);
-
-        // Default layout is traditional: Main.groovy lands under src/main/groovy/<group>.
-        Path app = tempDir.resolve("src/main/groovy/com/example/Main.groovy");
-        assertThat(app).exists();
-        assertThat(Files.readString(app)).contains("package com.example");
-        assertThat(Files.readString(app)).contains("static void main");
-
-        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
-        assertThat(parsed.project().isGroovy()).isTrue();
-        assertThat(parsed.mainClass()).isEqualTo("com.example.Main");
+        Run refused = jk("init", "-A", "--no-module", "--dir", tempDir.toString());
+        assertThat(refused.exit()).isEqualTo(Exit.USAGE);
+        assertThat(refused.err()).isEqualTo("jk init: --assembly is the template's question now: -p assembly=true");
     }
 
     @Test
@@ -454,6 +351,16 @@ class NewCommandTest {
         var output = captured.toString(StandardCharsets.UTF_8);
         assertThat(output).doesNotContain("\u001b[?1049h"); // alt-screen toggle
         assertThat(output).doesNotContain("\u001b[6n"); // device status report (raw mode cursor query)
+    }
+
+    /** What one {@code jk} invocation returned and printed to stderr. */
+    private record Run(int exit, String err) {}
+
+    private static Run jk(String... argv) {
+        int[] exit = new int[1];
+        String err = Capture.stderr(() -> Capture.stdout(() -> exit[0] = Jk.execute(argv)));
+        // The command's chrome frames stderr in blank lines; the lines themselves are what is asserted.
+        return new Run(exit[0], TestAnsi.strip(err).strip());
     }
 
     private static Workspace workspaceOf(JkBuild build) {

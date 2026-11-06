@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.testing.TestCaches;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -41,7 +42,8 @@ class DebugJvmAttachTest {
     @Test
     @Timeout(value = 6, unit = TimeUnit.MINUTES)
     void a_suspended_test_jvm_answers_the_jdwp_handshake_on_the_announced_port(@TempDir Path dir) throws Exception {
-        run("new", "--group", "com.example", "--name", "widget", "--lang", "java", "--no-module", dir.toString());
+        BlankProject.write(
+                "--group", "com.example", "--name", "widget", "--lang", "java", "--no-module", dir.toString());
         try (var tests = Files.walk(dir.resolve("src/test"))) {
             assertThat(tests.filter(p -> p.toString().endsWith(".java")))
                     .as("the scaffold ships a test class for the JVM to run")

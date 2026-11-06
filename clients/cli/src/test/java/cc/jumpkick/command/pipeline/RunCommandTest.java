@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.testing.TestCaches;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -27,8 +28,7 @@ class RunCommandTest {
     @Test
     void runs_current_project_and_forwards_args(@TempDir Path tempDir) throws Exception {
         // Scaffold a runnable project, write source that exits with code = arg count.
-        run(
-                "new",
+        BlankProject.write(
                 "--group",
                 "com.example",
                 "--name",
@@ -86,8 +86,7 @@ class RunCommandTest {
     void settles_with_run_command_wedge_executing_java(@TempDir Path tempDir) throws Exception {
         // After the build phase-chain, the settled chrome is a play CommandWedge:
         //   * Run: Executing `java -jar …`   (or `java -cp … Main`)
-        run(
-                "new",
+        BlankProject.write(
                 "--group",
                 "com.example",
                 "--name",
@@ -120,8 +119,7 @@ class RunCommandTest {
     void project_without_declared_main_runs_via_the_scan(@TempDir Path tempDir) throws Exception {
         // No [application] main: after the build jk scans the compiled output for the single
         // `public static void main` (spring-boot plan §3.8).
-        run(
-                "new",
+        BlankProject.write(
                 "--group",
                 "com.example",
                 "--name",
@@ -168,8 +166,7 @@ class RunCommandTest {
     @Test
     void project_with_ambiguous_main_returns_data_error(@TempDir Path tempDir) throws Exception {
         // No [application] main + two scanned candidates: the scan can't pick one either.
-        run(
-                "new",
+        BlankProject.write(
                 "--group",
                 "com.example",
                 "--name",
@@ -206,8 +203,7 @@ class RunCommandTest {
 
     @Test
     void the_app_gets_the_module_dot_env_beneath_the_real_environment(@TempDir Path tempDir) throws Exception {
-        run(
-                "new",
+        BlankProject.write(
                 "--group",
                 "com.example",
                 "--name",

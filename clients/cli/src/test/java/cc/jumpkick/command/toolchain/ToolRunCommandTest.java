@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static cc.jumpkick.cli.testing.MockMavenServer.mavenPath;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.testing.SysProps;
 import cc.jumpkick.testing.TestCaches;
@@ -347,8 +348,7 @@ class ToolRunCommandTest {
     @Test
     void directory_with_jk_toml_builds_and_execs_the_project(@TempDir Path tempDir) throws Exception {
         // `jk tool run <dir>` on a jk project == `jk run` without the cd.
-        run(
-                "new",
+        BlankProject.write(
                 "--group",
                 "com.example",
                 "--name",

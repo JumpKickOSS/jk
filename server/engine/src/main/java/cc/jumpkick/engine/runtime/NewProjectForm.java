@@ -2,49 +2,42 @@
 package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.form.Field;
-import cc.jumpkick.form.FieldKind;
 import cc.jumpkick.form.Form;
 import cc.jumpkick.form.Step;
 import cc.jumpkick.form.Values;
 import cc.jumpkick.giter8.JkTemplateToml;
+import cc.jumpkick.scaffold.NewProjectStep;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 
 /**
- * The new-project form every surface renders: jk's step (language, template, name, group, and the
- * layout when the template renders more than one), then the template's own {@code [[ask]]}. A
- * template's answers become Giter8 properties; the step-1 answers become the scaffold's request. Once
- * a template is chosen the language defaults to the template's own.
+ * The new-project form every surface renders: jk's step ({@link NewProjectStep}), then the template's
+ * own {@code [[ask]]}. A template's answers become Giter8 properties; the step-1 answers become the
+ * scaffold's request. Once a template is chosen the language defaults to the template's own.
  */
 public final class NewProjectForm {
 
     public static final String ID = "new-project";
 
-    /** Where the template search lists the catalogue, filtered by the language answered before it. */
-    public static final String TEMPLATES_SOURCE = "/api/templates?lang={lang}";
-
     /** The step-1 keys; every other key of the form is a template property. */
-    public static final Set<String> PROJECT_KEYS = Set.of("lang", "template", "name", "group", "layout");
+    public static final Set<String> PROJECT_KEYS = NewProjectStep.KEYS;
 
     private static final String TITLE = "New project";
-
-    private static final List<String> LANGS = List.of("java", "kotlin", "groovy", "scala");
 
     private NewProjectForm() {}
 
     /** jk's step alone: what a surface asks before a template is chosen. */
     public static Form project() {
-        return new Form(ID, TITLE, List.of(projectStep(null)));
+        return new Form(ID, TITLE, List.of(NewProjectStep.of(NewProjectStep.LANGS.getFirst(), List.of(), "")));
     }
 
     /** jk's step and {@code template}'s own. */
     public static Form of(NewProjectOps.TemplateForm template) {
         List<Step> steps = new ArrayList<>();
-        steps.add(projectStep(template));
+        steps.add(NewProjectStep.of(language(template), template.layouts(), template.defaultLayout()));
         JkTemplateToml.Meta meta = template.meta();
         if (meta != null) meta.step().ifPresent(steps::add);
         return new Form(ID, TITLE, steps);
@@ -85,40 +78,13 @@ public final class NewProjectForm {
         return out;
     }
 
-    /** The template's language: its id's first segment, else its descriptor's, else java. */
+    /** The template's language: its id's first segment, else its descriptor's, else the default. */
     private static String language(NewProjectOps.TemplateForm template) {
         String first = template.id().split("/")[0];
-        if (LANGS.contains(first)) return first;
+        if (NewProjectStep.LANGS.contains(first)) return first;
         JkTemplateToml.Meta meta = template.meta();
-        return meta != null && LANGS.contains(meta.language()) ? meta.language() : "java";
-    }
-
-    private static Step projectStep(NewProjectOps.@Nullable TemplateForm template) {
-        List<Field> fields = new ArrayList<>();
-        fields.add(Field.of("lang", "Language", FieldKind.CHOICE)
-                .option("java", "Java", null)
-                .option("kotlin", "Kotlin", null)
-                .option("groovy", "Groovy", null)
-                .option("scala", "Scala", null)
-                .defaultValue(template == null ? "java" : language(template))
-                .build());
-        fields.add(Field.of("template", "Template", FieldKind.SEARCH)
-                .source(TEMPLATES_SOURCE)
-                .build());
-        fields.add(Field.of("name", "Name", FieldKind.TEXT)
-                .help("The project's name and directory")
-                .pattern(NewProjectOps.NAME.pattern())
-                .build());
-        fields.add(Field.of("group", "Group", FieldKind.TEXT)
-                .help("Maven groupId and package")
-                .pattern(NewProjectOps.GROUP.pattern())
-                .defaultFrom("git-email")
-                .build());
-        if (template != null && template.layouts().size() > 1) {
-            Field.Builder layout = Field.of("layout", "Layout", FieldKind.CHOICE);
-            for (String l : template.layouts()) layout.option(l);
-            fields.add(layout.defaultValue(template.defaultLayout()).build());
-        }
-        return new Step("project", "Project", fields);
+        return meta != null && NewProjectStep.LANGS.contains(meta.language())
+                ? meta.language()
+                : NewProjectStep.LANGS.getFirst();
     }
 }

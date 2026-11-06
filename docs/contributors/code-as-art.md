@@ -626,8 +626,7 @@ on the same surface.
 
 Lombok sits in a module's `[processor-dependencies]` and `[provided-dependencies]`, the same
 scopes jspecify does, never in `[dependencies]`; `scripts/check-lombok-diet.sh` refuses a manifest
-that puts it anywhere a runtime can reach. User projects scaffold it the same way (see
-`NewScaffolder`).
+that puts it anywhere a runtime can reach.
 
 ### Patterns
 

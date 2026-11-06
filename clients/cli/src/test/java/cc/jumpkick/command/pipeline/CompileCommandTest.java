@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.command.ScaffoldTestSupport;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -148,7 +149,7 @@ class CompileCommandTest {
     // --- helpers -----------------------------------------------------------
 
     private static void scaffold(Path dir) throws IOException {
-        run("new", dir.toString());
+        BlankProject.write(dir.toString());
         ScaffoldTestSupport.writeEmptyLock(dir); // jk new no longer locks; check needs a lock
     }
 }

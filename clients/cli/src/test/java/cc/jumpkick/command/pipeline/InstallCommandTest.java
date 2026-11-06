@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -118,8 +119,7 @@ class InstallCommandTest {
     @Test
     @DisabledOnOs(OS.WINDOWS) // POSIX launcher only.
     void application_install_writes_lib_layout_and_launcher(@TempDir Path tempDir) throws Exception {
-        int created = Jk.execute(
-                "new",
+        int created = BlankProject.write(
                 "--group",
                 "com.example",
                 "--name",

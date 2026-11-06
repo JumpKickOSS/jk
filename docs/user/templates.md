@@ -2,7 +2,9 @@
 
 ```bash
 jk new                       # on a terminal: the new-project form
-jk new my-app
+jk new my-app                # the app template; without a terminal, with its defaults
+jk new my-app --dir ~/src    # ~/src/my-app: --dir (-C) is the parent directory
+jk new -t library my-lib
 jk new -t cli my-app
 jk new -t spring-boot/hello my-api
 jk new -t quarkus/hello my-api
@@ -13,32 +15,47 @@ jk new -t app --help         # the template's questions, with their values and d
 jk init -t hello
 ```
 
-`-t` / `--template` is exclusive with `--plugin`.
+Every project comes from a template. With no `-t` it is **`app`**, the blank application in the
+chosen language (`library` is the blank library); the template search preselects it.
 
 **On a terminal**, `jk new` asks what its flags left open. It walks jk's own step first (language,
-template, name, group), then the chosen template's: the layout when the template renders more than
-one, then the template's [questions](#template-questions-jk-templatetoml). A flag answers its field
-up front (`--lang`, `-t`, the name or `--name`, `--group`, `-L`, and `-p key=value` for a template's
-question), and the field is shown answered rather than asked; an `advanced` question takes its
-default unless `-p` sets it. The walk ends on the equivalent command, which makes the same project
-without asking:
+template, name, group, directory), then the chosen template's: the layout when the template renders
+more than one, then the template's [questions](#template-questions-jk-templatetoml). A flag answers
+its field up front (`--lang`, `-t`, the name or `--name`, `--group`, `--dir`, `-L`, and
+`-p key=value` for a template's question), and the field is shown answered rather than asked; an
+`advanced` question takes its default unless `-p` sets it. The walk ends on the equivalent command,
+which makes the same project without asking:
 
 ```text
 Equivalent command  jk new my-app -t kotlin/none/app -L simple -p native=true
 ```
 
-A flag only the blank scaffolder takes (`-e`, `-A`, `-n`, `-P`, `-d`, `-m`, `--jdk`) skips the form
-and scaffolds a plain library or `--executable` app, as without a terminal.
-
-**Without a terminal** (a pipe, `CI`, `JK_NONINTERACTIVE`), `-t` scaffolds the template with every
-question unanswered by `-p` at its default. A required question with no default is an error naming
-the flag that answers it:
+**Without a terminal** (a pipe, `CI`, `JK_NONINTERACTIVE`), the same form is settled from the
+flags, and every field they leave open takes its default, so `jk new my-app` is `app` with its
+defaults. A required field with no default (the name, when no argument gives it) is an error naming
+the flag that answers it, one line per field:
 
 ```text
-template java/spring-boot/webmvc: database needs a value: -p database=none|postgres|mysql
+jk new: database needs a value: -p database=none|postgres|mysql
+jk new: name must match [a-z][a-z0-9-]*; got 'MyApp' (--name <name>)
 ```
 
-With no `-t`, `jk new` is the blank scaffolder for a plain library or `--executable` app.
+A name is lowercase letters, digits and `-`, starting with a letter: it is the directory, the
+artifact and the image name. `--jdk 21` sets the template's `java = 21`; a module takes its
+workspace's `java` and language unless a flag says otherwise.
+
+The flags of the former blank-project scaffolder:
+
+| Flag | Now |
+|---|---|
+| `-e`, `--executable` | `-t app` (the default) |
+| `--no-executable` | `-t library` |
+| `-A`, `--assembly` | refused: `-p assembly=true` |
+| `-n`, `--native` | refused: `-p native=true` |
+| `-d`, `--deps` | refused: `-p deps=guava,commons-lang,commons-io`; `jk add` for any other |
+| `--jdk <major>` | the template's `java`; a vendor spec is refused (pin it in `jk.toml` after) |
+| `-m`, `--kotlin-module` | refused: set `module` in the new `jk.toml` |
+| `-P`, `--plugin` | refused: no template scaffolds a build plugin yet; start from [third-party-plugin](examples/third-party-plugin/) |
 
 **`jk new -t <template> --help`** follows the command's own help with the template's questions, one
 line each, generated from its form:
@@ -69,8 +86,8 @@ build against; `jk update` moves it — [Lockfile](lockfile.md#jk-update).
 
 `--lang` defaults to **java**. For a `framework/name` ref, a miss on that language walks
 java → kotlin → groovy → scala until a hit (`jk new -t grails/hello` lands on groovy).
-`jk new -l scala` scaffolds a Scala 3 app (mixed Java+Scala compiles in one Zinc
-session).
+`jk new -l groovy` scaffolds the Groovy `app`. No catalogue template is in Scala yet, so the
+form offers java, kotlin and groovy (and `--lang node` runs the Node generators below).
 
 Layout (`traditional` vs `simple`) is **file placement**, not a `jk.toml` key —
 [Layout](layout.md). `--layout simple` sets Giter8 `simple=yes` when the template’s

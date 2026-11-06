@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
@@ -271,15 +272,14 @@ class KotlinCompilationTest {
         assertThat(exit).isEqualTo(0);
     }
     /**
-     * Scaffold with {@code jk new} into {@code dir}, minus what no assertion here reads: the sample
+     * Write a blank Kotlin project into {@code dir}, minus what no assertion here reads: the sample
      * test suite and the javadoc jar. The compile and package steps under test are unchanged.
      */
     private static void newKotlinProject(Path dir, String... args) throws IOException {
-        String[] argv = new String[args.length + 2];
-        argv[0] = "new";
-        System.arraycopy(args, 0, argv, 1, args.length);
+        String[] argv = new String[args.length + 1];
+        System.arraycopy(args, 0, argv, 0, args.length);
         argv[argv.length - 1] = dir.toString();
-        assertThat(run(argv)).as("jk new").isEqualTo(0);
+        assertThat(BlankProject.write(argv)).as("blank project").isEqualTo(0);
         PathUtil.deleteRecursively(dir.resolve("src/test"));
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, "javadoc = false\n" + Files.readString(toml));

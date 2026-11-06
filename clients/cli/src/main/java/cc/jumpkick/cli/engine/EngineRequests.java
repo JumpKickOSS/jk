@@ -325,60 +325,10 @@ public final class EngineRequests {
             @Nullable String lang,
             String layout,
             @Nullable String template,
-            boolean executable,
-            @Nullable String jdk,
-            int javaRelease,
-            boolean assembly,
-            boolean nativeImage,
-            boolean plugin,
-            @Nullable String kotlinModule,
-            List<String> deps,
-            boolean sample,
             boolean standalone,
             Map<String, String> templateParams,
             boolean relaxParent,
-            @Nullable String targetDir) {
-        public NewProjectRequest(
-                String name,
-                String parentDir,
-                @Nullable String group,
-                @Nullable String lang,
-                String layout,
-                @Nullable String template,
-                boolean executable,
-                @Nullable String jdk,
-                int javaRelease,
-                boolean assembly,
-                boolean nativeImage,
-                boolean plugin,
-                @Nullable String kotlinModule,
-                List<String> deps,
-                boolean sample,
-                boolean standalone,
-                Map<String, String> templateParams,
-                boolean relaxParent) {
-            this(
-                    name,
-                    parentDir,
-                    group,
-                    lang,
-                    layout,
-                    template,
-                    executable,
-                    jdk,
-                    javaRelease,
-                    assembly,
-                    nativeImage,
-                    plugin,
-                    kotlinModule,
-                    deps,
-                    sample,
-                    standalone,
-                    templateParams,
-                    relaxParent,
-                    null);
-        }
-    }
+            @Nullable String targetDir) {}
 
     public record GitFetchRequest(
             String url, String canonicalUrl, String ref, Path cache, boolean refresh, boolean requireJkToml) {

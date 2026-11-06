@@ -22,7 +22,7 @@ class NewProjectFormVerbTest {
                 NewProjectFormVerb.answer(new NewProjectFormRequest(null, null, repo.toString()))
                         .encode());
         Form form = Form.fromJson(ack.form());
-        assertThat(form.fields()).extracting(Field::key).containsExactly("lang", "template", "name", "group");
+        assertThat(form.fields()).extracting(Field::key).containsExactly("lang", "template", "name", "group", "dir");
         assertThat(ack.template()).isEmpty();
         assertThat(ack.templates()).containsKeys("java/none/app", "kotlin/none/library");
     }

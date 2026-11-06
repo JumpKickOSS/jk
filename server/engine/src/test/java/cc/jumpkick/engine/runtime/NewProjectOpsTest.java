@@ -9,7 +9,6 @@ import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -18,42 +17,51 @@ import org.junit.jupiter.api.io.TempDir;
 class NewProjectOpsTest {
 
     @Test
-    void creates_plain_java_project(@TempDir Path temp) throws Exception {
+    void no_template_is_the_app_template(@TempDir Path temp) throws Exception {
         // temp is under java.io.tmpdir → allowed parent
         var result = NewProjectOps.create(
-                new NewProjectOps.Request("widget", temp.toString(), "com.acme", "java", "simple", null, true));
+                new NewProjectOps.Request("widget", temp.toString(), "com.acme", "java", "simple", null));
         Path root = result.path();
         assertThat(root).isEqualTo(temp.resolve("widget"));
         assertThat(root.resolve("jk.toml")).exists();
         assertThat(root.resolve("AGENTS.md")).exists();
         assertThat(Files.readString(root.resolve("AGENTS.md"))).contains("jk skill");
         String toml = Files.readString(root.resolve("jk.toml"));
-        assertThat(toml).contains("name     = \"widget\"");
-        assertThat(toml).contains("group    = \"com.acme\"");
-        assertThat(root.resolve("src")).isDirectory();
+        assertThat(toml).contains("name = \"widget\"").contains("group = \"com.acme\"");
+        assertThat(toml).contains("main = \"com.acme.Main\"");
+        assertThat(root.resolve("src/com/acme/Main.java")).isRegularFile();
     }
 
     @Test
     void rejects_existing_project(@TempDir Path temp) throws Exception {
-        NewProjectOps.create(
-                new NewProjectOps.Request("dup", temp.toString(), "com.example", "java", "simple", null, false));
-        assertThatThrownBy(() -> NewProjectOps.create(new NewProjectOps.Request(
-                        "dup", temp.toString(), "com.example", "java", "simple", null, false)))
+        NewProjectOps.create(new NewProjectOps.Request("dup", temp.toString(), "com.example", "java", "simple", null));
+        assertThatThrownBy(() -> NewProjectOps.create(
+                        new NewProjectOps.Request("dup", temp.toString(), "com.example", "java", "simple", null)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("already exists");
     }
 
     @Test
     void rejects_bad_name(@TempDir Path temp) {
-        assertThatThrownBy(() -> NewProjectOps.create(new NewProjectOps.Request(
-                        "../evil", temp.toString(), "com.example", "java", "simple", null, true)))
+        assertThatThrownBy(() -> NewProjectOps.create(
+                        new NewProjectOps.Request("../evil", temp.toString(), "com.example", "java", "simple", null)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
+    void a_name_is_lowercase_letters_digits_and_dashes(@TempDir Path temp) {
+        for (String bad : new String[] {"Widget", "my.app", "my_app", "1app"}) {
+            assertThatThrownBy(() -> NewProjectOps.create(
+                            new NewProjectOps.Request(bad, temp.toString(), "com.example", "java", null, null)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("invalid name '" + bad + "'");
+        }
+    }
+
+    @Test
     void rejects_unknown_layout(@TempDir Path temp) {
-        assertThatThrownBy(() -> NewProjectOps.create(new NewProjectOps.Request(
-                        "widget", temp.toString(), "com.example", "java", "mill", null, false)))
+        assertThatThrownBy(() -> NewProjectOps.create(
+                        new NewProjectOps.Request("widget", temp.toString(), "com.example", "java", "mill", null)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("layout must be");
     }
@@ -61,7 +69,7 @@ class NewProjectOpsTest {
     @Test
     void auto_layout_scaffolds_traditional_tree(@TempDir Path temp) throws Exception {
         var result = NewProjectOps.create(
-                new NewProjectOps.Request("widget", temp.toString(), "com.acme", "java", "auto", null, false));
+                new NewProjectOps.Request("widget", temp.toString(), "com.acme", "java", "auto", null));
         Path root = result.path();
         assertThat(root.resolve("src/main/java")).isDirectory();
         assertThat(Files.readString(root.resolve("jk.toml"))).doesNotContain("layout");
@@ -72,25 +80,7 @@ class NewProjectOpsTest {
         // targetDir wins over parentDir/name for the write location.
         Path custom = temp.resolve("elsewhere/custom-home");
         var created = NewProjectOps.create(new NewProjectOps.Request(
-                "x",
-                temp.toString(),
-                "com.example",
-                "java",
-                "simple",
-                null,
-                true,
-                null,
-                0,
-                false,
-                false,
-                false,
-                null,
-                List.of(),
-                true,
-                true,
-                Map.of(),
-                true,
-                custom.toString()));
+                "x", temp.toString(), "com.example", "java", "simple", null, true, Map.of(), true, custom.toString()));
         assertThat(created.path()).isEqualTo(custom.toAbsolutePath().normalize());
         assertThat(custom.resolve("jk.toml")).exists();
         assertThat(temp.resolve("x")).doesNotExist();
@@ -106,15 +96,6 @@ class NewProjectOpsTest {
                         "simple",
                         null,
                         true,
-                        null,
-                        0,
-                        false,
-                        false,
-                        false,
-                        null,
-                        List.of(),
-                        true,
-                        true,
                         Map.of(),
                         false,
                         "/etc/pwned")))
@@ -125,7 +106,7 @@ class NewProjectOpsTest {
     @Test
     void rejects_path_outside_home_and_tmp() {
         assertThatThrownBy(() -> NewProjectOps.create(
-                        new NewProjectOps.Request("x", "/etc", "com.example", "java", "simple", null, true)))
+                        new NewProjectOps.Request("x", "/etc", "com.example", "java", "simple", null)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("HOME");
     }
@@ -180,8 +161,7 @@ class NewProjectOpsTest {
                 "com.acme",
                 "java",
                 "traditional",
-                g8.toAbsolutePath().toString(),
-                true));
+                g8.toAbsolutePath().toString()));
         assertThat(result.path().resolve("jk.toml")).exists();
         assertThat(result.path().resolve("AGENTS.md")).exists();
         assertThat(Files.readString(result.path().resolve("AGENTS.md"))).contains("jk skill");
@@ -201,8 +181,7 @@ class NewProjectOpsTest {
                 "com.acme",
                 "java",
                 "traditional",
-                g8.toAbsolutePath().toString(),
-                true);
+                g8.toAbsolutePath().toString());
 
         assertThatThrownBy(() -> NewProjectOps.create(request)).hasMessageContaining("did not produce jk.toml");
         assertThat(parent.resolve("widget"))
@@ -232,8 +211,7 @@ class NewProjectOpsTest {
                 "com.acme",
                 "java",
                 "simple",
-                g8.toAbsolutePath().toString(),
-                true));
+                g8.toAbsolutePath().toString()));
 
         assertThat(result.path().resolve("src/Main.java")).exists();
         assertThat(result.path().resolve("src/main/java")).doesNotExist();
@@ -257,7 +235,7 @@ class NewProjectOpsTest {
         Files.createDirectories(parent);
 
         assertThatThrownBy(() -> NewProjectOps.create(new NewProjectOps.Request(
-                        "widget", parent.toString(), "com.acme", "java", "simple", "acme-trad-only", true)))
+                        "widget", parent.toString(), "com.acme", "java", "simple", "acme-trad-only")))
                 .hasMessageContaining("does not support --layout simple")
                 .hasMessageContaining("traditional");
         assertThat(parent.resolve("widget")).doesNotExist();
@@ -291,8 +269,8 @@ class NewProjectOpsTest {
         assertThat(cli.resolve("default.properties")).content().contains("jk_layout=simple");
         Path parent = Files.createDirectories(temp.resolve("apps"));
 
-        Path root = NewProjectOps.create(new NewProjectOps.Request(
-                        "widget", parent.toString(), "com.acme", null, null, cli.toString(), true))
+        Path root = NewProjectOps.create(
+                        new NewProjectOps.Request("widget", parent.toString(), "com.acme", null, null, cli.toString()))
                 .path();
 
         assertThat(root.resolve("src/main")).doesNotExist();
@@ -419,15 +397,6 @@ class NewProjectOpsTest {
                         "traditional",
                         template.toAbsolutePath().toString(),
                         false,
-                        null,
-                        0,
-                        false,
-                        false,
-                        false,
-                        null,
-                        List.of(),
-                        false,
-                        false,
                         params,
                         false,
                         null))
@@ -457,15 +426,6 @@ class NewProjectOpsTest {
                         "java",
                         layout,
                         g8.toAbsolutePath().toString(),
-                        false,
-                        null,
-                        0,
-                        false,
-                        false,
-                        false,
-                        null,
-                        List.of(),
-                        false,
                         false,
                         params,
                         false,

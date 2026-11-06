@@ -101,13 +101,18 @@ POSIX shell.
 
 ## The new-project form
 
-`jk new` and MCP `new` render one form, which the engine builds (`NewProjectForm`): jk's step
-(`lang`, `template` as a search over the catalogue, `name`, `group`, and `layout` when the template
-renders more than one), then the template's own `[[ask]]` step. Once a template is chosen, `lang`
-defaults to its language. The keys of jk's step are reserved, so no template may ask for one.
+`jk new` and MCP `new` render one form, which the engine builds (`NewProjectForm`): jk's step, then
+the template's own `[[ask]]` step. jk's step is one field list, `NewProjectStep` in `:core`, which the
+engine serves and the CLI and MCP read their keys from: `lang`, `template` (a search over the
+catalogue, default `app`), `name`, `group`, `dir` (the parent directory, derived per surface:
+`--dir`/the cwd in the CLI, `parentDir` in MCP), and `layout` when the template renders more than
+one. Once a template is chosen, `lang` defaults to its language. The keys of jk's step are
+reserved, so no template may ask for one. There is no other way to make a project: no template is
+the default template.
 
 | Surface | How it gets the form | Where it renders |
 |---|---|---|
+| CLI with no terminal | the same requests | `NewForm.settle` checks flags and defaults; what is left is `NewForm.Unsettled`, one `jk new: <key> …: <flag>` line per field |
 | CLI on a terminal | `new-project-form-request` (no template: jk's step and the catalogue; a template: both steps and the resolved id) | `NewForm` walks it with `FormRenderer`, then scaffolds through `NewTemplate`; the summary names the resolved id, so it reproduces the same template whatever language was asked |
 | CLI `-t <ref> --help` | the same request | `NewForm.help`, a `FieldLine` per field |
 | MCP `new` | `NewProjectOps.templateForm` in process | `McpNewForm` settles the answers: arguments and `params`, then defaults, then form elicitation for what is still required, else an error of `FieldLine`s |
