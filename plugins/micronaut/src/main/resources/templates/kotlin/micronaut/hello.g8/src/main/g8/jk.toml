@@ -16,7 +16,8 @@ micronaut-jackson-databind = { group = "io.micronaut", name = "micronaut-jackson
 logback = { group = "ch.qos.logback", name = "logback-classic" }
 
 [processor-dependencies]
-micronaut-inject-java = { group = "io.micronaut", name = "micronaut-inject-java" }
+# Micronaut's KSP processor: it writes the bean definitions for the Kotlin sources.
+micronaut-inject-kotlin = { group = "io.micronaut", name = "micronaut-inject-kotlin" }
 
 [test-dependencies]
 micronaut-test-junit5 = { group = "io.micronaut.test", name = "micronaut-test-junit5" }

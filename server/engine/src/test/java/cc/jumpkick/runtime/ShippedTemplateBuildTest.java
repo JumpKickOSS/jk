@@ -56,29 +56,15 @@ class ShippedTemplateBuildTest {
 
     /**
      * Templates that cannot build in-gate, by id, each with the reason. A template named here is
-     * skipped with that reason in the assume message — never silently. Every current entry is a
-     * live defect this test found on its first run: delete the entry when the named defect is
-     * fixed, and the template rejoins the loop.
+     * skipped with that reason in the assume message — never silently: delete the entry when the
+     * reason no longer holds, and the template rejoins the loop.
      */
     private static final Map<String, String> UNBUILDABLE = Map.of(
             "kotlin/android/compose",
-                    "needs a provisioned Android SDK with accepted licenses (jk android licenses"
-                            + " --yes), which the gate must not do to the host; verified"
-                            + " out-of-gate 2026-09-01 — lock resolves, jk build emits the debug"
-                            + " APK, jk test passes 2 JVM tests. Render is gated below.",
-            "kotlin/micronaut/hello",
-                    "jk.toml omits java = $java$ (default.properties declares java=25 unused), so"
-                            + " compile-kotlin gets jvmTarget 0 — the defect groovy/grails/hello had",
-            "kotlin/spring-boot/hello", "jk.toml omits java = $java$, so compile-kotlin gets jvmTarget 0",
-            "java/spring-boot/hello",
-                    "engine defect, not a template defect: the spring-boot describe worker forked off"
-                            + " the lock-pin path launches with a classpath missing the plugin SDK"
-                            + " (Could not find or load main class PluginMain, exit 1) — the same"
-                            + " worker forks fine for kotlin/spring-boot/webmvc later in the run",
-            "java/spring-boot/webmvc",
-                    "declares java = 26 but the build compiled with the JDK 25 toolchain instead of"
-                            + " provisioning 26 (concepts.md says java=26 'may provision'); javac 25"
-                            + " rejects --release 26");
+            "needs a provisioned Android SDK with accepted licenses (jk android licenses"
+                    + " --yes), which the gate must not do to the host; verified"
+                    + " out-of-gate 2026-09-01 — lock resolves, jk build emits the debug"
+                    + " APK, jk test passes 2 JVM tests. Render is gated below.");
 
     private static final String GRAILS_HELLO = TemplateSpec.idOf("groovy", "grails", "hello");
 
