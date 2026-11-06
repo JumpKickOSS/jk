@@ -51,15 +51,20 @@ public final class JdkInventory {
         return of(JkDirs.jdks());
     }
 
-    /** Inventory file in {@link JkDirs#state()}, trees under {@code jdksRoot}. */
+    /**
+     * Inventory file in {@link JkDirs#state()} as it resolves now, trees under {@code jdksRoot}. The
+     * state root is read on every call, so a process whose state root moves (a test with its own)
+     * reads that root's inventory, never one an earlier state root left in the cache.
+     */
     public static JdkInventory of(Path jdksRoot) {
-        return SHARED.computeIfAbsent(
+        Key key = new Key(
                 jdksRoot.toAbsolutePath().normalize(),
-                root -> new JdkInventory(root, JkDirs.state().resolve(FILE_NAME)));
+                JkDirs.state().resolve(FILE_NAME).toAbsolutePath().normalize());
+        return SHARED.computeIfAbsent(key, k -> new JdkInventory(k.jdksRoot(), k.file()));
     }
 
     /**
-     * One inventory per JDK root for the life of the process.
+     * One inventory per (JDK root, inventory file) for the life of the process.
      *
      * <p>{@link #snapshot()} memoizes on {@code (size, mtime)} in <em>instance</em> fields.
      * {@code jk hook-env} runs on every shell prompt and asks for defaultId, graalId, defaultHome
@@ -68,7 +73,10 @@ public final class JdkInventory {
      * <p>The snapshot still re-stats on every read and re-parses when the file moves, so sharing
      * the instance shares the memo, not a stale answer.
      */
-    private static final ConcurrentMap<Path, JdkInventory> SHARED = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Key, JdkInventory> SHARED = new ConcurrentHashMap<>();
+
+    /** What one shared inventory is: its trees and the state root's file that records them. */
+    private record Key(Path jdksRoot, Path file) {}
 
     /** Test seam: forget every shared inventory, so the next {@link #of} re-reads. */
     public static void resetShared() {

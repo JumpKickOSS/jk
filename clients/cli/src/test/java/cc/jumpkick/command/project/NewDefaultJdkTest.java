@@ -10,7 +10,6 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,8 +79,7 @@ class NewDefaultJdkTest {
      * running JDK, so anything that runs the default gets a real one.
      */
     private static void defaultJdk(String id) throws IOException {
-        JdkInventory inventory = new JdkInventory(JkDirs.jdks(), JkDirs.state().resolve(JdkInventory.FILE_NAME));
-        inventory.setDefault(new InstalledJdk(id, Path.of(System.getProperty("java.home"))));
+        JdkInventory.current().setDefault(new InstalledJdk(id, Path.of(System.getProperty("java.home"))));
     }
 
     private record Run(int exit, String err) {}
