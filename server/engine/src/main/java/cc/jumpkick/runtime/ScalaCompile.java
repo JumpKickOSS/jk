@@ -31,10 +31,16 @@ public final class ScalaCompile {
 
     private ScalaCompile() {}
 
-    public static Setup prepare(JkBuild project, Lockfile lock, Cas cas) throws IOException {
+    /** The Scala version the module compiles with: the lock's, an exact pin, else the bundled default. */
+    public static String version(JkBuild project, @Nullable Lockfile lock) {
         String version = CompileToolchain.scalaVersionFor(lock, project);
-        if (version == null || version.isBlank()) {
-            version = ScalaResolver.DEFAULT_VERSION;
+        return version == null || version.isBlank() ? ScalaResolver.DEFAULT_VERSION : version;
+    }
+
+    public static Setup prepare(JkBuild project, Lockfile lock, Cas cas) throws IOException {
+        String pinned = CompileToolchain.scalaVersionFor(lock, project);
+        String version = version(project, lock);
+        if (pinned == null || pinned.isBlank()) {
             // A declared non-exact selector (e.g. `scala = "3"`) with no resolved pin in the lock —
             // offline first-resolve, or a metadata fetch that failed — was silently compiling with
             // the bundled default, possibly outside the requested range.

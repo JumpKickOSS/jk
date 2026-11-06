@@ -9,7 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
@@ -27,7 +29,9 @@ public final class SourcesJar {
     private SourcesJar() {}
 
     /**
-     * Build a sources jar in memory from the given source roots. Empty or absent roots are skipped.
+     * Build a sources jar in memory from the given source roots. Empty or absent roots are skipped;
+     * a path two roots both hold (a {@code package-info.java} in the Java and the Scala root) is
+     * taken from the first.
      */
     public static byte[] build(List<Path> sourceRoots) throws IOException {
         Manifest mf = new Manifest();
@@ -39,20 +43,22 @@ public final class SourcesJar {
         // entry with System.currentTimeMillis(), so every rebuild would churn the first entry.
         try (JarOutputStream jos = new JarOutputStream(baos)) {
             ZIP.writeManifest(jos, mf);
+            Set<String> written = new HashSet<>();
             for (Path root : sourceRoots) {
                 if (!Files.isDirectory(root)) continue;
-                appendTree(jos, root);
+                appendTree(jos, root, written);
             }
         }
         return baos.toByteArray();
     }
 
-    private static void appendTree(JarOutputStream jos, Path root) throws IOException {
+    private static void appendTree(JarOutputStream jos, Path root, Set<String> written) throws IOException {
         List<Path> entries = new ArrayList<>();
         PathUtil.forEachRegularFile(root, (file, attrs) -> entries.add(file));
         Collections.sort(entries);
         for (Path file : entries) {
-            ZIP.writeEntry(jos, root.relativize(file).toString().replace('\\', '/'), file);
+            String name = root.relativize(file).toString().replace('\\', '/');
+            if (written.add(name)) ZIP.writeEntry(jos, name, file);
         }
     }
 }

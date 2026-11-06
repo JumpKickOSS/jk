@@ -59,6 +59,17 @@ class PlannerJavadocTest {
         assertThat(PlannerJavadoc.verdict(JavadocMode.STRICT, noApi, false)).isEqualTo(PlannerJavadoc.Verdict.NO_API);
     }
 
+    /** Scala sources make scaladoc the tool unless the module has Kotlin, which Dokka documents. */
+    @Test
+    void scala_sources_are_scaladocs_unless_kotlin_makes_it_a_dokka_run() {
+        List<Path> javaAndScala = List.of(Path.of("A.java"), Path.of("B.scala"));
+        assertThat(PlannerJavadoc.scaladocSources(javaAndScala, List.of())).containsExactly(Path.of("B.scala"));
+        assertThat(PlannerJavadoc.scaladocSources(javaAndScala, List.of(Path.of("C.kt"))))
+                .isEmpty();
+        assertThat(PlannerJavadoc.scaladocSources(List.of(Path.of("A.java")), List.of()))
+                .isEmpty();
+    }
+
     /** A failure javadoc did not locate still names its exit and shows its output. */
     @Test
     void an_unlocated_failure_reports_the_exit_and_the_output() {

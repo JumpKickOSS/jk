@@ -136,6 +136,19 @@ public final class ModuleLayout {
         return List.of(moduleDir.resolve("src/main/scala"), moduleDir.resolve("src/main/java"));
     }
 
+    /**
+     * Every main source root, one per language: SIMPLE's {@code src/}, or TRADITIONAL's {@code
+     * src/main/java}, {@code kotlin}, {@code groovy} and {@code scala} (may not exist).
+     */
+    public static List<Path> mainSourceRoots(Path moduleDir, boolean compact) {
+        if (compact) return List.of(moduleDir.resolve("src"));
+        return List.of(
+                moduleDir.resolve("src/main/java"),
+                moduleDir.resolve("src/main/kotlin"),
+                moduleDir.resolve("src/main/groovy"),
+                moduleDir.resolve("src/main/scala"));
+    }
+
     /** Main resources directory (SIMPLE: {@code resources/}; TRADITIONAL: {@code src/main/resources}). */
     public static Path mainResourcesDir(Path moduleDir, boolean compact) {
         return compact ? moduleDir.resolve("resources") : moduleDir.resolve("src/main/resources");

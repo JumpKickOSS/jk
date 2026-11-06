@@ -22,6 +22,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
@@ -366,11 +367,8 @@ public final class PlannerTails {
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path moduleRoot = layout.moduleRoot();
                     Path sourcesJar = layout.sourcesJar();
-                    // Source roots: simple layout uses src/, traditional uses src/main/java + src/main/kotlin.
                     boolean compact = CompileSupport.isSimpleLayout(project.project(), moduleRoot);
-                    List<Path> sourceRoots = compact
-                            ? List.of(moduleRoot.resolve("src"))
-                            : List.of(moduleRoot.resolve("src/main/java"), moduleRoot.resolve("src/main/kotlin"));
+                    List<Path> sourceRoots = sourceJarRoots(project, moduleRoot, compact);
                     // Cache key: hash of all source roots' content. A root that will not read fails
                     // the step rather than keying as empty.
                     InputGuard guard = InputGuard.of(sourceRoots);
@@ -395,6 +393,19 @@ public final class PlannerTails {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * The roots the sources jar holds: every language's main root, then the {@code [build]
+     * extra-src} and plugin-contributed roots the compile reads, less any nested in an earlier one.
+     */
+    static List<Path> sourceJarRoots(JkBuild project, Path moduleRoot, boolean compact) {
+        List<Path> roots = new ArrayList<>(ModuleLayout.mainSourceRoots(moduleRoot, compact));
+        for (Path extra : PlannerCompile.extraSourceDirs(project, moduleRoot)) {
+            Path abs = extra.toAbsolutePath().normalize();
+            if (roots.stream().noneMatch(r -> abs.startsWith(r.toAbsolutePath().normalize()))) roots.add(extra);
+        }
+        return roots;
     }
 
     /** Javadoc-jar packaging — a library tail beside {@link #sourcesStep}; see {@link PlannerJavadoc}. */

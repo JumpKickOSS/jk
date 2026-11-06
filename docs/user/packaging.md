@@ -72,8 +72,16 @@ javadoc = "strict"   # javadoc's own doclint checks fail the step instead of war
   release and format are part of the step's key, so moving the pin re-documents and nothing
   else. The lenient and strict modes mean the same as for javadoc: a Dokka failure is a
   warning and a README-only jar by default, and fails the step under `javadoc = "strict"`.
-- A Groovy module has nothing either tool reads: its javadoc jar holds a single `README` saying
-  so, which Central accepts.
+- A module with Scala sources (and no Kotlin) is documented by Scala 3's **scaladoc**, at the
+  release of the module's Scala compiler, over the TASTy its compile wrote. Its javadoc jar is
+  scaladoc's HTML site, with `index.html` at the root; scaladoc reads Scala only, so a mixed
+  module's Java types are in its sources jar but not in its docs. The lenient and strict modes
+  mean the same as for javadoc.
+- The sources jar holds every main source root — `src/main/java`, `kotlin`, `groovy` and
+  `scala` (the simple layout's `src/`), plus `[build] extra-src` and plugin source roots — each
+  root's files at the top of the jar, so a Scala library publishes its `.scala` files.
+- A Groovy module has nothing any of the tools reads: its javadoc jar holds a single `README`
+  saying so, which Central accepts.
 - A workspace root that only coordinates members, and a module with no sources, ship neither.
 
 ```toml
