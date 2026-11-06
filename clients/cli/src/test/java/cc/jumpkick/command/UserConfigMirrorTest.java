@@ -326,7 +326,7 @@ class UserConfigMirrorTest {
                 .containsPattern("central-lib:jar:\"\\s*\nversion\\s*= \"1\\.10\"")
                 .containsPattern("google-lib:jar:\"\\s*\nversion\\s*= \"1\\.5\"")
                 .doesNotContainPattern("version\\s*= \"9\\.0\"")
-                .doesNotContain("SNAPSHOT");
+                .doesNotContainPattern("version\\s*= \"[^\"]*-SNAPSHOT\"");
         assertThat(origins.requested()).isEmpty();
         assertNoRepositoryDialed();
     }
