@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -65,51 +66,20 @@ final class NewTemplate {
     static int apply(Args args) {
         Map<String, String> params = params(args.params());
         if (params == null) return Exit.USAGE;
-        var presetName = NewArgs.presetName(args.directory(), args.cwd());
-        String fileBase = Path.of(args.ref()).getFileName().toString();
-        if (fileBase.endsWith(".g8")) fileBase = fileBase.substring(0, fileBase.length() - 3);
-        String name = args.name();
-        String resolvedName =
-                (name != null && !name.isBlank()) ? name : params.getOrDefault("name", presetName.orElse(fileBase));
-        params.putIfAbsent("name", resolvedName);
-        String group = args.group();
-        if (group != null && !group.isBlank()) {
-            params.putIfAbsent("organization", group);
-            params.putIfAbsent("group", group);
-            params.putIfAbsent("package", group);
-        }
-        // Only an explicit --lang goes on the wire: template resolution searches every language
-        // for a bare name, and hardcoding java here made kotlin-only templates unreachable.
-        String resolvedLang = (args.lang() != null && !args.lang().isBlank()) ? args.lang() : null;
-        Path target = NewArgs.resolveTarget(args.directory(), args.cwd(), resolvedName);
-        Path parentDir = target.getParent() == null ? args.cwd() : target.getParent();
-        if (officialShortName(args.ref())) {
-            EngineCatalogFreshen.freshenCatalog(EnginePaths.current(), "templates", args.offline(), null, null);
-        }
-        // No -L leaves the layout to the engine: a jk_layout parameter, else the template's default.
-        Layout resolvedLayout;
+        EngineRequests.NewProjectRequest request;
         try {
-            resolvedLayout =
-                    args.layout() == null || args.layout().isBlank() ? Layout.AUTO : Layout.parse(args.layout());
+            request = request(args, params);
         } catch (IllegalArgumentException e) {
             CommandWedge.printFail("New", e.getMessage());
             return Exit.USAGE;
         }
+        // The request always names its target: the positional, else the name under the cwd.
+        Path target = Path.of(Objects.requireNonNull(request.targetDir(), "targetDir"));
+        if (officialShortName(args.ref())) {
+            EngineCatalogFreshen.freshenCatalog(EnginePaths.current(), "templates", args.offline(), null, null);
+        }
         try {
-            var ack = EngineClient.newProject(
-                    EnginePaths.current(),
-                    new EngineRequests.NewProjectRequest(
-                            resolvedName,
-                            parentDir.toString(),
-                            group,
-                            resolvedLang,
-                            resolvedLayout.token(),
-                            args.ref(),
-                            args.standalone(),
-                            params,
-                            true,
-                            target.toString(),
-                            args.workingDir().toString()));
+            var ack = EngineClient.newProject(EnginePaths.current(), request);
             if (ack.error() != null && !ack.error().isBlank()) {
                 CommandWedge.printFail("New", ack.error());
                 return ack.error().contains("not found") ? Exit.USAGE : Exit.SOFTWARE;
@@ -140,6 +110,50 @@ final class NewTemplate {
             CommandWedge.printFail("New", e.getMessage());
             return Exit.SOFTWARE;
         }
+    }
+
+    /**
+     * The request the scaffold posts to the engine: {@code params} (the {@code -p} pairs) seeded
+     * with the name and group, the target the positional or the name gives, and the layout, which
+     * no {@code -L} leaves to the engine (a {@code jk_layout} parameter, else the template's
+     * default).
+     *
+     * @throws IllegalArgumentException for a layout jk does not know
+     */
+    static EngineRequests.NewProjectRequest request(Args args, Map<String, String> pairs) {
+        Map<String, String> params = new LinkedHashMap<>(pairs);
+        var presetName = NewArgs.presetName(args.directory(), args.cwd());
+        String fileBase = Path.of(args.ref()).getFileName().toString();
+        if (fileBase.endsWith(".g8")) fileBase = fileBase.substring(0, fileBase.length() - 3);
+        String name = args.name();
+        String resolvedName =
+                (name != null && !name.isBlank()) ? name : params.getOrDefault("name", presetName.orElse(fileBase));
+        params.putIfAbsent("name", resolvedName);
+        String group = args.group();
+        if (group != null && !group.isBlank()) {
+            params.putIfAbsent("organization", group);
+            params.putIfAbsent("group", group);
+            params.putIfAbsent("package", group);
+        }
+        // Only an explicit --lang goes on the wire: template resolution searches every language
+        // for a bare name, and hardcoding java here made kotlin-only templates unreachable.
+        String resolvedLang = (args.lang() != null && !args.lang().isBlank()) ? args.lang() : null;
+        Path target = NewArgs.resolveTarget(args.directory(), args.cwd(), resolvedName);
+        Path parentDir = target.getParent() == null ? args.cwd() : target.getParent();
+        Layout resolvedLayout =
+                args.layout() == null || args.layout().isBlank() ? Layout.AUTO : Layout.parse(args.layout());
+        return new EngineRequests.NewProjectRequest(
+                resolvedName,
+                parentDir.toString(),
+                group,
+                resolvedLang,
+                resolvedLayout.token(),
+                args.ref(),
+                args.standalone(),
+                params,
+                true,
+                target.toString(),
+                args.workingDir().toString());
     }
 
     /** {@code -p key=value} pairs in order; {@code null}, the failure printed, for one without a key. */
