@@ -251,8 +251,11 @@ public final class WorkerEnv {
         return out;
     }
 
-    /** Whether a variable of the engine's may reach a worker that has not asked for it. */
-    static boolean allowed(String name, boolean caseInsensitive) {
+    /**
+     * Whether a variable of the engine's may reach a worker that has not asked for it. Public for
+     * the guard that checks every name a test reads reaches its test JVM.
+     */
+    public static boolean allowed(String name, boolean caseInsensitive) {
         String key = caseInsensitive ? name.toUpperCase(Locale.ROOT) : name;
         if (key.startsWith("LC_")) return true;
         if (JK.contains(key)) return true;
