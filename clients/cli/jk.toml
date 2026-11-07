@@ -145,10 +145,6 @@ extra-src = [
 # share its JK_HOME store, so they stay on one serial trailing worker (serial-tags) while
 # the hermetic unit tier shards across this build's auto share of workers.
 serial-tags = ["integration"]
-# Exclude the long-running tests for our day-to-day usage.
-# Normal `jk test` should finish in 5 min or less.
-# Run everything (all suites, tags included) with `jk build --all` / `jk test --all`.
-exclude-tags = ["integration", "slow", "bench", "network", "release"]
 env = [
   # Rendered-output assertions must not depend on the terminal the developer happens to be in.
   # Unpinned, `auto` nerd-font detection inspects TERM_PROGRAM and the terminal's own config, so
