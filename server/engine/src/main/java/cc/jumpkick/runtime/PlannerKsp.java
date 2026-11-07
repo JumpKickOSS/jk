@@ -425,14 +425,14 @@ public final class PlannerKsp {
      * target/ksp-test}. {@code classpath} is the test compile classpath, so the main classes (and
      * the main round's output already mirrored into them) are what the processors resolve against.
      * The processors are the shared table's closure plus what {@code [test-processor-dependencies]}
-     * adds. Its generated sources join {@link PlannerTest.TestSources}; its bytecode and resources
+     * adds. Its generated sources join {@link TestSources}; its bytecode and resources
      * are mirrored into the test classes with the test resources. A module with no KSP processor
      * keeps no test round output. True when the output tree may have changed.
      */
     static boolean runTestRound(
             TaskContext ctx,
             BuildPlanner.Ctx cx,
-            PlannerTest.TestSources src,
+            TestSources src,
             List<Path> classpath,
             List<String> compiledSuites,
             @Nullable PluginDeclarations decls)

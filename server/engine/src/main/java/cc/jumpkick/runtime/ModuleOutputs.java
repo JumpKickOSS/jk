@@ -138,7 +138,7 @@ public final class ModuleOutputs {
     public static boolean hasSelectedTestSources(JkBuild build, Path moduleDir) {
         boolean compact = CompileSupport.isSimpleLayout(build.project(), moduleDir);
         try {
-            return !PlannerTest.TestSources.collect(
+            return !TestSources.collect(
                             build,
                             moduleDir,
                             compact,

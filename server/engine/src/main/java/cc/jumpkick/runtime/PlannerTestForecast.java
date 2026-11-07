@@ -41,7 +41,7 @@ final class PlannerTestForecast {
         s.projectOwnOutputs();
         ForecastScope.Prepared prepared = s.prepared();
         BuildLayout layout = prepared.layout();
-        PlannerTest.TestSources testSources = s.testSources();
+        TestSources testSources = s.testSources();
         TaskForecast.Task step;
         if (s.compileDirty) {
             // Dependency-only dirtiness: the tests recompile only if main really does.

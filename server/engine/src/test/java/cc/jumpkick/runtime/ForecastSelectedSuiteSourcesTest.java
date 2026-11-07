@@ -94,7 +94,7 @@ class ForecastSelectedSuiteSourcesTest {
 
     /** The forecast's source list: the selected suites through the factory the build uses. */
     private static List<Path> selected(JkBuild project, Path module, TestSelection selection) throws Exception {
-        return PlannerTest.TestSources.collect(
+        return TestSources.collect(
                         project,
                         module,
                         false,
