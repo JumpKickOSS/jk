@@ -180,7 +180,8 @@ final class MemberPartitions {
                     pruned.put(row.displayIdentity(), lacking);
                 }
                 // Members share a partition row only where the row says the same for each of them.
-                String rowKey = key + " " + row.deps() + " " + row.excludedBy() + " " + row.pinnedBy();
+                String rowKey =
+                        key + " " + row.deps() + " " + row.excludedBy() + " " + row.pinnedBy() + " " + row.addedBy();
                 partitions.putIfAbsent(rowKey, row);
                 partitionMembers
                         .computeIfAbsent(rowKey, k -> new LinkedHashSet<>())

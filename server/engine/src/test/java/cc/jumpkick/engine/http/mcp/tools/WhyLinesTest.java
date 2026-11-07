@@ -18,6 +18,7 @@ class WhyLinesTest {
                 List.of("33.4.0"),
                 List.of(""),
                 List.of("org.springframework.boot:spring-boot-dependencies:4.0.0"),
+                List.of(""),
                 List.of("0"),
                 List.of("app@1.0.0>com.google.guava:guava@33.4.0"),
                 List.of("\t"),
@@ -31,11 +32,32 @@ class WhyLinesTest {
     }
 
     @Test
+    void a_conditional_dependency_names_its_declarer_and_condition() {
+        WhyReport report = new WhyReport(
+                null,
+                List.of("io.quarkus:quarkus-rest-kotlin"),
+                List.of("3.40.1.1"),
+                List.of(""),
+                List.of("io.quarkus.platform:quarkus-bom:3.40.1.1"),
+                List.of("io.quarkus:quarkus-rest when io.quarkus:quarkus-kotlin"),
+                List.of("0"),
+                List.of("app@1.0.0>io.quarkus:quarkus-rest@3.40.1.1>io.quarkus:quarkus-rest-kotlin@3.40.1.1"),
+                List.of("\t\t"),
+                List.of(""),
+                List.of(),
+                null);
+        assertThat(WhyLines.of(report, "quarkus-rest-kotlin"))
+                .contains("io.quarkus:quarkus-rest-kotlin 3.40.1.1 · conditional dependency of io.quarkus:quarkus-rest"
+                        + " when io.quarkus:quarkus-kotlin, pinned by io.quarkus.platform:quarkus-bom:3.40.1.1");
+    }
+
+    @Test
     void more_than_five_matches_are_capped() {
         List<String> names = new ArrayList<>();
         for (int i = 0; i < 8; i++) names.add("g:a" + i);
         WhyReport report = new WhyReport(
-                null, names, names, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
+                null, names, names, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), null);
         assertThat(WhyLines.of(report, "a").lines().count()).isLessThanOrEqualTo(WhyLines.MAX_LINES);
     }
 
@@ -43,6 +65,7 @@ class WhyLinesTest {
     void an_exclusion_is_one_line() {
         WhyReport report = new WhyReport(
                 null,
+                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),
@@ -61,6 +84,7 @@ class WhyLinesTest {
     void a_workspace_sibling_is_named_as_one() {
         WhyReport report = new WhyReport(
                 null,
+                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),

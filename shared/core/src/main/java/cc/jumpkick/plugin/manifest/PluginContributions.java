@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -742,6 +743,37 @@ public final class PluginContributions {
             }
         }
         return selected;
+    }
+
+    /**
+     * The {@code [contribute.resolution.conditional-dependencies]} of every plugin active in the
+     * module, or for a workspace root in it or any member, each once: the lock follows them across
+     * the whole graph, as one solve serves every member.
+     */
+    public static List<PluginDescriptor.ConditionalDependencies> conditionalDependencies(
+            JkBuild build, Path moduleDir) {
+        Set<PluginDescriptor.ConditionalDependencies> out = new LinkedHashSet<>();
+        conditionalDependencies(build, moduleDir, out);
+        if (build.isWorkspaceRoot()) {
+            try {
+                for (var entry : WorkspaceLoader.loadModules(moduleDir, build).entrySet()) {
+                    conditionalDependencies(entry.getValue(), entry.getKey(), out);
+                }
+            } catch (IOException unreadable) {
+                // The members' plugins are unknown; the root's own still apply.
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static void conditionalDependencies(
+            JkBuild build, Path moduleDir, Set<PluginDescriptor.ConditionalDependencies> out) {
+        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
+            if (build.pluginConfig(manifest.id()).isEmpty()) continue;
+            PluginDescriptor.ConditionalDependencies rule =
+                    manifest.contributions().conditionalDependencies();
+            if (rule != null) out.add(rule);
+        }
     }
 
     /** Plugin-local environment for one module only (no workspace walk). */

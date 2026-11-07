@@ -79,11 +79,14 @@ jk new -t quarkus/hello my-api
   those files and nothing else on the machine — never `~/.m2`. A file the lock does not pin (a
   native jar for another OS, picked by a POM profile) is downloaded at build time, and an
   offline build refuses it.
-- **Runtime closure:** what ships is the lock's runtime closure, so a runtime artifact only
-  Quarkus's resolver adds, an extension's conditional dependency, ships only when
-  `[dependencies]` declares it. A Kotlin module declares `quarkus-rest-kotlin` beside
-  `quarkus-rest` and `quarkus-vertx-kotlin` beside `quarkus-kotlin`, as the Kotlin template does;
-  without them their deployment halves still run and the application fails to start.
+- **Runtime closure:** what ships is the lock's runtime closure. `jk lock` follows an
+  extension's conditional dependencies the way Quarkus's resolver does: one joins the lock when
+  every artifact its `dependency-condition` names is in the closure, and what it brings can meet
+  another's condition in turn. `quarkus-rest` beside `quarkus-kotlin` locks `quarkus-rest-kotlin`,
+  and `quarkus-kotlin` beside `quarkus-vertx` locks `quarkus-vertx-kotlin`, with nothing declared.
+  Such a row lists why under `added-by`
+  ([Lockfile](lockfile.md#rows-a-conditional-dependency-adds)), and `jk why` names the extension
+  and the condition.
 - **Native:** `[native] enabled = "always"` (or a bare `[native]` / `enabled = true` for
   `jk native` only) builds through **Quarkus’s own** native-image command. JumpKick
   supplies the GraalVM toolchain. Nothing jk composes is added on top; `[native] args`

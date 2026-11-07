@@ -426,6 +426,11 @@ public final class LockfileReader {
             licenses = new ArrayList<>();
             for (int i = 0; i < licensesArray.size(); i++) licenses.add(licensesArray.getString(i));
         }
+        List<String> addedBy = new ArrayList<>();
+        LockToml.Array addedArray = table.getArray("added-by");
+        if (addedArray != null) {
+            for (int i = 0; i < addedArray.size(); i++) addedBy.add(addedArray.getString(i));
+        }
         return new Lockfile.Artifact(
                 name,
                 version,
@@ -439,7 +444,8 @@ public final class LockfileReader {
                 sourcesChecksum,
                 excludedBy,
                 members,
-                licenses);
+                licenses,
+                addedBy);
     }
 
     /**

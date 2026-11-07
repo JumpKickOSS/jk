@@ -67,6 +67,9 @@ public final class LockOrchestrator {
     /** Whether each root's exact pin reads as a floor the graph may raise; see {@link #withPinsAsFloors}. */
     private boolean pinsAsFloors;
 
+    /** The conditional dependencies the active plugins declare; see {@link #withConditionalDependencies}. */
+    private List<ConditionalDependencies.Rule> conditionalRules = List.of();
+
     /** The workspace members behind a merged manifest, each with its own effective manifest. */
     private List<Member> members = List.of();
 
@@ -127,6 +130,16 @@ public final class LockOrchestrator {
     /** The compiler versions this lock pins; the injected stdlibs follow them exactly. */
     public LockOrchestrator withToolVersions(LanguageRuntimeInject.ToolVersions tools) {
         this.toolVersions = tools == null ? LanguageRuntimeInject.ToolVersions.NONE : tools;
+        return this;
+    }
+
+    /**
+     * Follow the conditional dependencies {@code rules} name: each module whose jar declares one
+     * brings it into the main or test graph when its condition holds there ({@link
+     * ConditionalDependencies}).
+     */
+    public LockOrchestrator withConditionalDependencies(List<ConditionalDependencies.Rule> rules) {
+        this.conditionalRules = rules == null ? List.of() : List.copyOf(rules);
         return this;
     }
 
@@ -796,7 +809,12 @@ public final class LockOrchestrator {
         }
 
         progress.graphPhase(roots.declaredCount());
-        ScopeSolves scopeSolves = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, floorPin);
+        ConditionalDependencies conditionals = conditionalRules.isEmpty()
+                ? null
+                : new ConditionalDependencies(
+                        conditionalRules, sharedSource != null ? sharedSource::reposFor : pkg -> repos, bomConstraints);
+        ScopeSolves scopeSolves =
+                new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, floorPin, conditionals);
         ScopeSolves.Solved solved = scopeSolves.solve(roots, prefs, progress);
         for (String line : scopeSolves.overrides()) observer.onOverride(line);
         if (sharedSource != null) {

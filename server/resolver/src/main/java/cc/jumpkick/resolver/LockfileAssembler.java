@@ -102,7 +102,10 @@ final class LockfileAssembler {
 
         ArtifactMaterializer materializer =
                 new ArtifactMaterializer((mod, tags, abort) -> toArtifact(mod, tags, fallbackSource, abort), progress);
-        packages.addAll(materializer.materialize(new ArrayList<>(modByKey.entrySet()), tagsByKey));
+        for (Lockfile.Artifact row : materializer.materialize(new ArrayList<>(modByKey.entrySet()), tagsByKey)) {
+            List<String> addedBy = solved.addedBy().get(row.name());
+            packages.add(addedBy == null ? row : row.withAddedBy(addedBy));
+        }
 
         for (Dependency dep : fileDeps) {
             String version = dep.version() instanceof VersionSelector.Exact ex

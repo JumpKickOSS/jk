@@ -74,6 +74,7 @@ public final class GraphOps {
             List<String> versions = new ArrayList<>(matches.size());
             List<String> members = new ArrayList<>(matches.size());
             List<String> pinnedBy = new ArrayList<>(matches.size());
+            List<String> addedBy = new ArrayList<>(matches.size());
             List<String> owners = new ArrayList<>();
             List<String> paths = new ArrayList<>();
             List<String> selectors = new ArrayList<>();
@@ -85,6 +86,7 @@ public final class GraphOps {
                 versions.add(target.version());
                 members.add(String.join(",", target.members()));
                 pinnedBy.add(target.pinnedBy() == null ? "" : target.pinnedBy());
+                addedBy.add(String.join(WhyReport.ADDED_BY_SEPARATOR, target.addedBy()));
                 for (Provenance.Path path : Provenance.pathsTo(graph, target.packageKey())) {
                     owners.add(Integer.toString(i));
                     // The walk ends at the coordinate, so the last step is this row: a partition
@@ -107,6 +109,7 @@ public final class GraphOps {
                     versions,
                     members,
                     pinnedBy,
+                    addedBy,
                     owners,
                     paths,
                     selectors,

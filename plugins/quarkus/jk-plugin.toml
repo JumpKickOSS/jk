@@ -70,6 +70,15 @@ name     = "test-deployment"
 for-step = "quarkus-test-model"
 entries  = "test-runtime"
 
+# An extension's conditional dependencies, which its runtime jar declares rather than its POM: each
+# joins the lock (and so ships) when every artifact its own descriptor's dependency-condition names
+# is in the closure, as Quarkus's bootstrap resolver adds them. quarkus-rest beside quarkus-kotlin
+# brings quarkus-rest-kotlin; quarkus-kotlin beside quarkus-vertx brings quarkus-vertx-kotlin.
+[contribute.resolution.conditional-dependencies]
+descriptor   = "META-INF/quarkus-extension.properties"
+dependencies = "conditional-dependencies"
+condition    = "dependency-condition"
+
 # Quarkus REST / CDI reflect on parameter names.
 [[contribute.compiler-args]]
 javac  = ["-parameters"]

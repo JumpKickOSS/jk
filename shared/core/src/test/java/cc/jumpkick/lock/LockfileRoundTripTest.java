@@ -218,6 +218,37 @@ class LockfileRoundTripTest {
                 .isEmpty();
     }
 
+    @Test
+    void added_by_lines_round_trip_sorted() {
+        Lockfile original = new Lockfile(
+                Lockfile.CURRENT_VERSION,
+                "jk 0.13.3",
+                Lockfile.RESOLUTION_ALGORITHM,
+                List.of(new Lockfile.Artifact(
+                                "io.quarkus:quarkus-rest-kotlin:jar:",
+                                "3.40.1",
+                                "central+https://repo.maven.apache.org/maven2/",
+                                "sha256:0123abcd",
+                                null,
+                                List.of(Scope.MAIN),
+                                List.of())
+                        .withAddedBy(List.of(
+                                "io.quarkus:quarkus-rest when io.quarkus:quarkus-kotlin",
+                                "io.quarkus:quarkus-other when io.quarkus:quarkus-kotlin"))));
+
+        String rendered = LockfileWriter.render(original);
+        assertThat(rendered.substring(rendered.indexOf("[[artifact]]")))
+                .contains("added-by = [\n  \"io.quarkus:quarkus-other when io.quarkus:quarkus-kotlin\",\n"
+                        + "  \"io.quarkus:quarkus-rest when io.quarkus:quarkus-kotlin\",\n]");
+
+        Lockfile.Artifact parsed = LockfileReader.parse(rendered).artifacts().getFirst();
+        assertThat(parsed.addedBy())
+                .containsExactly(
+                        "io.quarkus:quarkus-other when io.quarkus:quarkus-kotlin",
+                        "io.quarkus:quarkus-rest when io.quarkus:quarkus-kotlin");
+        assertThat(parsed.withScopes(List.of(Scope.TEST)).addedBy()).isEqualTo(parsed.addedBy());
+    }
+
     /** A tool row is one digest, one per platform as dotted {@code sha256.<classifier>} keys, or a URL's. */
     @Test
     void tool_rows_round_trip() {

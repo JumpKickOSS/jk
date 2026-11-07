@@ -34,6 +34,12 @@ public record WhyReport(
         List<String> matchMembers,
         /** Per match, the row's {@code pinned-by} (a BOM's {@code g:a:v} or {@code jk.toml:<handle>}); {@code ""} when nothing pinned it. */
         List<String> matchPinnedBy,
+        /**
+         * Per match, the row's {@code added-by} lines (the conditional dependencies that brought it
+         * in, {@code g:a when g:a, …}) joined with a tab ({@link #ADDED_BY_SEPARATOR}); {@code ""}
+         * when no conditional dependency did.
+         */
+        List<String> matchAddedBy,
         List<String> pathOwners,
         List<String> paths,
         List<String> pathSelectors,
@@ -46,13 +52,16 @@ public record WhyReport(
     /** Joins the per-step selectors of one path; no selector grammar contains a tab. */
     public static final String STEP_SELECTOR_SEPARATOR = "\t";
 
+    /** Joins the {@code added-by} lines of one match; no coordinate contains a tab. */
+    public static final String ADDED_BY_SEPARATOR = "\t";
+
     /** Joins the three fields of one pruned edge; no coordinate or origin contains a tab. */
     public static final String EXCLUSION_FIELD_SEPARATOR = "\t";
 
     public static WhyReport error(String message) {
         return new WhyReport(
                 message, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), null);
+                List.of(), List.of(), null);
     }
 
     /** What a query that names workspace member {@code dir} gets in place of a lock row. */
@@ -73,6 +82,7 @@ public record WhyReport(
                 .array("matchVersions", matchVersions)
                 .array("matchMembers", matchMembers)
                 .array("matchPinnedBy", matchPinnedBy)
+                .array("matchAddedBy", matchAddedBy)
                 .array("pathOwners", pathOwners)
                 .array("paths", paths)
                 .array("pathSelectors", pathSelectors)
@@ -86,6 +96,12 @@ public record WhyReport(
     public @Nullable String pinnedByOf(int index) {
         if (index >= matchPinnedBy.size() || matchPinnedBy.get(index).isEmpty()) return null;
         return matchPinnedBy.get(index);
+    }
+
+    /** The conditional dependencies that brought match {@code index} in, {@code g:a when g:a, …}; empty when none did. */
+    public List<String> addedByOf(int index) {
+        if (index >= matchAddedBy.size() || matchAddedBy.get(index).isEmpty()) return List.of();
+        return List.of(matchAddedBy.get(index).split(ADDED_BY_SEPARATOR));
     }
 
     /** The members that read match {@code index}; empty for the workspace's row. */
@@ -124,6 +140,8 @@ public record WhyReport(
             row.put("members", members.isEmpty() ? List.of() : List.of(members.split(",")));
             String pinnedBy = pinnedByOf(i);
             if (pinnedBy != null) row.put("pinnedBy", pinnedBy);
+            List<String> addedBy = addedByOf(i);
+            if (!addedBy.isEmpty()) row.put("addedBy", addedBy);
             List<String> mine = new ArrayList<>();
             List<List<String>> declared = new ArrayList<>();
             List<String> declaredBy = new ArrayList<>();
@@ -161,6 +179,7 @@ public record WhyReport(
                 Jsonl.strArray(line, "matchVersions"),
                 Jsonl.strArray(line, "matchMembers"),
                 Jsonl.strArray(line, "matchPinnedBy"),
+                Jsonl.strArray(line, "matchAddedBy"),
                 Jsonl.strArray(line, "pathOwners"),
                 Jsonl.strArray(line, "paths"),
                 Jsonl.strArray(line, "pathSelectors"),

@@ -56,6 +56,7 @@ import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.resolve.ResolveProfile;
+import cc.jumpkick.resolver.ConditionalDependencies;
 import cc.jumpkick.resolver.LanguageRuntimeInject;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -359,7 +360,8 @@ public final class LockPipeline {
                 .withJvmEnvironment(PluginContributions.jvmEnvironment(pathPrep.project(), lockDir))
                 .withPlatformPolicy(policy.platform())
                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
-                .withPinsAsFloors(policy.pinsAsFloors());
+                .withPinsAsFloors(policy.pinsAsFloors())
+                .withConditionalDependencies(conditionalRules(pathPrep.project()));
         if (rounds != null) orchestrator.withRounds(rounds);
 
         boolean keepPins = policy.keepPins() && existing != null;
@@ -398,6 +400,16 @@ public final class LockPipeline {
                 NodePlatform.host());
         trust = pathPrep.repos().trust();
         return lock;
+    }
+
+    /** The conditional dependencies the plugins active in the project or any member declare, as the solve reads them. */
+    private List<ConditionalDependencies.Rule> conditionalRules(JkBuild project) {
+        List<ConditionalDependencies.Rule> out = new ArrayList<>();
+        for (PluginDescriptor.ConditionalDependencies c :
+                PluginContributions.conditionalDependencies(project, lockDir)) {
+            out.add(new ConditionalDependencies.Rule(c.descriptor(), c.dependencies(), c.condition()));
+        }
+        return out;
     }
 
     /** The root and every member, each with inheritance applied. */

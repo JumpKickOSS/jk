@@ -316,6 +316,24 @@ changed, so the answer must follow from those — not from your table, which a v
 `entries` says which of the module's rows are the inputs: `runtime` for a closure the production
 closure decides, so a test-only change does not ask for it again.
 
+```toml
+[contribute.resolution.conditional-dependencies]
+descriptor   = "META-INF/quarkus-extension.properties"   # a properties file inside a jar
+dependencies = "conditional-dependencies"                # group:artifact[:classifier[:type]]:version, …
+condition    = "dependency-condition"                    # group:artifact[:classifier[:type]], …
+```
+
+`conditional-dependencies` makes `jk lock` follow dependencies an artifact declares in its jar
+rather than its POM. The solver reads `descriptor` in every jar of the main and test graphs; each
+dependency its `dependencies` key lists joins the graph when every artifact the `condition` key of
+the *dependency's own* descriptor names is in the closure (none named: always), and the graph is
+solved again until no more join. A joined dependency follows the platform table's version, else
+the declared one, read as a floor like a POM edge's; it becomes an edge of the row declaring it, and
+its own row says why under `added-by` ([Lockfile](../user/lockfile.md#rows-a-conditional-dependency-adds)).
+This happens inside the lock's solve, with no worker forked, so the runtime closure — what ships
+and what the lock-closure rows are resolved from — already holds it. `[quarkus]` names Quarkus's
+extension descriptor this way.
+
 **Conditions (closed set, one per `when`):** `classpath-has`, `config`/`equals`,
 `native-declared`, `kotlin-project`. Richer logic belongs in code.
 
