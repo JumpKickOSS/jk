@@ -4,6 +4,7 @@ package cc.jumpkick.gradle;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.mvn.PomImporter;
 import java.io.IOException;
@@ -44,7 +45,7 @@ class GradleModelQueryTest {
                 Clock.SYSTEM,
                 60_000L);
 
-        String json = query.read(tmp, List.of("java"), progress::add);
+        String json = query.read(tmp, List.of("java"), milestones(progress));
 
         assertThat(json).contains("\"rootName\":\"fixture\"");
         assertThat(progress)
@@ -72,7 +73,7 @@ class GradleModelQueryTest {
                 Clock.SYSTEM,
                 60_000L);
 
-        query.read(tmp, List.of("java", "org.springframework.boot"), note -> {});
+        query.read(tmp, List.of("java", "org.springframework.boot"), ImportProgress.NONE);
 
         List<String> seen = Files.readAllLines(args);
         assertThat(seen).contains("--init-script", "--no-daemon", "--console=plain", ":jkImportModel");
@@ -107,7 +108,7 @@ class GradleModelQueryTest {
                 Clock.SYSTEM,
                 60_000L);
 
-        assertThatThrownBy(() -> query.read(tmp, List.of("java"), note -> {}))
+        assertThatThrownBy(() -> query.read(tmp, List.of("java"), ImportProgress.NONE))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("Gradle exited 1")
                 .hasMessageContaining("Plugin [id: 'com.acme.house'] was not found")
@@ -129,7 +130,7 @@ class GradleModelQueryTest {
                 400L);
 
         long started = System.nanoTime();
-        assertThatThrownBy(() -> query.read(tmp, List.of("java"), note -> {}))
+        assertThatThrownBy(() -> query.read(tmp, List.of("java"), ImportProgress.NONE))
                 .isInstanceOf(IOException.class)
                 .hasMessageStartingWith(PomImporter.BUDGET_EXCEEDED)
                 .hasMessageContaining("no Gradle output for")
@@ -150,7 +151,7 @@ class GradleModelQueryTest {
                 Clock.SYSTEM,
                 60_000L);
 
-        assertThatThrownBy(() -> query.read(tmp, List.of("java"), note -> {}))
+        assertThatThrownBy(() -> query.read(tmp, List.of("java"), ImportProgress.NONE))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("without writing the project model");
     }
@@ -165,5 +166,59 @@ class GradleModelQueryTest {
                         PosixFilePermission.OWNER_WRITE,
                         PosixFilePermission.OWNER_EXECUTE));
         return file;
+    }
+
+    @Test
+    void the_init_scripts_project_lines_are_the_stages_units_and_detail(@TempDir Path tmp) throws Exception {
+        Path launcher = script(tmp, """
+                #!/bin/sh
+                for a in "$@"; do
+                  case "$a" in -Pjk.import.out=*) out="${a#-Pjk.import.out=}";; esac
+                done
+                echo "jk-import: projects 2"
+                echo "jk-import: evaluated :"
+                echo "jk-import: evaluated :core"
+                echo "jk-import: described :core"
+                echo "jk-import: described :"
+                printf '{"gradle":"9.8.0","rootName":"fixture","settingsRepositories":[],"projects":[]}' > "$out"
+                """);
+        GradleModelQuery query = new GradleModelQuery(
+                (root, notes) ->
+                        new GradleModelQuery.Launch(List.of(launcher.toString()), null, "Gradle 9.8.0 on JDK 25"),
+                tmp.resolve("tmp"),
+                Clock.SYSTEM,
+                60_000L);
+        int[] units = new int[2];
+        List<String> details = new ArrayList<>();
+
+        query.read(tmp, List.of("java"), new ImportProgress() {
+            @Override
+            public void grow(int n) {
+                units[0] += n;
+            }
+
+            @Override
+            public void advance(int n) {
+                units[1] += n;
+            }
+
+            @Override
+            public void detail(String text) {
+                details.add(text);
+            }
+        });
+
+        assertThat(units).as("two units per project, all done").containsExactly(4, 4);
+        assertThat(details).contains("configured :core (2/2)", "resolved :core (1/2)", "resolved : (2/2)");
+    }
+
+    /** Progress that keeps the milestone lines. */
+    static ImportProgress milestones(List<String> lines) {
+        return new ImportProgress() {
+            @Override
+            public void milestone(String line) {
+                lines.add(line);
+            }
+        };
     }
 }

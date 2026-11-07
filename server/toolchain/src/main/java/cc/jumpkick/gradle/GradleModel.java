@@ -141,7 +141,7 @@ record GradleModel(
      * (a sibling, {@code projectPath}), {@code files} or {@code other}. {@code version} is the
      * declared version, empty when the declaration carried none; {@code strict}/{@code
      * required}/{@code prefer} are the rich-version parts; {@code category} is {@code platform} or
-     * {@code enforced-platform} for a BOM.
+     * {@code enforced-platform} for a BOM; {@code fixtures} marks {@code testFixtures(project(...))}.
      */
     record Dependency(
             String kind,
@@ -157,6 +157,7 @@ record GradleModel(
             @Nullable String classifier,
             @Nullable String type,
             @Nullable String projectPath,
+            boolean fixtures,
             List<String> files,
             @Nullable String text) {
 
@@ -192,6 +193,7 @@ record GradleModel(
     static final String DESCRIPTION = "description";
     static final String EXCLUDES = "excludes";
     static final String FILES = "files";
+    static final String FIXTURES = "fixtures";
     static final String GRADLE = "gradle";
     static final String IMPORTED_BOMS = "importedBoms";
     static final String INCLUDES = "includes";
@@ -425,6 +427,7 @@ record GradleModel(
                 Jsonl.topStr(d, CLASSIFIER),
                 Jsonl.topStr(d, TYPE),
                 Jsonl.topStr(d, PROJECT_PATH),
+                Jsonl.bool(d, FIXTURES, false),
                 Jsonl.strArray(d, FILES),
                 Jsonl.topStr(d, TEXT));
     }

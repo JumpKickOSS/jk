@@ -145,7 +145,8 @@ public final class ImportVerb implements HostedVerb {
                         body.overwrite(),
                         body.dryRun(),
                         body.report() != null ? Path.of(body.report()) : null,
-                        lockDir -> SessionContext.where(session, () -> ImportPinRaises.apply(lockDir, cache)),
+                        (lockDir, progress) ->
+                                SessionContext.where(session, () -> ImportPinRaises.apply(lockDir, cache, progress)),
                         (kind, text) -> host.sendQuiet(writer, ProtoEvents.importNote(dir, kind, text)));
                 // `result.success()` answers whether the conversion ran, not whether it worked:
                 // CompatPlans publishes the importer's exit as a result rather than a step failure,

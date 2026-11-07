@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.gradle;
 
+import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.ToolProgress;
@@ -42,9 +43,9 @@ import org.jspecify.annotations.Nullable;
  * verified download, or a healthy install already on the machine — and launched on a JDK it can
  * run on, with the init script {@code jk-import-model.init.gradle} that writes the evaluated model
  * as JSON — a JDK provisioned first when none installed falls in the distribution's range. The
- * engine's heap holds none of Gradle; the fork's lines are the import's progress, and a fork whose
- * output stands still for the resolve stall window is stopped and refused with what it was doing,
- * as a lock's resolve is.
+ * engine's heap holds none of Gradle; the init script's {@code jk-import:} lines count the projects
+ * configured and described, and a fork whose output stands still for the resolve stall window is
+ * stopped and refused with what it was doing, as a lock's resolve is.
  */
 public final class GradleModelQuery implements GradleBuildImport.ModelSource {
 
@@ -148,10 +149,10 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
     }
 
     @Override
-    public String read(Path buildRoot, List<String> pluginIds, Consumer<String> progress) throws IOException {
+    public String read(Path buildRoot, List<String> pluginIds, ImportProgress progress) throws IOException {
         Launch launch;
         try {
-            launch = launcher.launch(buildRoot, progress);
+            launch = launcher.launch(buildRoot, progress::milestone);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted while provisioning Gradle", e);
@@ -177,14 +178,15 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
                     "-Pjk.import.out=" + out,
                     "-Pjk.import.plugins=" + String.join(",", pluginIds),
                     MODEL_TASK));
-            progress.accept(launch.label() + " · evaluating " + buildRoot.getFileName());
+            progress.milestone(launch.label() + " · evaluating " + buildRoot.getFileName());
+            progress.detail("configuring " + buildRoot.getFileName());
             ProcessBuilder pb =
                     new ProcessBuilder(command).directory(buildRoot.toFile()).redirectErrorStream(true);
             // The shell that ran `jk import`, not the engine's: the build reads its credentials there.
             pb.environment().clear();
             pb.environment().putAll(BuildEnv.callerEnv());
             PassthroughEnv.apply(pb.environment(), launch.javaHome());
-            Run run = run(pb, buildRoot, launch.label());
+            Run run = run(pb, buildRoot, launch.label(), new ProjectCounter(progress));
             if (run.exit() != 0) {
                 throw new IOException("Gradle exited " + run.exit() + " evaluating " + buildRoot + " (" + launch.label()
                         + "): " + run.failure());
@@ -220,6 +222,56 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
         }
     }
 
+    /**
+     * The init script's {@code jk-import:} lines as stage progress: two units per project, one
+     * when Gradle has configured it and one when its classpaths are resolved and described.
+     */
+    static final class ProjectCounter {
+        private static final String PREFIX = "jk-import: ";
+        private final ImportProgress progress;
+        private int total;
+        private int configured;
+        private int described;
+
+        ProjectCounter(ImportProgress progress) {
+            this.progress = progress;
+        }
+
+        void line(String line) {
+            if (!line.startsWith(PREFIX)) return;
+            String rest = line.substring(PREFIX.length()).trim();
+            int space = rest.indexOf(' ');
+            if (space <= 0) return;
+            String kind = rest.substring(0, space);
+            String arg = rest.substring(space + 1).trim();
+            switch (kind) {
+                case "projects" -> {
+                    try {
+                        total = Integer.parseInt(arg);
+                        progress.grow(2 * total);
+                    } catch (NumberFormatException ignored) {
+                        // a line the script did not write
+                    }
+                }
+                case "evaluated" -> {
+                    configured++;
+                    progress.advance(1);
+                    progress.detail("configured " + arg + count(configured));
+                }
+                case "described" -> {
+                    described++;
+                    progress.advance(1);
+                    progress.detail("resolved " + arg + count(described));
+                }
+                default -> {}
+            }
+        }
+
+        private String count(int done) {
+            return total > 0 ? " (" + done + "/" + total + ")" : "";
+        }
+    }
+
     /** Output pump state: the fork's line count and the moment it last advanced, read by the wait loop. */
     private static final class Output {
         private final Deque<String> tail = new ArrayDeque<>();
@@ -243,11 +295,11 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
      * still for the stall window — that refusal opens with {@link PomImporter#BUDGET_EXCEEDED} and
      * names the build and the last line the fork printed.
      */
-    private Run run(ProcessBuilder pb, Path buildRoot, String label) throws IOException {
+    private Run run(ProcessBuilder pb, Path buildRoot, String label, ProjectCounter counter) throws IOException {
         Process process = Forks.start(pb);
         Output output = new Output();
         output.lastAdvanceNanos = clock.nanos();
-        Thread pump = SessionContext.startPlatform("jk-gradle-import-pump", () -> pump(process, output));
+        Thread pump = SessionContext.startPlatform("jk-gradle-import-pump", () -> pump(process, output, counter));
         long windowNanos = stallWindowMs <= 0 ? 0L : TimeUnit.MILLISECONDS.toNanos(stallWindowMs);
         try {
             while (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
@@ -280,11 +332,14 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
         }
     }
 
-    private void pump(Process process, Output output) {
+    private void pump(Process process, Output output, ProjectCounter counter) {
         try (BufferedReader reader =
                 new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
-            while ((line = reader.readLine()) != null) output.line(line, clock.nanos());
+            while ((line = reader.readLine()) != null) {
+                output.line(line, clock.nanos());
+                counter.line(line);
+            }
         } catch (IOException ignored) {
             // The fork closed its end; the wait loop has the exit status.
         }

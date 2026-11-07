@@ -526,9 +526,14 @@ the plugins it applies, the dependencies each configuration declares, its toolch
 roots, repositories, the BOMs its `dependencyManagement` block imports and script-registered
 tasks. Version catalogs, `subprojects { }` / `allprojects { }`, `ext` and `gradle.properties`
 placeholders, `buildSrc` and convention plugins therefore all import as what they evaluate to.
-The fork's output is the import's progress, and a fork whose output stands still for the resolve
-stall window (`JK_RESOLVE_TIMEOUT_MS`, 120 s) is stopped and refused with the last line it
-printed, so an import never sits silent.
+`jk import` runs as stages under the same live view `jk build` draws — **Evaluate with Gradle**
+(or **Read POMs**), **Write manifests**, **Check pins**, **Report** — with the bar across all of
+them, the running stage's detail on its row (`resolved :core (12/51)`: Gradle counts each project
+once configured and once its classpaths are resolved) and a line under the tree per finished
+stage; the downloads any stage makes show beside it. Without a terminal each stage prints its line
+as it ends. A fork whose output stands still for the resolve stall window
+(`JK_RESOLVE_TIMEOUT_MS`, 120 s) is stopped and refused with the last line it printed, so an
+import never sits silent.
 
 The evaluated build imports as a workspace: the root `jk.toml` names every compiled project under
 `[workspace] modules` (root-relative paths, a project that applies no JVM plugin and declares
@@ -571,8 +576,22 @@ platform-managed and a root's own import is not written onto a subproject with a
 own; Boot's own BOM is written only without the Boot plugin, whose `[spring-boot]` table brings it. A version the plugin supplies from no BOM (a `dependencyManagement
 { dependencies { } }` entry) is an exact pin with a row, and a BOM whose version reads a property
 nothing defines is a row. A task the build script registers (`tasks.register("release")`, an ad-hoc `Copy`) is a Tier-2 row
-naming the task, never an error; a source set other than `main` and `test`, or a source root
-outside jk's layout, is a row; a plugin nothing maps is a row naming its id or class.
+naming the task, never an error; a source set other than `main`, `test` and `testFixtures`, or a
+source root outside jk's layout, is a row; a plugin nothing maps is a row naming its id or class.
+
+`java-test-fixtures` imports as [fixtures](workspaces.md): the producer's `[test] fixtures` names
+its `testFixtures` Java root where it is (`fixtures = "src/testFixtures/java"`), its
+`testFixturesApi` / `testFixturesImplementation` / `testFixturesCompileOnly` dependencies join its
+`[test-dependencies]` (fixtures compile against main and the test classpath), and a consumer's
+`testImplementation(testFixtures(project(":x")))` is `x = { workspace = true, fixtures = true }`
+with the producer's `testFixturesApi` libraries beside it, since a fixtures edge does not carry the
+producer's test dependencies. A project's edge on itself is dropped: its own tests read its main
+and fixtures already. Fixture resources have no jk home, and a row says so.
+
+Each pin is the version Gradle resolved for it: a declared version Gradle's conflict resolution
+lifted is written as the lifted one, with a row. Gradle has already resolved the graph highest-wins,
+so a Gradle import runs no pin check after writing; a build only the scanner could read is checked
+as a Maven import is.
 
 Each project also reports the versions its classpaths resolve to, read after its declared
 dependencies so a plugin's lazily added ones (Kotlin's stdlib) are not written. A declared version

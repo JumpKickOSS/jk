@@ -3,6 +3,7 @@ package cc.jumpkick.gradle;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.host.Hashing;
@@ -57,7 +58,7 @@ class GradleDownloadProgressTest {
                 tmp.resolve("tools"), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("scratch"), recorder);
 
         try {
-            query.read(tmp.resolve("build"), List.of("java"), note -> {});
+            query.read(tmp.resolve("build"), List.of("java"), ImportProgress.NONE);
         } catch (IOException | RuntimeException expected) {
             // The stub's gradle exits 3: the read fails after the download this test is about.
         }

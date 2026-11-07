@@ -13,8 +13,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -47,6 +49,15 @@ public final class CommandManagerListener implements BuildPlanListener {
      * only aggregate truth — plan-local fractions must not reach {@link LiveProgress}.
      */
     private final boolean aggregateRider;
+
+    /**
+     * The plan's steps are its stages ({@link StageLines}): a step's row names it by its label, and
+     * each finished step leaves its line below the tree.
+     */
+    private boolean staged;
+
+    /** Each step's last label, for its stage line. */
+    private final Map<String, String> lastLabel = new ConcurrentHashMap<>();
 
     private @Nullable JkManager cm;
     private JkManager.@Nullable OutputScope capture;
@@ -88,6 +99,17 @@ public final class CommandManagerListener implements BuildPlanListener {
         this.aggregateRider = true;
     }
 
+    /**
+     * A no-spec listener for a plan whose steps are its stages: each step's row names its stage, and
+     * each finished stage leaves a {@link StageLines} line under the tree.
+     */
+    public static CommandManagerListener staged(
+            PrintStream out, String command, String module, List<Task> steps, boolean animate) {
+        CommandManagerListener l = new CommandManagerListener(out, command, module, steps, animate);
+        l.staged = true;
+        return l;
+    }
+
     /** The manager {@link #planStart} opened; every later event arrives after it. */
     private JkManager cm() {
         return Objects.requireNonNull(cm, "planStart has not opened the plan manager");
@@ -109,12 +131,19 @@ public final class CommandManagerListener implements BuildPlanListener {
 
     @Override
     public void stepStart(String step, @Nullable String group, int ticks) {
-        cm().stepRunning(module, step, group == null ? "" : group);
+        cm().stepRunning(module, step, phase(step, group));
     }
 
     @Override
     public void label(String step, String label) {
+        if (staged && label != null && !label.isBlank()) lastLabel.put(step, label);
         cm().stepMessage(module, step, label);
+    }
+
+    /** The row's phase: the step's stage, or under {@link #staged} the step itself. */
+    private String phase(String step, @Nullable String group) {
+        if (staged) return StageLines.display(steps, step);
+        return group == null ? "" : group;
     }
 
     /** True while buffering a {@link TestFailureHighlight} block from run-tests output. */
@@ -185,7 +214,9 @@ public final class CommandManagerListener implements BuildPlanListener {
         flushBufferedFailure();
         // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
-        cm().stepDone(module, step, ok, group == null ? "" : group);
+        cm().stepDone(module, step, ok, phase(step, group));
+        if (staged)
+            cm().addCompletion(StageLines.line(StageLines.display(steps, step), lastLabel.get(step), duration, ok));
         // Failed tool/worker (e.g. native-image): force-open the process-output peek. Test-runner
         // failures keep curated chrome and do not force-open.
         if (!ok && OutputPane.forceShowOnStepFailure(step)) {

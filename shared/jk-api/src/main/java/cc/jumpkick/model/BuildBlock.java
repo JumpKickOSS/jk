@@ -315,6 +315,11 @@ public record BuildBlock(
         });
     }
 
+    /** The same block with {@code [test] fixtures} set to {@code root}; {@code null} declares none. */
+    public BuildBlock withFixtures(@Nullable String root) {
+        return with(f -> f.fixtures = root);
+    }
+
     /** The same block with {@code [test] exclude-classes} set. */
     public BuildBlock withTestExcludeClasses(List<String> patterns) {
         return with(f -> f.testExcludeClasses = patterns);

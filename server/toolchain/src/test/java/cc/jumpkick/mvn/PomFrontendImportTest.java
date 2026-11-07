@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.compat.ProjectImport;
@@ -453,7 +454,7 @@ class PomFrontendImportTest {
                 false,
                 dryRun,
                 null,
-                note -> {},
+                ImportProgress.NONE,
                 ProjectImport.PinRaise.NONE);
     }
 

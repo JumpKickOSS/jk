@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.SecretRedactor;
@@ -97,7 +98,7 @@ public final class EngineMain {
             installLogging(config); // re-bind: System.err is now the capped sink
             BuiltInPluginJars.registerMissingBuiltInFetcher();
             BuiltInPluginJars.install();
-            ShadowManifests.install(dir -> ImportPinRaises.apply(dir, JkDirs.cache()));
+            ShadowManifests.install(dir -> ImportPinRaises.apply(dir, JkDirs.cache(), ImportProgress.NONE));
             try {
                 UserPluginPins.install();
             } catch (RuntimeException badConfig) {

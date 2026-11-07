@@ -192,6 +192,27 @@ public final class BuildPlanConsole {
     }
 
     /**
+     * The listener for a plan whose steps are its stages ({@code jk import}): on a terminal the live
+     * view names each stage on its row and keeps a line per finished stage; without one each stage's
+     * line prints as it ends. {@code -O jsonl} and {@code --verbose} are as for any plan.
+     */
+    public static BuildPlanListener stagedConsoleListener(String command, String module, List<Task> steps, Mode mode) {
+        BuildPlanListener console =
+                switch (mode) {
+                    case QUIET -> new SilentListener(System.out, System.err);
+                    case JSON -> new JsonlListener(System.out);
+                    case VERBOSE -> new VerboseListener(System.out, System.err);
+                    case AUTO ->
+                        isInteractiveTerminal()
+                                ? CommandManagerListener.staged(System.out, command, module, steps, true)
+                                : CompositeBuildPlanListener.of(
+                                        new SilentListener(System.out, System.err),
+                                        StageLines.printing(System.out, steps));
+                };
+        return SessionMirrorListener.mirrored(console, mode);
+    }
+
+    /**
      * Run a workspace module's plan into a shared {@link AggregateContext} — its events feed the one
      * aggregate {@link cc.jumpkick.cli.tui.JkManager} (bar + step list) instead of a per-module
      * view. The shared view is settled by the caller after the last module. Always records the event

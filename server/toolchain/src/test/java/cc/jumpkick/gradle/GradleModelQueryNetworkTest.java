@@ -3,6 +3,7 @@ package cc.jumpkick.gradle;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.config.RequestShell;
@@ -97,7 +98,8 @@ class GradleModelQueryNetworkTest {
         GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
                 JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
 
-        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle.kts"), progress::add);
+        GradleBuildImport.Result result =
+                gradle.importBuild(root.resolve("settings.gradle.kts"), GradleModelQueryTest.milestones(progress));
 
         List<String> rows = result.report().issues().stream()
                 .map(ImportReport.Issue::message)
@@ -194,7 +196,7 @@ class GradleModelQueryNetworkTest {
         GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
                 JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
 
-        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle"), progress -> {});
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle"), ImportProgress.NONE);
 
         List<String> rows = result.report().issues().stream()
                 .map(ImportReport.Issue::message)
@@ -250,7 +252,7 @@ class GradleModelQueryNetworkTest {
         GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
                 JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
 
-        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle.kts"), progress -> {});
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle.kts"), ImportProgress.NONE);
 
         List<String> rows = result.report().issues().stream()
                 .map(ImportReport.Issue::message)
@@ -320,7 +322,7 @@ class GradleModelQueryNetworkTest {
         shell.put("JK_TEST_CORP_PULL_TOKEN", "glpat-not-a-real-token-0123456789");
 
         GradleBuildImport.Result result = RequestShell.where(
-                shell, () -> gradle.importBuild(root.resolve("settings.gradle.kts"), progress -> {}));
+                shell, () -> gradle.importBuild(root.resolve("settings.gradle.kts"), ImportProgress.NONE));
 
         assertThat(result.root().repositories()).singleElement().satisfies(r -> {
             assertThat(r.name()).isEqualTo("corppackages");

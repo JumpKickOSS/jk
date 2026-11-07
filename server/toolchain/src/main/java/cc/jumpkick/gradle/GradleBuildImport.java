@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.gradle;
 
+import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.model.JkBuild;
@@ -12,7 +13,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -26,18 +26,20 @@ public final class GradleBuildImport {
 
     /**
      * The root manifest, the members keyed by root-relative path (empty for one project), the rows,
-     * and the {@code ~/.jk/config.toml} tables carrying the credentials the build reads from the
-     * environment.
+     * the {@code ~/.jk/config.toml} tables carrying the credentials the build reads from the
+     * environment, and whether the pins are the versions Gradle resolved — true when Gradle read the
+     * build, false for the scanner, whose pins are only what the script declares.
      */
     public record Result(
             JkBuild root,
             Map<String, JkBuild> modules,
             ImportReport report,
-            List<UserConfigEditor.RepositoryTable> machineRepositories) {}
+            List<UserConfigEditor.RepositoryTable> machineRepositories,
+            boolean pinsResolved) {}
 
     /** Reads the evaluated project model of the build rooted at {@code buildRoot}, as the init script's JSON. */
     public interface ModelSource {
-        String read(Path buildRoot, List<String> pluginIds, Consumer<String> progress) throws IOException;
+        String read(Path buildRoot, List<String> pluginIds, ImportProgress progress) throws IOException;
     }
 
     /** The build-script names a Gradle project directory carries, Kotlin DSL first. */
@@ -90,12 +92,12 @@ public final class GradleBuildImport {
     }
 
     /**
-     * Import the build {@code source} belongs to. {@code progress} receives one line per stage the
-     * model read goes through (provisioning, evaluating). A model read that exceeds the resolve
+     * Import the build {@code source} belongs to. {@code progress} hears the model read: a milestone
+     * per stage (provisioning, evaluating) and the projects Gradle has configured and described. A model read that exceeds the resolve
      * budget fails the import, as a Maven import's POM reads do; any other reason Gradle could not
      * evaluate the build falls back to the scanner with a row saying so.
      */
-    public Result importBuild(Path source, Consumer<String> progress) throws IOException {
+    public Result importBuild(Path source, ImportProgress progress) throws IOException {
         Path dir = Objects.requireNonNull(source.toAbsolutePath().getParent(), "project dir");
         boolean settingsSource = isSettingsFile(source.getFileName().toString());
         Path settings = settingsIn(dir);
@@ -112,6 +114,7 @@ public final class GradleBuildImport {
             }
         }
         Path script = settingsSource ? buildScriptIn(dir) : source;
+        progress.detail("scanning " + (script == null ? source.getFileName() : script.getFileName()));
         if (script == null) {
             throw new IOException(source.getFileName() + " names a build with no build script beside it, so only"
                     + " Gradle can read it" + (modelFailure == null ? "." : ", and Gradle could not: " + modelFailure));
@@ -133,6 +136,6 @@ public final class GradleBuildImport {
             if (issue.severity() == ImportReport.Severity.ERROR) report.error(issue.message());
             else report.warning(issue.message());
         }
-        return new Result(scanned.jkBuild(), Map.of(), report.build(), List.of());
+        return new Result(scanned.jkBuild(), Map.of(), report.build(), List.of(), false);
     }
 }

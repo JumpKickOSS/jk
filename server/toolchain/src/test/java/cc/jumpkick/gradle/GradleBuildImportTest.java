@@ -4,6 +4,7 @@ package cc.jumpkick.gradle;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.mvn.PomImporter;
@@ -39,7 +40,7 @@ class GradleBuildImportTest {
             return MODEL;
         });
 
-        GradleBuildImport.Result result = gradle.importBuild(root.resolve("build.gradle.kts"), note -> {});
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("build.gradle.kts"), ImportProgress.NONE);
 
         assertThat(asked).contains(root.toAbsolutePath().toString(), "java", "org.jetbrains.kotlin.jvm");
         assertThat(result.modules()).containsOnlyKeys("core");
@@ -52,7 +53,7 @@ class GradleBuildImportTest {
         Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'shop'\ninclude 'core'\n");
         GradleBuildImport gradle = GradleBuildImport.withModel((dir, ids, progress) -> MODEL);
 
-        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle"), note -> {});
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle"), ImportProgress.NONE);
 
         assertThat(result.modules()).containsOnlyKeys("core");
     }
@@ -72,7 +73,7 @@ class GradleBuildImportTest {
                     "Gradle exited 1 evaluating " + dir + ": Plugin [id: 'com.acme.house'] was not found");
         });
 
-        GradleBuildImport.Result result = gradle.importBuild(root.resolve("build.gradle.kts"), note -> {});
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("build.gradle.kts"), ImportProgress.NONE);
 
         assertThat(result.modules()).isEmpty();
         assertThat(result.root().project().name()).isEqualTo("shop");
@@ -92,7 +93,7 @@ class GradleBuildImportTest {
             throw new IOException(PomImporter.BUDGET_EXCEEDED + "no Gradle output for 120 s while evaluating " + dir);
         });
 
-        assertThatThrownBy(() -> gradle.importBuild(root.resolve("build.gradle"), note -> {}))
+        assertThatThrownBy(() -> gradle.importBuild(root.resolve("build.gradle"), ImportProgress.NONE))
                 .isInstanceOf(IOException.class)
                 .hasMessageStartingWith(PomImporter.BUDGET_EXCEEDED);
     }
@@ -104,7 +105,7 @@ class GradleBuildImportTest {
             throw new IOException("Gradle 9.3.1 runs on JDK 17 to 25 and none is installed");
         });
 
-        assertThatThrownBy(() -> gradle.importBuild(root.resolve("settings.gradle"), note -> {}))
+        assertThatThrownBy(() -> gradle.importBuild(root.resolve("settings.gradle"), ImportProgress.NONE))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("settings.gradle names a build with no build script beside it")
                 .hasMessageContaining("none is installed");
@@ -121,7 +122,7 @@ class GradleBuildImportTest {
             return MODEL;
         });
 
-        GradleBuildImport.Result result = gradle.importBuild(core.resolve("build.gradle.kts"), note -> {});
+        GradleBuildImport.Result result = gradle.importBuild(core.resolve("build.gradle.kts"), ImportProgress.NONE);
 
         assertThat(reads).as("a subproject alone is not evaluated by Gradle").isEmpty();
         assertThat(result.root().project().name()).isEqualTo("core");
@@ -137,7 +138,7 @@ class GradleBuildImportTest {
             throw new AssertionError("no settings file, so Gradle is not run");
         });
 
-        GradleBuildImport.Result result = gradle.importBuild(root.resolve("build.gradle.kts"), note -> {});
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("build.gradle.kts"), ImportProgress.NONE);
 
         assertThat(result.root().project().group()).isEqualTo("com.acme");
         assertThat(result.modules()).isEmpty();
