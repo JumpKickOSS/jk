@@ -237,6 +237,52 @@ public final class ToolRunCommand implements CliCommand {
         return null;
     }
 
+    /** Runs the one module {@code -m} selects; null when it selects none, so the target rules apply. */
+    private @Nullable Integer runSelectedModule(@Nullable String spec) throws IOException, InterruptedException {
+        Path selected;
+        try {
+            selected = selectedModule(global.workingDir(), spec);
+        } catch (AmbiguousModuleTarget e) {
+            CommandWedge.printFail("Run", e.getMessage());
+            return Exit.USAGE;
+        }
+        return selected == null ? null : runDirectory(selected, toolArgs);
+    }
+
+    /**
+     * The one workspace module {@code spec} (the run's {@code -m}) selects, resolved by the engine
+     * exactly as the build resolves it; null when {@code spec} is absent, {@code cwd} is in no
+     * workspace, or the selector matches nothing (the build then says so). A run launches one
+     * program, so a selector that matches several modules is refused with them named.
+     */
+    static @Nullable Path selectedModule(Path cwd, @Nullable String spec) {
+        if (spec == null || spec.isBlank()) return null;
+        Path start = WorkingDirectory.resolve(cwd);
+        var peek = ProjectInfos.orNull(start);
+        if (peek == null) return null;
+        Path root = peek.workspaceRoot()
+                ? start
+                : peek.workspaceRootDir().isBlank() ? null : Path.of(peek.workspaceRootDir());
+        if (root == null) return null;
+        var selection = ProjectInfos.orError(root, spec, null);
+        if (selection.error() != null && !selection.error().isBlank()) return null;
+        List<Path> dirs = selection.moduleDirs().stream()
+                .map(d -> Path.of(d).isAbsolute()
+                        ? Path.of(d).normalize()
+                        : root.resolve(d).normalize())
+                .distinct()
+                .toList();
+        if (dirs.size() > 1) {
+            String names = dirs.stream()
+                    .map(d -> root.relativize(d).toString().replace('\\', '/'))
+                    .collect(Collectors.joining(", "));
+            throw new AmbiguousModuleTarget("`-m " + spec + "` selects " + dirs.size() + " modules (" + names
+                    + ") — jk run launches one program: name its module, e.g. `jk run -m "
+                    + root.relativize(dirs.get(0)).toString().replace('\\', '/') + "`");
+        }
+        return dirs.isEmpty() ? null : dirs.get(0);
+    }
+
     /** {@code jk run <leaf>} matched more than one workspace module. */
     public static final class AmbiguousModuleTarget extends RuntimeException {
         AmbiguousModuleTarget(String message) {
@@ -428,6 +474,13 @@ public final class ToolRunCommand implements CliCommand {
         // --release / --variant parameterize project targets (current dir or a directory target):
         // the selection rides the ambient session into the delegate's build + deploy command.
         VariantSelection.install(in, global.workingDir());
+
+        // `jk run -m <module>` with no target names the project the way `jk run <module>` does: that
+        // module's cone builds and its own main launches, never the workspace root's.
+        if (!targetGiven) {
+            Integer ran = runSelectedModule(CommonOpts.modulesSpec(in));
+            if (ran != null) return ran;
+        }
 
         // Workspace module selector: `jk run clients/cli` or `jk run cli` from the workspace root
         // (or any cwd) resolves against workspace.modules before other target classifiers.
