@@ -182,7 +182,7 @@ final class LockedAppModel {
             notices.say(prefix, DROPPED + String.join(", ", plan.unlocked()));
         }
         if (!plan.unresolved().isEmpty()) {
-            System.err.println(prefix + ": locked but off the augment's runtime classpath (extension"
+            System.err.println(prefix + ": locked but off the application's runtime classpath (extension"
                     + " excluded-artifacts): " + String.join(", ", plan.unresolved()));
         }
     }
