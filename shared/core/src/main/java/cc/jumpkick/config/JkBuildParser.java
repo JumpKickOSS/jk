@@ -194,13 +194,39 @@ public final class JkBuildParser {
      *     its {@code [plugins]} pins in
      */
     public static JkBuild parse(Path file) throws IOException {
-        Path abs = file.toAbsolutePath().normalize();
-        Path moduleDir = moduleDirOf(abs);
-        JkBuild resolved = WorkspaceResolve.applyWorkspace(moduleDir, parseLocal(file));
+        return resolved(moduleDirOf(file.toAbsolutePath().normalize()), parseLocal(file));
+    }
+
+    /**
+     * {@code toml}, the text about to be written as {@code file}, read as {@link #parse(Path)} will
+     * read the file once written: a check made before the write judges what the build then reads.
+     */
+    public static JkBuild parse(String toml, Path file) {
+        return resolved(moduleDirOf(file.toAbsolutePath().normalize()), parseLocal(toml, file));
+    }
+
+    /** {@code toml}, the text about to be written as {@code file}, read as {@link #parseLocal(Path)} will read it. */
+    public static JkBuild parseLocal(String toml, Path file) {
+        PluginTableRegistry.syncUserPins();
+        Path moduleDir = moduleDirOf(file.toAbsolutePath().normalize());
+        return build(document(toml), catalogOf(moduleDir), moduleDir);
+    }
+
+    /** The module at {@code moduleDir}, read as written, with what {@link #parse(Path)} adds: inheritance and user pins. */
+    private static JkBuild resolved(Path moduleDir, JkBuild local) {
+        JkBuild resolved = WorkspaceResolve.applyWorkspace(moduleDir, local);
         NodeShape.check(resolved, moduleDir);
         List<PluginDeclaration> user = UserPlugins.fromConfig();
         if (user.isEmpty()) return resolved;
         return resolved.withPlugins(UserPlugins.merge(user, resolved.plugins()));
+    }
+
+    private static LibraryCatalog catalogOf(Path moduleDir) {
+        try {
+            return LibraryCatalog.forProject(moduleDir);
+        } catch (IllegalStateException e) {
+            throw new JkBuildParseException(e.getMessage(), e);
+        }
     }
 
     /**
@@ -227,13 +253,7 @@ public final class JkBuildParser {
                     String body = stamp.body() != null ? stamp.body() : readManifest(key);
                     TomlParseResult root = document(key, stamp, body);
                     Path moduleDir = moduleDirOf(key);
-                    LibraryCatalog catalog;
-                    try {
-                        catalog = LibraryCatalog.forProject(moduleDir);
-                    } catch (IllegalStateException e) {
-                        throw new JkBuildParseException(e.getMessage(), e);
-                    }
-                    JkBuild built = build(root, catalog, moduleDir);
+                    JkBuild built = build(root, catalogOf(moduleDir), moduleDir);
                     provisional[0] = PluginDescriptorStore.hasUnresolved(moduleDir, built.plugins());
                     return built;
                 } catch (IOException e) {

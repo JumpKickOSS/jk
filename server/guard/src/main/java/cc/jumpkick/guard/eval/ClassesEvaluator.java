@@ -11,6 +11,7 @@ import cc.jumpkick.guard.facts.FieldRef;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.guard.schema.Lane;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -69,8 +70,9 @@ final class ClassesEvaluator implements Evaluator {
         for (Allow a : rule.allow()) allowUsed.put(a, false);
         List<Observation> sites = new ArrayList<>();
         long selected = 0;
+        Predicate<ClassFacts> inScope = inScope(rule, ctx);
         for (ClassFacts c : facts.classList()) {
-            if (c.isPackageInfo() || c.hasFlag(Opcodes.ACC_SYNTHETIC) || !that.test(c)) continue;
+            if (c.isPackageInfo() || c.hasFlag(Opcodes.ACC_SYNTHETIC) || !that.test(c) || !inScope.test(c)) continue;
             selected++;
             List<String[]> failed = new ArrayList<>();
             for (Should s : shoulds) {
@@ -110,6 +112,18 @@ final class ClassesEvaluator implements Evaluator {
                     "allow entries matched nothing: " + String.join(", ", stale));
         }
         return Evaluation.of(population, sites);
+    }
+
+    /**
+     * The classes {@code rule} judges. A module lane holds one module's facts, and the lane runs only
+     * the rules whose scope takes that module. The workspace lane holds every member's, so a scoped
+     * rule there judges the classes a member in its scope compiled; their accessors are read from
+     * every member, since an access from outside the scope is still an access.
+     */
+    static Predicate<ClassFacts> inScope(Rule rule, EvalContext ctx) {
+        if (ctx.lane() != Lane.WORKSPACE || rule.scope().isEmpty()) return c -> true;
+        Map<String, String> owners = WorkspaceModel.classModules(ctx);
+        return c -> rule.applies(owners.getOrDefault(c.name(), ""));
     }
 
     /**

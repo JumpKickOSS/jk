@@ -79,7 +79,8 @@ final class MetricEvaluator implements BatchEvaluator {
             Path root = ctx.lane() == Lane.MODULE && moduleDir != null ? moduleDir : ctx.root();
             // Files are measured in parallel; each measure is applied in corpus order, and a run
             // that failed takes nothing after the file it failed on.
-            List<List<Runnable>> perFile = ParallelMap.map(TextFiles.corpus(root), f -> measureFile(f, runs));
+            FileModules modules = FileModules.of(ctx);
+            List<List<Runnable>> perFile = ParallelMap.map(TextFiles.corpus(root), f -> measureFile(f, runs, modules));
             for (List<Runnable> steps : perFile) for (Runnable step : steps) step.run();
             for (TextRun run : runs) {
                 out.put(run.rule.id(), run.failure != null ? Evaluation.failed(run.failure) : run.finish());
@@ -89,17 +90,20 @@ final class MetricEvaluator implements BatchEvaluator {
     }
 
     /** Every wanting run's measure of one file, as steps that apply it; touches no run state. */
-    private static List<Runnable> measureFile(TextFiles.Entry f, List<TextRun> runs) throws IOException {
+    private static List<Runnable> measureFile(TextFiles.Entry f, List<TextRun> runs, FileModules modules)
+            throws IOException {
         List<TextRun> here = new ArrayList<>();
-        for (TextRun run : runs) if (run.wants(f)) here.add(run);
+        // a run measures the files of the modules in its rule's scope
+        for (TextRun run : runs) if (modules.judges(run.rule, f.rel()) && run.wants(f)) here.add(run);
         if (here.isEmpty()) return List.of();
         String text = TextFiles.read(f.file());
         if (text == null) return List.of();
         List<Runnable> steps = new ArrayList<>(here.size());
+        String module = modules.moduleOf(f.rel());
         for (TextRun run : here) {
             Runnable step;
             try {
-                step = run.see(f, text);
+                step = run.see(f, text, module);
             } catch (DeadlineCharSequence.Expired e) {
                 String why = e.getMessage() + " on " + f.rel();
                 step = () -> run.failure = why;
@@ -196,10 +200,11 @@ final class MetricEvaluator implements BatchEvaluator {
         abstract boolean wants(TextFiles.Entry f);
 
         /**
-         * Measure one file without touching this run's state; the returned step folds the measure
-         * in, and the caller runs the steps in corpus order on one thread.
+         * Measure one file of {@code module} ({@link FileModules}) without touching this run's
+         * state; the returned step folds the measure in, and the caller runs the steps in corpus
+         * order on one thread.
          */
-        abstract Runnable see(TextFiles.Entry f, String text);
+        abstract Runnable see(TextFiles.Entry f, String text, String module);
 
         void used(@Nullable Allow allow) {
             if (allow != null) allowUsed.put(allow, true);
@@ -231,7 +236,7 @@ final class MetricEvaluator implements BatchEvaluator {
         }
 
         @Override
-        Runnable see(TextFiles.Entry f, String text) {
+        Runnable see(TextFiles.Entry f, String text, String module) {
             String ext = extension(f.rel());
             double limit = Objects.requireNonNull(bound.limitFor(ext), "limit");
             Allow allow = allowing(rule.allow(), f.rel());
@@ -248,7 +253,6 @@ final class MetricEvaluator implements BatchEvaluator {
             }
             double value = measure.equals("lines") ? CodeText.codeLines(text, ext) : fqcns(text, ext);
             if (per.equals("module")) {
-                String module = moduleOf(f.rel());
                 return () -> {
                     used(allow);
                     perModule.merge(module, value, Double::sum);
@@ -411,13 +415,13 @@ final class MetricEvaluator implements BatchEvaluator {
         }
 
         @Override
-        Runnable see(TextFiles.Entry f, String text) {
+        Runnable see(TextFiles.Entry f, String text, String module) {
             String view =
                     f.language().lexable ? CodeText.blank(text, blank, f.language() == TextFiles.Language.JS) : text;
             double counted = 0;
             for (Pattern p : patterns) counted += countMatches(p, view);
             double n = counted;
-            String unit = per.equals("module") ? moduleOf(f.rel()) : per.equals("tree") ? "tree" : f.rel();
+            String unit = per.equals("module") ? module : per.equals("tree") ? "tree" : f.rel();
             return () -> perUnit.merge(unit, n, Double::sum);
         }
 
@@ -654,12 +658,6 @@ final class MetricEvaluator implements BatchEvaluator {
     private static String extension(String rel) {
         int dot = rel.lastIndexOf('.');
         return dot < 0 ? "" : rel.substring(dot + 1).toLowerCase(Locale.ROOT);
-    }
-
-    /** {@code a/b/src/...} → {@code a/b}; a root-level file → {@code ""}. */
-    static String moduleOf(String rel) {
-        int i = rel.indexOf("/src/");
-        return i < 0 ? "" : rel.substring(0, i);
     }
 
     private static @Nullable Allow allowing(List<Allow> allow, String unit) {

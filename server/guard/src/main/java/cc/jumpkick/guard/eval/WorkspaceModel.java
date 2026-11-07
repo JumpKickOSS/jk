@@ -101,6 +101,20 @@ public final class WorkspaceModel {
         return r.equals(d) ? "" : r.relativize(d).toString().replace('\\', '/');
     }
 
+    /**
+     * {@link #classModules(Path, List)} over the workspace {@code ctx}'s root declares, once per lane
+     * run; empty when the root's manifest does not read.
+     */
+    static Map<String, String> classModules(EvalContext ctx) {
+        return ctx.memo("classModules", c -> {
+            try {
+                return classModules(c.root(), WorkspaceModules.of(c.root()));
+            } catch (IOException unreadable) {
+                return Map.of();
+            }
+        });
+    }
+
     /** Every workspace class's module by internal name, spelled by {@link #rel}: the facts of each index, keyed once. */
     public static Map<String, String> classModules(Path root, List<Path> modules) {
         Map<String, String> out = new HashMap<>();

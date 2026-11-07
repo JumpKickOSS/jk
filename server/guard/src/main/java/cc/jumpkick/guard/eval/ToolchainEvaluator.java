@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.lock.Lockfile;
@@ -33,12 +34,36 @@ import org.tomlj.TomlTable;
  * plugin with a floating version — {@code latest}, a caret, a tilde, a range or a wildcard) and
  * {@code repositories.only} (every repository a manifest declares, and every source the lock
  * resolved through, is on the list; a lock source no manifest declares is a user-level
- * {@code ~/.jk/config.toml} repository leaking into the lock, and is named as such).
+ * {@code ~/.jk/config.toml} repository leaking into the lock, and is named as such). A value a
+ * member inherits from the root is judged at the root, or at the member when the rule's scope leaves
+ * the root out ({@link Manifest#judgedBy}).
  */
 final class ToolchainEvaluator implements Evaluator {
 
-    /** One manifest as read: {@code module} is {@code ""} for the root. */
-    record Manifest(String module, JkBuild build) {
+    /**
+     * One manifest as read: {@code module} is {@code ""} for the root; {@code local} is the file as
+     * written and {@code effective} adds what a member inherits from the root.
+     */
+    record Manifest(String module, JkBuild local, JkBuild effective) {
+        /** The root, whose values are its own. */
+        static Manifest root(JkBuild build) {
+            return new Manifest("", build, build);
+        }
+
+        /** The member at {@code dir}, read from {@code local} as {@code jk guard} and {@code jk add} both read it. */
+        static Manifest member(Path root, Path dir, JkBuild local) {
+            return new Manifest(WorkspaceModel.rel(root, dir), local, WorkspaceResolve.applyWorkspace(dir, local));
+        }
+
+        /**
+         * What {@code rule} judges of this manifest. A rule that judges the root judges an inherited
+         * value there, once, so it reads each member as written; a rule whose scope leaves the root
+         * out reads a member with what it inherits, or an inherited value would go unjudged.
+         */
+        JkBuild judgedBy(Rule rule) {
+            return module.isEmpty() || rule.applies("") ? local : effective;
+        }
+
         String file() {
             return (module.isEmpty() ? "" : module + "/") + ManifestPaths.MANIFEST;
         }
@@ -54,13 +79,11 @@ final class ToolchainEvaluator implements Evaluator {
     public Evaluation evaluate(Rule rule, EvalContext ctx) throws IOException {
         List<Manifest> manifests = new ArrayList<>();
         Path rootManifest = ManifestPaths.manifestIn(ctx.root());
-        if (Files.isRegularFile(rootManifest)) manifests.add(new Manifest("", JkBuildParser.parse(rootManifest)));
+        if (Files.isRegularFile(rootManifest)) manifests.add(Manifest.root(JkBuildParser.parse(rootManifest)));
         for (Path m : ctx.modules()) {
             Path f = ManifestPaths.manifestIn(m);
-            if (Files.isRegularFile(f) && !f.equals(rootManifest)) {
-                // The member as written, not as inherited: what the root says is judged once, at the root.
-                manifests.add(new Manifest(WorkspaceModel.rel(ctx.root(), m), JkBuildParser.parseLocal(f)));
-            }
+            if (Files.isRegularFile(f) && !f.equals(rootManifest))
+                manifests.add(Manifest.member(ctx.root(), m, JkBuildParser.parseLocal(f)));
         }
         Path lockFile = ctx.root().resolve(ManifestPaths.LOCK);
         Lockfile lock =
@@ -70,12 +93,17 @@ final class ToolchainEvaluator implements Evaluator {
 
     /**
      * The mutation-time entry: {@code proposed} is the manifest text about to be written for {@code
-     * module}, judged through {@link #judge} like the build's manifests, so a rule scoped elsewhere
-     * never refuses it.
+     * module}, whose {@code jk.toml} is {@code file}. It is read as the build reads that file, with
+     * what it inherits, and judged through {@link #judge}, so a rule scoped elsewhere never refuses
+     * it and an inherited value is judged where {@code jk guard} judges it.
      */
-    static Evaluation evaluateProposed(Rule rule, String module, String proposed, @Nullable Lockfile lock) {
+    static Evaluation evaluateProposed(
+            Rule rule, Path root, String module, Path file, String proposed, @Nullable Lockfile lock) {
+        JkBuild local = JkBuildParser.parseLocal(proposed, file);
+        Path dir = file.toAbsolutePath().normalize().getParent();
+        Manifest m = module.isEmpty() || dir == null ? Manifest.root(local) : Manifest.member(root, dir, local);
         // The lock is what the last resolution did, not what this edit does: its arm is the build's.
-        return judge(rule, List.of(new Manifest(module, JkBuildParser.parse(proposed))), null);
+        return judge(rule, List.of(m), null);
     }
 
     /**
@@ -119,8 +147,9 @@ final class ToolchainEvaluator implements Evaluator {
         long pluginCount = 0;
         Set<String> declaredRepos = new TreeSet<>();
         for (Manifest m : manifests) {
+            JkBuild build = m.judgedBy(rule);
             if (java != null) {
-                String release = release(m.build());
+                String release = release(build);
                 if (release != null && !VersionRanges.satisfies(release, java)) {
                     out.add(Observation.site(
                             "java " + m.where(),
@@ -129,8 +158,8 @@ final class ToolchainEvaluator implements Evaluator {
                             m.where() + " builds for Java " + release + ", outside " + java));
                 }
             }
-            if (kotlin != null && m.build().project().kotlin() != null) {
-                String raw = m.build().project().kotlin().raw();
+            if (kotlin != null && build.project().kotlin() != null) {
+                String raw = build.project().kotlin().raw();
                 String version = raw.replaceFirst("^[\\^~=]+", "");
                 if (!VersionRanges.satisfies(version, kotlin)) {
                     out.add(Observation.site(
@@ -140,7 +169,7 @@ final class ToolchainEvaluator implements Evaluator {
                             m.where() + " uses Kotlin " + raw + ", outside " + kotlin));
                 }
             }
-            for (PluginDeclaration p : m.build().plugins()) {
+            for (PluginDeclaration p : build.plugins()) {
                 pluginCount++;
                 if (pinned && p.path() == null && FLOATING.matcher(p.version()).matches()) {
                     out.add(Observation.site(
@@ -151,7 +180,7 @@ final class ToolchainEvaluator implements Evaluator {
                                     + p.version() + "\", which floats; pin the version a release was tested with"));
                 }
             }
-            for (RepositorySpec r : m.build().repositories()) {
+            for (RepositorySpec r : build.repositories()) {
                 declaredRepos.add(r.name());
                 if (only != null && !only.contains(r.name())) {
                     out.add(Observation.site(

@@ -49,8 +49,10 @@ class MetricEvaluatorTest {
         return load;
     }
 
+    /** The tree lane over {@link #tree}'s two members: a file's module is the member holding it. */
     private static EvalContext ctx(Path root, LoadResult load) {
-        return new EvalContext(Lane.TREE, root, "", null, List.of(), () -> FactsIndex.EMPTY, () -> null, List::of)
+        List<Path> modules = List.of(root.resolve("mod-a"), root.resolve("mod-b"));
+        return new EvalContext(Lane.TREE, root, "", null, modules, () -> FactsIndex.EMPTY, () -> null, List::of)
                 .withRules(load.rules());
     }
 

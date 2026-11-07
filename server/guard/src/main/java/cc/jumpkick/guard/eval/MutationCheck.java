@@ -30,7 +30,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Mutation-time enforcement: judge the manifest text a {@code jk add} / {@code jk remove} /
  * {@code deps} is about to write, before it is written. Only the kinds whose substrate is the
- * model run here ({@code depend} and {@code toolchain}). A project without guards
+ * model run here ({@code depend} and {@code toolchain}), and each reads the proposed text as
+ * {@code jk guard} reads the written file, inherited values included. A project without guards
  * pays one stat. There is no {@code --force}: the sanctioned path is a reviewed {@code allow}.
  */
 public final class MutationCheck {
@@ -74,8 +75,8 @@ public final class MutationCheck {
             Evaluation e;
             try {
                 e = rule.kind() == Kind.TOOLCHAIN
-                        ? ToolchainEvaluator.evaluateProposed(rule, module, proposed, lock)
-                        : DependEvaluator.evaluateProposed(rule, module, proposed, lock);
+                        ? ToolchainEvaluator.evaluateProposed(rule, root, module, manifest, proposed, lock)
+                        : DependEvaluator.evaluateProposed(rule, module, manifest, proposed, lock);
             } catch (UserConfigParseException unparsed) {
                 throw unparsed; // config.toml's own error, with its position — never this site's fallback
             } catch (RuntimeException failed) {
