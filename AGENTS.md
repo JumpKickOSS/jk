@@ -268,6 +268,12 @@ scoped work, e.g.:
 These are temporary. Remove them when the follow-up lands. Do not put ticket ids in
 Javadoc “for context.”
 
+**User-facing output wording**
+
+Errors, warnings, notes, progress, results files and the web UI follow
+[docs/contributors/messages.md](docs/contributors/messages.md): one plain line, 78 columns or less,
+subject first, no jk-internal jargon, no essay sentences. MCP payloads may say more.
+
 **User-facing output (hard ban)**
 
 `JK-…` (and any other internal ticket / issue id) must **never** appear in errors,

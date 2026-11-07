@@ -14,6 +14,7 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | [Build lifecycle](lifecycle.md) | One planner for every build-like verb: shared phases, a tail past PACKAGE, the goal table |
 | [Per-job VFS](vfs.md) | Job-scoped input tree, `vfs-max-mb` vs `max-heap-mb`, PathUtil memo |
 | [Comments and Javadoc](comments.md) | Short by default; no ticket ids in source, tests, or these docs |
+| [User-facing messages](messages.md) | Errors, notes, results and UI text: one plain line, 78 columns |
 | [Plugin authoring](plugins.md) | `jk-plugin.toml`, workers, private pins (first-party + vendored) |
 | [Code as Art](code-as-art.md) | Size budgets, Typed Envelope, JSpecify, fluent Lombok |
 | [TUI](tui.md) | CommandWedge, envelope, nerd/ansi/plain, form widgets, script-mode allowlist |
