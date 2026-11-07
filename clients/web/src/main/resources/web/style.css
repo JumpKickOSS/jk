@@ -400,6 +400,11 @@ nav button.active {
 /* ---- layout ---- */
 
 main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
+/* The logo hangs 29px below the header and reaches x≈140px. Where a page's column starts under it
+ * (a 66rem column below 66rem + 2 × 124px of viewport; the files viewer's 96rem one below 96rem +
+ * 2 × 124px), the page's first row starts below the sprite instead of beside it. */
+@media (max-width: 1304px) { main { padding-top: 40px; } }
+@media (max-width: 1784px) { main.code-view { padding-top: 40px; } }
 
 .feed-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .feed-head h2,
