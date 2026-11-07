@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -56,7 +57,17 @@ public final class CacheRetention {
      */
     public static Report sweep(Path cacheRoot, Cas cacheCas, Set<String> alreadyFreedShas, boolean dryRun)
             throws IOException {
-        return sweep(cacheRoot, cacheCas, alreadyFreedShas, dryRun, Probe.REAL, Map.of());
+        return sweep(cacheRoot, cacheCas, alreadyFreedShas, dryRun, PruneYield.NEVER);
+    }
+
+    /**
+     * As {@link #sweep(Path, Cas, Set, boolean)}, stopping at {@code yield}'s say-so between tiers
+     * and inside the action tier ({@link ActionCachePrune}); a tier's own instrument runs whole.
+     */
+    public static Report sweep(
+            Path cacheRoot, Cas cacheCas, Set<String> alreadyFreedShas, boolean dryRun, PruneYield yield)
+            throws IOException {
+        return sweep(cacheRoot, cacheCas, alreadyFreedShas, dryRun, Probe.REAL, Map.of(), yield);
     }
 
     /**
@@ -96,8 +107,20 @@ public final class CacheRetention {
             Probe probe,
             Map<CacheTree, Bound> caps)
             throws IOException {
+        return sweep(cacheRoot, cacheCas, alreadyFreedShas, dryRun, probe, caps, PruneYield.NEVER);
+    }
+
+    private static Report sweep(
+            Path cacheRoot,
+            Cas cacheCas,
+            Set<String> alreadyFreedShas,
+            boolean dryRun,
+            Probe probe,
+            Map<CacheTree, Bound> caps,
+            PruneYield yield)
+            throws IOException {
         if (!Files.isDirectory(cacheRoot)) return Report.EMPTY;
-        long now = System.currentTimeMillis();
+        long now = Clock.SYSTEM.millis();
         long grace = Cas.MIN_AGE_FOR_SWEEP.toMillis();
 
         int files = 0;
@@ -105,6 +128,7 @@ public final class CacheRetention {
         long finalActionBytes = 0L;
 
         for (CacheTree tier : CacheTree.values()) {
+            yield.check();
             Bound bound = caps.getOrDefault(tier, CacheTier.bound(tier));
             Path root = tier.under(cacheRoot);
             switch (bound.kind()) {
@@ -112,7 +136,7 @@ public final class CacheRetention {
                     // Both delegated tiers are one pass over one Policy; run it on ACTIONS only.
                     if (tier != CacheTree.ACTIONS) continue;
                     var policy = ActionCachePrune.Policy.of(JkCacheConfig.resolve());
-                    var report = ActionCachePrune.run(cacheRoot, cacheCas, policy, alreadyFreedShas, dryRun);
+                    var report = ActionCachePrune.run(cacheRoot, cacheCas, policy, alreadyFreedShas, dryRun, yield);
                     files += (int) report.totalDeletedFiles();
                     bytes += report.totalFreedBytes();
                     finalActionBytes = report.finalBytes();
@@ -146,6 +170,7 @@ public final class CacheRetention {
         List<String> names = new ArrayList<>();
         Set<String> known = CacheTree.entries();
         for (Path entry : children(cacheRoot)) {
+            yield.check();
             String name = entry.getFileName().toString();
             if (known.contains(name)) continue;
             if (age(entry, now) < grace) continue;

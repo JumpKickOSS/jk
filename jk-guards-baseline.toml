@@ -36,7 +36,7 @@ population = { files = 2203 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1488, sites = 108330 }
+"server/engine" = { classes = 1507, sites = 109635 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
@@ -297,10 +297,6 @@ at     = "cc.jumpkick.runtime.CachePlans#purgeActionCache(Ljava/nio/file/Path;)V
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.CachePlans#tempFiles(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.HardwareProbe#deleteContents(Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -402,10 +398,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.task.CacheRetention#sweepFiles(Ljava/nio/file/Path;Lcc/jumpkick/task/Bound;JJZLcc/jumpkick/task/CacheRetention$Probe;)Lcc/jumpkick/task/CacheRetention$Tally; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.task.CacheRoots#collect(Lcc/jumpkick/cache/Cas;Ljava/nio/file/Path;Ljava/nio/file/Path;)Ljava/util/Set; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
@@ -748,7 +740,7 @@ population = { examined = 4 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1466, sites = 106315 }
+"server/engine" = { classes = 1507, sites = 109635 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 59, sites = 3494 }
 "server/resolver" = { classes = 123, sites = 7334 }
@@ -1095,10 +1087,6 @@ at     = "cc.jumpkick.giter8.Giter8TemplateIndex#picker(Ljava/util/List;)Ljava/u
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.CachePlans#lambda$pruneBuildPlan$(Ljava/nio/file/Path;ZZLcc/jumpkick/run/TaskContext;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.HardwareProbe#measureDiskIo()J -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
@@ -1153,18 +1141,6 @@ reason = "pure move: the runtime split re-keyed the sites into runtime.workspace
 in     = "server/engine"
 at     = "cc.jumpkick.runtime.workspace.WorkspaceLock#recordLockSuccess(Ljava/nio/file/Path;J)V -> java.lang.System#currentTimeMillis()J"
 reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.task.ActionCachePrune#run(Ljava/nio/file/Path;Lcc/jumpkick/cache/Cas;Lcc/jumpkick/task/ActionCachePrune$Policy;Ljava/util/Set;Z)Lcc/jumpkick/task/ActionCachePrune$Report; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.task.CacheRetention#sweep(Ljava/nio/file/Path;Lcc/jumpkick/cache/Cas;Ljava/util/Set;ZLcc/jumpkick/task/CacheRetention$Probe;Ljava/util/Map;)Lcc/jumpkick/task/CacheRetention$Report; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.task.CasSweep#sweep(Lcc/jumpkick/cache/Cas;Ljava/util/Set;Z)Lcc/jumpkick/task/CasSweep$Report; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.task.SyncManifest#write(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/lock/Lockfile;)Ljava/nio/file/Path; -> java.lang.System#currentTimeMillis()J"
@@ -2155,6 +2131,9 @@ population = { constants = 1, files = 2266, literals = 44250 }
 
 [task-names]
 population = { constants = 68, files = 2266, literals = 44237 }
+
+[test-env-forwarded]
+population = { examined = 48 }
 
 [test-paths-from-checkout-root]
 population = { files = 1920 }

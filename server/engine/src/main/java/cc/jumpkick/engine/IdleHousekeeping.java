@@ -18,6 +18,7 @@ import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.task.AbiMemo;
 import cc.jumpkick.task.CachePruneScheduler;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.PruneYield;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
@@ -74,6 +75,9 @@ public final class IdleHousekeeping {
     private final AtomicBoolean warmupRunning = new AtomicBoolean();
     private final AtomicBoolean running = new AtomicBoolean();
     private final AtomicLong testHomeIdle = new AtomicLong();
+
+    /** Runs at each safe point of the idle prune before it asks whether a build waits; a test seam. */
+    private volatile Runnable pruneSafePoint = () -> {};
 
     /**
      * After a plan slot was released: all idle housekeeping when nothing remains in flight.
@@ -403,14 +407,23 @@ public final class IdleHousekeeping {
         }
     }
 
-    /** The prune itself; runs with both maintenance locks held. */
+    /**
+     * The prune itself; runs with both maintenance locks held. A build that queues on the cache gate
+     * meanwhile, or is admitted at all, stops the pass at its next safe point ({@link PruneYield}):
+     * the gate is released, the build runs, and the pass is queued again whole for the next
+     * boundary, its cadence stamp unwritten.
+     */
     private void prunePass(Path cache) {
         // Scratch is a single ambient directory, not a per-root one: sweeping it while
         // pruning some other cache root would reach outside the root asked for.
         boolean ambient = cache.equals(JkDirs.cache());
-        BuildPlan plan = CachePlans.pruneBuildPlan(cache, false, ambient);
+        PruneYield yield = new PruneYield(this::buildWaiting);
+        BuildPlan plan = CachePlans.pruneBuildPlan(cache, false, ambient, yield);
         BuildPlanResult result = plan.run();
-        if (result.success()) {
+        if (yield.yielded()) {
+            pendingPruneCache.compareAndSet(null, cache);
+            log.accept("jk engine: idle-boundary cache prune yielded to a build; it runs again at the next boundary");
+        } else if (result.success()) {
             CachePruneScheduler.write(
                     cache,
                     clock.getAsLong(),
@@ -423,5 +436,16 @@ public final class IdleHousekeeping {
         } else {
             log.accept("jk engine: idle-boundary cache prune failed");
         }
+    }
+
+    /** Whether a build waits on the gate this prune holds, or was admitted and soon will. */
+    private boolean buildWaiting() {
+        pruneSafePoint.run();
+        return cacheGate.hasQueuedThreads() || activeBuildPlans.get() != 0;
+    }
+
+    /** Test seam: {@code hook} runs at each safe point of the idle prune. */
+    void onPruneSafePoint(Runnable hook) {
+        pruneSafePoint = hook;
     }
 }
