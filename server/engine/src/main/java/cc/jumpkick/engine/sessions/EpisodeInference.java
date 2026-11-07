@@ -25,9 +25,13 @@ import org.jspecify.annotations.Nullable;
  *   <li>the current episode is closed: a red streak of runs ended green, or a {@link #goal} took it.
  * </ul>
  *
- * <p>The title is the agent's goal when it gave one, else built from the episode's facts in a fixed
- * order: {@code Fixing Class#method (+N more)} for the first red run's failing tests, {@code Adding
- * g:a} for a dependency change, {@code Updating N pins}, {@code Renaming T.m}, {@code Exploring the
+ * <p>A red streak ending green does not close an episode the agent named a goal for: the goal
+ * changing does. A fact with no goal that starts an episode takes the session's last goal as its
+ * title, when the agent has named one.
+ *
+ * <p>The title is the agent's goal when it gave one, else the session's last goal, else built from
+ * the episode's facts in a fixed order: {@code Fixing Class#method (+N more)} for the first red
+ * run's failing tests, {@code Adding g:a} for a dependency change, {@code Updating N pins}, {@code Renaming T.m}, {@code Exploring the
  * code} when it only asked the code graph, and {@code Working in <module>} otherwise.
  */
 public final class EpisodeInference {
@@ -39,6 +43,9 @@ public final class EpisodeInference {
     private final long idleGapMillis;
     private final List<Draft> episodes = new ArrayList<>();
     private long lastAt;
+
+    /** The goal the agent named last in this session, or null before its first. */
+    private @Nullable String lastGoal;
 
     public EpisodeInference(String session, long idleGapMillis) {
         this.session = Objects.requireNonNull(session, "session");
@@ -81,7 +88,7 @@ public final class EpisodeInference {
         Draft placed;
         if (cur == null || boundary) {
             if (cur != null && cur.closed == null) changes.add(cur.close(Closed.SUPERSEDED));
-            placed = open(at, where, null);
+            placed = open(at, where, lastGoal, Episode.LAST_GOAL);
             changes.add(new Change(placed.view(), true, false, false));
         } else {
             placed = cur;
@@ -107,8 +114,10 @@ public final class EpisodeInference {
     }
 
     /**
-     * The agent named its goal: the current episode when it already pursues {@code text}, else a new
-     * one titled by it that closes the current. A blank goal changes nothing.
+     * The agent named its goal: the current episode when it already pursues {@code text} in {@code
+     * project} and the session has not been quiet past the idle gap, else a new one titled by it
+     * that closes the current. An episode that took the goal as the session's last now has it from
+     * the agent. A blank goal changes nothing.
      */
     public Placement goal(long at, String project, String text) {
         Draft cur = episodes.isEmpty() ? null : episodes.getLast();
@@ -116,13 +125,22 @@ public final class EpisodeInference {
             return cur == null ? place(at, project) : new Placement(cur.id, List.of());
         }
         String goal = text.strip();
-        if (cur != null && cur.closed == null && goal.equals(cur.goal)) {
+        String where = project == null ? "" : project;
+        lastGoal = goal;
+        boolean same = cur != null
+                && cur.closed == null
+                && goal.equals(cur.goal)
+                && cur.project.equals(where)
+                && at - lastAt <= idleGapMillis;
+        if (cur != null && same) {
             touch(cur, at);
-            return new Placement(cur.id, List.of());
+            if (Episode.GOAL.equals(cur.source)) return new Placement(cur.id, List.of());
+            cur.source = Episode.GOAL;
+            return new Placement(cur.id, List.of(new Change(cur.view(), false, true, false)));
         }
         List<Change> changes = new ArrayList<>();
         if (cur != null && cur.closed == null) changes.add(cur.close(Closed.SUPERSEDED));
-        Draft d = open(at, project == null ? "" : project, goal);
+        Draft d = open(at, where, goal, Episode.GOAL);
         changes.add(new Change(d.view(), true, false, false));
         touch(d, at);
         return new Placement(d.id, changes);
@@ -145,6 +163,7 @@ public final class EpisodeInference {
         for (Draft d : episodes) drafts.add(d.state());
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("lastAt", lastAt);
+        if (lastGoal != null) m.put("lastGoal", lastGoal);
         m.put("episodes", drafts);
         return m;
     }
@@ -159,10 +178,14 @@ public final class EpisodeInference {
         EpisodeInference inference = new EpisodeInference(session, idleGapMillis);
         List<?> drafts = state != null && state.get("episodes") instanceof List<?> l ? l : List.of();
         long last = 0;
+        String lastGoal = null;
         for (int i = 0; i < stored.size(); i++) {
             Episode e = stored.get(i);
-            String goal = Episode.GOAL.equals(e.titleSource()) ? e.title() : null;
-            Draft d = inference.new Draft(e.id(), e.number(), e.project(), e.startedAt(), goal);
+            String source = e.titleSource();
+            boolean named = Episode.GOAL.equals(source) || Episode.LAST_GOAL.equals(source);
+            String goal = named ? e.title() : null;
+            if (goal != null) lastGoal = goal;
+            Draft d = inference.draft(e, goal, named ? source : Episode.INFERRED);
             d.lastAt = e.lastAt();
             d.runs = e.runs();
             d.actions = e.actions();
@@ -171,6 +194,7 @@ public final class EpisodeInference {
             last = Math.max(last, e.lastAt());
         }
         inference.lastAt = state != null && state.get("lastAt") instanceof Number n ? n.longValue() : last;
+        inference.lastGoal = state != null && state.get("lastGoal") instanceof String g ? g : lastGoal;
         return inference;
     }
 
@@ -181,8 +205,20 @@ public final class EpisodeInference {
         return inference.episodes();
     }
 
-    private Draft open(long at, String project, @Nullable String goal) {
-        Draft d = new Draft(session + "." + (episodes.size() + 1), episodes.size() + 1, project, at, goal);
+    /** A stored episode's draft, titled by {@code goal} from {@code source}. */
+    private Draft draft(Episode e, @Nullable String goal, String source) {
+        return new Draft(e.id(), e.number(), e.project(), e.startedAt(), goal, source);
+    }
+
+    /** A new episode titled by {@code goal}, which came from {@code source}; inferred when it is null. */
+    private Draft open(long at, String project, @Nullable String goal, String source) {
+        Draft d = new Draft(
+                session + "." + (episodes.size() + 1),
+                episodes.size() + 1,
+                project,
+                at,
+                goal,
+                goal == null ? Episode.INFERRED : source);
         episodes.add(d);
         return d;
     }
@@ -216,6 +252,10 @@ public final class EpisodeInference {
         final String project;
         final long startedAt;
         final @Nullable String goal;
+
+        /** Where the title comes from: {@link Episode#GOAL}, {@link Episode#LAST_GOAL} or {@link Episode#INFERRED}. */
+        String source;
+
         long lastAt;
 
         @Nullable
@@ -243,13 +283,14 @@ public final class EpisodeInference {
         String renameTarget = "";
         String module;
 
-        Draft(String id, int number, String project, long startedAt, @Nullable String goal) {
+        Draft(String id, int number, String project, long startedAt, @Nullable String goal, String source) {
             this.id = id;
             this.number = number;
             this.project = project;
             this.startedAt = startedAt;
             this.lastAt = startedAt;
             this.goal = goal;
+            this.source = source;
             this.module = baseName(project);
         }
 
@@ -265,7 +306,7 @@ public final class EpisodeInference {
                         failing = List.copyOf(new LinkedHashSet<>(f.failingTests()));
                     }
                 } else {
-                    if (redStreak > 0 && closed == null) closed = Closed.GREEN_STREAK;
+                    if (redStreak > 0 && closed == null && goal == null) closed = Closed.GREEN_STREAK;
                     redStreak = 0;
                 }
                 return;
@@ -362,18 +403,7 @@ public final class EpisodeInference {
 
         Episode view() {
             return new Episode(
-                    id,
-                    session,
-                    number,
-                    project,
-                    null,
-                    title(),
-                    goal != null ? Episode.GOAL : Episode.INFERRED,
-                    outcome(),
-                    startedAt,
-                    lastAt,
-                    runs,
-                    actions);
+                    id, session, number, project, null, title(), source, outcome(), startedAt, lastAt, runs, actions);
         }
     }
 

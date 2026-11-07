@@ -209,7 +209,7 @@ The whole registry:
 | **`bind`** | Set or switch the connection's project dir; returns a project card. Not on the default list: the first call that carries `dir` binds |
 | **`status`** | Engine vitals (pid, version, heap, the MCP session counts `mcpMaxSessions`, `mcpLoadedConnections`, `mcpActiveConnections`) and the `jobs` array — every live and queued job as the same row `jk engine status -O jsonl` and `GET /api/status` carry (`jid`, `kind`, `dir`, `state`, `since`, `workers`, `lastEventAt`, `ahead`) |
 | **`project`** | Project card (coord, java, members, last run) |
-| **`run`** | Start a job and, by default, wait. The reply is the verdict (see above). `jid` waits on a job already started instead. `decision=<id>` continues the call a [`NEEDS-YOU`](#decisions) answered. `kind` is `test` (default) \| `build` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `snapshot` \| `import`. Publish is a dry-run unless `upload=true`, which sends the release to the repository `[publish]` names (see `publish`). `only` limits modules and `classes` test classes (comma-separated, as `jk test -S`). `run=<id>` with no `kind` reads an earlier verdict, or waits when `<id>` is a running job's `jid`. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s` (default 240). `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
+| **`run`** | Start a job and, by default, wait. The reply is the verdict (see above). [`goal`](#goal) names the task. `jid` waits on a job already started instead. `decision=<id>` continues the call a [`NEEDS-YOU`](#decisions) answered. `kind` is `test` (default) \| `build` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `snapshot` \| `import`. Publish is a dry-run unless `upload=true`, which sends the release to the repository `[publish]` names (see `publish`). `only` limits modules and `classes` test classes (comma-separated, as `jk test -S`). `run=<id>` with no `kind` reads an earlier verdict, or waits when `<id>` is a running job's `jid`. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s` (default 240). `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
 | **`build`** / **`test`** / **`lock`** | Async convenience aliases (return `jid` immediately) |
 | **`cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`history`** | Recent runs as **summaries** (filters: dir, projectId, success, kind, limit, next). Avoid `view=full` |
@@ -219,8 +219,8 @@ The whole registry:
 | **`explain`** | Forecast next build |
 | **`affected_tests`** | WIP module cone + advisory ranked test classes; writes `target/jk-tests-affected.md` |
 | **`outdated`** | Declared pins an update would move (read-only; Current / Compatible / Latest): dependencies, language and tool keys, rule packs; `all=true` lists every row, `checked` counts them, `file` is the `target/jk-outdated-dependencies.md` it wrote, and a row whose coordinate moved carries `relocated` |
-| **`update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock. Params: `dir`, `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). Preview returns the proposed `jk.toml` hunk without writing; `apply=true` writes, relocks, and lists every lock package the relock added, removed or moved under `lock.changes` (`coordinate`, `from`, `to`; `from`/`to` null when added/removed), with the count in `lock.updated`. Same renderer as `jk add`. A move across a minor or a major, or a relock that adds a package, is a [decision](#decisions) the user makes first |
-| **`deps`** | Add, remove, or pin coordinates and relock. `preview=true` does not write; a version or coordinate the repositories do not serve is an error, preview or not. An add whose lock trips the project's [deny policy](publish.md#deny-policy) is put back and becomes a [decision](#decisions) |
+| **`update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock. Params: `dir`, [`goal`](#goal), `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). Preview returns the proposed `jk.toml` hunk without writing; `apply=true` writes, relocks, and lists every lock package the relock added, removed or moved under `lock.changes` (`coordinate`, `from`, `to`; `from`/`to` null when added/removed), with the count in `lock.updated`. Same renderer as `jk add`. A move across a minor or a major, or a relock that adds a package, is a [decision](#decisions) the user makes first |
+| **`deps`** | Add, remove, or pin coordinates and relock, with a [`goal`](#goal). `preview=true` does not write; a version or coordinate the repositories do not serve is an error, preview or not. An add whose lock trips the project's [deny policy](publish.md#deny-policy) is put back and becomes a [decision](#decisions) |
 | **`workspace`** | Preview/apply workspace member add/remove |
 | **`manifest`** | Set whitelisted `jk.toml` keys (`java=N` is language level, not `jdk=`) |
 | **`config`** | Machine config get/set, or `apply_preset=ci` |
@@ -237,13 +237,27 @@ The whole registry:
 | **`ide`** | Write IDE project files (`kind=idea` \| `vscode` \| `all`) plus `.bsp/jk.json`, same generators as `jk ide`; `preview=true` lists without writing |
 | **`graph`** | Compact module/dep graph (transitive expansion opt-in and budget-capped) |
 | **`callers`** | Who calls a method (`address` = `Type.method`, every overload): each caller as `Owner.method` with `file:line` and the call's line, main sources before tests, counted, from the compiled classes and so complete. `transitive=true` lists every method that reaches it, by hop, up to `max_hops` (default 8). Same as `jk graph callers` ([Code graph](graph.md#callers)) |
-| **`rename`** | Rename a method (`address` = `Type.method`, every overload, or `Type.method(int,String)`) to `to`, with every override, call, method reference and doc link the compiled classes record, in one call; lists any use it could not tell apart. Not read-only. Same as `jk graph rename` ([Code graph](graph.md#rename)) |
+| **`rename`** | Rename a method (`address` = `Type.method`, every overload, or `Type.method(int,String)`) to `to`, with a [`goal`](#goal), with every override, call, method reference and doc link the compiled classes record, in one call; lists any use it could not tell apart. Not read-only. Same as `jk graph rename` ([Code graph](graph.md#rename)) |
 | **`query`** | A question about the code (`question`) answered in a token budget: the symbols it names as `Owner.member()` at `file:line`, and how they connect. Same as `jk graph query` ([Code graph](graph.md)) |
 | **`read`** | One symbol's source or a type's members (`address` = `Type`, `Type.member`, `Type.*`, a path or glob; `#line=N,M`), in the `view` the budget fits. Same as `jk graph read` |
 | **`find`** | Declarations by `kind`, `visibility`, `extends`, `implements`, `annotated` and a `name` glob. Same as `jk graph find` |
 
 Start with **`run`**. The reply is the verdict. **`diagnostics`** is the detail past its cap. Do not dump full journal records. A tool
 outside the default list is called by name once `tools/list` with `extended: true` has named it. `tools/call` accepts it either way; the bind and the session are the same.
+
+### `goal`
+
+`run`, `deps`, `rename` and `update` take `goal`: the task the call serves, under eight words,
+repeated word for word until the task changes (`"goal": "Rename Ledger.post to record"`). It is
+required in their schemas so an agent passes it, but jk never refuses a call without it. It titles
+the session's [episode](web.md#sessions-and-episodes) on the dashboard: a call whose goal differs
+from the last one starts a new episode, and the same goal keeps the current one. A call with no
+goal joins the episode it would have anyway; when it starts one (another project, or after ten
+minutes of quiet), that episode takes the session's last goal, and with none its title is inferred
+from what it did. The episode records which (`titleSource`: `goal`, `lastGoal` or `inferred`).
+The goal is kept to one line of at most 120 characters, and the project's secrets are masked in it,
+as in every action summary, before it is stored, served or streamed. The graph's question tools
+take no `goal`.
 
 ### `new`
 

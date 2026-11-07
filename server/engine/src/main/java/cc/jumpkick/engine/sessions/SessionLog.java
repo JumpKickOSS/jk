@@ -4,6 +4,7 @@ package cc.jumpkick.engine.sessions;
 import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.wire.protocol.EventCatalog;
@@ -403,18 +404,34 @@ public final class SessionLog {
 
     /**
      * The agent named its goal: the session's current episode when it already pursues {@code text},
-     * else a new episode titled by it. Answers the episode id.
+     * else a new episode titled by it. The goal is clipped to {@link #GOAL_CHARS} and masked as an
+     * action's summary is before anything stores, serves or streams it. Answers the episode id.
      */
     public synchronized @Nullable String goal(String origin, @Nullable String label, String project, String text) {
         if (!ownsTrigger(origin)) return null;
         adopt();
         long now = clock.getAsLong();
         Live live = sessionFor(origin, label, clientOf(label), now);
-        EpisodeInference.Placement p = live.episodes.goal(now, projectOr(live, project), text);
+        String where = projectOr(live, project);
+        EpisodeInference.Placement p = live.episodes.goal(now, where, maskedGoal(where, text));
         touch(live, project, now, p.episode());
         persist(live);
         publish(live, p.changes());
         return p.episode();
+    }
+
+    /** Characters of a goal an episode title keeps: a goal is meant to be under eight words. */
+    static final int GOAL_CHARS = 120;
+
+    /** {@code text} on one line, clipped to {@link #GOAL_CHARS}, with the project's secrets masked. */
+    static String maskedGoal(String project, @Nullable String text) {
+        if (text == null || text.isBlank()) return "";
+        String dir = project.isBlank() ? null : project;
+        String masked = EventRedaction.redactText(dir, text.strip());
+        String line = String.join(" ", masked.split("\\s+"));
+        if (line.length() <= GOAL_CHARS) return line;
+        return EventRedaction.redactClipped(
+                dir, line.substring(0, GOAL_CHARS - 1) + ActionRecord.CLIP, ActionRecord.CLIP);
     }
 
     /** The open session of an origin and label, and its current episode, when one is open. */

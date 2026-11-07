@@ -35,6 +35,7 @@ const {
   sessionOfEpisode,
   sessionRail,
   sessionService,
+  titleSourceLabel,
 } = await spa('console.js');
 const { historyCard } = await spa('fold.js');
 const { buildConsoleHash, buildProjectHash, routeFromHash } = await spa('route.js');
@@ -134,6 +135,12 @@ test('a session card names its host: the run label, the shell, the dashboard', (
   assert.equal(hostLabel(shell()), 'shell');
   assert.equal(hostLabel({ origin: 'web' }), 'dashboard');
   assert.equal(hostLabel({ origin: 'bsp', client: 'IntelliJ' }), 'IntelliJ');
+});
+
+test("an episode's title says where it came from: the agent's goal, the session's last goal, or inferred", () => {
+  assert.equal(titleSourceLabel(ep()), 'goal from the agent');
+  assert.equal(titleSourceLabel(ep({ titleSource: 'lastGoal' })), 'last goal');
+  assert.equal(titleSourceLabel(ep({ titleSource: 'inferred' })), 'inferred');
 });
 
 test('the rail puts who waits on you first, then who is working, then the idle', () => {

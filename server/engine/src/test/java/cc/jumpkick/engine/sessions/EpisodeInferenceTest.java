@@ -61,6 +61,63 @@ class EpisodeInferenceTest {
     }
 
     @Test
+    void work_with_no_goal_that_starts_an_episode_takes_the_sessions_last_goal_and_the_goal_again_claims_it() {
+        EpisodeInference inference = new EpisodeInference("s", GAP);
+        inference.goal(T, "/ws/app", "Fix the weekend uplift");
+        // Quiet past the idle gap, then a run with no goal: a new episode, titled by the last goal.
+        long later = T + GAP + 1_000;
+        EpisodeInference.Placement run = inference.place(later, "/ws/app");
+        assertThat(run.changes())
+                .extracting(c -> c.episode().number() + ":" + c.started())
+                .containsExactly("1:false", "2:true");
+        Episode fallback = Objects.requireNonNull(inference.current());
+        assertThat(fallback.title()).isEqualTo("Fix the weekend uplift");
+        assertThat(fallback.titleSource()).isEqualTo(Episode.LAST_GOAL);
+        // Its facts never retitle it.
+        inference.fold(run.episode(), Fact.run(later, 0, "/ws/app", "app", false, List.of("QuoteTest#oneNightStay")));
+        assertThat(Objects.requireNonNull(inference.current()).title()).isEqualTo("Fix the weekend uplift");
+
+        EpisodeInference.Placement again = inference.goal(later + 1_000, "/ws/app", "Fix the weekend uplift");
+        assertThat(again.episode()).isEqualTo(run.episode());
+        assertThat(again.changes()).singleElement().satisfies(c -> {
+            assertThat(c.titleChanged()).isTrue();
+            assertThat(c.episode().titleSource()).isEqualTo(Episode.GOAL);
+        });
+    }
+
+    @Test
+    void a_session_that_never_named_a_goal_keeps_inferring() {
+        EpisodeInference inference = new EpisodeInference("s", GAP);
+        inference.place(T, "/ws/app");
+        inference.place(T + GAP + 1_000, "/ws/app");
+        assertThat(inference.episodes())
+                .extracting(Episode::titleSource)
+                .containsExactly(Episode.INFERRED, Episode.INFERRED);
+    }
+
+    @Test
+    void a_red_streak_ending_green_does_not_close_a_goals_episode_and_a_resumed_session_keeps_its_last_goal() {
+        EpisodeInference inference = new EpisodeInference("s", GAP);
+        String fix = inference.goal(T, "/ws/app", "Fix the weekend uplift").episode();
+        inference.fold(fix, Fact.run(T, 0, "/ws/app", "app", false, List.of("QuoteTest#oneNightStay")));
+        inference.fold(
+                inference.place(T + 1_000, "/ws/app").episode(),
+                Fact.run(T + 1_000, 0, "/ws/app", "app", true, List.of()));
+        assertThat(inference.place(T + 2_000, "/ws/app").episode()).isEqualTo(fix);
+        assertThat(Objects.requireNonNull(inference.current()).outcome()).isEqualTo(Episode.WORKING);
+        assertThat(inference
+                        .goal(T + 3_000, "/ws/app", "Fix the weekend uplift")
+                        .episode())
+                .isEqualTo(fix);
+
+        EpisodeInference resumed = EpisodeInference.resume("s", GAP, inference.episodes(), inference.state());
+        resumed.place(T + 3_000 + GAP + 1_000, "/ws/lib");
+        assertThat(resumed.episodes())
+                .extracting(e -> e.project() + ":" + e.title() + ":" + e.titleSource())
+                .containsExactly("/ws/app:Fix the weekend uplift:goal", "/ws/lib:Fix the weekend uplift:lastGoal");
+    }
+
+    @Test
     void a_goal_episode_ended_with_nothing_in_it_is_abandoned() {
         EpisodeInference inference = new EpisodeInference("s", GAP);
         inference.goal(T, "/ws/app", "Add Postgres");

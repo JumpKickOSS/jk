@@ -296,6 +296,7 @@ public final class McpTools {
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
         if (!BIND.equals(name)) implicitBind(connection, args.get("dir"));
         McpCall call = new McpCall(ctx, args, progressTokenOf(params), connection, outbound);
+        noteGoal(name, call);
         if (ctx.sessions() == null || !McpActions.LOGGED.contains(name)) return tool.call(call);
         long at = Clock.SYSTEM.millis();
         Map<String, Object> result = null;
@@ -304,6 +305,15 @@ public final class McpTools {
             return result;
         } finally {
             logAction(name, call, result, at);
+        }
+    }
+
+    /** Let the call's goal title its session's episode; a goal that cannot be noted never costs the call. */
+    private static void noteGoal(String name, McpCall call) {
+        try {
+            McpActions.goal(name, call);
+        } catch (RuntimeException e) {
+            Log.debug("goal not noted: " + name, e);
         }
     }
 

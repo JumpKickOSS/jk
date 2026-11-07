@@ -336,7 +336,9 @@ dashboard shows), `label` the run records' `session` (`claude-code 3f9a`;
 absent for the shell and the dashboard), `state` `live`, `idle` (quiet for the idle gap, ten
 minutes) or `ended`, `episode` the current episode's id and `current` that episode. An episode is
 `{ id, session, number, project, projectId?, title, titleSource, outcome, startedAt, lastAt, runs,
-actions }`: `id` is `<session>.<number>`, `titleSource` `inferred` or `goal`, `outcome` `working`,
+actions }`: `id` is `<session>.<number>`, `titleSource` `goal` (the agent's `goal` argument),
+`lastGoal` (the session's last goal, for an episode no call named one for) or `inferred`, and
+`title` masked like an action's summary; `outcome` `working`,
 `green`, `red` or `abandoned`. What starts an episode and how its title is chosen:
 [web](../user/web.md#sessions-and-episodes); the rules are `EpisodeInference`.
 

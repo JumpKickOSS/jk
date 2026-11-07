@@ -14,8 +14,10 @@ import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
@@ -161,8 +163,39 @@ class McpToolRegistryTest {
         String listing = MiniJson.write(McpTools.standard().listing(McpTools.Surface.LOOP));
         assertThat(listing.length())
                 .as("default tools/list reply %d bytes", listing.length())
-                .isLessThanOrEqualTo(2_500);
+                .isLessThanOrEqualTo(2_710);
         assertThat(all.length()).as("full list is the expensive one").isGreaterThan(loop.length() * 4);
+    }
+
+    /**
+     * The tools that start work require {@code goal}, in one wording, and each card stays within its
+     * budget: the bytes it had before plus the argument, 134 bytes of property and its place in
+     * {@code required} (20 bytes where the list is new, 7 on {@code rename}). Without it and with
+     * it: run 459 → 613, deps 373 → 527, rename 364 → 505, update 799 → 953,
+     * and the default list 2,259 → 2,708.
+     */
+    @Test
+    void the_tools_that_start_work_require_a_goal_within_their_card_budgets() {
+        Map<String, Integer> budget = Map.of("run", 613, "deps", 527, "rename", 505, "update", 953);
+        Map<String, Map<String, Object>> cards = new HashMap<>();
+        for (Map<String, Object> row : objects(McpTools.standard().listing(McpTools.Surface.ALL), "tools")) {
+            cards.put(String.valueOf(row.get("name")), row);
+        }
+        Map<String, Integer> bytes = new TreeMap<>();
+        for (String name : budget.keySet()) {
+            Map<String, Object> card = requireNonNull(cards.get(name));
+            Map<?, ?> schema = (Map<?, ?>) requireNonNull(card.get("inputSchema"));
+            assertThat(String.valueOf(schema.get("required")))
+                    .as("%s required", name)
+                    .contains("goal");
+            assertThat(((Map<?, ?>) requireNonNull(schema.get("properties"))).get("goal"))
+                    .isEqualTo(McpSchemas.goal());
+            bytes.put(name, MiniJson.write(card).length());
+        }
+        assertThat(bytes).as("card bytes %s", bytes).allSatisfy((name, size) -> assertThat(size)
+                .isLessThanOrEqualTo(budget.get(name)));
+        assertThat(cards.values().stream().filter(c -> !budget.containsKey(String.valueOf(c.get("name")))))
+                .allSatisfy(c -> assertThat(MiniJson.write(c)).doesNotContain("\"goal\""));
     }
 
     /**

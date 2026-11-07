@@ -39,17 +39,19 @@ public final class DepsTool implements McpTool {
         return new Spec(
                 "deps",
                 DESCRIPTION,
-                McpSchemas.object(Map.of(
-                        "action",
-                        McpSchemas.oneOf("add", "remove", "pin"),
-                        "coords",
-                        McpSchemas.strings(),
-                        "scope",
-                        McpSchemas.string(),
-                        "dir",
-                        McpSchemas.string(),
-                        "preview",
-                        McpSchemas.bool())));
+                McpSchemas.withGoal(
+                        Map.of(
+                                "action",
+                                McpSchemas.oneOf("add", "remove", "pin"),
+                                "coords",
+                                McpSchemas.strings(),
+                                "scope",
+                                McpSchemas.string(),
+                                "dir",
+                                McpSchemas.string(),
+                                "preview",
+                                McpSchemas.bool()),
+                        List.of()));
     }
 
     @Override

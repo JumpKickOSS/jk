@@ -23,7 +23,9 @@ export function hostLabel(s) {
 /** Where an episode's title came from, as the screen says it. */
 export function titleSourceLabel(ep) {
   if (!ep) return '';
-  return ep.titleSource === 'goal' ? 'goal from the agent' : 'inferred';
+  if (ep.titleSource === 'goal') return 'goal from the agent';
+  if (ep.titleSource === 'lastGoal') return 'last goal';
+  return 'inferred';
 }
 
 /** The last path segment of a checkout, the way the rail names a project. */

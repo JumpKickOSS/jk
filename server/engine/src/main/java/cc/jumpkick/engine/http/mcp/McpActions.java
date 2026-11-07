@@ -25,6 +25,9 @@ final class McpActions {
     static final Set<String> LOGGED =
             Set.of("query", "callers", "read", "find", "rename", "deps", "update", "workspace");
 
+    /** The tools that take {@link McpSchemas#GOAL}: the ones that start work. */
+    static final Set<String> GOALS = Set.of("run", "deps", "rename", "update");
+
     /** Characters of a question or answer line a summary keeps. */
     static final int TEXT_CHARS = 120;
 
@@ -52,6 +55,22 @@ final class McpActions {
                 name,
                 summary(name, call, result),
                 result == null ? "failed" : headline(result));
+    }
+
+    /**
+     * Before a call of tool {@code name} runs, let the goal it names title its session's episode: a
+     * new one when the goal changed. A call with no goal changes nothing, so its work joins the
+     * episode it would have anyway.
+     */
+    static void goal(String name, McpCall call) {
+        SessionLog log = call.ctx().sessions();
+        if (log == null || !GOALS.contains(name)) return;
+        String goal = call.str(McpSchemas.GOAL);
+        if (goal == null || goal.isBlank()) return;
+        McpConnection connection = call.connection();
+        String dir = call.dir();
+        String project = dir == null || dir.isBlank() ? "" : BuildJobFingerprint.canonicalDir(dir);
+        log.goal("mcp", connection == null ? null : connection.label(), project, goal);
     }
 
     static Fact.Kind kind(String name, McpCall call) {

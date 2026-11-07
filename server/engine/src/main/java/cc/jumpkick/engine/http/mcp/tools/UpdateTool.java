@@ -29,15 +29,17 @@ public final class UpdateTool implements McpTool {
                         + " the rewrites; apply=true writes jk.toml and jk-lock.toml and lists every lock"
                         + " package the relock added, removed or moved under lock.changes. A move across a"
                         + " minor or major, or a new package, asks the user first.",
-                McpSchemas.object(Map.of(
-                        "dir",
-                        McpSchemas.string(McpSchemas.WORKSPACE_ROOT),
-                        "deps",
-                        McpSchemas.strings("Only these handles or group:artifact coordinates (default: all)"),
-                        "major",
-                        McpSchemas.bool("Allow a pin to cross its Maven major"),
-                        "apply",
-                        McpSchemas.bool())));
+                McpSchemas.withGoal(
+                        Map.of(
+                                "dir",
+                                McpSchemas.string(McpSchemas.WORKSPACE_ROOT),
+                                "deps",
+                                McpSchemas.strings("Only these handles or group:artifact coordinates (default: all)"),
+                                "major",
+                                McpSchemas.bool("Allow a pin to cross its Maven major"),
+                                "apply",
+                                McpSchemas.bool()),
+                        List.of()));
     }
 
     @Override

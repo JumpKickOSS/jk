@@ -386,6 +386,48 @@ class SessionLogTest {
     }
 
     @Test
+    void a_secret_in_a_goal_is_masked_before_it_is_stored_served_or_streamed(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve(".env"), "TOKEN=s3cret-goal-value\n");
+        String dir = project.toString();
+        List<Map<String, Object>> streamed = new ArrayList<>();
+        log.events((type, payload) -> {
+            if (type.equals("episode")) streamed.add(payload);
+        });
+        String id = log.open("mcp", "claude-code", LABEL, dir);
+
+        log.goal("mcp", LABEL, dir, "Rotate  s3cret-goal-value\nout of the config");
+
+        String masked = "Rotate *** out of the config";
+        assertThat(streamed).singleElement().satisfies(p -> assertThat(p.get("episode"))
+                .asInstanceOf(InstanceOfAssertFactories.MAP)
+                .containsEntry("title", masked)
+                .containsEntry("titleSource", "goal"));
+        assertThat(log.session(id, 0, 10).orElseThrow().episodes())
+                .singleElement()
+                .satisfies(e -> assertThat(e).containsEntry("title", masked));
+        assertThat(log.sessions(10).getFirst().get("current"))
+                .asInstanceOf(InstanceOfAssertFactories.MAP)
+                .containsEntry("title", masked);
+        try (var files = Files.walk(root)) {
+            for (Path f : files.filter(Files::isRegularFile).toList()) {
+                assertThat(Files.readString(f)).as("%s", f).doesNotContain("s3cret-goal-value");
+            }
+        }
+        // The same goal again, as the agent repeats it, is the same episode.
+        log.goal("mcp", LABEL, dir, "Rotate s3cret-goal-value out of the config");
+        assertThat(log.session(id, 0, 10).orElseThrow().episodes()).hasSize(1);
+    }
+
+    @Test
+    void a_long_goal_is_clipped_to_one_line() {
+        String goal = SessionLog.maskedGoal("", "word ".repeat(60));
+        assertThat(goal)
+                .hasSize(SessionLog.GOAL_CHARS)
+                .endsWith(ActionRecord.CLIP)
+                .doesNotContain("\n");
+    }
+
+    @Test
     void the_action_event_carries_the_masked_summary_and_a_secret_the_clip_cut_short_is_masked_too(
             @TempDir Path project) throws Exception {
         Files.writeString(project.resolve(".env"), "TOKEN=s3cret-token-value\n");
