@@ -12,6 +12,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.TierTags;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -568,10 +569,9 @@ public final class PlannerTest {
                 + projectUnderTest.project().name();
         String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClasses);
         TestFailureSource.Cache snippets = new TestFailureSource.Cache();
-        // [test] exclude-tags for jk build / BSP: CLI resolves tags for `jk test`;
-        // when the session selection carries no tags at all, apply this module's
-        // own config here. The effective selection feeds BOTH the stamp and the runner.
-        var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
+        // jk build / BSP / MCP: when the session selection carries no tags, resolve the
+        // workspace's here as the CLI does for `jk test`. It feeds BOTH the stamp and the runner.
+        var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir(), in.profileName());
         SuiteClassFilter suites = suiteFilter(in, cx.compact(), projectUnderTest);
         AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
         if (affected != null && affected.classNames().isEmpty()) {
@@ -880,7 +880,11 @@ public final class PlannerTest {
         if (tagExcluded != null) {
             JkBuild project = ctx.require(PROJECT);
             tagExcluded = TestClassMatch.explainTagExcluded(
-                    tagExcluded, project.profiles(), in.profileName(), defaultTier(project, in.dir()));
+                    tagExcluded,
+                    project.profiles().byName().keySet(),
+                    name -> TierTags.profile(TierTags.rootOf(in.dir()), name),
+                    in.profileName(),
+                    defaultTier(in.dir()));
         }
         String suiteHint = exactClassList ? null : suites.classHint(ctx.require(TEST_CLASSES), sel.classes());
         boolean nothing = TestClassMatch.nothingMatched(sel, exactClassList, result);
@@ -902,18 +906,10 @@ public final class PlannerTest {
         return new Judged(null, TestClassMatch.noMatchMessage(sel, in.profileName(), tagExcluded, suiteHint));
     }
 
-    /** The tags the run uses without {@code -p}: the module's own {@code [test]} lists, else its workspace root's. */
-    static TestClassMatch.Tier defaultTier(JkBuild module, Path moduleDir) throws IOException {
-        var own = module.build();
-        if (!own.testIncludeTags().isEmpty() || !own.testExcludeTags().isEmpty()) {
-            return new TestClassMatch.Tier(own.testIncludeTags(), own.testExcludeTags());
-        }
-        Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
-        if (root == null || root.normalize().equals(moduleDir.normalize())) {
-            return new TestClassMatch.Tier(own.testIncludeTags(), own.testExcludeTags());
-        }
-        var rootBuild = JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build();
-        return new TestClassMatch.Tier(rootBuild.testIncludeTags(), rootBuild.testExcludeTags());
+    /** The tags the run uses without {@code -p}: the workspace root's, as {@link TierTags} resolves them. */
+    static TestClassMatch.Tier defaultTier(Path moduleDir) {
+        TierTags tiers = TierTags.of(moduleDir, null);
+        return new TestClassMatch.Tier(tiers.includeTags(), tiers.excludeTags());
     }
 
     /** Which compiled test classes the run's suites own, and which suite each runs in. */

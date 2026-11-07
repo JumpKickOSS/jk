@@ -56,6 +56,11 @@ class JobSelectTest {
         assertThat(JobSelect.testSelection(List.of(), List.of(), List.of(), List.of("RangeTest"))
                         .classes())
                 .containsExactly("RangeTest");
+        TestSelection suiteOnly = JobSelect.testSelection(List.of(), List.of(), List.of("integration"), List.of());
+        assertThat(suiteOnly.suites()).containsExactly("integration");
+        assertThat(suiteOnly.tagsResolved())
+                .as("naming a suite leaves the tags to the workspace")
+                .isFalse();
     }
 
     private static void writeWorkspace(Path root) throws Exception {

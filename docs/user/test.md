@@ -373,7 +373,7 @@ exclude-tags = ["slow", "network", "bench"]
 | Layer | Behavior |
 |-------|----------|
 | `[test] include-tags` / `exclude-tags` | Baseline for bare `jk test` |
-| Active profile (`--profile` / CI auto `ci`) | Replaces a list **only if that key is present** (including `= []` to clear) |
+| Active profile (`--profile` / CI auto `ci`) | Replaces a list **only if that key is present** (including `= []` to clear); a key it leaves out comes from its `inherits` parent, and `all-suites` holds when any profile in the chain sets it |
 | `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
 
 **A profile can widen the suites.** `all-suites = true` in `[profiles.<name>]` runs every suite
@@ -440,7 +440,9 @@ every member:
 
 A member's own tags are used only when the root resolved none — the root wins outright rather
 than merging, so a workspace has one answer for "which tests". Running from inside a member
-directory makes no difference: the CLI rehomes to the workspace root first.
+directory makes no difference: the CLI rehomes to the workspace root first. Every path resolves
+the same way: `jk test`, `jk build`, MCP and BSP runs that name no tags, the tier `--class` hints
+name, and the tags `jk info` shows.
 
 Everything else under `[test]` is per-module and is never inherited, including `extra-src`,
 `workers`, `assertions`, `jvm-args`, `system-properties` and `env`. This is not the `key.workspace = true` spelling that identity keys
