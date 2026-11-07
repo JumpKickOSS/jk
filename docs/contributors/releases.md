@@ -632,7 +632,8 @@ gh run watch                     # CI, then CD: build, merge, and publish waitin
 
 **CI** (`ci.yml`, started by the tag push or a dispatch on the tag): the tag equals the version
 `jk.toml` declares (`scripts/release-version.sh`), the commit authorship scan, the shell fixtures,
-the self-host job, the curated integration lane and the audit. This is the only place the tests
+the self-host job, the curated integration lane, the release test tier (`jk test -p release`) and
+the audit. This is the only place the tests
 run in the cloud, and a red run stops the release.
 
 **CD** (`release.yml`, started by CI finishing green on a release tag; a `workflow_dispatch` is the

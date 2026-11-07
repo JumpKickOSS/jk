@@ -36,9 +36,9 @@ guard, G100, under `jk guard`; skipped on Windows) and `actionlint .github/workf
 `.jk/ci/ci-bootstrap-version` pins the way a user installs it
 (`curl -fsSL https://jumpkick.build/install.sh | JK_VERSION=<pin> bash`) into an isolated
 `JK_HOME`, builds the checkout with it, then hands the home to the checkout's own jk
-(`jk install`) and lets that jk run the house-rule gate, the fast test tier and the curated
+(`jk install`) and lets that jk run the house-rule gate, the fast test tier, the curated
 integration lane (`scripts/curated-integration.sh` over `curated-integration.txt`, budgeted at
-eight minutes). A guard failure is annotated with the rule that owns it.
+eight minutes) and the release tier (`jk test -p release`). A guard failure is annotated with the rule that owns it.
 
 | Question | Answer |
 |---|---|
@@ -50,8 +50,8 @@ eight minutes). A guard failure is annotated with the rule that owns it.
 | What runs nightly | `jk test -p integration`, `-p slow`, `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational), the macOS product smoke and the JVM client smoke on a runner with a plain JDK and no GraalVM (`ci-nightly.yml`) |
 | Wall-clock series | `bench/scoreboard --tier night` on the reference host, banked in `scoreboard.toml` ([perf](../perf/README.md)) |
 
-Guard **G57** (`ci-cadence`) keeps the self-host job, its isolated `JK_HOME`, the four verbs it
-runs (`jk install`, `jk guard`, `jk test`; the install is the build), its bootstrap through `install.sh` at the
+Guard **G57** (`ci-cadence`) keeps the self-host job, its isolated `JK_HOME`, the verbs it
+runs (`jk install`, `jk guard`, `jk test`, `jk test -p release`; the install is the build), its bootstrap through `install.sh` at the
 pinned version, the nightly tiers, the JVM client smoke and the scoreboard in place. It fails on a
 `gradlew` in the self-host job, on a `JK_VERSION=<digits>` literal in any workflow, and on
 `continue-on-error` on any job of `ci.yml`: that flag is how a merge requirement becomes a
@@ -289,6 +289,7 @@ jk test                          # fast tier, untagged only
 jk test -p integration           # the push gate
 jk test -p slow                  # framework / language e2e (nightly)
 jk test -p network               # talks to a real remote (nightly)
+jk test -p release               # a real browser (CI on the release tag)
 jk test -p live                  # this machine's OS keychain (on demand, desktop only)
 jk test -p bench                 # microbenchmarks (nightly)
 jk test -A                    # everything, no tag filter

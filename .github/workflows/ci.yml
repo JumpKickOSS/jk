@@ -256,6 +256,12 @@ jobs:
           echo "curated integration lane: $((SECONDS - start))s of an 8 minute budget" \
             >> "$GITHUB_STEP_SUMMARY"
 
+      # The release tier: tests worth running once per release and on no other run, such as the
+      # dashboard's new-project wizard driven through Playwright's Chromium. They may fetch (the
+      # browser, the dashboard's CDN), which this job can.
+      - name: Release test tier
+        run: jk test -p release --no-ansi
+
       # Lockfile is law: jk.toml pins exactly, so a build that rewrites the committed lock means
       # a pin drifted or the lock writer put something non-deterministic in the file.
       - name: The build must not rewrite the committed lock
