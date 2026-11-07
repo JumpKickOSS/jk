@@ -223,7 +223,7 @@ class JavaIncrementalCompilerTest {
                 .isZero();
         assertThat(genOut.resolve("app/WidgetGen.java")).isRegularFile();
         assertThat(classOut.resolve("app/WidgetGen.class")).isRegularFile();
-        assertThat(workdir.resolve("provenance.tsv")).isRegularFile();
+        assertThat(GeneratedProvenance.ledgerFor(classOut)).isRegularFile();
 
         // Same class, no annotation: the processor generates nothing this round.
         Files.writeString(src, "package app; public class Widget {}");

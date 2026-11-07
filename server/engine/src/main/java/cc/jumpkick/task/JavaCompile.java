@@ -9,7 +9,6 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -465,21 +464,9 @@ public final class JavaCompile {
         return ActionKey.changedSources(request.sources(), priorInputs);
     }
 
-    /**
-     * Drop the compile state — the analysis and every marker — so the next compile is a full one,
-     * keeping only the ledger of what processors generated into the output. A full compile deletes
-     * those files before it runs the processors again; without the ledger a file a processor reads
-     * back and merges into, Helidon's {@code service-registry.json}, would keep the rows of sources
-     * deleted since it was written.
-     */
+    /** Drop the compile state — the analysis and every marker — so the next compile is a full one. */
     static void forgetState(Path stateDir) throws IOException {
-        if (!Files.isDirectory(stateDir)) return;
-        List<Path> children = new ArrayList<>();
-        PathUtil.forEachChild(stateDir, (child, attrs) -> {
-            if (!child.getFileName().toString().equals(PluginProtocol.GENERATED_LEDGER)) children.add(child);
-            return true;
-        });
-        for (Path child : children) PathUtil.deleteRecursively(child);
+        if (Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
     }
 
     private static boolean hasClasses(Path dir) throws IOException {

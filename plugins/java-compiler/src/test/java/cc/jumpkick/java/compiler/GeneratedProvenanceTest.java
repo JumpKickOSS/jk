@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code provenance.tsv} must survive its own delimiters appearing in the data: a tab or newline
+ * The generated-file ledger must survive its own delimiters appearing in the data: a tab or newline
  * is legal in a POSIX path, and unescaped it split the record into bogus columns — the row read
  * as malformed, was silently skipped, and the prune stopped for that file. And two spellings of one
  * file — through a link and through its target — must reconcile as one, without asking the
@@ -51,10 +51,9 @@ class GeneratedProvenanceTest {
                 .isFalse();
     }
 
-    /** The workdir is cache: a prune that took it mid-compile costs the next build, not this one. */
+    /** The ledger lives beside the class output, where nothing may have made {@code incremental/} yet. */
     @Test
-    void a_workdir_taken_during_the_compile_is_recreated_for_this_compiles_map(@TempDir Path tmp) throws Exception {
-        Path workdir = tmp.resolve("work");
+    void a_first_compile_creates_the_ledger_directory_beside_the_class_output(@TempDir Path tmp) throws Exception {
         Path sourceOutput = Files.createDirectories(tmp.resolve("gen"));
         Path classOutput = Files.createDirectories(tmp.resolve("classes"));
         Path origin = Files.createDirectories(tmp.resolve("src")).resolve("A.java");
@@ -62,21 +61,22 @@ class GeneratedProvenanceTest {
         Path generated = sourceOutput.resolve("AGen.java");
         Files.writeString(generated, "class AGen {}");
 
-        GeneratedProvenance.of(workdir)
+        GeneratedProvenance.of(classOutput)
                 .reconcile(
                         sourceOutput, classOutput, List.of(origin), List.of(origin), Map.of(generated, Set.of(origin)));
 
-        assertThat(Files.readString(workdir.resolve("provenance.tsv"))).contains("AGen.java");
-        try (Stream<Path> files = Files.list(workdir)) {
+        assertThat(Files.readString(GeneratedProvenance.ledgerFor(classOutput))).contains("AGen.java");
+        assertThat(GeneratedProvenance.ledgerFor(classOutput))
+                .isEqualTo(tmp.resolve("incremental/classes-generated.tsv"));
+        try (Stream<Path> files = Files.list(tmp.resolve("incremental"))) {
             assertThat(files.map(p -> p.getFileName().toString()))
                     .as("the map lands by rename, with no staging sibling left")
-                    .containsExactly("provenance.tsv");
+                    .containsExactly("classes-generated.tsv");
         }
     }
 
     @Test
     void a_pre_escaping_row_is_dropped_and_the_file_is_rewritten_clean(@TempDir Path tmp) throws Exception {
-        Path workdir = Files.createDirectories(tmp.resolve("work"));
         Path sourceOutput = Files.createDirectories(tmp.resolve("gen"));
         Path classOutput = Files.createDirectories(tmp.resolve("classes"));
         Path origin = Files.createDirectories(tmp.resolve("src")).resolve("A.java");
@@ -85,19 +85,21 @@ class GeneratedProvenanceTest {
         Files.writeString(generated, "class AGen {}");
 
         // One row from a jk that did not escape (raw Windows separators), one healthy row.
+        Path ledger = GeneratedProvenance.ledgerFor(classOutput);
+        Files.createDirectories(ledger.getParent());
         Files.writeString(
-                workdir.resolve("provenance.tsv"),
+                ledger,
                 "C:\\old\\target\\Gone.java\tC:\\old\\src\\Gone.java\n"
                         + GeneratedProvenance.escape(generated.toString())
                         + "\t"
                         + GeneratedProvenance.escape(origin.toString())
                         + "\n");
 
-        GeneratedProvenance.of(workdir)
+        GeneratedProvenance.of(classOutput)
                 .reconcile(
                         sourceOutput, classOutput, List.of(origin), List.of(origin), Map.of(generated, Set.of(origin)));
 
-        String rewritten = Files.readString(workdir.resolve("provenance.tsv"));
+        String rewritten = Files.readString(GeneratedProvenance.ledgerFor(classOutput));
         assertThat(rewritten).doesNotContain("Gone.java");
         assertThat(rewritten).contains("AGen.java");
         assertThat(generated).exists();
@@ -116,7 +118,7 @@ class GeneratedProvenanceTest {
         }
         Path gen = Files.writeString(srcOut.resolve("WidgetGen.java"), "class WidgetGen {}");
 
-        GeneratedProvenance prov = GeneratedProvenance.of(tmp);
+        GeneratedProvenance prov = GeneratedProvenance.of(classOut);
         // Build 1: the processor generated WidgetGen.java from the tab-named origin.
         prov.reconcile(srcOut, classOut, List.of(origin), List.of(origin), Map.of(gen, Set.of(origin)));
         assertThat(gen).exists();
@@ -136,7 +138,6 @@ class GeneratedProvenanceTest {
         Files.createDirectories(real.resolve("src"));
         Files.createDirectories(real.resolve("gen-src"));
         Files.createDirectories(real.resolve("classes"));
-        Path workdir = Files.createDirectories(real.resolve("work"));
         Files.writeString(real.resolve("src/A.java"), "class A {}");
         Files.writeString(real.resolve("src/B.java"), "class B {}");
         Files.writeString(real.resolve("gen-src/AGen.java"), "class AGen {}");
@@ -145,7 +146,7 @@ class GeneratedProvenanceTest {
         Files.writeString(real.resolve("classes/BGen.class"), "");
 
         // The build spells its roots and sources through the link; javac real-paths what it reports.
-        GeneratedProvenance prov = GeneratedProvenance.of(workdir);
+        GeneratedProvenance prov = GeneratedProvenance.of(link.resolve("classes"));
         prov.reconcile(
                 link.resolve("gen-src"),
                 link.resolve("classes"),
@@ -167,7 +168,7 @@ class GeneratedProvenanceTest {
         assertThat(real.resolve("classes/AGen.class")).doesNotExist();
         assertThat(real.resolve("gen-src/BGen.java")).exists();
         assertThat(real.resolve("classes/BGen.class")).exists();
-        assertThat(Files.readString(workdir.resolve("provenance.tsv")))
+        assertThat(Files.readString(GeneratedProvenance.ledgerFor(link.resolve("classes"))))
                 .contains("BGen.java")
                 .doesNotContain("AGen.java");
     }
@@ -183,7 +184,7 @@ class GeneratedProvenanceTest {
         Path genClass = Files.writeString(classOut.resolve("WidgetGen.class"), "");
         Path genInner = Files.writeString(classOut.resolve("WidgetGen$Inner.class"), "");
 
-        GeneratedProvenance prov = GeneratedProvenance.of(tmp);
+        GeneratedProvenance prov = GeneratedProvenance.of(classOut);
         // Build 1: the processor generated WidgetGen.java from Widget.java.
         prov.reconcile(srcOut, classOut, List.of(widget, other), List.of(widget, other), Map.of(gen, Set.of(widget)));
         assertThat(gen).exists();
@@ -195,7 +196,7 @@ class GeneratedProvenanceTest {
         assertThat(gen).as("the generated source is pruned").doesNotExist();
         assertThat(genClass).as("its class file is pruned").doesNotExist();
         assertThat(genInner).as("its nested class file is pruned").doesNotExist();
-        assertThat(Files.readString(tmp.resolve("provenance.tsv"))).doesNotContain("WidgetGen.java");
+        assertThat(Files.readString(GeneratedProvenance.ledgerFor(classOut))).doesNotContain("WidgetGen.java");
     }
 
     @Test
@@ -209,7 +210,7 @@ class GeneratedProvenanceTest {
         Path gen = Files.writeString(srcOut.resolve("Both.java"), "class Both {}");
         Path genClass = Files.writeString(classOut.resolve("Both.class"), "");
 
-        GeneratedProvenance prov = GeneratedProvenance.of(tmp);
+        GeneratedProvenance prov = GeneratedProvenance.of(classOut);
         prov.reconcile(srcOut, classOut, List.of(a, b), List.of(a, b), Map.of(gen, Set.of(a, b)));
 
         // A is deleted and B untouched: B still vouches for Both, so it stays.
@@ -217,7 +218,7 @@ class GeneratedProvenanceTest {
         prov.reconcile(srcOut, classOut, List.of(b), List.of(), Map.of());
         assertThat(gen).exists();
         assertThat(genClass).exists();
-        assertThat(Files.readString(tmp.resolve("provenance.tsv"))).contains("Both.java");
+        assertThat(Files.readString(GeneratedProvenance.ledgerFor(classOut))).contains("Both.java");
 
         // B recompiles and generates nothing: no origin is left to vouch for Both.
         prov.reconcile(srcOut, classOut, List.of(b), List.of(b), Map.of());
@@ -227,23 +228,24 @@ class GeneratedProvenanceTest {
 
     @Test
     void a_row_with_no_origins_is_dropped_from_the_map(@TempDir Path tmp) throws Exception {
-        Path workdir = Files.createDirectories(tmp.resolve("work"));
         Path srcOut = Files.createDirectories(tmp.resolve("gen-src"));
         Path classOut = Files.createDirectories(tmp.resolve("classes"));
         Path origin =
                 Files.writeString(Files.createDirectories(tmp.resolve("src")).resolve("A.java"), "class A {}");
         Path gen = Files.writeString(srcOut.resolve("AGen.java"), "class AGen {}");
         Path orphan = Files.writeString(srcOut.resolve("Orphan.java"), "class Orphan {}");
+        Path ledger = GeneratedProvenance.ledgerFor(classOut);
+        Files.createDirectories(ledger.getParent());
         Files.writeString(
-                workdir.resolve("provenance.tsv"),
+                ledger,
                 GeneratedProvenance.escape(orphan.toString()) + "\t\n"
                         + GeneratedProvenance.escape(gen.toString()) + "\t"
                         + GeneratedProvenance.escape(origin.toString())
                         + "\n");
 
-        GeneratedProvenance.of(workdir).reconcile(srcOut, classOut, List.of(origin), List.of(), Map.of());
+        GeneratedProvenance.of(classOut).reconcile(srcOut, classOut, List.of(origin), List.of(), Map.of());
 
-        String rewritten = Files.readString(workdir.resolve("provenance.tsv"));
+        String rewritten = Files.readString(GeneratedProvenance.ledgerFor(classOut));
         assertThat(rewritten).contains("AGen.java").doesNotContain("Orphan.java");
         assertThat(gen).exists();
     }

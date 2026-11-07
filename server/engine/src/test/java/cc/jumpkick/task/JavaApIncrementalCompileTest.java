@@ -222,8 +222,8 @@ class JavaApIncrementalCompileTest {
 
     /**
      * A forced build ({@code -F}) drops the compile state but not the record of what processors
-     * generated, so the full compile it runs still deletes the merged file before the processor
-     * reads it back.
+     * generated, which lives beside the class output, so the full compile it runs still deletes the
+     * merged file before the processor reads it back.
      */
     @Test
     void forced_build_after_a_deletion_does_not_merge_into_the_last_merged_file(@TempDir Path dir) throws Exception {
@@ -235,6 +235,28 @@ class JavaApIncrementalCompileTest {
         p.delete("app/Beta.java");
         p.build(false);
         assertThat(p.registry()).containsExactly("app.Alpha");
+    }
+
+    /**
+     * An idle cache prune takes a module's compile state whole and leaves its class output as it
+     * was. The full compile that follows still deletes the merged file before the processor reads it
+     * back, so a source deleted in that window loses its row.
+     */
+    @Test
+    void merging_processor_drops_a_deleted_source_after_a_prune_took_the_compile_state(@TempDir Path dir)
+            throws Exception {
+        Project p = new Project(dir, workerJar(), mergingProcessor(dir));
+
+        p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha {}");
+        p.write("app/Beta.java", "package app; @reg.Reg public class Beta {}");
+        p.build();
+        PathUtil.deleteRecursively(p.stateDir);
+
+        p.delete("app/Beta.java");
+        p.build();
+        assertThat(p.registry())
+                .as("the merged file must not keep the deleted source's row")
+                .containsExactly("app.Alpha");
     }
 
     /**
@@ -311,9 +333,12 @@ class JavaApIncrementalCompileTest {
             return Files.readAllLines(out.resolve("META-INF/registry.txt"));
         }
 
-        /** What {@code rm -rf target} does: the class output, generated sources and compile state go. */
+        /**
+         * What {@code rm -rf target} does: the class output, generated sources, the ledgers beside
+         * them in {@code incremental/} and the compile state go.
+         */
         void wipeOutputs() throws IOException {
-            for (Path d : List.of(out, genSrc, stateDir)) PathUtil.deleteRecursively(d);
+            for (Path d : List.of(out, genSrc, root.resolve("incremental"), stateDir)) PathUtil.deleteRecursively(d);
         }
 
         JavaCompile.Result build() throws IOException {
