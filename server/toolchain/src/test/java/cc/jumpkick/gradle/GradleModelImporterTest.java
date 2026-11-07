@@ -832,6 +832,7 @@ class GradleModelImporterTest {
                "plugins":["java","com.github.davidmc24.gradle.plugin.avro","com.github.davidmc24.gradle.plugin.avro-base"],
                "pluginClasses":["com.github.davidmc24.gradle.plugin.avro.AvroPlugin","com.github.davidmc24.gradle.plugin.avro.AvroBasePlugin"],
                "pluginVersions":{},"bootBuildInfo":false,"repositories":[],"configurations":[],"tasks":[],
+               "sourceSets":[{"name":"main","java":["src/main/java","build/generated-main-avro-java"],"resources":["src/main/resources"],"kotlin":[]}],
                "avro":{"sources":["src/main/avro"],"buildDir":"build","stringType":"String","fieldVisibility":"PRIVATE",
                        "createSetters":true,"createOptionalGetters":false,"enableDecimalLogicalType":true},
                "resolved":["org.apache.avro:avro@1.11.5"]},
@@ -860,7 +861,8 @@ class GradleModelImporterTest {
         assertThat(messages(result.report()))
                 .contains(
                         "flags: Avro schemas are generated into build/generated/avro/shared; put them in src/main/avro")
-                .noneMatch(m -> m.contains("davidmc24"));
+                .noneMatch(m -> m.contains("davidmc24"))
+                .noneMatch(m -> m.contains("generated-main-avro-java"));
     }
 
     private static JkBuild module(GradleBuildImport.Result result, String path) {

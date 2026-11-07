@@ -873,7 +873,12 @@ final class GradleModelImporter {
             }
             List<String> odd = new ArrayList<>();
             String prefix = "src/" + s.name() + "/";
-            for (String dir : s.java()) if (!dir.equals(prefix + "java")) odd.add(dir);
+            // The Avro plugin's own output, which [avro] generates in its place.
+            GradleModel.Avro avro = p.avro();
+            String avroOut = avro == null || avro.buildDir() == null
+                    ? null
+                    : avro.buildDir() + "/generated-" + s.name() + "-avro-java";
+            for (String dir : s.java()) if (!dir.equals(prefix + "java") && !dir.equals(avroOut)) odd.add(dir);
             for (String dir : s.kotlin())
                 if (!dir.equals(prefix + "kotlin") && !dir.equals(prefix + "java")) odd.add(dir);
             for (String dir : s.resources()) if (!dir.equals(prefix + "resources")) odd.add(dir);
