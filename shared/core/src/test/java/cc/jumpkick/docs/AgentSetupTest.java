@@ -35,7 +35,8 @@ class AgentSetupTest {
                 .contains("enabledMcpjsonServers")
                 .contains(AgentSetup.HOOK_COMMAND)
                 .doesNotContain("deny");
-        assertThat(AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CLAUDE)))
+        assertThat(AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CLAUDE))
+                        .changes())
                 .isEmpty();
         assertThat(Files.readString(dir.resolve(".claude/settings.json"))).isEqualTo(settings);
     }
@@ -62,9 +63,10 @@ class AgentSetupTest {
     void a_file_that_is_not_strict_json_is_left_alone(@TempDir Path dir) throws Exception {
         Path file = dir.resolve(".mcp.json");
         Files.writeString(file, "{ // mine\n}");
-        List<String> lines = AgentSetup.install(dir, AgentSetup.Mode.ALL, Set.of());
+        AgentSetup.Report report = AgentSetup.install(dir, AgentSetup.Mode.ALL, Set.of());
         assertThat(file).hasContent("{ // mine\n}");
-        assertThat(lines).anyMatch(l -> l.startsWith("left " + file + " alone"));
+        assertThat(report.notes()).anyMatch(l -> l.startsWith("Left .mcp.json alone"));
+        assertThat(report.changes()).noneMatch(c -> c.file().equals(file));
         assertThat(dir.resolve(".claude/settings.json")).isRegularFile();
     }
 
@@ -104,7 +106,8 @@ class AgentSetupTest {
         Object server = MiniJson.get(MiniJson.get(opencode, "mcp"), "jk");
         assertThat(MiniJson.str(server, "type")).isEqualTo("local");
         assertThat(strings(MiniJson.list(server, "command"))).containsExactly("jk", "mcp");
-        assertThat(AgentSetup.install(dir, AgentSetup.Mode.ALL, Set.of())).allMatch(l -> l.startsWith("next: "));
+        assertThat(AgentSetup.install(dir, AgentSetup.Mode.ALL, Set.of()).changes())
+                .isEmpty();
     }
 
     @Test
@@ -160,11 +163,20 @@ class AgentSetupTest {
     }
 
     @Test
-    void grok_and_muse_get_their_trust_step_printed(@TempDir Path dir) throws Exception {
-        List<String> lines =
-                AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.GROK, AgentSetup.Host.MUSE));
-        assertThat(lines).anyMatch(l -> l.startsWith("next: grok")).anyMatch(l -> l.startsWith("next: muse"));
-        assertThat(dir.resolve(".grok")).doesNotExist();
+    void the_trust_step_is_one_note_for_every_agent_and_codex_hears_its_mcp_command(@TempDir Path dir)
+            throws Exception {
+        AgentSetup.Report report =
+                AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CLAUDE, AgentSetup.Host.CODEX));
+        assertThat(report.notes()).containsExactly(AgentSetup.TRUST_NOTE, AgentSetup.CODEX_NOTE);
+        assertThat(report.changes())
+                .extracting(AgentSetup.Change::file)
+                .containsExactly(
+                        dir.resolve("AGENTS.md"),
+                        dir.resolve("CLAUDE.md"),
+                        dir.resolve(".mcp.json"),
+                        dir.resolve(".claude/settings.json"));
+        assertThat(AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of()).notes())
+                .containsExactly(AgentSetup.TRUST_NOTE);
     }
 
     @Test

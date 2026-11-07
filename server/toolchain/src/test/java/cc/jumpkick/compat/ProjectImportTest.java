@@ -105,11 +105,8 @@ class ProjectImportTest {
 
         assertThat(outcome.exit()).isZero();
         assertThat(outcome.wrote())
-                .containsExactly(
-                        root.resolve("jk.toml"),
-                        root.resolve("core/jk.toml"),
-                        root.resolve("app/jk.toml"),
-                        root.resolve("report.md"));
+                .containsExactly(root.resolve("jk.toml"), root.resolve("core/jk.toml"), root.resolve("app/jk.toml"));
+        assertThat(outcome.report()).isEqualTo(root.resolve("report.md"));
         assertThat(Files.readString(root.resolve("core/jk.toml"))).contains("name     = \"core\"");
         assertThat(Files.readString(root.resolve("jk.toml"))).contains("[workspace]");
     }

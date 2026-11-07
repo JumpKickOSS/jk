@@ -465,9 +465,8 @@ public final class ProtoEvents {
                 .encode();
     }
 
-    public static String planFinishImport(
-            String dir, boolean success, int exitCode, int warnings, @Nullable String error) {
-        return new PlanFinishImportEvent(dir, success, exitCode, warnings, error).encode();
+    public static String planFinishImport(String dir, boolean success, int exitCode, @Nullable String error) {
+        return new PlanFinishImportEvent(dir, success, exitCode, error).encode();
     }
 
     public static String planFinishImage(

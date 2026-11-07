@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
-import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.ChangeSummary;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.project.AgentWiring;
 import cc.jumpkick.docs.AgentSetup;
-import cc.jumpkick.docs.AgentsGuide;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -14,7 +15,6 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -46,30 +46,27 @@ public final class AgentsCommand implements CliCommand {
         return List.of(Param.of("dir", Arity.ZERO_OR_ONE, "Project root (default: the workspace root)"));
     }
 
-    /** The result lines are the output, so stdout is byte-exact. */
-    @Override
-    public boolean scriptMode(Invocation in) {
-        return true;
-    }
-
     @Override
     public int run(Invocation in) {
         List<String> pos = in.positionals();
         Path dir = pos.isEmpty() ? SkillCommand.projectRoot() : Path.of(pos.get(0));
         dir = WorkingDirectory.resolve(dir);
+        boolean remove = in.isSet("remove");
         try {
-            List<String> lines = in.isSet("remove")
+            AgentSetup.Report report = remove
                     ? AgentWiring.remove(dir)
                     : in.isSet("all") ? AgentWiring.run(dir, AgentSetup.Mode.ALL) : AgentWiring.run(dir);
-            String none =
-                    in.isSet("remove") ? "nothing of jk's in " + dir : dir.resolve(AgentsGuide.FILE) + " is current";
-            List<String> out = new ArrayList<>(lines);
-            if (out.stream().allMatch(l -> l.startsWith("next: "))) out.addFirst(none);
-            CliOutput.outRaw(String.join("\n", out) + "\n");
-            CliOutput.stdout().flush();
+            AgentWiring.print(report, dir, "Agent notes");
+            String name = Theme.paint(ChangeSummary.name(dir), Theme.active().brightCyan());
+            boolean changed = !report.changes().isEmpty();
+            CommandWedge.printOk(
+                    "Agents",
+                    remove
+                            ? changed ? "Removed jk's agent wiring from " + name : "Nothing of jk's in " + name
+                            : changed ? "Wired " + name + " for coding agents" : name + " is already wired");
             return Exit.SUCCESS;
         } catch (IOException e) {
-            CliOutput.err(e.getMessage() == null ? "agent setup failed" : e.getMessage());
+            CommandWedge.printFail("Agents", e.getMessage() == null ? "agent setup failed" : e.getMessage());
             return Exit.CONFIG;
         }
     }

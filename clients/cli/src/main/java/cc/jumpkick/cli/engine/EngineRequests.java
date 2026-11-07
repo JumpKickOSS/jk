@@ -309,10 +309,7 @@ public final class EngineRequests {
 
     /** A hosted {@code jk import} run's summary, decoded from the terminal plan-finish. */
     public record ImportOutcome(
-            BuildPlanResult result,
-            int exitCode,
-            int warnings,
-            @Nullable String error) {}
+            BuildPlanResult result, int exitCode, @Nullable String error) {}
 
     // ---- hosted plan commands ----------------------------------------------------------------
 

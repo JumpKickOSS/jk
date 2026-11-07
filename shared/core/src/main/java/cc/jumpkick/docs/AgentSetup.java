@@ -80,9 +80,7 @@ public final class AgentSetup {
         CURSOR("cursor-agent"),
         GEMINI("gemini"),
         OPENCODE("opencode"),
-        GROK("grok"),
         AGY("agy"),
-        MUSE("muse"),
         CODEX("codex");
 
         /** The executable whose presence on {@code PATH} means the agent is installed. */
@@ -113,21 +111,55 @@ public final class AgentSetup {
         }
     }
 
+    /** The step every agent leaves to the user, so it is said once, not per agent. */
+    public static final String TRUST_NOTE = "Trust this project's directory in your coding agents: most read AGENTS.md"
+            + " and project MCP files such as .mcp.json only in a folder you trust.";
+
+    static final String CODEX_NOTE =
+            "Codex reads AGENTS.md but no project MCP file: register jk's tools once with codex mcp add jk -- jk mcp";
+
     private AgentSetup() {}
+
+    /** One file jk changed; {@code action} is the verb read before its path ({@code Wrote}, {@code Removed}). */
+    public record Change(String action, Path file) {}
+
+    /**
+     * What a run did: the files it changed, then each step it left to the user, paths relative to
+     * the project directory.
+     */
+    public record Report(List<Change> changes, List<String> notes) {
+        public Report {
+            changes = List.copyOf(changes);
+            notes = List.copyOf(notes);
+        }
+    }
+
+    private record Draft(Path dir, List<Change> changes, List<String> notes) {
+        Draft(Path dir) {
+            this(dir, new ArrayList<>(), new ArrayList<>());
+        }
+
+        Report report() {
+            return new Report(changes, notes);
+        }
+    }
 
     /**
      * Bring {@code dir} up to date for its agents.
      *
      * @param hosts the agents present on this machine; in {@link Mode#DETECT} each gets its files
-     * @return one line per file written or skipped, then one per step only the user can take (a
-     *     {@code next:} line); empty when everything was already current
+     * @return each file written, then each file left alone and each step only the user can take,
+     *     {@link #TRUST_NOTE} first
      * @throws IOException when {@code AGENTS.md} cannot be written or has malformed markers
      */
-    public static List<String> install(Path dir, Mode mode, Set<Host> hosts) throws IOException {
-        List<String> lines = new ArrayList<>();
+    public static Report install(Path dir, Mode mode, Set<Host> hosts) throws IOException {
+        Draft lines = new Draft(dir);
+        lines.notes().add(TRUST_NOTE);
         AgentsGuide.Change guide = AgentsGuide.sync(dir);
-        if (guide != AgentsGuide.Change.UNCHANGED) lines.add(guideLine(guide, dir.resolve(AgentsGuide.FILE)));
-        if (mode == Mode.NONE) return lines;
+        if (guide != AgentsGuide.Change.UNCHANGED && guide != AgentsGuide.Change.ABSENT) {
+            lines.changes().add(new Change(WROTE, dir.resolve(AgentsGuide.FILE)));
+        }
+        if (mode == Mode.NONE) return lines.report();
         boolean all = mode == Mode.ALL;
         if (all
                 || hosts.contains(Host.CLAUDE)
@@ -163,17 +195,8 @@ public final class AgentSetup {
             Path file = dir.resolve(AGY_RULES_FILE);
             step(file, lines, () -> ownedFile(file, AGY_RULES));
         }
-        if (all || hosts.contains(Host.GROK)) {
-            lines.add("next: grok reads AGENTS.md only in a folder you trust: accept grok's trust prompt here once");
-        }
-        if (all || hosts.contains(Host.CODEX)) {
-            lines.add("next: codex reads AGENTS.md; give it jk's tools once: codex mcp add jk -- jk mcp");
-        }
-        if (all || hosts.contains(Host.MUSE)) {
-            lines.add("next: muse reads AGENTS.md only in a trusted workspace: trust it when muse asks, or run"
-                    + " muse with --trust-workspace");
-        }
-        return lines;
+        if (all || hosts.contains(Host.CODEX)) lines.notes().add(CODEX_NOTE);
+        return lines.report();
     }
 
     /** A file jk owns outright: written when absent or different from {@code text}. */
@@ -189,19 +212,19 @@ public final class AgentSetup {
      * Take jk's entries out of {@code dir}: its {@code AGENTS.md} section and the Claude Code files
      * {@link #install} wrote. Everything else in those files stays, and a file left empty is deleted.
      *
-     * @return one line per file changed; empty when jk had written nothing here
+     * @return each file changed, then each file left alone; no changes when jk had written nothing here
      */
-    public static List<String> remove(Path dir) throws IOException {
-        List<String> lines = new ArrayList<>();
+    public static Report remove(Path dir) throws IOException {
+        Draft lines = new Draft(dir);
+        String done = "Removed jk's entries from";
         if (AgentsGuide.remove(dir) == AgentsGuide.Change.UPDATED) {
-            lines.add("removed jk's section of " + dir.resolve(AgentsGuide.FILE));
+            lines.changes().add(new Change(done, dir.resolve(AgentsGuide.FILE)));
         }
-        step(dir.resolve(CLAUDE_MD), lines, () -> dropClaudeMd(dir.resolve(CLAUDE_MD)), "removed jk's entries from ");
+        step(dir.resolve(CLAUDE_MD), lines, () -> dropClaudeMd(dir.resolve(CLAUDE_MD)), done);
         Path mcp = dir.resolve(MCP_FILE);
-        step(mcp, lines, () -> mergeJson(mcp, AgentSetup::dropMcpServer), "removed jk's entries from ");
+        step(mcp, lines, () -> mergeJson(mcp, AgentSetup::dropMcpServer), done);
         Path settings = dir.resolve(CLAUDE_DIR).resolve(CLAUDE_SETTINGS);
-        step(settings, lines, () -> mergeJson(settings, AgentSetup::dropClaudeSettings), "removed jk's entries from ");
-        String done = "removed jk's entries from ";
+        step(settings, lines, () -> mergeJson(settings, AgentSetup::dropClaudeSettings), done);
         Path cursor = dir.resolve(CURSOR_MCP);
         step(cursor, lines, () -> mergeJson(cursor, AgentSetup::dropMcpServer), done);
         Path vscode = dir.resolve(VSCODE_MCP);
@@ -211,22 +234,15 @@ public final class AgentSetup {
         Path opencode = opencodeFile(dir);
         step(opencode, lines, () -> mergeJson(opencode, AgentSetup::dropOpencode), done);
         Path cursorRules = dir.resolve(CURSOR_RULES_FILE);
-        step(cursorRules, lines, () -> dropOwnedFile(cursorRules, CURSOR_RULES), "removed ");
+        step(cursorRules, lines, () -> dropOwnedFile(cursorRules, CURSOR_RULES), "Removed");
         Path agy = dir.resolve(AGY_RULES_FILE);
-        step(agy, lines, () -> dropOwnedFile(agy, AGY_RULES), "removed ");
-        return lines;
+        step(agy, lines, () -> dropOwnedFile(agy, AGY_RULES), "Removed");
+        return lines.report();
     }
 
-    private static String guideLine(AgentsGuide.Change change, Path file) {
-        return switch (change) {
-            case CREATED -> "created " + file;
-            case INSERTED -> "added jk's section to " + file;
-            case UPDATED -> "updated jk's section of " + file;
-            case UNCHANGED, ABSENT -> file + " is current";
-        };
-    }
+    private static final String WROTE = "Wrote";
 
-    private static void claudeCode(Path dir, List<String> lines) {
+    private static void claudeCode(Path dir, Draft lines) {
         step(dir.resolve(CLAUDE_MD), lines, () -> claudeMd(dir.resolve(CLAUDE_MD)));
         step(dir.resolve(MCP_FILE), lines, () -> mergeJson(dir.resolve(MCP_FILE), AgentSetup::mcpServer));
         Path settings = dir.resolve(CLAUDE_DIR).resolve(CLAUDE_SETTINGS);
@@ -238,15 +254,17 @@ public final class AgentSetup {
     }
 
     /** Runs one file's writer; a file jk cannot safely edit is reported and left as it was. */
-    private static void step(Path file, List<String> lines, Write write) {
-        step(file, lines, write, "wrote jk's entries in ");
+    private static void step(Path file, Draft lines, Write write) {
+        step(file, lines, write, WROTE);
     }
 
-    private static void step(Path file, List<String> lines, Write write, String done) {
+    private static void step(Path file, Draft lines, Write write, String done) {
         try {
-            if (write.run()) lines.add(done + file);
+            if (write.run()) lines.changes().add(new Change(done, file));
         } catch (IOException | RuntimeException unsafe) {
-            lines.add("left " + file + " alone: " + unsafe.getMessage());
+            String shown =
+                    file.startsWith(lines.dir()) ? lines.dir().relativize(file).toString() : file.toString();
+            lines.notes().add("Left " + shown.replace('\\', '/') + " alone: " + unsafe.getMessage());
         }
     }
 

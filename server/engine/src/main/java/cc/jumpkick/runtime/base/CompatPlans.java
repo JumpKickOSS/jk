@@ -33,16 +33,17 @@ public final class CompatPlans {
 
     private CompatPlans() {}
 
-    /** Receives each import progress note ({@code kind} = {@code wrote}/{@code note}) as the importer emits it. */
+    /**
+     * Receives each import note as the importer emits it: {@code kind} is {@code note} (a progress
+     * line), {@code wrote} (a file written for the user), {@code issue} (one row of the import
+     * report) or {@code report} (where the report was written).
+     */
     public interface NoteObserver {
         void onNote(String kind, String text);
     }
 
     /** The importer's exit code (0 = converted cleanly). */
     public static final BuildPlanKey<Integer> EXIT = BuildPlanKey.scalar("import-exit", Integer.class);
-
-    /** The importer's reported issue count (rendered as "Import notes: N issue(s)"). */
-    public static final BuildPlanKey<Integer> WARNINGS = BuildPlanKey.scalar("import-warnings", Integer.class);
 
     /** The importer's terminal error text, kept only when it exited non-zero. */
     public static final BuildPlanKey<String> ERROR = BuildPlanKey.scalar("import-error", String.class);
@@ -84,15 +85,17 @@ public final class CompatPlans {
                             note -> observer.onNote("note", note),
                             raise);
                     for (Path wrote : outcome.wrote()) observer.onNote("wrote", wrote.toString());
+                    for (String issue : outcome.issues()) observer.onNote("issue", issue);
+                    if (outcome.report() != null)
+                        observer.onNote("report", outcome.report().toString());
                     if (outcome.error() != null && outcome.exit() != 0) ctx.put(ERROR, outcome.error());
-                    ctx.put(WARNINGS, outcome.warnings());
                     ctx.put(EXIT, outcome.exit());
                     ctx.progress(1);
                 })
                 .build();
 
         return BuildPlan.builder("import")
-                .stateKeys(EXIT, WARNINGS, ERROR)
+                .stateKeys(EXIT, ERROR)
                 .addTask(convert)
                 .build();
     }

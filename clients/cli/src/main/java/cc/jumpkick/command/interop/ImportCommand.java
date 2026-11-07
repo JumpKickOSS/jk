@@ -6,8 +6,11 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.ChangeSummary;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.project.AgentWiring;
+import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
@@ -121,19 +124,20 @@ public final class ImportCommand implements CliCommand {
 
         Path cache = JkDirs.cache();
 
-        // Renders the worker's progress notes as they stream — identical for both transports.
+        // Progress lines print as they stream; written files and issues wait for the summary.
+        List<ChangeSummary.Change> changes = new ArrayList<>();
+        List<String> issues = new ArrayList<>();
         HostedEvents.NoteObserver observer = (kind, text) -> {
-            if ("wrote".equals(kind)) {
-                // Settled-path chrome: one wedge per wrote note (engine may emit several).
-                CommandWedge.printOk("Import", "Wrote " + text);
-            } else {
-                CliOutput.out(text);
+            switch (kind) {
+                case "wrote" -> changes.add(new ChangeSummary.Change("Wrote", Path.of(text)));
+                case "issue" -> issues.add(text);
+                case "report" -> {
+                    if (reportPath != null) changes.add(new ChangeSummary.Change("Wrote", Path.of(text)));
+                }
+                default -> CliOutput.out(text);
             }
         };
 
-        int exit;
-        int warnings;
-        String error;
         EngineRequests.ImportOutcome outcome;
         try {
             outcome = EngineClient.runImport(
@@ -160,23 +164,29 @@ public final class ImportCommand implements CliCommand {
             }
             return 1;
         }
-        exit = outcome.exitCode();
-        warnings = outcome.warnings();
-        error = outcome.error();
-
-        if (error != null) CommandWedge.printFail("Import", error);
-        if (warnings != 0) CliOutput.out("Import notes: " + warnings + " issue(s)");
-        if (exit == Exit.SUCCESS && !dryRun && out == null) agentsGuide(projectDir);
-        return exit;
-    }
-
-    /** An imported project is wired for its agents, as a scaffolded one is. */
-    private static void agentsGuide(Path projectDir) {
-        try {
-            AgentWiring.report(projectDir);
-        } catch (IOException e) {
-            CommandWedge.printFail("Import", e.getMessage());
+        int exit = outcome.exitCode();
+        if (exit == Exit.SUCCESS && !dryRun && out == null) {
+            try {
+                AgentSetup.Report wired = AgentWiring.run(projectDir);
+                changes.addAll(AgentWiring.changes(wired));
+                issues.addAll(wired.notes());
+            } catch (IOException e) {
+                issues.add(e.getMessage());
+            }
         }
+
+        String project = ChangeSummary.name(projectDir);
+        ChangeSummary.printChanges(project, changes, projectDir);
+        ChangeSummary.printNotes("Import notes", "issue", issues);
+        if (!changes.isEmpty() || !issues.isEmpty()) CliOutput.out("");
+        if (outcome.error() != null) {
+            CommandWedge.printFail("Import", outcome.error());
+        } else if (exit == Exit.SUCCESS) {
+            String name = Theme.paint(project, Theme.active().brightCyan());
+            CommandWedge.printOk(
+                    "Import", dryRun ? "Dry run of " + name + ": nothing written" : "Successfully imported " + name);
+        }
+        return exit;
     }
 
     /** The profile ids of every {@code -P} given, each split on commas as Maven splits its own. */
