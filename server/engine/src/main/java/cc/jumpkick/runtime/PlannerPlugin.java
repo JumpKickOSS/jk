@@ -52,7 +52,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Callable;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -409,8 +408,7 @@ public final class PlannerPlugin {
             Path spec,
             JkBuild project,
             Path javaHome,
-            AtomicBoolean reported,
-            String step)
+            StepDiagnostics said)
             throws IOException, InterruptedException {
         HeapScope.Key previous = HeapScope.bind(new HeapScope.Key(
                 in.dir(),
@@ -418,10 +416,7 @@ public final class PlannerPlugin {
                 HeapScope.PLUGIN,
                 JvmOptions.hostFeature(javaHome)));
         try {
-            PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label, line -> {
-                reported.set(true);
-                forwardStepDiagnostic(ctx, in.dir(), project.project().name(), step, line);
-            });
+            PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label, said::forward);
         } finally {
             HeapScope.restore(previous);
             HeapNotes.flush(ctx);
@@ -585,6 +580,8 @@ public final class PlannerPlugin {
                     String taskId = ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch);
                     String actionKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
                     ActionCache actionCache = cx.actionCache();
+                    StepDiagnostics said =
+                            new StepDiagnostics(ctx, in.dir(), project.project().name(), step.name());
                     // A forced rebuild runs the step as it runs compile and package: no record is
                     // restored, and the run's own record is stored below for the next build.
                     Optional<ActionCache.ActionRecord> hit =
@@ -594,6 +591,7 @@ public final class PlannerPlugin {
                     if (hit.isPresent() && (!hit.get().outputs().isEmpty() || !producesOutputs(step))) {
                         try {
                             if (actionCache.restore(hit.get(), scratch)) {
+                                said.replay(hit.get());
                                 if (step.transforms()) {
                                     ctx.put(MAIN_CLASSES, scratch.resolve(step.transformsClasses()));
                                 }
@@ -611,9 +609,6 @@ public final class PlannerPlugin {
                     PathUtil.deleteRecursively(scratch); // stale outputs never survive
                     Files.createDirectories(scratch);
                     ctx.label(step.name());
-                    // Whether the worker reported a finding of its own: a step that promised files,
-                    // wrote none and said why has said it once.
-                    AtomicBoolean reported = new AtomicBoolean();
                     Path spec = writeStepSpec(
                             step,
                             active,
@@ -631,20 +626,22 @@ public final class PlannerPlugin {
                                     repositories),
                             stepTools.forSpec());
                     try {
-                        runPluginWorker(ctx, in, active, spec, project, javaHome, reported, step.name());
+                        runPluginWorker(ctx, in, active, spec, project, javaHome, said);
                     } catch (IOException e) {
                         ctx.error(step.name(), Errors.text(e));
                         throw e;
                     } finally {
                         Files.deleteIfExists(spec);
                     }
+                    // What the step said rides its record, so the build that restores it says it
+                    // too. A step that promised files, wrote none and said why has said it once.
                     if (hasFiles(scratch)) {
-                        actionCache.store(taskId, actionKey, Map.of(), scratch);
+                        actionCache.store(taskId, actionKey, Map.of(), scratch, said.said());
                     } else if (!producesOutputs(step)) {
                         // A step that promises no files and wrote none: the run itself is the
                         // result, and the next build with the same inputs skips it.
-                        actionCache.storeVerdict(taskId, actionKey, Map.of());
-                    } else if (!reported.get()) {
+                        actionCache.storeVerdict(taskId, actionKey, Map.of(), said.said());
+                    } else if (said.said().isEmpty()) {
                         ctx.warn(step.name(), "the step wrote no files; its output is not cached");
                     }
                     // A transform's output IS the classes dir from here on: re-point MAIN_CLASSES
@@ -683,14 +680,35 @@ public final class PlannerPlugin {
      * a WARN line on the client's stream and a line on every verdict, a passing one's included,
      * where a step warning shows only in the report. It names the module and the step, since a run
      * notice belongs to neither, and is said once per run however many times it arrives.
+     *
+     * <p>A cache hit replays what its run said through here ({@link StepDiagnostics}), so a
+     * restored step's lines read as its run's did.
      */
     static void forwardStepDiagnostic(TaskContext ctx, Path moduleDir, String module, String step, String line) {
-        if (PluginProtocol.SEVERITY_NOTICE.equals(Jsonl.str(line, "sev"))) {
-            String message = String.valueOf(Jsonl.str(line, "msg"));
-            String text = module + " " + step + ": " + message;
-            RunNotices.warnOnce("step-notice:" + moduleDir + "\0" + step + "\0" + message, () -> text);
-            return;
+        if (sayNotice(moduleDir, module, step, line)) return;
+        String text = diagnosticText(line);
+        if ("error".equals(Jsonl.str(line, "sev"))) {
+            ctx.error(step, text);
+        } else {
+            ctx.warn(step, text);
         }
+    }
+
+    /**
+     * Say {@code line} as a run notice when it is a {@link PluginProtocol#SEVERITY_NOTICE notice}:
+     * {@code <module> <step>: <message>}, once per run. False, saying nothing, for any other
+     * severity.
+     */
+    static boolean sayNotice(Path moduleDir, String module, String step, String line) {
+        if (!PluginProtocol.SEVERITY_NOTICE.equals(Jsonl.str(line, "sev"))) return false;
+        String message = String.valueOf(Jsonl.str(line, "msg"));
+        String text = module + " " + step + ": " + message;
+        RunNotices.warnOnce("step-notice:" + moduleDir + "\0" + step + "\0" + message, () -> text);
+        return true;
+    }
+
+    /** A {@code diagnostic} reply's text: {@code file:line[:col]: message} when it names a file, else the message. */
+    static String diagnosticText(String line) {
         StringBuilder text = new StringBuilder();
         @Nullable String file = Jsonl.str(line, "file");
         if (file != null) {
@@ -704,11 +722,7 @@ public final class PlannerPlugin {
             text.append(": ");
         }
         text.append(String.valueOf(Jsonl.str(line, "msg")));
-        if ("error".equals(Jsonl.str(line, "sev"))) {
-            ctx.error(step, text.toString());
-        } else {
-            ctx.warn(step, text.toString());
-        }
+        return text.toString();
     }
 
     /**
@@ -786,7 +800,12 @@ public final class PlannerPlugin {
         Map<String, Path> extras = packaging.extras();
         String pkgTask = packaging.keyed().taskId();
         String pkgKey = packaging.keyed().key();
-        if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
+        PluginDeclarations.PackagerDecl packager = Objects.requireNonNull(decls.packager(), "packager");
+        // The packager's diagnostics are said as a step's are, and ride its record so a restore
+        // says them again.
+        StepDiagnostics said =
+                new StepDiagnostics(ctx, in.dir(), project.project().name(), packager.name());
+        if (restorePackaged(in.cache(), pkgKey, jarPath.getParent(), said)) {
             ctx.label(jarPath.getFileName() + " up-to-date");
             ctx.cached();
             ctx.progress(1);
@@ -827,7 +846,8 @@ public final class PlannerPlugin {
         }
         List<String> workerLines;
         try {
-            workerLines = PluginBuild.runWorker(active, in.cache(), specFile, workerEnv(ctx, in), ctx::label);
+            workerLines =
+                    PluginBuild.runWorker(active, in.cache(), specFile, workerEnv(ctx, in), ctx::label, said::forward);
         } catch (IOException e) {
             ctx.error("package", Errors.text(e));
             throw e;
@@ -835,7 +855,6 @@ public final class PlannerPlugin {
             Files.deleteIfExists(specFile);
             Files.deleteIfExists(sbomFile);
         }
-        PluginDeclarations.PackagerDecl packager = Objects.requireNonNull(decls.packager(), "packager");
         if (!Files.isRegularFile(jarPath)) {
             throw new IOException(
                     "plugin packager " + packager.name() + " reported success but produced no " + jarPath);
@@ -883,7 +902,8 @@ public final class PlannerPlugin {
                 packaging.keyed().tokens(),
                 jarPath.getParent(),
                 produced,
-                !in.ephemeralActions());
+                !in.ephemeralActions(),
+                said.said());
         ctx.progress(1);
     }
 

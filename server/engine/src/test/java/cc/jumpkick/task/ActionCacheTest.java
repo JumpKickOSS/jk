@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -68,6 +69,39 @@ class ActionCacheTest {
         for (int i = 0; i < count; i++) {
             assertThat(restored.resolve("p" + (i % 20) + "/C" + i + ".class")).hasContent("class body " + i);
         }
+    }
+
+    /**
+     * What an action said rides its record in order, through an artifact, a verdict and a packaged
+     * artifact alike, and a record written before records kept it reads as an action that said
+     * nothing. The rest of the record is the text it always was, so the line costs no key change.
+     */
+    @Test
+    void what_an_action_said_rides_its_record_and_an_older_record_said_nothing(@TempDir Path tempDir)
+            throws IOException {
+        ActionCache cache = new ActionCache(new Cas(tempDir.resolve("cas")), tempDir.resolve("actions"));
+        Path outputs = Files.createDirectories(tempDir.resolve("out"));
+        Files.writeString(outputs.resolve("A.class"), "a");
+        List<String> said = List.of(
+                "{\"t\":\"diagnostic\",\"sev\":\"notice\",\"msg\":\"NOT shipped: g:a:1\"}",
+                "{\"t\":\"diagnostic\",\"sev\":\"warning\",\"file\":\"A.java\",\"line\":3,\"msg\":\"odd\"}");
+
+        cache.store("plugin-step", "artifact", Map.of(), outputs, said);
+        cache.storeVerdict("plugin-check", "verdict", Map.of(), said);
+        cache.storeArtifacts("package-jar", "packaged", Map.of(), outputs, List.of(outputs.resolve("A.class")), said);
+
+        for (String key : List.of("artifact", "verdict", "packaged")) {
+            assertThat(cache.lookup(key).orElseThrow().said()).as(key).containsExactlyElementsOf(said);
+        }
+        String plain = ActionRecordText.render("plugin-step", "old", Map.of(), Map.of("A.class", "aaa"), Set.of());
+        assertThat(plain).doesNotContain("SAID");
+        Files.writeString(ActionTree.KEYS.under(tempDir.resolve("actions")).resolve("old"), plain);
+        assertThat(cache.lookup("old").orElseThrow().said()).isEmpty();
+        // A line break in a line would cut the record; it is folded instead.
+        assertThat(ActionRecordText.parse(
+                                ActionRecordText.render("t", "k", Map.of(), Map.of(), Set.of(), List.of("one\ntwo")))
+                        .said())
+                .containsExactly("one two");
     }
 
     /**

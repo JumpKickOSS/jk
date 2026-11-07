@@ -229,6 +229,16 @@ public final class ActionCache {
      */
     public ActionRecord store(String taskId, String actionKey, Map<String, String> inputs, Path outputDir)
             throws IOException {
+        return store(taskId, actionKey, inputs, outputDir, List.of());
+    }
+
+    /**
+     * As {@link #store(String, String, Map, Path)}, keeping {@code said} — what the action told the
+     * user as it ran — in the record, so a {@linkplain ActionRecord#said() hit} can say it again.
+     */
+    public ActionRecord store(
+            String taskId, String actionKey, Map<String, String> inputs, Path outputDir, List<String> said)
+            throws IOException {
         Map<String, String> outputs = new TreeMap<>();
         Set<String> executables = new TreeSet<>();
         if (Files.exists(outputDir)) {
@@ -252,7 +262,7 @@ public final class ActionCache {
         if (outputs.isEmpty()) {
             return new ActionRecord(taskId, actionKey, inputs, Map.of());
         }
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables, outputDir);
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables, outputDir, said);
     }
 
     /**
@@ -366,7 +376,13 @@ public final class ActionCache {
      * output-dir walk cannot tell it.
      */
     public ActionRecord storeVerdict(String taskId, String actionKey, Map<String, String> inputs) throws IOException {
-        return storeWithOutputs(taskId, actionKey, inputs, Map.of());
+        return storeVerdict(taskId, actionKey, inputs, List.of());
+    }
+
+    /** As {@link #storeVerdict(String, String, Map)}, keeping what the action {@linkplain ActionRecord#said() said}. */
+    public ActionRecord storeVerdict(String taskId, String actionKey, Map<String, String> inputs, List<String> said)
+            throws IOException {
+        return storeWithOutputs(taskId, actionKey, inputs, Map.of(), Set.of(), null, said);
     }
 
     /**
@@ -378,14 +394,14 @@ public final class ActionCache {
     public ActionRecord storeWithOutputs(
             String taskId, String actionKey, Map<String, String> inputs, Map<String, String> outputs)
             throws IOException {
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, Set.of(), null);
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, Set.of(), null, List.of());
     }
 
     /**
      * The store every path funnels through: the record, then the task pointer, then the Class-C
      * generation trim. {@code executables} are the outputs a restore gives the bit back to; {@code
      * outputRoot} is the tree the outputs were written under, which names the checkout a Class-C
-     * generation belongs to.
+     * generation belongs to; {@code said} is what the action told the user as it ran.
      */
     private ActionRecord storeWithOutputs(
             @Nullable String taskId,
@@ -393,7 +409,8 @@ public final class ActionCache {
             Map<String, String> inputs,
             Map<String, String> outputs,
             Set<String> executables,
-            @Nullable Path outputRoot)
+            @Nullable Path outputRoot,
+            List<String> said)
             throws IOException {
         Files.createDirectories(keysDir());
         Files.createDirectories(tasksDir());
@@ -401,7 +418,7 @@ public final class ActionCache {
         String task = Objects.requireNonNull(taskId, "taskId");
         String key = Objects.requireNonNull(actionKey, "actionKey");
         if (VerifyCache.on()) VerifyCache.check(this, task, key, outputs);
-        ActionRecord record = new ActionRecord(task, key, inputs, outputs, executables);
+        ActionRecord record = new ActionRecord(task, key, inputs, outputs, executables, said);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         try {
@@ -754,6 +771,18 @@ public final class ActionCache {
             @Nullable Path baseDir,
             List<Path> artifacts)
             throws IOException {
+        return storeArtifacts(taskId, actionKey, inputs, baseDir, artifacts, List.of());
+    }
+
+    /** As {@link #storeArtifacts(String, String, Map, Path, List)}, keeping what the action {@linkplain ActionRecord#said() said}. */
+    public ActionRecord storeArtifacts(
+            @Nullable String taskId,
+            @Nullable String actionKey,
+            Map<String, String> inputs,
+            @Nullable Path baseDir,
+            List<Path> artifacts,
+            List<String> said)
+            throws IOException {
         // Artifacts are recorded relative to the output root they were written under.
         Path root = Objects.requireNonNull(baseDir, "baseDir");
         Map<String, String> outputs = new TreeMap<>();
@@ -774,7 +803,7 @@ public final class ActionCache {
         if (outputs.isEmpty()) {
             throw new IOException("packaging produced no files to cache: " + artifacts);
         }
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables, root);
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, executables, root, said);
     }
 
     /**
@@ -837,7 +866,14 @@ public final class ActionCache {
              * without this a restored binary comes back 0644 and is unrunnable. Empty means no
              * extra execute bits (default 0644 on restore).
              */
-            Set<String> executables) {
+            Set<String> executables,
+            /**
+             * What the action told the user as it ran — a plugin step's diagnostic replies, as the
+             * worker sent them — in order, for a hit to say again: a restored action says what
+             * its run said. Empty for an action that said nothing, and for a record written
+             * before records kept it.
+             */
+            List<String> said) {
 
         public ActionRecord {
             Objects.requireNonNull(taskId, "taskId");
@@ -845,6 +881,16 @@ public final class ActionCache {
             inputs = Map.copyOf(inputs);
             outputs = Map.copyOf(outputs);
             executables = executables == null ? Set.of() : Set.copyOf(executables);
+            said = said == null ? List.of() : List.copyOf(said);
+        }
+
+        public ActionRecord(
+                @Nullable String taskId,
+                @Nullable String actionKey,
+                Map<String, String> inputs,
+                Map<String, String> outputs,
+                Set<String> executables) {
+            this(taskId, actionKey, inputs, outputs, executables, List.of());
         }
 
         public ActionRecord(
@@ -862,12 +908,13 @@ public final class ActionCache {
                 Objects.requireNonNull(record.actionKey()),
                 record.inputs(),
                 record.outputs(),
-                record.executables());
+                record.executables(),
+                record.said());
     }
 
     private static ActionRecord parse(String content) {
         ActionRecordText.Parsed p = ActionRecordText.parse(content);
-        return new ActionRecord(p.taskId(), p.actionKey(), p.inputs(), p.outputs(), p.executables());
+        return new ActionRecord(p.taskId(), p.actionKey(), p.inputs(), p.outputs(), p.executables(), p.said());
     }
 
     private Path keysDir() {

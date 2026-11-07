@@ -159,7 +159,8 @@ final class PlannerJavadoc {
                 keyed.tokens(),
                 artifactDir,
                 List.of(javadocJar),
-                persist);
+                persist,
+                List.of());
         ctx.progress(1);
     }
 

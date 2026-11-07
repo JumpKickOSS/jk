@@ -452,6 +452,10 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   warning. A body whose own fork has something to say hands it back as data (the Quarkus forks
   append to a file the worker names) and calls `notice` from the worker, because a fork's output
   is shown only when the step fails.
+  A step's and a packager's diagnostics, notices included, ride its action record, and a build
+  that restores it from the cache says them again in the same words, so a notice stays on every
+  verdict while its cause is unchanged. A plugin `jk lock` asks for a closure is heard the same way:
+  a notice is a run notice, anything else the lock's warning.
 - The worker wire keeps its legacy spellings (`run-step`, `step:` input refs, `step-output`) —
   protocol literals, not API names.
 

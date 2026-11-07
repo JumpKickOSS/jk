@@ -7,7 +7,8 @@ import java.nio.file.Path;
 
 /**
  * The generator a {@code [generate]} e2e forks: {@code <unpacked dir> <out dir>} reads
- * {@code names.txt} out of the unpacked jar and writes {@code gen/Hello.java} carrying its text.
+ * {@code names.txt} out of the unpacked jar and writes {@code gen/Hello.java} carrying its text. A
+ * third argument is a warning it prints against {@code names.txt}, as a generator flags its input.
  */
 public final class GenerateStubTool {
 
@@ -23,5 +24,6 @@ public final class GenerateStubTool {
                 source,
                 "package gen;\n\npublic final class Hello {\n    public static final String NAME = \"" + name
                         + "\";\n\n    private Hello() {}\n}\n");
+        if (args.length > 2) System.out.println("names.txt:1: warning: " + args[2]);
     }
 }

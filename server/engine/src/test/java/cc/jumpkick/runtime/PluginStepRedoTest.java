@@ -34,48 +34,16 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A forced rebuild reaches plugin steps as it reaches compile and package: a {@code [generate]}
  * step an unchanged build finds cached runs again under {@code --redo}, and its refreshed record
- * serves the build after that. Offline: the tool and the jar it unpacks come from a {@code file://}
- * repository, and the module declares nothing else.
+ * serves the build after that. A cached step says again what its run said. Offline: the tool and
+ * the jar it unpacks come from a {@code file://} repository, and the module declares nothing else.
  */
 @Tag("integration")
 class PluginStepRedoTest {
 
     @Test
     void a_forced_rebuild_runs_a_cached_plugin_step_again(@TempDir Path tmp) throws Exception {
-        workerJarFromWorkspace(PluginJar.GENERATOR, "plugins/generator");
-        Path repo = tmp.resolve("repo");
-        toolArtifact(repo, "com.example", "gen-tool", "1.0");
-        protosArtifact(repo, "com.example", "protos", "1.0");
-        Path project = Files.createDirectories(tmp.resolve("proj"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "com.example"
-                name  = "demo"
-                version = "1.0.0"
-                java = 25
-
-                [repositories.local]
-                url = "%s"
-
-                [generate.gen]
-                tool   = "com.example:gen-tool:1.0"
-                unpack = "com.example:protos:1.0"
-                args   = ["${unpacked}", "${out}"]
-                """.formatted(repo.toUri()));
-        write(project.resolve("src/main/java/com/example/Main.java"), """
-                package com.example;
-
-                public final class Main {
-                    public static final String NAME = gen.Hello.NAME;
-
-                    private Main() {}
-                }
-                """);
+        Path project = lockedProject(tmp, "");
         Path cache = tmp.resolve("cache");
-        JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
-                .run();
-        assertThat(lock.errors()).isEmpty();
 
         BuildPlanResult first = build(project, cache);
         assertThat(first.errors()).isEmpty();
@@ -102,6 +70,74 @@ class PluginStepRedoTest {
         assertThat(step(after, "generate-gen").status())
                 .as("the forced run refreshed the record the next build serves")
                 .isEqualTo(TaskStatus.SKIPPED);
+    }
+
+    @Test
+    void a_cached_plugin_step_says_what_its_run_said(@TempDir Path tmp) throws Exception {
+        Path project = lockedProject(tmp, ", \"names are lower-case\"");
+        Path cache = tmp.resolve("cache");
+
+        BuildPlanResult ran = build(project, cache);
+        assertThat(ran.success()).isTrue();
+        assertThat(step(ran, "generate-gen").status()).isEqualTo(TaskStatus.SUCCESS);
+        BuildPlanResult restored = build(project, cache);
+        assertThat(restored.success()).isTrue();
+        assertThat(step(restored, "generate-gen").status())
+                .as("an unchanged entry is a cache hit")
+                .isEqualTo(TaskStatus.SKIPPED);
+
+        assertThat(warnings(ran)).singleElement().asString().contains("names are lower-case");
+        assertThat(warnings(restored)).as("the hit's warnings").isEqualTo(warnings(ran));
+    }
+
+    /** The warnings a build reported, as step, code and text. */
+    private static List<String> warnings(BuildPlanResult result) {
+        return result.warnings().stream()
+                .filter(w -> String.valueOf(w.message()).contains("names.txt"))
+                .map(w -> w.step() + " " + w.code() + " " + w.message())
+                .toList();
+    }
+
+    /**
+     * A locked module with one {@code [generate.gen]} entry over the stub tool and the jar it
+     * unpacks, its args ending in {@code moreArgs} (a TOML list tail: empty, or {@code , "…"}).
+     */
+    private static Path lockedProject(Path tmp, String moreArgs) throws Exception {
+        workerJarFromWorkspace(PluginJar.GENERATOR, "plugins/generator");
+        Path repo = tmp.resolve("repo");
+        toolArtifact(repo, "com.example", "gen-tool", "1.0");
+        protosArtifact(repo, "com.example", "protos", "1.0");
+        Path project = Files.createDirectories(tmp.resolve("proj"));
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "demo"
+                version = "1.0.0"
+                java = 25
+
+                [repositories.local]
+                url = "%s"
+
+                [generate.gen]
+                tool   = "com.example:gen-tool:1.0"
+                unpack = "com.example:protos:1.0"
+                args   = ["${unpacked}", "${out}"%s]
+                """.formatted(repo.toUri(), moreArgs));
+        write(project.resolve("src/main/java/com/example/Main.java"), """
+                package com.example;
+
+                public final class Main {
+                    public static final String NAME = gen.Hello.NAME;
+
+                    private Main() {}
+                }
+                """);
+        Path cache = tmp.resolve("cache");
+        JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
+        BuildPlanResult lock = LockPlans.lockBuildPlan(
+                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                .run();
+        assertThat(lock.errors()).isEmpty();
+        return project;
     }
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {

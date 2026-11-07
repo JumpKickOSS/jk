@@ -46,7 +46,8 @@ class NodePackageForecastTest {
         Path jarDir = Files.createDirectories(web.resolve("target"));
         Files.writeString(jar, "jar");
         NodeKeys.Keyed keyed = NodeKeys.pkg(web, web.resolve("dist"), "static", project.manifest());
-        PlannerSupport.storePackagedForTest(cache, keyed.taskId(), keyed.key(), List.of(), jarDir, List.of(jar), true);
+        PlannerSupport.storePackagedForTest(
+                cache, keyed.taskId(), keyed.key(), List.of(), jarDir, List.of(jar), true, List.of());
 
         TaskForecast.Task after = PlannerNode.forecastPackage(project, web, web, cache, false);
         assertThat(after.status()).isEqualTo(TaskForecast.Status.CACHED);
