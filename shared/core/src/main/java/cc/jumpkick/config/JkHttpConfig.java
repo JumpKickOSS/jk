@@ -173,6 +173,16 @@ public record JkHttpConfig(
                 : Runtime.getRuntime().availableProcessors();
     }
 
+    /**
+     * Whether {@code web-root} was set (env or file) rather than left at {@link #DEFAULT_WEB_ROOT}.
+     * A set root is a dashboard source tree the user pointed the engine at, served under the
+     * dashboard's own policy; the default root is a drop zone builds may write into, and stays
+     * sandboxed.
+     */
+    public boolean devWebRoot() {
+        return !DEFAULT_WEB_ROOT.equals(webRoot);
+    }
+
     /** {@code web-root} resolved against the live {@link JkDirs#home()} root when relative. */
     public Path webRootPath() {
         return webRootPath(JkDirs.home());

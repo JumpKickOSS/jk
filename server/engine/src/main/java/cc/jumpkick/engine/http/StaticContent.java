@@ -26,6 +26,10 @@ import org.jspecify.annotations.Nullable;
  * Static files: disk {@code web-root} first (no-cache, size-snapshotted GET so concurrent appends
  * cannot corrupt framing), then classpath {@code /web} (no-cache, version+mtime ETag). No directory
  * listings.
+ *
+ * <p>The default disk root is sandboxed ({@code Content-Security-Policy: sandbox}); a root the user
+ * set ({@link cc.jumpkick.config.JkHttpConfig#devWebRoot}) is a dashboard source tree and gets the
+ * shell's policy, so the dashboard runs from it.
  */
 final class StaticContent {
 
@@ -55,7 +59,44 @@ final class StaticContent {
             Map.entry("woff", "font/woff"),
             Map.entry("wasm", "application/wasm"));
 
+    /**
+     * The shipped shell's policy. Its only external resources: Vue + ECharts + Monaco (lazy,
+     * #project/…/files) + Preview CDNs (marked/mermaid/…, also lazy) from unpkg (version-pinned; SRI
+     * on every static tag where possible) and the JetBrains Mono webfonts from Google Fonts (CSS on
+     * fonts.googleapis.com, font files on fonts.gstatic.com). style-src includes unpkg for Monaco's
+     * editor.main.css, which its loader injects itself.
+     *
+     * <p>'unsafe-eval' is Vue's runtime template compiler. The rest is Monaco, and each piece was
+     * verified against a real browser (a missing one degrades to a blank/broken pane): blob: in
+     * script-src + worker-src — it spawns language workers from a generated Blob that importScripts
+     * the unpkg bundle; 'unsafe-inline' in style-src — the editor positions every view line, cursor
+     * and widget with inline style attributes (~100 per paint), which no hash or nonce can cover;
+     * data: in font-src — editor.main.css inlines the codicon font (gutter/find-widget icons).
+     */
+    static final String SHELL_POLICY = "default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
+            + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
+            + "font-src https://fonts.gstatic.com data:; worker-src blob:; "
+            // Preview pane: auth-fetch → blob: for in-repo images; https: for badges / remote README
+            // images (shields.io, etc.); data: for rare inlines.
+            + "img-src 'self' blob: data: https: http:; "
+            // No form ever submits from the shell; injected markup (rendered previews) must not be
+            // able to add one that posts off-origin.
+            + "form-action 'none';";
+
+    /**
+     * The default disk root's policy. That root is never token-gated, and builds may write arbitrary
+     * user content (HTML reports) into it. Without a policy, such HTML is same-origin with the SPA and
+     * can read localStorage['jk-http-token'] — the sole credential. A bare {@code sandbox} renders it
+     * in a unique opaque origin with scripts, forms, and plugins disabled: styles and images still
+     * work (reports stay readable), but nothing under it can script the dashboard origin or
+     * exfiltrate the token.
+     */
+    static final String SANDBOX_POLICY = "sandbox";
+
     private final Path root;
+
+    /** The policy disk files are served under: the shell's for a dev root, else the sandbox. */
+    private final String diskPolicy;
 
     /**
      * {@code "jk-<version>-<mtime-hex>"}. Classpath assets always revalidate ({@code no-cache}) so
@@ -64,9 +105,14 @@ final class StaticContent {
      */
     private final String classpathEtag;
 
-    /** @param root the resolved {@code web-root} — need not exist (classpath still serves) */
-    StaticContent(Path root, String version) {
+    /**
+     * @param root the resolved {@code web-root} — need not exist (classpath still serves)
+     * @param devRoot whether the user set {@code root} to serve a dashboard from, which earns its
+     * files the shell's policy instead of the sandbox
+     */
+    StaticContent(Path root, String version, boolean devRoot) {
         this.root = root.normalize();
+        this.diskPolicy = devRoot ? SHELL_POLICY : SANDBOX_POLICY;
         this.classpathEtag = "\"jk-" + version + "-" + classpathStamp() + "\"";
     }
 
@@ -147,13 +193,7 @@ final class StaticContent {
         } catch (IOException e) {
             return false; // deleted between the check and now — fall through to classpath/404
         }
-        // Disk web-root is never token-gated, and builds may write arbitrary user content (HTML
-        // reports) into it. Without a policy, such HTML is same-origin with the SPA and can read
-        // localStorage['jk-http-token'] — the sole credential. A bare CSP `sandbox`
-        // renders it in a unique opaque origin with scripts, forms, and plugins disabled: styles
-        // and images still work (reports stay readable), but nothing under web-root can script
-        // the dashboard origin or exfiltrate the token.
-        exchange.getResponseHeaders().set("Content-Security-Policy", "sandbox");
+        exchange.getResponseHeaders().set("Content-Security-Policy", diskPolicy);
         exchange.getResponseHeaders().set("Cache-Control", "no-cache");
         exchange.getResponseHeaders().set("Last-Modified", HTTP_DATE.format(lastModified));
         if (notModifiedSince(exchange.getRequestHeaders().getFirst("If-Modified-Since"), lastModified)) {
@@ -191,33 +231,7 @@ final class StaticContent {
                 return false;
             }
         }
-        // The shipped SPA's only external resources: Vue + ECharts + Monaco (lazy,
-        // #project/…/files) + Preview CDNs (marked/mermaid/…, also lazy) from unpkg
-        // (version-pinned; SRI on every static tag where possible) and the JetBrains
-        // Mono webfonts from Google Fonts (CSS on fonts.googleapis.com, font files on
-        // fonts.gstatic.com). style-src includes unpkg for Monaco's editor.main.css, which its
-        // loader injects itself.
-        // 'unsafe-eval' is Vue's runtime template compiler. The rest is Monaco, and each piece was
-        // verified against a real browser (a missing one degrades to a blank/broken pane):
-        //   blob: in script-src + worker-src — it spawns language workers from a generated Blob
-        //     that importScripts the unpkg bundle;
-        //   'unsafe-inline' in style-src — the editor positions every view line, cursor and widget
-        //     with inline style attributes (~100 per paint), which no hash or nonce can cover;
-        //   data: in font-src — editor.main.css inlines the codicon font (gutter/find-widget icons).
-        // Disk web-root content gets a stricter sandboxing CSP in serveFromDisk — only
-        // the shipped shell earns this policy.
-        exchange.getResponseHeaders()
-                .set(
-                        "Content-Security-Policy",
-                        "default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
-                                + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
-                                + "font-src https://fonts.gstatic.com data:; worker-src blob:; "
-                                // Preview pane: auth-fetch → blob: for in-repo images; https: for badges /
-                                // remote README images (shields.io, etc.); data: for rare inlines.
-                                + "img-src 'self' blob: data: https: http:; "
-                                // No form ever submits from the shell; injected markup (rendered
-                                // previews) must not be able to add one that posts off-origin.
-                                + "form-action 'none';");
+        exchange.getResponseHeaders().set("Content-Security-Policy", SHELL_POLICY);
         // no-cache = store but revalidate: a still-fresh max-age would keep the previous jar's
         // dashboard after an upgrade. ETag makes the revalidation a 304 when the jar is unchanged.
         exchange.getResponseHeaders().set("Cache-Control", "no-cache");
