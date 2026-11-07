@@ -111,8 +111,11 @@ public final class NewProjectOps {
         }
     }
 
-    /** What a create would write: target path and template-or-scaffold file list. Writes nothing. */
-    public record Preview(String path, @Nullable String template, List<String> files) {}
+    /**
+     * What a create would write: the target path, the template, every file's path under the target,
+     * and the {@code jk.toml} it would hold. Writes nothing.
+     */
+    public record Preview(String path, @Nullable String template, List<String> files, String manifest) {}
 
     /** Validated inputs shared by {@link #create} and {@link #preview}. */
     private record Prepared(
@@ -203,7 +206,8 @@ public final class NewProjectOps {
                         .sorted()
                         .forEach(files::add);
             }
-            return new Preview(prep.target().toString(), prep.template(), List.copyOf(files));
+            String manifest = Files.readString(probe.resolve(ManifestPaths.MANIFEST));
+            return new Preview(prep.target().toString(), prep.template(), List.copyOf(files), manifest);
         } finally {
             PathUtil.deleteRecursivelyOrThrow(scratch);
         }

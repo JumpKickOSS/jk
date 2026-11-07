@@ -17,6 +17,7 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.runtime.NewProjectForm;
 import cc.jumpkick.engine.runtime.NewProjectJava;
 import cc.jumpkick.engine.runtime.NewProjectOps;
+import cc.jumpkick.engine.runtime.NewProjectPost;
 import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Field;
 import cc.jumpkick.form.Form;
@@ -28,12 +29,14 @@ import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.scaffold.NewProjectStep;
+import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.wire.protocol.NewProjectFormAck;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -56,20 +59,22 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * One answer set, every surface: the same scripted answers go through the CLI renderer (keystrokes
  * into a memory TTY, the form walked as {@code jk new} walks it, then the request {@code jk new}
- * posts) and through MCP {@code new} (a fake client that declared form elicitation, passing as
- * arguments what the engine will not ask and answering each elicitation from the script). Each
- * surface's posted answers, read back as one map of form key to text, must equal the script and so
- * each other, and the projects they scaffold must be identical, file for file and byte for byte.
+ * posts), through MCP {@code new} (a fake client that declared form elicitation, passing as
+ * arguments what the engine will not ask and answering each elicitation from the script), and
+ * through the web wizard's view model ({@code wizard-model.js} under Node: a link carrying the
+ * script opened in the wizard, and the body it posts settled as {@code POST /api/projects} settles
+ * it). Each surface's posted answers, read back as one map of form key to text, must equal the
+ * script and so each other, and the projects they scaffold must be identical, file for file and
+ * byte for byte.
  *
  * <p>The template asks one field of every kind a template may ask, all but the conditional one
  * without a default, so MCP elicits them rather than taking defaults, plus a field shown only when
  * an earlier answer allows. Each surface is a {@link Surface}: it turns the script into its own
- * inputs and reports what it posted and where the project went. The web wizard's view model joins
- * as a third {@code Surface} when the wizard lands; the assertions already compare every surface in
- * {@link #surfaces} with the first.
+ * inputs and reports what it posted and where the project went; the assertions compare every
+ * surface in {@link #surfaces} with the first.
  *
  * <p>Fast tier: the engine's form, MCP handler and scaffolder run in this JVM, from a template on
- * disk, with no network and no engine.
+ * disk, with no network and no engine; the view model runs under the Node.js this module pins.
  */
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class NewProjectConformanceTest {
@@ -127,7 +132,7 @@ class NewProjectConformanceTest {
 
     /** Every surface, the first the reference the others are compared with. */
     private List<Surface> surfaces() {
-        return List.of(new Cli(), new Mcp());
+        return List.of(new Cli(), new Mcp(), new Web());
     }
 
     @Test
@@ -403,6 +408,84 @@ class NewProjectConformanceTest {
                     dir -> Map.of(),
                     List::of,
                     "0.0.0");
+        }
+    }
+
+    /**
+     * The dashboard's wizard: the form served as {@code GET /api/forms/new-project} serves it, the
+     * view model under Node opening a link that carries the script and building the body it posts,
+     * and that body settled and scaffolded as {@code POST /api/projects} does.
+     */
+    private final class Web implements Surface {
+
+        /** Opens the link in the view model and prints the body the wizard posts. */
+        private static final String DRIVER = """
+                import { readFileSync } from 'node:fs';
+                import { linkFromHash, openingAnswers, postBody, wizardHash } from './wizard-model.js';
+                const { served, script } = JSON.parse(readFileSync(0, 'utf8'));
+                const link = linkFromHash(wizardHash(script));
+                const answers = openingAnswers(served, link.answers);
+                process.stdout.write(JSON.stringify(postBody(served.form, answers, served.derived)));
+                """;
+
+        @Override
+        public String name() {
+            return "the web wizard";
+        }
+
+        @Override
+        public Outcome run(Path template, Map<String, Object> script, Path parent) throws Exception {
+            Map<String, String> derived = Map.of(
+                    NewProjectStep.GIT_EMAIL, String.valueOf(script.get("group")),
+                    NewProjectStep.PARENT_DIR, String.valueOf(script.get("dir")));
+            NewProjectOps.TemplateForm t = NewProjectPost.templateForm(template.toString(), null, derived);
+            Map<String, Object> served = new LinkedHashMap<>();
+            served.put("form", MiniJson.parse(NewProjectForm.of(t).toJson()));
+            served.put("template", t.id());
+            served.put("derived", derived);
+            Map<String, Object> input = new LinkedHashMap<>();
+            input.put("served", served);
+            input.put("script", script);
+            Object body = MiniJson.parse(node(MiniJson.write(input)));
+
+            Map<String, String> posted = new LinkedHashMap<>();
+            Map<String, Object> answers = new LinkedHashMap<>();
+            if (MiniJson.get(body, "answers") instanceof Map<?, ?> raw) {
+                raw.forEach((k, v) -> {
+                    answers.put(String.valueOf(k), requireNonNull(v));
+                    posted.put(String.valueOf(k), Values.text(requireNonNull(v)));
+                });
+            }
+            NewProjectPost.Outcome outcome = NewProjectPost.settle(answers, MiniJson.str(body, "rev"), derived);
+            if (!(outcome instanceof NewProjectPost.Outcome.Ready ready)) {
+                throw new AssertionError("the wizard's post did not settle: " + outcome);
+            }
+            NewProjectOps.Created created = NewProjectOps.createWithIdentity(ready.request());
+            return new Outcome(posted, created.path());
+        }
+
+        /** Runs {@link #DRIVER} beside a copy of the view model, {@code input} on its stdin. */
+        private String node(String input) throws IOException, InterruptedException {
+            Path stage = Files.createDirectories(temp.resolve("wizard"));
+            Path model = RepoRoot.find(NewProjectConformanceTest.class)
+                    .resolve("clients/web/src/main/resources/web/wizard-model.js");
+            Files.copy(model, stage.resolve("wizard-model.js"), StandardCopyOption.REPLACE_EXISTING);
+            Files.writeString(stage.resolve("package.json"), "{\"type\":\"module\"}\n");
+            Files.writeString(stage.resolve("drive.mjs"), DRIVER);
+            Path in = Files.writeString(stage.resolve("input.json"), input);
+            String home = System.getenv("NODE_HOME");
+            String node = home == null || home.isBlank()
+                    ? "node"
+                    : Path.of(home, "bin", "node").toString();
+            Process p = new ProcessBuilder(node, "drive.mjs")
+                    .directory(stage.toFile())
+                    .redirectInput(in.toFile())
+                    .redirectError(ProcessBuilder.Redirect.INHERIT)
+                    .start();
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertThat(p.waitFor(30, TimeUnit.SECONDS)).as("node finishes").isTrue();
+            assertThat(p.exitValue()).as("node drive.mjs: %s", out).isZero();
+            return out;
         }
     }
 
