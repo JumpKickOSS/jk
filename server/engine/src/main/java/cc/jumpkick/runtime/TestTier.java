@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.model.Profiles;
 import cc.jumpkick.run.SlowestTests;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +34,8 @@ record TestTier(String name, long budgetMs) {
         if (includeTags.isEmpty()) {
             return allSuites && excludeTags.isEmpty() ? ALL : SlowestTests.FAST_TIER;
         }
-        if (profile != null && !profile.isBlank()) return profile;
+        String named = Profiles.named(profile);
+        if (named != null) return named;
         return String.join("+", includeTags);
     }
 

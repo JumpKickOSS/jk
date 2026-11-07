@@ -221,23 +221,25 @@ public final class CompileSupport {
 
     /**
      * Pick the active profile. Explicit {@code explicitName} wins; otherwise the {@code ci} profile
-     * is auto-selected when running on CI. Returns null when no profile applies.
+     * is auto-selected when running on CI. Returns null when no profile applies, {@link
+     * Profiles#NO_PROFILE} included.
      */
     public static @Nullable Profile resolveProfile(Profiles profiles, @Nullable String explicitName) {
-        if (explicitName != null && !explicitName.isBlank()) {
-            return profiles.resolve(explicitName);
-        }
-        String auto = activeProfileName(null);
+        String named = Profiles.named(explicitName);
+        if (named != null) return profiles.resolve(named);
+        String auto = activeProfileName(explicitName);
         if (auto != null && profiles.contains(auto)) {
             return profiles.resolve(auto);
         }
         return null;
     }
 
-    /** The name of the profile a run applies: {@code explicitName} when given, else the CI-selected one, else null. */
+    /**
+     * The name of the profile a run applies: {@code explicitName} when given, else the CI-selected one,
+     * else null; null under {@link Profiles#NO_PROFILE}.
+     */
     public static @Nullable String activeProfileName(@Nullable String explicitName) {
-        if (explicitName != null && !explicitName.isBlank()) return explicitName;
-        return Profiles.autoSelect(BuildEnv::get);
+        return Profiles.active(explicitName, BuildEnv::get);
     }
 
     private static List<Path> collectFilesWithExtension(Path root, String extension) throws IOException {
