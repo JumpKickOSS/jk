@@ -189,9 +189,10 @@ public final class ToolRunCommand implements CliCommand {
                 if (Files.isRegularFile(ManifestPaths.manifestIn(direct))) return direct;
                 return null;
             }
-            var rootBuild = ProjectInfos.orNull(wsRoot);
-            List<String> moduleDirs =
-                    rootBuild != null && rootBuild.workspaceRoot() ? rootBuild.moduleDirs() : memberDirs(wsRoot);
+            // The members as the build expands them, engine or not: the engine's project-info view
+            // drops a glob that selects nothing (so `jk new` can describe a workspace before its new
+            // member exists), which would read a bad member list here as "no such module".
+            List<String> moduleDirs = memberDirs(wsRoot);
             if (moduleDirs.isEmpty()) return null;
             String want = name.replace('\\', '/');
             while (want.startsWith("./")) want = want.substring(2);
