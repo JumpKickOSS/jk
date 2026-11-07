@@ -106,7 +106,11 @@ final class WorkspaceRunPhase {
                             clock),
                     (ready, results, _) ->
                             collect(request, prepared.plans(), workspaceLinks, ready, results, outcomes, observedRates),
-                    request.maxModuleConcurrency(),
+                    // A test step parks on siblings a later level holds, which the batch-per-level
+                    // schedule would never start; such a graph takes the streaming one, uncapped.
+                    request.maxModuleConcurrency() <= 0 && siblings.hasTestReads()
+                            ? resources.dirtyUnits().size()
+                            : request.maxModuleConcurrency(),
                     SessionCancel::cancelled,
                     // The root's after-build scripts read what the members produced, native
                     // tails included, so the root waits for the members to finish, not to publish.
@@ -116,7 +120,8 @@ final class WorkspaceRunPhase {
                     unit -> {
                         ModulePlan sibling = prepared.plans().get(unit.dir());
                         if (sibling != null) sibling.plan().stop();
-                    });
+                    },
+                    siblings);
         }
         Perf.end("ws-schedule-run", scheduleStart);
         long executeWallMs = Math.max(0L, clock.millis() - executeStartMs);
@@ -182,12 +187,13 @@ final class WorkspaceRunPhase {
     }
 
     /**
-     * Run one module and emit its module start/finish lifecycle. Three signals leave the plan: the
+     * Run one module and emit its module start/finish lifecycle. Signals leave the plan: the
      * classes publish admits dependents to the schedule (they compile against this module's
-     * classes tree), the artifact publish releases the dependents' package and test steps (they
-     * read its jar), and the module's guard step signals once it has indexed its classes, which
-     * releases a guard suite that judges the workspace. Completion fires all of them, so a module that failed early
-     * wedges nothing.
+     * classes tree) and releases the test compiles of modules whose tests alone read it; the
+     * fixtures and test-classes compiles release the test compiles that select them; the artifact
+     * publish releases the dependents' package and test steps (they read its jar); and the module's
+     * guard step signals once it has indexed its classes, which releases a guard suite that judges
+     * the workspace. Completion fires all of them, so a module that failed early wedges nothing.
      */
     private static ModuleOutcome runModule(
             ModulePlan module,
@@ -199,8 +205,14 @@ final class WorkspaceRunPhase {
             Clock clock) {
         BuildPlanListener moduleListener = listener.onModuleStart(module);
         if (moduleListener != null) module.plan().addListener(moduleListener);
-        watchClassesSteps(module.plan(), relocates, warmup.publish());
+        Runnable admit = warmup.publish();
+        watchClassesSteps(module.plan(), relocates, () -> {
+            siblings.compiled(module.dir());
+            admit.run();
+        });
         watchArtifactSteps(module.plan(), testClassesConsumed, () -> siblings.published(module.dir()));
+        watchOrSignal(module.plan(), TaskNames.COMPILE_TEST_FIXTURES, () -> siblings.fixturesCompiled(module.dir()));
+        watchOrSignal(module.plan(), TaskNames.COMPILE_TEST, () -> siblings.testsCompiled(module.dir()));
         long started = clock.nanos();
         try {
             return runPlan(module, listener, siblings, clock, started);
@@ -350,6 +362,14 @@ final class WorkspaceRunPhase {
     /** Publish artifacts once every cross-module artifact step is terminal-successful. */
     static void watchArtifactSteps(BuildPlan plan, boolean testClassesConsumed, Runnable artifactsReady) {
         watchSteps(plan, artifactWaitSet(plan, testClassesConsumed), artifactsReady);
+    }
+
+    /** Run {@code signal} once {@code step} is terminal-successful, or now when the plan has no such step. */
+    static void watchOrSignal(BuildPlan plan, String step, Runnable signal) {
+        boolean present = false;
+        for (Task t : plan.steps()) present |= t.name().equals(step);
+        if (present) watchSteps(plan, Set.of(step), signal);
+        else signal.run();
     }
 
     /** Run {@code publish} once every step of {@code steps} is terminal-successful; never for an empty set. */

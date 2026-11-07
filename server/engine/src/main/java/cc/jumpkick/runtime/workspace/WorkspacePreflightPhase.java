@@ -357,7 +357,7 @@ public final class WorkspacePreflightPhase {
 
     static Set<Path> jarConsumed(BuildGraph.Result graph) {
         Set<Path> consumed = new LinkedHashSet<>();
-        for (Set<Path> prereqs : graph.edges().values()) {
+        for (Set<Path> prereqs : graph.reads().values()) {
             for (Path prereq : prereqs) consumed.add(BuildGraph.canonicalPath(prereq));
         }
         return consumed;
@@ -374,7 +374,7 @@ public final class WorkspacePreflightPhase {
             byDir.put(BuildGraph.canonicalPath(unit.dir()), unit.manifest());
         }
         Set<Path> launched = new LinkedHashSet<>();
-        for (Map.Entry<Path, Set<Path>> edge : graph.edges().entrySet()) {
+        for (Map.Entry<Path, Set<Path>> edge : graph.reads().entrySet()) {
             JkBuild consumer = byDir.get(BuildGraph.canonicalPath(edge.getKey()));
             if (consumer == null || !PlannerSupport.needsNestedEngineIsolation(consumer)) continue;
             for (Path prereq : edge.getValue()) {

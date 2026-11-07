@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -36,9 +37,10 @@ final class GraphModuleEdges {
             if (graph.hasErrors()) return List.of();
             Path base = BuildGraph.canonicalPath(root.toAbsolutePath().normalize());
             List<String> out = new ArrayList<>();
+            Map<Path, Set<Path>> reads = graph.reads();
             for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
                 Set<String> prereqs = new TreeSet<>();
-                for (Path dir : graph.edges().getOrDefault(unit.dir(), Set.of())) prereqs.add(prefix(base, dir));
+                for (Path dir : reads.getOrDefault(unit.dir(), Set.of())) prereqs.add(prefix(base, dir));
                 StringBuilder row = new StringBuilder(prefix(base, unit.dir()));
                 for (String p : prereqs) row.append('\t').append(p);
                 out.add(row.toString());

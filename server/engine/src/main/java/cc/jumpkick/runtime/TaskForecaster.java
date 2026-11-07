@@ -156,6 +156,7 @@ public final class TaskForecaster {
         }
         Map<Path, TaskForecast.Module> forecast = new ConcurrentHashMap<>();
         Set<Path> seeds = ConcurrentHashMap.newKeySet();
+        Map<Path, Set<Path>> reads = graph.reads();
         Consumer<BuildGraph.BuildUnit> one = u -> {
             // A cancelled job stops at the module boundary: a walk over a thousand-module reactor
             // otherwise runs on for minutes after the client has gone, and the abandoned forecast
@@ -172,8 +173,7 @@ public final class TaskForecaster {
             // must not force compile/package/native — only tests re-run against the new jar.
             // Treating every graph edge as compile-dirty was pricing full native-image (~35s)
             // on dogfood engine edits while live builds skipped compile+package+native.
-            DepDirtiness dep =
-                    depDirtiness(u, graph.edges().getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
+            DepDirtiness dep = depDirtiness(u, reads.getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
             long t0 = Perf.start();
             TaskForecast.Module m = forecastModule(
                     u,
@@ -204,7 +204,8 @@ public final class TaskForecaster {
                 seeds.add(u.dir());
             }
         };
-        for (List<Path> wave : BuildGraph.waves(byDir.keySet(), graph.edges())) {
+        // A test edge orders the walk too: the consumer's suite re-runs when the sibling's output moves.
+        for (List<Path> wave : BuildGraph.waves(byDir.keySet(), graph.readOrder())) {
             List<BuildGraph.BuildUnit> members = new ArrayList<>(wave.size());
             for (Path d : wave) {
                 BuildGraph.BuildUnit u = byDir.get(d);

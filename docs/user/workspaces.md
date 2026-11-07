@@ -166,6 +166,46 @@ widget-core = { workspace = true, fixtures = true }
 `fixtures = true` does not imply `kind = "tests"` and is illegal outside test scopes. The
 output is `{target}/test-fixtures/classes/` — it never enters a POM.
 
+### Test edges
+
+A sibling named only in test scopes (`[test-dependencies]`, `[test-dev-dependencies]`,
+`[test-processor-dependencies]`) is a test edge. It does not hold the module back: the module
+compiles its main sources while the sibling builds. Only the module's test steps wait, each for
+what it reads:
+
+| Step | Waits for |
+|---|---|
+| fixtures compile, test compile, guard-suite compile | the sibling's classes (and its own siblings'), the fixtures a `fixtures = true` edge selects, the test classes a `kind = "tests"` edge selects |
+| test run | the jars of every sibling on the test runtime classpath |
+
+No wait is on a sibling's tests, so two members whose tests read each other build, as they do
+under Gradle, where edges are per source set. The shape `java-test-fixtures` gives an
+architecture-rules module is the common one:
+
+```toml
+# infrastructure/jk.toml — its tests read architecture-tests' fixtures
+[test-dependencies]
+architecture-tests = { workspace = true, fixtures = true }
+
+# architecture-tests/jk.toml — its fixtures and tests read infrastructure's main
+[test]
+fixtures = true
+
+[test-dependencies]
+infrastructure = { workspace = true }
+```
+
+Both start at once; architecture-tests' fixtures compile once infrastructure's classes are whole,
+and infrastructure's tests compile once those fixtures are. A loop through any other table is a
+build-order cycle, refused before anything builds with the members and the tables that close it:
+
+```text
+workspace build graph has a cycle: a → b → a (a [dependencies] names b; b [dependencies] names a). Only a test-scope edge may close a loop between members.
+```
+
+Fixtures compile against the whole test classpath, so two members whose fixtures select each
+other's fixtures do loop, and the build stops there.
+
 ## Shaded siblings
 
 A sibling compiles against a module's classes tree, which is whole as soon as the module has

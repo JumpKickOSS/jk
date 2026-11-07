@@ -80,8 +80,9 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 
 `WorkSchedule` admits **first ready in topo/list order**, at most `concurrency` in flight, and a
 module is ready when every dirty prerequisite has passed its **gate** — the same policy as the
-bounded `WorkspaceScheduler`, which admits a dependent when its prerequisites have published their
-classes trees (compile and resource copy), not when they have packaged or tested. A cost carries the
+bounded `WorkspaceScheduler`, which admits a dependent when its build-order prerequisites have
+published their classes trees (compile and resource copy), not when they have packaged or tested. A
+test edge is no prerequisite here: it orders the consumer's test steps inside its plan. A cost carries the
 gate as `ModuleWorkCost.gateWeight` (`EffortWeights.gatesDependents` names the steps); a cost that
 never split its prefix gates on the whole prefix.
 

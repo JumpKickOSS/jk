@@ -5,14 +5,17 @@ import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PathSource;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -32,11 +35,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * BuildPlanner.coreBuilder}). There is no separate "dependency unit" concept: a local sibling is
  * always a workspace module, and a git dependency (any ref type) is always a lock-pinned
  * coordinate resolved by {@link GitSourceResolution} — neither needs its own build unit here.
- * Edges point from a unit to the units that must build before it (prereqs): sibling deps (every
- * {@code [variants]} value's included) plus {@code [build].order-after}.
+ * Edges point from a unit to the units that must build before it (prereqs): sibling deps in every
+ * scope but the test scopes (every {@code [variants]} value's included) plus {@code
+ * [build].order-after}. A sibling named only in a test scope is a test edge: it orders the unit's
+ * test steps after the sibling ({@link cc.jumpkick.runtime.base.SiblingArtifacts}), never the unit,
+ * so two members whose tests read each other build as Gradle builds them.
  *
- * <p>Cycles, chains deeper than {@link #MAX_DEPTH} and a {@code path} dependency on a member are
- * reported as errors before any build runs.
+ * <p>A cycle among the build-order edges, chains deeper than {@link #MAX_DEPTH} and a {@code path}
+ * dependency on a member are reported as errors before any build runs.
  */
 public final class BuildGraph {
 
@@ -53,12 +59,81 @@ public final class BuildGraph {
 
     /**
      * @param topoOrder dependency-first build order ({@code errors} empty ⇒ valid)
-     * @param edges unit dir → dirs that must build before it
+     * @param edges unit dir → dirs that must build before it: what admits a unit and what may not cycle
+     * @param testEdges unit dir → dirs only its test scopes name, none of them in {@code edges}
      * @param errors cycle / depth-cap / missing-jk.toml
      */
-    public record Result(List<BuildUnit> topoOrder, Map<Path, Set<Path>> edges, List<String> errors) {
+    public record Result(
+            List<BuildUnit> topoOrder,
+            Map<Path, Set<Path>> edges,
+            Map<Path, Set<Path>> testEdges,
+            List<String> errors) {
         public boolean hasErrors() {
             return !errors.isEmpty();
+        }
+
+        /** {@code edges} and {@code testEdges} together: every sibling a unit reads at any point. */
+        public Map<Path, Set<Path>> reads() {
+            if (testEdges.isEmpty()) return edges;
+            Map<Path, Set<Path>> all = new LinkedHashMap<>();
+            for (var e : edges.entrySet()) all.put(e.getKey(), new LinkedHashSet<>(e.getValue()));
+            for (var e : testEdges.entrySet()) {
+                all.computeIfAbsent(e.getKey(), k -> new LinkedHashSet<>()).addAll(e.getValue());
+            }
+            return all;
+        }
+
+        /**
+         * {@code edges} plus every test edge that closes no cycle: the order a walk that reads a
+         * unit's whole classpath, its tests' included, visits units in. Equals {@link #reads()} when
+         * no test edge closes a cycle.
+         */
+        public Map<Path, Set<Path>> readOrder() {
+            Map<Path, Set<Path>> all = reads();
+            if (all == edges || ModuleOrder.kahnSort(all.keySet(), all).size() == all.size()) return all;
+            Map<Path, Set<Path>> order = new LinkedHashMap<>();
+            for (var e : edges.entrySet()) order.put(e.getKey(), new LinkedHashSet<>(e.getValue()));
+            for (var e : testEdges.entrySet()) {
+                for (Path prereq : e.getValue()) {
+                    if (!reaches(order, prereq, e.getKey())) {
+                        order.computeIfAbsent(e.getKey(), k -> new LinkedHashSet<>())
+                                .add(prereq);
+                    }
+                }
+            }
+            return order;
+        }
+
+        /**
+         * What each unit's tests read of a sibling beyond its {@code edges}: the classes trees of its
+         * test edges, and the fixtures and test classes it selects of any sibling.
+         */
+        public SiblingArtifacts.TestReads testReads() {
+            Map<String, Path> dirByCoord = new LinkedHashMap<>();
+            Map<String, Path> dirByName = new LinkedHashMap<>();
+            for (BuildUnit u : topoOrder) {
+                dirByCoord.put(u.coord(), u.dir());
+                dirByName.put(u.manifest().project().name(), u.dir());
+            }
+            Map<Path, Set<Path>> fixtures = new LinkedHashMap<>();
+            Map<Path, Set<Path>> testClasses = new LinkedHashMap<>();
+            for (BuildUnit u : topoOrder) {
+                for (Scope scope : ModuleOrder.TEST_ONLY_SCOPES) {
+                    for (Dependency d : u.manifest().dependencies().of(scope)) {
+                        Path dir = ModuleOrder.resolveSibling(d, dirByCoord, dirByName);
+                        if (dir == null || dir.equals(u.dir())) continue;
+                        if (d.fixtures())
+                            fixtures.computeIfAbsent(u.dir(), k -> new LinkedHashSet<>())
+                                    .add(dir);
+                        if (d.kind() == DependencyKind.TESTS) {
+                            testClasses
+                                    .computeIfAbsent(u.dir(), k -> new LinkedHashSet<>())
+                                    .add(dir);
+                        }
+                    }
+                }
+            }
+            return new SiblingArtifacts.TestReads(testEdges, fixtures, testClasses);
         }
 
         /** {@link BuildGraph#maxReadyWidth(List, Map)} over this graph's own order and edges. */
@@ -78,6 +153,10 @@ public final class BuildGraph {
             for (BuildUnit u : topoOrder) {
                 if (canon.contains(BuildGraph.canonicalPath(u.dir()))) units.add(u);
             }
+            return new Result(units, keepWithin(edges, canon), keepWithin(testEdges, canon), errors);
+        }
+
+        private static Map<Path, Set<Path>> keepWithin(Map<Path, Set<Path>> edges, Set<Path> canon) {
             Map<Path, Set<Path>> e = new LinkedHashMap<>();
             for (var en : edges.entrySet()) {
                 if (!canon.contains(BuildGraph.canonicalPath(en.getKey()))) continue;
@@ -87,7 +166,19 @@ public final class BuildGraph {
                 }
                 e.put(en.getKey(), pr);
             }
-            return new Result(units, e, errors);
+            return e;
+        }
+
+        /** Whether {@code to} is reachable from {@code from} over {@code edges}. */
+        private static boolean reaches(Map<Path, Set<Path>> edges, Path from, Path to) {
+            Set<Path> seen = new HashSet<>();
+            ArrayDeque<Path> queue = new ArrayDeque<>(List.of(from));
+            while (!queue.isEmpty()) {
+                Path p = queue.poll();
+                if (p.equals(to)) return true;
+                if (seen.add(p)) queue.addAll(edges.getOrDefault(p, Set.of()));
+            }
+            return false;
         }
     }
 
@@ -169,12 +260,12 @@ public final class BuildGraph {
             b.addUnit(b.canonical(entryDir), entry, Origin.ROOT);
         }
         List<BuildUnit> order = b.errors.isEmpty() ? b.topoSort() : List.of();
-        return new Result(order, b.edges, b.errors);
+        return new Result(order, b.edges, b.testEdges, b.errors);
     }
 
     /**
-     * Order workspace modules dependency-first (sibling deps + {@code order-after}). Paths are
-     * returned as given. On a cycle, remaining modules are appended in declaration order.
+     * Order workspace modules dependency-first (build-order sibling deps + {@code order-after}).
+     * Paths are returned as given. On a cycle, remaining modules are appended in declaration order.
      */
     public static List<Path> orderModules(Map<Path, JkBuild> modulesByDir) {
         return ModuleOrder.orderModules(modulesByDir);
@@ -188,12 +279,6 @@ public final class BuildGraph {
         return ModuleOrder.orderModules(root, modulesByDir);
     }
 
-    /** See {@link cc.jumpkick.config.ModuleOrder#modulePrereqs} — the one shared edge computation. */
-    private static Set<Path> modulePrereqs(
-            Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
-        return ModuleOrder.modulePrereqs(moduleDir, m, dirByCoord, dirByName);
-    }
-
     /** See {@link cc.jumpkick.config.ModuleOrder#kahnSort} — the one shared topo-sort. */
     private static List<Path> kahnSort(Collection<Path> nodes, Map<Path, Set<Path>> edges) {
         return ModuleOrder.kahnSort(nodes, edges);
@@ -202,6 +287,9 @@ public final class BuildGraph {
     private static final class Builder {
         final Map<Path, BuildUnit> units = new LinkedHashMap<>(); // canonical dir → unit
         final Map<Path, Set<Path>> edges = new LinkedHashMap<>(); // dir → prereq dirs
+        final Map<Path, Set<Path>> testEdges = new LinkedHashMap<>(); // dir → test-only prereq dirs
+        final Map<String, Path> dirByCoord = new LinkedHashMap<>();
+        final Map<String, Path> dirByName = new LinkedHashMap<>();
         final List<String> errors = new ArrayList<>();
 
         void addUnit(Path canonicalDir, JkBuild m, Origin origin) {
@@ -227,9 +315,6 @@ public final class BuildGraph {
         /** Add every module of a workspace as a unit, then wire module-order edges. */
         void addWorkspace(Path wsRoot, JkBuild root, Origin moduleOrigin) throws IOException {
             Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(wsRoot, root);
-            // Index by coord + bare name for sibling/order-after edge resolution.
-            Map<String, Path> dirByCoord = new LinkedHashMap<>();
-            Map<String, Path> dirByName = new LinkedHashMap<>();
             // A workspace root that carries its own sources is itself a build unit — it
             // compiles and locks like any module (its coordinate is already in the
             // collision set). A pure coordinator root (no src/) is not built; its merged
@@ -266,7 +351,7 @@ public final class BuildGraph {
             }
             for (var e : modules.entrySet()) {
                 Path moduleDir = canonical(e.getKey());
-                addModuleEdges(rootDir, moduleDir, e.getValue(), dirByCoord, dirByName);
+                addModuleEdges(rootDir, moduleDir, e.getValue());
             }
             // The root is a first-class unit whose inter-unit deps are explicit
             // (Cargo/uv style), so its edges come from its declared workspace deps
@@ -274,7 +359,7 @@ public final class BuildGraph {
             // or neither. dirByName/dirByCoord already include the root (added above),
             // so member->root deps resolve to an edge here too.
             if (rootBuildable) {
-                addModuleEdges(rootDir, rootDir, root, dirByCoord, dirByName);
+                addModuleEdges(rootDir, rootDir, root);
             }
             // `after-build` means after every member, so the sourceless root depends on all of
             // them. A root that builds nothing publishes nothing, so no member can depend back on
@@ -286,24 +371,32 @@ public final class BuildGraph {
             }
         }
 
-        /** Every scope: the default workspace build-order edge set. */
+        /** Every scope: what the path-dependency check reads. */
         private static final List<Scope> ALL_SCOPES = List.of(Scope.values());
 
         /**
-         * Sibling-dep + {@code [build].order-after} prereq edges. Delegates edge resolution to the
-         * shared {@link BuildGraph#modulePrereqs} so the graph and {@link BuildGraph#orderModules}
-         * stay in lock-step.
+         * Build-order prereq edges (sibling deps outside the test scopes + {@code
+         * [build].order-after}) and test edges. Delegates edge resolution to the shared {@link
+         * ModuleOrder} so the graph and {@link BuildGraph#orderModules} stay in lock-step.
          */
-        private void addModuleEdges(
-                Path rootDir, Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
-            for (Path prereq : modulePrereqs(moduleDir, m, dirByCoord, dirByName)) {
+        private void addModuleEdges(Path rootDir, Path moduleDir, JkBuild m) {
+            for (Path prereq :
+                    ModuleOrder.modulePrereqs(moduleDir, m, dirByCoord, dirByName, ModuleOrder.BUILD_ORDER_SCOPES)) {
                 addEdge(moduleDir, prereq);
             }
             // A published POM edge onto a member puts that member's output on this module's
             // classpath without any declared dependency naming it; the wave has to know.
-            for (Path prereq : ModuleOrder.substitutedPrereqs(rootDir, moduleDir, m, ALL_SCOPES, dirByCoord)) {
+            for (Path prereq :
+                    ModuleOrder.substitutedPrereqs(rootDir, moduleDir, m, ModuleOrder.BUILD_ORDER_SCOPES, dirByCoord)) {
                 addEdge(moduleDir, prereq);
             }
+            Set<Path> test = new LinkedHashSet<>(ModuleOrder.testOnlyPrereqs(moduleDir, m, dirByCoord, dirByName));
+            test.addAll(
+                    ModuleOrder.substitutedPrereqs(rootDir, moduleDir, m, ModuleOrder.TEST_ONLY_SCOPES, dirByCoord));
+            test.removeAll(edges.getOrDefault(moduleDir, Set.of()));
+            test.remove(moduleDir);
+            if (!test.isEmpty())
+                testEdges.computeIfAbsent(moduleDir, k -> new LinkedHashSet<>()).addAll(test);
             rejectPathToMember(moduleDir, m);
         }
 
@@ -326,14 +419,88 @@ public final class BuildGraph {
             }
         }
 
-        /** Kahn topo-sort (prereqs first); a leftover set means a cycle → error. */
+        /** Kahn topo-sort (prereqs first); a leftover set means a cycle → an error naming it. */
         List<BuildUnit> topoSort() {
             List<Path> sorted = kahnSort(units.keySet(), edges);
             if (sorted.size() != units.size()) {
-                errors.add("workspace build graph has a cycle among " + (units.size() - sorted.size()) + " unit(s)");
+                Set<Path> stuck = new LinkedHashSet<>(units.keySet());
+                sorted.forEach(stuck::remove);
+                errors.add(cycleError(stuck));
                 return List.of();
             }
             return sorted.stream().map(units::get).toList();
+        }
+
+        /**
+         * One cycle among {@code stuck} (the units Kahn could not place), each member named and each
+         * edge closing it with the table that declares it. A leftover that only depends on a cycle
+         * is not in it.
+         */
+        private String cycleError(Set<Path> stuck) {
+            List<Path> cycle = findCycle(stuck);
+            StringBuilder msg = new StringBuilder("workspace build graph has a cycle: ");
+            for (Path p : cycle) msg.append(nameOf(p)).append(" → ");
+            msg.append(nameOf(cycle.getFirst())).append(" (");
+            for (int i = 0; i < cycle.size(); i++) {
+                Path from = cycle.get(i);
+                Path to = cycle.get((i + 1) % cycle.size());
+                if (i > 0) msg.append("; ");
+                msg.append(nameOf(from))
+                        .append(' ')
+                        .append(edgeCause(from, to))
+                        .append(' ')
+                        .append(nameOf(to));
+            }
+            msg.append("). Only a test-scope edge may close a loop between members.");
+            return msg.toString();
+        }
+
+        /** A cycle among {@code stuck}: walk prereqs inside the set until a unit repeats. */
+        private List<Path> findCycle(Set<Path> stuck) {
+            List<Path> path = new ArrayList<>();
+            Map<Path, Integer> at = new LinkedHashMap<>();
+            Path cur = stuck.iterator().next();
+            while (!at.containsKey(cur)) {
+                at.put(cur, path.size());
+                path.add(cur);
+                Path next = null;
+                for (Path p : edges.getOrDefault(cur, Set.of())) {
+                    if (stuck.contains(p)) {
+                        next = p;
+                        break;
+                    }
+                }
+                // Every leftover keeps at least one leftover prereq, or Kahn would have placed it.
+                if (next == null) return path;
+                cur = next;
+            }
+            return path.subList(at.get(cur), path.size());
+        }
+
+        private String nameOf(Path dir) {
+            BuildUnit u = units.get(dir);
+            return u == null ? dir.toString() : u.manifest().project().name();
+        }
+
+        /** How {@code from} names {@code to}: the tables that declare it, else the other edge kinds. */
+        private String edgeCause(Path from, Path to) {
+            BuildUnit u = units.get(from);
+            if (u == null) return "depends on";
+            JkBuild m = u.manifest();
+            Set<String> tables = new LinkedHashSet<>();
+            for (Scope scope : ModuleOrder.BUILD_ORDER_SCOPES) {
+                for (Dependency d : ModuleOrder.declared(m, scope)) {
+                    if (to.equals(ModuleOrder.resolveSibling(d, dirByCoord, dirByName))) {
+                        tables.add("[" + scope.tomlSection() + "]");
+                    }
+                }
+            }
+            if (!tables.isEmpty()) return String.join(" ", tables) + " names";
+            for (String ref : m.build().allOrderAfter()) {
+                Path dir = dirByCoord.getOrDefault(ref, dirByName.getOrDefault(ref, dirByName.get("jk-" + ref)));
+                if (to.equals(dir)) return "[build].order-after names";
+            }
+            return "depends through a published POM edge on";
         }
 
         Path canonical(Path p) {
