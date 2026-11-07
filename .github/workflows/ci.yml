@@ -176,7 +176,7 @@ jobs:
       # jk's native step links the client against the GraalVM the request's GRAALVM_HOME names
       # before it looks for an installed one; the action provides it so the lane does not download
       # a Graal of its own.
-      - uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1.6.7
+      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -326,7 +326,7 @@ jobs:
         shell: bash
         run: echo "JK_HOME=$RUNNER_TEMP/jk-home" >> "$GITHUB_ENV"
 
-      - uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1.6.7
+      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
         with:
           java-version: '25'
           distribution: 'graalvm'
