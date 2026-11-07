@@ -94,6 +94,8 @@ public final class ProjectImport {
             ImportReport importReport;
             FrontendFiles frontend = FrontendFiles.NONE;
             List<UserConfigEditor.RepositoryTable> machineRepositories = List.of();
+            // Gradle's model carries the versions its conflict resolution chose; those are the pins.
+            boolean pinsResolved = false;
 
             if (filename.endsWith("pom.xml")) {
                 FrontendCollector frontends = new FrontendCollector();
@@ -113,6 +115,7 @@ public final class ProjectImport {
                 modules.putAll(result.modules());
                 importReport = result.report();
                 machineRepositories = result.machineRepositories();
+                pinsResolved = result.pinsResolved();
             } else {
                 return Outcome.failed(Exit.USAGE, "unrecognised source: " + source.getFileName());
             }
@@ -153,7 +156,7 @@ public final class ProjectImport {
                     wrote.add(e.getKey());
                 }
                 importReport = machineRepositories(importReport, machineRepositories, JkDirs.userConfigFile(), wrote);
-                importReport = raisedAt(importReport, raise, out, modules.isEmpty());
+                if (!pinsResolved) importReport = raisedAt(importReport, raise, out, modules.isEmpty());
             }
 
             Path reportTarget = report;

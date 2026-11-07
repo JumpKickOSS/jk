@@ -7,6 +7,7 @@ import cc.jumpkick.compat.NodeImportMapping;
 import cc.jumpkick.compat.RelocationRules;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.groovy.GroovyResolver;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
@@ -19,8 +20,10 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.mvn.ModuleRows;
 import cc.jumpkick.version.Versions;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -99,6 +102,7 @@ final class GradleModelImporter {
             "com.google.devtools.ksp",
             GradleImporter.DOKKA_PLUGIN,
             GradleImporter.GIT_PROPERTIES_PLUGIN,
+            "java-test-fixtures",
             XJC_PLUGIN);
 
     /** Plugin class-name prefixes the probed ids already account for. */
@@ -210,7 +214,7 @@ final class GradleModelImporter {
             for (GradleModel.Repository r : root.repositories()) repository(r);
             JkBuild single = memberBuild(
                     root, GradleModuleSettings.artifactName(root, report), "", new ArrayList<>(repositories.values()));
-            return new GradleBuildImport.Result(single, Map.of(), finish(), machineRepositories);
+            return new GradleBuildImport.Result(single, Map.of(), finish(), machineRepositories, true);
         }
         nameMembers(members);
         Project rootProject = rootProject(root, members);
@@ -235,7 +239,7 @@ final class GradleModelImporter {
                         members.stream().map(GradleModel.Project::dir).toList()))
                 .repositories(new ArrayList<>(repositories.values()))
                 .build();
-        return new GradleBuildImport.Result(rootBuild, modules, finish(), machineRepositories);
+        return new GradleBuildImport.Result(rootBuild, modules, finish(), machineRepositories, true);
     }
 
     private ImportReport finish() {
@@ -350,7 +354,7 @@ final class GradleModelImporter {
         manifest.remove("Manifest-Version");
         String mainClass = p.mainClass() != null ? p.mainClass() : manifest.remove("Main-Class");
         manifest.remove("Main-Class");
-        BuildBlock build = BuildBlock.EMPTY;
+        BuildBlock build = BuildBlock.EMPTY.withFixtures(fixturesRoot(p, applied, local));
         if (applied.contains("war")) build = build.withWar(new BuildBlock.War(null, BuildBlock.War.DEFAULT_WEBAPP));
         if (p.bootBuildInfo() || applied.contains(GradleImporter.GIT_PROPERTIES_PLUGIN)) {
             build = build.withBuildInfo(BuildBlock.BuildInfo.DEFAULT);
@@ -391,6 +395,29 @@ final class GradleModelImporter {
         jkBuild = NodeImportMapping.apply(jkBuild, node);
         rows.addAll(modulePath, local.build());
         return jkBuild;
+    }
+
+    /**
+     * The {@code [test] fixtures} root of a project that applies {@code java-test-fixtures}: its
+     * {@code testFixtures} source set's Java root, read where it is. {@code null} without the plugin.
+     */
+    private static @Nullable String fixturesRoot(
+            GradleModel.Project p, Set<String> applied, ImportReport.Builder local) {
+        if (!applied.contains("java-test-fixtures")) return null;
+        GradleModel.SourceSet fixtures = p.sourceSets().stream()
+                .filter(s -> s.name().equals("testFixtures"))
+                .findFirst()
+                .orElse(null);
+        List<String> java = fixtures == null ? List.of() : fixtures.java();
+        String root = java.isEmpty() ? "src/testFixtures/java" : java.getFirst();
+        if (java.size() > 1) {
+            local.warning("source set testFixtures reads " + String.join(", ", java) + "; [test] fixtures = \"" + root
+                    + "\" compiles the first");
+        }
+        if (fixtures != null && !fixtures.kotlin().stream().allMatch(java::contains)) {
+            local.warning("source set testFixtures has Kotlin roots; jk compiles Java fixtures only");
+        }
+        return root;
     }
 
     /**
@@ -590,15 +617,24 @@ final class GradleModelImporter {
             boolean platformed) {
         switch (d.kind()) {
             case "project" -> {
+                // A project's own fixtures and main are on its tests already; java-test-fixtures
+                // also declares testFixturesApi(project(self)).
+                if (p.path().equals(d.projectPath())) return;
                 String sibling = d.projectPath() == null ? null : namesByPath.get(d.projectPath());
                 if (sibling == null) {
                     local.warning("project " + d.projectPath() + " (" + configuration + ") is not a workspace module;"
                             + " dropped");
                     return;
                 }
-                Dependency edge = Dependency.workspace(sibling);
+                boolean fixtures = d.fixtures() && scope == Scope.TEST;
+                if (d.fixtures() && !fixtures) {
+                    local.warning("testFixtures(project(" + d.projectPath() + ")) (" + configuration
+                            + ") outside a test configuration; wrote the main edge");
+                }
+                Dependency edge = Dependency.workspace(sibling).withFixtures(fixtures);
                 if (!d.excludes().isEmpty()) edge = edge.withExclusions(exclusions(d));
-                deps.computeIfAbsent(scope, s -> new ArrayList<>()).add(edge);
+                addWorkspaceEdge(deps.computeIfAbsent(scope, s -> new ArrayList<>()), edge);
+                if (fixtures) fixturesApi(p, d.projectPath(), deps, local, platformed);
             }
             case "module" -> mapModule(p, scope, d, deps, local, platformed);
             case "files" ->
@@ -607,6 +643,47 @@ final class GradleModelImporter {
             default ->
                 local.warning((d.text() == null ? d.kind() : d.text()) + " (" + configuration
                         + ") is not a coordinate or project; dropped");
+        }
+    }
+
+    /**
+     * Add {@code edge} to {@code scope}, folded into an edge on the same sibling already there: one
+     * entry per sibling, with fixtures when either declaration asked for them.
+     */
+    private static void addWorkspaceEdge(List<Dependency> scope, Dependency edge) {
+        for (int i = 0; i < scope.size(); i++) {
+            Dependency existing = scope.get(i);
+            if (!existing.isWorkspace() || !existing.library().equals(edge.library())) continue;
+            if (edge.fixtures() && !existing.fixtures()) scope.set(i, existing.withFixtures(true));
+            return;
+        }
+        scope.add(edge);
+    }
+
+    /**
+     * The libraries the producer's {@code testFixturesApi} exports, onto the consumer's test scope:
+     * Gradle puts them on every fixtures consumer's classpath, and a jk fixtures edge does not carry
+     * the producer's test dependencies.
+     */
+    private void fixturesApi(
+            GradleModel.Project consumer,
+            @Nullable String producerPath,
+            Map<Scope, List<Dependency>> deps,
+            ImportReport.Builder local,
+            boolean platformed) {
+        GradleModel.Project producer = model.projects().stream()
+                .filter(q -> q.path().equals(producerPath))
+                .findFirst()
+                .orElse(null);
+        if (producer == null) return;
+        List<Dependency> test = deps.computeIfAbsent(Scope.TEST, s -> new ArrayList<>());
+        for (GradleModel.Configuration c : producer.configurations()) {
+            if (!c.name().equals("testFixturesApi")) continue;
+            for (GradleModel.Dependency d : c.dependencies()) {
+                if (!d.kind().equals("module") || d.isPlatform()) continue;
+                if (test.stream().anyMatch(e -> e.module().equals(d.module()))) continue;
+                mapModule(consumer, Scope.TEST, d, deps, local, platformed);
+            }
         }
     }
 
@@ -704,8 +781,6 @@ final class GradleModelImporter {
             switch (id) {
                 case "groovy", "scala" ->
                     local.warning(id + ": set project." + id + " to the build's compiler version");
-                case "java-test-fixtures" ->
-                    local.warning("java-test-fixtures: set [test] fixtures = true; move fixtures to src/fixtures/java");
                 case "checkstyle", "pmd" -> local.warning(id + ": configure [lint] by hand");
                 default -> local.warning("Gradle plugin " + id + " not mapped");
             }
@@ -724,8 +799,16 @@ final class GradleModelImporter {
         }
     }
 
-    private static void reportSourceSets(GradleModel.Project p, ImportReport.Builder local) {
+    private void reportSourceSets(GradleModel.Project p, ImportReport.Builder local) {
         for (GradleModel.SourceSet s : p.sourceSets()) {
+            if (s.name().equals("testFixtures")) {
+                Path dir = buildRoot.resolve(p.dir());
+                if (s.resources().stream().anyMatch(r -> holdsFiles(dir.resolve(r)))) {
+                    local.warning("source set testFixtures has resources in " + String.join(", ", s.resources())
+                            + "; jk fixtures compile Java only, so move them under src/test/resources");
+                }
+                continue;
+            }
             if (!s.name().equals("main") && !s.name().equals("test")) {
                 local.warning("source set " + s.name() + " has no jk equivalent; sources not imported");
                 continue;
@@ -740,6 +823,16 @@ final class GradleModelImporter {
                 local.warning("source set " + s.name() + " reads " + String.join(", ", odd)
                         + ", outside jk's layout; move them or generate them");
             }
+        }
+    }
+
+    /** Whether a regular file sits anywhere under {@code dir}. */
+    private static boolean holdsFiles(Path dir) {
+        if (!Files.isDirectory(dir)) return false;
+        try {
+            return PathUtil.anyRegularFile(dir, d -> false, f -> true);
+        } catch (IOException unreadable) {
+            return false;
         }
     }
 

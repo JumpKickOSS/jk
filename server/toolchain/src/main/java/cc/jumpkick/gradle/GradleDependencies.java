@@ -402,6 +402,11 @@ final class GradleDependencies {
             case "compileOnly", "compileOnlyApi", "providedRuntime", "providedCompile" -> Scope.PROVIDED;
             case "testImplementation", "testApi", "testCompile", "testRuntimeOnly", "testRuntime", "testCompileOnly" ->
                 Scope.TEST;
+            // java-test-fixtures: jk compiles fixtures against main and the test classpath.
+            case "testFixturesApi",
+                    "testFixturesImplementation",
+                    "testFixturesCompileOnly",
+                    "testFixturesRuntimeOnly" -> Scope.TEST;
             case "annotationProcessor", "kapt", "ksp" -> Scope.PROCESSOR;
             case "testAnnotationProcessor", "kaptTest", "kspTest" -> Scope.TEST_PROCESSOR;
             default -> null;

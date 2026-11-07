@@ -8,6 +8,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.TestImporters;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -184,5 +185,43 @@ class ProjectImportTest {
                     </project>
                     """.formatted(module));
         }
+    }
+
+    /** Gradle resolved the graph it modelled, so its pins are already what highest-wins gives: no probe. */
+    @Test
+    void a_gradle_build_read_through_its_model_is_not_pin_checked(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("settings.gradle.kts"), "rootProject.name = \"solo\"\n");
+        Files.writeString(root.resolve("build.gradle.kts"), "plugins { java }\n");
+        String model = """
+                {"gradle":"9.8.0","rootName":"solo","settingsRepositories":[],"projects":[
+                 {"path":":","projectName":"solo","dir":"","group":"com.example","version":"1.0.0",
+                  "plugins":["java"],"pluginClasses":[],"pluginVersions":{},"bootBuildInfo":false,"repositories":[],
+                  "sourceSets":[{"name":"main","java":["src/main/java"],"resources":["src/main/resources"],"kotlin":[]}],
+                  "configurations":[{"name":"implementation","dependencies":[
+                    {"kind":"module","group":"com.google.guava","artifact":"guava","version":"33.0.0-jre","excludes":[]}],
+                    "constraints":[]}],
+                  "resolved":["com.google.guava:guava@33.4.8-jre"],"tasks":[]}]}
+                """;
+        List<Path> probed = new ArrayList<>();
+
+        ProjectImport.Outcome outcome = ProjectImport.run(
+                TestImporters.offline(root.resolve("importer")),
+                GradleBuildImport.withModel((dir, plugins, progress) -> model),
+                root.resolve("build.gradle.kts"),
+                root.resolve("jk.toml"),
+                root,
+                null,
+                false,
+                false,
+                null,
+                note -> {},
+                lockDir -> {
+                    probed.add(lockDir);
+                    return List.of();
+                });
+
+        assertThat(outcome.exit()).as(String.valueOf(outcome.error())).isZero();
+        assertThat(probed).as("no pin probe for a Gradle-resolved import").isEmpty();
+        assertThat(Files.readString(root.resolve("jk.toml"))).contains("33.4.8-jre");
     }
 }

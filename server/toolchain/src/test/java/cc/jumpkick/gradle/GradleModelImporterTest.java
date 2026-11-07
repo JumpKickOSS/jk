@@ -771,6 +771,61 @@ class GradleModelImporterTest {
                 .noneMatch(m -> m.contains("com.github.bjornvester.xjc.XjcPlugin"));
     }
 
+    /**
+     * java-test-fixtures, as a 51-module Spring build used it: the producer's fixtures read a
+     * sibling, and that sibling's tests read the fixtures back.
+     */
+    private static final String TEST_FIXTURES = """
+            {"gradle":"9.8.0","rootName":"shop","settingsRepositories":[],"projects":[
+              {"path":":","projectName":"shop","dir":"","group":"com.acme","version":"1.0","plugins":[],"pluginClasses":[],
+               "pluginVersions":{},"bootBuildInfo":false,"repositories":[],"configurations":[],"tasks":[]},
+              {"path":":arch","projectName":"arch","dir":"arch","group":"com.acme","version":"1.0",
+               "plugins":["java","java-library","java-test-fixtures"],"pluginClasses":[],"pluginVersions":{},"bootBuildInfo":false,"repositories":[],
+               "sourceSets":[{"name":"main","java":["src/main/java"],"resources":["src/main/resources"],"kotlin":[]},
+                             {"name":"test","java":["src/test/java"],"resources":["src/test/resources"],"kotlin":[]},
+                             {"name":"testFixtures","java":["src/testFixtures/java"],"resources":["src/testFixtures/resources"],"kotlin":[]}],
+               "configurations":[
+                 {"name":"testFixturesApi","dependencies":[{"kind":"project","projectPath":":arch"},
+                   {"kind":"module","group":"com.tngtech.archunit","artifact":"archunit-junit5","version":"1.4.2","excludes":[]}],"constraints":[]},
+                 {"name":"testFixturesImplementation","dependencies":[{"kind":"project","projectPath":":infra"}],"constraints":[]},
+                 {"name":"testImplementation","dependencies":[{"kind":"project","projectPath":":arch","fixtures":true},
+                   {"kind":"project","projectPath":":infra"}],"constraints":[]}
+               ],"tasks":[]},
+              {"path":":infra","projectName":"infra","dir":"infra","group":"com.acme","version":"1.0",
+               "plugins":["java","java-library"],"pluginClasses":[],"pluginVersions":{},"bootBuildInfo":false,"repositories":[],
+               "sourceSets":[{"name":"main","java":["src/main/java"],"resources":["src/main/resources"],"kotlin":[]}],
+               "configurations":[
+                 {"name":"testImplementation","dependencies":[{"kind":"project","projectPath":":arch","fixtures":true},
+                   {"kind":"project","projectPath":":arch"}],"constraints":[]}
+               ],"tasks":[]}
+            ]}
+            """;
+
+    @Test
+    void test_fixtures_import_as_the_producers_fixtures_root_and_fixtures_edges() {
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(TEST_FIXTURES, Path.of("/tmp/shop"), RefreshVersions.NONE);
+
+        JkBuild arch = module(result, "arch");
+        assertThat(arch.build().fixtures()).isEqualTo("src/testFixtures/java");
+        assertThat(arch.dependencies().of(Scope.TEST))
+                .as("its own fixtures and main are implicit; the fixtures' sibling and libraries are test dependencies")
+                .extracting(Dependency::library)
+                .containsExactly("archunit-junit5", "infra");
+
+        List<Dependency> infraTests = module(result, "infra").dependencies().of(Scope.TEST);
+        assertThat(infraTests)
+                .as("one edge per sibling, with fixtures; the fixtures' api libraries ride along")
+                .extracting(Dependency::library)
+                .containsExactly("arch", "archunit-junit5");
+        assertThat(infraTests.getFirst().fixtures()).isTrue();
+        assertThat(infraTests.getFirst().isWorkspace()).isTrue();
+
+        assertThat(messages(result.report()))
+                .noneMatch(m -> m.contains("testFixtures") || m.contains("java-test-fixtures"));
+        assertThat(result.pinsResolved()).isTrue();
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }

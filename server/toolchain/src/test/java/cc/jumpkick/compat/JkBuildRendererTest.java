@@ -197,6 +197,31 @@ class JkBuildRendererTest {
     }
 
     @Test
+    void fixtures_root_and_fixtures_edge_round_trip() {
+        JkBuild model = new JkBuild(
+                        Project.builder("com.example", "arch", "1.0.0").build(),
+                        new JkBuild.Dependencies(Map.of(
+                                Scope.TEST,
+                                List.of(
+                                        Dependency.workspace("infra").withFixtures(true),
+                                        Dependency.workspace("support")))))
+                .withBuild(BuildBlock.EMPTY.withFixtures("src/testFixtures/java"));
+        String out = JkBuildRenderer.render(model);
+        assertThat(out)
+                .contains("[test]\nfixtures = \"src/testFixtures/java\"")
+                .contains("infra = { workspace = true, fixtures = true }")
+                .contains("support.workspace = true");
+
+        JkBuild reparsed = JkBuildParser.parse(out);
+        assertThat(reparsed.build().fixtures()).isEqualTo("src/testFixtures/java");
+        assertThat(reparsed.dependencies().of(Scope.TEST))
+                .extracting(Dependency::library, Dependency::fixtures)
+                .containsExactlyInAnyOrder(tuple("infra", true), tuple("support", false));
+        assertThat(JkBuildRenderer.render(model.withBuild(BuildBlock.EMPTY.withFixtures(BuildBlock.DEFAULT_FIXTURES))))
+                .contains("[test]\nfixtures = true");
+    }
+
+    @Test
     void m2integration_opt_out_round_trips() {
         JkBuild model = JkBuild.of(Project.builder("com.example", "widget", "1.0.0")
                 .jdkMajor(25)

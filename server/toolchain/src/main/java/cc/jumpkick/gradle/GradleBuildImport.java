@@ -26,14 +26,16 @@ public final class GradleBuildImport {
 
     /**
      * The root manifest, the members keyed by root-relative path (empty for one project), the rows,
-     * and the {@code ~/.jk/config.toml} tables carrying the credentials the build reads from the
-     * environment.
+     * the {@code ~/.jk/config.toml} tables carrying the credentials the build reads from the
+     * environment, and whether the pins are the versions Gradle resolved — true when Gradle read the
+     * build, false for the scanner, whose pins are only what the script declares.
      */
     public record Result(
             JkBuild root,
             Map<String, JkBuild> modules,
             ImportReport report,
-            List<UserConfigEditor.RepositoryTable> machineRepositories) {}
+            List<UserConfigEditor.RepositoryTable> machineRepositories,
+            boolean pinsResolved) {}
 
     /** Reads the evaluated project model of the build rooted at {@code buildRoot}, as the init script's JSON. */
     public interface ModelSource {
@@ -133,6 +135,6 @@ public final class GradleBuildImport {
             if (issue.severity() == ImportReport.Severity.ERROR) report.error(issue.message());
             else report.warning(issue.message());
         }
-        return new Result(scanned.jkBuild(), Map.of(), report.build(), List.of());
+        return new Result(scanned.jkBuild(), Map.of(), report.build(), List.of(), false);
     }
 }

@@ -117,6 +117,7 @@ public final class JkBuildRenderer {
 
     private static void renderTest(StringBuilder sb, BuildBlock build) {
         if (build.testExtraSrc().isEmpty()
+                && build.fixtures() == null
                 && build.testIncludeTags().isEmpty()
                 && build.testExcludeTags().isEmpty()
                 && build.testExcludeClasses().isEmpty()
@@ -128,6 +129,13 @@ public final class JkBuildRenderer {
             return;
         }
         sb.append("\n[test]\n");
+        if (build.fixtures() != null)
+            sb.append("fixtures = ")
+                    .append(
+                            build.fixtures().equals(BuildBlock.DEFAULT_FIXTURES)
+                                    ? "true"
+                                    : quote(Objects.requireNonNull(build.fixtures())))
+                    .append('\n');
         if (!build.testExtraSrc().isEmpty())
             sb.append("extra-src = ").append(list(build.testExtraSrc())).append('\n');
         if (!build.testExcludeSrc().isEmpty())
@@ -776,6 +784,7 @@ public final class JkBuildRenderer {
                     && !renamed
                     && d.kind() == DependencyKind.MAIN
                     && !d.optional()
+                    && !d.fixtures()
                     && d.exclusions().isEmpty()) {
                 return safeKey(d.library()) + ".workspace = true";
             }
@@ -785,6 +794,7 @@ public final class JkBuildRenderer {
             if (d.kind() != DependencyKind.MAIN)
                 ws.append(", kind = ").append(quote(d.kind().toml()));
             if (d.optional()) ws.append(", optional = true");
+            if (d.fixtures()) ws.append(", fixtures = true");
             if (!d.exclusions().isEmpty()) ws.append(", exclude = ").append(list(d.exclusions()));
             return ws.append(" }").toString();
         }

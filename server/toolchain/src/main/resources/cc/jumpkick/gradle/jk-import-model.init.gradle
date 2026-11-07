@@ -523,7 +523,9 @@ def describeDependency(Dependency d, Project root) {
     if (d instanceof ProjectDependency) {
         def path
         try { path = d.path } catch (Throwable ignored) { path = d.dependencyProject.path }
-        return [kind: 'project', projectPath: path]
+        def r = [kind: 'project', projectPath: path]
+        if (requestsTestFixtures(d)) r.fixtures = true
+        return r
     }
     if (d instanceof ExternalModuleDependency) {
         def r = [kind: 'module', group: d.group ?: '', artifact: d.name, version: d.version ?: '']
@@ -552,6 +554,25 @@ def describeDependency(Dependency d, Project root) {
         return [kind: 'files', files: d.files.collect { root.projectDir.toPath().relativize(it.toPath()).toString().replace('\\', '/') }]
     }
     return [kind: 'other', text: d.toString()]
+}
+
+// Whether `testFixtures(project(...))` wrote this edge: it requires the `test-fixtures` feature
+// (capability selectors, Gradle 8.11+) or the `<name>-test-fixtures` capability (older Gradle).
+def requestsTestFixtures(Dependency d) {
+    try {
+        if (d.metaClass.respondsTo(d, 'getCapabilitySelectors')) {
+            for (def s : d.capabilitySelectors) {
+                if (s.hasProperty('featureName') && s.featureName == 'test-fixtures') return true
+                if (s.hasProperty('name') && s.name?.toString()?.endsWith('-test-fixtures')) return true
+            }
+        }
+    } catch (Throwable ignored) {
+    }
+    try {
+        return d.requestedCapabilities.any { it.name?.endsWith('-test-fixtures') }
+    } catch (Throwable ignored) {
+        return false
+    }
 }
 
 // The declared class of a task or plugin, under the subclass Gradle decorates it with.
