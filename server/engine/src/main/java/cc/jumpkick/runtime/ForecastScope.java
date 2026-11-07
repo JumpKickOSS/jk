@@ -131,9 +131,9 @@ public final class ForecastScope implements StepForecast.Scope {
 
     /**
      * The KSP output dirs this module's build lays down before its compilers read them, which every
-     * predictor of the module reads through ({@link #price}).
+     * predictor of the module reads through ({@link #price}); their bytes are the action cache's.
      */
-    private final ProjectedFiles projection = new ProjectedFiles();
+    private final ProjectedFiles projection;
 
     private final Map<String, TaskForecast.Task> verdicts = new LinkedHashMap<>();
     private final Map<String, Callable<TaskForecast.@Nullable Task>> deferred = new LinkedHashMap<>();
@@ -166,6 +166,7 @@ public final class ForecastScope implements StepForecast.Scope {
         this.cas = cas;
         this.resolver = resolver;
         this.actionCache = actionCache;
+        this.projection = new ProjectedFiles(actionCache.cas()::pathFor);
         this.cache = cache;
         this.restored = restored;
         this.hints = hints;

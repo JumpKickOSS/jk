@@ -382,7 +382,7 @@ public final class PlannerKsp {
                 ctx.require(CLASSPATH),
                 processorCp,
                 split.ksp());
-        if (!runRound(ctx, cx, round)) {
+        if (runRound(ctx, cx, round) == RoundOutcome.KEPT) {
             ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
             ctx.label("up to date");
         }
@@ -421,11 +421,22 @@ public final class PlannerKsp {
             List<Path> kspJars) {}
 
     /**
+     * What became of a round's output: {@link #KEPT} on disk under a fresh stamp, {@link #REPLACED}
+     * without running KSP (restored from the round's record, or removed with no round to refresh
+     * it), or rewritten by a KSP run that {@link #RAN}.
+     */
+    enum RoundOutcome {
+        KEPT,
+        REPLACED,
+        RAN
+    }
+
+    /**
      * Run {@code round} unless its stamp is fresh: resolve the toolchain, clear the previous
      * outputs, restore them from the action record the round's inputs name or fork KSP and record
-     * what it wrote, surface its diagnostics and stamp. False when the stamp held and nothing ran.
+     * what it wrote, surface its diagnostics and stamp.
      */
-    static boolean runRound(TaskContext ctx, BuildPlanner.Ctx cx, Round round) throws Exception {
+    static RoundOutcome runRound(TaskContext ctx, BuildPlanner.Ctx cx, Round round) throws Exception {
         BuildPlanner.Inputs in = cx.in();
         Path outBase = round.outBase();
         List<Path> stampCp = new ArrayList<>(round.classpath());
@@ -447,7 +458,7 @@ public final class PlannerKsp {
         if (!rerun
                 && FreshnessStamp.isFresh(
                         outBase, BuildStamps.KSP, round.stampInputs(), stampCp, ctx.require(RELEASE), optionsDigest)) {
-            return false;
+            return RoundOutcome.KEPT;
         }
 
         // Before the round reads a source: a source edited while it runs is stale next time.
@@ -465,11 +476,13 @@ public final class PlannerKsp {
         }
         ActionCache actionCache = cx.actionCache();
         Optional<ActionCache.ActionRecord> recorded = rerun ? Optional.empty() : actionCache.lookup(key);
+        RoundOutcome outcome = RoundOutcome.REPLACED;
         if (recorded.isPresent() && actionCache.restore(recorded.get(), outBase)) {
             // The record is what the forecast projects the classes tree from after `jk clean`;
             // restoring it rather than re-running is what makes the two agree.
             ctx.label("cache hit");
         } else {
+            outcome = RoundOutcome.RAN;
             ctx.label("KSP " + kspVersion + ": " + round.kspJars().size() + " processor jar(s)");
             KspToolchain toolchain = resolveKspToolchain(project, cx.cas(), kotlinVersion, kspVersion);
             Files.createDirectories(outBase.resolve("caches"));
@@ -509,7 +522,7 @@ public final class PlannerKsp {
                 ctx.require(RELEASE),
                 optionsDigest,
                 readClock);
-        return true;
+        return outcome;
     }
 
     /** Record what a round wrote under {@code outBase}, an empty round as the verdict that it wrote nothing. */
@@ -597,10 +610,9 @@ public final class PlannerKsp {
      * closure plus what {@code [test-processor-dependencies]} adds, so a module whose only KSP
      * processor is a test one still gets its round. Its generated sources join {@link
      * TestSources}; its bytecode and resources are mirrored into the test classes with
-     * the test resources. A module with no KSP processor keeps no test round output. True when the
-     * output tree may have changed.
+     * the test resources. A module with no KSP processor keeps no test round output.
      */
-    static boolean runTestRound(
+    static RoundOutcome runTestRound(
             TaskContext ctx,
             BuildPlanner.Ctx cx,
             TestSources src,
@@ -609,7 +621,7 @@ public final class PlannerKsp {
             @Nullable PluginDeclarations decls)
             throws Exception {
         BuildLayout layout = ctx.require(LAYOUT);
-        if (!cx.kotlinModule()) return dropTestRound(layout);
+        if (!cx.kotlinModule()) return dropped(dropTestRound(layout));
         Path outBase = kspTestOutBase(layout);
         List<Path> processorCp = new ArrayList<>(ctx.require(PROCESSOR_CP));
         for (Path p : ctx.get(TEST_PROCESSOR_CP).orElse(List.of())) {
@@ -618,7 +630,7 @@ public final class PlannerKsp {
         List<Path> kspJars = KspProcessors.split(processorCp).ksp();
         List<Path> roots =
                 testSourceRoots(ctx.require(PROJECT), cx.in().dir(), cx.compact(), compiledSuites, layout, decls);
-        if (kspJars.isEmpty() || roots.isEmpty()) return dropTestRound(layout);
+        if (kspJars.isEmpty() || roots.isEmpty()) return dropped(dropTestRound(layout));
         List<Path> handWritten = new ArrayList<>();
         for (Path source : src.all()) {
             if (!source.startsWith(outBase)) handWritten.add(source);
@@ -634,6 +646,10 @@ public final class PlannerKsp {
                         classpath,
                         processorCp,
                         kspJars));
+    }
+
+    private static RoundOutcome dropped(boolean removed) {
+        return removed ? RoundOutcome.REPLACED : RoundOutcome.KEPT;
     }
 
     /** Remove a test round's output, which no round will refresh; true when there was any. */

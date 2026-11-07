@@ -76,23 +76,24 @@ class CompileTestProcessorTest {
         Path out = dir.resolve("out");
 
         boolean ok = TestSupport.compileWithCache(
-                new NoopContext(),
-                "compile-test",
-                new PlannerCompile.TestCompile(
-                        CompileSupport.collectJavaSources(testSrc),
-                        List.of(procDir),
-                        List.of(procDir), // processor jar on cp AND processorpath
-                        out,
-                        21,
-                        List.of(),
-                        JavacConfig.EMPTY,
-                        Path.of(System.getProperty("java.home")),
-                        null,
-                        null),
-                dir.resolve("gen"),
-                new Cas(dir.resolve("cas")),
-                dir.resolve("cache"),
-                WorkerEnv.strict());
+                        new NoopContext(),
+                        "compile-test",
+                        new PlannerCompile.TestCompile(
+                                CompileSupport.collectJavaSources(testSrc),
+                                List.of(procDir),
+                                List.of(procDir), // processor jar on cp AND processorpath
+                                out,
+                                21,
+                                List.of(),
+                                JavacConfig.EMPTY,
+                                Path.of(System.getProperty("java.home")),
+                                null,
+                                null),
+                        dir.resolve("gen"),
+                        new Cas(dir.resolve("cas")),
+                        dir.resolve("cache"),
+                        WorkerEnv.strict())
+                .ok();
 
         assertThat(ok).isTrue();
         assertThat(out.resolve("app/WidgetTestGen.class")).isRegularFile(); // processor ran
@@ -131,23 +132,24 @@ class CompileTestProcessorTest {
     private static boolean compile(Path dir, Path testSrc, List<Path> classpath, List<Path> processorPath, Path out)
             throws Exception {
         return TestSupport.compileWithCache(
-                new NoopContext(),
-                "compile-test",
-                new PlannerCompile.TestCompile(
-                        CompileSupport.collectJavaSources(testSrc),
-                        classpath,
-                        processorPath,
-                        out,
-                        21,
-                        List.of(),
-                        JavacConfig.EMPTY,
-                        Path.of(System.getProperty("java.home")),
-                        null,
-                        null),
-                dir.resolve("gen"),
-                new Cas(dir.resolve("cas")),
-                dir.resolve("cache"),
-                WorkerEnv.strict());
+                        new NoopContext(),
+                        "compile-test",
+                        new PlannerCompile.TestCompile(
+                                CompileSupport.collectJavaSources(testSrc),
+                                classpath,
+                                processorPath,
+                                out,
+                                21,
+                                List.of(),
+                                JavacConfig.EMPTY,
+                                Path.of(System.getProperty("java.home")),
+                                null,
+                                null),
+                        dir.resolve("gen"),
+                        new Cas(dir.resolve("cas")),
+                        dir.resolve("cache"),
+                        WorkerEnv.strict())
+                .ok();
     }
 
     // ---- fixtures ---------------------------------------------------------

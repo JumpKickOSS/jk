@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -29,6 +30,14 @@ public final class ProjectedFiles {
 
     /** Projected root (absolute, normalized) to its files, forward-slash relative path to sha. */
     private final Map<Path, Map<String, String>> roots = new ConcurrentHashMap<>();
+
+    /** Where the bytes of a projected sha are read from: the store the shas name. */
+    private final Function<String, Path> blobs;
+
+    /** A projection whose shas name blobs {@code blobs} locates, such as an action cache's CAS. */
+    public ProjectedFiles(Function<String, Path> blobs) {
+        this.blobs = blobs;
+    }
 
     /** Lay {@code files} (relative path to content sha; empty for a root that goes) at {@code root}. */
     public void project(Path root, Map<String, String> files) {
@@ -60,6 +69,18 @@ public final class ProjectedFiles {
             return root.getValue().get(rel);
         }
         return null;
+    }
+
+    /**
+     * The file holding the bytes the build lays at {@code file}: its projected sha's blob when a
+     * root holds it, so a reader that parses the file reads what the build will; null when no root
+     * holds it or its blob is gone, so the caller reads the disk.
+     */
+    public static @Nullable Path blob(Path file) {
+        String sha = contentHash(file);
+        if (sha == null) return null;
+        Path blob = CURRENT.get().blobs.apply(sha);
+        return Files.isRegularFile(blob) ? blob : null;
     }
 
     /** Whether {@code file} is projected under a root, or, under none, is a regular file on disk. */
