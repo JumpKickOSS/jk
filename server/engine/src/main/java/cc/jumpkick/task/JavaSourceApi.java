@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.ExpressionTree;
@@ -136,10 +137,17 @@ public final class JavaSourceApi {
             }
         }
         if (!pending.isEmpty()) {
-            Map<Path, String> parsed = parse(pending, view, PARSE_BATCH_BYTES, MAX_PARSE_FILE_BYTES);
+            Map<Path, Path> readFrom = new LinkedHashMap<>();
+            Path staged = stageProjected(pending, readFrom);
+            Map<Path, String> parsed;
+            try {
+                parsed = parse(List.copyOf(readFrom.values()), view, PARSE_BATCH_BYTES, MAX_PARSE_FILE_BYTES);
+            } finally {
+                if (staged != null) PathUtil.deleteRecursively(staged);
+            }
             for (Path abs : pending) {
                 String content = Objects.requireNonNull(contentByPath.get(abs), "content hash");
-                @Nullable String shape = parsed.get(abs);
+                @Nullable String shape = parsed.get(readFrom.get(abs));
                 String token;
                 if (shape != null) {
                     token = PREFIX + Hashing.sha256Hex(shape);
@@ -153,6 +161,29 @@ public final class JavaSourceApi {
             }
         }
         return out;
+    }
+
+    /**
+     * Where each pending file's bytes are read from, into {@code readFrom}: the file itself, or, for
+     * a source a forecast projects from an action record and the build has not restored yet, a copy
+     * of its blob under the file's own name (javac reads a source by its {@code .java} name), so it
+     * parses to the digest the restored file will. The staging directory, or null when none was needed.
+     */
+    private static @Nullable Path stageProjected(List<Path> pending, Map<Path, Path> readFrom) throws IOException {
+        Path staged = null;
+        for (Path abs : pending) {
+            Path blob = Files.exists(abs) ? null : ProjectedFiles.blob(abs);
+            if (blob == null) {
+                readFrom.put(abs, abs);
+                continue;
+            }
+            if (staged == null) staged = Files.createTempDirectory("jk-projected-sources");
+            Path copy = staged.resolve(Integer.toString(readFrom.size())).resolve(String.valueOf(abs.getFileName()));
+            Files.createDirectories(copy.getParent());
+            Files.copy(blob, copy);
+            readFrom.put(abs, copy.toAbsolutePath().normalize());
+        }
+        return staged;
     }
 
     /** True when {@code token} came from a parse rather than the content fallback. */
