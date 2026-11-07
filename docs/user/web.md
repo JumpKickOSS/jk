@@ -139,8 +139,34 @@ follow and edit (**all** shows every worktree's runs with a Checkout column); th
 its Save work in the picked tree only, and a link from `jk` or an MCP result already names the
 tree the build ran in. A deleted worktree drops out of the list on the next build of a sibling.
 
-New project: a modal that calls the same scaffolder as `jk new` (templates, layout as
-file placement). See [Templates](templates.md).
+## New project
+
+**New project** (on the Projects page) opens the wizard at `#new`. It asks the same form `jk new`
+asks on a terminal and MCP `new` asks through elicitation, served by the engine: jk's step
+(language, template, name, group, directory, and the layout when the template renders more than
+one), then the chosen template's own questions ([Templates](templates.md)), with its advanced
+ones folded, then a review. Picking another template or language brings that template's
+questions; a question shows only while its condition holds.
+
+Beside the form, a preview redraws as you answer: the file tree the project would get and its
+`jk.toml`, scaffolded into a scratch directory, so it is exactly what Create writes. The review
+lists the answers and the equivalent command, with **Copy**:
+
+```text
+jk new shop -t java/spring-boot/webmvc-security-actuator-jpa-h2 --group org.example --dir /home/you/src -L simple
+```
+
+The command spells every answer that differs from its default, and always the group and the
+directory, which a terminal derives from where it runs. **Create** scaffolds the project, opens its
+page and starts its first build. If the template changed while you were answering, the wizard
+takes its new questions and asks you to check them.
+
+A link opens the wizard pre-filled: each answer is a query pair of the route, a multi-select
+joined with commas.
+
+```text
+#new?template=cli&name=tool&dir=/home/you/src&layout=traditional
+```
 
 Live events: `GET /api/events` (SSE). Cancel: `POST /api/cancel`. Implementation of the
 SPA and HTTP contract: [contributor web client](../contributors/webclient.md),

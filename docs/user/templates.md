@@ -322,8 +322,8 @@ table, so the jar records the commit it was built from (`git.properties`, and Bo
 `META-INF/build-info.properties` for `/actuator/info`). None ships an `AGENTS.md`: `jk new`
 writes jk's current section into every project it scaffolds.
 
-MCP `new` asks the same questions — [MCP](mcp.md#new). The web dashboard has a New project
-modal — [Web](web.md).
+MCP `new` asks the same questions — [MCP](mcp.md#new). The web dashboard asks them in its
+new-project wizard — [Web](web.md#new-project).
 
 ## Related
 

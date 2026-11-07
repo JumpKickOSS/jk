@@ -1813,10 +1813,8 @@ button.browse:hover::before {
 /* ---- Help / About modal ---- */
 .modal.about { width: 460px; }
 
-/* New project form. Primary/ghost/browse chrome lives with the shared interactive polish
- * rules above; this block is form layout + field surfaces + custom checkbox. */
-.modal.new-project-modal { width: min(520px, 94vw); }
-/* Stack above the new-project modal (base .modal-bg is z-index 60) when browsing a parent dir. */
+/* New project form (the #new wizard). Primary/ghost/browse chrome lives with the shared interactive
+ * polish rules above; this block is form layout + field surfaces + custom checkbox. */
 .browser-modal-bg { z-index: 70; }
 
 /* In-page confirm (code editor Save). Same framed-console modal as Help / New project. */
@@ -2017,18 +2015,6 @@ label.check:hover .check-box {
   justify-content: flex-end;
 }
 .new-project-form .error { color: var(--err); margin: 0; font: 500 12.5px var(--mono); }
-/* Read-only note when a template is selected: its layout is fixed by the template, not the blank
- * simple/traditional control. */
-.new-project-form .template-meta {
-  margin: -2px 0 0;
-  font: 500 11.5px var(--mono);
-  color: var(--mu);
-}
-.new-project-form .template-meta b {
-  color: var(--cn);
-  font-weight: 700;
-  text-transform: none;
-}
 .about-logo {
   width: 45px;
   height: auto;
@@ -2493,3 +2479,76 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 table.stats.history tr.pinnable { cursor: pointer; }
 table.stats.history tr.pinnable:hover td { background: rgba(var(--cn-rgb), 0.06); }
 table.stats.history tr.pinned td { background: rgba(var(--cn-rgb), 0.12); }
+
+/* ---- New project wizard (#new): stepper + fields on the left, live preview on the right ---- */
+.wizard { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 960px) { .wizard { grid-template-columns: 1fr; } }
+.wizard-main {
+  background: var(--s1);
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-xl);
+  padding: 16px 18px;
+}
+.wizard-agent { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); font: 600 12px var(--mono); }
+.wizard-stepper { display: flex; gap: 6px; list-style: none; margin: 0 0 6px; padding: 0; flex-wrap: wrap; }
+.wizard-stepper button {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: none; border: 1px solid transparent; border-radius: var(--r-md);
+  padding: 5px 10px 5px 6px; color: var(--dim); font: 600 12px var(--mono); cursor: pointer;
+}
+.wizard-stepper .wz-n {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  border: 1px solid var(--bd); font-size: 11px;
+}
+.wizard-stepper .wz-n .ico { width: 12px; height: 12px; }
+.wizard-stepper li.done button { color: var(--mu); }
+.wizard-stepper li.done .wz-n { border-color: rgba(var(--okc-rgb), 0.6); color: var(--ok); }
+.wizard-stepper li.bad .wz-n { border-color: rgba(var(--err-rgb), 0.6); color: var(--err); }
+.wizard-stepper li.on button { color: var(--cn); border-color: rgba(var(--cn-rgb), 0.35); background: rgba(var(--cn-rgb), 0.06); }
+.wizard-stepper li.on .wz-n { border-color: var(--cn); }
+.wizard-stepper button:hover { color: var(--tx); }
+.wizard-notice { display: flex; gap: 8px; align-items: center; margin: 0; color: var(--warn); font: 500 12.5px var(--mono); }
+.wizard-step { display: flex; flex-direction: column; gap: 14px; }
+.wz-field { display: flex; flex-direction: column; gap: 6px; }
+.new-project-form .wz-field > label:not(.check) { gap: 2px; }
+.wz-field.bad input, .wz-field.bad select { border-color: rgba(var(--err-rgb), 0.6); }
+.wz-problem { color: var(--err); font: 500 11.5px var(--mono); margin: 0; }
+.wz-seg, .wz-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.wz-seg button, .wz-chips button {
+  background: var(--s1); border: 1px solid var(--bd); border-radius: var(--r-md);
+  padding: 5px 11px; color: var(--mu); font: 500 12.5px var(--mono); cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.wz-chips button { border-radius: var(--r-pill); }
+.wz-seg button:hover, .wz-chips button:hover { color: var(--tx); border-color: rgba(var(--cn-rgb), 0.35); }
+.wz-seg button.on, .wz-chips button.on { color: var(--cn); border-color: rgba(var(--cn-rgb), 0.5); background: rgba(var(--cn-rgb), 0.07); }
+.wz-chips button.on::before { content: '✓ '; }
+.wz-id { color: var(--cn); margin-right: 8px; }
+.wz-fold {
+  align-self: flex-start; background: none; border: 1px dashed var(--bd); border-radius: var(--r-md);
+  padding: 6px 10px; color: var(--mu); font: 500 12px var(--mono); cursor: pointer; text-align: left;
+}
+.wz-fold:hover { color: var(--tx); border-color: rgba(var(--cn-rgb), 0.35); }
+.wz-summary { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font: 12.5px var(--mono); }
+.wz-summary dt { color: var(--mu); }
+.wz-summary dd { margin: 0; color: var(--bright); overflow-wrap: anywhere; }
+.wz-cmd-head { display: flex; align-items: center; gap: 8px; font: 600 11px var(--mono); color: var(--mu); text-transform: uppercase; letter-spacing: 0.04em; }
+.wz-cmd, .wz-manifest {
+  margin: 0; background: var(--console-bg); border: 1px solid var(--bd2); border-radius: var(--r-md);
+  padding: 10px 12px; font: 12px/1.55 var(--mono); color: var(--tx); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.wz-cmd { color: var(--ok); user-select: all; }
+.wizard-actions { border-top: 1px solid var(--bd2); padding-top: 12px !important; margin-top: 8px !important; }
+.wizard-preview {
+  position: sticky; top: 72px;
+  background: var(--s1); border: 1px solid var(--bd2); border-radius: var(--r-xl);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 100px); overflow: auto;
+}
+.wz-pv-head { display: flex; align-items: baseline; gap: 10px; }
+.wz-path { color: var(--path); overflow-wrap: anywhere; }
+.wz-tree { list-style: none; margin: 0; padding: 8px 10px; background: var(--console-bg); border: 1px solid var(--bd2); border-radius: var(--r-md); font: 12px/1.6 var(--mono); }
+.wz-tree li { display: flex; align-items: center; gap: 6px; color: var(--tx); white-space: nowrap; }
+.wz-tree li.dir { color: var(--path); }
+.wz-tree .ico { width: 13px; height: 13px; color: var(--dim); flex: none; }
+.wz-tree li.dir .ico { color: var(--path); }
+.new-project-form .wz-field > label > .dim { text-transform: none; letter-spacing: 0; font-weight: 500; }

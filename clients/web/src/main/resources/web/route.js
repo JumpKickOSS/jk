@@ -48,6 +48,7 @@ export function parseTruthy(raw) {
 
 /**
  * Hash routes:
+ *  #new?<key>=<value>&…                       (the new-project wizard, pre-filled)
  *  #project/<id>
  *  #project/<id>/run/<buildNumber>            (pin one run; without it the page follows the newest)
  *  #project/<id>/files
@@ -84,6 +85,10 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
   }
   if (pathPart === '#status') {
     return routeFields({ view: 'status' });
+  }
+  // The new-project wizard; its query is the answers it opens with (wizard-model.js#linkFromHash).
+  if (pathPart === '#new') {
+    return routeFields({ view: 'new' });
   }
   if (pathPart.startsWith('#project/')) {
     const segs = pathPart.slice('#project/'.length).split('/');

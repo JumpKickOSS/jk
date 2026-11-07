@@ -496,6 +496,130 @@
       </template>
     </main>
 
+    <!-- New project: the engine's form as a stepper (jk's step, the template's, review) with a live
+         preview beside it. Every field is rendered by kind from the form; nothing is per template. -->
+    <main v-if="view === 'new'" class="wizard-page">
+      <div class="feed-head">
+        <h2>New project</h2>
+        <span class="retention" v-if="wizard.template">{{ wizard.template }}</span>
+        <span class="spacer"></span>
+        <span v-if="wizard.elicitation" class="wizard-agent" data-tip="An agent opened this wizard and is waiting for it">
+          <jk-icon name="bolt"></jk-icon>an agent is waiting</span>
+      </div>
+      <p v-if="wizard.loading" class="empty">Loading the form…</p>
+      <p v-else-if="!wizard.form" class="error">{{ wizard.error || 'The new-project form is unavailable.' }}</p>
+      <div v-else class="wizard">
+        <section class="wizard-main new-project-form">
+          <ol class="wizard-stepper" aria-label="Steps">
+            <li v-for="(s, i) in wizardSteps" :key="s.id"
+                :class="{ on: i === wizard.step, done: i < wizard.step, bad: i < wizard.step && stepProblems(i).length }">
+              <button type="button" @click="wizardGo(i)" :aria-current="i === wizard.step ? 'step' : null">
+                <span class="wz-n"><jk-icon v-if="i < wizard.step" name="check"></jk-icon><template v-else>{{ i + 1 }}</template></span>
+                <span class="wz-t">{{ s.title }}</span>
+              </button>
+            </li>
+          </ol>
+          <p v-if="wizard.notice" class="wizard-notice"><jk-icon name="alert"></jk-icon>{{ wizard.notice }}</p>
+
+          <div v-if="wizard.step < wizardSteps.length - 1" class="wizard-step" :data-step="wizardSteps[wizard.step].id">
+            <p v-if="!wizardFields.plain.length && !wizardFields.advanced.length" class="dim small">
+              This template asks nothing more; its defaults apply.</p>
+            <template v-for="group in [wizardFields.plain, wizard.advancedOpen ? wizardFields.advanced : []]">
+            <div v-for="f in group" :key="f.key" class="wz-field" :class="{ bad: fieldProblem(f) }"
+                 :data-field="f.key" :data-kind="f.kind">
+              <label :for="'wz-' + f.key"><span>{{ f.label }}</span>
+                <span v-if="f.help" class="dim">{{ f.help }}</span></label>
+              <input v-if="f.kind === 'text'" :id="'wz-' + f.key" :value="fieldText(f)" spellcheck="false" autocomplete="off"
+                     :placeholder="f.pattern ? f.pattern : ''" @input="setWizardAnswer(f.key, $event.target.value)">
+              <div v-else-if="f.kind === 'path'" class="parent-row">
+                <input :id="'wz-' + f.key" :value="fieldText(f)" spellcheck="false" autocomplete="off"
+                       @change="setWizardAnswer(f.key, $event.target.value)">
+                <button type="button" class="browse" @click="openPathBrowser(f.key)" aria-label="Browse"
+                        data-tip="Browse for a directory"><jk-icon name="folder-open"></jk-icon></button>
+              </div>
+              <label v-else-if="f.kind === 'bool'" class="check wz-switch">
+                <input :id="'wz-' + f.key" type="checkbox" :checked="wizardValue(f) === true"
+                       @change="setWizardAnswer(f.key, $event.target.checked)">
+                <span class="check-box" aria-hidden="true"></span><span>{{ wizardValue(f) ? 'yes' : 'no' }}</span>
+              </label>
+              <div v-else-if="f.kind === 'choice' && f.options.length <= 6" class="wz-seg" role="radiogroup" :id="'wz-' + f.key">
+                <button v-for="o in f.options" :key="optionId(o)" type="button" role="radio"
+                        :aria-checked="isPicked(f, optionId(o))" :class="{ on: isPicked(f, optionId(o)) }"
+                        :data-tip="o.help || null" @click="setWizardAnswer(f.key, optionId(o))">{{ optionLabel(o) }}</button>
+              </div>
+              <select v-else-if="f.kind === 'choice'" :id="'wz-' + f.key" :value="wizardValue(f)"
+                      @change="setWizardAnswer(f.key, $event.target.value)">
+                <option v-for="o in f.options" :key="optionId(o)" :value="optionId(o)">{{ optionLabel(o) }}</option>
+              </select>
+              <div v-else-if="f.kind === 'multi'" class="wz-chips" :id="'wz-' + f.key">
+                <button v-for="o in f.options" :key="optionId(o)" type="button" :aria-pressed="isPicked(f, optionId(o))"
+                        :class="{ on: isPicked(f, optionId(o)) }" :data-tip="o.help || null"
+                        @click="toggleMulti(f, optionId(o))">{{ optionLabel(o) }}</button>
+              </div>
+              <div v-else-if="f.kind === 'search'" class="combo">
+                <input :id="'wz-' + f.key" spellcheck="false" autocomplete="off"
+                       :value="wizard.openSearch === f.key ? (wizard.query[f.key] || '') : searchLabel(f)"
+                       :placeholder="searchLabel(f)" @focus="wizard.openSearch = f.key; $event.target.select()"
+                       @blur="onSearchBlur()" @input="onSearchInput(f, $event.target.value)" @keydown="onSearchKey(f, $event)">
+                <ul v-if="wizard.openSearch === f.key" class="combo-list">
+                  <li v-for="r in searchRows(f)" :key="r.id" :class="{ on: r.id === wizardValue(f) }"
+                      @mousedown.prevent="pickSearch(f, r.id)"><span class="wz-id">{{ r.id }}</span>
+                    <span v-if="r.description" class="dim"> {{ r.description }}</span></li>
+                  <li v-if="!searchRows(f).length" class="dim">No match; Enter uses what you typed (a path, URL or name)</li>
+                </ul>
+              </div>
+              <span v-if="fieldProblem(f)" class="wz-problem">{{ fieldProblem(f) }}</span>
+            </div>
+            </template>
+            <button v-if="wizardFields.advanced.length" type="button" class="wz-fold" @click="wizard.advancedOpen = !wizard.advancedOpen"
+                    :aria-expanded="wizard.advancedOpen">
+              {{ wizard.advancedOpen ? '▾' : '▸' }} Advanced
+              <span class="dim">{{ wizardFields.advanced.map((f) => f.key + ': ' + wizardValueLabel(f, wizardValue(f))).join(' · ') }}</span>
+            </button>
+          </div>
+
+          <div v-else class="wizard-step wizard-review" data-step="review">
+            <dl class="wz-summary">
+              <template v-for="r in wizardSummary" :key="r.key"><dt>{{ r.label }}</dt><dd :data-field="r.key">{{ r.value }}</dd></template>
+            </dl>
+            <div class="wz-cmd-head"><span>Same as</span><span class="spacer"></span>
+              <button type="button" class="action-cyan" @click="copyCommand()" :disabled="!wizardCommand">
+                <jk-icon :name="wizard.copied ? 'check' : 'copy'"></jk-icon>{{ wizard.copied ? 'Copied' : 'Copy' }}</button></div>
+            <pre class="wz-cmd" data-command>{{ wizardCommand || 'Answer every required field first.' }}</pre>
+          </div>
+
+          <p v-if="wizard.error" class="error">{{ wizard.error }}</p>
+          <div class="form-actions wizard-actions">
+            <button type="button" class="ghost" @click="cancelWizard()">Cancel</button>
+            <span class="spacer"></span>
+            <button v-if="wizard.step > 0" type="button" class="ghost" @click="wizardGo(wizard.step - 1)">Back</button>
+            <button v-if="wizard.step < wizardSteps.length - 1" type="button" class="primary"
+                    @click="wizardGo(wizard.step + 1)">Next</button>
+            <button v-else type="button" class="primary" @click="createProject()"
+                    :disabled="wizard.busy || wizardSettled.problems.length > 0">
+              <jk-icon name="plus"></jk-icon>{{ wizard.busy ? 'Creating…' : 'Create project' }}</button>
+          </div>
+        </section>
+
+        <aside class="wizard-preview" aria-live="polite">
+          <div class="wz-pv-head"><span class="lbl">Preview</span>
+            <span v-if="wizard.previewBusy" class="dim small">updating…</span>
+            <span v-else-if="wizard.preview" class="dim small">{{ wizard.preview.files.length }} files</span></div>
+          <p v-if="wizard.previewError" class="wz-problem">{{ wizard.previewError }}</p>
+          <p v-else-if="!wizard.preview && !wizard.previewBusy" class="dim small">The tree appears once every required field is answered.</p>
+          <template v-if="wizard.preview">
+            <div class="wz-path dim small">{{ wizard.preview.path }}</div>
+            <ul class="wz-tree">
+              <li v-for="(r, i) in wizardTree" :key="i" :class="{ dir: r.dir }" :style="{ paddingLeft: (r.depth * 14) + 'px' }">
+                <jk-icon :name="r.dir ? 'folder' : 'file'"></jk-icon>{{ r.name }}</li>
+            </ul>
+            <div class="wz-pv-head"><span class="lbl">jk.toml</span></div>
+            <pre class="wz-manifest">{{ wizard.preview.manifest }}</pre>
+          </template>
+        </aside>
+      </div>
+    </main>
+
     <main v-if="view === 'status'">
       <div class="feed-head">
         <h2>System administration</h2>
@@ -661,8 +785,8 @@
       </div>
     </footer>
 
-    <!-- Workspace / parent-dir picker — hoisted out of the Activity main so Projects (and New
-         project) can open it too. browserMode selects the footer's Use action. -->
+    <!-- Directory picker — hoisted out of the Activity main so the new-project wizard can open it
+         too. browserMode selects the footer's Use action. -->
     <div v-if="browser" class="modal-bg browser-modal-bg" @click.self="closeBrowser()">
       <div class="modal">
         <div class="modal-head">
@@ -681,9 +805,9 @@
         </div>
         <div class="modal-foot">
           <template v-if="browserMode === 'parent'">
-            <span class="dim small">New project will be created as a child of this folder</span>
+            <span class="dim small">The new project is created inside this folder</span>
             <span class="spacer"></span>
-            <button class="use-folder" @click="chooseBrowsed()">Use as parent</button>
+            <button class="use-folder" @click="chooseBrowsed()">Use this folder</button>
           </template>
           <template v-else>
             <span v-if="browser.hasJkToml" class="jk-found"><jk-icon name="check"></jk-icon>jk.toml found</span>
@@ -692,107 +816,6 @@
             <button class="use-folder" :disabled="!browser.hasJkToml" @click="chooseBrowsed()">Use this folder</button>
           </template>
         </div>
-      </div>
-    </div>
-
-    <!-- New project -->
-    <div v-if="newProjectOpen" class="modal-bg" @click.self="closeNewProject()">
-      <div class="modal new-project-modal">
-        <div class="modal-head">
-          <span class="lbl">New project</span>
-          <span class="spacer"></span>
-          <button class="icon-btn" @click="closeNewProject()" aria-label="Close" data-tip="Close"><jk-icon name="x"></jk-icon></button>
-        </div>
-        <form class="new-project-form" @submit.prevent="submitNewProject()">
-          <label>
-            <span>Name</span>
-            <input ref="nameInput" v-model="newProject.name" required spellcheck="false" placeholder="my-app" autocomplete="off"
-                   @focus="$event.target.select()">
-          </label>
-          <label>
-            <span>Group</span>
-            <input v-model="newProject.group" spellcheck="false" placeholder="com.example" autocomplete="off"
-                   @focus="$event.target.select()">
-          </label>
-          <label>
-            <span>Language</span>
-            <select v-model="newProject.lang" @change="onNewProjectLangChange()">
-              <option value="java">Java</option>
-              <option value="kotlin">Kotlin</option>
-              <option value="groovy">Groovy</option>
-            </select>
-          </label>
-          <label>
-            <span>Framework <span class="dim">(optional · filter)</span></span>
-            <div class="combo">
-              <input v-model="newProject.frameworkQuery" spellcheck="false" autocomplete="off"
-                     placeholder="All frameworks"
-                     @focus="frameworkOpen = true"
-                     @blur="onFrameworkBlur()"
-                     @input="onFrameworkQueryInput()"
-                     @keydown="onFrameworkKey($event)">
-              <ul v-if="frameworkOpen" class="combo-list">
-                <li :class="{ on: newProject.framework === '' }"
-                    @mousedown.prevent="pickFramework('', 'All frameworks')">All frameworks</li>
-                <li v-for="f in filteredFrameworkChoices" :key="f.value"
-                    :class="{ on: newProject.framework === f.value }"
-                    @mousedown.prevent="pickFramework(f.value, f.label)">{{ f.label }}</li>
-              </ul>
-            </div>
-          </label>
-          <label>
-            <span>Template <span class="dim">(optional · {{ newProject.lang }})</span></span>
-            <div class="combo">
-              <input v-model="newProject.templateQuery" spellcheck="false" autocomplete="off"
-                     placeholder="None — blank project"
-                     @focus="templateOpen = true"
-                     @blur="onTemplateBlur()"
-                     @input="onTemplateQueryInput()"
-                     @keydown="onTemplateKey($event)">
-              <ul v-if="templateOpen" class="combo-list">
-                <li :class="{ on: !newProject.template }"
-                    @mousedown.prevent="pickTemplate('', 'None — blank project')">None — blank project</li>
-                <li v-if="templatesUnavailable" class="dim">Template catalog unavailable — type a template ref (name, framework/name, path, or git URL)</li>
-                <li v-for="c in filteredTemplateChoices" :key="c.value"
-                    :class="{ on: newProject.template === c.value }"
-                    @mousedown.prevent="pickTemplate(c.value, c.label)">{{ c.label }}</li>
-              </ul>
-            </div>
-          </label>
-          <label v-if="showLayoutPicker()">
-            <span>Layout</span>
-            <select v-model="newProject.layout">
-              <option value="traditional">Traditional (Maven-like)</option>
-              <option value="simple">Simple (Mill-like)</option>
-            </select>
-          </label>
-          <p v-else-if="newProject.template" class="template-meta dim small">
-            Template layout: <b>custom</b>
-            <span> (framework tree — not traditional/simple)</span>
-          </p>
-          <label>
-            <span>Parent directory</span>
-            <div class="parent-row">
-              <input v-model="newProject.parentDir" required spellcheck="false" placeholder="/home/you/src"
-                     @focus="$event.target.select()">
-              <button type="button" class="browse" @click="openParentBrowser()" aria-label="Browse for a parent directory"
-                      data-tip="Browse for a parent directory"><jk-icon name="folder-open"></jk-icon></button>
-            </div>
-          </label>
-          <label v-if="!newProject.template" class="check">
-            <input type="checkbox" v-model="newProject.executable">
-            <span class="check-box" aria-hidden="true"></span>
-            <span>Executable (with main)</span>
-          </label>
-          <p v-if="newProjectError" class="error">{{ newProjectError }}</p>
-          <div class="modal-foot form-actions">
-            <button type="button" class="ghost" @click="closeNewProject()">Cancel</button>
-            <button type="submit" class="primary" :disabled="newProjectBusy">
-              <jk-icon name="plus"></jk-icon>
-              {{ newProjectBusy ? 'Creating…' : 'Create project' }}
-            </button>
-          </div>
-        </form>
       </div>
     </div>
 

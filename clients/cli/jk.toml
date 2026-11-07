@@ -1,6 +1,10 @@
 name = "jk-cli"
 description = "The CLI (and primary) client for interacting with the JumpKick build system"
 
+# The new-project conformance test runs the dashboard wizard's view model under the Node.js jk
+# provisions and pins in jk-lock.toml, the same major as clients/web.
+node = 24
+
 [application]
 main = "cc.jumpkick.cli.Jk"
 # The fat jar is the client for every host without a native binary: shipped as jk-<version>.jar

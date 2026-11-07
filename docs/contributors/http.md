@@ -408,7 +408,28 @@ The tier names come from `BuildMetrics.SCOPE_*`; the socket `metrics-entry` fram
 Effective machine `~/.jk/config.toml` (plus env) as `{ path, rows: [{ key, default, value,
 overridden }] }` for the Status Configuration panel — every known scalar key with its default and
 whether the effective value differs. Token-gated even on loopback: the payload names the
-owner's config path and raw values, the same class as `/api/projects/defaults`.
+owner's config path and raw values, the same class as `/api/forms/new-project`.
+
+### New project
+
+The dashboard's wizard renders the engine's new-project form (`NewProjectForm`: `NewProjectStep`
+then the template's `[[ask]]`), the same model `jk new` and MCP `new` render.
+`HttpNewProjectApi` serves it and `NewProjectPost` settles what comes back:
+
+| Endpoint | Shape |
+| --- | --- |
+| `GET /api/forms/new-project?template=<ref>&lang=<lang>` | `{ form, template, derived }`: the form as `Form#toJson` writes it, `rev` included; the id the ref resolved to (no ref: the default template); and this machine's values of the form's derived defaults, `{ "git-email": …, "parent-dir": … }` |
+| `POST /api/projects/preview` | `{ rev, answers }` → `{ path, template, files, manifest }`, scaffolded into a scratch directory; nothing is written |
+| `POST /api/projects` | `{ rev, answers, elicitation? }` → **201** `{ path, dir, projectId }` |
+| `GET /api/templates?lang=<lang>` | the catalogue the form's `template` search lists, one language when `lang` names one |
+
+`answers` maps form keys to answers (a string, a boolean for `bool`, a list for `multi`); the
+answers' `template` and `lang` name the form they settle. A `rev` that no longer names that form's
+content is a **409** carrying `{ error, form, template, derived }` for the form in force; answers
+that do not settle it are a **400** `{ error, problems: [{ key, message }] }`. A left-out answer
+takes its default, a derived one from `derived`. A target that already exists is a **409** on both
+the preview and the create. `elicitation` is the id from a wizard link MCP `new` handed out by URL
+elicitation (`NewProjectWizard`): the create completes the call waiting on it.
 
 The token file persists across restarts precisely so an open tab survives an upgrade or crash
 respawn. `jk engine rotate-token` is the explicit way to invalidate it.
