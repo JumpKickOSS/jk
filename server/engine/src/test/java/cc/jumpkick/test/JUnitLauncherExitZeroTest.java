@@ -51,8 +51,7 @@ class JUnitLauncherExitZeroTest {
         assertThat(summary.failed()).isEqualTo(1);
         assertThat(summary.failures()).singleElement().satisfies(row -> {
             assertThat(row.method()).isEqualTo("(test run)");
-            assertThat(row.message())
-                    .startsWith("worker exited 0 before finishing its plan (2 of 3 discovered tests reported)");
+            assertThat(row.message()).startsWith("worker exited 0 early: 2 of 3 discovered tests reported");
         });
     }
 
@@ -82,8 +81,7 @@ class JUnitLauncherExitZeroTest {
         assertThat(rows.subList(0, 2)).allSatisfy(row -> {
             assertThat(row.method()).startsWith("(worker ");
             assertThat(row.className()).startsWith("demo.");
-            assertThat(row.message())
-                    .startsWith("test worker exited 0 before it was told DONE (last class dispatched: demo.");
+            assertThat(row.message()).startsWith("test worker exited 0 mid-run (last class: demo.");
         });
         assertThat(rows.get(2).method()).isEqualTo("(test run)");
         assertThat(rows.get(2).message()).isEqualTo("test run incomplete: 1 class never ran");

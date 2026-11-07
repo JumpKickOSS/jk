@@ -49,11 +49,8 @@ public final class JupiterParallelDetect {
 
     /** Warning text for {@code W>1} + Jupiter parallel stacking. */
     public static String stackWarning(int workers) {
-        return "Test workers="
-                + workers
-                + " with junit.jupiter.execution.parallel.enabled — double parallelism may thrash "
-                + "CPU/RAM or hide races. Prefer -w1 with Jupiter parallel, or disable Jupiter "
-                + "parallel when using multi-worker -w (docs/user/test.md).";
+        return "test workers=" + workers
+                + " with junit.jupiter.execution.parallel.enabled may oversubscribe; use -w1 or turn it off";
     }
 
     private static boolean dirHasEnabled(Path dir) throws IOException {

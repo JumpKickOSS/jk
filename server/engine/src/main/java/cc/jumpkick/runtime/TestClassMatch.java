@@ -125,7 +125,7 @@ public final class TestClassMatch {
      * classes another suite of the module owns.
      */
     public static String skipLabel(List<String> patterns, @Nullable String suiteHint) {
-        String label = "no classes matched --class " + String.join(", ", patterns) + " — skipped";
+        String label = "skipped: no classes match --class " + String.join(", ", patterns);
         return suiteHint == null ? label : label + "; " + suiteHint;
     }
 
@@ -165,7 +165,7 @@ public final class TestClassMatch {
                 : noMatchMessage(selection.classes());
         String tagged = tagExcluded == null || tagExcluded.isBlank() ? null : tagExcluded;
         if (suiteHint != null && !suiteHint.isBlank()) {
-            String line = head + " — " + suiteHint;
+            String line = head + ": " + suiteHint;
             return tagged != null ? line + "; " + tagged : line;
         }
         if (tagged == null) return head;

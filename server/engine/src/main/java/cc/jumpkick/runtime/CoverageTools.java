@@ -45,8 +45,8 @@ final class CoverageTools {
 
     private static Path fetch(RepoGroup repos, Coordinate coord) throws IOException, InterruptedException {
         return repos.tryFetchArtifact(coord)
-                .orElseThrow(() -> new IOException("cannot fetch " + coord + " — JaCoCo must be reachable from a"
-                        + " declared repository for a coverage run"))
+                .orElseThrow(
+                        () -> new IOException("coverage needs JaCoCo: cannot fetch " + coord + " from any repository"))
                 .fetched()
                 .cachePath();
     }
@@ -111,7 +111,7 @@ final class CoverageTools {
             String name)
             throws IOException, InterruptedException {
         if (!Files.isRegularFile(exec)) {
-            throw new IOException("no execution data at " + exec + " — did any suite JVM start under the agent?");
+            throw new IOException("no coverage data at " + exec + "; no test JVM ran with the coverage agent");
         }
         Files.createDirectories(xml.toAbsolutePath().getParent());
         Files.createDirectories(html);

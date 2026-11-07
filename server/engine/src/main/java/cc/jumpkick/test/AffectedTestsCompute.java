@@ -97,8 +97,7 @@ public final class AffectedTestsCompute {
                 String stale = staleDirtyMain(root, modDir, dirty, layout.classesDir());
                 if (stale != null) {
                     return AffectedTests.refused(
-                            new AffectedTests.Refuse(
-                                    "stale", stale + " is newer than its compiled class — build first"),
+                            new AffectedTests.Refuse("stale", stale + " is newer than its compiled class; build first"),
                             row,
                             List.of());
                 }

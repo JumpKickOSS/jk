@@ -346,12 +346,10 @@ final class ResultAggregator {
             String reportedOf = discoveredTests < 0
                     ? reported + (reported == 1 ? " test" : " tests") + " reported"
                     : reported + " of " + discoveredTests + " discovered tests reported";
-            return "worker exited 0 before finishing its plan (" + reportedOf
-                    + ") — a test, or the code under test, called System.exit or Runtime.halt";
+            return "worker exited 0 early: " + reportedOf + "; something called System.exit or Runtime.halt";
         }
         if (reported < discoveredTests && !containerHidTests) {
-            return "worker finished its plan having reported " + reported + " of " + discoveredTests
-                    + " discovered tests";
+            return "worker finished with " + reported + " of " + discoveredTests + " discovered tests reported";
         }
         return null;
     }

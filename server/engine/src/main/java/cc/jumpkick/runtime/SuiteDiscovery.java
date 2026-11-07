@@ -115,8 +115,8 @@ final class SuiteDiscovery {
             if (!before.network()) {
                 ctx.warn(
                         "suite-network",
-                        "tests talked to another host, so a pass cannot be replayed and they run on every"
-                                + " build; set [test] network = \"allowed\" to replay them anyway");
+                        "tests use the network, so they rerun on every build; set [test] network = \"allowed\""
+                                + " to cache their result");
             }
             return null;
         }
