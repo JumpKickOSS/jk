@@ -483,6 +483,34 @@ grep -q -- "^self shelve $WORK/dist/repos\$" "$WORK/jk-calls" || {
   cat "$WORK/jk-calls" >&2; echo "the dist's repos tree was not shelved" >&2; exit 1; }
 assert_rc_untouched "native-local"
 
+# A release-versioned dist into a home whose shelf already holds that version's -SNAPSHOT line is
+# refused before anything is written: the shelved release would hide the snapshot, and every later
+# `jk snapshot` in that home would refuse. The refusal names `jk snapshot` as the way forward.
+home="$WORK/home-snapshot-line"
+mkdir -p "$home/bin" "$home/store/repos/jk-local/cc/jumpkick/jk-test-runner/1.0.0-SNAPSHOT"
+printf 'prior-install' >"$home/bin/jk"
+rm -f "$WORK/jk-calls"
+if ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" FIXTURE_JK_LOG="$WORK/jk-calls" HOME="$WORK/user-home" \
+    JK_HOME="$home" JK_RELEASES_URL="https://fixture/releases-missing" CI=1 \
+    bash "$WORK/install.sh" "$WORK/dist/jk" >"$WORK/last-install.log" 2>&1 ); then
+  cat "$WORK/last-install.log" >&2; echo "a release dist over the home's snapshot line was installed" >&2; exit 1
+fi
+grep -qF -- "holds release 1.0.0 of 1 module(s) (first: cc/jumpkick/jk-test-runner)" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "the snapshot-line refusal did not name the module and version" >&2; exit 1; }
+grep -qF -- "'jk snapshot'" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "the snapshot-line refusal did not name jk snapshot" >&2; exit 1; }
+[[ "$(cat "$home/bin/jk")" == "prior-install" ]] || { echo "the snapshot-line refusal replaced the client" >&2; exit 1; }
+[[ ! -e "$WORK/jk-calls" ]] || { cat "$WORK/jk-calls" >&2; echo "the snapshot-line refusal ran the client" >&2; exit 1; }
+# Another version's snapshot line is no conflict: the dist installs over it.
+mv "$home/store/repos/jk-local/cc/jumpkick/jk-test-runner/1.0.0-SNAPSHOT" \
+  "$home/store/repos/jk-local/cc/jumpkick/jk-test-runner/1.0.1-SNAPSHOT"
+if ! ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" FIXTURE_JK_LOG="$WORK/jk-calls" HOME="$WORK/user-home" \
+    JK_HOME="$home" JK_RELEASES_URL="https://fixture/releases-missing" CI=1 \
+    bash "$WORK/install.sh" "$WORK/dist/jk" >"$WORK/last-install.log" 2>&1 ); then
+  cat "$WORK/last-install.log" >&2; echo "a release dist beside another version's snapshot line was refused" >&2; exit 1
+fi
+cmp -s "$RELEASE/$ARTIFACT" "$home/bin/jk" || { echo "the dist did not install beside another snapshot line" >&2; exit 1; }
+
 # The same dist without repos/: installed, but the missing shelf is named.
 rm -rf "$WORK/dist/repos"
 rm -f "$WORK/jk-calls"
