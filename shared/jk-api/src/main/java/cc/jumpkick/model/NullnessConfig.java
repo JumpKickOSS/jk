@@ -44,6 +44,17 @@ public record NullnessConfig(
     public static final String PLUGIN = "ErrorProne";
 
     /** The javac flags Error Prone documents beside its plugin. */
+    /**
+     * What an annotation processor writes is not the module's to fix: a class marked generated is
+     * unannotated code to NullAway, checked neither inside nor at its calls, though it lands in a
+     * {@code @NullMarked} package. NullAway knows the JDK's {@code @Generated}; Helidon marks every
+     * class its code generators write ({@code @Json.Entity} converters, service descriptors, the
+     * application binding) with its own.
+     */
+    public static final List<String> GENERATED_CODE = List.of(
+            "-XepOpt:NullAway:TreatGeneratedAsUnannotated=true",
+            "-XepOpt:NullAway:CustomGeneratedCodeAnnotations=io.helidon.common.Generated");
+
     public static final List<String> COMPANION_ARGS = List.of("-XDcompilePolicy=simple", "--should-stop=ifError=FLOW");
 
     /** The table as {@code [nullness]} alone writes it: the group's packages, at error severity. */
@@ -82,6 +93,7 @@ public record NullnessConfig(
         List<String> out = new ArrayList<>();
         out.add("-Xep:NullAway:" + severity.name());
         out.add("-XepOpt:NullAway:JSpecifyMode=true");
+        out.addAll(GENERATED_CODE);
         List<String> annotated = include;
         if (annotated == null) {
             if (group == null || group.isBlank()) {

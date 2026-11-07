@@ -107,8 +107,8 @@ public final class NullnessImport {
                         .split(","));
             } else if (token.equals(OPTION + "OnlyNullMarked=true")) {
                 include = List.of();
-            } else if (token.equals(OPTION + "JSpecifyMode=true")) {
-                continue;
+            } else if (token.equals(OPTION + "JSpecifyMode=true") || NullnessConfig.GENERATED_CODE.contains(token)) {
+                continue; // the table's own
             } else if (token.startsWith(OPTION)) {
                 options.add(token);
             } else {

@@ -455,7 +455,7 @@ class PomPluginImportTest {
                         <arg>-parameters</arg>
                         <arg>-XDcompilePolicy=simple</arg>
                         <arg>--should-stop=ifError=FLOW</arg>
-                        <arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=com.ex -XepOpt:NullAway:UnannotatedSubPackages=com.ex.gen -Xep:RequireExplicitNullMarking:ERROR -XepOpt:NullAway:KnownInitializers=com.ex.App.init</arg>
+                        <arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=com.ex -XepOpt:NullAway:UnannotatedSubPackages=com.ex.gen -XepOpt:NullAway:TreatGeneratedAsUnannotated=true -Xep:RequireExplicitNullMarking:ERROR -XepOpt:NullAway:KnownInitializers=com.ex.App.init</arg>
                       </compilerArgs>
                       <annotationProcessorPaths>
                         <path><groupId>com.google.errorprone</groupId><artifactId>error_prone_core</artifactId><version>2.50.0</version></path>
