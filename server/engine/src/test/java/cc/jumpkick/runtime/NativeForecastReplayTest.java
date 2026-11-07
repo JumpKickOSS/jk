@@ -63,7 +63,7 @@ class NativeForecastReplayTest {
                 PlannerNative.imageKey(graal, List.of(jar), liveArgs, "t.Main", false, out, null, null, List.of());
         Session session = Session.defaults().withCacheDir(cache);
         SessionContext.where(session, () -> {
-            PlannerSupport.storePackagedForTest(
+            PackagingCache.storePackagedForTest(
                     cache, key.task(), key.key(), key.tokens(), target, List.of(out), true, List.of());
             return null;
         });

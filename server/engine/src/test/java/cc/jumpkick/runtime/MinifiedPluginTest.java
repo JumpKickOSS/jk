@@ -138,7 +138,7 @@ class MinifiedPluginTest {
     /**
      * The {@code package-minified} outcome. {@link TaskStatus#SUCCESS} means the plugin worker ran
      * and {@code MinifiedJarPackager.produce} with it; {@link TaskStatus#SKIPPED} is what {@code
-     * TaskContext.cached()} reports when {@code PlannerSupport.restorePackaged} hard-linked a stored
+     * TaskContext.cached()} reports when {@code PackagingCache.restorePackaged} hard-linked a stored
      * artifact back instead and no worker ever started. From outside the two are indistinguishable —
      * same jar, same bytes — so a test that does not say which one it expects cannot notice the day
      * it stops exercising R8 at all.

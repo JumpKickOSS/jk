@@ -137,13 +137,13 @@ class StepNoticeTest {
         packed.run(() -> {
             StepDiagnostics said = packed.step("hello-pack");
             said.forward(notice);
-            PlannerSupport.storePackagedForTest(
+            PackagingCache.storePackagedForTest(
                     cacheRoot, "package-jar", "pack-key", List.of(), artifactDir, List.of(artifact), true, said.said());
         });
         Files.delete(artifact);
         Build restored = new Build();
         restored.run(() -> assertThat(
-                        PlannerSupport.restorePackaged(cacheRoot, "pack-key", artifactDir, restored.step("hello-pack")))
+                        PackagingCache.restorePackaged(cacheRoot, "pack-key", artifactDir, restored.step("hello-pack")))
                 .isTrue());
 
         assertThat(artifact).hasContent("packed");

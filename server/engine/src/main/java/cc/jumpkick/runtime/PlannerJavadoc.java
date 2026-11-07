@@ -11,8 +11,8 @@ import static cc.jumpkick.runtime.BuildPlanner.LOCKFILE;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
-import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
-import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
+import static cc.jumpkick.runtime.PackagingCache.restorePackaged;
+import static cc.jumpkick.runtime.PackagingCache.storePackaged;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JavadocJar;

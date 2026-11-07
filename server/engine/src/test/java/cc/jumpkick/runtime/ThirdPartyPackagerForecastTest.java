@@ -224,7 +224,7 @@ class ThirdPartyPackagerForecastTest {
                 .keyed();
         Files.createDirectories(requireNonNull(artifact.getParent()));
         Files.writeString(artifact, "packed by " + PACKAGER);
-        PlannerSupport.storePackagedForTest(
+        PackagingCache.storePackagedForTest(
                 cache,
                 keyed.taskId(),
                 keyed.key(),

@@ -2,8 +2,8 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
-import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
+import static cc.jumpkick.runtime.PackagingCache.restorePackaged;
+import static cc.jumpkick.runtime.PackagingCache.storePackaged;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CycloneDxSbom;
