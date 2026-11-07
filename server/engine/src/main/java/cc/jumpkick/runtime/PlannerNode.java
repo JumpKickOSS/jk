@@ -223,7 +223,7 @@ final class PlannerNode {
                     NodeKeys.Keyed keyed = NodeKeys.pkg(unit.nodeDir(), out, root, project.manifest());
                     Path cacheRoot = unit.in().cache();
                     String where = root.isEmpty() ? "the jar root" : root + "/";
-                    if (PlannerSupport.restorePackaged(cacheRoot, keyed.key(), jar.getParent())) {
+                    if (PackagingCache.restorePackaged(cacheRoot, keyed.key(), jar.getParent())) {
                         ctx.label(jar.getFileName() + " up-to-date · " + where + serves);
                         ctx.cached();
                         ctx.progress(1);
@@ -233,7 +233,7 @@ final class PlannerNode {
                             "package " + jar.getFileName() + " · " + unit.node().out() + "/ under " + where + serves);
                     NodePackaging.packageJar(
                             out, root, layout.targetDir().resolve("node-jar"), jar, project.manifest());
-                    PlannerSupport.storePackaged(
+                    PackagingCache.storePackaged(
                             ctx,
                             guard,
                             cacheRoot,
@@ -604,7 +604,7 @@ final class PlannerNode {
         }
         NodeKeys.Keyed keyed = NodeKeys.pkg(nodeDir, out, root, project.manifest());
         // The step restores from its record; a record that is there is no work, whatever the jar on disk.
-        return PlannerSupport.packagingActionCache(cacheRoot)
+        return PackagingCache.packagingActionCache(cacheRoot)
                         .lookup(keyed.key())
                         .isPresent()
                 ? new TaskForecast.Task(
