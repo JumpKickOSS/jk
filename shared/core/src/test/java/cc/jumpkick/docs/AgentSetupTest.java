@@ -71,6 +71,20 @@ class AgentSetupTest {
     }
 
     @Test
+    void the_report_names_the_agents_wired_by_the_setting_and_by_the_project_s_own_folders(@TempDir Path dir)
+            throws Exception {
+        Files.createDirectories(dir.resolve(".claude"));
+        assertThat(AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CODEX))
+                        .wired())
+                .containsExactly(AgentSetup.Host.CLAUDE, AgentSetup.Host.CODEX);
+        assertThat(AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CODEX))
+                        .changes())
+                .isEmpty();
+        assertThat(AgentSetup.install(dir, AgentSetup.Mode.NONE, Set.of()).wired())
+                .isEmpty();
+    }
+
+    @Test
     void claude_md_gets_the_import_once_and_keeps_its_text(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("CLAUDE.md"), "# Mine\n");
         AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of());

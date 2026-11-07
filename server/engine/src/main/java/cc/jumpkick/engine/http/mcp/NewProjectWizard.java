@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.docs.AgentChoice;
 import cc.jumpkick.form.Values;
 import cc.jumpkick.host.Hashing;
 import java.net.URLEncoder;
@@ -15,7 +16,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The dashboard's new-project wizard as a place to send a human: links that open it pre-filled, and
  * the creates that answer an MCP call waiting on one. A link that carries an {@code elicitation} id
- * ties the wizard's create back to the call that opened it.
+ * ties the wizard's create back to the call that opened it, and carries that call's agent choice to
+ * the create, so a project made through the hand-off is wired as the call itself would wire it.
  *
  * <p>Link shape: {@code <base>#new?<key>=<value>&…&elicitation=<id>&t=<token>}, one pair per
  * answer, a {@code multi} joined on commas. The SPA stores and scrubs {@code t}.
@@ -29,7 +31,10 @@ public final class NewProjectWizard {
 
     private final Supplier<@Nullable String> base;
     private final Supplier<@Nullable String> token;
-    private final Map<String, CompletableFuture<Map<String, Object>>> pending = new ConcurrentHashMap<>();
+    private final Map<String, Pending> pending = new ConcurrentHashMap<>();
+
+    /** A call waiting on the wizard: the create that will answer it, and the agents it wires for. */
+    private record Pending(CompletableFuture<Map<String, Object>> created, AgentChoice agents) {}
 
     /**
      * @param base the dashboard's base URL ({@code http://127.0.0.1:8910/}), or null while HTTP is
@@ -64,19 +69,33 @@ public final class NewProjectWizard {
         return out.toString();
     }
 
-    /** A new elicitation id, whose create {@link #created} completes. */
-    String open() {
+    /**
+     * A new elicitation id, whose create {@link #created} completes and wires for {@code agents},
+     * the choice of the call that opened it.
+     */
+    String open(AgentChoice agents) {
         byte[] bytes = new byte[12];
         RANDOM.nextBytes(bytes);
         String id = Hashing.hex(bytes);
-        pending.put(id, new CompletableFuture<>());
+        pending.put(id, new Pending(new CompletableFuture<>(), agents));
         return id;
     }
 
     /** What the wizard created for {@code id}; completes when its create lands. */
     CompletableFuture<Map<String, Object>> created(String id) {
-        CompletableFuture<Map<String, Object>> f = pending.get(id);
-        return f != null ? f : CompletableFuture.failedFuture(new IllegalStateException("no elicitation " + id));
+        Pending p = pending.get(id);
+        return p != null
+                ? p.created()
+                : CompletableFuture.failedFuture(new IllegalStateException("no elicitation " + id));
+    }
+
+    /**
+     * The agents a create for {@code id} wires: those of the call waiting on it; null when no call
+     * is, so the create wires as an ordinary one.
+     */
+    public @Nullable AgentChoice agents(String id) {
+        Pending p = pending.get(id);
+        return p == null ? null : p.agents();
     }
 
     /** Stops waiting for {@code id}; a later create with it is an ordinary create. */
@@ -89,8 +108,8 @@ public final class NewProjectWizard {
      * no call is waiting on it.
      */
     public boolean complete(String id, Map<String, Object> project) {
-        CompletableFuture<Map<String, Object>> f = pending.get(id);
-        return f != null && f.complete(Map.copyOf(project));
+        Pending p = pending.get(id);
+        return p != null && p.created().complete(Map.copyOf(project));
     }
 
     private static String enc(String s) {

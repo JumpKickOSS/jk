@@ -67,7 +67,8 @@ public final class NewProjectPost {
         FormCheck check = form.check(NewProjectForm.typed(form, given), derived::get);
         problems.addAll(check.problems());
         if (!problems.isEmpty()) return new Outcome.Refused(problems);
-        // The wizard has no shell of its own: its project is wired for the engine's agents setting.
+        // The wizard has no shell of its own: its project is wired for the engine's agents setting,
+        // unless its create answers an MCP call, whose agents then win.
         return new Outcome.Ready(
                 NewProjectForm.request(check.values(), t.id(), cwd).withAgents(NewProjectAgents.current()), t.id());
     }

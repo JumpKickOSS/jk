@@ -22,7 +22,7 @@ never edits it. A file jk cannot parse as strict JSON is left as it was, with a 
 | When | What happens |
 |------|--------------|
 | `jk new`, `jk init`, `jk import` | `AGENTS.md` with jk's section, the files of each agent in use, and a first code graph (under `target/`, not committed). |
-| The dashboard's new-project wizard, MCP `new` | The same files, for the engine's agents setting, and for MCP `new` also the calling client's agent; the wizard shows them and the notes (the last names the agents wired) on the new project's page, and MCP `new` returns them. The code graph comes with the first build. |
+| The dashboard's new-project wizard, MCP `new` | The same files, for the engine's agents setting, and for MCP `new` also the calling client's agent, including when MCP `new` hands the human a wizard link; the wizard shows them and the notes (the last names the agents wired, including one whose folder the template ships) on the new project's page, and MCP `new` returns them. The code graph comes with the first build. |
 | `jk agents [dir]` | The same, on demand, at the workspace root (or `dir`). Prints what it did. |
 | `jk agents --all` | Every supported agent, not only those in use here. |
 | `jk agents --remove` | jk's entries out of all of the above; a file left empty is deleted. |

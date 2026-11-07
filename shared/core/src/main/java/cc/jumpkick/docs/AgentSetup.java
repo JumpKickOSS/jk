@@ -7,6 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -123,22 +125,37 @@ public final class AgentSetup {
 
     /**
      * What a run did: the files it changed, then each step it left to the user, paths relative to
-     * the project directory.
+     * the project directory, and the agents the project is now wired for.
+     *
+     * @param wired each agent whose files now hold jk's entries, written by this run or already
+     *     there, whether the setting asked for it or the project's own files did; Codex when its
+     *     step was left to the user
      */
-    public record Report(List<Change> changes, List<String> notes) {
+    public record Report(List<Change> changes, List<String> notes, Set<Host> wired) {
         public Report {
             changes = List.copyOf(changes);
             notes = List.copyOf(notes);
+            wired = wired.isEmpty() ? Set.of() : Collections.unmodifiableSet(EnumSet.copyOf(wired));
+        }
+
+        /** A report that wired no agent. */
+        public Report(List<Change> changes, List<String> notes) {
+            this(changes, notes, Set.of());
         }
     }
 
-    private record Draft(Path dir, List<Change> changes, List<String> notes) {
+    private record Draft(Path dir, List<Change> changes, List<String> notes, Set<Host> wired) {
         Draft(Path dir) {
-            this(dir, new ArrayList<>(), new ArrayList<>());
+            this(dir, new ArrayList<>(), new ArrayList<>(), EnumSet.noneOf(Host.class));
         }
 
         Report report() {
-            return new Report(changes, notes);
+            return new Report(changes, notes, wired);
+        }
+
+        /** Counts {@code host} as wired when {@code ok}: one of its files holds jk's entries. */
+        void wiredIf(boolean ok, Host host) {
+            if (ok) wired.add(host);
         }
     }
 
@@ -163,13 +180,13 @@ public final class AgentSetup {
                 || hosts.contains(Host.CLAUDE)
                 || Files.isDirectory(dir.resolve(CLAUDE_DIR))
                 || Files.exists(dir.resolve(CLAUDE_MD))) {
-            claudeCode(dir, lines);
+            lines.wiredIf(claudeCode(dir, lines), Host.CLAUDE);
         }
         if (all || hosts.contains(Host.CURSOR) || Files.isDirectory(dir.resolve(".cursor"))) {
             Path file = dir.resolve(CURSOR_MCP);
-            step(file, lines, () -> mergeJson(file, AgentSetup::mcpServer));
+            boolean mcp = step(file, lines, () -> mergeJson(file, AgentSetup::mcpServer));
             Path rules = dir.resolve(CURSOR_RULES_FILE);
-            step(rules, lines, () -> ownedFile(rules, CURSOR_RULES));
+            lines.wiredIf(step(rules, lines, () -> ownedFile(rules, CURSOR_RULES)) | mcp, Host.CURSOR);
         }
         if (all || Files.isDirectory(dir.resolve(".vscode"))) {
             Path file = dir.resolve(VSCODE_MCP);
@@ -180,20 +197,23 @@ public final class AgentSetup {
                 || Files.isDirectory(dir.resolve(GEMINI_DIR))
                 || Files.exists(dir.resolve("GEMINI.md"))) {
             Path file = dir.resolve(GEMINI_SETTINGS);
-            step(file, lines, () -> mergeJson(file, AgentSetup::geminiSettings));
+            lines.wiredIf(step(file, lines, () -> mergeJson(file, AgentSetup::geminiSettings)), Host.GEMINI);
         }
         Path opencode = opencodeFile(dir);
         if (all
                 || hosts.contains(Host.OPENCODE)
                 || Files.exists(opencode)
                 || Files.isDirectory(dir.resolve(".opencode"))) {
-            step(opencode, lines, () -> mergeJson(opencode, AgentSetup::opencodeConfig));
+            lines.wiredIf(step(opencode, lines, () -> mergeJson(opencode, AgentSetup::opencodeConfig)), Host.OPENCODE);
         }
         if (all || hosts.contains(Host.AGY) || Files.isDirectory(dir.resolve(".agents/rules"))) {
             Path file = dir.resolve(AGY_RULES_FILE);
-            step(file, lines, () -> ownedFile(file, AGY_RULES));
+            lines.wiredIf(step(file, lines, () -> ownedFile(file, AGY_RULES)), Host.AGY);
         }
-        if (all || hosts.contains(Host.CODEX)) lines.notes().add(CODEX_NOTE);
+        if (all || hosts.contains(Host.CODEX)) {
+            lines.notes().add(CODEX_NOTE);
+            lines.wired().add(Host.CODEX);
+        }
         return lines.report();
     }
 
@@ -240,29 +260,35 @@ public final class AgentSetup {
 
     private static final String WROTE = "Wrote";
 
-    private static void claudeCode(Path dir, Draft lines) {
-        step(dir.resolve(CLAUDE_MD), lines, () -> claudeMd(dir.resolve(CLAUDE_MD)));
-        step(dir.resolve(MCP_FILE), lines, () -> mergeJson(dir.resolve(MCP_FILE), AgentSetup::mcpServer));
+    /** Claude Code's files; true when any of them now holds jk's entries. */
+    private static boolean claudeCode(Path dir, Draft lines) {
+        boolean md = step(dir.resolve(CLAUDE_MD), lines, () -> claudeMd(dir.resolve(CLAUDE_MD)));
+        boolean mcp = step(dir.resolve(MCP_FILE), lines, () -> mergeJson(dir.resolve(MCP_FILE), AgentSetup::mcpServer));
         Path settings = dir.resolve(CLAUDE_DIR).resolve(CLAUDE_SETTINGS);
-        step(settings, lines, () -> mergeJson(settings, AgentSetup::claudeSettings));
+        return step(settings, lines, () -> mergeJson(settings, AgentSetup::claudeSettings)) | md | mcp;
     }
 
     private interface Write {
         boolean run() throws IOException;
     }
 
-    /** Runs one file's writer; a file jk cannot safely edit is reported and left as it was. */
-    private static void step(Path file, Draft lines, Write write) {
-        step(file, lines, write, WROTE);
+    /**
+     * Runs one file's writer; a file jk cannot safely edit is reported and left as it was. True when
+     * the file now holds what the writer wants, written or already there.
+     */
+    private static boolean step(Path file, Draft lines, Write write) {
+        return step(file, lines, write, WROTE);
     }
 
-    private static void step(Path file, Draft lines, Write write, String done) {
+    private static boolean step(Path file, Draft lines, Write write, String done) {
         try {
             if (write.run()) lines.changes().add(new Change(done, file));
+            return true;
         } catch (IOException | RuntimeException unsafe) {
             String shown =
                     file.startsWith(lines.dir()) ? lines.dir().relativize(file).toString() : file.toString();
             lines.notes().add("Left " + shown.replace('\\', '/') + " alone: " + unsafe.getMessage());
+            return false;
         }
     }
 
