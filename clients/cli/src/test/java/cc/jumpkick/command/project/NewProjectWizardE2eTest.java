@@ -45,11 +45,12 @@ import org.junit.jupiter.api.io.TempDir;
  * shows, run through {@code jk new} into another directory, must scaffold the same tree, agent files
  * included; the project page the create opens shows what was wired for agents.
  *
- * <p>{@code network}: Playwright fetches its browser and the dashboard loads Vue from a CDN, so it
- * runs with the network tier ({@code jk test -p network -m clients/cli --class …}), not on the merge
- * gate. Each step's screenshot lands under {@code clients/cli/target/new-project-wizard/}.
+ * <p>{@code release}: a real browser is worth running once per release, not on every push, and
+ * Playwright fetches it while the dashboard loads Vue from a CDN ({@code jk test -p release -m
+ * clients/cli --class …}). Each step's screenshot lands under {@code
+ * clients/cli/target/new-project-wizard/}.
  */
-@Tag("network")
+@Tag("release")
 class NewProjectWizardE2eTest {
 
     private static final String SPRING_BOOT = "java/spring-boot/webmvc-security-actuator-jpa-h2";

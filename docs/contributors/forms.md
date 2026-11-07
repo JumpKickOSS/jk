@@ -145,7 +145,7 @@ the default template.
   view model under Node (a wizard link carrying the script, then the body the wizard posts, settled
   by `NewProjectPost`): the posted answers and the scaffolded trees must be identical. The view
   model's own suite is `clients/web/src/test/js/wizard-model.test.mjs`.
-- **The wizard in a browser** (`NewProjectWizardE2eTest`, CLI, network tier: Playwright's Chromium
+- **The wizard in a browser** (`NewProjectWizardE2eTest`, CLI, release tier: Playwright's Chromium
   and the CDN the dashboard loads Vue from). A Spring Boot and a CLI project created in the wizard
   against an in-process HTTP server; the review step's command, run through `jk new`, must scaffold
   the same tree.

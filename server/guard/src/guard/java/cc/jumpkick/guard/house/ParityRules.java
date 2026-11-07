@@ -366,6 +366,9 @@ final class ParityRules {
             "jk test -p bench",
             "jk test --coverage");
 
+    /** The tier the release tag's CI run owns: the self-host job must spell it. */
+    private static final String RELEASE_TIER = "jk test -p release";
+
     private static final Pattern RELEASE_VERSION = Pattern.compile("\\d+\\.\\d+\\.\\d+");
     private static final Pattern LITERAL_BOOTSTRAP = Pattern.compile("JK_VERSION=[\"']?\\d");
     private static final Pattern TREE_VERSION = Pattern.compile("(?m)^version\\s*=\\s*\"(\\d+\\.\\d+\\.\\d+)");
@@ -374,7 +377,7 @@ final class ParityRules {
             id = "ci-cadence",
             why =
                     "nightly CI runs the slow tiers, the coverage ratchet, the product smoke and the JVM client on a runner without GraalVM; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
-                            + BOOTSTRAP_PIN + " pins and judged by the checkout's own jk",
+                            + BOOTSTRAP_PIN + " pins and judged by the checkout's own jk, and runs the release tier",
             instead =
                     "restore the job, step, script or pin the detail names — a workflow that stops running a gate leaves the claim in the docs with nothing behind it")
     @Fixture("server/guard/fixtures/ci-cadence")
@@ -425,6 +428,9 @@ final class ParityRules {
             for (String verb : List.of("jk install", "jk guard", "jk test"))
                 if (!selfHost.contains(verb) && !takeover.contains(verb))
                     problems.add(CI + "'s self-host job must run `" + verb + "`");
+            if (!selfHost.contains(RELEASE_TIER))
+                problems.add(CI + "'s self-host job must run `" + RELEASE_TIER
+                        + "` — CI on the release tag is the only run of the release tier");
             if (selfHost.contains("gradlew"))
                 problems.add(CI + "'s self-host job must not invoke gradlew: it bootstraps from the hosted release "
                         + BOOTSTRAP_PIN

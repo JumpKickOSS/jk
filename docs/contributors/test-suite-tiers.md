@@ -18,10 +18,11 @@ house rules run under `jk build` and `jk guard` ([self-host](self-host.md#house-
 <!-- test-tiers:start -->
 | Command | Includes | Excludes |
 |---------|----------|----------|
-| `jk test` | untagged | `integration`, `slow`, `network`, `live`, `bench` |
-| `jk test -p integration` | `integration` | `slow`, `network`, `live`, `bench` |
-| `jk test -p slow` | `slow` | `network`, `live`, `bench` |
-| `jk test -p network` | `network` | `live`, `bench` |
+| `jk test` | untagged | `integration`, `slow`, `network`, `release`, `live`, `bench` |
+| `jk test -p integration` | `integration` | `slow`, `network`, `release`, `live`, `bench` |
+| `jk test -p slow` | `slow` | `network`, `release`, `live`, `bench` |
+| `jk test -p network` | `network` | `release`, `live`, `bench` |
+| `jk test -p release` | `release` | `live`, `bench` |
 | `jk test -p live` | `live` | `bench` |
 | `jk test -p bench` | `bench` | — |
 <!-- test-tiers:end -->
@@ -32,6 +33,7 @@ Tag new heavy tests at class level:
 @Tag("integration") // engine/e2e / Jk.execute / workers
 @Tag("slow")        // Android / multi-minute / large downloads
 @Tag("network")     // talks to a real remote (Maven Central, a forge)
+@Tag("release")     // worth running once per release: a real browser (CI on the release tag)
 @Tag("live")        // writes to this machine's own services (the OS keychain); desktop, on demand
 @Tag("bench")       // microbench only (never PR)
 ```
@@ -187,6 +189,11 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
   fast tier and every house-rule lane, run by the checkout's own jk; then the curated integration
   lane and `jk audit -s HIGH` over the lock), the shell fixtures, the workflow lint and the
   commit-authorship scan. No coverage, no benches.
+- **Release (`ci.yml` on the release tag):** after the curated lane, the self-host job runs
+  `jk test -p release`: the tests a release must pass that are too slow or too heavy for any other
+  run, such as the dashboard's new-project wizard in Playwright's Chromium
+  (`NewProjectWizardE2eTest`). The tier may fetch (the browser, the dashboard's CDN); a red run
+  stops the release.
 - **Nightly (`ci-nightly.yml`):** `jk test -p integration`, `-p slow`,
   `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
   the heap guard, the nightly [jk-examples](https://github.com/JumpKickOSS/jk-examples)
