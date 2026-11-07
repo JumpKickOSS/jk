@@ -7,6 +7,7 @@ import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -65,13 +66,22 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
     /** As {@link #forMember(Path, Lockfile)}, each sibling read under {@code selection}. */
     static WorkspaceGraph forMember(Path projectDir, Lockfile lock, FeatureSelection selection) {
         if (projectDir == null) return none();
+        Path root;
+        JkBuild rootBuild;
         try {
             var rootDir = WorkspaceLocator.findRoot(projectDir);
             if (rootDir.isEmpty()) return none();
-            Path root = rootDir.get();
-            JkBuild rootBuild = JkBuildParser.parseLocal(ManifestPaths.manifestIn(root));
-            if (!rootBuild.isWorkspaceRoot()) return none();
-            List<LoadedModule> loaded = loadModules(rootBuild.workspaceModules(), root, lock, selection);
+            root = rootDir.get();
+            rootBuild = JkBuildParser.parseLocal(ManifestPaths.manifestIn(root));
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
+        } catch (Exception e) {
+            return none();
+        }
+        if (!rootBuild.isWorkspaceRoot()) return none();
+        // Outside the fallback: a glob that selects nothing fails the tree as it fails the build.
+        List<LoadedModule> loaded = loadModules(rootBuild, root, lock, selection);
+        try {
             List<JkBuild> siblingBuilds = new ArrayList<>(loaded.size());
             for (LoadedModule m : loaded) siblingBuilds.add(m.build());
             Map<String, String> byName = new HashMap<>();
@@ -100,10 +110,10 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
      * resolve a sibling's {@code workspace:<name>} dep reference back to a readable coordinate when
      * collapsing it in a module's subtree.
      */
-    static Map<String, String> modulesByName(List<String> modules, Path rootDir) {
+    static Map<String, String> modulesByName(JkBuild root, Path rootDir) {
         Map<String, String> byName = new HashMap<>();
         if (rootDir == null) return byName;
-        for (String m : modules) {
+        for (String m : WorkspaceModules.expand(rootDir, root.workspaceModules())) {
             try {
                 JkBuild b = JkBuildParser.parse(
                         ManifestPaths.manifestIn(rootDir.resolve(m).normalize()));
@@ -136,20 +146,16 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
     }
 
     /**
-     * Load each workspace module (declaration order); a module whose jk.toml can't be parsed is
-     * dropped.
+     * Load each module {@code root}, the manifest at {@code rootDir}, lists (declaration order, globs
+     * expanded as the build expands them); a module whose jk.toml can't be parsed is dropped. A glob
+     * that matches nothing is the build's error, not an empty workspace.
      */
-    static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir) {
-        return loadModules(moduleRels, rootDir, null, FeatureSelection.DEFAULTS);
-    }
-
-    /** As {@link #loadModules(List, Path)}, each module read under {@code selection}. */
-    static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir, FeatureSelection selection) {
-        return loadModules(moduleRels, rootDir, null, selection);
+    static List<LoadedModule> loadModules(JkBuild root, Path rootDir, FeatureSelection selection) {
+        return loadModules(root, rootDir, null, selection);
     }
 
     /**
-     * As {@link #loadModules(List, Path)}, but when {@code sharedLock} is non-null every member
+     * As {@link #loadModules(JkBuild, Path, FeatureSelection)}, but when {@code sharedLock} is non-null every member
      * reads it directly — modules never own a lockfile ({@code LockPaths} resolves each to the same
      * root {@code jk-lock.toml}), and re-parsing that ~2,300-line file once per member threw away
      * ~15 identical parses per render. With no shared lock, each distinct lock path is still
@@ -158,7 +164,9 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
      * manifest as {@code selection} reads it, an optional dependency of an inactive feature left out.
      */
     static List<LoadedModule> loadModules(
-            List<String> moduleRels, Path rootDir, @Nullable Lockfile sharedLock, FeatureSelection selection) {
+            JkBuild root, Path rootDir, @Nullable Lockfile sharedLock, FeatureSelection selection) {
+        List<String> moduleRels =
+                rootDir == null ? List.of() : WorkspaceModules.expand(rootDir, root.workspaceModules());
         JkBuild rootBuild = null;
         if (rootDir != null) {
             try {

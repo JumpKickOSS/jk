@@ -10,6 +10,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.guard.rules.GuardPacks;
@@ -725,8 +726,7 @@ public final class LockPipeline {
     private boolean hasGuardSuite() {
         List<Path> dirs = new ArrayList<>();
         dirs.add(lockDir);
-        if (effective.workspace() != null)
-            for (String m : effective.workspace().modules()) dirs.add(lockDir.resolve(m));
+        dirs.addAll(WorkspaceModules.memberDirs(lockDir, effective));
         for (Path d : dirs) {
             if (Files.isDirectory(d) && TestSuites.hasGuardSuite(d, ModuleLayout.isCompact(d))) return true;
         }

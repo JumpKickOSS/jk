@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
-import static cc.jumpkick.config.WorkspaceModules.expand;
+import static cc.jumpkick.config.WorkspaceModules.memberDirs;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.ManifestPaths;
@@ -11,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,10 +46,7 @@ public final class WorkspaceModules {
      * empty when it lists none.
      */
     public static List<Path> members(Path root, JkBuild build) {
-        List<Path> out = new ArrayList<>();
-        for (String m : expand(root, build.workspaceModules()))
-            out.add(root.resolve(m).normalize());
-        return out;
+        return memberDirs(root, build);
     }
 
     private static List<Path> parse(Path root, Path manifest) throws IOException {

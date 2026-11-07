@@ -8,7 +8,9 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The {@code [workspace]} block of a root {@code jk.toml}: the literal module paths plus the
+ * The {@code [workspace]} block of a root {@code jk.toml}: the module entries as written — literal
+ * paths and single-segment globs, which only {@code config.WorkspaceModules.expand} turns into
+ * member directories, so no reader resolves an entry itself — plus the
  * optional {@code [workspace.dependencies]} table of shared external dep declarations inherited by
  * modules via {@code <name>.workspace = true}.
  */

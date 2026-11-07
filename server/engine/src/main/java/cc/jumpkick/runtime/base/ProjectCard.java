@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.ManifestPaths;
@@ -79,8 +80,7 @@ public record ProjectCard(
     private static List<Member> membersOf(Path root, JkBuild build) {
         if (!build.isWorkspaceRoot() || build.workspace() == null) return List.of();
         List<Member> out = new ArrayList<>();
-        for (String rel : build.workspace().modules()) {
-            Path moduleDir = root.resolve(rel).normalize();
+        for (Path moduleDir : WorkspaceModules.memberDirs(root, build)) {
             String coord = null;
             try {
                 var p = JkBuildParser.parseLocal(ManifestPaths.manifestIn(moduleDir))

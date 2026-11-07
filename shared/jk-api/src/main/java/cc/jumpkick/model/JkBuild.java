@@ -790,7 +790,11 @@ public record JkBuild(
         return workspace != null && !workspace.isEmpty();
     }
 
-    /** Module paths from the {@code [workspace]} block; empty when this is not a workspace root. */
+    /**
+     * The {@code [workspace] modules} entries as written, globs included; empty when this is not a
+     * workspace root. Member directories come from {@code config.WorkspaceModules.expand}, never
+     * from resolving an entry directly.
+     */
     public List<String> workspaceModules() {
         return workspace == null ? List.of() : workspace.modules();
     }

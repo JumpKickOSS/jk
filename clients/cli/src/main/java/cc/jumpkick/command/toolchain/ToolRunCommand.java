@@ -20,7 +20,8 @@ import cc.jumpkick.command.pipeline.RunVerb;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceModules;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
@@ -170,7 +171,8 @@ public final class ToolRunCommand implements CliCommand {
                 var peek = ProjectInfos.orNull(start);
                 if (peek != null && peek.workspaceRoot()) wsRoot = start;
                 else if (peek == null
-                        && !workspaceModules(ManifestPaths.manifestIn(start)).isEmpty()) {
+                        && !WorkspaceScan.modulesListed(ManifestPaths.manifestIn(start))
+                                .isEmpty()) {
                     wsRoot = start;
                 }
             }
@@ -189,7 +191,9 @@ public final class ToolRunCommand implements CliCommand {
             var rootBuild = ProjectInfos.orNull(wsRoot);
             List<String> moduleDirs = rootBuild != null && rootBuild.workspaceRoot()
                     ? rootBuild.moduleDirs()
-                    : workspaceModules(ManifestPaths.manifestIn(wsRoot));
+                    : WorkspaceModules.memberDirs(wsRoot).stream()
+                            .map(Path::toString)
+                            .toList();
             if (moduleDirs.isEmpty()) return null;
             String want = name.replace('\\', '/');
             while (want.startsWith("./")) want = want.substring(2);
@@ -231,10 +235,6 @@ public final class ToolRunCommand implements CliCommand {
             return null;
         }
         return null;
-    }
-
-    private static List<String> workspaceModules(Path jkToml) {
-        return TomlScan.scan(jkToml, "workspace.modules").stringArray("workspace.modules");
     }
 
     /** {@code jk run <leaf>} matched more than one workspace module. */

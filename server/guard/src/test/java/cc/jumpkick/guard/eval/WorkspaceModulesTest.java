@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -104,5 +105,36 @@ class WorkspaceModulesTest {
                                 ctx)
                         .keys())
                 .containsExactly("lib", "services/a", "services/b");
+    }
+
+    @Test
+    void a_glob_that_matches_no_member_fails_the_lanes_and_the_member_layer_as_it_fails_the_build(@TempDir Path dir)
+            throws Exception {
+        Path root = workspace(dir);
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "p"
+                name = "ws"
+                version = "1"
+
+                [workspace]
+                modules = ["apps/*", "lib"]
+                """);
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.root-rule]
+                kind = "text"
+                pattern = "zzz"
+                hit = "zzz"
+                instead = "i"
+                why = "root"
+                """);
+        String message = "[workspace] modules entry `apps/*` matches no directory with a jk.toml";
+
+        assertThatThrownBy(() -> WorkspaceLoader.loadModules(root, JkBuildParser.parseLocal(root.resolve("jk.toml"))))
+                .as("the build")
+                .hasMessage(message);
+        assertThatThrownBy(() -> WorkspaceModules.of(root)).hasMessage(message);
+        assertThatThrownBy(() -> GuardRules.load(root, GuardsConfig.ABSENT))
+                .as("the member rule layer")
+                .hasMessage(message);
     }
 }

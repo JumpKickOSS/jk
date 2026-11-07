@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -26,6 +27,10 @@ import java.util.concurrent.ConcurrentMap;
  * wildcard matches one path segment; {@code **} is refused rather than guessed at. Within one glob
  * the matches are sorted, so the module order is a function of the tree, not of the directory
  * listing; across entries the declared order is kept and duplicates collapse to their first mention.
+ *
+ * <p>A glob that selects nothing fails every reader with the same error. One reader tolerates it on
+ * purpose: the engine's project-info view, which {@code jk new} reads for the workspace it is about
+ * to add a member to, before that member's {@code jk.toml} exists.
  */
 public final class WorkspaceModules {
 
@@ -71,24 +76,28 @@ public final class WorkspaceModules {
      * {@code root} has no manifest or no list. A key scan of the manifest, not the full parser: the
      * list is literal text, the scan costs milliseconds where the parser's first read of a
      * workspace costs hundreds, and a manifest the parser would reject still names its members.
-     * Quiet on purpose — a glob that matches nothing contributes no member rather than failing a
-     * caller that is reading the tree, not validating the manifest.
+     * A glob that matches nothing fails here as it fails the build, with {@link #expand}'s error.
      */
     public static List<Path> memberDirs(Path root) {
         Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return List.of();
         List<String> rels = TomlScan.scan(manifest, "workspace.modules").stringArray("workspace.modules");
-        if (rels.isEmpty()) return List.of();
-        List<String> expanded;
-        try {
-            expanded = expand(root, rels);
-        } catch (RuntimeException e) {
-            expanded = rels.stream().filter(r -> r != null && !isGlob(r)).toList();
-        }
+        return dirs(root, rels);
+    }
+
+    /**
+     * The member directories {@code build}, the manifest at {@code root}, lists: its {@code
+     * [workspace] modules} through {@link #expand}, each resolved against {@code root} and
+     * normalized, in declared order; empty when it lists none.
+     */
+    public static List<Path> memberDirs(Path root, JkBuild build) {
+        return dirs(root, build.workspaceModules());
+    }
+
+    private static List<Path> dirs(Path root, List<String> entries) {
+        if (entries.isEmpty()) return List.of();
         List<Path> out = new ArrayList<>();
-        for (String rel : expanded) {
-            if (rel != null && !rel.isBlank()) out.add(root.resolve(rel).normalize());
-        }
+        for (String rel : expand(root, entries)) out.add(root.resolve(rel).normalize());
         return List.copyOf(out);
     }
 

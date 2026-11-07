@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static cc.jumpkick.config.WorkspaceModules.expand;
+
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.eval.Evaluators;
@@ -316,10 +318,9 @@ final class GuardKeys {
     static List<String> modelTokens(Path root, JkBuild rootBuild) throws IOException {
         List<String> tokens = new ArrayList<>();
         tokens.add(fileToken("manifest", ManifestPaths.manifestIn(root)));
-        if (rootBuild.workspace() != null) {
-            for (String m : rootBuild.workspace().modules()) {
-                tokens.add(fileToken("manifest:" + m, ManifestPaths.manifestIn(root.resolve(m))));
-            }
+        // The build's expansion: a member a glob selects is read like a literal one.
+        for (String m : expand(root, rootBuild.workspaceModules())) {
+            tokens.add(fileToken("manifest:" + m, ManifestPaths.manifestIn(root.resolve(m))));
         }
         tokens.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
         return tokens;
