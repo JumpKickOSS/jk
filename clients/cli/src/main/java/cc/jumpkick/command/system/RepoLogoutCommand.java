@@ -55,8 +55,8 @@ public final class RepoLogoutCommand implements CliCommand {
         try {
             store.clear(id);
         } catch (SecretBackendException refused) {
-            CliOutput.err("error: " + refused.getMessage() + "; the login is kept, so `jk repo logout " + id
-                    + "` can be run again once the keychain answers.");
+            CliOutput.err(
+                    "error: " + refused.getMessage() + "; login kept, run `jk repo logout " + id + "` again later");
             return 1;
         }
         if (!global.quiet) {

@@ -39,7 +39,7 @@ class StoredLoginsTest {
                         .map(TestAnsi::strip)
                         .toList())
                 .containsExactly(
-                        "ok:      logins — 3 stored; a new one keeps its secret in the owner-only file",
+                        "ok:      logins — 3 stored; new ones go to the owner-only file",
                         "login:    repo nexus → https://nexus.acme (the Secret Service)",
                         "login:    repo ghcr.io → https://ghcr.io (the owner-only file)",
                         "login:    forge github.com (the macOS Keychain)");

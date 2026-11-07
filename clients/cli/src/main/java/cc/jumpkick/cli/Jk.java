@@ -69,9 +69,7 @@ public final class Jk {
         // : the slim client never hosts the engine. Spawning uses
         // lib/jk-engine/<jar> / JK_ENGINE_EXE only — no --engine-server monolyth path.
         if (args.length > 0 && "--engine-server".equals(args[0])) {
-            System.err.println("jk: this binary does not include the engine (wire-only client)."
-                    + " Materialize the engine (`./install.sh`, `jk self materialize`,"
-                    + " or `jk self update`), or set JK_ENGINE_EXE.");
+            System.err.println("jk: this client has no engine built in; run `jk self update`, or set JK_ENGINE_EXE");
             System.exit(Exit.SOFTWARE);
             return;
         }

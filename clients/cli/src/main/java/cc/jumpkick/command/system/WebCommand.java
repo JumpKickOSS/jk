@@ -65,7 +65,7 @@ public final class WebCommand implements CliCommand {
         if (status.httpUrl() == null || status.httpUrl().isBlank()) {
             String why = status.httpError() != null
                     ? "HTTP dashboard failed to start (" + status.httpError() + ")"
-                    : "HTTP dashboard is disabled — set [http] enabled = true in config";
+                    : "HTTP dashboard is off; set [http] enabled = true in config";
             CommandWedge.printFail("Web", why);
             return Exit.FAILURE;
         }
@@ -87,7 +87,7 @@ public final class WebCommand implements CliCommand {
                 CliOutput.out(Theme.paint("  Opening in your browser…", t.darkGray()));
             } else {
                 CliOutput.out("");
-                CliOutput.out(Theme.paint("  Could not launch a browser — copy the URL above.", t.warning()));
+                CliOutput.out(Theme.paint("  Could not open a browser; copy the URL above.", t.warning()));
             }
         }
         return Exit.SUCCESS;

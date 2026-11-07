@@ -123,9 +123,9 @@ public final class AuthLoginCommand implements CliCommand {
     private String runDeviceFlow(ForgeKind kind, String resolvedHost) {
         if (!kind.supportsDeviceFlow())
             throw new AuthException(kind.displayName()
-                    + " has no device flow — log in with: jk auth login "
+                    + " has no device flow; run jk auth login "
                     + kind.id()
-                    + " --with-token  (paste a token / app password).");
+                    + " --with-token and paste a token");
         ForgeAuthConfig forgeConfig =
                 ForgeAuthConfig.discover(global.workingDir(), global.noConfig, Optional.ofNullable(global.configFile));
         String clientId =

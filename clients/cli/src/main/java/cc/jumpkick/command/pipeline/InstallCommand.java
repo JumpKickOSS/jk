@@ -463,9 +463,7 @@ public final class InstallCommand {
             reshelving = true;
             if (!json) {
                 CommandWedge.printOk(
-                        "Install",
-                        "the engine changed under this install — re-shelving under the freshly built"
-                                + " engine (jars already built; restamping the shelf)");
+                        "Install", "engine changed during install; re-shelving workers under the new engine");
             }
             // The pointer names another jar now; the next request probes again and takes the
             // resident engine over, so the second pass runs on the engine this tree built. That
@@ -720,8 +718,8 @@ public final class InstallCommand {
     public static @Nullable String shelfBehindEngineNotice(
             boolean lastPass, Optional<String> before, Optional<String> after) {
         if (!lastPass || !engineReplaced(before, after)) return null;
-        return "the re-shelving pass ended on engine " + shortSha(after) + " while its shelf was packaged by engine "
-                + shortSha(before) + " — run `jk install` once more so the shelf is the live engine's";
+        return "workers were shelved by engine " + shortSha(before) + ", not the new engine " + shortSha(after)
+                + "; run `jk install` once more";
     }
 
     /**
@@ -736,8 +734,7 @@ public final class InstallCommand {
         if (engineVersion.isEmpty() || engineVersion.get().equals(clientVersion)) return null;
         String tree = engineVersion.get();
         String next = client != null ? "`" + client + " " + verb + "`" : "`jk " + verb + "` as jk " + tree;
-        return "the home names jk " + tree + "'s engine now, which serves jk " + tree + " clients; this one is jk "
-                + clientVersion + ", so the re-shelving pass runs on the tree's own client — run " + next
+        return "installed engine is jk " + tree + " and this one is jk " + clientVersion + "; run " + next
                 + " once more";
     }
 
@@ -769,9 +766,8 @@ public final class InstallCommand {
     public static @Nullable String handoffMismatch(String liveBuildId, Optional<String> pointerSha) {
         if (liveBuildId.isEmpty() || pointerSha.isEmpty()) return null;
         if (pointerSha.get().toLowerCase(Locale.ROOT).startsWith(liveBuildId.toLowerCase(Locale.ROOT))) return null;
-        return "the re-shelving pass would run on engine " + liveBuildId + " while the home names engine "
-                + shortSha(pointerSha) + " — the shelf would be packaged by an engine the home no longer names;"
-                + " run `jk engine stop` and then `jk install` again";
+        return "engine " + liveBuildId + " answered, not the installed engine " + shortSha(pointerSha)
+                + "; run `jk engine stop`, then `jk install` again";
     }
 
     private static String shortSha(Optional<String> sha) {
@@ -925,8 +921,8 @@ public final class InstallCommand {
             }
             if (plan.linkSrcs().isEmpty()) {
                 if (jvmLauncher != null) {
-                    CliOutput.err("no native client was built here — " + jvmLauncher.getFileName()
-                            + " runs jk on a JVM; the PATH client " + productBin + " is unchanged");
+                    CliOutput.err("no native client built; wrote JVM launcher " + jvmLauncher.getFileName() + ", "
+                            + productBin + " is unchanged");
                 }
                 return jvmLauncher;
             }

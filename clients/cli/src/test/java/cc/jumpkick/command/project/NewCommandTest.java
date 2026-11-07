@@ -363,7 +363,7 @@ class NewCommandTest {
 
         Run refused = jk("init", "-A", "--no-module", "--dir", tempDir.toString());
         assertThat(refused.exit()).isEqualTo(Exit.USAGE);
-        assertThat(refused.err()).isEqualTo("jk init: --assembly is the template's question now: -p assembly=true");
+        assertThat(refused.err()).isEqualTo("jk init: --assembly is gone; use -p assembly=true");
     }
 
     @Test

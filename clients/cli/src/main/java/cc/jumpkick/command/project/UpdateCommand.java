@@ -215,7 +215,7 @@ public final class UpdateCommand implements CliCommand {
         // A failed plan sends its real diagnostics as plan events and an EMPTY errors list, so
         // the loop above prints nothing — every interactive command still settles with a wedge.
         if (!outcome.success() && outcome.errors().isEmpty() && !global.outputIsJson()) {
-            CommandWedge.printFail("Update", "update failed — see diagnostics above");
+            CommandWedge.printFail("Update", "update failed; see the errors above");
         }
         return outcome.exitCode();
     }

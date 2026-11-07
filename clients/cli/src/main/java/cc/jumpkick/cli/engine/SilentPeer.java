@@ -141,13 +141,10 @@ public final class SilentPeer {
         }
     }
 
-    /** The refusal: who the peer is, what it holds, how long it was given, and the operator's outs. */
+    /** The refusal: which engine, how long it was given, and the operator's outs. */
     static String refusal(Life life, Duration waited) {
-        return "the build engine (pid " + life.pid() + ") is alive and busy — " + life.describe()
-                + " — but has not answered a handshake in " + human(waited)
-                + "; it is not displaced, since that would kill the jobs it runs for other terminals."
-                + " Retry in a moment; `jk engine status` shows its jobs, and `jk engine stop -n` stops it"
-                + " regardless";
+        return "engine pid " + life.pid() + " is busy and has not answered in " + human(waited)
+                + "; retry, or run `jk engine stop -n`";
     }
 
     /** {@code 45s}, {@code 3m 12s}, {@code 2h 05m}. */

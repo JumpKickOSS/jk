@@ -125,7 +125,7 @@ public final class SelfCommand extends GroupCommand {
             if (jar.isEmpty() || !Files.isRegularFile(jar.get())) {
                 CommandWedge.printFail(
                         "Self",
-                        "no client jar to write a launcher for — run `java -jar jk-" + JkVersion.VERSION
+                        "no client jar found; run `java -jar jk-" + JkVersion.VERSION
                                 + ".jar self write-launcher`, or pass --jar");
                 return Exit.USAGE;
             }
@@ -136,8 +136,8 @@ public final class SelfCommand extends GroupCommand {
                     Os.isWindows());
             CommandWedge.printOk(
                     "Self",
-                    "wrote " + launcher + " — jk " + JkVersion.VERSION + " on " + JvmClientInstall.runningJava()
-                            + " over " + WorkingDirectory.resolve(jar.get()));
+                    "wrote " + launcher + ": runs " + WorkingDirectory.resolve(jar.get()) + " on "
+                            + JvmClientInstall.runningJava());
             return 0;
         }
 
@@ -284,8 +284,7 @@ public final class SelfCommand extends GroupCommand {
                     "Self",
                     "glyphs: " + SetupTerminalReport.describe(caps)
                             + (saved ? ", remembered for this terminal" : ", could not be saved")
-                            + "\n  jk asks again only if the terminal's font, config, or the"
-                            + "\n  installed fonts change");
+                            + "\n  jk asks again if the terminal's font or config changes");
             return saved ? 0 : Exit.FAILURE;
         }
 
@@ -362,16 +361,13 @@ public final class SelfCommand extends GroupCommand {
                     CommandWedge.printFail(
                             "Self",
                             "that is the " + jarVersion.substring(JkVersion.VERSION.length() + 1)
-                                    + " assembly of " + JkVersion.VERSION + ", and the engine ships without a"
-                                    + " classifier — materialize jk-engine-" + JkVersion.VERSION + ".jar"
-                                    + " (the build writes one under target/dist/lib/)");
+                                    + " jar; use target/dist/lib/jk-engine-" + JkVersion.VERSION + ".jar");
                     return Exit.SOFTWARE;
                 }
                 CommandWedge.printFail(
                         "Self",
-                        "engine jar is " + jarVersion + ", this client is " + JkVersion.VERSION + " — refusing to"
-                                + " materialize " + engineJar + " (build the matching engine, or run"
-                                + " `jk self update " + jarVersion + "` to move the whole install)");
+                        "engine jar is " + jarVersion + " but this client is " + JkVersion.VERSION
+                                + "; build the matching engine, or run `jk self update " + jarVersion + "`");
                 return Exit.SOFTWARE;
             }
             EngineInstall install = EngineInstall.current();
@@ -605,8 +601,7 @@ public final class SelfCommand extends GroupCommand {
         static String jvmClientArtifact(String sumsText, String version) throws IOException {
             String jar = JvmClientInstall.jarName(version);
             if (sumHas(sumsText, jar)) return jar;
-            throw new IOException("release SHA256SUMS has no " + jar
-                    + " — this release ships no JVM client; refusing to install an unverifiable one");
+            throw new IOException("release SHA256SUMS has no " + jar + "; cannot verify the JVM client");
         }
 
         /**
@@ -636,7 +631,7 @@ public final class SelfCommand extends GroupCommand {
             String base = "jk-" + os + "-" + arch + "-" + version;
             throw new IOException("release SHA256SUMS has no " + base + ".xz"
                     + ("windows".equals(os) ? " (or " + base + ".zip)" : "")
-                    + " — refusing to install an unverifiable client binary");
+                    + "; cannot verify the client");
         }
 
         /** This host's native client when the release lists one. */

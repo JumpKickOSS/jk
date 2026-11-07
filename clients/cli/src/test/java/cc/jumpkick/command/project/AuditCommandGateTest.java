@@ -46,11 +46,11 @@ class AuditCommandGateTest {
         Finding quiet = finding("GHSA-q", Severity.HIGH).withIgnore(new AuditReport.Ignore("accepted", null, false));
         AuditReport report = new AuditReport(List.of(finding("GHSA-h", Severity.HIGH), quiet));
         assertThat(AuditCommand.verdict(report, Severity.HIGH))
-                .isEqualTo("1 finding at or above HIGH (1 ignored) — failing.");
+                .isEqualTo("1 finding at or above HIGH (1 ignored); failing");
         assertThat(AuditCommand.verdict(
                         new AuditReport(List.of(finding("a", Severity.HIGH), finding("b", Severity.HIGH))),
                         Severity.LOW))
-                .isEqualTo("2 findings at or above LOW — failing.");
+                .isEqualTo("2 findings at or above LOW; failing");
     }
 
     @Test

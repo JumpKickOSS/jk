@@ -55,14 +55,10 @@ public final class EngineRotateTokenCommand implements CliCommand {
                 && !EngineProcessControl.stop(EnginePaths.activeSocket(paths))) {
             CommandWedge.printFail(
                     "Engine",
-                    "token file removed, but stopping the running engine failed;"
-                            + " run 'jk engine stop' so the old token stops being accepted");
+                    "token removed, but the engine did not stop; run 'jk engine stop' to revoke the old token");
             return Exit.SOFTWARE;
         }
-        CommandWedge.printOk(
-                "Engine",
-                "token rotated." + " The next command spawns an engine with a fresh token —"
-                        + " run 'jk engine status' for the new dashboard URL.");
+        CommandWedge.printOk("Engine", "token rotated; 'jk engine status' shows the new dashboard URL");
         return Exit.SUCCESS;
     }
 }

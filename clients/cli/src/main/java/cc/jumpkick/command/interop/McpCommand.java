@@ -61,7 +61,7 @@ public final class McpCommand implements CliCommand {
         EngineProbe.Status status = EngineProbe.status(EnginePaths.activeSocket(paths))
                 .orElseThrow(() -> new IOException("the jk engine did not answer a status request"));
         if (status.mcpUrl() == null) {
-            throw new IOException("the jk engine is not serving MCP (HTTP or [mcp] is off; see `jk engine status`)");
+            throw new IOException("the jk engine is not serving MCP; see `jk engine status`");
         }
         String token =
                 Files.readString(paths.httpToken(), StandardCharsets.UTF_8).trim();

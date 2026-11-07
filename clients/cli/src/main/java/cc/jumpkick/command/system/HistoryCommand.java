@@ -179,7 +179,7 @@ public final class HistoryCommand extends GroupCommand {
                     .filter(l -> EngineProtocol.HISTORY_ENTRY.equals(EngineProtocol.typeOf(l)))
                     .toList();
             if (entries.isEmpty()) {
-                CliOutput.out("No build history yet — run a build and it will appear here.");
+                CliOutput.out("No build history yet");
                 return 0;
             }
             long now = System.currentTimeMillis();

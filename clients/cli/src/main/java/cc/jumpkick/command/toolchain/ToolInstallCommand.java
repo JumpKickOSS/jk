@@ -93,7 +93,7 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value("<dir>", "Override the lib directory.", "--lib-dir").hide(),
                 Opt.value(
                         "<m2|jk>",
-                        "Where the install goes: m2 (the Maven local repository, default) or jk (jk's private repository)",
+                        "Install into m2 (the Maven local repository, default) or jk's own repository",
                         "--destination"),
                 Opt.value("<dir>", "Override the local Maven repo root (~/.m2).", "--m2-dir")
                         .hide(),
@@ -217,17 +217,13 @@ public final class ToolInstallCommand implements CliCommand {
                 String library = libraryName(base);
                 if (library != null) {
                     CommandWedge.printFail(
-                            "Install",
-                            "`jk install` puts an application or tool on this machine, and " + library
-                                    + " is a library. `jk snapshot` installs it for sibling projects while you edit;"
-                                    + " `jk release` cuts a version.");
+                            "Install", library + " is a library; use `jk snapshot` or `jk release` instead");
                     return Exit.USAGE;
                 }
                 return appInstallDelegate().runProjectInstallBuildPlan(base);
             }
             CommandWedge.printFail(
-                    "Install",
-                    "no target specified — pass a coordinate, catalog name, path, or git URL, or run inside a directory with jk.toml");
+                    "Install", "no target; pass a coordinate, catalog name, path or git URL, or run in a project");
             return Exit.USAGE;
         }
         this.coord = in.positionals().get(0);
@@ -359,8 +355,7 @@ public final class ToolInstallCommand implements CliCommand {
         if (classified instanceof ToolTarget.Directory dir) {
             Path projectDir = WorkingDirectory.resolve(base.resolve(dir.path()));
             if (!Files.isRegularFile(ManifestPaths.manifestIn(projectDir))) {
-                CommandWedge.printFail(
-                        "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project.");
+                CommandWedge.printFail("Tool", "no jk.toml in " + projectDir);
                 return Exit.CONFIG;
             }
             return appInstallDelegate().runProjectInstallBuildPlan(projectDir);
@@ -422,10 +417,7 @@ public final class ToolInstallCommand implements CliCommand {
         }
         if (!r.arguments().isEmpty()) {
             // Default arguments can't ride a launcher's "$@" cleanly yet.
-            CommandWedge.printFail(
-                    "Tool",
-                    "warning — this alias declares default arguments,"
-                            + " which installed launchers do not honor yet.");
+            CommandWedge.printFail("Tool", "this alias has default arguments; installed launchers ignore them");
         }
         if (binName == null || binName.isBlank()) binName = aliasName;
         String ref = r.scriptRef();
@@ -567,7 +559,7 @@ public final class ToolInstallCommand implements CliCommand {
         if (version.isBlank()) {
             CommandWedge.printFail(
                     "Tool",
-                    "no version after ':' in '" + target + "' — use " + slug + ":<version> or " + slug + ":"
+                    "no version after ':' in '" + target + "'; use " + slug + ":<version> or " + slug + ":"
                             + BuildTool.LATEST);
             return Exit.USAGE;
         }

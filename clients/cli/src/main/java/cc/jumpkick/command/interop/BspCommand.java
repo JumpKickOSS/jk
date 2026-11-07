@@ -92,7 +92,7 @@ public final class BspCommand implements CliCommand {
         }
         Path out = writeConnectionFile(projectDir);
         CommandWedge.printOk("BSP", "Wrote " + PathDisplay.of(out, projectDir));
-        CliOutput.out("Open this project in an IDE with BSP support (IntelliJ via Scala plugin / Metals).");
+        CliOutput.out("Open this project in an IDE with BSP support, such as Metals or IntelliJ.");
         return 0;
     }
 

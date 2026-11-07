@@ -89,9 +89,8 @@ public final class ReleaseArtifacts {
             byte[] bytes = stream(http, uri, artifactName, what, progress);
             String actualSha = Hashing.sha256Hex(bytes);
             if (!actualSha.equalsIgnoreCase(expectedSha)) {
-                throw new IOException(what + " checksum mismatch for " + uri
-                        + " — expected sha256 " + expectedSha + ", got " + actualSha
-                        + " (a mirror or proxy may have served a stale/corrupt file)");
+                throw new IOException(what + " checksum mismatch for " + uri + ": expected sha256 " + expectedSha
+                        + ", got " + actualSha);
             }
             return new Verified(bytes, actualSha);
         }
@@ -102,7 +101,7 @@ public final class ReleaseArtifacts {
         private final String version;
 
         NotPublished(String version, URI versionDir) {
-            super("no jk " + version + " release at " + versionDir + " — HTTP 404");
+            super("no jk " + version + " release at " + versionDir + ": HTTP 404");
             this.version = version;
         }
 
@@ -188,9 +187,8 @@ public final class ReleaseArtifacts {
         verifier.verify(signed.signedBytes(), signed.signature());
         String latest = signed.pointer().version();
         if (Versions.compare(latest, running) < 0) {
-            throw new IOException("the latest-release pointer names " + latest + ", older than the " + running
-                    + " this jk runs — REFUSING a rolled-back pointer (a mirror or the release site may be"
-                    + " stale or compromised; `jk self update " + latest + "` downgrades deliberately)");
+            throw new IOException("refusing latest release " + latest + ": older than this jk " + running
+                    + "; `jk self update " + latest + "` downgrades on purpose");
         }
         return latest;
     }
@@ -216,7 +214,7 @@ public final class ReleaseArtifacts {
                 body.transferTo(OutputStream.nullOutputStream());
             }
             throw new IOException(
-                    "could not download the " + what + " from " + uri + " — HTTP " + response.statusCode());
+                    "could not download the " + what + " from " + uri + ": HTTP " + response.statusCode());
         }
         long total = contentLength(response);
         progress.start(artifactName, total);
@@ -252,10 +250,7 @@ public final class ReleaseArtifacts {
     }
 
     private static IOException downloadFailed(URI uri, String what, IOException cause) {
-        return new IOException(
-                "could not download the " + what + " from " + uri + " — " + cause.getMessage()
-                        + " (check your network, or materialize the version with `jk self update`)",
-                cause);
+        return new IOException("could not download the " + what + " from " + uri + ": " + cause.getMessage(), cause);
     }
 
     private static byte[] get(Http http, URI uri, String what) throws IOException {
@@ -276,7 +271,7 @@ public final class ReleaseArtifacts {
     private static byte[] ok(HttpResponse<byte[]> response, URI uri, String what) throws IOException {
         if (response.statusCode() != 200) {
             throw new IOException(
-                    "could not download the " + what + " from " + uri + " — HTTP " + response.statusCode());
+                    "could not download the " + what + " from " + uri + ": HTTP " + response.statusCode());
         }
         return response.body();
     }

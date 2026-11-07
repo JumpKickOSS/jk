@@ -43,14 +43,11 @@ class EngineOtherHomesTest {
     @Test
     void the_status_hint_offers_stop_all_only_for_this_homes_engines() {
         assertThat(EngineStatusCommand.stopHint(List.of(ours(1), ours(2))))
-                .isEqualTo("Stop this home's engines with `jk engine stop -A`, or one engine with"
-                        + " `jk engine stop -p <pid>`.");
+                .isEqualTo("Stop all with `jk engine stop -A`, or one with `jk engine stop -p <pid>`");
         assertThat(EngineStatusCommand.stopHint(List.of(ours(1), other(2, SCRATCH), other(3, null))))
-                .isEqualTo("`jk engine stop -A` stops this home's 1 engine and leaves the others."
-                        + " The engines of other homes stop with `jk engine stop -p 2,3`.");
+                .isEqualTo("`jk engine stop -A` stops this home's 1 engine; `jk engine stop -p 2,3` stops the others");
         assertThat(EngineStatusCommand.stopHint(List.of(other(7, SCRATCH))))
-                .isEqualTo("None of these belong to this home. The engine of another home stops with"
-                        + " `jk engine stop -p 7`.");
+                .isEqualTo("These engines belong to other homes; `jk engine stop -p 7` stops it");
     }
 
     @Test

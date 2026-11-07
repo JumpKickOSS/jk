@@ -113,7 +113,7 @@ public final class AotCachePackage {
         training.add("-jar");
         training.add(appJarName);
 
-        CliOutput.err("jk: training the " + (aotTier ? "AOT cache (JEP 514)" : "AppCDS archive") + " — one "
+        CliOutput.err("jk: training the " + (aotTier ? "AOT cache" : "AppCDS archive") + " with one "
                 + (springBoot ? "context refresh" : "run of the app") + " ...");
         Process process = new ProcessBuilder(training)
                 .directory(outDir.toFile())
@@ -130,9 +130,7 @@ public final class AotCachePackage {
             process.destroyForcibly();
             CommandWedge.printFail(
                     "Build",
-                    "the training run did not exit within " + TRAINING_TIMEOUT_SECONDS
-                            + "s. Training needs one run that terminates — Spring Boot apps exit automatically;"
-                            + " other apps must exit on their own (a server main loop can't be trained this way yet).");
+                    "training run did not exit within " + TRAINING_TIMEOUT_SECONDS + "s; the app must exit on its own");
             return Exit.SOFTWARE;
         }
         reader.join(5_000);
@@ -172,8 +170,7 @@ public final class AotCachePackage {
         // start without saying so — hence the launcher, which pins both.
         CliOutput.err("jk: run it with:  " + PathDisplay.styledRaw(launcher));
         CliOutput.err("jk:   pinned to " + jvmIdent);
-        CliOutput.err(
-                "jk:   the cache is void if this directory moves, the jars change, or another" + " JVM build runs it");
+        CliOutput.err("jk:   moving this directory, changing the jars or the JVM voids the cache");
         return 0;
     }
 
@@ -208,7 +205,7 @@ public final class AotCachePackage {
             process.destroyForcibly();
             // A run that never came back proved nothing — reporting it as verified is exactly
             // the silent-cold-start trap verification exists to close.
-            return "verification run did not exit within " + TRAINING_TIMEOUT_SECONDS + "s — cache not verified";
+            return "cache not verified: the check run did not exit within " + TRAINING_TIMEOUT_SECONDS + "s";
         }
         reader.join(5_000);
         return AotCacheFiles.refusal(out.toString());
@@ -251,8 +248,8 @@ public final class AotCachePackage {
             boolean lockFresh = valueOf(text, "lock-sha256").equals(currentLockSha(projectDir));
             if (recorded.equals(actual) && lockFresh) return;
             PathUtil.deleteRecursively(outDir);
-            CliOutput.err("jk: the AOT cache no longer matches this build — removed " + PathDisplay.styledRaw(outDir)
-                    + " (re-run with --aot-cache)");
+            CliOutput.err(
+                    "jk: removed stale AOT cache " + PathDisplay.styledRaw(outDir) + "; rebuild with --aot-cache");
         } catch (IOException | RuntimeException ignored) {
             // Best effort: never fail a build over a cache that was only ever an optimisation.
         }

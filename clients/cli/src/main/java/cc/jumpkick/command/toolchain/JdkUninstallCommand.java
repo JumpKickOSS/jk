@@ -130,10 +130,7 @@ public final class JdkUninstallCommand implements CliCommand {
             return runSingle(registry, defaults);
         }
         if (!isInteractiveTerminalSession()) {
-            CommandWedge.printFail(
-                    "JDK",
-                    "stdin is not a TTY — pass a spec "
-                            + "(e.g. `jk jdk uninstall temurin-21.0.5`) or run interactively.");
+            CommandWedge.printFail("JDK", "no terminal to ask; pass a spec such as temurin-25.0.1");
             return Exit.USAGE;
         }
         return runWizard(registry, defaults);
@@ -228,9 +225,7 @@ public final class JdkUninstallCommand implements CliCommand {
                 .filter(h -> JdkUninstallPolicy.refusal(h, registry.jdksRoot()).isEmpty())
                 .toList();
         if (installed.isEmpty()) {
-            CommandWedge.printFail(
-                    "JDK",
-                    "no removable JDKs installed (JDKs another tool owns or only points at aren't removable here).");
+            CommandWedge.printFail("JDK", "no JDKs jk can remove; JDKs other tools manage stay");
             return 0;
         }
         Optional<String> currentDefault = defaults.defaultId();

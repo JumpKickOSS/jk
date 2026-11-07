@@ -74,7 +74,7 @@ class EngineStopCommandTest {
             Settled settled = stop(socket, false, YOUNG);
 
             assertThat(settled.exit()).isEqualTo(Exit.SUCCESS);
-            assertThat(settled.streams().out()).contains("waiting for 1 in-flight job");
+            assertThat(settled.streams().out()).contains("after 1 running job");
             assertThat(engineJvm.isAlive())
                     .as("an engine draining other terminals' jobs is not killed for a late ack")
                     .isTrue();

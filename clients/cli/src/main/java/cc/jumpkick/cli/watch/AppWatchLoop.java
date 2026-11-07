@@ -161,8 +161,8 @@ public final class AppWatchLoop {
 
         boolean devtools = plan.hotReload();
         if (plan.devtoolsInjected()) {
-            CliOutput.err(logPrefix + ": spring-boot-devtools auto-injected for this session"
-                    + " — add it to [dev-dependencies] to make it permanent.");
+            CliOutput.err(logPrefix + ": spring-boot-devtools added for this session;"
+                    + " add it to [dev-dependencies] to keep it");
         }
         List<Path> watchRoots = rootsFromPlan(plan);
         logWatching(projectDir, watchRoots, devtools ? "DevTools hot-restart" : "process restart on change");
@@ -219,14 +219,14 @@ public final class AppWatchLoop {
                     if (!app.process().isAlive()) {
                         int exit = app.process().exitValue();
                         appExited(app.process());
-                        CliOutput.err(logPrefix + ": app exited with code " + exit + " — stopping.");
+                        CliOutput.err(logPrefix + ": app exited with code " + exit + "; stopping");
                         return exit;
                     }
                     continue;
                 }
                 SourceWatch.Changes changes = maybe.get();
                 if (changes.manifest()) {
-                    CliOutput.err(logPrefix + ": jk.toml changed — full rebuild + restart");
+                    CliOutput.err(logPrefix + ": jk.toml changed; rebuilding and restarting");
                     if (build(projectDir, cache)) {
                         plan = devPlan(projectDir, cache);
                         if (plan.error() != null) {
@@ -235,7 +235,7 @@ public final class AppWatchLoop {
                         }
                         devtools = plan.hotReload();
                         if (!noSidecars && !plan.sidecars().equals(sidecarSpecs)) {
-                            CliOutput.err(logPrefix + ": sidecars changed — restart jk dev to apply");
+                            CliOutput.err(logPrefix + ": sidecars changed; restart jk dev to apply");
                         }
                         app = restartApp(app, plan, appArgs);
                         running.set(app.process());
@@ -246,11 +246,11 @@ public final class AppWatchLoop {
                 }
                 boolean ok = changes.resources() ? build(projectDir, cache) : compile(projectDir, cache);
                 if (!ok) {
-                    CliOutput.err(logPrefix + ": build failed — app keeps running the last good code.");
+                    CliOutput.err(logPrefix + ": build failed; the app keeps running the last good code");
                     continue;
                 }
                 if (devtools) {
-                    CliOutput.err(logPrefix + ": recompiled — DevTools restarts the context.");
+                    CliOutput.err(logPrefix + ": recompiled; DevTools restarts the context");
                 } else {
                     app = restartApp(app, plan, appArgs);
                     running.set(app.process());
@@ -300,15 +300,15 @@ public final class AppWatchLoop {
             while (true) {
                 SourceWatch.Changes changes = watch.awaitChange();
                 if (changes.manifest()) {
-                    CliOutput.err(logPrefix + ": jk.toml changed — full rebuild + redeploy");
+                    CliOutput.err(logPrefix + ": jk.toml changed; rebuilding and redeploying");
                 }
                 if (!build(projectDir, cache)) {
-                    CliOutput.err(logPrefix + ": build failed — the device keeps the last good install.");
+                    CliOutput.err(logPrefix + ": build failed; the device keeps the last good install");
                     continue;
                 }
                 int exit = deploy(projectDir, cache, plan.deployCommand(), appArgs);
                 if (exit != 0) {
-                    CliOutput.err(logPrefix + ": deploy failed (exit " + exit + ") — will retry on change.");
+                    CliOutput.err(logPrefix + ": deploy failed (exit " + exit + "); retrying on the next change");
                 }
             }
         }

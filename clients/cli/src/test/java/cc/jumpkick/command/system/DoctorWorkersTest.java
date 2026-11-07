@@ -105,7 +105,7 @@ class DoctorWorkersTest {
         assertThat(strip(DoctorCommand.renderWorkers(none, false, Theme.active()))
                         .get(0))
                 .startsWith("ok:")
-                .contains("none installed in the store");
+                .contains("none installed yet");
 
         DoctorCommand.Workers unreachable = DoctorCommand.workers(() -> {
             throw new IOException("jk engine: could not start");
@@ -158,7 +158,6 @@ class DoctorWorkersTest {
                 .startsWith("warn:")
                 .contains("workers")
                 .contains("engine not running")
-                .contains("`jk engine start`")
                 .contains("`jk doctor -e`");
         assertThat(DoctorCommand.workersJson(down)).contains("\"error\":\"engine not running");
 
@@ -196,7 +195,7 @@ class DoctorWorkersTest {
         assertThat(workers.rows()).allSatisfy(w -> assertThat(w.packagedBy()).isEqualTo(LIVE));
         List<String> rows = strip(DoctorCommand.renderShelf(workers, Optional.of(LIVE), Theme.active()));
         assertThat(rows).hasSize(1);
-        assertThat(rows.get(0)).startsWith("ok:").contains("shelf").contains("engine the home names (ab12cd34ef56)");
+        assertThat(rows.get(0)).startsWith("ok:").contains("shelf").contains("installed engine (ab12cd34ef56)");
         assertThat(DoctorCommand.workersJson(workers)).contains("\"packagedBy\":\"" + LIVE + "\"");
     }
 
@@ -213,8 +212,8 @@ class DoctorWorkersTest {
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0))
                 .startsWith("warn:")
-                .contains("2 workers packaged by engine ffffffffffff")
-                .contains("home names engine ab12cd34ef56")
+                .contains("2 workers built by engine ffffffffffff")
+                .contains("not the installed ab12cd34ef56")
                 .contains("jk-image-builder, jk-grails")
                 .contains("run `jk install`");
     }

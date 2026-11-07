@@ -125,8 +125,7 @@ public final class OutdatedCommand implements CliCommand {
             return Exit.SUCCESS;
         }
         if (global.offline) {
-            CliOutput.out("Note: offline mode — Compatible / Latest come from the local cache and repos only;"
-                    + " unreachable remotes may look up-to-date.");
+            CliOutput.out("Note: offline, so Compatible and Latest come from the local cache only");
         }
         if (rows.isEmpty()) {
             CliOutput.out(
@@ -153,9 +152,8 @@ public final class OutdatedCommand implements CliCommand {
     }
 
     /** What the update verbs write, as they write it. */
-    static final String NEXT = "Next: review with `jk why <coord>` / `jk tree`; `jk update [name…]` moves each exact"
-            + " pin to the newest stable on its major and relocks (a range or `latest` floats to Compatible),"
-            + " `jk update -m` to Latest.";
+    static final String NEXT =
+            "Next: `jk update [name…]` moves each pin to the newest stable on its major, -m to Latest";
 
     /**
      * One line per coordinate that moved to another {@code group:artifact}: its Latest is the new
@@ -167,8 +165,7 @@ public final class OutdatedCommand implements CliCommand {
             if (r.isRelocated()) moved.putIfAbsent(r.coordinate(), r.relocated());
         }
         List<String> out = new ArrayList<>();
-        moved.forEach((from, to) -> out.add("Moved: " + from + " → " + to + " (Latest is " + to
-                + "'s; change the coordinate in jk.toml — `jk update` keeps coordinates)"));
+        moved.forEach((from, to) -> out.add("Moved: " + from + " → " + to + "; change the coordinate in jk.toml"));
         return out;
     }
 

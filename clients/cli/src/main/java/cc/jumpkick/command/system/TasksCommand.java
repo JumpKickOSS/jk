@@ -127,7 +127,7 @@ public final class TasksCommand implements CliCommand {
                     yield showOrInspect(action, task, in, startDir, proj.buildFile());
                 }
                 default -> {
-                    CommandWedge.printFail("Tasks", "unknown action `" + action + "` (list | show | inspect)");
+                    CommandWedge.printFail("Tasks", "unknown action `" + action + "`; use list, show or inspect");
                     yield Exit.USAGE;
                 }
             };
@@ -174,7 +174,7 @@ public final class TasksCommand implements CliCommand {
             throws Exception {
         Optional<TaskCatalog.TaskDef> def = TaskCatalog.find(stepName);
         if (def.isEmpty()) {
-            CommandWedge.printFail("Tasks", "unknown task `" + stepName + "` — run `jk tasks` for names");
+            CommandWedge.printFail("Tasks", "unknown task `" + stepName + "`; `jk tasks` lists them");
             return Exit.CONFIG;
         }
         TaskCatalog.TaskDef task = def.get();
@@ -209,7 +209,7 @@ public final class TasksCommand implements CliCommand {
                     CliOutput.out("output:      " + out.get());
                     CliOutput.out("on-disk:     " + (exists ? "yes" : "no (not built yet)"));
                 } else {
-                    CliOutput.out("output:      (no primary path — intermediate / side-effect task)");
+                    CliOutput.out("output:      none");
                 }
                 CliOutput.out("cache:       " + cacheLine(forecast, modDir, task.name()));
                 if (modules.size() > 1) CliOutput.out("");
@@ -302,7 +302,7 @@ public final class TasksCommand implements CliCommand {
                 || plan.hasErrors()
                 || plan.modules() == null
                 || plan.modules().isEmpty()) {
-            return "unknown (engine offline or forecast failed — try `jk explain`)";
+            return "unknown; try `jk explain`";
         }
         Path abs = WorkingDirectory.resolve(modDir);
         TaskForecast.Module mod = null;
@@ -316,7 +316,7 @@ public final class TasksCommand implements CliCommand {
             mod = plan.modules().getFirst();
         }
         if (mod == null) {
-            return "unknown (module not in forecast)";
+            return "unknown";
         }
         TaskForecast.Task step = null;
         for (TaskForecast.Task s : mod.steps()) {
@@ -326,7 +326,7 @@ public final class TasksCommand implements CliCommand {
             }
         }
         if (step == null) {
-            return "n/a (step not forecast — intermediate or plugin SPI)";
+            return "n/a";
         }
         if (step.cached()) {
             String key = step.key() != null && !step.key().isBlank() ? " key=" + step.key() : "";

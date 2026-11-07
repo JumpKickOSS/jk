@@ -38,19 +38,16 @@ public final class ToolTargets {
             }
             case ToolTarget.CatalogName c -> resolveCatalogName(c);
             case ToolTarget.JBangAlias j ->
-                throw new TargetException("jk tool: JBang catalog aliases (`alias@user/repo`) aren't supported yet"
-                        + " — not supported yet.");
-            case ToolTarget.Url u -> throw new TargetException("jk tool: web URL targets aren't supported yet.");
+                throw new TargetException("jk tool: JBang catalog aliases (`alias@user/repo`) aren't supported yet");
+            case ToolTarget.Url u -> throw new TargetException("jk tool: web URL targets aren't supported yet");
             case ToolTarget.Git g ->
-                throw new TargetException("jk tool: git targets aren't supported yet"
-                        + ". To install an app from a git repo, use `jk install "
-                        + g.raw() + "`.");
-            case ToolTarget.Directory d ->
-                throw new TargetException("jk tool: directory targets aren't supported yet"
-                        + ". To run a jk project, `cd` into it and use `jk run`.");
-            case ToolTarget.UnsupportedFile f ->
                 throw new TargetException(
-                        "jk tool: " + f.path() + " is not a runnable file (.java, .kt, .kts, or .jar).");
+                        "jk tool: git targets aren't supported yet; use `jk install " + g.raw() + "`");
+            case ToolTarget.Directory d ->
+                throw new TargetException(
+                        "jk tool: directory targets aren't supported yet; `cd` there and use `jk run`");
+            case ToolTarget.UnsupportedFile f ->
+                throw new TargetException("jk tool: " + f.path() + " is not a .java, .kt, .kts or .jar file");
         };
     }
 
@@ -93,12 +90,7 @@ public final class ToolTargets {
         if (c.suffix() != null) {
             // §6.1: a bare-word suffix is only ambiguous when the name resolves; on a miss,
             // report both interpretations and the forced spellings.
-            msg.append(", and JBang catalogs aren't supported yet.\n")
-                    .append("Use `group:artifact@")
-                    .append(c.suffix())
-                    .append("` for a version, or wait for `alias@user/repo` support.");
-        } else {
-            msg.append(".");
+            msg.append("\nUse `group:artifact@").append(c.suffix()).append("` for a version");
         }
         List<String> suggestions = catalog.suggestionsFor(c.name(), 3);
         if (!suggestions.isEmpty()) {
@@ -106,7 +98,7 @@ public final class ToolTargets {
                     .append(String.join(", ", suggestions))
                     .append("?");
         }
-        msg.append("\nUse a full coordinate (`group:artifact[:version]`) to skip the catalog.");
+        msg.append("\nA full coordinate skips the catalog: group:artifact[:version]");
         return new TargetException(msg.toString());
     }
 

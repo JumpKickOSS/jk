@@ -64,9 +64,7 @@ public final class JkProjectResolver implements ExternalSystemProjectResolver<Jk
                     line -> listener.onTaskOutput(id, line + "\n", ProcessOutputType.STDERR));
         } catch (Exception e) {
             throw new ExternalSystemException(
-                    "Failed to start '" + JkBin.path() + "': " + e.getMessage()
-                            + " — install jk and put it on PATH, or set JK_BIN",
-                    e);
+                    "Failed to start '" + JkBin.path() + "': " + e.getMessage() + "; put jk on PATH or set JK_BIN", e);
         } finally {
             running.remove(id);
         }

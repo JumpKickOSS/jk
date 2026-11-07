@@ -659,7 +659,7 @@ export const CodeView = {
         if (this.file) this.file = { ...this.file, content, etag: nextEtag };
         this.setBaseline(content, nextEtag);
         if (resp && resp.lockStale) {
-          this.notice = 'Manifest saved — the lock is now stale; the next build will re-resolve dependencies';
+          this.notice = 'Manifest saved; the next build updates the lock';
         }
         this.flashSaved();
         // The parent refreshes project meta on manifest saves (header coord/description).
@@ -732,7 +732,7 @@ export const CodeView = {
             <p v-else-if="loadingFile" class="empty">Loading…</p>
             <template v-else-if="file && !previewOpen && (skippedHighlight || highlighterFailed)">
               <p v-if="skippedHighlight" class="warn">Highlighting skipped (file too large)</p>
-              <p v-else class="warn">Highlighter failed to load — showing plain text</p>
+              <p v-else class="warn">Highlighter failed to load; showing plain text</p>
               <pre class="code-pre code-plain" ref="pre">
                 <div v-for="(row, i) in rows" :key="i" class="code-plain-row fail-src"
                      :class="{ 'code-line-on': line === i + 1 && !lineErr, 'code-line-err-plain': line === i + 1 && lineErr }"
@@ -742,7 +742,7 @@ export const CodeView = {
               </pre>
             </template>
             <p v-if="file && file.encoding && file.encoding !== 'utf-8' && file.encoding !== 'binary'" class="warn">
-              Not valid UTF-8 — decoded as {{ file.encoding }}; saves keep this encoding</p>
+              Not UTF-8: decoded as {{ file.encoding }}, and saved the same way</p>
           </div>
           <div v-show="previewVisible" class="code-preview">
             <p v-if="previewLoading && !previewHtml && !previewImageUrl" class="empty">Rendering preview…</p>

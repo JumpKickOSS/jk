@@ -80,7 +80,7 @@ final class StackWatchLoop {
         Map<String, String> members = stack.members();
         for (String name : selected) {
             if (!members.containsKey(name)) {
-                CliOutput.err(loop.logPrefix() + ": no runnable member `" + name + "` — the workspace runs "
+                CliOutput.err(loop.logPrefix() + ": no runnable member `" + name + "`; the workspace runs "
                         + String.join(", ", members.keySet()));
                 return Exit.USAGE;
             }
@@ -103,8 +103,7 @@ final class StackWatchLoop {
                 return Exit.SOFTWARE;
             }
             if (!plan.deployCommand().isEmpty()) {
-                CliOutput.err(loop.logPrefix() + ": " + name + " deploys to a device and does not run in a stack —"
-                        + " run jk dev in " + dir);
+                CliOutput.err(loop.logPrefix() + ": " + name + " deploys to a device; run jk dev in " + dir);
                 return Exit.USAGE;
             }
             if (!loop.noSidecars()) for (ExecPlan.Sidecar s : plan.sidecars()) sidecars.putIfAbsent(s.name(), s);
@@ -165,7 +164,7 @@ final class StackWatchLoop {
                 if (!process.isAlive()) {
                     int exit = process.exitValue();
                     exited(m);
-                    CliOutput.err(loop.logPrefix() + ": " + m.name + " exited with code " + exit + " — stopping.");
+                    CliOutput.err(loop.logPrefix() + ": " + m.name + " exited with code " + exit + "; stopping");
                     return exit;
                 }
                 Optional<SourceWatch.Changes> maybe = m.watch().pollChange(slice, TimeUnit.MILLISECONDS);
@@ -176,7 +175,7 @@ final class StackWatchLoop {
                         : loop.compile(m.dir, cache);
                 if (!ok) {
                     CliOutput.err(
-                            loop.logPrefix() + ": " + m.name + ": build failed — it keeps running the last good code.");
+                            loop.logPrefix() + ": " + m.name + ": build failed; it keeps running the last good code");
                     continue;
                 }
                 if (changes.manifest()) {
@@ -188,7 +187,7 @@ final class StackWatchLoop {
                     m.plan = plan;
                 }
                 if (m.plan.hotReload() && !changes.manifest()) {
-                    CliOutput.err(loop.logPrefix() + ": " + m.name + ": recompiled — DevTools restarts the context.");
+                    CliOutput.err(loop.logPrefix() + ": " + m.name + ": recompiled; DevTools restarts the context");
                     continue;
                 }
                 ProcessTrees.stop(List.of(process.toHandle()), Clock.SYSTEM);

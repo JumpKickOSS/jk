@@ -38,9 +38,8 @@ public final class AuthCommand extends GroupCommand {
     /** Resolve a provider id to a {@link ForgeKind}, throwing on unknown. */
     static ForgeKind requireKind(String raw) {
         return ForgeKind.fromId(raw)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown provider '"
-                        + raw
-                        + "'. Expected one of: github, gitlab, gitea (forgejo/codeberg), bitbucket."));
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "unknown provider '" + raw + "'; use github, gitlab, gitea (Forgejo, Codeberg) or bitbucket"));
     }
 
     static ForgeAuth authFor(@Nullable Path credentialsDir) {
@@ -54,8 +53,8 @@ public final class AuthCommand extends GroupCommand {
     static Target resolveTarget(@Nullable String provider, @Nullable String host, Path workingDir) {
         if (provider != null) return new Target(requireKind(provider), host);
         ForgeRemote detected = GitForgeDetector.detect(workingDir)
-                .orElseThrow(() -> new IllegalArgumentException("Could not detect a forge from this repo's git remote. "
-                        + "Name the provider explicitly (e.g. `github`)."));
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "could not tell the forge from the git remote; name the provider, such as github"));
         return new Target(detected.kind(), host != null ? host : detected.host());
     }
 }

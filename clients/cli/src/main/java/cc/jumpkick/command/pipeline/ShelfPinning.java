@@ -25,8 +25,7 @@ final class ShelfPinning {
     private ShelfPinning() {}
 
     /** What an install says instead of pinning when the home names no engine jar by sha256. */
-    static final String SHELF_NOT_PINNED =
-            "Shelf not pinned: the home names no engine jar by sha256, so its workers launch as the shelf holds them";
+    static final String SHELF_NOT_PINNED = "Workers not pinned: no installed engine jar sha256 to pin them to";
 
     /** The pins one pass contributes: coordinate to sha256 of the jar, and of the POM beside it. */
     record Pins(Map<String, String> jars, Map<String, String> poms) {}

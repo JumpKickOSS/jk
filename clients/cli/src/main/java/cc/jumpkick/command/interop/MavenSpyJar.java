@@ -134,8 +134,8 @@ public final class MavenSpyJar {
         try (ReleaseDownloadView view = new ReleaseDownloadView(CHIP, "Maven extension " + version)) {
             fetch(view);
         } catch (IOException e) {
-            CliOutput.err("jk mvn: " + jarName() + " could not be fetched: " + e.getMessage()
-                    + " — Maven runs without a run report");
+            CliOutput.err(
+                    "jk mvn: could not fetch " + jarName() + ", so Maven runs without a run report: " + e.getMessage());
             return Optional.empty();
         }
         return locate();

@@ -37,7 +37,7 @@ class RepoStoresTest {
         assertThat(lines.get(1)).contains("jk-local → first-party shelf");
         assertThat(lines.get(2))
                 .startsWith("warn:")
-                .contains("mirror — keyed by repository name, origin unknown")
+                .contains("mirror — unused, origin unknown")
                 .contains("jk storage clean removes it");
     }
 

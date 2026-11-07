@@ -173,10 +173,7 @@ final class EngineEventDecoder {
      * a result — the plan events already folded into one step list belong to several modules.
      */
     static EngineWireException notASinglePlan() {
-        return new EngineWireException(
-                EngineProtocol.ERR_PROTOCOL,
-                "jk read a workspace result as a single plan (this is a jk bug): the engine answered in the"
-                        + " workspace vocabulary because the working directory is a workspace root or member");
+        return new EngineWireException(EngineProtocol.ERR_PROTOCOL, "jk bug: read a workspace result as a single plan");
     }
 
     /**

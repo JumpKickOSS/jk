@@ -239,8 +239,7 @@ public final class DoctorCommand implements CliCommand {
     static final String ROWS_SKIPPED = "skipped (--no-engine)";
 
     /** What the engine-answered rows say when no engine is running and none was to be started. */
-    static final String ENGINE_NOT_RUNNING = "engine not running — start it with `jk engine start`, or run"
-            + " `jk doctor -e` to start one for this check";
+    static final String ENGINE_NOT_RUNNING = "engine not running; `jk doctor -e` starts one for this check";
 
     /** One engine inventory query; {@code ifRunning} asks only an engine that is already up. */
     private static CacheInventoryAck queryInventory(String query, boolean ifRunning) throws IOException {
@@ -338,7 +337,7 @@ public final class DoctorCommand implements CliCommand {
         }
         if (workers.rows().isEmpty()) {
             out.add(Theme.colorize("ok:      ", t.completedStep()) + " " + Theme.colorize("workers", t.cyan())
-                    + " — none installed in the store (fetched from jumpkick.build on first use)");
+                    + " — none installed yet");
             return out;
         }
         for (Worker w : workers.rows()) {
@@ -387,16 +386,16 @@ public final class DoctorCommand implements CliCommand {
         List<String> out = new ArrayList<>();
         if (byEngine.size() == 1 && byEngine.containsKey(live)) {
             out.add(Theme.colorize("ok:      ", t.completedStep()) + " " + Theme.colorize("shelf", t.cyan())
-                    + " — packaged by the engine the home names (" + short12(live) + ")");
+                    + " — built by the installed engine (" + short12(live) + ")");
             return out;
         }
         for (Map.Entry<String, List<String>> e : byEngine.entrySet()) {
             if (e.getKey().equals(live)) continue;
             int n = e.getValue().size();
             out.add(Theme.colorize("warn:    ", t.warning()) + " " + Theme.colorize("shelf", t.cyan()) + " — " + n
-                    + (n == 1 ? " worker" : " workers") + " packaged by engine " + short12(e.getKey())
-                    + " while the home names engine " + short12(live) + " (" + String.join(", ", e.getValue())
-                    + ") — run `jk install` so the shelf is the live engine's");
+                    + (n == 1 ? " worker" : " workers") + " built by engine " + short12(e.getKey())
+                    + ", not the installed " + short12(live) + " (" + String.join(", ", e.getValue())
+                    + "); run `jk install`");
         }
         return out;
     }
@@ -534,17 +533,14 @@ public final class DoctorCommand implements CliCommand {
         long pid = EngineProcessControl.unresponsiveHolderPid(socket);
         Optional<SilentPeer.Pulse> pulse =
                 pid > 0 ? SilentPeer.Pulse.of(pid, Clock.SYSTEM, patience.backoff(), grace) : Optional.empty();
-        String silence = "not answering status through " + patience.probes() + " probes";
         if (pulse.isPresent() && pulse.get().alive()) {
             return new Check(
                     Status.WARN,
                     "engine",
-                    "pid " + pid + " alive and busy (" + pulse.get().life().describe() + ") but " + silence
-                            + " — a coordinator mid-build answers late; retry in a moment, or `jk engine stop"
-                            + " --now` stops it regardless");
+                    "pid " + pid + " busy (" + pulse.get().life().describe() + ") and not answering; retry,"
+                            + " or run `jk engine stop -n`");
         }
-        return new Check(
-                Status.FAIL, "engine", "listening but " + silence + " — likely wedged; `jk engine stop -n` stops it");
+        return new Check(Status.FAIL, "engine", "listening but not answering; `jk engine stop -n` stops it");
     }
 
     /**
@@ -571,9 +567,8 @@ public final class DoctorCommand implements CliCommand {
                 .orElseGet(() -> new Check(
                         Status.WARN,
                         "mvn",
-                        spy.jarName() + " not found — `jk mvn` runs Maven without a run report; run `jk mvn -v` once"
-                                + " online to fetch it into " + spy.expected().getParent()
-                                + " (from a checkout: `jk install`)"));
+                        spy.jarName() + " not found, so `jk mvn` writes no run report; run `jk mvn -v` online"
+                                + " to fetch it"));
     }
 
     /**
@@ -594,8 +589,7 @@ public final class DoctorCommand implements CliCommand {
         if (storeParent == null || !Files.isDirectory(storeParent)) problems.add("store parent missing");
         if (stateParent == null || !Files.isDirectory(stateParent)) problems.add("state parent missing");
         if (!problems.isEmpty()) return new Check(Status.FAIL, "dirs", String.join("; ", problems));
-        String cacheWord =
-                cacheAbsent ? "cache " + cache + " not created yet (the first resolve will)" : "cache " + cache;
+        String cacheWord = cacheAbsent ? "cache " + cache + " not created yet" : "cache " + cache;
         String detail = cacheWord + " · store " + store + " · " + JkCacheConfig.formatGb(cfg.maxCacheSizeGb())
                 + "G cache budget · store unbudgeted";
         return new Check(Status.OK, "dirs", detail);
@@ -621,15 +615,14 @@ public final class DoctorCommand implements CliCommand {
             } catch (UnsupportedOperationException notPosix) {
                 return new Check(Status.OK, "state", "no POSIX modes on this filesystem");
             } catch (IOException e) {
-                return new Check(Status.WARN, "state", "probe failed: " + e.getMessage());
+                return new Check(Status.WARN, "state", "could not read: " + e.getMessage());
             }
         }
         if (loose.isEmpty()) return new Check(Status.OK, "state", state + " owner-only");
         return new Check(
                 Status.FAIL,
                 "state",
-                String.join("; ", loose) + " — any local user can drive the engine socket; fix: chmod 700 " + state
-                        + " " + engine);
+                String.join(", ", loose) + "; other users can reach the engine; run chmod 700 " + state + " " + engine);
     }
 
     private static final Set<PosixFilePermission> OWNER_ONLY_DIR = PosixFilePermissions.fromString("rwx------");
@@ -777,7 +770,7 @@ public final class DoctorCommand implements CliCommand {
                 "m2",
                 bad.size() + (bad.size() == 1 ? " file does" : " files do") + " not match its .sha1: "
                         + String.join(", ", shown) + (bad.size() > 3 ? ", …" : "")
-                        + " (delete it so Maven or jk fetches it again)");
+                        + "; delete to fetch again");
     }
 
     /**
@@ -854,7 +847,7 @@ public final class DoctorCommand implements CliCommand {
     private static void printTools(List<ToolRow> toolRows, @Nullable String toolsError, Theme t) {
         if (toolsError != null) {
             CliOutput.out(Theme.colorize("warn:    ", t.warning()) + Theme.colorize("tools", t.cyan())
-                    + " — probe failed: " + toolsError);
+                    + " — could not list: " + toolsError);
         } else if (toolRows.isEmpty()) {
             // If no tools at all, emit a row so the checklist looks complete.
             CliOutput.out(Theme.colorize("ok:      ", t.completedStep()) + " tools — no installs found");
@@ -877,8 +870,7 @@ public final class DoctorCommand implements CliCommand {
                                 + Theme.colorize(row.detail(), t.path()) + " (baseline updated)");
                     case EMPTY ->
                         CliOutput.out(Theme.colorize("warn:    ", t.warning()) + " " + label
-                                + " — link target holds no files; there is nothing to fingerprint ("
-                                + Theme.colorize(row.detail(), t.path()) + ")");
+                                + " — link target is empty: " + Theme.colorize(row.detail(), t.path()));
                     case LINKED ->
                         CliOutput.out("linked:   " + label
                                 + " " + Theme.colorize("→", t.darkGray()) + " "

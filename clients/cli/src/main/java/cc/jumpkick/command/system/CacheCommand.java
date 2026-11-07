@@ -333,7 +333,7 @@ public final class CacheCommand extends GroupCommand {
             throws IOException {
         NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         if (!Files.isDirectory(root)) {
-            CommandWedge.printOk("Cache", "Nothing to nuke — cache directory does not exist.");
+            CommandWedge.printOk("Cache", "Nothing to nuke: no cache directory");
             return 0;
         }
         Stats stats = CacheNukeCommand.cacheRootStats(root);
@@ -348,7 +348,7 @@ public final class CacheCommand extends GroupCommand {
             // An empty skeleton is still the directory the nuke promised to remove, and there is
             // nothing left in it worth a confirm or an idle boundary.
             removeCacheRoot(root);
-            CommandWedge.printOk("Cache", "Nuked an empty cache directory — nothing to reclaim.");
+            CommandWedge.printOk("Cache", "Nuked an empty cache directory");
             return 0;
         }
         if (!skipConfirm && !CacheNukeCommand.confirmNuke(root, stats)) {
@@ -381,7 +381,7 @@ public final class CacheCommand extends GroupCommand {
                     removeCacheRoot(root);
                     return 0;
                 }
-                CommandWedge.printFail("Cache", "The engine's purge failed — not racing it with a local wipe.");
+                CommandWedge.printFail("Cache", "the engine's purge failed; nothing removed");
                 return 1;
             } catch (IOException | RuntimeException ignored) {
                 // engine unreachable — fall through to local wipe
@@ -554,13 +554,7 @@ public final class CacheCommand extends GroupCommand {
             return List.of(
                     CommonOpts.cacheDir(),
                     Opt.flag("Print what would be removed; touch nothing.", "-U", "--dry-run"),
-                    Opt.flag(
-                            "Instead of the cache, remove what jk downloaded into the Maven local repository"
-                                    + " (~/.m2) and has not used for --older-than days. Only files jk's own memo"
-                                    + " proves it downloaded and nobody changed; the lockfile in the current"
-                                    + " directory is kept.",
-                            "-m",
-                            "--m2"),
+                    Opt.flag("Clean jk's unused downloads from ~/.m2 instead of the cache.", "-m", "--m2"),
                     Opt.value(
                             "<DAYS>", "With --m2: days unused (default: [m2] clean-after-days)", "-t", "--older-than"));
         }
@@ -577,7 +571,7 @@ public final class CacheCommand extends GroupCommand {
                 return runHosted(root, false, dryRun, global, "m2", CliPaths.abs(""), days);
             }
             if (!Files.isDirectory(root)) {
-                CliOutput.out("Nothing to clean — " + root + " does not exist.");
+                CliOutput.out("Nothing to clean: " + root + " does not exist");
                 return 0;
             }
 
@@ -697,8 +691,7 @@ public final class CacheCommand extends GroupCommand {
             CliOutput.out("  " + root);
             CliOutput.stdout().printf("  %s files, %s.%n", fmtCount(stats.files), fmtBytes(stats.bytes));
             CliOutput.out("  The directory itself goes, not only its contents.");
-            CliOutput.out(
-                    "  Artifact store (deps under JK_STORE_DIR) is kept. Rebuildable — the next build re-runs work.");
+            CliOutput.out("  The artifact store is kept. The next build redoes the work.");
             return Confirm.of(bang + " Nuke the cache tier?", false).ask();
         }
     }

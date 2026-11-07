@@ -39,7 +39,7 @@ class CleanStuckMessageTest {
         IOException failure = new IOException(ws.resolve("target/x.jar").toString());
 
         assertThat(CleanCommand.stuckMessage(failure, ws, 0, "", p -> List.of(), 0))
-                .isEqualTo("Nothing removed target/x.jar could not be removed: another process has it open"
-                        + " (a build, the engine, or an IDE)");
+                .isEqualTo(
+                        "Nothing removed target/x.jar could not be removed: a build, the engine or an IDE has it open");
     }
 }

@@ -119,9 +119,9 @@ public final class EngineStopCommand implements CliCommand {
      * latest, that the next job starts a successor meanwhile, and how to stop it now.
      */
     static String drainingMessage(int jobs, long deadlineMillis) {
-        return "Engine is stopping: waiting for " + jobs + " in-flight job" + (jobs == 1 ? "" : "s")
-                + (deadlineMillis > 0 ? " (exits by " + EngineStatusCommand.wallClock(deadlineMillis) + ")" : "")
-                + "; the next build starts a new engine. `jk engine stop -n` stops it now";
+        return "Engine is stopping after " + jobs + " running job" + (jobs == 1 ? "" : "s")
+                + (deadlineMillis > 0 ? ", by " + EngineStatusCommand.wallClock(deadlineMillis) : "")
+                + "; `jk engine stop -n` stops it now";
     }
 
     /**
@@ -146,7 +146,7 @@ public final class EngineStopCommand implements CliCommand {
         if (!now) return settle(Exit.FAILURE, silentRefusal(pid));
         if (!EngineProcessControl.forceStop(socket, patience.replyTimeoutMillis())) EngineProcessControl.hardKill(pid);
         if (pid <= 0 || EngineFleet.waitForExit(pid)) {
-            return settle(Exit.SUCCESS, "Engine stopped now; it had not been answering its socket.");
+            return settle(Exit.SUCCESS, "Engine stopped now; it was not answering");
         }
         return settle(Exit.FAILURE, "Engine pid " + pid + " did NOT exit, even after a hard kill.");
     }
@@ -158,10 +158,8 @@ public final class EngineStopCommand implements CliCommand {
                         .map(l -> " (" + l.describe() + ")")
                         .orElse("")
                 : "";
-        return "Engine" + (pid > 0 ? " pid " + pid : "") + life
-                + " accepts connections but has not acknowledged the stop; it is not killed, since it may be"
-                + " mid-job for another terminal. Retry in a moment, or `jk engine stop -n` stops it"
-                + " regardless.";
+        return "engine" + (pid > 0 ? " pid " + pid : "") + life
+                + " did not answer the stop and was not killed; retry, or run `jk engine stop -n`";
     }
 
     /**
@@ -184,23 +182,15 @@ public final class EngineStopCommand implements CliCommand {
             if (pulse.get().alive()) {
                 return settle(
                         Exit.FAILURE,
-                        "Engine pid " + pid + " holds this directory's engine state without answering its socket"
-                                + " but shows life (" + pulse.get().life().describe()
-                                + ") — not killed, since it may be mid-job for another terminal. Retry in a"
-                                + " moment, or `jk engine stop -n` stops it regardless.");
+                        "engine pid " + pid + " is not answering but shows life ("
+                                + pulse.get().life().describe() + "); retry, or run `jk engine stop -n`");
             }
         }
         EngineProcessControl.hardKill(pid);
         if (EngineFleet.waitForExit(pid)) {
-            return settle(
-                    Exit.SUCCESS,
-                    "Engine pid " + pid + " held this directory's engine state without answering its socket"
-                            + " — killed.");
+            return settle(Exit.SUCCESS, "Engine pid " + pid + " was not answering and was killed");
         }
-        return settle(
-                Exit.FAILURE,
-                "Engine pid " + pid + " holds the engine state, does not answer its socket, and survived a"
-                        + " hard kill.");
+        return settle(Exit.FAILURE, "engine pid " + pid + " is not answering and survived a hard kill");
     }
 
     /**
@@ -218,7 +208,7 @@ public final class EngineStopCommand implements CliCommand {
         }
         EngineProcessControl.hardKill(pid);
         if (EngineFleet.waitForExit(pid)) {
-            return settle(Exit.SUCCESS, "Engine stopped after a hard kill (it did not exit on request).");
+            return settle(Exit.SUCCESS, "Engine stopped with a hard kill");
         }
         return settle(Exit.FAILURE, "Engine pid " + pid + " did NOT exit, even after a hard kill.");
     }
@@ -332,16 +322,12 @@ public final class EngineStopCommand implements CliCommand {
         msg.append(gone).append(gone == 1 ? " engine stopped" : " engines stopped");
         if (killed > 0) msg.append(" (").append(killed).append(" needed a hard kill)");
         if (draining > 0) {
-            msg.append(", ")
-                    .append(draining)
-                    .append(" draining (will exit once in-flight jobs finish or the drain deadline passes;"
-                            + " `jk engine stop -n` stops now)");
+            msg.append(", ").append(draining).append(" finishing running jobs (`jk engine stop -n` stops now)");
         }
         if (!leftAlone.isEmpty()) {
             msg.append(", ")
                     .append(leftAlone.size())
-                    .append(" not answering but alive, left alone (may be mid-job; `jk engine stop -n`"
-                            + " stops regardless): pid ")
+                    .append(" not answering, left alone (`jk engine stop -n` stops it): pid ")
                     .append(leftAlone);
         }
         if (!survived.isEmpty()) {

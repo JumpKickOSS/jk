@@ -262,12 +262,10 @@ public final class EngineStatusCommand implements CliCommand {
         var life = SilentPeer.Life.of(stray, Clock.SYSTEM);
         if (life.isPresent()
                 && (life.get().workers() > 0 || life.get().youngerThan(SilentPeer.Grace.DEFAULT.startup()))) {
-            return "Engine pid " + stray + " holds this directory's engine state and is alive and busy ("
-                    + life.get().describe() + ") but does not answer its socket yet — clients wait for it rather"
-                    + " than displace it; `jk engine stop -n` stops it regardless";
+            return "Engine pid " + stray + " is busy and not answering yet ("
+                    + life.get().describe() + "); `jk engine stop -n` stops it";
         }
-        return "Engine pid " + stray + " holds this directory's engine state but does not"
-                + " answer — `jk engine stop -n` clears it";
+        return "Engine pid " + stray + " is not answering; `jk engine stop -n` clears it";
     }
 
     private static void printFleet(List<EngineFleet.Member> fleet) {
@@ -312,13 +310,12 @@ public final class EngineStatusCommand implements CliCommand {
         for (EngineFleet.Member m : fleet) if (m.otherHome()) others.add(m);
         int ours = fleet.size() - others.size();
         if (others.isEmpty()) {
-            return "Stop this home's engines with `jk engine stop -A`, or one engine with `jk engine stop -p <pid>`.";
+            return "Stop all with `jk engine stop -A`, or one with `jk engine stop -p <pid>`";
         }
-        String theirs = (others.size() == 1 ? "The engine of another home stops" : "The engines of other homes stop")
-                + " with `" + EngineStopCommand.stopCommandFor(others) + "`.";
-        if (ours == 0) return "None of these belong to this home. " + theirs;
-        return "`jk engine stop -A` stops this home's " + ours + (ours == 1 ? " engine" : " engines")
-                + " and leaves the others. " + theirs;
+        String theirs = "`" + EngineStopCommand.stopCommandFor(others) + "` stops ";
+        if (ours == 0) return "These engines belong to other homes; " + theirs + (others.size() == 1 ? "it" : "them");
+        return "`jk engine stop -A` stops this home's " + ours + (ours == 1 ? " engine" : " engines") + "; " + theirs
+                + "the others";
     }
 
     /** The `-O jsonl` line for a directory with no engine of its own; the fleet says what else is alive. */
@@ -598,8 +595,7 @@ public final class EngineStatusCommand implements CliCommand {
      * the Ctrl-C contract of {@code jk dev} and the test runner is void until a respawn.
      */
     static String describeIgnoredSignals(String ignored) {
-        return "ignoring " + ignored + " (inherited from the shell that started the engine; forked workers"
-                + " inherit it — `jk engine stop`, then start it from a foreground shell)";
+        return "ignoring " + ignored + " from its shell; run `jk engine stop`, then jk from a foreground shell";
     }
 
     /** The engine log's size and when this engine last rolled it, e.g. {@code 3M, rolled 2h 5m 0s ago}. */

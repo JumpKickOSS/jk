@@ -103,11 +103,11 @@ class EngineDrainWordingTest {
     @Test
     void stop_says_what_it_waits_for_and_names_now() {
         assertThat(EngineStopCommand.drainingMessage(1, DEADLINE))
-                .isEqualTo("Engine is stopping: waiting for 1 in-flight job (exits by "
+                .isEqualTo("Engine is stopping after 1 running job, by "
                         + EngineStatusCommand.wallClock(DEADLINE)
-                        + "); the next build starts a new engine. `jk engine stop -n` stops it now");
+                        + "; `jk engine stop -n` stops it now");
         assertThat(EngineStopCommand.drainingMessage(2, -1))
-                .startsWith("Engine is stopping: waiting for 2 in-flight jobs;")
+                .startsWith("Engine is stopping after 2 running jobs;")
                 .contains("-n");
     }
 

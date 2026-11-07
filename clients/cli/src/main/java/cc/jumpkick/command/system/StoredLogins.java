@@ -93,7 +93,7 @@ public final class StoredLogins {
                     + logins.error());
         } else {
             out.add(Theme.colorize("ok:      ", t.completedStep()) + Theme.colorize("logins", t.cyan()) + " — "
-                    + logins.rows().size() + " stored; a new one keeps its secret in " + named(logins.destination()));
+                    + logins.rows().size() + " stored; new ones go to " + named(logins.destination()));
         }
         for (Login login : logins.rows()) {
             String bound = login.origin() == null ? "" : " " + Theme.colorize("→", t.darkGray()) + " " + login.origin();

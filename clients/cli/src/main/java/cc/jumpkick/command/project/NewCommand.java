@@ -298,24 +298,22 @@ public final class NewCommand implements CliCommand {
     @Nullable
     String refusal() {
         String c = command() + ": ";
-        if (assembly) return c + "--assembly is the template's question now: -p assembly=true";
-        if (nativeImage) return c + "--native is the template's question now: -p native=true";
+        if (assembly) return c + "--assembly is gone; use -p assembly=true";
+        if (nativeImage) return c + "--native is gone; use -p native=true";
         if (depsCsv != null) {
-            return c + "--deps is the template's question now: -p deps=guava,commons-lang,commons-io"
-                    + " (jk new -t app --help lists them); jk add <library> adds any other";
+            return c + "--deps is gone; use -p deps=guava,commons-lang,commons-io or jk add <library>";
         }
         if (kotlinModule != null) return c + "--kotlin-module is gone: set module = \"<name>\" in the new jk.toml";
         String executableFlag = executable == null ? null : executable ? "-e" : "--no-executable";
         if (plugin && executableFlag != null) {
-            return c + executableFlag + " names a template, and so does --plugin; keep one";
+            return c + executableFlag + " and --plugin both pick a template; keep one";
         }
         String templateFlag = plugin ? "--plugin" : executableFlag;
         if (templateFlag != null && templateRef != null && !templateRef.isBlank()) {
-            return c + templateFlag + " names a template, and so does -t; keep one";
+            return c + templateFlag + " and -t both pick a template; keep one";
         }
         if (jdk != null && javaLevel(jdk) == null) {
-            return c + "--jdk sets the template's java = N, so it takes a Java major (--jdk 25); pin a"
-                    + " vendor afterwards with jdk = \"" + jdk + "\" in jk.toml";
+            return c + "--jdk takes a Java major, as in --jdk 25; for a vendor set jdk = \"" + jdk + "\" in jk.toml";
         }
         return null;
     }

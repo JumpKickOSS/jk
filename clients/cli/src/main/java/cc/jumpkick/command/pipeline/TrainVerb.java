@@ -70,7 +70,7 @@ final class TrainVerb implements BuildVerb {
     @Override
     public int selected(BuildRun run, List<String> moduleDirs) {
         if (moduleDirs.size() != 1) {
-            run.fail("jk train runs one module — the selector matched " + moduleDirs.size());
+            run.fail("jk train runs one module; the selector matched " + moduleDirs.size());
             return Exit.USAGE;
         }
         this.moduleDir = Path.of(moduleDirs.getFirst());
@@ -81,7 +81,7 @@ final class TrainVerb implements BuildVerb {
     public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
         if (run.standalone()) moduleDir = entryDir;
         if (moduleDir == null) {
-            run.fail("jk train runs one module — pass -m <module> or run from its directory");
+            run.fail("jk train runs one module; pass -m <module> or run from its directory");
             return Exit.USAGE;
         }
         // A Graal home makes the tracing agent available; without one the engine says so clearly.
