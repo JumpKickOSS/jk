@@ -121,7 +121,7 @@ class StableVersionsTest {
         assertThatThrownBy(() -> StableVersions.versionToWrite(manifest, "com.acme", "preview", "latest"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("1.0.0-M2")
-                .hasMessageContaining("pass it explicitly");
+                .hasMessageContaining("pass com.acme:preview:1.0.0-M2");
     }
 
     @Test
@@ -227,7 +227,7 @@ class StableVersionsTest {
         Path manifest = project(tmp).resolve(ManifestPaths.MANIFEST);
         assertThatThrownBy(() -> offline(() -> StableVersions.versionToWrite(manifest, "org.other", "lib", "latest")))
                 .isInstanceOf(IOException.class)
-                .hasMessageStartingWith("offline: no file: repository lists org.other:lib")
+                .hasMessageStartingWith("offline: no local repository lists org.other:lib")
                 .hasMessageContaining("org.other:lib:<version>");
         offline(() -> {
             StableVersions.requireExists(manifest, "org.other", "lib", "9.9.9");

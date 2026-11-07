@@ -111,7 +111,7 @@ class UrlToolLockTest {
         assertThatThrownBy(() ->
                         PluginBuild.fetchStepDependencies(build, tmp, new Cas(tmp.resolve("cas")), lockFile, false))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("pins no [[tool]] row for "
+                .hasMessageContaining("has no [[tool]] row for "
                         + url(Interpolation.Host.current().os()));
     }
 
@@ -126,7 +126,8 @@ class UrlToolLockTest {
         assertThatThrownBy(() ->
                         PluginBuild.fetchStepDependencies(build, tmp, new Cas(tmp.resolve("cas")), lockFile, false))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("jk-lock.toml pins sha256 " + "0".repeat(64) + " for " + hostUrl);
+                .hasMessageContaining(hostUrl + ": server sends sha256")
+                .hasMessageContaining("jk-lock.toml pins " + "0".repeat(64));
     }
 
     private String url(String os) {

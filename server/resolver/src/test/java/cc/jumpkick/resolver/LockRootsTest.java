@@ -228,9 +228,8 @@ class LockRootsTest {
                 """);
         assertThatThrownBy(() -> LockRoots.partition(junit3, List.of(), true))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("[test-dependencies] junit:junit 3.8.2 cannot run under jk: its suites run through"
-                        + " org.junit.vintage:junit-vintage-engine, which needs junit:junit 4.12 or later"
-                        + " — raise the pin to 4.13.2");
+                .hasMessage("[test-dependencies] junit:junit 3.8.2 is too old for"
+                        + " org.junit.vintage:junit-vintage-engine; raise it to 4.13.2");
     }
 
     @Test

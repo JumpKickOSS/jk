@@ -576,7 +576,7 @@ class WorkspaceSchedulerTest {
                         (justCompleted, results, remaining) -> null,
                         0))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("unsatisfiable")
+                .hasMessageContaining("cannot order the workspace build")
                 .hasMessageContaining("a")
                 .hasMessageContaining("b");
     }
@@ -591,7 +591,7 @@ class WorkspaceSchedulerTest {
                         (justCompleted, results, remaining) -> null,
                         2))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("unsatisfiable")
+                .hasMessageContaining("cannot order the workspace build")
                 .hasMessageContaining("a")
                 .hasMessageContaining("b");
     }

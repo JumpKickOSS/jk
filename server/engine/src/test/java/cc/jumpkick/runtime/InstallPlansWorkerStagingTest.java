@@ -50,7 +50,7 @@ class InstallPlansWorkerStagingTest {
                     .hasMessageContaining("cc.jumpkick:jk-foo:1.0")
                     .hasMessageContaining("launch classpath does not resolve")
                     .hasMessageContaining("com.acme:lib:1.0")
-                    .hasMessageContaining("`jk install`");
+                    .hasMessageContaining("run jk install again");
 
             put(store, "central", MavenLayout.pomPath(LIB), """
                     <project>

@@ -120,14 +120,14 @@ class LockTestEnginesTest {
         assertThatThrownBy(() -> new LockOrchestrator(repoGroup(tempDir)).lock(project, "test"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("org.junit.support:testng-engine")
-                .hasMessageContaining("raise the pin to 7.12.0");
+                .hasMessageContaining("raise it to 7.12.0");
     }
 
     @Test
     void a_junit4_pin_the_engine_cannot_run_is_refused_before_any_solve(@TempDir Path tempDir) {
         assertThatThrownBy(() -> new LockOrchestrator(repoGroup(tempDir)).lock(junit4Project("=3.8.2"), "test"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("raise the pin to 4.13.2");
+                .hasMessageContaining("raise it to 4.13.2");
     }
 
     @Test
@@ -153,9 +153,8 @@ class LockTestEnginesTest {
 
         assertThatThrownBy(() -> new LockOrchestrator(repoGroup(tempDir)).lock(managedJunit4Project(), "test"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("[test-dependencies] junit:junit is platform-managed at 3.8.2, which cannot run under jk:"
-                        + " its suites run through org.junit.vintage:junit-vintage-engine, which needs junit:junit"
-                        + " 4.12 or later — declare junit:junit 4.13.2 in [test-dependencies]");
+                .hasMessage("[test-dependencies] junit:junit 3.8.2 from the BOM is too old for"
+                        + " org.junit.vintage:junit-vintage-engine; declare junit:junit 4.13.2");
     }
 
     private static JkBuild managedJunit4Project() {
