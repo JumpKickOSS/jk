@@ -16,6 +16,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -500,9 +501,14 @@ class JkBuildParserWorkspaceTest {
         assertThat(member.profiles().resolve("integration").includeTags()).containsExactly("integration");
     }
 
-    /** A member's own profile wins by name — the root is a base, not an override. */
+    /**
+     * A profile means one thing in a workspace: where a member declares one of the root's names, the
+     * root wins every key but the member-additive {@code env} and {@code jvm-args}, which a member
+     * extends without changing what the root sets.
+     */
     @Test
-    void a_members_own_profile_beats_the_roots(@TempDir Path dir) throws Exception {
+    void a_members_same_named_profile_adds_env_and_jvm_args_and_the_root_wins_the_rest(@TempDir Path dir)
+            throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 group   = "com.example"
                 name    = "root"
@@ -513,6 +519,10 @@ class JkBuildParserWorkspaceTest {
 
                 [profiles.integration]
                 include-tags = ["integration"]
+                all-suites = true
+                env = { SHARED = "root", ROOT_ONLY = "1" }
+                jvm-args = ["-Dshared=root"]
+                javac = ["-Werror"]
 
                 [profiles.slow]
                 include-tags = ["slow"]
@@ -523,13 +533,63 @@ class JkBuildParserWorkspaceTest {
 
                 [profiles.integration]
                 include-tags = ["member-only"]
+                env = { SHARED = "member", LIB_DB = "jdbc:h2:mem:lib" }
+                jvm-args = ["-Dshared=member", "-Dlib=1"]
+                javac = ["-Xlint:all"]
+
+                [profiles.lib-only]
+                javac = ["-parameters"]
                 """);
 
         var member = JkBuildParser.parse(lib.resolve("jk.toml"));
-        assertThat(member.profiles().resolve("integration").includeTags()).containsExactly("member-only");
+        var integration = member.profiles().resolve("integration");
+        assertThat(integration.includeTags()).as("the tier is the root's").containsExactly("integration");
+        assertThat(integration.allSuites()).isTrue();
+        assertThat(integration.env())
+                .as("a member adds variables; the root's value wins one both set")
+                .containsExactlyInAnyOrderEntriesOf(
+                        Map.of("SHARED", "root", "ROOT_ONLY", "1", "LIB_DB", "jdbc:h2:mem:lib"));
+        assertThat(integration.jvmArgs())
+                .as("a member adds flags; the root's come last, so it wins a flag both set")
+                .containsExactly("-Dshared=member", "-Dlib=1", "-Dshared=root");
+        assertThat(integration.javacArgs()).as("the root's compiler flags").containsExactly("-Werror");
         assertThat(member.profiles().contains("slow"))
                 .as("the root's others still arrive")
                 .isTrue();
+        assertThat(member.profiles().resolve("lib-only").javacArgs())
+                .as("a profile only the member declares is its own")
+                .containsExactly("-parameters");
+    }
+
+    /** A key the root's profile leaves out is the member's: {@code javac} and {@code inherits}. */
+    @Test
+    void a_key_the_roots_profile_leaves_out_is_the_members(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "root"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["lib"]
+
+                [profiles.ci]
+                exclude-tags = ["slow"]
+                """);
+        Path lib = Files.createDirectories(dir.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), """
+                name = "lib"
+
+                [profiles.strict]
+                javac = ["-Xlint:all"]
+
+                [profiles.ci]
+                inherits = "strict"
+                javac = ["-Werror"]
+                """);
+
+        var ci = JkBuildParser.parse(lib.resolve("jk.toml")).profiles().resolve("ci");
+        assertThat(ci.javacArgs()).containsExactly("-Xlint:all", "-Werror");
+        assertThat(ci.excludeTags()).containsExactly("slow");
     }
 
     @Test
