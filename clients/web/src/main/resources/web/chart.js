@@ -147,7 +147,7 @@ export const ModuleDepGraph = {
             <span>{{ sc }}</span>
           </label>
         </div>
-        <label class="check dep-transitive" data-tip="Include lockfile transitive dependencies (same as jk tree -t; off by default)">
+        <label class="check dep-transitive" data-tip="Include transitive dependencies, like jk tree -t">
           <input type="checkbox" :checked="transitive" @change="setTransitive($event)">
           <span class="check-box" aria-hidden="true"></span>
           <span>Transitive</span>
@@ -160,7 +160,7 @@ export const ModuleDepGraph = {
       </p>
       <div v-show="graph && (graph.nodes || []).length" class="dep-graph-canvas" ref="el"></div>
       <p v-if="graph && graph.truncated" class="dep-graph-status warn small">
-        Graph truncated at the node/edge cap — untick scopes or Transitive to see a complete graph.
+        Graph too large to show whole; untick scopes or Transitive.
       </p>
       <p v-if="graph && (graph.nodes || []).length" class="dep-graph-hint dim small mono">
         {{ graph.nodes.length }} node{{ graph.nodes.length === 1 ? '' : 's' }}
@@ -168,7 +168,7 @@ export const ModuleDepGraph = {
         <template v-if="graph.truncated"> (truncated)</template>
         · pan / zoom · dependent → prereq
         <span class="swatch declared" data-tip="Workspace module or listed in a selected-scope jk.toml"></span>declared
-        <span class="swatch transitive" data-tip="Transitive only — not listed in any selected-scope jk.toml"></span>transitive
+        <span class="swatch transitive" data-tip="Transitive: no selected jk.toml lists it"></span>transitive
       </p>
     </div>
   `,

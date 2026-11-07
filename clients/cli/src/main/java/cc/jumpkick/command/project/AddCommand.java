@@ -484,8 +484,7 @@ public final class AddCommand implements CliCommand {
                                 .append(String.join(", ", suggestions))
                                 .append("? ");
                     }
-                    msg.append("Pick a catalog name, write the Maven coordinate as group:artifact[:version], ")
-                            .append("or supply --group (and optionally --name).");
+                    msg.append("Use a catalog name, group:artifact[:version], or --group");
                     throw new IllegalArgumentException(msg.toString());
                 }
                 String versionLiteral = nonBlank(versionFlag, atVersion);

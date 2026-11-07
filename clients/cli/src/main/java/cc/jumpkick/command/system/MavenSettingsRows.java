@@ -127,7 +127,7 @@ public final class MavenSettingsRows {
             String entry = "mirror `" + m.id() + "`, mirrorOf `" + m.mirrorOf() + "`, " + m.source();
             if (m.refusal() != null) {
                 out.add(Theme.colorize("warn:    ", t.warning()) + " " + Theme.colorize(entry, t.cyan())
-                        + " — refused, so what it mirrors fails to resolve: " + m.refusal());
+                        + " — refused, its repositories will not resolve: " + m.refusal());
                 continue;
             }
             String captures = m.captures().isEmpty() ? "no built-in remote" : String.join(", ", m.captures());

@@ -564,8 +564,8 @@ export const appOptions = {
       return {
         connecting: 'Connecting…',
         live: 'Live',
-        offline: 'Engine stopped — run any jk command to restart it',
-        unauthorized: 'Access denied — run `jk web` and follow the instructions',
+        offline: 'Engine stopped; run any jk command to restart it',
+        unauthorized: 'Access denied; run `jk web` and follow the instructions',
       }[this.connection];
     },
     /** Copy `jk web` for the Access Denied console — clipboard only, never the prompt glyph. */

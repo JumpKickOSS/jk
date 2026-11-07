@@ -192,7 +192,7 @@ public final class VerifyBuildCommand implements CliCommand {
             if (!global.outputIsJson()) CommandWedge.printOk("Verify", "Reproducible");
             return 0;
         }
-        CliOutput.err("Not reproducible — " + mismatches + " artifact(s) differ.");
+        CliOutput.err("not reproducible: " + mismatches + " artifact(s) differ");
         return 1;
     }
 

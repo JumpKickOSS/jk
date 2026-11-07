@@ -47,10 +47,7 @@ public final class WrapperCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         if (!in.positionals().isEmpty() && !"update".equals(in.positionals().get(0))) {
-            CommandWedge.printFail(
-                    "Wrapper",
-                    "the wrapper is a bootstrapper, not a pin — it has no version argument; align teams via"
-                            + " the installer or CI images, and use `jk self update` for the tool itself");
+            CommandWedge.printFail("Wrapper", "the wrapper takes no version; use `jk self update` to update jk");
             return Exit.USAGE;
         }
         Path projectDir = GlobalOptions.from(in).workingDir();
@@ -58,7 +55,7 @@ public final class WrapperCommand implements CliCommand {
         CommandWedge.printOk(
                 "Wrapper",
                 "wrote " + projectDir.resolve("jk") + " and " + projectDir.resolve("jk.bat")
-                        + " (bootstraps current jk; honors the lock's jk-min floor)");
+                        + "; they install jk at the lock's jk-min or newer");
         return 0;
     }
 

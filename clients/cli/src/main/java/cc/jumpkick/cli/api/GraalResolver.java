@@ -222,19 +222,15 @@ public final class GraalResolver {
         if (!assumeYes && !Confirm.isInteractiveTerminal()) {
             // Can't prompt — fail with the same actionable hint as the driver.
             CliOutput.err(NativeImageDriver.notFoundError(searchedJavaHome).getMessage());
-            CliOutput.err("  Or pin a GraalVM with `graal = \"native\"` under [native], "
-                    + "or pass --yes to install Oracle GraalVM automatically.");
+            CliOutput.err("  Or set graal = \"native\" under [native], or pass --yes to install Oracle GraalVM");
             return null;
         }
         if (!assumeYes) {
             String warn = Theme.colorize(Glyphs.BANG, Theme.active().warning());
-            boolean ok = Confirm.of(
-                            warn + " native-image not found. " + "Install Oracle GraalVM to build native artifacts?",
-                            true)
+            boolean ok = Confirm.of(warn + " native-image not found. Install Oracle GraalVM?", true)
                     .ask();
             if (!ok) {
-                CliOutput.err("Aborted — no GraalVM to build with. Pin one with "
-                        + "`graal = \"native\"` or install: jk jdk install native");
+                CliOutput.err("aborted: no GraalVM; set graal = \"native\" or run jk jdk install native");
                 return null;
             }
         }
@@ -251,7 +247,7 @@ public final class GraalResolver {
                     + HostPlatform.currentOs()
                     + "/"
                     + HostPlatform.currentArch()
-                    + ") has no installable GraalVM; set $GRAALVM_HOME instead.");
+                    + ") has no installable GraalVM; set $GRAALVM_HOME");
             return null;
         }
         return Choice.toInstall(spec);

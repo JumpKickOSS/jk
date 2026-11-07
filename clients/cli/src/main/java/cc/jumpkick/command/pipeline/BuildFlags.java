@@ -355,7 +355,7 @@ public record BuildFlags(
         for (String pattern : classes) {
             if (pattern.trim().endsWith("#")) {
                 throw new IllegalArgumentException("--class " + pattern.trim()
-                        + " names no method after '#' — write Class#method, or the class alone");
+                        + " names no method after '#'; write Class#method or the class alone");
             }
         }
         return TestSelection.of(suites, all, include, exclude, spoke, applyGuard, scriptsOnly, noScripts, classes);

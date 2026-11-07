@@ -75,17 +75,17 @@ public final class JdkVerifyCommand implements CliCommand {
             CommandWedge.printOk(
                     "JDK",
                     anyUnhashed
-                            ? "verified; some fingerprints not baselined yet (run `jk jdk verify -R` to record them)."
+                            ? "verified; `jk jdk verify -R` records the missing fingerprints"
                             : (findings.size() == 1
-                                    ? "1 managed JDK verified."
-                                    : findings.size() + " managed JDKs verified."));
+                                    ? "1 managed JDK verified"
+                                    : findings.size() + " managed JDKs verified"));
             return 0;
         }
         CommandWedge.printFail(
                 "JDK",
                 repair
-                        ? "inventory repaired; re-run `jk jdk verify` if findings remain."
-                        : "one or more managed JDKs failed verification (try `jk jdk verify -R`).");
+                        ? "inventory repaired; run `jk jdk verify` to check again"
+                        : "some managed JDKs failed verification; try `jk jdk verify -R`");
         return 1;
     }
 }

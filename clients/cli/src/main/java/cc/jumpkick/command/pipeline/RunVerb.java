@@ -156,14 +156,14 @@ public final class RunVerb implements BuildVerb {
             if (!plan.deployCommand().isEmpty()) {
                 if (debugJvm != null) {
                     CommandWedge.printFail(
-                            "Run", "--debug-jvm needs a JVM to attach to; this project runs through a deploy command");
+                            "Run", "--debug-jvm needs a JVM; this project runs through a deploy command");
                     return Exit.USAGE;
                 }
                 return dispatchDeployCommand(projectDir, cache, plan.deployCommand(), appArgs, mode);
             }
             command = new ArrayList<>(plan.argv());
             if (debugJvm != null && !command.contains(debugJvm.agentArg())) {
-                CommandWedge.printFail("Run", "--debug-jvm needs a JVM to attach to; this run is not a java launch");
+                CommandWedge.printFail("Run", "--debug-jvm needs a JVM; this run is not a java launch");
                 return Exit.USAGE;
             }
         } catch (EntryPointUnresolvedException e) {
@@ -239,8 +239,7 @@ public final class RunVerb implements BuildVerb {
         }
         if (!report.found()) {
             CommandWedge.printFail(
-                    "Run",
-                    "the packaging plugin declares deploy command `" + command + "` but does not" + " register it");
+                    "Run", "the packaging plugin declares deploy command `" + command + "` but does not register it");
             return Exit.SOFTWARE;
         }
         if (report.error() != null) {

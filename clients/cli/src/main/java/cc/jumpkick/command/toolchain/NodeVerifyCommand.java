@@ -62,7 +62,7 @@ public final class NodeVerifyCommand implements CliCommand {
         if (failed) {
             CommandWedge.printFail(
                     NodeCli.WEDGE,
-                    "a Node.js install is broken — `jk node uninstall <version>`, then install it again");
+                    "a Node.js install is broken; uninstall it with `jk node uninstall <version>` and reinstall");
             return 1;
         }
         CommandWedge.printOk(

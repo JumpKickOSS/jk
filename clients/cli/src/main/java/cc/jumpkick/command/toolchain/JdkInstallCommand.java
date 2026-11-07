@@ -161,10 +161,7 @@ public final class JdkInstallCommand implements CliCommand {
         // Pre-plan sanity: when no spec and no TTY, we can't go further.
         boolean haveSpec = spec != null && !spec.isBlank();
         if (!haveSpec && !isInteractiveTerminalSession()) {
-            CommandWedge.printFail(
-                    "JDK",
-                    "stdin is not a TTY — pass `lts` / `latest` "
-                            + "or a <spec> (e.g. `jk jdk install temurin-21`) or run interactively.");
+            CommandWedge.printFail("JDK", "no terminal to ask; pass a spec such as lts, latest or temurin-25");
             return Exit.USAGE;
         }
 

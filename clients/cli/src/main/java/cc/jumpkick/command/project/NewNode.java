@@ -152,16 +152,14 @@ final class NewNode {
     }
 
     private static int offline(NodeGenerators.Framework f) {
-        CommandWedge.printFail(
-                WEDGE, "the " + f.id() + " generator comes from the npm registry — run without --offline");
+        CommandWedge.printFail(WEDGE, "the " + f.id() + " generator needs the npm registry; run without --offline");
         return Exit.CONFIG;
     }
 
     private static int newestLts() {
         int lts = NodeInstalls.newestLtsMajor(NodeCli.releasesOrNone());
         if (lts <= 0) {
-            CommandWedge.printFail(
-                    WEDGE, "the Node.js release index could not be read — `jk node list-remote` says why");
+            CommandWedge.printFail(WEDGE, "could not read the Node.js release index; `jk node list-remote` says why");
         }
         return lts;
     }

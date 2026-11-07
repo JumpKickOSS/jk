@@ -75,10 +75,7 @@ public final class JshellCommand implements CliCommand {
         Path jshellBin = findJshell();
         if (jshellBin == null) {
             CommandWedge.printFail(
-                    "JShell",
-                    "jshell not found under java.home="
-                            + System.getProperty("java.home")
-                            + " (need a full JDK, not a JRE)");
+                    "JShell", "jshell not found under " + System.getProperty("java.home") + "; it needs a full JDK");
             return Exit.CONFIG;
         }
 
@@ -95,8 +92,7 @@ public final class JshellCommand implements CliCommand {
                     }),
                     true);
             if (code != 0) {
-                CommandWedge.printFail(
-                        "JShell", "preparatory build failed (exit " + code + "); try --no-build after a green build");
+                CommandWedge.printFail("JShell", "build failed (exit " + code + "); fix it, or pass --no-build");
                 return code;
             }
         }

@@ -213,7 +213,7 @@ public final class SelfNukeCommand implements CliCommand {
         boolean cacheExists = wantCacheWipe && Files.isDirectory(dirs.cacheDir());
         boolean storeExists = wantStore && Files.isDirectory(dirs.storeDir());
         if (existing.isEmpty() && !cacheExists && !storeExists) {
-            CommandWedge.printOk("Self", "Nothing to nuke — selected JumpKick data not found.");
+            CommandWedge.printOk("Self", "Nothing to nuke: no JumpKick data found");
             return Exit.SUCCESS;
         }
 
@@ -239,7 +239,7 @@ public final class SelfNukeCommand implements CliCommand {
         // walk (the shared nuke's dry-run leg returns before any engine contact), so it stays;
         // only the store row goes un-itemised.
         if (dryRun && wantStore) {
-            CliOutput.out("  (store contents not itemised — a dry run does not start an engine)");
+            CliOutput.out("  Store contents are not listed in a dry run.");
         }
         // Settle order: Storage → Cache → Self, with a blank between back-to-back wedges so
         // adjacent chip backgrounds do not visually merge.
@@ -289,7 +289,7 @@ public final class SelfNukeCommand implements CliCommand {
         if (!delegatedFailures.isEmpty()) {
             Theme t = Theme.active();
             CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
-                    + (dryRun ? " Could not preview:" : " NOT removed — these targets need a running engine:"));
+                    + (dryRun ? " Could not preview:" : " Not removed; these need a running engine:"));
             for (String f : delegatedFailures) CliOutput.err("  " + f);
             if (!dryRun) exit = Exit.SOFTWARE;
         }
@@ -407,7 +407,7 @@ public final class SelfNukeCommand implements CliCommand {
                     CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
                             + " Engine pid "
                             + r.member().pid()
-                            + " did not stop; nuking around it may leave it orphaned.");
+                            + " did not stop and may be left orphaned.");
                 }
             }
         } catch (RuntimeException ignored) {
@@ -550,7 +550,7 @@ public final class SelfNukeCommand implements CliCommand {
 
     private static void refuse(String what, Path root) {
         CliOutput.err("jk: refusing to nuke the " + what + " at " + root
-                + " — it overlaps a protected root (bin, JDKs, the live engine lib, or creds)");
+                + ": it overlaps bin, JDKs, the engine lib or credentials");
     }
 
     /** Failure-row reason: the message when there is one, else the exception itself. */
@@ -584,9 +584,7 @@ public final class SelfNukeCommand implements CliCommand {
         CliOutput.out("  Kept:  " + pathStyled(dirs.credsDir()) + "  (credentials; remove via jk repo logout)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir()) + "  (live engine + installed app jars)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory())
-                + (launchersGo
-                        ? "  (PATH binaries; the tool launchers and envs listed above go with the roots they run from)"
-                        : "  (PATH binaries)"));
+                + (launchersGo ? "  (PATH binaries, except the tool launchers listed above)" : "  (PATH binaries)"));
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");
         CliOutput.out();
     }

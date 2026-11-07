@@ -146,7 +146,7 @@ class EngineSpawnSilentPeerTest {
             assertThatThrownBy(() -> EngineSpawn.ensure(paths, VERSION, SILENT, BRIEF_GRACE))
                     .isInstanceOf(IOException.class)
                     .hasMessageContaining("pid " + holder.pid())
-                    .hasMessageContaining("not displaced");
+                    .hasMessageContaining("has not answered");
             assertThat(holder.isAlive())
                     .as("a young engine that accepts connections is never displaced for a slow handshake")
                     .isTrue();

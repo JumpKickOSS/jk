@@ -69,14 +69,14 @@ final class GuardHooks {
                   if [ -f "$git_dir/jk-guard-freeze" ]; then
                     rm -f "$git_dir/jk-guard-freeze"
                   else
-                    echo "jk guard: jk-guards-baseline.toml is staged but no 'jk guard freeze' wrote it;" >&2
-                    echo "  the baseline grows only through 'jk guard freeze <id> -W ...', never by hand" >&2
+                    echo "jk guard: jk-guards-baseline.toml was edited by hand" >&2
+                    echo "  change it with 'jk guard freeze <id> -W ...'" >&2
                     exit 1
                   fi
                 fi
                 if git diff --cached -U0 | grep -E '^[+]' | grep -Eiq '(jk-?guards?|guard)[:[:space:]-]*(ignore|off|disable|suppress)|@SuppressWarnings[(]"jk'; then
-                  echo "jk guard: a staged line looks like a guard suppression; there is no suppression syntax —" >&2
-                  echo "  fix the site per Instead, or ask the user to add an allow entry with a reason" >&2
+                  echo "jk guard: a staged line looks like a guard suppression" >&2
+                  echo "  fix the code as the rule says, or add an allow entry with a reason" >&2
                   exit 1
                 fi
                 exit 0
@@ -117,8 +117,7 @@ final class GuardHooks {
             if (Files.exists(target) && !force) {
                 String have = Files.readString(target, StandardCharsets.UTF_8);
                 if (!have.equals(h.script())) {
-                    refused.add(h.name() + ": " + target
-                            + " exists with other content; re-run with --replace to overwrite it");
+                    refused.add(h.name() + ": " + target + " already exists; --replace overwrites it");
                     continue;
                 }
             }

@@ -72,8 +72,7 @@ public final class AuthLogoutCommand implements CliCommand {
         try {
             AuthCommand.authFor(credentialsDir).logout(kind, resolvedHost);
         } catch (SecretBackendException refused) {
-            CliOutput.err("error: " + refused.getMessage() + "; the login is kept, so `jk auth logout` can be run again"
-                    + " once the keychain answers.");
+            CliOutput.err("error: " + refused.getMessage() + "; login kept, run `jk auth logout` again later");
             return 1;
         }
         if (!global.quiet) {

@@ -73,9 +73,7 @@ public final class CleanCommand implements CliCommand {
         // The code-graph refresh a build left running writes under target/; let it finish first.
         if (!GraphRefreshSlot.awaitFree(workspaceRoot, GRAPH_REFRESH_WAIT)) {
             CommandWedge.printFail(
-                    "Clean",
-                    "The code graph is still refreshing after the last build; nothing removed. Run jk clean again"
-                            + " in a moment");
+                    "Clean", "code graph still refreshing; nothing removed, run jk clean again in a moment");
             return 1;
         }
 
@@ -167,7 +165,7 @@ public final class CleanCommand implements CliCommand {
         String others = more == 0 ? "" : " and " + more + " more";
         String removed = files == 0 ? "Nothing removed" : "Removed " + stats + ", but";
         String why = held.isEmpty()
-                ? "another process has it open (a build, the engine, or an IDE)"
+                ? "a build, the engine or an IDE has it open"
                 : "held open by "
                         + String.join(
                                 ", ",

@@ -69,14 +69,14 @@ public final class NodeUpdateCommand implements CliCommand {
         if (behind) {
             CommandWedge.printOk(
                     NodeCli.WEDGE,
-                    "Node.js " + current + " is locked; " + newest.get().version() + " is the newest " + major
-                            + ".x — `jk update` moves the lock to it.");
+                    "Node.js " + current + " is locked; `jk update` moves it to "
+                            + newest.get().version());
         } else {
             CommandWedge.printOk(
                     NodeCli.WEDGE,
                     "Node.js " + current + " is current"
                             + newest.map(r -> " (newest " + major + ".x: " + r.version() + ")")
-                                    .orElse("") + ".");
+                                    .orElse(""));
         }
         return 0;
     }

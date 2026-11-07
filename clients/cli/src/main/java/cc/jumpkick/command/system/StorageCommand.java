@@ -110,7 +110,7 @@ public final class StorageCommand extends GroupCommand {
     static int runNuke(boolean dryRun, boolean skipConfirm, boolean sweepOrphans, StoreWipe wipe) throws IOException {
         Path storeRoot = JkStores.store();
         if (!Files.isDirectory(storeRoot)) {
-            CommandWedge.printOk("Storage", "Nothing to nuke — store directory does not exist.");
+            CommandWedge.printOk("Storage", "Nothing to nuke: no store directory");
             return 0;
         }
         JkDirs dirs = JkDirs.current();
@@ -121,7 +121,7 @@ public final class StorageCommand extends GroupCommand {
         long[] preCount = wipe.wipe(storeRoot, true);
         CacheCommand.Stats pre = new CacheCommand.Stats(preCount[0], preCount[1]);
         if (pre.files() == 0) {
-            CommandWedge.printOk("Storage", "Nothing to nuke — the artifact store is empty.");
+            CommandWedge.printOk("Storage", "Nothing to nuke: the artifact store is empty");
             return 0;
         }
         if (dryRun) {
@@ -162,7 +162,7 @@ public final class StorageCommand extends GroupCommand {
         if (!failures.isEmpty()) {
             Theme t = Theme.active();
             CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
-                    + " Orphaned tools whose env or launcher could not be removed (jk tool uninstall <name>):");
+                    + " Could not remove these tools; run jk tool uninstall <name>:");
             for (String f : failures) CliOutput.err("  " + f);
             return Exit.SOFTWARE;
         }
@@ -177,7 +177,7 @@ public final class StorageCommand extends GroupCommand {
         if (orphans.isEmpty()) return "";
         List<String> names = orphans.stream().map(OrphanedToolEnvs.Orphan::name).toList();
         return ", and " + verb + " " + orphans.size() + " orphaned tool" + (orphans.size() == 1 ? "" : "s") + " ("
-                + String.join(", ", names) + "; env and launcher — jk install restores them)";
+                + String.join(", ", names) + "; jk install restores them)";
     }
 
     private static boolean confirmNuke(
@@ -190,16 +190,16 @@ public final class StorageCommand extends GroupCommand {
         CliOutput.out("  " + storeRoot);
         CliOutput.stdout()
                 .printf(
-                        "  %s files, %s — Maven-layout repos, workers, and related store trees.%n",
+                        "  %s files, %s: repositories, workers and installed tools.%n",
                         CacheCommand.fmtCount(stats.files()), CacheCommand.fmtBytes(stats.bytes()));
         if (!orphans.isEmpty()) {
             // An installed tool execs jars under the store; its env and launcher go with them.
             List<String> names =
                     orphans.stream().map(OrphanedToolEnvs.Orphan::name).toList();
-            CliOutput.out("  Orphans " + orphans.size() + " installed tool" + (orphans.size() == 1 ? "" : "s") + " ("
-                    + String.join(", ", names) + "): env and launcher go too; jk install restores them.");
+            CliOutput.out("  Also removes " + orphans.size() + " installed tool" + (orphans.size() == 1 ? "" : "s")
+                    + ": " + String.join(", ", names) + ". jk install restores them.");
         }
-        CliOutput.out("  Cache tier (action outputs) is kept. Credentials are kept (jk repo logout).");
+        CliOutput.out("  The build cache and credentials are kept.");
         return Confirm.of(bang + " Nuke the artifact store?", false).ask();
     }
 
@@ -380,9 +380,8 @@ public final class StorageCommand extends GroupCommand {
             String what = named.size() + (named.size() == 1 ? " worker" : " workers") + ": " + String.join(", ", named);
             String size = dropped.files() + (dropped.files() == 1 ? " file" : " files") + ", "
                     + CacheCommand.fmtBytes(dropped.bytes());
-            if (dryRun) return "Dry run: would drop " + what + " — " + size + " reclaimable.";
-            return "Dropped " + what + " — " + size
-                    + " reclaimed. The next build fetches the published plugin and rebuilds its launch classpath.";
+            if (dryRun) return "Dry run: would drop " + what + "; " + size + " reclaimable";
+            return "Dropped " + what + "; " + size + " reclaimed. The next build fetches them again";
         }
 
         static ConsoleSpec cleanSpec(boolean dryRun, LongSupplier files, LongSupplier bytes) {

@@ -112,8 +112,7 @@ public final class GuardCommand implements CliCommand {
             CommandWedge.printFail(
                     "Guard",
                     "unknown subcommand `" + positionals.get(0)
-                            + "`; jk guard [explain [<id>] [--schema <kind>] | freeze <id> --reason \"…\" [--retire] | test"
-                            + " | commit-msg <file> | docs | hooks [install] [--replace]]");
+                            + "`; use explain, freeze, test, commit-msg, docs or hooks");
             return Exit.USAGE;
         }
         // Every lane, cache-aware: the build with tests skipped and the guard flag on.
@@ -142,7 +141,7 @@ public final class GuardCommand implements CliCommand {
             Path file = target.resolve(SARIF_FILE);
             if (Files.isRegularFile(file))
                 CliOutput.out(Files.readString(file, StandardCharsets.UTF_8).stripTrailing());
-            else CommandWedge.printFail("Guard", "no " + file + " was written: no guard lane ran");
+            else CommandWedge.printFail("Guard", "no guard ran, so no " + file + " was written");
         } else if (global.outputIsJson()) {
             // One `guard` event per violation row of the run, after the build's own events.
             Path rows = target.resolve(JSONL_FILE);
@@ -344,8 +343,7 @@ public final class GuardCommand implements CliCommand {
         for (String w : done.written())
             CliOutput.out("jk guard: installed " + done.hooksDir().resolve(w));
         for (String r : done.refused()) CliOutput.out("jk guard: kept " + r);
-        CliOutput.out("jk guard: protected files listed in " + done.protectedList()
-                + " (advisory: a hook is local state; the engine's lanes and CI enforce)");
+        CliOutput.out("jk guard: protected files listed in " + done.protectedList());
         return done.refused().isEmpty() ? 0 : 1;
     }
 
@@ -359,9 +357,7 @@ public final class GuardCommand implements CliCommand {
         }
         String id = positionals.get(1);
         if (!retire && (reason == null || reason.isBlank())) {
-            CommandWedge.printFail(
-                    "Guard",
-                    "freeze needs -W: an entry without a reason is a suppression, and there is no suppression syntax");
+            CommandWedge.printFail("Guard", "freeze needs a reason: jk guard freeze <id> -W \"…\"");
             return Exit.USAGE;
         }
         GuardFreezeAck ack;
@@ -377,25 +373,20 @@ public final class GuardCommand implements CliCommand {
         }
         GuardBaselineMarker.leave(dir, "jk guard freeze");
         if (retire) {
-            CliOutput.out("jk guard: retired " + id + " — dropped " + ack.accepted() + " baseline "
+            CliOutput.out("jk guard: retired " + id + ", dropped " + ack.accepted() + " baseline "
                     + (ack.accepted() == 1 ? "entry" : "entries") + "; " + ack.total() + " remain");
         } else if (ack.rebased() > 0) {
-            CliOutput.out("jk guard: recorded " + id + "'s smaller population as its floor in " + ack.rebased()
-                    + (ack.rebased() == 1 ? " lane" : " lanes")
+            CliOutput.out("jk guard: accepted " + id + "'s smaller scope"
                     + (ack.accepted() == 0
                             ? ""
                             : " and froze " + ack.accepted() + (ack.accepted() == 1 ? " violation" : " violations"))
-                    + " in jk-guards-baseline.toml (" + ack.total()
-                    + " entries) — commit the baseline with the reason");
+                    + " in jk-guards-baseline.toml (" + ack.total() + " entries); commit it");
         } else if (ack.accepted() == 0) {
             CliOutput.out("jk guard: " + id
-                    + (acceptScope
-                            ? " examines what the baseline recorded and has no new violations; nothing to accept"
-                            : " has no new violations to freeze"));
+                    + (acceptScope ? " has nothing new to accept" : " has no new violations to freeze"));
         } else {
             CliOutput.out("jk guard: froze " + ack.accepted() + " " + (ack.accepted() == 1 ? "violation" : "violations")
-                    + " of " + id + " into jk-guards-baseline.toml (" + ack.total()
-                    + " entries) — commit the baseline with the reason");
+                    + " of " + id + " into jk-guards-baseline.toml (" + ack.total() + " entries); commit it");
         }
         return 0;
     }

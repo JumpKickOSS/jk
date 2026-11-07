@@ -68,10 +68,8 @@ public final class ReleaseCommand implements CliCommand {
                 Opt.flag("After the release, move the major version (1.4.7 → 2.0.0).", "--major"),
                 Opt.flag("After the release, move the minor version (1.4.7 → 1.5.0).", "--minor"),
                 Opt.flag("After the release, move the patch version (1.4.7 → 1.4.8). The default.", "--patch"),
-                Opt.flag(
-                        "Publish the release (jk publish, to the [publish] target; its options are accepted) before it is tagged.",
-                        "--publish"),
-                Opt.flag("Push the branch and the tag to the branch's upstream when the release succeeded.", "--push"),
+                Opt.flag("Publish to the [publish] target before tagging; takes jk publish options.", "--publish"),
+                Opt.flag("Push the branch and tag to its upstream after the release.", "--push"),
                 Opt.flag("Check everything and print what would happen; change nothing.", "--dry-run"),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
                         .hide(),
@@ -122,7 +120,7 @@ public final class ReleaseCommand implements CliCommand {
         Path dir = global.workingDir();
         Path manifest = ManifestPaths.manifestIn(dir);
         if (!Files.isRegularFile(manifest)) {
-            CommandWedge.printFail(CHIP, "no jk.toml here — run `jk release` inside a project");
+            CommandWedge.printFail(CHIP, "no jk.toml here; run `jk release` inside a project");
             return Exit.USAGE;
         }
         int segments = (in.isSet("major") ? 1 : 0) + (in.isSet("minor") ? 1 : 0) + (in.isSet("patch") ? 1 : 0);
@@ -138,10 +136,7 @@ public final class ReleaseCommand implements CliCommand {
         String text = Files.readString(manifest, StandardCharsets.UTF_8);
         String version = ReleaseVersion.declared(text).orElse(null);
         if (version == null) {
-            CommandWedge.printFail(
-                    CHIP,
-                    "this jk.toml declares no version of its own — it inherits the workspace's. Run `jk release`"
-                            + " in the directory that declares `version = \"...\"`.");
+            CommandWedge.printFail(CHIP, "this jk.toml inherits its version; run `jk release` where `version` is set");
             return Exit.CONFIG;
         }
         String next;
@@ -171,7 +166,7 @@ public final class ReleaseCommand implements CliCommand {
             CommandWedge.printFail(
                     CHIP,
                     info.group() + ":" + info.name() + ":" + version + " is already published to "
-                            + info.publishRepository() + ". Raise the version in jk.toml, or release the next one.");
+                            + info.publishRepository() + "; raise the version in jk.toml");
             return Exit.CONFIG;
         }
 
@@ -208,8 +203,8 @@ public final class ReleaseCommand implements CliCommand {
             if (published != 0) {
                 CommandWedge.printFail(
                         CHIP,
-                        info.name() + " " + version + " is installed locally but was not published, and nothing is"
-                                + " tagged. Fix the publish and run `jk release` again.");
+                        info.name() + " " + version + " was not published or tagged; fix the publish and run"
+                                + " `jk release` again");
                 return published;
             }
         }
@@ -242,15 +237,13 @@ public final class ReleaseCommand implements CliCommand {
             CommandWedge.printFail(
                     CHIP,
                     "tagged " + tag + " but could not move jk.toml to " + next + ": " + e.getMessage()
-                            + ". Set the version by hand and commit it.");
+                            + "; set the version by hand and commit it");
             return Exit.CONFIG;
         }
         int relocked = relock(dir);
         if (relocked != 0) {
             CommandWedge.printFail(
-                    CHIP,
-                    "tagged " + tag + " and moved jk.toml to " + next + ", but relocking failed; run `jk lock`"
-                            + " and commit the lock.");
+                    CHIP, "tagged " + tag + " and moved jk.toml to " + next + ", but relocking failed; run `jk lock`");
             return relocked;
         }
         List<String> add = new ArrayList<>(List.of("add", "--"));
@@ -263,7 +256,7 @@ public final class ReleaseCommand implements CliCommand {
             CommandWedge.printFail(
                     CHIP,
                     "tagged " + tag + " and moved jk.toml to " + next + ", but the commit failed: " + committed
-                            + ". Commit the version change by hand.");
+                            + "; commit the version change by hand");
             return Exit.CONFIG;
         }
 
@@ -272,15 +265,15 @@ public final class ReleaseCommand implements CliCommand {
             if (pushed != null) {
                 CommandWedge.printFail(
                         CHIP,
-                        "released " + version + " locally (tag " + tag + ", then " + next + ") but the push failed: "
-                                + pushed + ". Run `git push --follow-tags` when the remote is reachable.");
+                        "released " + version + " locally but the push failed: " + pushed
+                                + "; run `git push --follow-tags` later");
                 return Exit.CONFIG;
             }
         }
         CommandWedge.printOk(
                 CHIP,
-                "Released " + info.group() + ":" + info.name() + ":" + version + " — tag " + tag + ", jk.toml at "
-                        + next + (push ? ", pushed" : ". Push with `git push --follow-tags`."));
+                "Released " + info.group() + ":" + info.name() + ":" + version + ", tag " + tag + ", next " + next
+                        + (push ? ", pushed" : "; push with `git push --follow-tags`"));
         return Exit.SUCCESS;
     }
 
@@ -288,7 +281,7 @@ public final class ReleaseCommand implements CliCommand {
     private static @Nullable String preflight(Git git, String tag, Path manifest) {
         String inside = git.output("rev-parse", "--is-inside-work-tree");
         if (!Boolean.parseBoolean(inside)) {
-            return "not inside a git work tree: a release is a tag on a commit.";
+            return "not inside a git work tree";
         }
         String dirty = git.output("status", "--porcelain");
         if (dirty == null) return "git status failed here.";
@@ -296,7 +289,7 @@ public final class ReleaseCommand implements CliCommand {
             return "the working tree has uncommitted changes; commit or stash them first:\n" + dirty;
         }
         if (git.output("rev-parse", "-q", "--verify", "refs/tags/" + tag) != null) {
-            return "tag " + tag + " already exists. Raise the version in jk.toml or delete the tag.";
+            return "tag " + tag + " already exists; raise the version in jk.toml or delete the tag";
         }
         return null;
     }

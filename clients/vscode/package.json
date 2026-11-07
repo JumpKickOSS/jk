@@ -1,7 +1,7 @@
 {
   "name": "jumpkick",
   "displayName": "JumpKick",
-  "description": "JumpKick, the JVM build system built for coding agents — BSP install, tasks, and status (wire-only; no engine on the extension classpath).",
+  "description": "JumpKick, the JVM build system built for coding agents: BSP install, tasks and status.",
   "version": "0.10.0",
   "publisher": "jumpkick",
   "license": "Apache-2.0",
@@ -83,7 +83,7 @@
         "jk.path": {
           "type": "string",
           "default": "jk",
-          "description": "Path to the jk executable (must be on PATH or absolute). Never put the engine jar on the IDE classpath."
+          "description": "Path to the jk executable, absolute or on PATH."
         },
         "jk.autoBspInstall": {
           "type": "boolean",

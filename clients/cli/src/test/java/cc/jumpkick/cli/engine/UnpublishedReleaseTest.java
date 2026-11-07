@@ -30,9 +30,8 @@ class UnpublishedReleaseTest {
             assertThatThrownBy(() -> EngineJarFetcher.fetch(
                             release.base(), VERSION, new Cas(root.resolve("cache")), install, release.verifier()))
                     .isInstanceOf(IOException.class)
-                    .hasMessage("jk 0.15.3 is not a published release, so its engine cannot be downloaded — this"
-                            + " looks like an unpublished build from a checkout: run `jk install -S`"
-                            + " there, or set JK_HOME to a home where this build is installed");
+                    .hasMessage("jk 0.15.3 is not a published release; run `jk install -S` in its checkout,"
+                            + " or point JK_HOME at the home it is installed in");
             assertThat(install.resolve(VERSION)).isEmpty();
             assertThat(release.requested()).containsExactly("SHA256SUMS");
         }
@@ -45,7 +44,7 @@ class UnpublishedReleaseTest {
 
             assertThatThrownBy(() -> ReleaseArtifacts.manifest(release.base(), VERSION, release.verifier()))
                     .isInstanceOf(ReleaseArtifacts.NotPublished.class)
-                    .hasMessage("no jk 0.15.3 release at " + release.base() + "/0.15.3/ — HTTP 404");
+                    .hasMessage("no jk 0.15.3 release at " + release.base() + "/0.15.3/: HTTP 404");
         }
     }
 
@@ -63,7 +62,7 @@ class UnpublishedReleaseTest {
                     .isInstanceOf(IOException.class)
                     .isNotInstanceOf(ReleaseArtifacts.NotPublished.class)
                     .hasMessageStartingWith("could not download the release checksums from ")
-                    .hasMessageEndingWith(" — HTTP 403")
+                    .hasMessageEndingWith(": HTTP 403")
                     .hasMessageNotContaining("unpublished");
         }
     }

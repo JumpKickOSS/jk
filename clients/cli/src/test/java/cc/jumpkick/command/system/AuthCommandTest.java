@@ -53,7 +53,7 @@ class AuthCommandTest {
     void unknown_provider_is_a_usage_error() {
         Result r = run(null, "auth", "login", "gitfoo");
         assertThat(r.code()).isEqualTo(2);
-        assertThat(r.err()).contains("Unknown provider");
+        assertThat(r.err()).contains("unknown provider");
     }
 
     /** Write a .git/config with the given origin URL under {@code repo}. */
@@ -82,7 +82,7 @@ class AuthCommandTest {
     void auto_detect_fails_cleanly_outside_a_repo(@TempDir Path notARepo, @TempDir Path creds) {
         Result r = run(null, "auth", "token", "-C", notARepo.toString(), "--credentials-dir", creds.toString());
         assertThat(r.code()).isEqualTo(2);
-        assertThat(r.err()).contains("Could not detect a forge");
+        assertThat(r.err()).contains("could not tell the forge from the git remote");
     }
 
     @Test

@@ -82,7 +82,7 @@ public final class DenyCommand implements CliCommand {
         DenyReport report = plan.get(REPORT).orElseThrow();
         if (report.violationCount() == 0) {
             if (!global.outputIsJson())
-                CommandWedge.printOk("Deny", report.checked() + " package(s) checked — no violations.");
+                CommandWedge.printOk("Deny", report.checked() + " package(s) checked, no violations");
             return 0;
         }
         CommandWedge.printFail("Deny", report.violationCount() + " violation(s):");

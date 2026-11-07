@@ -120,7 +120,7 @@ class InstallProductLibTest {
                 InstallCommand.shelfBehindEngineNotice(true, Optional.of("bbb111222333444"), Optional.of("ccc"));
         assertThat(notice)
                 .contains("run `jk install` once more")
-                .contains("engine ccc")
+                .contains("new engine ccc")
                 .contains("engine bbb111222333");
         assertThat(InstallCommand.shelfBehindEngineNotice(true, Optional.of("ccc"), Optional.of("ccc")))
                 .as("the home names the engine that packaged the shelf")

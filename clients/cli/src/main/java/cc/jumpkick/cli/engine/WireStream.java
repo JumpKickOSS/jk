@@ -340,6 +340,6 @@ public final class WireStream {
             return new IOException("jk engine: " + oom.get() + "; the next jk command starts a fresh engine");
         }
         return new IOException("jk engine: the engine closed the connection without sending a result; "
-                + "run `jk engine status` to see whether it is still running, and check its log for the job");
+                + "see `jk engine status` and the engine log");
     }
 }

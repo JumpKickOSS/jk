@@ -105,7 +105,7 @@ public final class EnsureFreshLock {
             Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, @Nullable URI repoUrl) {
         int code = ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
         if (code != Exit.SUCCESS) {
-            CliOutput.err("‼ jk: lock freshen failed — continuing without jk-lock.toml");
+            CliOutput.err("‼ jk: lock refresh failed; continuing without jk-lock.toml");
         }
     }
 
@@ -233,8 +233,8 @@ public final class EnsureFreshLock {
         boolean unsatisfiable = err != null && err.contains("Cannot resolve dependencies");
         Path lockFile = LockPaths.lockFile(lockOwnerOrSelf(dir));
         if (!unsatisfiable && Files.isRegularFile(lockFile)) {
-            CliOutput.err("‼ jk: lock refresh failed — using existing jk-lock.toml: " + err);
-            CliOutput.err("    Run `jk lock` to resolve manually.");
+            CliOutput.err("‼ jk: lock refresh failed; using the existing jk-lock.toml: " + err);
+            CliOutput.err("    Run `jk lock` to see why.");
             return Exit.SUCCESS;
         }
         CommandWedge.printFail(chip, err);

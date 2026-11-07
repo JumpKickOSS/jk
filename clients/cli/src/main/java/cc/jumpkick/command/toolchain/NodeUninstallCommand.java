@@ -53,7 +53,7 @@ public final class NodeUninstallCommand implements CliCommand {
             boolean elsewhere =
                     NodeCli.installs().all().stream().anyMatch(i -> i.version().equals(version));
             CliOutput.out("Node.js " + version + " is not a jk install"
-                    + (elsewhere ? "; another manager installed it, and jk leaves it alone." : "."));
+                    + (elsewhere ? "; another manager installed it" : ""));
             return 0;
         }
         PathUtil.deleteRecursively(installed.get().home());

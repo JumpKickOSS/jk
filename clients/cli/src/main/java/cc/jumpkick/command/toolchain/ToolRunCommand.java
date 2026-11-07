@@ -260,8 +260,7 @@ public final class ToolRunCommand implements CliCommand {
         }
         if (debugJvm != null) return refuseDebug();
         if (Files.isRegularFile(dir.resolve("jbang-catalog.json"))) {
-            CommandWedge.printFail(
-                    "Tool", dir + " is a JBang catalog — `alias@…` references aren't" + " supported yet.");
+            CommandWedge.printFail("Tool", dir + " is a JBang catalog; `alias@…` references aren't supported yet");
             return Exit.USAGE;
         }
         ScriptRunner runner = new ScriptRunner(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile);
@@ -279,10 +278,7 @@ public final class ToolRunCommand implements CliCommand {
         }
         if (scripts.size() == 1) return runner.run(scripts.get(0), args);
         CommandWedge.printFail(
-                "Tool",
-                "nothing runnable in " + dir
-                        + " — looked for jk.toml, main.java, or exactly one .java/.kt/.kts (found "
-                        + scripts.size() + ").");
+                "Tool", "nothing to run in " + dir + ": no jk.toml, main.java or single .java/.kt/.kts file");
         return Exit.USAGE;
     }
 

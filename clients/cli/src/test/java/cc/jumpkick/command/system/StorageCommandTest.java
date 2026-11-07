@@ -78,9 +78,9 @@ class StorageCommandTest {
         assertThat(dirs.toolEnvsDir().resolve("local/env.json")).exists();
         assertThat(out)
                 .as("the confirm names the tools the wipe orphans")
-                .contains("Orphans 1 installed tool (widget)");
+                .contains("Also removes 1 installed tool: widget.");
         String settle = out.lines().filter(l -> l.contains("Nuked")).findFirst().orElse("");
-        assertThat(settle).contains("removed 1 orphaned tool (widget; env and launcher — jk install restores them)");
+        assertThat(settle).contains("removed 1 orphaned tool (widget; jk install restores them)");
         String listed = TestAnsi.strip(captureText(() -> toolList(dirs)));
         assertThat(listed).contains("local").doesNotContain("widget");
     }
@@ -132,7 +132,7 @@ class StorageCommandTest {
         assertThat(line)
                 .startsWith("Dropped 2 workers: jk-image-builder 0.13.3 (jk-local), jk-image-builder 0.13.2 (jumpkick)")
                 .contains("4 files")
-                .contains("The next build fetches the published plugin");
+                .contains("The next build fetches them again");
         assertThat(StorageCommand.StorageCleanCommand.droppedWorkersLine(dropped, true))
                 .startsWith("Dry run: would drop 2 workers")
                 .contains("reclaimable");

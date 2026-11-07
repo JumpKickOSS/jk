@@ -36,8 +36,7 @@ class OutdatedNotesTest {
 
         assertThat(OutdatedCommand.movedNotes(List.of(moved, again, plain)))
                 .containsExactly("Moved: org.testcontainers:postgresql → org.testcontainers:testcontainers-postgresql"
-                        + " (Latest is org.testcontainers:testcontainers-postgresql's; change the coordinate in"
-                        + " jk.toml — `jk update` keeps coordinates)");
+                        + "; change the coordinate in jk.toml");
         assertThat(OutdatedCommand.toJson(List.of(moved)))
                 .contains("\"relocated\":\"org.testcontainers:testcontainers-postgresql\"");
     }
@@ -45,7 +44,7 @@ class OutdatedNotesTest {
     @Test
     void the_footer_says_an_update_writes_the_newest_on_the_major_not_compatible() {
         assertThat(OutdatedCommand.NEXT)
-                .contains("moves each exact pin to the newest stable on its major")
+                .contains("moves each pin to the newest stable on its major")
                 .doesNotContain("pins to Compatible");
     }
 }

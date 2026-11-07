@@ -85,7 +85,7 @@ final class ImageVerb implements BuildVerb {
     @Override
     public int selected(BuildRun run, List<String> moduleDirs) {
         if (moduleDirs.size() != 1) {
-            run.fail("an image is built for exactly one module — the selector matched " + moduleDirs.size());
+            run.fail("an image is built for one module; the selector matched " + moduleDirs.size());
             return Exit.USAGE;
         }
         this.moduleDir = Path.of(moduleDirs.getFirst());
@@ -96,7 +96,7 @@ final class ImageVerb implements BuildVerb {
     public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
         if (run.standalone()) moduleDir = entryDir;
         if (moduleDir == null) {
-            run.fail("an image is built for exactly one module — pass -m <module> or run from its directory");
+            run.fail("an image is built for one module; pass -m <module> or run from its directory");
             return Exit.USAGE;
         }
         return -1;

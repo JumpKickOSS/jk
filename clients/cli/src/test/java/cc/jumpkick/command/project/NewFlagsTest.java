@@ -16,16 +16,16 @@ class NewFlagsTest {
     void the_template_questions_the_blank_flags_answered_are_refused_with_their_p_answer() {
         NewCommand assembly = new NewCommand();
         assembly.assembly = true;
-        assertThat(assembly.refusal()).isEqualTo("jk new: --assembly is the template's question now: -p assembly=true");
+        assertThat(assembly.refusal()).isEqualTo("jk new: --assembly is gone; use -p assembly=true");
 
         NewCommand nativeImage = new NewCommand();
         nativeImage.nativeImage = true;
-        assertThat(nativeImage.refusal()).isEqualTo("jk new: --native is the template's question now: -p native=true");
+        assertThat(nativeImage.refusal()).isEqualTo("jk new: --native is gone; use -p native=true");
 
         NewCommand deps = new NewCommand();
         deps.depsCsv = "guava";
         assertThat(deps.refusal())
-                .startsWith("jk new: --deps is the template's question now: -p deps=guava,commons-lang,commons-io")
+                .startsWith("jk new: --deps is gone; use -p deps=guava,commons-lang,commons-io")
                 .contains("jk add <library>");
     }
 
@@ -47,8 +47,8 @@ class NewFlagsTest {
         NewCommand vendor = new NewCommand();
         vendor.jdk = "temurin-25";
         assertThat(vendor.refusal())
-                .isEqualTo("jk new: --jdk sets the template's java = N, so it takes a Java major (--jdk 25); pin a"
-                        + " vendor afterwards with jdk = \"temurin-25\" in jk.toml");
+                .isEqualTo(
+                        "jk new: --jdk takes a Java major, as in --jdk 25; for a vendor set jdk = \"temurin-25\" in jk.toml");
         NewCommand major = new NewCommand();
         major.jdk = "21";
         assertThat(major.refusal()).isNull();
@@ -70,13 +70,13 @@ class NewFlagsTest {
         NewCommand both = new NewCommand();
         both.executable = true;
         both.templateRef = "cli";
-        assertThat(both.refusal()).isEqualTo("jk new: -e names a template, and so does -t; keep one");
+        assertThat(both.refusal()).isEqualTo("jk new: -e and -t both pick a template; keep one");
 
         NewCommand init = new NewCommand();
         init.directory = Path.of(".");
         init.executable = false;
         init.templateRef = "cli";
-        assertThat(init.refusal()).isEqualTo("jk init: --no-executable names a template, and so does -t; keep one");
+        assertThat(init.refusal()).isEqualTo("jk init: --no-executable and -t both pick a template; keep one");
     }
 
     @Test
@@ -89,11 +89,11 @@ class NewFlagsTest {
         NewCommand withT = new NewCommand();
         withT.plugin = true;
         withT.templateRef = "cli";
-        assertThat(withT.refusal()).isEqualTo("jk new: --plugin names a template, and so does -t; keep one");
+        assertThat(withT.refusal()).isEqualTo("jk new: --plugin and -t both pick a template; keep one");
 
         NewCommand withE = new NewCommand();
         withE.plugin = true;
         withE.executable = true;
-        assertThat(withE.refusal()).isEqualTo("jk new: -e names a template, and so does --plugin; keep one");
+        assertThat(withE.refusal()).isEqualTo("jk new: -e and --plugin both pick a template; keep one");
     }
 }

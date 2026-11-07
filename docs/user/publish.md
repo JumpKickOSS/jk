@@ -137,7 +137,7 @@ printf '%s' "$TOKEN_PASSWORD" | jk repo login central -U https://central.sonatyp
 
 jk publish -c -I -f ~/.gnupg/release.asc   # builds the four artefacts; JK_GPG_PASSPHRASE or -p
 #   Published com.example:widget:1.0.0 to the Central Portal (16 files)
-#     deployment 28570f16-… · VALIDATED — release it from the Portal, or publish with --publishing-type automatic
+#     deployment 28570f16-… · VALIDATED; release it from the Portal, or use --publishing-type automatic
 ```
 
 | Flag | Meaning |

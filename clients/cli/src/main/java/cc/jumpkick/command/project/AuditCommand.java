@@ -148,7 +148,7 @@ public final class AuditCommand implements CliCommand {
                 .append(" at or above ")
                 .append(threshold);
         if (ignored > 0) sb.append(" (").append(ignored).append(" ignored)");
-        return sb.append(" — failing.").toString();
+        return sb.append("; failing").toString();
     }
 
     /**

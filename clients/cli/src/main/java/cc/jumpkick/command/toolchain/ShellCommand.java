@@ -52,9 +52,7 @@ public final class ShellCommand implements CliCommand {
         // waitFor() would block. Fail fast instead. Keyed on the controlling
         // terminal, so `jk shell` under `curl | bash` (piped stdin) still works.
         if (!Interactivity.canPrompt()) {
-            CommandWedge.printFail(
-                    "Shell",
-                    "requires an interactive terminal " + "(run it directly from your shell, not piped or scripted)");
+            CommandWedge.printFail("Shell", "needs an interactive terminal; run it from your shell");
             return Exit.CONFIG;
         }
         Path jdksDir = CommonOpts.jdksDirValue(in);
@@ -71,8 +69,7 @@ public final class ShellCommand implements CliCommand {
         if (!target.isActive()) {
             CommandWedge.printFail(
                     "Shell",
-                    "no pinned JDK for " + PathDisplay.styledRaw(dir)
-                            + " (run `jk new` to scaffold, or stamp `[jdk]` in jk-lock.toml)");
+                    "no pinned JDK for " + PathDisplay.styledRaw(dir) + "; run `jk lock` in a jk project to pin one");
             return Exit.CONFIG;
         }
         String shell = System.getenv().getOrDefault("SHELL", "/bin/sh");

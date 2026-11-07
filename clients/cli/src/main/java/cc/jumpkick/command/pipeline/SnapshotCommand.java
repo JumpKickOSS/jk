@@ -44,7 +44,7 @@ public final class SnapshotCommand implements CliCommand {
         List<Opt> opts = new ArrayList<>(List.of(
                 Opt.value(
                         "<m2|jk>",
-                        "Where the install goes: m2 (the Maven local repository, default) or jk (jk's private repository)",
+                        "Install into m2 (the Maven local repository, default) or jk's own repository",
                         "--destination"),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
                         .hide(),
@@ -91,7 +91,7 @@ public final class SnapshotCommand implements CliCommand {
         }
         Path base = global.workingDir();
         if (!Files.isRegularFile(ManifestPaths.manifestIn(base))) {
-            CommandWedge.printFail("Snapshot", "no jk.toml here — run `jk snapshot` inside a project");
+            CommandWedge.printFail("Snapshot", "no jk.toml here; run `jk snapshot` inside a project");
             return Exit.USAGE;
         }
 

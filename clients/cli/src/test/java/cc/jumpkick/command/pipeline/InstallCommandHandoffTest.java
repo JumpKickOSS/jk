@@ -27,8 +27,8 @@ class InstallCommandHandoffTest {
     void the_displaced_engine_answering_names_both_engines_and_the_remedy() {
         String why = InstallCommand.handoffMismatch("ffffffffffff", Optional.of(POINTER));
         assertThat(why)
-                .contains("would run on engine ffffffffffff")
-                .contains("home names engine ab12cd34ef56")
+                .contains("engine ffffffffffff answered")
+                .contains("installed engine ab12cd34ef56")
                 .contains("`jk engine stop`")
                 .contains("`jk install`");
     }

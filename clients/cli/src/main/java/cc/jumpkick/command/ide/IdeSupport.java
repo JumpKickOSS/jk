@@ -175,13 +175,12 @@ public final class IdeSupport {
             }
             syncWarn(
                     chrome,
-                    "dependency sync timed out after " + (BEST_EFFORT_SYNC_MS / 1000)
-                            + "s — missing jars will be skipped");
+                    "dependency sync timed out after " + (BEST_EFFORT_SYNC_MS / 1000) + "s; missing jars are skipped");
             return;
         }
         Exception e = fail.get();
         if (e != null) {
-            syncWarn(chrome, "dependency sync incomplete (" + e.getMessage() + ") — missing jars will be skipped");
+            syncWarn(chrome, "dependency sync incomplete, missing jars are skipped: " + e.getMessage());
         }
     }
 

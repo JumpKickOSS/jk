@@ -115,7 +115,7 @@ public final class WhyCommand implements CliCommand {
                 CliOutput.out("  " + renderPath(report.paths().get(j), report.selectorsOf(j), report.rootOf(j)));
             }
             if (!any) {
-                CliOutput.out("  (not reachable from any declared dependency — orphan lockfile entry?)");
+                CliOutput.out("  no declared dependency reaches it");
             }
             if (i + 1 < report.matchNames().size()) CliOutput.out();
         }

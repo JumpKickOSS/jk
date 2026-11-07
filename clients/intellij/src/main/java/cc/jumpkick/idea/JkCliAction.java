@@ -42,7 +42,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
         }
         File base = projectBase(project);
         if (base == null || !JkBin.isJumpKickRoot(base)) {
-            balloon(project, "No jk.toml in project base — open a JumpKick project root", NotificationType.ERROR);
+            balloon(project, "No jk.toml in the project root; open a JumpKick project", NotificationType.ERROR);
             return;
         }
         ProgressManager.getInstance().run(new Task.Backgroundable(project, "JumpKick: " + title, true) {
@@ -58,7 +58,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
                         } else {
                             balloon(
                                     project,
-                                    title + " failed (exit " + result.exitCode() + ") — see Run tool window / logs",
+                                    title + " failed (exit " + result.exitCode() + "); see the Run tool window",
                                     NotificationType.ERROR);
                         }
                     });
@@ -67,7 +67,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
                             .invokeLater(() -> balloon(
                                     project,
                                     "Failed to start '" + JkBin.path() + "': " + ex.getMessage()
-                                            + " — install jk and ensure PATH / JK_BIN",
+                                            + "; put jk on PATH or set JK_BIN",
                                     NotificationType.ERROR));
                 }
             }
@@ -102,7 +102,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
             }
             File base = projectBase(project);
             if (base == null || !JkBin.isJumpKickRoot(base)) {
-                balloon(project, "No jk.toml in project base — open a JumpKick project root", NotificationType.ERROR);
+                balloon(project, "No jk.toml in the project root; open a JumpKick project", NotificationType.ERROR);
                 return;
             }
             JkManifestWatcher.getInstance(project);

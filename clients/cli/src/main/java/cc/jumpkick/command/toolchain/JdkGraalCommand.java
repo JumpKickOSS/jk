@@ -63,10 +63,7 @@ public final class JdkGraalCommand implements CliCommand {
         List<JdkHit> graals =
                 registry.listHits().stream().filter(DefaultGraalPolicy::isGraal).toList();
         if (graals.isEmpty()) {
-            CommandWedge.printFail(
-                    "JDK",
-                    "no GraalVM JDK installed — install one with "
-                            + "`jk jdk install native` (or `jk jdk install graalvm-25`).");
+            CommandWedge.printFail("JDK", "no GraalVM installed; run `jk jdk install native`");
             return 1;
         }
 

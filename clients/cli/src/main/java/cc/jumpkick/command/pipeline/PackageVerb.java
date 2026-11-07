@@ -70,7 +70,7 @@ final class PackageVerb implements BuildVerb {
     @Override
     public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
         if (aotCache && !run.standalone()) {
-            run.fail("--aot-cache packages a single application project; run it from the module directory.");
+            run.fail("--aot-cache packages one application; run it from the module directory");
             return Exit.USAGE;
         }
         // The GraalVM home for every always-native module this build reaches, before any progress UI

@@ -36,6 +36,6 @@ class MavenSettingsRowsTest {
         assertThat(lines.get(1))
                 .startsWith("warn:")
                 .contains("mirror `nexus`")
-                .contains("refused, so what it mirrors fails to resolve: it is plaintext http");
+                .contains("refused, its repositories will not resolve: it is plaintext http");
     }
 }

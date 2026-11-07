@@ -81,10 +81,7 @@ public final class PublishCommand implements CliCommand {
                 Opt.flag("Sign with Sigstore keyless OIDC (.sigstore).", "-g", "--sigstore"),
                 Opt.flag("Emit a SLSA v1 in-toto provenance statement.", "-L", "--slsa"),
                 Opt.flag("Emit CycloneDX 1.6 and SPDX 2.3 SBOMs.", "-W", "--sbom"),
-                Opt.value(
-                        "<name>",
-                        "Fail before building unless this is the tag [release] tag names for the version.",
-                        "--tag"),
+                Opt.value("<name>", "Fail before building unless this is the version's release tag.", "--tag"),
                 CommonOpts.skipTests()));
         opts.addAll(VariantSelection.options());
         return opts;
@@ -174,8 +171,7 @@ public final class PublishCommand implements CliCommand {
             if (!expected.equals(tag)) {
                 CommandWedge.printFail(
                         "Publish",
-                        "tag `" + tag + "` is not the tag of version " + info.version() + ": [release] tag expects `"
-                                + expected + "`. Publish from the tag the release created.");
+                        "tag `" + tag + "` does not match version " + info.version() + "; expected `" + expected + "`");
                 return Exit.CONFIG;
             }
         }
@@ -190,10 +186,8 @@ public final class PublishCommand implements CliCommand {
         for (String pathDep : info.pathDeps()) {
             CommandWedge.printFail(
                     "Publish",
-                    "`" + pathDep
-                            + "` is a path dependency — path deps are consume-only and cannot be"
-                            + " published. Promote it to a [workspace] module or a published"
-                            + " coordinate first.");
+                    "`" + pathDep + "` is a path dependency and cannot be published; make it a"
+                            + " workspace module or a published coordinate");
             return Exit.CONFIG;
         }
 
@@ -248,8 +242,7 @@ public final class PublishCommand implements CliCommand {
             } else {
                 CommandWedge.printFail(
                         "Publish",
-                        "[publish] repository `" + repository + "` is not declared under [repositories]"
-                                + " (nor is it `central`).");
+                        "[publish] repository `" + repository + "` is not `central` or declared under [repositories]");
                 return Exit.CONFIG;
             }
         }
@@ -333,7 +326,7 @@ public final class PublishCommand implements CliCommand {
             if (published.deploymentId() != null) {
                 CliOutput.out("  deployment " + published.deploymentId() + " · " + published.deploymentState()
                         + ("VALIDATED".equals(published.deploymentState())
-                                ? " — release it from the Portal, or publish with --publishing-type automatic"
+                                ? "; release it from the Portal, or use --publishing-type automatic"
                                 : ""));
             }
             for (String written : published.written()) {
@@ -370,8 +363,8 @@ public final class PublishCommand implements CliCommand {
     static final String CENTRAL_CREDENTIAL = RepositorySpec.CENTRAL;
 
     static final String CENTRAL_SIGNING_REQUIRED =
-            "Maven Central requires a GPG signature on every file: pass --sign --key-file <secret-key.asc>"
-                    + " (the passphrase via --key-passphrase or JK_GPG_PASSPHRASE).";
+            "Maven Central needs every file signed; pass --sign --key-file <secret-key.asc>"
+                    + "\n  give the passphrase with --key-passphrase or JK_GPG_PASSPHRASE";
 
     /**
      * The Portal's user token: {@code --user}/{@code --password} (or {@code PUBLISH_USER} /
@@ -388,11 +381,8 @@ public final class PublishCommand implements CliCommand {
         URI portal = Objects.requireNonNull(repoUrl, "--central names the Portal");
         RepoCredential cred = new RepoCredentialResolver().resolve(CENTRAL_CREDENTIAL, portal, Optional.empty());
         if (cred.isAnonymous()) {
-            throw new IllegalStateException("no Central Portal token: run `jk repo login " + CENTRAL_CREDENTIAL
-                    + " -U " + portal + " -s <token-name>` with the token's password on stdin, or export"
-                    + " JK_REPO_CENTRAL_USERNAME + JK_REPO_CENTRAL_PASSWORD with JK_REPO_CENTRAL_HOST="
-                    + portal.getHost()
-                    + " (a user token from https://central.sonatype.com/account).");
+            throw new IllegalStateException("no Central Portal token; run `jk repo login " + CENTRAL_CREDENTIAL + " -U "
+                    + portal + " -s <token-name>` with the token's password on stdin");
         }
         return cred;
     }

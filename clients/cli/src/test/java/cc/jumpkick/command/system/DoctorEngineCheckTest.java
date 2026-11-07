@@ -59,9 +59,9 @@ class DoctorEngineCheckTest {
 
             assertThat(check.status()).isEqualTo(DoctorCommand.Status.WARN);
             assertThat(check.detail())
-                    .contains("pid " + holder.pid() + " alive and busy")
-                    .contains("through " + QUICK.probes() + " probes")
-                    .doesNotContain("wedged");
+                    .contains("pid " + holder.pid() + " busy")
+                    .contains("not answering")
+                    .doesNotContain("listening");
             assertThat(holder.isAlive()).isTrue();
         } finally {
             holder.destroyForcibly();
@@ -76,7 +76,7 @@ class DoctorEngineCheckTest {
             DoctorCommand.Check check = DoctorCommand.checkEngine(socket, QUICK, YOUNG);
 
             assertThat(check.status()).isEqualTo(DoctorCommand.Status.FAIL);
-            assertThat(check.detail()).contains("likely wedged").contains("jk engine stop -n");
+            assertThat(check.detail()).contains("not answering").contains("jk engine stop -n");
         }
     }
 

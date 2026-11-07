@@ -21,7 +21,7 @@ function activate(context) {
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   status.command = "jk.showOutput";
   status.text = "$(package) jk";
-  status.tooltip = "JumpKick — click for output";
+  status.tooltip = "JumpKick: click for output";
   status.show();
 
   disposables.push(output, status);
@@ -176,7 +176,7 @@ function maybeOfferBspInstall() {
 
   vscode.window
     .showInformationMessage(
-      "JumpKick: install BSP connection so the IDE can import this project?",
+      "JumpKick: install the BSP connection to import this project?",
       "Install",
       "Not now"
     )

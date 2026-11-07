@@ -116,7 +116,7 @@ public final class TrustCommand extends GroupCommand {
 
         /** A path pin is trusted by its bytes, so the alias the manifest gives it is not a key. */
         static final String PATH_ALIAS_REFUSAL =
-                "a path-pinned plugin is trusted by its bytes: jk trust plugin sha256:<hex> (the sha256 its [plugins] row carries)";
+                "a path plugin is trusted by its bytes: jk trust plugin sha256:<hex> from its [plugins] row";
 
         @Override
         public int run(Invocation in) throws IOException {
@@ -140,7 +140,7 @@ public final class TrustCommand extends GroupCommand {
                 CommandWedge.printOk(
                         "Trust",
                         added
-                                ? "Trusted plugin " + coordinate + " — its build code may now run in worker JVMs"
+                                ? "Trusted plugin " + coordinate + "; its build code may now run"
                                 : coordinate + " is already trusted");
             }
             return 0;
@@ -262,7 +262,7 @@ public final class TrustCommand extends GroupCommand {
             if (!GlobalOptions.from(in).outputIsJson()) {
                 CommandWedge.printOk(
                         "Trust", "Imported " + added + " trusted source" + (added == 1 ? "" : "s") + " from " + source);
-                for (String p : skipped) CliOutput.err("  skipped " + p + " — not a URL prefix");
+                for (String p : skipped) CliOutput.err("  skipped " + p + ": not a URL prefix");
             }
             return 0;
         }

@@ -204,19 +204,19 @@ export function sanitizeDiagramSvg(purify, svg) {
 export function saveErrorMessage(e) {
   if (!e) return 'Failed to save file';
   if (e.status === 409 && e.error === 'file changed on disk') {
-    return 'File changed on disk — reload it to edit the latest version';
+    return 'File changed on disk; reload it to edit the latest version';
   }
   if (e.status === 409 && (e.error === 'engine-epoch-mismatch' || e.engineEpoch)) {
-    return 'Engine restarted — reload the page';
+    return 'Engine restarted; reload the page';
   }
-  if (e.status === 401) return 'Not authorized — run jk web for a fresh token';
+  if (e.status === 401) return 'Not authorized; run jk web for a fresh token';
   if (e.status === 413) return 'File too large to save (1 MiB limit)';
   if (e.status === 415) return 'This file type cannot be saved from the editor';
   if (e.status === 404) return 'File no longer exists on disk';
   if (e.status === 500) return (e.error && String(e.error)) || 'Engine failed to write the file';
   // fetch network failure (TypeError) or missing status
   if (e.status == null || e.name === 'TypeError') {
-    return 'Cannot reach the engine — is it running?';
+    return 'Cannot reach the engine';
   }
   if (e.error) return String(e.error);
   return 'Save failed (HTTP ' + e.status + ')';

@@ -64,7 +64,7 @@ public final class RepoStores {
         }
         if (stores.rows().isEmpty()) {
             out.add(Theme.colorize("ok:      ", t.completedStep()) + " " + Theme.colorize("repos", t.cyan())
-                    + " — no repository store yet (the first resolve creates one per origin)");
+                    + " — none yet");
             return out;
         }
         for (Store s : stores.rows()) {
@@ -74,8 +74,7 @@ public final class RepoStores {
             String where = Theme.colorize("repos/" + s.id(), t.path());
             if (s.legacy()) {
                 out.add(Theme.colorize("warn:    ", t.warning()) + " " + Theme.colorize(s.name(), t.cyan())
-                        + " — keyed by repository name, origin unknown; nothing reads it (" + where + ", " + size
-                        + ") — jk storage clean removes it");
+                        + " — unused, origin unknown (" + where + ", " + size + "); jk storage clean removes it");
                 continue;
             }
             String origin = s.origin() == null ? "first-party shelf (jk install)" : s.origin();

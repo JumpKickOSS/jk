@@ -162,7 +162,7 @@ class SelfNukeCommandTest {
 
         String err = captureText(() -> runNuke(new BrokenEngine(), true));
 
-        assertThat(err).contains("NOT removed");
+        assertThat(err).contains("Not removed");
         assertThat(err).contains("artifact store");
         assertThat(err).contains("cache tier");
     }
@@ -825,7 +825,7 @@ class SelfNukeCommandTest {
         assertThat(bin.resolve("alpha")).doesNotExist();
         assertThat(product).as("jk's own client stays").exists();
         assertThat(foreign).as("a file jk did not install stays").exists();
-        assertThat(out).contains("the tool launchers and envs listed above go with the roots they run from");
+        assertThat(out).contains("except the tool launchers listed above");
         String settle = out.lines()
                 .filter(l -> l.contains("Nuked selected"))
                 .findFirst()

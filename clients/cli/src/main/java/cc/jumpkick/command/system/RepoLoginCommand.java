@@ -87,9 +87,8 @@ public final class RepoLoginCommand implements CliCommand {
             return 1;
         }
         if (url == null) {
-            CliOutput.err("error: no repository named '" + id + "' is declared in " + ManifestPaths.MANIFEST
-                    + " here or in ~/.jk/config.toml, and '" + id
-                    + "' is not a host. Pass --url <repository-url> to say where this credential may be sent.");
+            CliOutput.err("error: no repository '" + id + "' in " + ManifestPaths.MANIFEST
+                    + " or ~/.jk/config.toml; pass --url <repository-url>");
             return 1;
         }
 

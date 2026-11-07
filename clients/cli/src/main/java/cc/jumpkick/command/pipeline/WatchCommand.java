@@ -82,8 +82,7 @@ public final class WatchCommand implements CliCommand {
         List<String> rest;
         if (positionals.isEmpty()) {
             // Bare `jk watch` needs a verb. (`jk dev` always injects `run` via DevCommand.)
-            CommandWedge.printFail(
-                    "Watch", "expected a verb — compile, test, build, or run (tip: `jk dev` = watch run)");
+            CommandWedge.printFail("Watch", "expected a verb: compile, test, build or run");
             return Exit.USAGE;
         }
         String first = positionals.getFirst().trim().toLowerCase(Locale.ROOT);
@@ -91,7 +90,7 @@ public final class WatchCommand implements CliCommand {
             verb = first;
             rest = positionals.size() > 1 ? positionals.subList(1, positionals.size()) : List.of();
         } else {
-            CommandWedge.printFail("Watch", "unknown verb `" + first + "` (use compile, test, build, or run)");
+            CommandWedge.printFail("Watch", "unknown verb `" + first + "`; use compile, test, build or run");
             return Exit.USAGE;
         }
 
@@ -111,7 +110,7 @@ public final class WatchCommand implements CliCommand {
                     })
                     .orElse(SourceWatch.DEBOUNCE_MILLIS);
         } catch (NumberFormatException e) {
-            CommandWedge.printFail("Watch", "invalid --debounce-ms (use an integer 0..60000)");
+            CommandWedge.printFail("Watch", "--debounce-ms takes an integer from 0 to 60000");
             return Exit.USAGE;
         }
 
@@ -128,7 +127,7 @@ public final class WatchCommand implements CliCommand {
                         .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
             case "compile", "test", "build" -> verbLoop(verb, in, projectDir, debounceMs);
             default -> {
-                CommandWedge.printFail("Watch", "unknown verb `" + verb + "` (use compile, test, build, or run)");
+                CommandWedge.printFail("Watch", "unknown verb `" + verb + "`; use compile, test, build or run");
                 yield Exit.USAGE;
             }
         };
@@ -180,13 +179,12 @@ public final class WatchCommand implements CliCommand {
         List<Path> roots = SourceWatch.defaultRoots(projectDir);
         if (roots.isEmpty()) roots = List.of(projectDir);
 
-        CommandWedge.printWorking(
-                "Watch", verb + " on change (src/, test/src/, jk.toml; debounce " + debounceMs + "ms). Ctrl-C stops.");
+        CommandWedge.printWorking("Watch", verb + " when src/, test/src/ or jk.toml change. Ctrl-C stops.");
 
         try (SourceWatch watch = SourceWatch.open(projectDir, roots, debounceMs, nodeOutput(projectDir))) {
             while (true) {
                 watch.awaitChange();
-                CommandWedge.printWorking("Watch", "change detected — " + verb);
+                CommandWedge.printWorking("Watch", "change detected, running " + verb);
                 code = runVerb(verb, in);
                 if (code != 0) {
                     CommandWedge.printFail("Watch", verb + " failed (exit " + code + ")");

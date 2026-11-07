@@ -97,7 +97,7 @@
       <p v-if="buildError" class="error">{{ buildError }}</p>
 
       <p v-if="cards.length === 0 && !authModal" class="empty">
-        No activity yet — run a <code>jk build</code> (or any hosted command) and it appears here live.
+        No activity yet. Run <code>jk build</code> to see it here.
       </p>
 
       <!-- Grouped by session: one block per session that asked, its runs in the order they happened. -->
@@ -312,7 +312,7 @@
         <button type="button" class="new-project" @click="openNewProject()"><jk-icon name="plus"></jk-icon>New project</button>
       </div>
       <p v-if="projectsList.length === 0" class="empty">
-        No projects yet — <a href="#" @click.prevent="openNewProject()">create one</a>, or run a <code>jk build</code> and every workspace you build shows up here.
+        No projects yet. <a href="#" @click.prevent="openNewProject()">Create one</a>, or run <code>jk build</code> in a workspace.
       </p>
 
       <!-- One row per project: {orb} {coords} left · {30-build spark bars + trend} centre · {status
@@ -368,7 +368,7 @@
             :class="{ active: projectGraphOpen }"
             :disabled="!projectDir()"
             @click="toggleProjectGraph"
-            :data-tip="projectGraphOpen ? 'Hide module dependency graph' : 'Show module dependency graph (loads on demand)'"
+            :data-tip="projectGraphOpen ? 'Hide module dependency graph' : 'Show module dependency graph'"
           >Dependencies</button>
           <button v-if="!filesOpen" class="ghost" data-tip="Coming soon" disabled>Trends</button>
           <!-- Not on the files pane itself — you are already browsing the codebase there. -->
@@ -403,12 +403,12 @@
       <p v-if="projectDetail && projectDetail.description" class="proj-desc">
         <span class="proj-desc-q" aria-hidden="true">"</span><span class="proj-desc-body">{{ projectDetail.description }}</span><span class="proj-desc-q" aria-hidden="true">"</span>
       </p>
-      <p v-else-if="projectDetail" class="proj-desc dim small">No description — add a top-level <code>description</code> key in jk.toml.</p>
+      <p v-else-if="projectDetail" class="proj-desc dim small">No description; add a top-level <code>description</code> key in jk.toml.</p>
 
       <template v-if="projectDetail && !projectDetail.empty">
         <div class="tiles">
           <div class="tile"><span class="lbl">reliability</span><span class="kpi" :class="projectDetail.reliabilityClass">{{ projectDetail.reliability }}</span></div>
-          <div class="tile" data-tip="Estimated wall-clock saved by the cache vs. a cold-cache build (critical-path estimate over the last 30 builds). ~ marks low baseline coverage."><span class="lbl">cache saved</span><span class="kpi">{{ projectDetail.cacheSaved }}<span class="kpi-sm" :class="{ warn: projectDetail.cacheLowConfidence }" v-if="projectDetail.cacheSavedPct"> {{ projectDetail.cacheSavedPct }}</span></span></div>
+          <div class="tile" data-tip="Estimated time the cache saved over the last 30 builds. ~ means few cold builds to compare."><span class="lbl">cache saved</span><span class="kpi">{{ projectDetail.cacheSaved }}<span class="kpi-sm" :class="{ warn: projectDetail.cacheLowConfidence }" v-if="projectDetail.cacheSavedPct"> {{ projectDetail.cacheSavedPct }}</span></span></div>
           <div class="tile"><span class="lbl">avg build</span><span class="kpi">{{ duration(projectDetail.avgMillis) }}</span></div>
           <div class="tile"><span class="lbl">min / max</span><span class="kpi kpi-sm">{{ duration(projectDetail.minMillis) }} / {{ duration(projectDetail.maxMillis) }}</span></div>
           <div class="tile"><span class="lbl">last built</span><span class="kpi kpi-sm when-tip"
@@ -492,7 +492,7 @@
           </div>
         </div>
       </template>
-      <p v-else-if="projectDetail && projectDetail.empty" class="empty">No build history retained for this project yet.</p>
+      <p v-else-if="projectDetail && projectDetail.empty" class="empty">No build history for this project yet.</p>
       </template>
     </main>
 
@@ -500,15 +500,15 @@
       <div class="feed-head">
         <h2>System administration</h2>
       </div>
-      <p v-if="!status" class="empty">No status yet — the engine hasn't answered.</p>
+      <p v-if="!status" class="empty">No status yet; the engine has not answered.</p>
       <template v-if="status">
         <div class="tiles">
           <div class="tile"><span class="lbl">version</span><span class="kpi">{{ status.version }}</span></div>
           <div class="tile"><span class="lbl">pid</span><span class="kpi">{{ status.pid }}</span></div>
           <div class="tile"><span class="lbl">uptime</span><span class="kpi">{{ uptime() }}</span></div>
-          <div class="tile"><span class="lbl" data-tip="Live CLI (UDS/TCP) sockets + dashboard/MCP SSE streams">connections</span><span class="kpi">{{ status.activeRequests }}</span></div>
-          <div class="tile"><span class="lbl" data-tip="In-flight build/test/lock jobs right now — not lifetime build count">builds running</span><span class="kpi" :class="{ ok: status.activeBuildPlans > 0 }">{{ status.activeBuildPlans }}</span></div>
-          <div v-if="status.mcpMaxSessions > 0" class="tile" data-tip="MCP connections loaded, of [mcp] max-sessions. Active ones (a call running, or a request in the last 30 s) are never set aside to make room; initialize is refused only when every one is active"><span class="lbl">mcp sessions</span><span class="kpi">{{ status.mcpLoadedConnections }}<span class="kpi-sm"> / {{ status.mcpMaxSessions }} · {{ status.mcpActiveConnections }} active</span></span></div>
+          <div class="tile"><span class="lbl" data-tip="Open CLI, dashboard and MCP connections">connections</span><span class="kpi">{{ status.activeRequests }}</span></div>
+          <div class="tile"><span class="lbl" data-tip="Build, test and lock jobs running now">builds running</span><span class="kpi" :class="{ ok: status.activeBuildPlans > 0 }">{{ status.activeBuildPlans }}</span></div>
+          <div v-if="status.mcpMaxSessions > 0" class="tile" data-tip="Open MCP sessions, of [mcp] max-sessions"><span class="lbl">mcp sessions</span><span class="kpi">{{ status.mcpLoadedConnections }}<span class="kpi-sm"> / {{ status.mcpMaxSessions }} · {{ status.mcpActiveConnections }} active</span></span></div>
         </div>
 
         <div class="panels">
@@ -548,7 +548,7 @@
             <div class="tile"><span class="lbl">time building</span><span class="kpi">{{ duration(metricsTotals().totalMillis) }}</span></div>
           </div>
         </template>
-        <p v-else class="dim small">No build metrics yet — run a build and the stats appear here.</p>
+        <p v-else class="dim small">No build metrics yet.</p>
 
         <!-- Action cache + artifact store share a row. -->
         <div class="panels">
@@ -563,9 +563,9 @@
               <dl>
                 <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ gib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
                 <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ gib(cache.actionsBytes) }}</dd>
-                <dt>incremental</dt><dd :data-tip="'Zinc analysis state vs [cache] incremental-max-size-gb (' + mib(cache.incrementalMaxBytes, 1) + ')'">{{ count(cache.incrementalCount) }} · {{ mib(cache.incrementalBytes, 1) }} · {{ incrementalUsedPct() }}% used</dd>
+                <dt>incremental</dt><dd :data-tip="'Incremental compile state vs [cache] incremental-max-size-gb (' + mib(cache.incrementalMaxBytes, 1) + ')'">{{ count(cache.incrementalCount) }} · {{ mib(cache.incrementalBytes, 1) }} · {{ incrementalUsedPct() }}% used</dd>
                 <dt>format stamps</dt><dd :data-tip="'Count of empty stamp files vs cap (' + formatStampsMaxLabel() + ')'">{{ count(cache.formatStampsCount) }} · {{ formatStampsUsedPct() }}% used</dd>
-                <dt>derived</dt><dd data-tip="Small caches with their own retention (hash memos, format indexes, extracted trees) — bounded by count or supersession, so no budget bar">{{ count(cache.derivedCount) }} · {{ mib(cache.derivedBytes, 1) }} apparent</dd>
+                <dt>derived</dt><dd data-tip="Small caches that expire on their own: hash memos, format indexes, extracted trees">{{ count(cache.derivedCount) }} · {{ mib(cache.derivedBytes, 1) }} apparent</dd>
               </dl>
             </template>
             <div v-else class="dim small">Action cache loading…</div>
@@ -648,9 +648,9 @@
       <div class="sb-left">
         <span class="sb-item"><jk-icon name="activity"></jk-icon>Builds Running&nbsp;<b>{{ buildsRunning() }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item" data-tip="Cache tier (rebuildable action outputs) — jk cache usage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? gib(actionCacheBytes()) : '—' }}</b></span>
+        <span class="sb-item" data-tip="Rebuildable build outputs; see jk cache usage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? gib(actionCacheBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item" data-tip="jk-owned artifact store — jk storage usage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? gib(artifactStorageBytes()) : '—' }}</b></span>
+        <span class="sb-item" data-tip="Downloaded artifacts; see jk storage usage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? gib(artifactStorageBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
         <span class="sb-item"><jk-icon name="cpu"></jk-icon>Engine Heap&nbsp;<b>{{ status ? mib(status.heapCommittedBytes) : '—' }}</b></span>
       </div>
@@ -681,7 +681,7 @@
         </div>
         <div class="modal-foot">
           <template v-if="browserMode === 'parent'">
-            <span class="dim small">New project will be created as a child of this folder</span>
+            <span class="dim small">The new project goes in this folder</span>
             <span class="spacer"></span>
             <button class="use-folder" @click="chooseBrowsed()">Use as parent</button>
           </template>
@@ -752,7 +752,7 @@
               <ul v-if="templateOpen" class="combo-list">
                 <li :class="{ on: !newProject.template }"
                     @mousedown.prevent="pickTemplate('', 'None — blank project')">None — blank project</li>
-                <li v-if="templatesUnavailable" class="dim">Template catalog unavailable — type a template ref (name, framework/name, path, or git URL)</li>
+                <li v-if="templatesUnavailable" class="dim">Template catalog unavailable; type a template name, path or git URL</li>
                 <li v-for="c in filteredTemplateChoices" :key="c.value"
                     :class="{ on: newProject.template === c.value }"
                     @mousedown.prevent="pickTemplate(c.value, c.label)">{{ c.label }}</li>
@@ -768,7 +768,7 @@
           </label>
           <p v-else-if="newProject.template" class="template-meta dim small">
             Template layout: <b>custom</b>
-            <span> (framework tree — not traditional/simple)</span>
+            <span> (framework tree)</span>
           </p>
           <label>
             <span>Parent directory</span>
