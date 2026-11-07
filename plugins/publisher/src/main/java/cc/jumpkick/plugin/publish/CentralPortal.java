@@ -120,9 +120,10 @@ public final class CentralPortal {
                         .encodeToString((b.username() + ":" + b.password()).getBytes(StandardCharsets.UTF_8));
             case RepoCredential.Anonymous ignored ->
                 throw new IOException(
-                        "the Central Portal needs a user token: run `jk repo login "
-                                + CREDENTIAL_ID + " -U " + DEFAULT_URL
-                                + "` with the token's name as --username and its password on stdin (or export JK_REPO_CENTRAL_USERNAME / JK_REPO_CENTRAL_PASSWORD with JK_REPO_CENTRAL_HOST=central.sonatype.com)");
+                        "Central Portal needs a user token; run jk repo login " + CREDENTIAL_ID + " -U " + DEFAULT_URL
+                                + "\n  with the token name as --username and its password on stdin"
+                                + "\n  or export JK_REPO_CENTRAL_USERNAME and JK_REPO_CENTRAL_PASSWORD"
+                                + "\n  with JK_REPO_CENTRAL_HOST=central.sonatype.com");
         };
     }
 

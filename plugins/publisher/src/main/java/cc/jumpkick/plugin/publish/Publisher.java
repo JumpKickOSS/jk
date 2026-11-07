@@ -307,14 +307,13 @@ public final class Publisher implements Plugin, PublishExtension {
         if (!Files.isRegularFile(sourcesOnDisk)) missing.add(sourcesOnDisk.toString());
         if (!Files.isRegularFile(javadocOnDisk)) missing.add(javadocOnDisk.toString());
         if (!missing.isEmpty()) {
-            throw new IOException("Maven Central requires the sources and javadoc jars beside the jar, and the build"
-                    + " has not written them: " + String.join(", ", missing)
-                    + " — run `jk build` (a library packages both; an application needs `sources = \"always\"`).");
+            throw new IOException("Maven Central needs sources and javadoc jars: " + String.join(", ", missing)
+                    + "\n  run jk build; an application also needs sources = \"always\"");
         }
         List<String> gaps = project.pomMetadata().centralGaps(project.project().description());
         if (!gaps.isEmpty()) {
-            throw new IOException("Maven Central requires POM metadata this manifest lacks: " + String.join(", ", gaps)
-                    + ". Add a [publish] table to jk.toml (or the workspace root):\n" + PUBLISH_TABLE_EXAMPLE);
+            throw new IOException("Maven Central needs POM metadata: " + String.join(", ", gaps)
+                    + "\n  add a [publish] table to jk.toml or the workspace root:\n" + PUBLISH_TABLE_EXAMPLE);
         }
     }
 
@@ -329,8 +328,8 @@ public final class Publisher implements Plugin, PublishExtension {
 
     /** The fix a refusal prints when Central is asked for without a signing key. */
     public static final String SIGNING_REQUIRED =
-            "Maven Central requires a GPG signature on every file: pass --sign --key-file <secret-key.asc>"
-                    + " (the passphrase via --key-passphrase or JK_GPG_PASSPHRASE).";
+            "Maven Central needs every file signed; pass --sign --key-file <secret-key.asc>"
+                    + "\n  give the passphrase with --key-passphrase or JK_GPG_PASSPHRASE";
 
     /**
      * The Central Portal flow: sign every artifact into one {@link CentralBundle}, upload it, and
