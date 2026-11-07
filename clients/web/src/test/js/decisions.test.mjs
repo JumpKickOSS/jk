@@ -139,5 +139,5 @@ test('the route opens one decision and the host key is kept for the tab', () => 
   assert.equal(adoptHostKey('abc123', '#decision/abc123?k=secret', tab), 'secret');
   assert.equal(adoptHostKey('abc123', '#decision/abc123', tab), 'secret', 'a reload after the scrub keeps it');
   assert.equal(adoptHostKey('other', '#decision/other', tab), '');
-  assert.equal(routeFromHash('#decision/').view, 'activity');
+  assert.equal(routeFromHash('#decision/').view, 'console');
 });
