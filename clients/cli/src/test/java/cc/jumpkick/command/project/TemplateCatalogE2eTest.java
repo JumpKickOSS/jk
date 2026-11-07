@@ -73,12 +73,7 @@ class TemplateCatalogE2eTest {
      * template is still scaffolded, then skipped by assumption with the defect as the reason, never
      * silently. Delete an entry when its defect is fixed, and the template's vectors build again.
      */
-    private static final Map<String, String> KNOWN_DEFECTS = Map.of(
-            "kotlin/micronaut/hello",
-            "its sample test fails: micronaut-inject-kotlin's KSP round writes the bean definitions as"
-                    + " classes and resources under target/ksp/, which join neither the module's classes"
-                    + " nor its jar, and no KSP round runs over test sources, so @MicronautTest finds no"
-                    + " bean definition for the test class");
+    private static final Map<String, String> KNOWN_DEFECTS = Map.of();
 
     @TempDir
     Path scratch;

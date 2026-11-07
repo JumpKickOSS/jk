@@ -71,8 +71,12 @@ public final class PlannerResources {
                     Path classes = ctx.require(MAIN_CLASSES);
                     // SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
                     // Plugin-contributed resource roots (grails-app/conf, i18n, views) merge after.
+                    // The KSP round's bytecode and resources come first, so a hand-written resource
+                    // at the same path wins.
                     Set<String> unresolved = new TreeSet<>();
-                    List<Path> resDirs = new ArrayList<>(FilteredResources.mainRoots(
+                    List<Path> resDirs =
+                            new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspOutBase(ctx.require(LAYOUT))));
+                    resDirs.addAll(FilteredResources.mainRoots(
                             in.dir(), ctx.require(PROJECT), ctx.require(LAYOUT), compact, unresolved));
                     warnUnresolved(ctx, unresolved);
                     for (var root : ModuleLayoutPlugins.pluginContributedRoots(in.dir())) {
