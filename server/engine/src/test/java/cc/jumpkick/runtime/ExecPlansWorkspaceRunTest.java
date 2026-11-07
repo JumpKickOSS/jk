@@ -41,6 +41,36 @@ class ExecPlansWorkspaceRunTest {
     }
 
     @Test
+    void workspace_dev_watches_the_members_the_app_runs_on(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.example"
+                name = "ws"
+                version = "0.1.0"
+                jdk = 25
+                java = 25
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        writeLib(root.resolve("lib"));
+        writeApp(root.resolve("app"), true);
+        Files.createDirectories(root.resolve("app/target/classes/main/com/example"));
+
+        ExecPlan plan = ExecPlans.execPlan(root, root.resolve("cache"), "dev", null, null);
+        assertThat(plan.error()).isNull();
+        // An edit to lib, which app depends on, restarts the app like an edit to app's own code.
+        assertThat(plan.watchRoots())
+                .containsExactly(
+                        root.resolve("app/src").toString(),
+                        root.resolve("lib/src").toString());
+        // ...and the restarted app runs lib's recompiled classes: a dev session writes no jar.
+        String classpath = plan.argv().get(plan.argv().indexOf("-cp") + 1);
+        assertThat(classpath)
+                .contains(root.resolve("lib/target/classes").toString())
+                .doesNotContain("lib-0.1.0.jar");
+    }
+
+    @Test
     void workspace_run_with_two_declared_apps_is_ambiguous(@TempDir Path root) throws Exception {
         // Silently launching the first-listed app would make [workspace].modules ORDER change
         // what `jk run` executesname the candidates instead.

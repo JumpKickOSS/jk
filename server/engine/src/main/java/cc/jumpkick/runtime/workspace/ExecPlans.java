@@ -451,7 +451,9 @@ public final class ExecPlans {
             if (dev) hotReload = locksDevtools(lock);
         }
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(dir, project, ClasspathResolver.RUN);
-        classpath.addAll(siblings.jars());
+        // A dev session recompiles the members the app runs on into their classes and writes no jar,
+        // so it runs on the classes, like the app's own.
+        classpath.addAll(dev ? siblings.siblingClosureClasses() : siblings.jars());
 
         if (dev && !hotReload && project.pluginConfig("spring-boot").isPresent()) {
             // Tier 2: fetch devtools version-matched to the declared Boot line; offline
@@ -507,9 +509,7 @@ public final class ExecPlans {
             display = (hasDeps ? "java -cp … " : "java -cp " + dir.relativize(first) + " ") + mainClass;
         }
 
-        List<String> watchRoots = new ArrayList<>();
-        if (dev && Files.isDirectory(dir.resolve("src")))
-            watchRoots.add(dir.resolve("src").toString());
+        List<String> watchRoots = dev ? DevWatchRoots.of(dir, siblings) : List.of();
         return runAck(
                 dev ? "dev" : "run",
                 argv,
