@@ -7,6 +7,7 @@
 
 import { get, post } from './api.js';
 import {
+  agentNotes,
   equivalentCommand,
   fieldsOf,
   linkFromHash,
@@ -369,6 +370,7 @@ export const wizardMethods = {
       const res = await post('/api/projects', body);
       const path = res.path || res.dir;
       this.wizard = emptyWizard();
+      this.createdAgents = agentNotes(res);
       if (path) await this.triggerBuild(path);
       if (res.projectId) this.openProject(res.projectId, path);
       else this.setView('activity');

@@ -140,3 +140,15 @@ test('the template search source fills its placeholders and the preview tree lis
     ['src/', '  main/', '    java/', '      App.java', '  test/', '    java/', '      AppTest.java', 'jk.toml', 'README.md'],
   );
 });
+
+test("a create's agent wiring is kept for its project's page, and nothing when it wired nothing", () => {
+  const agents = { files: ['AGENTS.md', '.mcp.json'], notes: ['Trust this folder'] };
+  assert.deepEqual(m.agentNotes({ path: '/p', projectId: 'id-1', agents }), {
+    projectId: 'id-1',
+    files: ['AGENTS.md', '.mcp.json'],
+    notes: ['Trust this folder'],
+  });
+  assert.equal(m.agentNotes({ path: '/p', projectId: 'id-1', agents: { files: [], notes: [] } }), null);
+  assert.equal(m.agentNotes({ path: '/p', projectId: 'id-1' }), null);
+  assert.equal(m.agentNotes({ path: '/p', agents }), null);
+});

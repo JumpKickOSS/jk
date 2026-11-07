@@ -42,7 +42,8 @@ import org.junit.jupiter.api.io.TempDir;
  * The dashboard's new-project wizard in a real browser: Playwright's Chromium against the engine's
  * HTTP server in this JVM, serving the checkout's dashboard and the real form, preview and create.
  * A Spring Boot and a CLI project are created through the stepper, and the command the review step
- * shows, run through {@code jk new} into another directory, must scaffold the same tree.
+ * shows, run through {@code jk new} into another directory, must scaffold the same tree, agent files
+ * included; the project page the create opens shows what was wired for agents.
  *
  * <p>{@code network}: Playwright fetches its browser and the dashboard loads Vue from a CDN, so it
  * runs with the network tier ({@code jk test -p network -m clients/cli --class …}), not on the merge
@@ -184,6 +185,9 @@ class NewProjectWizardE2eTest {
         page.waitForURL(url -> url.contains("#project/"));
         assertThat(made.resolve("jk.toml")).exists();
         assertThat(builds).contains(made.toString());
+        assertThat(made.resolve("AGENTS.md")).exists();
+        assertThat(page.locator(".agent-notes")).containsText("trust this folder");
+        screenshot(shot + "-4-project");
 
         Path again = Files.createDirectories(work.resolve("again"));
         assertThat(runCommand(command, again)).as(command).isZero();
@@ -193,14 +197,17 @@ class NewProjectWizardE2eTest {
         return made;
     }
 
-    /** Runs {@code command} as {@code jk new} would, its {@code --dir} pointed at {@code dir}; no agent files. */
+    /**
+     * Runs {@code command} as {@code jk new} would, its {@code --dir} pointed at {@code dir}. Its shell
+     * is this JVM's environment, the one the wizard's engine reads its agents setting from, so both
+     * wire the same agent files.
+     */
     private static int runCommand(String command, Path dir) throws Exception {
         List<String> argv = new ArrayList<>(words(command));
         assertThat(argv.removeFirst()).isEqualTo("jk");
         int at = argv.indexOf("--dir");
         argv.set(at + 1, dir.toString());
-        return ScopedValue.where(AgentWiring.ENV, key -> "JK_AGENTS".equals(key) ? "none" : null)
-                .call(() -> Jk.execute(argv.toArray(String[]::new)));
+        return Jk.execute(argv.toArray(String[]::new));
     }
 
     /** POSIX words: whitespace splits, single quotes keep, {@code '\''} is a quote. */

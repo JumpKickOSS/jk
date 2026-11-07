@@ -88,6 +88,9 @@ export const appOptions = {
     authCopied: false, // brief "Copied" feedback on the Access Denied console copy button
     _authCopiedTimer: null,
     wizard: emptyWizard(), // the #new page's form, answers and preview
+    // What the wizard's create wired for coding agents, {projectId, files, notes}: shown on that
+    // project's page until dismissed, as jk new prints it.
+    createdAgents: null,
     now: Date.now(), // 1s tick driving elapsed counters and "ago" stamps
     // single-flight keys → in-flight Promise; offline status poll backoff (ms).
     _inflight: Object.create(null),

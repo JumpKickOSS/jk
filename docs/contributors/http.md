@@ -419,8 +419,8 @@ then the template's `[[ask]]`), the same model `jk new` and MCP `new` render.
 | Endpoint | Shape |
 | --- | --- |
 | `GET /api/forms/new-project?template=<ref>&lang=<lang>` | `{ form, template, derived }`: the form as `Form#toJson` writes it, `rev` included; the id the ref resolved to (no ref: the default template); and this machine's values of the form's derived defaults, `{ "git-email": …, "parent-dir": … }` |
-| `POST /api/projects/preview` | `{ rev, answers }` → `{ path, template, files, manifest }`, scaffolded into a scratch directory; nothing is written |
-| `POST /api/projects` | `{ rev, answers, elicitation? }` → **201** `{ path, dir, projectId }` |
+| `POST /api/projects/preview` | `{ rev, answers }` → `{ path, template, files, manifest }`, scaffolded and wired for agents into a scratch directory; nothing is written |
+| `POST /api/projects` | `{ rev, answers, elicitation? }` → **201** `{ path, dir, projectId, agents }`; `agents` is `{ files, notes }`, the agent files the create wrote for the engine's `JK_AGENTS` setting and the steps left to the user |
 | `GET /api/templates?lang=<lang>` | the catalogue the form's `template` search lists, one language when `lang` names one |
 
 `answers` maps form keys to answers (a string, a boolean for `bool`, a list for `multi`); the

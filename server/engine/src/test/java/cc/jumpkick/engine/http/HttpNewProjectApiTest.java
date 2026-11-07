@@ -6,6 +6,8 @@ import static cc.jumpkick.engine.http.JsonFields.parseObject;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.docs.AgentSetup;
+import cc.jumpkick.engine.runtime.NewProjectAgents;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.net.URI;
@@ -18,13 +20,14 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
  * The new-project form over real HTTP: the form with its rev and derived defaults, the preview, the
- * create with template answers, a stale rev's 409 and a misfit answer's 400, from a template on
+ * create with template answers and the agent wiring the engine's agents setting asks for, a stale rev's 409 and a misfit answer's 400, from a template on
  * disk. Fixture in {@link HttpEngineServerHarness}.
  */
 @Tag("integration")
@@ -70,6 +73,11 @@ class HttpNewProjectApiTest extends HttpEngineServerHarness {
         parent = Files.createDirectories(stateDir.resolve("apps"));
     }
 
+    @AfterEach
+    void agents() {
+        NewProjectAgents.env(null);
+    }
+
     @Test
     void the_form_needs_the_token_and_carries_rev_the_template_s_fields_and_derived_defaults() throws Exception {
         HttpResponse<String> noToken = client.send(
@@ -113,6 +121,37 @@ class HttpNewProjectApiTest extends HttpEngineServerHarness {
         HttpResponse<String> again = post("api/projects", body(rev(), answers("none", false)));
         assertThat(again.statusCode()).as(again.body()).isEqualTo(409);
         assertThat(again.body()).contains("already exists");
+    }
+
+    @Test
+    void a_create_wires_the_project_for_the_engine_s_agents_setting_and_says_so() throws Exception {
+        NewProjectAgents.env(key -> "JK_AGENTS".equals(key) ? "all" : null);
+
+        HttpResponse<String> preview = post("api/projects/preview", body(rev(), answers("none", false)));
+        assertThat(preview.statusCode()).as(preview.body()).isEqualTo(200);
+        assertThat(MiniJson.write(parseObject(preview.body()).get("files")))
+                .contains("\"AGENTS.md\"", "\"CLAUDE.md\"", "\".mcp.json\"", "\".claude/settings.json\"");
+
+        HttpResponse<String> resp = post("api/projects", body(rev(), answers("none", false)));
+        assertThat(resp.statusCode()).as(resp.body()).isEqualTo(201);
+        Map<String, Object> agents = object(parseObject(resp.body()), "agents");
+        assertThat(MiniJson.write(agents.get("files"))).contains("\"CLAUDE.md\"", "\".mcp.json\"");
+        assertThat(MiniJson.write(agents.get("notes"))).contains(AgentSetup.TRUST_NOTE);
+        Path made = parent.resolve("widget");
+        assertThat(made.resolve("AGENTS.md")).isRegularFile();
+        assertThat(made.resolve(".claude/settings.json")).isRegularFile();
+    }
+
+    @Test
+    void with_agents_off_a_create_writes_agents_md_only() throws Exception {
+        NewProjectAgents.env(key -> "JK_AGENTS".equals(key) ? "none" : null);
+
+        HttpResponse<String> resp = post("api/projects", body(rev(), answers("none", false)));
+        assertThat(resp.statusCode()).as(resp.body()).isEqualTo(201);
+        Path made = parent.resolve("widget");
+        assertThat(made.resolve("AGENTS.md")).isRegularFile();
+        assertThat(made.resolve("CLAUDE.md")).doesNotExist();
+        assertThat(made.resolve(".mcp.json")).doesNotExist();
     }
 
     @Test

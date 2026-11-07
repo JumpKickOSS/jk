@@ -422,3 +422,12 @@ export function treeRows(paths) {
   walk(root, 0);
   return rows;
 }
+
+/** A create response's agent wiring, for the project page; null when it wired nothing worth saying. */
+export function agentNotes(res) {
+  const agents = (res && res.agents) || {};
+  const files = agents.files || [];
+  const notes = agents.notes || [];
+  if (!res || !res.projectId || (!files.length && !notes.length)) return null;
+  return { projectId: res.projectId, files, notes };
+}

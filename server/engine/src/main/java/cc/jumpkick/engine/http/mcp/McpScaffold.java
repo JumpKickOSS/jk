@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.engine.runtime.NewProjectAgents;
 import cc.jumpkick.engine.runtime.NewProjectForm;
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.form.Field;
@@ -135,7 +136,8 @@ public final class McpScaffold {
         Map<String, String> answers = new LinkedHashMap<>(NewProjectForm.templateParams(values));
         answers.putAll(passthrough);
         return new Plan.Scaffold(new NewProjectOps.Request(
-                name, parentDir, group, lang, layout, t.id(), true, answers, false, null, cwd.toString()));
+                        name, parentDir, group, lang, layout, t.id(), true, answers, false, null, cwd.toString())
+                .withAgents(NewProjectAgents.current()));
     }
 
     private static void putIfSet(Map<String, Object> out, String key, @Nullable String value) {
@@ -158,6 +160,7 @@ public final class McpScaffold {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("path", c.path().toString());
         if (c.projectId() != null) m.put("projectId", c.projectId());
+        m.put("agents", NewProjectAgents.json(c.agents(), c.path()));
         return m;
     }
 }

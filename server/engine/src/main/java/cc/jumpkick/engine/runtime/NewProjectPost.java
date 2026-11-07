@@ -18,7 +18,8 @@ import org.jspecify.annotations.Nullable;
  * Answers posted to the new-project form, as the dashboard's wizard posts them: one map of form key
  * to answer, and the {@code rev} of the form they were collected against. The answers' template and
  * language name the form; a {@code rev} that no longer matches it is stale, and answers that do not
- * settle it are refused, field by field.
+ * settle it are refused, field by field. A settled post is wired for the engine's agents setting
+ * ({@link NewProjectAgents}), as {@code jk new} wires for its shell's.
  */
 public final class NewProjectPost {
 
@@ -66,7 +67,9 @@ public final class NewProjectPost {
         FormCheck check = form.check(NewProjectForm.typed(form, given), derived::get);
         problems.addAll(check.problems());
         if (!problems.isEmpty()) return new Outcome.Refused(problems);
-        return new Outcome.Ready(NewProjectForm.request(check.values(), t.id(), cwd), t.id());
+        // The wizard has no shell of its own: its project is wired for the engine's agents setting.
+        return new Outcome.Ready(
+                NewProjectForm.request(check.values(), t.id(), cwd).withAgents(NewProjectAgents.current()), t.id());
     }
 
     /** The form a surface shows before anything is answered: {@code template}'s (none: the default one). */

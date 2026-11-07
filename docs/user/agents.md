@@ -22,13 +22,15 @@ never edits it. A file jk cannot parse as strict JSON is left as it was, with a 
 | When | What happens |
 |------|--------------|
 | `jk new`, `jk init`, `jk import` | `AGENTS.md` with jk's section, the files of each agent in use, and a first code graph (under `target/`, not committed). |
+| The dashboard's new-project wizard, MCP `new` | The same files, for the engine's agents setting; the wizard shows them and the notes on the new project's page, and MCP `new` returns them. The code graph comes with the first build. |
 | `jk agents [dir]` | The same, on demand, at the workspace root (or `dir`). Prints what it did. |
 | `jk agents --all` | Every supported agent, not only those in use here. |
 | `jk agents --remove` | jk's entries out of all of the above; a file left empty is deleted. |
 | Any build verb (`jk build`, `jk test`, …) | A section that differs from this jk's guide is rewritten. A file without the section is left alone. |
 
 `JK_AGENTS=none` makes `jk agents`, `new`, `init` and `import` write `AGENTS.md` only; `JK_AGENTS=all` wires every
-agent. An agent counts as present when its marker exists in the project (`.claude/`, `.cursor/`, …),
+agent. The wizard and MCP `new` have no shell of their own, so they read `JK_AGENTS` and detect agents in
+the environment the engine was started in. An agent counts as present when its marker exists in the project (`.claude/`, `.cursor/`, …),
 when the calling shell belongs to it, or when its CLI is on `PATH` (`claude`, `cursor-agent`,
 `gemini`, `opencode`, `agy`, `codex`).
 

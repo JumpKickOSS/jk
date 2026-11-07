@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.http.mcp.NewProjectWizard;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.runtime.NewProjectAgents;
 import cc.jumpkick.engine.runtime.NewProjectForm;
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.engine.runtime.NewProjectPost;
@@ -32,8 +33,11 @@ import org.jspecify.annotations.Nullable;
  * <pre>
  * GET  /api/forms/new-project?template=&amp;lang=  {form, template, derived}
  * POST /api/projects/preview                      {rev, answers} → {path, template, files, manifest}
- * POST /api/projects                              {rev, answers, elicitation?} → {path, dir, projectId}
+ * POST /api/projects                              {rev, answers, elicitation?} → {path, dir, projectId, agents}
  * </pre>
+ *
+ * {@code agents} is the agent wiring the create did for the engine's agents setting: {@code files}
+ * written, by path under the project, and the {@code notes} left to the user.
  *
  * {@code derived} holds the values of the form's derived defaults ({@code git-email},
  * {@code parent-dir}) on this machine; an answer left out takes the same value here.
@@ -105,6 +109,7 @@ final class HttpNewProjectApi {
             Map<String, Object> project = new LinkedHashMap<>();
             project.put("path", created.path().toString());
             if (created.projectId() != null) project.put("projectId", created.projectId());
+            project.put("agents", NewProjectAgents.json(created.agents(), created.path()));
             if (s.elicitation() != null) wizard.complete(s.elicitation(), project);
             Map<String, Object> body = new LinkedHashMap<>(project);
             body.put("dir", created.path().toString());

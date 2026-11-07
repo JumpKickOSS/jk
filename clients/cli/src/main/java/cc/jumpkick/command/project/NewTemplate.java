@@ -9,11 +9,14 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.NewProjectAck;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,7 +30,8 @@ import org.jspecify.annotations.Nullable;
  * <p>The Giter8 parameter map <em>is</em> the project definition, so the step-1 answers (name, group,
  * language, layout) are seeds for that map, and the whole scaffold happens engine-side in one call.
  * Nothing rolls back here — a partially expanded template is the engine's problem to avoid, not the
- * client's to undo.
+ * client's to undo. A standalone project carries the shell's agents setting, and the engine wires
+ * it in the same create, as it wires one the dashboard's wizard or MCP makes.
  */
 final class NewTemplate {
 
@@ -91,7 +95,7 @@ final class NewTemplate {
             }
             NewCommand.ParentInfo parent = args.parent();
             if (parent == null) {
-                AgentWiring.report(target);
+                AgentWiring.reportWired(target, Objects.requireNonNull(request.agents(), "agents"), wired(ack));
             } else {
                 NewCommand.registerModule(parent.root(), target);
             }
@@ -153,7 +157,15 @@ final class NewTemplate {
                 params,
                 true,
                 target.toString(),
-                args.workingDir().toString());
+                args.workingDir().toString(),
+                args.standalone() ? AgentWiring.choice() : null);
+    }
+
+    /** What the engine's create wired, as the ack carries it. */
+    private static AgentSetup.Report wired(NewProjectAck ack) {
+        List<AgentSetup.Change> changes = new ArrayList<>();
+        ack.agentFiles().forEach((file, action) -> changes.add(new AgentSetup.Change(action, Path.of(file))));
+        return new AgentSetup.Report(changes, ack.agentNotes());
     }
 
     /** {@code -p key=value} pairs in order; {@code null}, the failure printed, for one without a key. */
