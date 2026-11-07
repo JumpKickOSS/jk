@@ -39,6 +39,8 @@ Never put `JK-…` (or any internal ticket id) in errors, warnings, user-visible
 logs, CLI help, progress text, results markdown, or HTTP/MCP payloads. That is a
 bug: strip the id; keep the diagnosis.
 
+How to word that output: [User-facing messages](messages.md).
+
 ## History belongs elsewhere
 
 KanArtist tickets / `projects/jk/docs/`, or the commit body — not novels in the
