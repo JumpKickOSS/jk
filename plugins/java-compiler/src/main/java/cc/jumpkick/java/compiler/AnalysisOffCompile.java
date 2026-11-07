@@ -98,6 +98,7 @@ final class AnalysisOffCompile {
             throws IOException {
         int before = reporter.diagnostics().size();
         ZincJavaCompiler.deleteClassFiles(classOutput);
+        if (workdir != null) GeneratedProvenance.of(workdir).deletePrevious(sourceOutput, classOutput);
         List<String> options = new ArrayList<>(Arrays.asList(javacOpts));
         if (!options.contains("-classpath") && !options.contains("-cp") && !options.contains("--module-path")) {
             options.add("-classpath");

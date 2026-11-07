@@ -199,6 +199,7 @@ public final class ZincJavaCompiler {
             throws IOException {
         if (prev.isEmpty()) {
             deleteClassFiles(classOutput);
+            GeneratedProvenance.of(workdir).deletePrevious(sourceOutput, classOutput);
             return;
         }
         deleteClassFilesUnknownTo(

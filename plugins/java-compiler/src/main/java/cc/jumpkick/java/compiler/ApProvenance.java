@@ -6,6 +6,7 @@ import com.sun.source.util.Trees;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -36,6 +37,10 @@ import org.jspecify.annotations.Nullable;
  */
 final class ApProvenance {
     final Map<Path, Set<Path>> generated = new LinkedHashMap<>();
+
+    /** Files a processor asked the Filer to read back from an output location. */
+    private final Set<Path> readBack = new HashSet<>();
+
     volatile @Nullable Trees trees;
 
     List<Processor> wrap(List<Processor> processors) {
@@ -55,7 +60,31 @@ final class ApProvenance {
         for (Set<Path> origins : generated.values()) {
             if (origins.size() != 1) return true;
         }
+        return merging();
+    }
+
+    /**
+     * True when a processor read a file back from an output location and wrote that same file: it
+     * merges this run's elements into what the last run left, as Helidon's {@code
+     * service-registry.json} does. Its file is then a product of every source, whatever origins it
+     * names — an incremental run would merge into rows whose sources are gone — so the module is
+     * compiled in full from then on, with last run's generated files deleted first. A read of a file
+     * the processor does not write, a copied resource such as {@code persistence.xml}, is not one.
+     */
+    boolean merging() {
+        for (Path read : readBack) {
+            if (generated.containsKey(read)) return true;
+        }
         return false;
+    }
+
+    void recordRead(JavaFileManager.Location location, FileObject read) {
+        if (!location.isOutputLocation()) return;
+        try {
+            readBack.add(Path.of(read.toUri()));
+        } catch (RuntimeException notAPath) {
+            // not a file on disk; nothing a later run could have left there
+        }
     }
 
     void record(FileObject created, Element[] originating) {
@@ -185,7 +214,9 @@ final class ApProvenance {
         public FileObject getResource(
                 JavaFileManager.Location location, CharSequence moduleAndPkg, CharSequence relativeName)
                 throws IOException {
-            return delegate.getResource(location, moduleAndPkg, relativeName);
+            FileObject fo = delegate.getResource(location, moduleAndPkg, relativeName);
+            provenance.recordRead(location, fo);
+            return fo;
         }
     }
 }

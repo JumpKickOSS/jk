@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -37,7 +38,7 @@ final class GeneratedProvenance {
     private final Path file;
 
     private GeneratedProvenance(Path workdir) {
-        this.file = workdir.resolve("provenance.tsv");
+        this.file = workdir.resolve(PluginProtocol.GENERATED_LEDGER);
     }
 
     static GeneratedProvenance of(Path workdir) {
@@ -89,6 +90,24 @@ final class GeneratedProvenance {
             merged.put(canon.canonical(e.getKey()), canon.all(e.getValue()));
         }
         write(merged);
+    }
+
+    /**
+     * Delete every file the previous build's processors generated under the two output roots, with
+     * the classes of each generated source, before a compile of every source. Such a compile runs
+     * every processor over every source, so each file that is still wanted is written again; one left
+     * in place is a file a processor can read back through the {@code Filer} and merge this run's
+     * rows into, which carries a deleted source's row into a full build and into the action cache
+     * that stores it. The map itself is left for {@link #reconcile} to rewrite.
+     */
+    void deletePrevious(@Nullable Path sourceOutput, Path classOutput) throws IOException {
+        Canon canon = new Canon(sourceOutput == null ? List.of(classOutput) : List.of(sourceOutput, classOutput));
+        Path srcRoot = sourceOutput == null ? null : canon.canonical(sourceOutput);
+        Path classRoot = canon.canonical(classOutput);
+        for (Path gen : read(canon).keySet()) {
+            boolean ours = gen.startsWith(classRoot) || (srcRoot != null && gen.startsWith(srcRoot));
+            if (ours) deleteOutputs(gen, srcRoot, classRoot);
+        }
     }
 
     /**

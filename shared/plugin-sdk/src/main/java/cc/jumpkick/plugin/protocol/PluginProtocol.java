@@ -107,6 +107,14 @@ public final class PluginProtocol {
     public static final String SEVERITY_NOTICE = "notice";
 
     public static final String PROVENANCE = "provenance"; // {gen,src[]}
+
+    /**
+     * The Java compiler's ledger of what processors generated into its outputs, in its compile-state
+     * directory. The engine keeps it when it drops the rest of that state, since the next full
+     * compile deletes the files it names before running the processors again.
+     */
+    public static final String GENERATED_LEDGER = "provenance.tsv";
+
     public static final String TEST = "test"; // {event,…} test lifecycle event
     public static final String STEP = "step"; // describe declaration
     public static final String PACKAGER = "packager"; // describe declaration
