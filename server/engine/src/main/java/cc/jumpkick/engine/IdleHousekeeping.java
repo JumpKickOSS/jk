@@ -55,6 +55,13 @@ public final class IdleHousekeeping {
     /** How long an OutOfMemoryError heap dump stays beside the engine log before the boundary deletes it. */
     static final Duration HEAP_DUMP_RETENTION = Duration.ofDays(7);
 
+    /**
+     * Idle prunes of one cache root that may yield in a row before the next runs to completion,
+     * builds waiting on the gate for it. Without a bound, builds that arrive more often than a pass
+     * takes keep every pass from finishing, and the cache grows past its budget for good.
+     */
+    static final int MAX_YIELDED_PASSES = 3;
+
     private final AtomicInteger activeBuildPlans;
     private final ReentrantReadWriteLock cacheGate;
     private final JkHistoryConfig historyConfig;
@@ -75,6 +82,12 @@ public final class IdleHousekeeping {
     private final AtomicBoolean warmupRunning = new AtomicBoolean();
     private final AtomicBoolean running = new AtomicBoolean();
     private final AtomicLong testHomeIdle = new AtomicLong();
+
+    /** The cache root whose last idle prunes yielded, and how many did in a row; null after one finished. */
+    private final AtomicReference<@Nullable YieldStreak> yieldStreak = new AtomicReference<>();
+
+    /** {@code passes} idle prunes of {@code cache} in a row stopped for a build. */
+    private record YieldStreak(Path cache, int passes) {}
 
     /** Runs at each safe point of the idle prune before it asks whether a build waits; a test seam. */
     private volatile Runnable pruneSafePoint = () -> {};
@@ -412,18 +425,37 @@ public final class IdleHousekeeping {
      * meanwhile, or is admitted at all, stops the pass at its next safe point ({@link PruneYield}):
      * the gate is released, the build runs, and the pass is queued again whole for the next
      * boundary, its cadence stamp unwritten.
+     *
+     * <p>After {@link #MAX_YIELDED_PASSES} such stops in a row the next pass does not yield: it
+     * holds the gate to the end and the builds that queue meanwhile wait for it. A pass that kept
+     * the phases it had finished and resumed would not bound this, since one phase over a large
+     * cache can outlast the gap between builds on its own, and it would have to carry totals and
+     * judge per phase what a build in between made stale. A whole pass collects its roots afresh
+     * and needs no such judgement.
      */
     private void prunePass(Path cache) {
         // Scratch is a single ambient directory, not a per-root one: sweeping it while
         // pruning some other cache root would reach outside the root asked for.
         boolean ambient = cache.equals(JkDirs.cache());
-        PruneYield yield = new PruneYield(this::buildWaiting);
+        YieldStreak streak = yieldStreak.get();
+        int yieldedBefore = streak != null && streak.cache().equals(cache) ? streak.passes() : 0;
+        boolean mustFinish = yieldedBefore >= MAX_YIELDED_PASSES;
+        if (mustFinish) {
+            log.accept("jk engine: idle-boundary cache prune yielded " + yieldedBefore
+                    + " passes in a row; this one runs to completion and builds wait for it");
+        }
+        PruneYield yield = new PruneYield(mustFinish ? this::safePointOnly : this::buildWaiting);
         BuildPlan plan = CachePlans.pruneBuildPlan(cache, false, ambient, yield);
         BuildPlanResult result = plan.run();
         if (yield.yielded()) {
+            yieldStreak.set(new YieldStreak(cache, yieldedBefore + 1));
             pendingPruneCache.compareAndSet(null, cache);
-            log.accept("jk engine: idle-boundary cache prune yielded to a build; it runs again at the next boundary");
-        } else if (result.success()) {
+            log.accept("jk engine: idle-boundary cache prune yielded to a build (" + (yieldedBefore + 1) + " of "
+                    + MAX_YIELDED_PASSES + " in a row); it runs again at the next boundary");
+            return;
+        }
+        yieldStreak.set(null);
+        if (result.success()) {
             CachePruneScheduler.write(
                     cache,
                     clock.getAsLong(),
@@ -442,6 +474,12 @@ public final class IdleHousekeeping {
     private boolean buildWaiting() {
         pruneSafePoint.run();
         return cacheGate.hasQueuedThreads() || activeBuildPlans.get() != 0;
+    }
+
+    /** A pass that must finish still runs the test seam at its safe points, and never stops at one. */
+    private boolean safePointOnly() {
+        pruneSafePoint.run();
+        return false;
     }
 
     /** Test seam: {@code hook} runs at each safe point of the idle prune. */

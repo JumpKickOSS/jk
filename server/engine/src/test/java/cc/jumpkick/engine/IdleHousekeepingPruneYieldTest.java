@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -25,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.BooleanSupplier;
@@ -124,6 +126,62 @@ class IdleHousekeepingPruneYieldTest {
         assertYieldsAndFinishes(() -> Files.notExists(firstEvicted), false);
         // Taken whole before the stop, the way the next pass would have taken it.
         assertThat(itsBlob).doesNotExist();
+    }
+
+    @Test
+    void builds_arriving_faster_than_a_pass_still_let_the_prune_finish_within_a_bounded_number_of_boundaries()
+            throws Exception {
+        IdleHousekeeping housekeeping = idle();
+        AtomicInteger safePoints = new AtomicInteger();
+        AtomicReference<@Nullable Thread> build = new AtomicReference<>();
+        // Every pass meets a build part-way in: it queues on the gate, the way a plan job does, and
+        // runs as soon as the prune lets it.
+        housekeeping.onPruneSafePoint(() -> {
+            if (safePoints.incrementAndGet() != 200 || build.get() != null) return;
+            build.set(Thread.ofPlatform().name("plan-job").start(() -> {
+                gate.readLock().lock();
+                gate.readLock().unlock();
+            }));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+            while (!gate.hasQueuedThreads() && System.nanoTime() < deadline) LockSupport.parkNanos(1_000_000L);
+        });
+        housekeeping.maybeEnqueuePrune(cache);
+
+        int boundaries = 0;
+        while (log.stream().noneMatch(line -> line.contains("cache prune removed"))) {
+            assertThat(boundaries)
+                    .as("boundaries before the prune finishes")
+                    .isLessThanOrEqualTo(IdleHousekeeping.MAX_YIELDED_PASSES);
+            safePoints.set(0);
+            build.set(null);
+            housekeeping.run();
+            boundaries++;
+            Thread met = Objects.requireNonNull(build.get(), "a build arrived during the boundary");
+            met.join(TimeUnit.SECONDS.toMillis(60));
+        }
+
+        assertThat(boundaries).isEqualTo(IdleHousekeeping.MAX_YIELDED_PASSES + 1);
+        assertThat(log.stream().filter(line -> line.contains("cache prune yielded to a build")))
+                .hasSize(IdleHousekeeping.MAX_YIELDED_PASSES);
+        assertThat(log)
+                .as("the log says the last pass did not yield, and why")
+                .anyMatch(line -> line.contains("runs to completion"));
+        assertThat(CachePruneScheduler.read(cache)).isPresent();
+        assertThat(garbage).noneMatch(Files::exists);
+        assertThat(expiredKeys).noneMatch(Files::exists);
+        assertThat(liveKeys).allMatch(Files::exists);
+        assertEveryKeyHasItsBlobs();
+
+        // The streak ends with the pass that finished: the next one yields again.
+        log.clear();
+        safePoints.set(0);
+        build.set(null);
+        CachePruneScheduler.write(cache, 0L, -1L);
+        housekeeping.maybeEnqueuePrune(cache);
+        housekeeping.run();
+        Thread met = Objects.requireNonNull(build.get(), "a build arrived during the next pass");
+        met.join(TimeUnit.SECONDS.toMillis(60));
+        assertThat(log).anyMatch(line -> line.contains("yielded to a build (1 of"));
     }
 
     /**
