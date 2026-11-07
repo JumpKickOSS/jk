@@ -466,6 +466,12 @@ public record PluginDescriptor(
         /** Owned-table key equals a value. */
         record ConfigEquals(String key, String equals) implements Condition {}
 
+        /**
+         * Owned-table key holds a version at or above {@code bound} ({@code atLeast}), or below it:
+         * a contribution that only some releases of a tool need.
+         */
+        record ConfigVersion(String key, String bound, boolean atLeast) implements Condition {}
+
         /** Project declares {@code [native]}. */
         record NativeDeclared() implements Condition {}
 

@@ -400,7 +400,7 @@ public final class PluginDescriptors {
             String where = displayPath + ".contribute.platform-dependency";
             String coordinate = requireString(t, "coordinate", where);
             Interpolation.validate(coordinate, schemaKeys, where);
-            PluginDescriptor.Condition when = parseCondition(t, where);
+            PluginDescriptor.Condition when = PluginConditions.parse(t, where);
             if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
                 // Platform deps inject at parse time, before resolution — there is no
                 // classpath to test yet. Fail at load, not mid-build.
@@ -425,7 +425,8 @@ public final class PluginDescriptors {
             for (String arg : kotlin) Interpolation.validate(arg, schemaKeys, where + ".kotlin");
             for (String arg : groovy) Interpolation.validate(arg, schemaKeys, where + ".groovy");
             for (String arg : ksp) Interpolation.validate(arg, schemaKeys, where + ".ksp");
-            compilerArgs.add(new PluginDescriptor.CompilerArgs(javac, kotlin, groovy, ksp, parseCondition(t, where)));
+            compilerArgs.add(
+                    new PluginDescriptor.CompilerArgs(javac, kotlin, groovy, ksp, PluginConditions.parse(t, where)));
         }
         return compilerArgs;
     }
@@ -440,7 +441,7 @@ public final class PluginDescriptors {
             String where = displayPath + ".contribute.native-args";
             List<String> args = stringList(t, "args", where);
             for (String arg : args) Interpolation.validate(arg, schemaKeys, where + ".args");
-            nativeArgs.add(new PluginDescriptor.NativeArgs(args, parseCondition(t, where)));
+            nativeArgs.add(new PluginDescriptor.NativeArgs(args, PluginConditions.parse(t, where)));
         }
         return nativeArgs;
     }
@@ -466,7 +467,7 @@ public final class PluginDescriptors {
             if (!"source".equals(kind) && !"resource".equals(kind)) {
                 throw new JkBuildParseException(where + ".kind must be \"source\" or \"resource\" — got: " + kind);
             }
-            PluginDescriptor.Condition when = parseCondition(t, where);
+            PluginDescriptor.Condition when = PluginConditions.parse(t, where);
             if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
                 throw new JkBuildParseException(where + ": classpath-has cannot gate a source-root (roots are"
                         + " resolved before resolution)");
@@ -486,7 +487,8 @@ public final class PluginDescriptors {
             Interpolation.validate(coordinate, schemaKeys, where);
             List<String> options = stringList(t, "options", where);
             for (String opt : options) Interpolation.validate(opt, schemaKeys, where + ".options");
-            kotlinPlugins.add(new PluginDescriptor.KotlinPlugin(id, coordinate, options, parseCondition(t, where)));
+            kotlinPlugins.add(
+                    new PluginDescriptor.KotlinPlugin(id, coordinate, options, PluginConditions.parse(t, where)));
         }
         return kotlinPlugins;
     }
@@ -516,7 +518,7 @@ public final class PluginDescriptors {
                 throw new JkBuildParseException(where + ".scope must be `main`, `test` or `both` — got: " + scope);
             }
             out.add(new PluginDescriptor.ProcessorDependency(
-                    coordinate, !scope.equals("test"), !scope.equals("main"), parseCondition(t, where)));
+                    coordinate, !scope.equals("test"), !scope.equals("main"), PluginConditions.parse(t, where)));
         }
         return out;
     }
@@ -529,7 +531,7 @@ public final class PluginDescriptors {
             String artifact = requireString(t, "artifact", where);
             String coordinate = requireString(t, "coordinate", where);
             Interpolation.validate(coordinate, schemaKeys, where);
-            PluginDescriptor.Condition when = parseCondition(t, where);
+            PluginDescriptor.Condition when = PluginConditions.parse(t, where);
             if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
                 throw new JkBuildParseException(
                         where + ": classpath-has cannot gate a packager-dependency (fetch decisions"
@@ -587,7 +589,7 @@ public final class PluginDescriptors {
                     "test".equals(scope),
                     "compile-only".equals(scope),
                     "test-runtime".equals(scope),
-                    parseCondition(t, where)));
+                    PluginConditions.parse(t, where)));
         }
         return provided;
     }
@@ -699,7 +701,7 @@ public final class PluginDescriptors {
             }
             List<String> forSteps = parseForStep(t, key, where);
             for (String step : forSteps) Interpolation.validate(step, schemaKeys, entryKeys, where + ".for-step");
-            PluginDescriptor.Condition when = parseCondition(t, where);
+            PluginDescriptor.Condition when = PluginConditions.parse(t, where);
             if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
                 throw new JkBuildParseException(where + ": classpath-has cannot gate a " + key
                         + " (tool fetches are decided from config/facts, not the resolved classpath)");
@@ -750,55 +752,6 @@ public final class PluginDescriptors {
             }
         }
         return names;
-    }
-
-    /**
-     * Parse the optional {@code when} inline table into exactly one {@link
-     * PluginDescriptor.Condition} — the closed predicate set; two predicates in one {@code when}
-     * (or an unknown one) is a load error, never a silently-false condition.
-     */
-    static PluginDescriptor.@Nullable Condition parseCondition(TomlTable entry, String where) {
-        if (!entry.contains("when")) return null;
-        TomlTable when = entry.getTable("when");
-        if (when == null) {
-            throw new JkBuildParseException(where + ".when must be a table of exactly one predicate");
-        }
-        if (when.keySet().size() > (when.contains("config") ? 2 : 1)) {
-            throw new JkBuildParseException(where + ".when has more than one condition; use one");
-        }
-        if (when.contains("classpath-has")) {
-            String module = when.getString("classpath-has");
-            if (module == null || module.isBlank()) {
-                throw new JkBuildParseException(where + ".when.classpath-has must be \"group:artifact\"");
-            }
-            return new PluginDescriptor.Condition.ClasspathHas(module);
-        }
-        if (when.contains("config")) {
-            String key = when.getString("config");
-            String equals = when.getString("equals");
-            if (key == null || equals == null) {
-                throw new JkBuildParseException(
-                        where + ".when config predicate needs both `config = \"<key>\"` and `equals = \"<value>\"`");
-            }
-            return new PluginDescriptor.Condition.ConfigEquals(key, equals);
-        }
-        if (when.contains("native-declared")) {
-            requireTrue(when, "native-declared", where);
-            return new PluginDescriptor.Condition.NativeDeclared();
-        }
-        if (when.contains("kotlin-project")) {
-            requireTrue(when, "kotlin-project", where);
-            return new PluginDescriptor.Condition.KotlinProject();
-        }
-        throw new JkBuildParseException(where + ".when has no known predicate (classpath-has, config/equals,"
-                + " native-declared, kotlin-project)");
-    }
-
-    private static void requireTrue(TomlTable when, String key, String where) {
-        if (!Boolean.TRUE.equals(when.getBoolean(key))) {
-            throw new JkBuildParseException(
-                    where + ".when." + key + " must be `true` (omit the" + " condition entirely for the false case)");
-        }
     }
 
     private static List<TomlTable> tableArray(TomlTable contribute, String key, String displayPath) {

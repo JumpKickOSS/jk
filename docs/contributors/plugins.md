@@ -250,7 +250,8 @@ the packaging tail, `jk image`) sees one model. A test property the module sets 
 system-properties`, or as a `-D` in `[test] jvm-args`, keeps the module's value; when two plugins
 name one key, the first in registry order keeps it. `lib-dir` applies to a module with an
 `[application]` that does not write `lib-dir` itself (`lib-dir = false` included), and its `when`
-is a parse-time predicate (`config`/`equals`, `native-declared`, `kotlin-project`; never
+is a parse-time predicate (`config`/`equals`, `config`/`at-least`, `config`/`below`,
+`native-declared`, `kotlin-project`; never
 `classpath-has`). `[helidon]` uses both.
 
 **Archives (`unpack`).** A `coordinate` (not `transitive`) or `url` entry with `unpack = true` is
@@ -384,7 +385,9 @@ and what the lock-closure rows are resolved from — already holds it. `[quarkus
 extension descriptor this way.
 
 **Conditions (closed set, one per `when`):** `classpath-has`, `config`/`equals`,
-`native-declared`, `kotlin-project`. Richer logic belongs in code.
+`config`/`at-least` and `config`/`below` (the key's version against a bound: `[avro]` adds
+`avro-idl` only from 1.12, where Avro split it out), `native-declared`, `kotlin-project`. Richer
+logic belongs in code.
 
 ### Packaging
 

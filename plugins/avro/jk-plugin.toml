@@ -23,11 +23,20 @@ decimal-logical-type = { type = "bool", default = false, hint = "map the decimal
 encoding         = { type = "string", hint = "the generated sources' encoding" }
 version          = { type = "string", default = "1.12.2", example = "1.12.2", hint = "the Avro release; a bare version is exact, and the module's avro dependency is expected to match" }
 
-# The compiler and its runtime closure (avro, Jackson, Velocity) come together; the IDL reader
-# rides beside it so a .avdl file compiles too.
+# The compiler and its runtime closure (avro, Jackson, Velocity) come together. Avro 1.12 moved
+# the IDL reader to avro-idl, which rides beside the compiler so a .avdl file compiles too; before
+# 1.12 the reader is inside avro-compiler and avro-idl does not exist.
 [[contribute.step-dependency]]
 artifact   = "avro-compiler"
 coordinate = "org.apache.avro:avro-compiler:${config.version}"
 with       = ["org.apache.avro:avro-idl:${config.version}"]
 transitive = true
 for-step   = "generate-avro"
+when       = { config = "version", at-least = "1.12" }
+
+[[contribute.step-dependency]]
+artifact   = "avro-compiler"
+coordinate = "org.apache.avro:avro-compiler:${config.version}"
+transitive = true
+for-step   = "generate-avro"
+when       = { config = "version", below = "1.12" }

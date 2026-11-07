@@ -33,6 +33,9 @@ public final class AvroMain {
     private static final String FIELD_VISIBILITY = COMPILER + "$FieldVisibility";
     private static final String IDL_READER = "org.apache.avro.idl.IdlReader";
 
+    /** Avro 1.11's IDL parser, inside avro-compiler; 1.12 moved IDL to avro-idl's {@link #IDL_READER}. */
+    private static final String LEGACY_IDL = "org.apache.avro.compiler.idl.Idl";
+
     private AvroMain() {}
 
     public static void main(String[] args) throws Exception {
@@ -115,7 +118,17 @@ public final class AvroMain {
                     loader, protocolType, require(invoke(parseProtocol, null, protocol.toFile())), protocol, options);
             compiled++;
         }
-        if (!idls.isEmpty()) {
+        if (!idls.isEmpty() && !present(IDL_READER, loader)) {
+            Class<?> idlType = Class.forName(LEGACY_IDL, true, loader);
+            for (Path idl : idls) {
+                try (AutoCloseable parser =
+                        (AutoCloseable) idlType.getConstructor(File.class).newInstance(idl.toFile())) {
+                    Object protocol = require(invoke(idlType.getMethod("CompilationUnit"), parser));
+                    compileOne(loader, protocolType, protocol, idl, options);
+                }
+                compiled++;
+            }
+        } else if (!idls.isEmpty()) {
             Class<?> readerType = Class.forName(IDL_READER, true, loader);
             Object reader = readerType.getConstructor().newInstance();
             Method parse = readerType.getMethod("parse", Path.class);
@@ -134,6 +147,16 @@ public final class AvroMain {
             }
         }
         return compiled;
+    }
+
+    /** Whether {@code className} loads from {@code loader}. */
+    private static boolean present(String className, ClassLoader loader) {
+        try {
+            Class.forName(className, false, loader);
+            return true;
+        } catch (ClassNotFoundException absent) {
+            return false;
+        }
     }
 
     /**

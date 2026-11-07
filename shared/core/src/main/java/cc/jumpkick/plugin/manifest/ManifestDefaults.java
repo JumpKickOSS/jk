@@ -57,7 +57,7 @@ final class ManifestDefaults {
         for (String key : t.keySet()) {
             if (!key.equals("when")) throw new JkBuildParseException(where + ": unknown key `" + key + "` (when)");
         }
-        PluginDescriptor.Condition when = PluginDescriptors.parseCondition(t, where);
+        PluginDescriptor.Condition when = PluginConditions.parse(t, where);
         if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
             throw new JkBuildParseException(
                     where + ": classpath-has cannot gate the layout (it is decided before resolution)");

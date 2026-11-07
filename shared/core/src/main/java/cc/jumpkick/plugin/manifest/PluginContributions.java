@@ -9,6 +9,7 @@ import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -994,6 +995,12 @@ public final class PluginContributions {
             }
             case PluginDescriptor.Condition.ConfigEquals c ->
                 c.equals().equals(String.valueOf(config.values().get(c.key())));
+            case PluginDescriptor.Condition.ConfigVersion c -> {
+                Object value = config.values().get(c.key());
+                if (!(value instanceof String version) || version.isBlank()) yield false;
+                int cmp = Versions.compare(anchor(version), c.bound());
+                yield c.atLeast() ? cmp >= 0 : cmp < 0;
+            }
             case PluginDescriptor.Condition.NativeDeclared ignored -> nativeDeclared;
             case PluginDescriptor.Condition.KotlinProject ignored -> project.isKotlin();
         };
