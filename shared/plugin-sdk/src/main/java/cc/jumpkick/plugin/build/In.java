@@ -19,6 +19,12 @@ public record In(Kind kind, @Nullable String step) {
     public enum Kind {
         /** The module's compiled classes dir (resources already copied in). */
         CLASSES,
+        /**
+         * The module's compiled test classes dir (test resources copied in), for a TEST-window
+         * step that reads what compile-test wrote: the step waits for compile-test, and only a step
+         * that contributes to the forked test JVM alone may declare it.
+         */
+        TEST_CLASSES,
         /** The resolved production RUNTIME classpath — jar paths, lock-ordered. */
         RUNTIME_CLASSPATH,
         /**
@@ -61,7 +67,15 @@ public record In(Kind kind, @Nullable String step) {
          * its credential. For a step whose own resolver fetches outside the lock. The key carries
          * the declared set, not the routing: a mirror window opening re-runs nothing.
          */
-        REPOSITORIES
+        REPOSITORIES,
+        /**
+         * Whether the build is a recompile: the compile goal alone, as {@code jk compile} and the
+         * rebuild {@code jk dev} runs on every change are. A step that declares it reads {@code
+         * exec.recompile()} and may take a cheaper path then, as long as what it writes still runs;
+         * its key carries the goal, so a full build never restores a recompile's output. A step
+         * that does not declare it is keyed and run the same under either goal.
+         */
+        RECOMPILE
     }
 
     public In {
@@ -76,6 +90,11 @@ public record In(Kind kind, @Nullable String step) {
 
     public static In classes() {
         return new In(Kind.CLASSES, null);
+    }
+
+    /** The module's compiled test classes — read in the body via {@code exec.testClassesDir()}. */
+    public static In testClasses() {
+        return new In(Kind.TEST_CLASSES, null);
     }
 
     public static In runtimeClasspath() {
@@ -119,6 +138,11 @@ public record In(Kind kind, @Nullable String step) {
      */
     public static In siblingProjectFiles(String configKey) {
         return new In(Kind.SIBLING_PROJECT_FILES, configKey);
+    }
+
+    /** Whether the build is a recompile — read in the body via {@code exec.recompile()}. */
+    public static In recompile() {
+        return new In(Kind.RECOMPILE, null);
     }
 
     /** The module's routed remote repositories — read in the body via {@code exec.repositories()}. */

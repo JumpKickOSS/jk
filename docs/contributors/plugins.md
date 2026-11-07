@@ -474,7 +474,16 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   appends each non-blank line of a file it wrote as one flag; `contributesTestClasspath(path)`
   appends a directory it wrote, or, when the path is a file, each non-blank line as one absolute
   entry (jars it located rather than wrote — the IntelliJ battery's bundled plugins);
-  `oneTestJvm()` runs the module's suites in one JVM (an application that owns its state).
+  `oneTestJvm()` runs the module's suites in one JVM (an application that owns its state). Such a
+  step may declare `In.testClasses()` to read what compile-test wrote (`TaskExec.testClassesDir()`):
+  it then waits for compile-test, and its key moves with the test classes. A step that shapes
+  anything besides the test JVM may not declare it — the plan is rejected.
+- **Recompiles** — a step that declares `In.recompile()` reads `TaskExec.recompile()`, true when
+  the build is the compile goal alone (`jk compile`, and the rebuild `jk dev` runs on every change).
+  It may take a cheaper path then, as long as its output still runs; its key carries the goal, so a
+  full build never restores a recompile's output, and a step that does not declare it is keyed the
+  same under either goal. `[helidon]`'s binding step keeps the empty binding on a recompile rather
+  than scanning the classpath on every edit.
 - **Action keys include plugin worker jar hashes** — upgrading the plugin invalidates cache.
 - Tasks declare inputs/outputs so incrementality and `jk explain` stay correct.
 - **Repositories** — a step whose own resolver fetches outside the lock (a framework's build-time

@@ -348,6 +348,8 @@ public final class BuildPluginHarness {
             PluginConfig config,
             ProjectFacts project,
             @Nullable Path classesDir,
+            /** The module's test classes, written only for a step that declared {@code In.testClasses()}. */
+            @Nullable Path testClassesDir,
             @Nullable Path moduleDir,
             @Nullable Path scratch,
             @Nullable Path javaHome,
@@ -363,7 +365,9 @@ public final class BuildPluginHarness {
             List<RepositoryRoute> repositories,
             List<String> commandArgs,
             Map<String, String> secrets,
-            boolean offline) {
+            boolean offline,
+            /** The build is the compile goal alone ({@link TaskExec#recompile()}). */
+            boolean recompile) {
 
         static Spec read(Path file) throws IOException {
             String op = "";
@@ -379,6 +383,7 @@ public final class BuildPluginHarness {
             boolean kotlin = false;
             Map<String, String> manifest = new LinkedHashMap<>();
             @Nullable Path classesDir = null;
+            @Nullable Path testClassesDir = null;
             @Nullable Path moduleDir = null;
             @Nullable Path scratch = null;
             @Nullable Path javaHome = null;
@@ -395,6 +400,7 @@ public final class BuildPluginHarness {
             Map<String, String> secrets = new LinkedHashMap<>();
             // Absent means offline: a worker launched without a stated policy must not reach out.
             boolean offline = true;
+            boolean recompile = false;
 
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.isBlank()) continue;
@@ -405,20 +411,7 @@ public final class BuildPluginHarness {
                         stepName = Jsonl.str(line, PluginProtocol.NAME);
                         pluginId = required(Jsonl.str(line, "plugin"), "op.plugin");
                     }
-                    case "config" -> {
-                        String key = required(Jsonl.str(line, "key"), "config.key");
-                        @Nullable String entry = Jsonl.str(line, "entry");
-                        if (entry == null) {
-                            configValues.put(key, configValue(line));
-                        } else {
-                            // One leaf of a nested entry: <key> → <entry> → <field>.
-                            @SuppressWarnings("unchecked")
-                            Map<String, Map<String, Object>> nested = (Map<String, Map<String, Object>>)
-                                    configValues.computeIfAbsent(key, k -> new LinkedHashMap<String, Object>());
-                            nested.computeIfAbsent(entry, k -> new LinkedHashMap<>())
-                                    .put(required(Jsonl.str(line, "field"), "config.field"), configValue(line));
-                        }
-                    }
+                    case "config" -> addConfig(line, configValues);
                     case "project" -> {
                         group = required(Jsonl.str(line, "group"), "project.group");
                         name = required(Jsonl.str(line, "name"), "project.name");
@@ -440,6 +433,8 @@ public final class BuildPluginHarness {
                         @Nullable String scratchDir = Jsonl.str(line, "scratch");
                         if (scratchDir != null) scratch = Path.of(scratchDir);
                     }
+                    case "test-classes" ->
+                        testClassesDir = Path.of(required(Jsonl.str(line, "dir"), "test-classes.dir"));
                     case "java-home" -> javaHome = Path.of(required(Jsonl.str(line, "path"), "java-home.path"));
                     case "artifact" -> artifactPath = Path.of(required(Jsonl.str(line, "path"), "artifact.path"));
                     case "cp" -> addClasspathEntry(line, runtimeClasspath, compileClasspath);
@@ -460,6 +455,7 @@ public final class BuildPluginHarness {
                                 required(Jsonl.str(line, "key"), "secret.key"),
                                 required(Jsonl.str(line, "value"), "secret.value"));
                     case PluginProtocol.OFFLINE -> offline = Jsonl.bool(line, PluginProtocol.VALUE, true);
+                    case "recompile" -> recompile = true;
                     default -> throw new IOException("spec line kind `" + t + "` is not one this harness reads");
                 }
             }
@@ -472,6 +468,7 @@ public final class BuildPluginHarness {
                     config,
                     facts,
                     classesDir,
+                    testClassesDir,
                     moduleDir,
                     scratch,
                     javaHome,
@@ -486,7 +483,23 @@ public final class BuildPluginHarness {
                     repositories,
                     commandArgs,
                     secrets,
-                    offline);
+                    offline,
+                    recompile);
+        }
+
+        /** A {@code config} line: a top-level value, or one leaf of a nested entry: key → entry → field. */
+        private static void addConfig(String line, Map<String, Object> configValues) throws IOException {
+            String key = required(Jsonl.str(line, "key"), "config.key");
+            @Nullable String entry = Jsonl.str(line, "entry");
+            if (entry == null) {
+                configValues.put(key, configValue(line));
+                return;
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Map<String, Object>> nested = (Map<String, Map<String, Object>>)
+                    configValues.computeIfAbsent(key, k -> new LinkedHashMap<String, Object>());
+            nested.computeIfAbsent(entry, k -> new LinkedHashMap<>())
+                    .put(required(Jsonl.str(line, "field"), "config.field"), configValue(line));
         }
 
         /**
@@ -561,6 +574,16 @@ public final class BuildPluginHarness {
         @Override
         public Path classesDir() {
             return required(spec.classesDir(), "layout.classesDir");
+        }
+
+        @Override
+        public Path testClassesDir() {
+            return required(spec.testClassesDir(), "test-classes.dir");
+        }
+
+        @Override
+        public boolean recompile() {
+            return spec.recompile();
         }
 
         @Override

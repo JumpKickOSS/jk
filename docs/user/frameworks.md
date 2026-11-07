@@ -226,6 +226,7 @@ version = "27.0.1"            # required: 27.0.1 (exact), ^27 (newest 27.x) or l
 # binding       = true        # default: on when a class carries @Service.GenerateBinding
 # generate-main = false       # also generate ApplicationMain, the reflection-free entry point
 # validate      = true        # fail the build on an invalid injection graph
+# test-binding  = false       # also generate TestApplicationBinding for the test scope
 
 [dependencies]
 helidon-webserver = "managed"
@@ -260,9 +261,39 @@ What the table does:
 - **Floors.** A Helidon version below 27 (`4.3.0`, `^4`) and a module below `java = 27` are
   refused with the line that fixes them.
 
-`binding`, `generate-main` and `validate` are read but not acted on yet: the
-application binding is the empty one the processor writes, and Helidon logs at startup that it falls
-back to classpath discovery. The application runs the same either way.
+### The application binding
+
+`@Service.GenerateBinding` on the main class makes the processor write an *empty*
+`ApplicationBinding`, which falls back to classpath discovery and logs a warning at startup. The
+`helidon-binding` step does what `helidon-service-maven-plugin`'s `create-application` goal does,
+with Helidon's own generators and no Maven: after the compile it scans the classes and the runtime
+classpath, starts the service registry over them, validates the injection graph and compiles the
+real binding (the full injection plan) over the empty one, at the module's `java` release. Its
+output is the module's classes from then on, so tests, `jk run`, `jk dev` and the jar all load the
+real binding, and the application starts without the warning. The step is cached on the classes,
+the runtime classpath and the table.
+
+- **`binding`.** Unset, the step generates the binding when a class carries
+  `@Service.GenerateBinding`, at the name and package the annotation gives (the class's own package
+  by default), and otherwise passes the classes through. `true` generates it regardless (Helidon's
+  `ApplicationBinding` in the module's top package); `false` drops the step.
+- **`generate-main`.** Also generates `ApplicationMain` beside the binding: the reflection-free
+  entry point, which starts the registry from the binding and the services' run levels. Point
+  `[application] main` at it (`com.example.ApplicationMain`). The inject quickstart starts in about
+  a third of the time.
+- **`validate`.** Runs Helidon's injection-graph validator. Any finding it reports fails the build
+  with Helidon's words; today that is a request-scoped service injected into a singleton without a
+  `Supplier`. This is stricter than the Maven plugin's default, which only logs the finding;
+  `validate = false` skips the check.
+- **`test-binding`.** Also runs `create-test-application` after the test compile:
+  `TestApplicationBinding` for the test scope, on the test JVM's classpath after the test classes.
+- **`jk dev`.** Generating the binding costs about a second (1.3 s for the inject quickstart, most of
+  it the classpath scan), so the rebuild `jk dev` runs on every change keeps the empty binding,
+  which works through discovery; the build `jk dev` starts from has the real one. With
+  `generate-main` the step always runs, since `ApplicationMain` has no fallback.
+
+The step replaces the module's classes, and a build allows one such step: a module that also turns
+on `[hibernate] enhance` sets `binding = false`.
 
 Tests run under `junit-jupiter`, or `junit-jupiter-api` alone (jk adds the engine as Surefire
 does), with no launcher pin. `jk dev` restarts the application on every change, as `helidon dev`

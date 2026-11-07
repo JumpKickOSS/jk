@@ -58,6 +58,7 @@ class HelidonTableTest {
                         "version", "27.0.1",
                         "generate-main", false,
                         "validate", true,
+                        "test-binding", false,
                         "layout", "libs",
                         "declarative", false));
     }
@@ -71,6 +72,7 @@ class HelidonTableTest {
                 binding       = false
                 generate-main = true
                 validate      = false
+                test-binding  = true
                 layout        = "jar"
                 declarative   = true
                 """);
@@ -81,6 +83,7 @@ class HelidonTableTest {
                         "binding", false,
                         "generate-main", true,
                         "validate", false,
+                        "test-binding", true,
                         "layout", "jar",
                         "declarative", true));
         assertThat(b.libDir()).as("layout = \"jar\" is the plain jar").isNull();

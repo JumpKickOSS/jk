@@ -173,6 +173,13 @@ public final class PlannerPlugin {
                     + " is source-generating but declares In.classes() — generated-source tasks"
                     + " consume project files (In.projectFiles), config, or other task outputs");
         }
+        boolean readsTestClasses = step.inputs().contains(In.testClasses().wireName());
+        if (readsTestClasses && !step.testOnly()) {
+            throw new IllegalStateException("plugin task " + step.name()
+                    + " declares In.testClasses() but does not only feed the test JVM — the test classes"
+                    + " exist once compile-test ran, so only a step that contributes to the forked test"
+                    + " JVM alone (contributesTestClasspath / contributesTestJvmArgs) may read them");
+        }
         List<String> requires = new ArrayList<>();
         // Explicit plugin-declared edges first.
         if (step.requires() != null) {
@@ -192,6 +199,9 @@ public final class PlannerPlugin {
             requires.add(TaskNames.ENSURE_JDK);
             // A test-window step that reads the compiled classes waits for them to be complete.
             if (step.inputs().contains("classes")) requires.add(TaskNames.COPY_RESOURCES);
+            // One that reads the compiled tests waits for compile-test, which copies the test
+            // resources in too.
+            if (readsTestClasses) requires.add(TaskNames.COMPILE_TEST);
         } else {
             requires.add(TaskNames.COPY_RESOURCES);
         }
@@ -238,6 +248,11 @@ public final class PlannerPlugin {
             specWriter.entry(
                     pe.fileName(), pe.jar(), pe.snapshot(), pe.container(), pe.group(), pe.artifact(), pe.version());
         }
+        if (step.inputs().contains(In.testClasses().wireName())) {
+            specWriter.testClasses(paths.layout().testClassesDir());
+        }
+        // Told only to a step that declared it, so no other step's key moves with the goal.
+        if (src.recompile() && step.inputs().contains(In.recompile().wireName())) specWriter.recompile();
         for (var tool : toolExtras.entrySet()) {
             specWriter.extra(tool.getKey(), tool.getValue());
         }
@@ -278,7 +293,34 @@ public final class PlannerPlugin {
             /** The directories of each declared {@code sibling:<key>} input, by key ({@link SiblingFiles}). */
             Map<String, List<Path>> siblingFiles,
             /** The routed remotes of a declared {@code repositories} input ({@link PluginRepositories}). */
-            PluginRepositories repositories) {}
+            PluginRepositories repositories,
+            /** The build is the compile goal alone: a declared {@code recompile} input's value. */
+            boolean recompile) {
+
+        /** The sources of a full build (every packager's, and a step's outside a recompile). */
+        InputSources(
+                Path classes,
+                List<Path> runtimeClasspath,
+                List<Path> compileClasspath,
+                List<PluginBuild.ProdEntry> runtimeEntries,
+                PluginConfig config,
+                BuildLayout layout,
+                Path moduleDir,
+                Map<String, List<Path>> siblingFiles,
+                PluginRepositories repositories) {
+            this(
+                    classes,
+                    runtimeClasspath,
+                    compileClasspath,
+                    runtimeEntries,
+                    config,
+                    layout,
+                    moduleDir,
+                    siblingFiles,
+                    repositories,
+                    false);
+        }
+    }
 
     /**
      * The declared inputs as action-key tokens: the one renderer the step arm and the packager arm
@@ -294,6 +336,9 @@ public final class PlannerPlugin {
             In declared = In.fromWire(input);
             switch (declared.kind()) {
                 case CLASSES -> tokens.add("classes:" + ClasspathFingerprint.entry(src.classes()));
+                case TEST_CLASSES ->
+                    tokens.add("test-classes:"
+                            + ClasspathFingerprint.entry(src.layout().testClassesDir()));
                 case RUNTIME_CLASSPATH -> tokens.add("cp:" + ClasspathFingerprint.of(src.runtimeClasspath()));
                 case COMPILE_CLASSPATH -> tokens.add("ccp:" + ClasspathFingerprint.of(src.compileClasspath()));
                 case RUNTIME_ENTRIES, TEST_RUNTIME_ENTRIES -> {
@@ -340,6 +385,7 @@ public final class PlannerPlugin {
                             + ClasspathFingerprint.entry(src.moduleDir().resolve(declared.step())));
                 case REPOSITORIES ->
                     tokens.add("repositories:" + src.repositories().token());
+                case RECOMPILE -> tokens.add("recompile:" + src.recompile());
                 case SIBLING_PROJECT_FILES -> {
                     // Include order is part of the artifact (the first root to answer an import
                     // wins), so the token is the ordered join, not a sorted set.
@@ -550,18 +596,18 @@ public final class PlannerPlugin {
                     // the same ProjectFacts instance rides the spec below, so no fact can reach the
                     // plugin without reaching its key.
                     ProjectFacts facts = PluginBuild.facts(project, startClass);
-                    List<String> tokens = new ArrayList<>(declaredInputTokens(
-                            step.inputs(),
-                            new InputSources(
-                                    classes,
-                                    classpath,
-                                    compileClasspath,
-                                    prodEntries,
-                                    active.config(),
-                                    layout,
-                                    in.dir(),
-                                    siblingFiles,
-                                    repositories)));
+                    InputSources sources = new InputSources(
+                            classes,
+                            classpath,
+                            compileClasspath,
+                            prodEntries,
+                            active.config(),
+                            layout,
+                            in.dir(),
+                            siblingFiles,
+                            repositories,
+                            in.compileOnly());
+                    List<String> tokens = new ArrayList<>(declaredInputTokens(step.inputs(), sources));
                     tokens.addAll(stepTools.tokens());
                     tokens.add("facts:" + facts.token());
                     // The JDK is handed to the body as spec.javaHome and is what its forked tools
@@ -614,16 +660,7 @@ public final class PlannerPlugin {
                             active,
                             facts,
                             new StepSpecPaths(classes, in.dir(), scratch, javaHome, layout),
-                            new InputSources(
-                                    classes,
-                                    classpath,
-                                    compileClasspath,
-                                    prodEntries,
-                                    active.config(),
-                                    layout,
-                                    in.dir(),
-                                    siblingFiles,
-                                    repositories),
+                            sources,
                             stepTools.forSpec());
                     try {
                         runPluginWorker(ctx, in, active, spec, project, javaHome, said);

@@ -47,6 +47,13 @@ import org.junit.jupiter.api.io.TempDir;
  * Main} references, the suites run under the test config profile, and the {@code <name>.jar} the
  * libs layout writes serves {@code /greet} with {@code java -jar}.
  *
+ * <p>The inject quickstart is also the contract test of the {@code helidon-binding} step against
+ * the Helidon release jk supports (27.0.1): {@code helidon-service-maven-plugin}'s generators,
+ * driven without Maven, write the real binding (the app starts without the empty-binding
+ * warning), {@code generate-main} writes an {@code ApplicationMain} that serves, the validator's
+ * findings fail the build in Helidon's words, {@code test-binding} writes {@code
+ * TestApplicationBinding} for the suites, and a recompile keeps the empty binding.
+ *
  * <p>Maven Central and a JDK 27 (installed when the host has none); the CAS persists under the
  * test caches so repeat runs are warm.
  */
@@ -117,11 +124,118 @@ class HelidonQuickstartE2eTest {
         assertThat(tests.failed()).isZero();
         assertThat(tests.succeeded()).isPositive();
 
+        assertThat(binding(project, "classes", "ApplicationBinding"))
+                .as("helidon-binding compiled the real binding over the empty one")
+                .doesNotContain(EMPTY_BINDING);
+
         Served served = serve(project, cache, project.resolve("target"), "quickstart-inject.jar", "/greet");
         assertThat(served.body()).contains("\"message\":\"Hello World!\"");
         assertThat(served.log())
-                .as("no binding step yet: the empty binding falls back to discovery")
-                .contains("GenerateBinding");
+                .as("the real binding: no fallback to discovery")
+                .doesNotContain("GenerateBinding");
+
+        // jk dev's rebuild on change is the compile goal: it keeps the empty binding (discovery)
+        // instead of forking Helidon's generator on every edit.
+        Path greet = project.resolve("src/main/java/io/helidon/examples/quickstart/inject/GreetService.java");
+        Files.writeString(greet, Files.readString(greet) + "\n// edited\n");
+        BuildPlanResult recompiled = plan(project, cache, true).run();
+        assertThat(recompiled.errors()).isEmpty();
+        assertThat(binding(project, "classes", "ApplicationBinding")).contains(EMPTY_BINDING);
+    }
+
+    @Test
+    void generate_main_writes_an_application_main_that_serves(@TempDir Path tmp) throws Exception {
+        Path project = fixture(tmp, "quickstart-inject");
+        edit(
+                project.resolve("jk.toml"),
+                "main = \"io.helidon.examples.quickstart.inject.Main\"",
+                "main = \"io.helidon.examples.quickstart.inject.ApplicationMain\"");
+        edit(project.resolve("jk.toml"), "version = \"27.0.1\"\n", "version = \"27.0.1\"\ngenerate-main = true\n");
+        Path cache = TestCaches.dir("helidon-quickstart-cache");
+        lock(project, cache);
+
+        BuildPlanResult built = plan(project, cache).run();
+        assertThat(built.errors()).isEmpty();
+        assertThat(built.success()).isTrue();
+        assertThat(binding(project, "classes", "ApplicationMain")).isNotEmpty();
+
+        Served served = serve(project, cache, project.resolve("target"), "quickstart-inject.jar", "/greet");
+        assertThat(served.body()).contains("\"message\":\"Hello World!\"");
+        assertThat(served.log()).doesNotContain("GenerateBinding");
+    }
+
+    @Test
+    void an_invalid_injection_graph_fails_the_build_with_helidon_s_findings(@TempDir Path tmp) throws Exception {
+        Path project = fixture(tmp, "quickstart-inject");
+        Path pkg = project.resolve("src/main/java/io/helidon/examples/quickstart/inject");
+        Files.writeString(pkg.resolve("RequestCounter.java"), """
+                package io.helidon.examples.quickstart.inject;
+
+                import io.helidon.service.registry.Service;
+
+                @Service.PerRequest
+                class RequestCounter {}
+                """);
+        Files.writeString(pkg.resolve("CounterHolder.java"), """
+                package io.helidon.examples.quickstart.inject;
+
+                import io.helidon.service.registry.Service;
+
+                @Service.Singleton
+                class CounterHolder {
+                    @Service.Inject
+                    CounterHolder(RequestCounter counter) {}
+                }
+                """);
+        Path cache = TestCaches.dir("helidon-quickstart-cache");
+        lock(project, cache);
+
+        BuildPlanResult built = plan(project, cache).run();
+        assertThat(built.success()).isFalse();
+        assertThat(built.errors()).anySatisfy(error -> assertThat(error.message())
+                .contains("Application validation failed")
+                .contains("Injection of request scoped service into a singleton without a supplier")
+                .contains("io.helidon.examples.quickstart.inject.CounterHolder"));
+    }
+
+    @Test
+    void test_binding_writes_the_test_application_binding_for_the_suites(@TempDir Path tmp) throws Exception {
+        Path project = fixture(tmp, "quickstart-inject");
+        edit(project.resolve("jk.toml"), "version = \"27.0.1\"\n", "version = \"27.0.1\"\ntest-binding = true\n");
+        Path cache = TestCaches.dir("helidon-quickstart-cache");
+        lock(project, cache);
+
+        BuildPlan plan = plan(project, cache);
+        BuildPlanResult built = plan.run();
+        assertThat(built.errors()).isEmpty();
+        assertThat(built.success()).isTrue();
+        assertThat(binding(project, "test-classes", "TestApplicationBinding"))
+                .as("helidon-test-binding wrote TestApplicationBinding beside the test classes")
+                .isNotEmpty();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        assertThat(tests.failed()).isZero();
+        assertThat(tests.succeeded()).isPositive();
+    }
+
+    /** What an empty binding extends; the real one does not mention it. */
+    private static final String EMPTY_BINDING = "io/helidon/service/registry/EmptyBinding";
+
+    /**
+     * The class file a binding step wrote under its output {@code dir} ({@code classes} for
+     * helidon-binding, {@code test-classes} for helidon-test-binding), as text.
+     */
+    private static String binding(Path project, String dir, String simpleName) throws IOException {
+        String step = dir.equals("classes") ? "helidon-binding" : "helidon-test-binding";
+        Path file = project.resolve("target/plugin/" + step + "/" + dir + "/io/helidon/examples/quickstart/inject/"
+                + simpleName + ".class");
+        assertThat(file).isRegularFile();
+        return new String(Files.readAllBytes(file), StandardCharsets.ISO_8859_1);
+    }
+
+    private static void edit(Path file, String from, String to) throws IOException {
+        String text = Files.readString(file);
+        assertThat(text).contains(from);
+        Files.writeString(file, text.replace(from, to));
     }
 
     private static Path fixture(Path tmp, String name) throws Exception {
@@ -141,6 +255,11 @@ class HelidonQuickstartE2eTest {
     }
 
     private static BuildPlan plan(Path project, Path cache) throws Exception {
+        return plan(project, cache, false);
+    }
+
+    /** The full build, or with {@code compileOnly} the compile goal {@code jk dev} rebuilds with. */
+    private static BuildPlan plan(Path project, Path cache, boolean compileOnly) throws Exception {
         return BuildPlanner.fullPlan(new BuildPlanner.Inputs(
                 project,
                 cache,
@@ -154,7 +273,7 @@ class HelidonQuickstartE2eTest {
                 false,
                 false,
                 false,
-                false,
+                compileOnly,
                 Set.of(),
                 SessionContext.current()));
     }

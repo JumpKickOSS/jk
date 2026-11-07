@@ -13,6 +13,7 @@ import java.util.Optional;
  * @param generateMain whether the binding step also generates {@code ApplicationMain}, the
  *     reflection-free entry point
  * @param validate whether the binding step fails the build on an invalid injection graph
+ * @param testBinding whether a step generates {@code TestApplicationBinding} for the test scope
  * @param layout what the module's deployable is
  * @param declarative whether the module uses Helidon Declarative, whose code generators run
  */
@@ -21,6 +22,7 @@ public record HelidonSettings(
         Optional<Boolean> binding,
         boolean generateMain,
         boolean validate,
+        boolean testBinding,
         Layout layout,
         boolean declarative) {
 
@@ -37,7 +39,16 @@ public record HelidonSettings(
                 config.bool("binding"),
                 config.bool("generate-main", false),
                 config.bool("validate", true),
+                config.bool("test-binding", false),
                 "jar".equals(config.stringOpt("layout").orElse("libs")) ? Layout.JAR : Layout.LIBS,
                 config.bool("declarative", false));
+    }
+
+    /**
+     * Whether the binding step is registered: unless {@code binding = false}, since an unset
+     * {@code binding} is decided by the compiled classes, and always for {@code generate-main}.
+     */
+    public boolean bindingStep() {
+        return binding.orElse(true) || generateMain;
     }
 }

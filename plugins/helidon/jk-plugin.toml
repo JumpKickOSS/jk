@@ -1,7 +1,9 @@
 # Built-in Helidon plugin, for Helidon 27 and later (SE; 27 ships no MicroProfile).
 # Declarative: the platform BOM, Helidon's annotation processors, the test JVM's config profile and
-# Helidon's <name>.jar + libs/ deployable. The worker carries no step yet: binding, generate-main and
-# validate are read from the table for the step that generates the application binding.
+# Helidon's <name>.jar + libs/ deployable. The worker's two steps run helidon-service-maven-plugin's
+# create-application and create-test-application goals without Maven: helidon-binding (the real
+# application binding, and ApplicationMain with generate-main, over the module's classes) and
+# helidon-test-binding (TestApplicationBinding on the test classpath, with test-binding).
 # Giter8 trees: src/main/resources/templates/java/helidon/{quickstart,declarative}.g8/ (jk new -t
 # helidon/quickstart); their questions are diffed against Helidon's archetypes by
 # HelidonArchetypeOptionsTest.
@@ -21,9 +23,10 @@ protocol-prefix = "##JKHEL:"
 [schema]
 version       = { type = "string", required = true, min-version = "27", example = "27.0.1", hint = "io.helidon:helidon-dependencies version, 27 or later — a release such as 27.0.1 (exact), ^27 for the newest 27.x, or latest" }
 # Tri-state: absent = on when a class carries @Service.GenerateBinding.
-binding       = { type = "bool" }
-generate-main = { type = "bool", default = false }
-validate      = { type = "bool", default = true }
+binding       = { type = "bool", hint = "generate the application binding after compile (helidon-service-maven-plugin's create-application); unset: when a class carries @Service.GenerateBinding" }
+generate-main = { type = "bool", default = false, hint = "also generate ApplicationMain, the reflection-free entry point; point [application] main at it" }
+validate      = { type = "bool", default = true, hint = "validate the injection graph while generating the binding; an invalid graph fails the build with Helidon's findings" }
+test-binding  = { type = "bool", default = false, hint = "also generate TestApplicationBinding for the test scope (create-test-application), on the test classpath" }
 layout        = { type = "string", default = "libs", one-of = ["libs", "jar"], hint = "libs (default): target/<name>.jar + target/libs/, Helidon's deployable; jar: the plain jar alone" }
 declarative   = { type = "bool", default = false }
 
@@ -51,6 +54,15 @@ when       = { classpath-has = "io.helidon.service:helidon-service-registry" }
 [[contribute.processor-dependency]]
 coordinate = "io.helidon.bundles:helidon-bundles-apt:${config.version}"
 when       = { config = "declarative", equals = "true" }
+
+# The binding steps' tool: helidon-service-maven-plugin's generators and their Helidon + ClassGraph
+# closure, at the locked Helidon release. Its Maven dependencies are provided scope, so the closure
+# holds no Maven class; the worker forks it with its own adapter in place of the Mojos.
+[[contribute.step-dependency]]
+artifact   = "helidon-service-maven-plugin"
+coordinate = "io.helidon.service:helidon-service-maven-plugin:${config.version}"
+transitive = true
+for-step   = ["helidon-binding", "helidon-test-binding"]
 
 # What Helidon's application parent passes Surefire: tests read application-test.yaml.
 [contribute.test-system-properties]
