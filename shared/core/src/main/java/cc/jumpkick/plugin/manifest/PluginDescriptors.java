@@ -38,8 +38,8 @@ public final class PluginDescriptors {
         if (plugin == null) {
             throw new JkBuildParseException(displayPath + " is missing the required [plugin] table");
         }
-        String id = requireString(plugin, "id", displayPath);
-        String table = requireString(plugin, "table", displayPath);
+        String id = requireString(plugin, "id", displayPath + ".plugin");
+        String table = requireString(plugin, "table", displayPath + ".plugin");
         String version = plugin.getString("version");
         String jkCompat = plugin.getString("jk-compat");
         if (enforceJkCompat) requireJkCompat(id, jkCompat);
@@ -827,10 +827,11 @@ public final class PluginDescriptors {
         };
     }
 
-    private static String requireString(TomlTable table, String key, String displayPath) {
+    /** {@code table}'s string {@code key}; {@code where} is the table's path, so the error names {@code where.key}. */
+    private static String requireString(TomlTable table, String key, String where) {
         String v = table.getString(key);
         if (v == null || v.isBlank()) {
-            throw new JkBuildParseException(displayPath + ".plugin." + key + " is required");
+            throw new JkBuildParseException(where + "." + key + " is required");
         }
         return v;
     }
