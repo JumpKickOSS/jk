@@ -35,6 +35,15 @@ public final class Exit {
     /** The build ran and its tests did not all pass. */
     public static final int TESTS_FAILED = 4;
 
+    /**
+     * The dependency resolve could not produce a lock: an unsatisfiable graph, an artifact no
+     * repository has, an unreachable repository, a source that does not build. {@code jk lock}
+     * exits with it, and so does every build, test or run whose lock freshen fails before a module
+     * starts; the solver's or the repository's reason travels with it (the terminal's
+     * {@code errors} under {@code -O jsonl}, the failure wedge on a terminal).
+     */
+    public static final int RESOLVE = 6;
+
     /** {@code EX_USAGE}: the command line itself was wrong (missing/unknown args). */
     public static final int USAGE = 64;
 
