@@ -23,6 +23,8 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -36,6 +38,10 @@ class ImageAotCacheE2eTest {
     private static final String BASE = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc";
 
     @Test
+    @DisabledOnOs(
+            value = OS.MAC,
+            architectures = "aarch64",
+            disabledReason = "the amd64 image runs emulated there, and its JVM refuses the AOT cache")
     void an_image_with_aot_cache_ships_a_cache_its_jvm_maps(@TempDir Path tmp) throws Exception {
         String runtime = AotCacheTrainer.containerRuntime(null);
         Assumptions.assumeTrue(runtime != null, "no container runtime on PATH");
