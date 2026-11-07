@@ -83,6 +83,7 @@ class PlannerVersionsTest {
                 List.of(source, descriptor),
                 List.of(main),
                 List.of(),
+                List.of(),
                 dir.resolve("out"),
                 17,
                 List.of(),
@@ -95,6 +96,7 @@ class PlannerVersionsTest {
         CompileRequest plain = PlannerVersions.versionsCompileRequest(
                 List.of(source),
                 List.of(main),
+                List.of(),
                 List.of(),
                 dir.resolve("out"),
                 17,

@@ -49,7 +49,7 @@ class PlannerGuardSuiteTest {
                 .isEqualTo(layout.moduleTargetDir().resolve("guard").resolve("classes"));
         // the request the forecast keys and the request the build runs are one body
         var req = PlannerGuardSuite.guardCompileRequest(
-                List.of(), cp, List.of(), layout.guardClassesDir(), 25, List.of(), module);
+                List.of(), cp, List.of(), List.of(), layout.guardClassesDir(), 25, List.of(), module);
         assertThat(req.outputDir()).isEqualTo(layout.guardClassesDir());
         assertThat(req.classpath()).isEqualTo(cp);
     }

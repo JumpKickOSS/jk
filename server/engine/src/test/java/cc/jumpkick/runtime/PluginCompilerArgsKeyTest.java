@@ -98,6 +98,7 @@ class PluginCompilerArgsKeyTest {
                 List.of(src.resolve("App.java")),
                 List.of(),
                 List.of(),
+                List.of(),
                 BuildLayout.of(project, build),
                 project.resolve("target/classes/main"),
                 25,

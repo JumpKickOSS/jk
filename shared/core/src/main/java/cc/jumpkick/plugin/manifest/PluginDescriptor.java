@@ -152,6 +152,8 @@ public record PluginDescriptor(
             List<CompilerArgs> compilerArgs,
             List<NativeArgs> nativeArgs,
             List<KotlinPlugin> kotlinPlugins,
+            /** {@code [[contribute.processor-dependency]]}: annotation processors appended to the compiles' processor paths. */
+            List<ProcessorDependency> processorDependencies,
             List<PackagerDependency> packagerDependencies,
             List<StepDependency> stepDependencies,
             /**
@@ -171,14 +173,15 @@ public record PluginDescriptor(
             @Nullable ConditionalDependencies conditionalDependencies) {
 
         public static final Contributions NONE = new Contributions(
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null,
-                null, List.of(), null);
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), null, null, List.of(), null);
 
         public Contributions {
             platformDependencies = platformDependencies == null ? List.of() : List.copyOf(platformDependencies);
             compilerArgs = compilerArgs == null ? List.of() : List.copyOf(compilerArgs);
             nativeArgs = nativeArgs == null ? List.of() : List.copyOf(nativeArgs);
             kotlinPlugins = kotlinPlugins == null ? List.of() : List.copyOf(kotlinPlugins);
+            processorDependencies = processorDependencies == null ? List.of() : List.copyOf(processorDependencies);
             packagerDependencies = packagerDependencies == null ? List.of() : List.copyOf(packagerDependencies);
             stepDependencies = stepDependencies == null ? List.of() : List.copyOf(stepDependencies);
             commandDependencies = commandDependencies == null ? List.of() : List.copyOf(commandDependencies);
@@ -191,6 +194,7 @@ public record PluginDescriptor(
             return platformDependencies.isEmpty()
                     && compilerArgs.isEmpty()
                     && kotlinPlugins.isEmpty()
+                    && processorDependencies.isEmpty()
                     && packagerDependencies.isEmpty()
                     && stepDependencies.isEmpty()
                     && commandDependencies.isEmpty()
@@ -404,6 +408,17 @@ public record PluginDescriptor(
             args = args == null ? List.of() : List.copyOf(args);
         }
     }
+
+    /**
+     * An annotation processor the plugin appends to the processor path: the root coordinate of a
+     * closure {@code jk lock} pins, and which compiles it joins ({@code main} is compile-main,
+     * {@code test} compile-test).
+     */
+    public record ProcessorDependency(
+            String coordinate,
+            boolean main,
+            boolean test,
+            @Nullable Condition when) {}
 
     /** Kotlin compiler plugin: BTA id, jar coordinate, options. */
     public record KotlinPlugin(

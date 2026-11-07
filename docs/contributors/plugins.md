@@ -172,6 +172,11 @@ coordinate = "org.jetbrains.kotlin:kotlin-noarg-compiler-plugin-embeddable:${kot
 options    = ["preset=jpa"]
 when       = { classpath-has = "jakarta.persistence:jakarta.persistence-api" }
 
+[[contribute.processor-dependency]]   # an annotation processor appended to the module's
+coordinate = "io.helidon.service:helidon-service-codegen:${config.version}"   # processor path
+when       = { classpath-has = "io.helidon.service:helidon-service-registry" }
+scope      = "both"                   # main | test | both (default): compile-main, compile-test
+
 [[contribute.step-dependency]]        # a tool your steps (and packagers) read — engine-fetched,
 artifact   = "aapt2"                  # handed to the worker by name, in the key of each step
 coordinate = "com.android.tools.build:aapt2:9.3.1-15703166:${host.os}"
@@ -206,6 +211,25 @@ the first the root, the rest `with` it in one closure — so the lint plugin's
 A tool both lanes need is declared once, as a `step-dependency` — commands receive both lanes,
 so one artifact may not sit in both (parse error). `[[contribute.provided-classpath]]` resolves
 against the step lane only: a command-only tool never joins a compile classpath.
+
+**Annotation processors.** A `[[contribute.processor-dependency]]` is appended to the processor
+path of compile-main (`scope = "main"`), compile-test (`"test"`) or both (the default, and what a
+codegen processor wants: tests carry annotated types too); the main path also reaches the
+test-fixtures, guard-suite and multi-release compiles, which run compile-main's processors. It is
+appended to whichever path the module has — the one its `[processor-dependencies]` declares, or
+the compile classpath when it declares none and a classpath jar registers a processor — so the
+plugin's processors run beside Lombok whether the user declared Lombok or just depends on it, and a
+contribution never turns discovery off ([Annotation processors](../user/build.md#annotation-processors)).
+Its coordinate (`group:artifact:version`, one per entry, a `${config.<key>}` your platform reads
+being the locked platform version as for any tool) is the root of a closure `jk lock` resolves from
+its POMs and pins as a closure row, each jar by digest, exactly like a `transitive` step tool: the
+build fetches the pinned jars and resolves nothing, and a contribution the lock has no closure for
+makes the lock stale. `classpath-has` reads the module's locked rows, as it does for compiler args.
+A module that declares the same `group:artifact` itself keeps its own: in `[processor-dependencies]`
+the contribution steps aside from both compiles, in `[test-processor-dependencies]` from compile-test
+— the rule `[[contribute.platform-dependency]]` follows against `[platform-dependencies]`. The
+build and `jk explain` derive the contributed jars from one body, so a forecast keys the
+`-processorpath` the build hands javac.
 
 **Archives (`unpack`).** A `coordinate` (not `transitive`) or `url` entry with `unpack = true` is
 a zip handed over unpacked: extracted once into scratch space (`state/tmp/unpacked/<sha256 of the

@@ -3,9 +3,11 @@ package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -237,6 +239,70 @@ public final class PluginContributions {
                 }
             }
         }
+        return out;
+    }
+
+    /**
+     * One annotation processor an active plugin appends to the processor path: the closure {@code
+     * jk lock} pins for its coordinate, and whether compile-main and compile-test run it.
+     */
+    public record ProcessorDep(StepDep closure, boolean main, boolean test) {}
+
+    /**
+     * The active plugins' {@code [[contribute.processor-dependency]]} entries with conditions
+     * evaluated against {@code classpathModules} (the lock's {@code group:artifact} names) and
+     * coordinates interpolated, each a transitive tool closure. A {@code ${config.<key>}} the
+     * plugin's platform reads is the version the lock pinned ({@link #toolConfig}). An entry whose
+     * {@code group:artifact} the module declares itself is left to the module's declaration: in
+     * {@code [processor-dependencies]} for both compiles, in {@code [test-processor-dependencies]}
+     * for compile-test.
+     */
+    public static List<ProcessorDep> processorDependencies(
+            JkBuild build, @Nullable Path moduleDir, Map<String, String> platformPins, Set<String> classpathModules) {
+        List<ProcessorDep> out = new ArrayList<>();
+        Set<String> declaredMain = declaredModules(build, Scope.PROCESSOR);
+        Set<String> declaredTest = declaredModules(build, Scope.TEST_PROCESSOR);
+        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
+            if (manifest.contributions().processorDependencies().isEmpty()) continue;
+            PluginConfig declared = build.pluginConfig(manifest.id()).orElse(null);
+            if (declared == null) continue;
+            PluginConfig config = toolConfig(manifest, declared, build, platformPins);
+            for (PluginDescriptor.ProcessorDependency pd :
+                    manifest.contributions().processorDependencies()) {
+                if (!holds(
+                        pd.when(),
+                        config,
+                        build.project(),
+                        build.nativeConfigOpt().isPresent(),
+                        classpathModules,
+                        manifest.id())) {
+                    continue;
+                }
+                String coordinate = Interpolation.resolve(pd.coordinate(), config, build.project(), null);
+                PlatformDep split = splitCoordinate(coordinate, manifest.id());
+                boolean main = pd.main() && !declaredMain.contains(split.module());
+                boolean test =
+                        pd.test() && !declaredMain.contains(split.module()) && !declaredTest.contains(split.module());
+                if (!main && !test) continue;
+                out.add(new ProcessorDep(new StepDep(split.module(), coordinate, true, null, null), main, test));
+            }
+        }
+        return out;
+    }
+
+    /** The closures of {@link #processorDependencies}: what {@code jk lock} pins for them. */
+    public static List<StepDep> processorClosures(
+            JkBuild build, @Nullable Path moduleDir, Map<String, String> platformPins, Set<String> classpathModules) {
+        List<StepDep> out = new ArrayList<>();
+        for (ProcessorDep dep : processorDependencies(build, moduleDir, platformPins, classpathModules)) {
+            out.add(dep.closure());
+        }
+        return out;
+    }
+
+    private static Set<String> declaredModules(JkBuild build, Scope scope) {
+        Set<String> out = new LinkedHashSet<>();
+        for (Dependency dep : build.dependencies().of(scope)) out.add(dep.module());
         return out;
     }
 

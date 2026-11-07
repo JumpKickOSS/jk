@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JavaCompilerHost;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
@@ -33,14 +35,22 @@ import org.junit.jupiter.api.io.TempDir;
  * classpath registers, exactly as compile-main does. The fixture uses a source-generating
  * processor: a test source annotated with {@code @gen.Gen} references the generated {@code
  * <Type>Gen} type, so if the processor does not run the symbol is missing and the compile fails.
+ * A second processor stands in for one a plugin contributes, which runs beside the module's own.
  */
 class CompileTestProcessorTest {
 
     private static final String TEST_SRC =
             "package app; @gen.Gen public class WidgetTest { final Object g = new WidgetTestGen(); }";
 
+    /** A test source both processors must run over: it references what each one generates. */
+    private static final String BOTH_SRC = "package app; @gen.Gen @gen2.Gen2 public class WidgetTest {"
+            + " final Object g = new WidgetTestGen(); final Object g2 = new WidgetTestGen2(); }";
+
     /** The processor every case compiles against, built once: its fixture javac is not what is under test. */
     private static Path procDir;
+
+    /** A second processor, standing in for one a plugin contributes: {@code @gen2.Gen2} makes {@code <Type>Gen2}. */
+    private static Path pluginProcDir;
 
     /** One job scope for the class, so every case compiles on the warm worker a build's compile-test uses. */
     private static JavaCompilerHost.Scope job;
@@ -49,7 +59,8 @@ class CompileTestProcessorTest {
 
     @BeforeAll
     static void buildProcessor(@TempDir Path shared) throws IOException {
-        procDir = sourceGenProcessor(shared);
+        procDir = sourceGenProcessor(shared.resolve("proc"), "gen", "Gen");
+        pluginProcDir = sourceGenProcessor(shared.resolve("plugin-proc"), "gen2", "Gen2");
         job = JavaCompilerHost.open();
         JobWorkers.close();
     }
@@ -82,6 +93,7 @@ class CompileTestProcessorTest {
                                 CompileSupport.collectJavaSources(testSrc),
                                 List.of(procDir),
                                 List.of(procDir), // processor jar on cp AND processorpath
+                                List.of(),
                                 out,
                                 21,
                                 List.of(),
@@ -129,7 +141,69 @@ class CompileTestProcessorTest {
         assertThat(out.resolve("app/WidgetTestGen.class")).doesNotExist();
     }
 
+    @Test
+    void declaredAndContributedProcessorsBothRun(@TempDir Path dir) throws Exception {
+        // The module declares one processor and a plugin contributes another: javac runs both, so
+        // a user adding their own processor does not silently drop the plugin's codegen.
+        Path testSrc = dir.resolve("test").resolve("src");
+        write(testSrc, "app/WidgetTest.java", BOTH_SRC);
+        Path out = dir.resolve("out");
+
+        boolean ok =
+                compile(dir, testSrc, List.of(procDir, pluginProcDir), List.of(procDir), List.of(pluginProcDir), out);
+
+        assertThat(ok).isTrue();
+        assertThat(out.resolve("app/WidgetTestGen.class")).isRegularFile();
+        assertThat(out.resolve("app/WidgetTestGen2.class")).isRegularFile();
+    }
+
+    @Test
+    void discoveredAndContributedProcessorsBothRun(@TempDir Path dir) throws Exception {
+        // Nothing declared, a processor registered on the classpath, and a plugin's contributed: the
+        // contribution leaves discovery on, so the classpath's processor still runs beside it.
+        Path testSrc = dir.resolve("test").resolve("src");
+        write(testSrc, "app/WidgetTest.java", BOTH_SRC);
+        Path out = dir.resolve("out");
+
+        boolean ok = compile(dir, testSrc, List.of(procDir, pluginProcDir), List.of(), List.of(pluginProcDir), out);
+
+        assertThat(ok).isTrue();
+        assertThat(out.resolve("app/WidgetTestGen.class")).isRegularFile();
+        assertThat(out.resolve("app/WidgetTestGen2.class")).isRegularFile();
+    }
+
+    @Test
+    void compileMainHandsJavacTheDeclaredPathThenTheContributedOne(@TempDir Path dir) {
+        PlannerCompile.MainCompile in = new PlannerCompile.MainCompile(
+                List.of(dir.resolve("src/A.java")),
+                List.of(procDir, pluginProcDir),
+                List.of(procDir),
+                List.of(pluginProcDir),
+                BuildLayout.of(dir, JkBuildParser.parse("""
+                        name = "m"
+                        group = "g"
+                        version = "1"
+                        """)),
+                dir.resolve("out"),
+                21,
+                List.of(),
+                JavacConfig.EMPTY,
+                Path.of(System.getProperty("java.home")),
+                false,
+                false,
+                null,
+                null);
+
+        assertThat(PlannerCompile.mainCompileRequest(in).processorPath()).containsExactly(procDir, pluginProcDir);
+    }
+
     private static boolean compile(Path dir, Path testSrc, List<Path> classpath, List<Path> processorPath, Path out)
+            throws Exception {
+        return compile(dir, testSrc, classpath, processorPath, List.of(), out);
+    }
+
+    private static boolean compile(
+            Path dir, Path testSrc, List<Path> classpath, List<Path> processorPath, List<Path> contributed, Path out)
             throws Exception {
         return TestSupport.compileWithCache(
                         new NoopContext(),
@@ -138,6 +212,7 @@ class CompileTestProcessorTest {
                                 CompileSupport.collectJavaSources(testSrc),
                                 classpath,
                                 processorPath,
+                                contributed,
                                 out,
                                 21,
                                 List.of(),
@@ -154,49 +229,50 @@ class CompileTestProcessorTest {
 
     // ---- fixtures ---------------------------------------------------------
 
-    /** Source-generating processor: emits {@code <Type>Gen} for each {@code @gen.Gen} type. */
-    private static Path sourceGenProcessor(Path dir) throws IOException {
-        Path proc = dir.resolve("proc");
+    /** Source-generating processor: emits {@code <Type><ann>} for each {@code @<pkg>.<ann>} type. */
+    private static Path sourceGenProcessor(Path proc, String pkg, String ann) throws IOException {
         compile(
                 proc,
                 Map.of(
-                        "gen.Gen", """
-                        package gen;
+                        pkg + "." + ann,
+                        """
+                        package $PKG;
                         import java.lang.annotation.*;
                         @Retention(RetentionPolicy.SOURCE) @Target(ElementType.TYPE)
-                        public @interface Gen {}
-                        """,
-                        "gen.GenProc", """
-                        package gen;
+                        public @interface $ANN {}
+                        """.replace("$PKG", pkg).replace("$ANN", ann),
+                        pkg + "." + ann + "Proc",
+                        """
+                        package $PKG;
                         import javax.annotation.processing.*;
                         import javax.lang.model.SourceVersion;
                         import javax.lang.model.element.*;
                         import javax.tools.JavaFileObject;
                         import java.io.*;
                         import java.util.Set;
-                        @SupportedAnnotationTypes("gen.Gen")
-                        public class GenProc extends AbstractProcessor {
+                        @SupportedAnnotationTypes("$PKG.$ANN")
+                        public class $ANNProc extends AbstractProcessor {
                             public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
                             public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
-                                for (Element e : r.getElementsAnnotatedWith(Gen.class)) {
+                                for (Element e : r.getElementsAnnotatedWith($ANN.class)) {
                                     if (!(e instanceof TypeElement t)) continue;
-                                    String pkg = processingEnv.getElementUtils().getPackageOf(t).getQualifiedName().toString();
-                                    String name = (pkg.isEmpty()?"":pkg+".") + t.getSimpleName() + "Gen";
+                                    String p = processingEnv.getElementUtils().getPackageOf(t).getQualifiedName().toString();
+                                    String name = (p.isEmpty()?"":p+".") + t.getSimpleName() + "$ANN";
                                     try {
                                         JavaFileObject f = processingEnv.getFiler().createSourceFile(name, t);
                                         try (Writer w = f.openWriter()) {
-                                            w.write((pkg.isEmpty()?"":"package "+pkg+";\\n") + "public class " + t.getSimpleName() + "Gen {}\\n");
+                                            w.write((p.isEmpty()?"":"package "+p+";\\n") + "public class " + t.getSimpleName() + "$ANN {}\\n");
                                         }
                                     } catch (IOException ex) { throw new UncheckedIOException(ex); }
                                 }
                                 return true;
                             }
                         }
-                        """));
+                        """.replace("$PKG", pkg).replace("$ANN", ann)));
         Files.writeString(
                 Files.createDirectories(proc.resolve("META-INF/services"))
                         .resolve("javax.annotation.processing.Processor"),
-                "gen.GenProc\n");
+                pkg + "." + ann + "Proc\n");
         return proc;
     }
 

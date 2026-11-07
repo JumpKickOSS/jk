@@ -405,6 +405,7 @@ public final class PlannerTest {
                         src.javacSources(),
                         javaCp,
                         processorCp,
+                        ctx.require(CONTRIBUTED_TEST_PROCESSOR_CP),
                         javaTestOut,
                         ctx.require(PROJECT).javac().testRelease(ctx.require(RELEASE)),
                         javacArgs,

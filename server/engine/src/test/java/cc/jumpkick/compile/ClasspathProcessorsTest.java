@@ -48,15 +48,38 @@ class ClasspathProcessorsTest {
         Path helper = jar(tmp.resolve("log4j-api.jar"), false);
         Path declared = jar(tmp.resolve("mapstruct-processor.jar"), true);
 
-        assertThat(PlannerCompile.effectiveProcessorPath(List.of(), List.of(helper, lombok)))
+        assertThat(PlannerCompile.effectiveProcessorPath(List.of(), List.of(), List.of(helper, lombok)))
                 .as("no declaration: the whole classpath is the processor path, as javac searches it")
                 .containsExactly(helper, lombok);
-        assertThat(PlannerCompile.effectiveProcessorPath(List.of(), List.of(helper)))
+        assertThat(PlannerCompile.effectiveProcessorPath(List.of(), List.of(), List.of(helper)))
                 .as("a classpath registering no processor hands javac none")
                 .isEmpty();
-        assertThat(PlannerCompile.effectiveProcessorPath(List.of(declared), List.of(helper, lombok)))
+        assertThat(PlannerCompile.effectiveProcessorPath(List.of(declared), List.of(), List.of(helper, lombok)))
                 .as("a declaration shadows the classpath's processors")
                 .containsExactly(declared);
+    }
+
+    @Test
+    void a_plugins_processors_join_whichever_path_the_module_has(@TempDir Path tmp) throws IOException {
+        Path lombok = jar(tmp.resolve("lombok.jar"), true);
+        Path helper = jar(tmp.resolve("log4j-api.jar"), false);
+        Path declared = jar(tmp.resolve("mapstruct-processor.jar"), true);
+        Path codegen = jar(tmp.resolve("helidon-codegen-apt.jar"), true);
+        Path codegenHelper = jar(tmp.resolve("helidon-codegen.jar"), false);
+        List<Path> contributed = List.of(codegen, codegenHelper);
+
+        assertThat(PlannerCompile.effectiveProcessorPath(List.of(), contributed, List.of(helper)))
+                .as("nothing declared or discovered: the plugin's processors alone")
+                .containsExactly(codegen, codegenHelper);
+        assertThat(PlannerCompile.effectiveProcessorPath(List.of(declared), contributed, List.of(helper, lombok)))
+                .as("a declared path keeps its processors and gains the plugin's")
+                .containsExactly(declared, codegen, codegenHelper);
+        assertThat(PlannerCompile.effectiveProcessorPath(List.of(), contributed, List.of(helper, lombok)))
+                .as("a contribution leaves discovery on: the classpath's processors still run")
+                .containsExactly(helper, lombok, codegen, codegenHelper);
+        assertThat(PlannerCompile.effectiveProcessorPath(List.of(codegen), contributed, List.of(helper)))
+                .as("each jar once")
+                .containsExactly(codegen, codegenHelper);
     }
 
     @Test

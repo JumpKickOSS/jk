@@ -69,6 +69,7 @@ class ForecastKeyOwnerTest {
                 List.of(src),
                 List.of(),
                 List.of(),
+                List.of(),
                 layout,
                 layout.classesDir(),
                 25,
@@ -94,6 +95,7 @@ class ForecastKeyOwnerTest {
         // computes a different key. That is exactly the drift the forecast used to ship.
         CompileRequest bare = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
                 List.of(src),
+                List.of(),
                 List.of(),
                 List.of(),
                 layout,
@@ -127,6 +129,7 @@ class ForecastKeyOwnerTest {
                 List.of(src),
                 List.of(),
                 List.of(),
+                List.of(),
                 out,
                 25,
                 List.of("-Xlint:all"),
@@ -144,6 +147,7 @@ class ForecastKeyOwnerTest {
 
         CompileRequest bare = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
                 List.of(src),
+                List.of(),
                 List.of(),
                 List.of(),
                 out,
@@ -185,6 +189,7 @@ class ForecastKeyOwnerTest {
                 List.of(src),
                 List.of(),
                 List.of(),
+                List.of(),
                 layout,
                 layout.classesDir(),
                 25,
@@ -203,6 +208,7 @@ class ForecastKeyOwnerTest {
                 List.of(src),
                 List.of(),
                 List.of(),
+                List.of(),
                 layout.testClassesDir(),
                 25,
                 List.of("-Xlint:all"),
@@ -217,6 +223,7 @@ class ForecastKeyOwnerTest {
                 project.build().javac().args());
         CompileRequest relaxed = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
                 List.of(src),
+                List.of(),
                 List.of(),
                 List.of(),
                 layout,
@@ -264,6 +271,7 @@ class ForecastKeyOwnerTest {
             JkBuild project, BuildLayout layout, Path src, Path jdk, DebugInfo debug) {
         return PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
                 List.of(src),
+                List.of(),
                 List.of(),
                 List.of(),
                 layout,

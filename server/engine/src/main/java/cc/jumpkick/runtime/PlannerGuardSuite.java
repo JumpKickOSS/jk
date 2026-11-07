@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
 import static cc.jumpkick.runtime.BuildPlanner.COMPILE_TEST_CP;
+import static cc.jumpkick.runtime.BuildPlanner.CONTRIBUTED_PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
@@ -79,6 +80,7 @@ public final class PlannerGuardSuite {
             List<Path> sources,
             List<Path> classpath,
             List<Path> processorPath,
+            List<Path> contributedProcessors,
             Path outputDir,
             int release,
             List<String> javacArgs,
@@ -90,7 +92,7 @@ public final class PlannerGuardSuite {
                 .release(release)
                 .extraOptions(javacArgs)
                 .javaHome(javaHome)
-                .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, classpath))
+                .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, contributedProcessors, classpath))
                 .build();
     }
 
@@ -113,6 +115,7 @@ public final class PlannerGuardSuite {
             boolean compact,
             BuildLayout layout,
             List<Path> processorCp,
+            List<Path> contributedProcessors,
             int release,
             List<String> javacArgs,
             Path javaHome,
@@ -145,6 +148,7 @@ public final class PlannerGuardSuite {
                 src,
                 classpath(project, layout, testCompileCp, library),
                 processorCp,
+                contributedProcessors,
                 layout.guardClassesDir(),
                 release,
                 javacArgs,
@@ -208,6 +212,7 @@ public final class PlannerGuardSuite {
                             sources,
                             classpath,
                             processorCp,
+                            ctx.require(CONTRIBUTED_PROCESSOR_CP),
                             out,
                             ctx.require(RELEASE),
                             ctx.require(JAVAC_ARGS),
@@ -296,6 +301,7 @@ public final class PlannerGuardSuite {
                 p.compact(),
                 p.layout(),
                 p.javacProcessorCp(),
+                p.contributedProcessors().main(),
                 p.release(),
                 p.javacArgs(),
                 p.javaHome(),

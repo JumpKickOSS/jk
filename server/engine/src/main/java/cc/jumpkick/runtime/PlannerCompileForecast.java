@@ -79,6 +79,7 @@ final class PlannerCompileForecast {
                 mainSrc,
                 cp,
                 prepared.javacProcessorCp(),
+                prepared.contributedProcessors().main(),
                 layout,
                 out,
                 release,

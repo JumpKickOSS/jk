@@ -223,6 +223,7 @@ public final class ForecastScope implements StepForecast.Scope {
             List<String> javacArgs,
             List<Path> processorCp,
             List<Path> testProcessorCp,
+            ContributedProcessors.Paths contributedProcessors,
             ActivePlugins.@Nullable Declared plugin,
             @Nullable PluginDeclarations pkgDecls,
             Path mainSrcDir,
@@ -292,6 +293,9 @@ public final class ForecastScope implements StepForecast.Scope {
         List<Path> processorCp = PlannerSupport.processorClasspath(
                 dir, project, lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)), false);
         List<Path> testProcessorCp = ProcessorPaths.forecastTest(project, lock, resolver, dir, processorCp);
+        // The processors the module's plugins contribute, resolved by the build's own derivation:
+        // left out, every module of such a plugin forecasts a compile the build then hits.
+        ContributedProcessors.Paths contributedProcessors = ContributedProcessors.forecast(project, dir, lock, cas);
         // Resolved once: the declarations decide both the generated source roots compile-main
         // folds in and, at package time, whether jk packs the jar or a plugin does.
         ActivePlugins.@Nullable Declared plugin = PackagingKeys.pluginFor(project, layout, cache);
@@ -334,6 +338,7 @@ public final class ForecastScope implements StepForecast.Scope {
                 javacArgs,
                 processorCp,
                 testProcessorCp,
+                contributedProcessors,
                 plugin,
                 pkgDecls,
                 mainSrcDir,

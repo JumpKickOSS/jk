@@ -104,6 +104,7 @@ class PlannerFixturesTest {
                 sources,
                 List.of(layout.classesDir()),
                 List.of(),
+                List.of(),
                 layout.testFixturesClassesDir(),
                 25,
                 List.of("-Xlint:all"),
@@ -120,6 +121,7 @@ class PlannerFixturesTest {
         CompileRequest again = PlannerFixtures.fixturesCompileRequest(
                 PlannerFixtures.forecastSources(project, module),
                 List.of(layout.classesDir()),
+                List.of(),
                 List.of(),
                 layout.testFixturesClassesDir(),
                 25,
@@ -170,6 +172,7 @@ class PlannerFixturesTest {
         CompileRequest req = PlannerFixtures.fixturesCompileRequest(
                 List.of(),
                 List.of(layout.classesDir()),
+                List.of(),
                 List.of(),
                 layout.testFixturesClassesDir(),
                 25,

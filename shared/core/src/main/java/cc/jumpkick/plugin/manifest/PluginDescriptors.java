@@ -301,6 +301,8 @@ public final class PluginDescriptors {
         List<PluginDescriptor.NativeArgs> nativeArgs = parseNativeArgs(contribute, schemaKeys, displayPath);
         List<PluginDescriptor.SourceRoot> sourceRoots = parseSourceRoots(contribute, displayPath);
         List<PluginDescriptor.KotlinPlugin> kotlinPlugins = parseKotlinPlugins(contribute, schemaKeys, displayPath);
+        List<PluginDescriptor.ProcessorDependency> processorDeps =
+                parseProcessorDependencies(contribute, schemaKeys, displayPath);
         List<PluginDescriptor.PackagerDependency> packagerDeps =
                 parsePackagerDependencies(contribute, schemaKeys, displayPath);
         List<PluginDescriptor.StepDependency> stepDeps =
@@ -326,6 +328,7 @@ public final class PluginDescriptors {
                 compilerArgs,
                 nativeArgs,
                 kotlinPlugins,
+                processorDeps,
                 packagerDeps,
                 stepDeps,
                 commandDeps,
@@ -481,6 +484,36 @@ public final class PluginDescriptors {
             kotlinPlugins.add(new PluginDescriptor.KotlinPlugin(id, coordinate, options, parseCondition(t, where)));
         }
         return kotlinPlugins;
+    }
+
+    /**
+     * {@code [[contribute.processor-dependency]]}: a {@code coordinate} each, at most once per
+     * plugin, and the compiles it joins ({@code scope}: {@code main}, {@code test} or {@code both},
+     * the default).
+     */
+    private static List<PluginDescriptor.ProcessorDependency> parseProcessorDependencies(
+            TomlTable contribute, Set<String> schemaKeys, String displayPath) {
+        List<PluginDescriptor.ProcessorDependency> out = new ArrayList<>();
+        for (TomlTable t : tableArray(contribute, "processor-dependency", displayPath)) {
+            String where = displayPath + ".contribute.processor-dependency";
+            String coordinate = requireString(t, "coordinate", where);
+            Interpolation.validate(coordinate, schemaKeys, where);
+            if (coordinate.split(":").length != 3) {
+                throw new JkBuildParseException(
+                        where + ".coordinate must be \"group:artifact:version\" — got: " + coordinate);
+            }
+            if (out.stream().anyMatch(d -> d.coordinate().equals(coordinate))) {
+                throw new JkBuildParseException(where + ": `" + coordinate + "` is declared twice");
+            }
+            String scope = t.getString("scope");
+            if (scope == null) scope = "both";
+            if (!List.of("main", "test", "both").contains(scope)) {
+                throw new JkBuildParseException(where + ".scope must be `main`, `test` or `both` — got: " + scope);
+            }
+            out.add(new PluginDescriptor.ProcessorDependency(
+                    coordinate, !scope.equals("test"), !scope.equals("main"), parseCondition(t, where)));
+        }
+        return out;
     }
 
     private static List<PluginDescriptor.PackagerDependency> parsePackagerDependencies(
