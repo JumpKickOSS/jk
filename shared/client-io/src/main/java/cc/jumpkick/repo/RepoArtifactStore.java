@@ -172,8 +172,12 @@ public final class RepoArtifactStore {
      * Make a loopback tree this process's: once per tree per process, a tree whose marker carries
      * another process's token (or none) is removed whole, so a stub that reappears on a reused port
      * in a later run never serves a predecessor's artifacts from disk; the first write then marks the
-     * tree with this process's token, and a tree so marked is left as it is — within one process the
-     * port is one holder. A tree nothing is written to is not created.
+     * tree with this process's token, and a tree so marked is left as it is. That does not make the
+     * port one holder within a process: a long-running engine outlives many stubs, and two that bind
+     * the same port in its lifetime share this check. What keeps them apart is the URL, not this
+     * cleanup: a stub whose base path carries a token of its own start has a store id of its own, so
+     * a later stub on the same port reads a different tree. A tree nothing is written to is not
+     * created.
      */
     private void claim() {
         Path tree = Objects.requireNonNull(root, "a loopback store has a root");
