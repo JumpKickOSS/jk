@@ -13,6 +13,7 @@ k8s = true
 AGENTS.md
 README.md
 app.yaml
+jk-guards.toml
 jk.toml
 src/main/java/com/acme/GreetService.java
 src/main/java/com/acme/Main.java
@@ -121,6 +122,7 @@ k8s = false
 .gitignore
 AGENTS.md
 README.md
+jk-guards.toml
 jk.toml
 src/main/java/com/acme/GreetService.java
 src/main/java/com/acme/Main.java
@@ -214,6 +216,7 @@ k8s = true
 AGENTS.md
 README.md
 app.yaml
+jk-guards.toml
 jk.toml
 src/main/java/com/acme/GreetService.java
 src/main/java/com/acme/Main.java
@@ -336,6 +339,7 @@ k8s = false
 .gitignore
 AGENTS.md
 README.md
+jk-guards.toml
 jk.toml
 src/main/java/com/acme/GreetService.java
 src/main/java/com/acme/Main.java
@@ -446,6 +450,7 @@ k8s = true
 AGENTS.md
 README.md
 app.yaml
+jk-guards.toml
 jk.toml
 src/main/java/com/acme/GreetService.java
 src/main/java/com/acme/Main.java
@@ -551,6 +556,7 @@ k8s = true
 AGENTS.md
 README.md
 app.yaml
+jk-guards.toml
 jk.toml
 resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
 resources/application.yaml
@@ -657,6 +663,7 @@ k8s = false
 .gitignore
 AGENTS.md
 README.md
+jk-guards.toml
 jk.toml
 resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
 resources/application.yaml
@@ -751,6 +758,7 @@ k8s = false
 .gitignore
 AGENTS.md
 README.md
+jk-guards.toml
 jk.toml
 resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
 resources/application.yaml
@@ -860,6 +868,7 @@ k8s = false
 .gitignore
 AGENTS.md
 README.md
+jk-guards.toml
 jk.toml
 resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
 resources/application.yaml
@@ -963,6 +972,7 @@ k8s = false
 .gitignore
 AGENTS.md
 README.md
+jk-guards.toml
 jk.toml
 src/main/java/com/acme/GreetService.java
 src/main/java/com/acme/Main.java
@@ -1066,6 +1076,7 @@ k8s = false
 .gitignore
 AGENTS.md
 README.md
+jk-guards.toml
 jk.toml
 src/main/java/com/acme/GreetService.java
 src/main/java/com/acme/Main.java
@@ -1172,6 +1183,7 @@ k8s = true
 AGENTS.md
 README.md
 app.yaml
+jk-guards.toml
 jk.toml
 src/main/java/com/acme/GreetService.java
 src/main/java/com/acme/Main.java
