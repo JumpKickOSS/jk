@@ -3,6 +3,7 @@ package cc.jumpkick.command.project;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.tui.ChangeSummary;
 import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
@@ -39,22 +40,36 @@ public final class AgentWiring {
         return ENV.isBound() ? ENV.get().apply(name) : System.getenv(name);
     }
 
-    /** Wire {@code dir} and report what was written on stderr. */
+    /** Wire {@code dir} and print what it wrote and the steps left to the user. */
     public static void report(Path dir) throws IOException {
-        for (String line : run(dir)) CliOutput.err(line);
+        print(run(dir), dir, "Agent notes");
+    }
+
+    /** {@code report}'s files as a tree under {@code dir}'s name, then its notes numbered under {@code title}. */
+    public static void print(AgentSetup.Report report, Path dir, String title) {
+        ChangeSummary.printChanges(ChangeSummary.name(dir), changes(report), dir);
+        ChangeSummary.printNotes(title, "note", report.notes());
+        if (!report.changes().isEmpty() || !report.notes().isEmpty()) CliOutput.out("");
+    }
+
+    /** {@code report}'s files as the summary renders them. */
+    public static List<ChangeSummary.Change> changes(AgentSetup.Report report) {
+        return report.changes().stream()
+                .map(c -> new ChangeSummary.Change(c.action(), c.file()))
+                .toList();
     }
 
     /**
-     * Wire {@code dir}; the lines say what was written or skipped, none when all was current. A
-     * failure to seed the graph never fails the caller.
+     * Wire {@code dir}; the report says what was written and what is left to the user. A failure to
+     * seed the graph never fails the caller.
      */
-    public static List<String> run(Path dir) throws IOException {
+    public static AgentSetup.Report run(Path dir) throws IOException {
         return run(dir, AgentSetup.Mode.parse(env("JK_AGENTS")));
     }
 
     /** As {@link #run(Path)} for an explicit {@code mode}. */
-    public static List<String> run(Path dir, AgentSetup.Mode mode) throws IOException {
-        List<String> lines = AgentSetup.install(dir, mode, hosts());
+    public static AgentSetup.Report run(Path dir, AgentSetup.Mode mode) throws IOException {
+        AgentSetup.Report lines = AgentSetup.install(dir, mode, hosts());
         boolean project = Files.isRegularFile(ManifestPaths.manifestIn(dir));
         if (mode != AgentSetup.Mode.NONE && project && !GraphLayout.built(dir)) {
             seedGraph(dir);
@@ -62,8 +77,8 @@ public final class AgentWiring {
         return lines;
     }
 
-    /** Take jk's entries out of {@code dir}; the lines say what changed. */
-    public static List<String> remove(Path dir) throws IOException {
+    /** Take jk's entries out of {@code dir}; the report says what changed. */
+    public static AgentSetup.Report remove(Path dir) throws IOException {
         return AgentSetup.remove(dir);
     }
 

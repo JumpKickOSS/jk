@@ -39,9 +39,23 @@ public final class ProjectImport {
 
     private ProjectImport() {}
 
-    public record Outcome(int exit, int warnings, @Nullable String error, List<Path> wrote) {
+    /**
+     * What an import did: its exit code, each issue the report lists, the error behind a non-zero
+     * exit, the files it wrote for the user, and the report it wrote ({@code null} when none).
+     */
+    public record Outcome(
+            int exit,
+            List<String> issues,
+            @Nullable String error,
+            List<Path> wrote,
+            @Nullable Path report) {
         public Outcome {
+            issues = issues == null ? List.of() : List.copyOf(issues);
             wrote = wrote == null ? List.of() : List.copyOf(wrote);
+        }
+
+        static Outcome failed(int exit, @Nullable String error) {
+            return new Outcome(exit, List.of(), error, List.of(), null);
         }
     }
 
@@ -70,7 +84,7 @@ public final class ProjectImport {
             Consumer<String> progress,
             PinRaise raise) {
         if (source == null || out == null) {
-            return new Outcome(Exit.USAGE, 0, "import requires source and out", List.of());
+            return Outcome.failed(Exit.USAGE, "import requires source and out");
         }
         try {
             String filename = source.getFileName().toString().toLowerCase(Locale.ROOT);
@@ -99,7 +113,7 @@ public final class ProjectImport {
                 importReport = result.report();
                 machineRepositories = result.machineRepositories();
             } else {
-                return new Outcome(Exit.USAGE, 0, "unrecognised source: " + source.getFileName(), List.of());
+                return Outcome.failed(Exit.USAGE, "unrecognised source: " + source.getFileName());
             }
 
             Path effectiveBaseDir = baseDir != null ? baseDir : Objects.requireNonNull(source.getParent());
@@ -110,12 +124,11 @@ public final class ProjectImport {
             }
             if (!overwrite && !dryRun) {
                 String refusal = overwriteRefusal(manifests.keySet(), effectiveBaseDir);
-                if (refusal != null) return new Outcome(Exit.CANT_CREATE, 0, refusal, List.of());
+                if (refusal != null) return Outcome.failed(Exit.CANT_CREATE, refusal);
             }
             List<Path> wrote = new ArrayList<>();
             if (dryRun) {
                 importReport = dryRun(importReport, manifests.keySet(), frontend, effectiveBaseDir);
-                for (ImportReport.Issue issue : importReport.issues()) progress.accept(issue.message());
             } else {
                 for (FrontendFiles.Move move : frontend.moves()) {
                     Path dir = move.to().getParent();
@@ -157,11 +170,13 @@ public final class ProjectImport {
                 Path rDir = reportTarget.getParent();
                 if (rDir != null) OwnerOnlyFiles.createDirectories(rDir);
                 MarkdownReports.write(reportTarget, importReport.renderMarkdown(source.toString()));
-                wrote.add(reportTarget);
             }
-            return new Outcome(0, importReport.issues().size(), null, wrote);
+            List<String> issues = importReport.issues().stream()
+                    .map(ImportReport.Issue::message)
+                    .toList();
+            return new Outcome(0, issues, null, wrote, reportTarget);
         } catch (IOException e) {
-            return new Outcome(1, 0, e.getMessage(), List.of());
+            return Outcome.failed(1, e.getMessage());
         }
     }
 

@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.docs.AgentsGuide;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.terminal.Width;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -17,15 +19,20 @@ class AgentsCommandTest {
     @Test
     void agents_creates_then_reports_current_and_keeps_project_text(@TempDir Path dir) throws Exception {
         Path file = dir.resolve(AgentsGuide.FILE);
-        String created = Capture.stdout(
-                () -> assertThat(Jk.execute("agents", dir.toString())).isEqualTo(Exit.SUCCESS));
-        assertThat(created.lines().findFirst()).contains("created " + file);
+        String created = Width.stripAnsi(Capture.stdout(
+                () -> assertThat(Jk.execute("agents", dir.toString())).isEqualTo(Exit.SUCCESS)));
+        assertThat(created)
+                .as(created)
+                .contains("Wrote AGENTS.md")
+                .contains("Agent notes: 1 note")
+                .contains(" 1) " + AgentSetup.TRUST_NOTE)
+                .contains("Wired " + dir.getFileName() + " for coding agents");
         assertThat(Files.readString(file)).isEqualTo(AgentsGuide.newFile());
 
         Files.writeString(file, Files.readString(file) + "\n## Project rules\n");
-        String current = Capture.stdout(
-                () -> assertThat(Jk.execute("agents", dir.toString())).isEqualTo(Exit.SUCCESS));
-        assertThat(current.lines().findFirst()).contains(file + " is current");
+        String current = Width.stripAnsi(Capture.stdout(
+                () -> assertThat(Jk.execute("agents", dir.toString())).isEqualTo(Exit.SUCCESS)));
+        assertThat(current).doesNotContain("Wrote").contains(dir.getFileName() + " is already wired");
         assertThat(Files.readString(file)).endsWith("\n## Project rules\n");
     }
 

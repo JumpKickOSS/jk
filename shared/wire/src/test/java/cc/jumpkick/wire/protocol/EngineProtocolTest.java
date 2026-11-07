@@ -545,10 +545,9 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(note, "kind")).isEqualTo("wrote");
         assertThat(Jsonl.str(note, "text")).isEqualTo("/p/jk.toml");
 
-        String finish = ProtoEvents.planFinishImport("", true, 0, 3, null);
+        String finish = ProtoEvents.planFinishImport("", true, 0, null);
         assertThat(EngineProtocol.typeOf(finish)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.intValue(finish, "importExit", -1)).isEqualTo(0);
-        assertThat(Jsonl.intValue(finish, "importWarnings", -1)).isEqualTo(3);
         assertThat(Jsonl.str(finish, "importError")).isNull();
     }
 

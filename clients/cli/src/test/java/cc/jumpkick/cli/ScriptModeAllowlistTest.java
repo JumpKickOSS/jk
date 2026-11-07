@@ -31,7 +31,6 @@ class ScriptModeAllowlistTest {
      */
     private static final Set<String> ALWAYS_SCRIPT_MODE = Set.of(
             "jk agent-hook",
-            "jk agents",
             "jk auth token",
             "jk bsp", // bare `jk bsp` is `serve`: JSON-RPC on stdio
             "jk cache dir",

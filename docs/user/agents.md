@@ -30,7 +30,7 @@ never edits it. A file jk cannot parse as strict JSON is left as it was, with a 
 `JK_AGENTS=none` makes `jk agents`, `new`, `init` and `import` write `AGENTS.md` only; `JK_AGENTS=all` wires every
 agent. An agent counts as present when its marker exists in the project (`.claude/`, `.cursor/`, …),
 when the calling shell belongs to it, or when its CLI is on `PATH` (`claude`, `cursor-agent`,
-`gemini`, `opencode`, `grok`, `agy`, `muse`).
+`gemini`, `opencode`, `agy`, `codex`).
 
 ### What you still do by hand
 
@@ -69,13 +69,10 @@ Text searches pass untouched.
 
 | agy (`agy` on `PATH`, or `.agents/rules/` exists) | `.agents/rules/jk.md` | an always-on rule, owned by jk: take `callers` and `rename` answers as final instead of re-opening the files they name |
 
-Two agents read `AGENTS.md` only in a folder the user has trusted, which jk cannot do on your behalf,
-so `jk agents` prints the step as a `next:` line instead:
-
-| Agent | Step |
-|---|---|
-| grok | accept grok's trust prompt in the project once |
-| muse | trust the workspace when muse asks, or run muse with `--trust-workspace` |
+Most agents read `AGENTS.md` and a project's MCP files (`.mcp.json` and the rest) only in a folder
+you have trusted, which jk cannot do on your behalf. `jk agents`, `jk new` and `jk import` list that
+step, and any other step left to you (Codex's `codex mcp add`), as numbered notes after the files
+they wrote.
 
 Only Claude Code gets the hook and an allow-list written; the others get the MCP server and the
 guide. `jk agents --remove` leaves `AGENTS.md` in Gemini's `context.fileName`, since a project may
