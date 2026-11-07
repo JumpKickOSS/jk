@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -50,7 +51,10 @@ public final class RunVerb implements BuildVerb {
 
     private Path cache = Path.of("");
 
-    private RunVerb(List<String> appArgs, @Nullable DebugJvm debugJvm) {
+    /** Client-resolved GraalVM home per always-native module the run builds; empty when it links none. */
+    private AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
+
+    RunVerb(List<String> appArgs, @Nullable DebugJvm debugJvm) {
         this.appArgs = List.copyOf(appArgs);
         this.debugJvm = debugJvm;
     }
@@ -95,12 +99,29 @@ public final class RunVerb implements BuildVerb {
         return -1;
     }
 
+    /** The GraalVM homes a native module links with, resolved here as {@code jk build} resolves them. */
+    @Override
+    public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
+        return prepared(AlwaysNativeGraal.reached(run, entryDir, selection));
+    }
+
+    /** {@code resolved} kept for the request: an exit code when it could not be decided, else {@code -1}. */
+    int prepared(Optional<AlwaysNativeGraal.Graal> resolved) {
+        if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
+        this.graal = resolved.get();
+        return -1;
+    }
+
+    /** The goal this run asks the engine for, with the GraalVM homes the client resolved. */
+    WorkspaceSpec spec() {
+        // The run goal, not a plain build: a selected run builds the cone the module runs on.
+        return graal.onto(WorkspaceSpec.of(WorkspaceTarget.RUN));
+    }
+
     @Override
     public WorkspaceResult workspace(BuildRun run, Path entryDir, List<String> modules, WorkspaceBuildListener listener)
             throws IOException {
-        // The run goal, not a plain build: a selected run builds the cone the module runs on.
-        return EngineClient.buildWorkspace(
-                EnginePaths.current(), run.request(entryDir, modules, WorkspaceSpec.of(WorkspaceTarget.RUN)), listener);
+        return EngineClient.buildWorkspace(EnginePaths.current(), run.request(entryDir, modules, spec()), listener);
     }
 
     @Override
