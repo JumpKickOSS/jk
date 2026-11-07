@@ -51,6 +51,8 @@
 
   /* Named chrome/state values — one home for the palette (color means state, never decoration). */
   --header-bg: #0a0d11;             /* sticky nav: a touch darker than the page */
+  --header-h: 64px;                 /* the sticky header bar */
+  --statusbar-h: 34px;              /* the fixed footer status bar; pages keep this much room below */
   --header-bd: #1c2833;
   --run-line: #5ab0ff;              /* running step-node border — brighter than --run on --runc fill */
   --run-fg: #d6ecff;                /* running step-node text */
@@ -135,7 +137,7 @@ body {
   font: 13.5px/1.5 var(--mono);
   -webkit-font-smoothing: antialiased;
   /* room for the fixed footer status bar (see .statusbar) */
-  padding-bottom: 34px;
+  padding-bottom: var(--statusbar-h);
 }
 
 .spacer { flex: 1; }
@@ -152,7 +154,7 @@ header {
   display: flex;
   align-items: center;
   gap: 16px;
-  height: 64px;
+  height: var(--header-h);
   padding: 0 20px;
   background: var(--header-bg);
   border-bottom: 1px solid rgba(var(--cn-rgb), 0.18);
@@ -1728,7 +1730,7 @@ button.browse:hover::before {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 34px;
+  height: var(--statusbar-h);
   display: flex;
   align-items: center;
   gap: 14px;
@@ -2560,9 +2562,23 @@ table.stats.history tr.pinned td { background: rgba(var(--cn-rgb), 0.12); }
 .wz-cmd { color: var(--ok); user-select: all; }
 .wizard-actions { border-top: 1px solid var(--bd2); padding-top: 12px !important; margin-top: 8px !important; }
 .wizard-preview {
-  position: sticky; top: 72px;
+  position: sticky; top: calc(var(--header-h) + 8px);
   background: var(--s1); border: 1px solid var(--bd2); border-radius: var(--r-xl);
-  padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 100px); overflow: auto;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; overflow: auto;
+  /* stuck under the header, it ends 16px above the status bar */
+  max-height: calc(100vh - var(--header-h) - 8px - var(--statusbar-h) - 16px);
+}
+/* Beside the form, the page fills the viewport between the header and the status bar and the
+ * preview fills its column: it sizes as if empty (contain: size), so the form alone sets the row,
+ * and stretches to the row, scrolling inside. The page does not scroll unless the form outgrows the
+ * viewport, so the status bar never sits over the preview, in a full-page screenshot included. */
+@media (min-width: 961px) {
+  main.wizard-page {
+    display: flex; flex-direction: column; box-sizing: border-box;
+    min-height: calc(100vh - var(--header-h) - var(--statusbar-h));
+  }
+  .wizard-page .wizard { flex: 1; }
+  .wizard-preview { position: static; align-self: stretch; contain: size; max-height: none; }
 }
 .wz-pv-head { display: flex; align-items: baseline; gap: 10px; }
 .wz-path { color: var(--path); overflow-wrap: anywhere; }
