@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import static cc.jumpkick.config.WorkspaceModules.expand;
+
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -36,7 +42,8 @@ import org.tomlj.TomlTable;
  * resolved through, is on the list; a lock source no manifest declares is a user-level
  * {@code ~/.jk/config.toml} repository leaking into the lock, and is named as such). A value a
  * member inherits from the root is judged at the root, or at the member when the rule's scope leaves
- * the root out ({@link Manifest#judgedBy}).
+ * the root out ({@link Manifest#judgedBy}). The root is read as its own file says, without the
+ * plugins a user's {@code ~/.jk/config.toml} pins: those are not the project's to judge.
  */
 final class ToolchainEvaluator implements Evaluator {
 
@@ -79,7 +86,7 @@ final class ToolchainEvaluator implements Evaluator {
     public Evaluation evaluate(Rule rule, EvalContext ctx) throws IOException {
         List<Manifest> manifests = new ArrayList<>();
         Path rootManifest = ManifestPaths.manifestIn(ctx.root());
-        if (Files.isRegularFile(rootManifest)) manifests.add(Manifest.root(JkBuildParser.parse(rootManifest)));
+        if (Files.isRegularFile(rootManifest)) manifests.add(Manifest.root(JkBuildParser.parseLocal(rootManifest)));
         for (Path m : ctx.modules()) {
             Path f = ManifestPaths.manifestIn(m);
             if (Files.isRegularFile(f) && !f.equals(rootManifest))
@@ -95,15 +102,58 @@ final class ToolchainEvaluator implements Evaluator {
      * The mutation-time entry: {@code proposed} is the manifest text about to be written for {@code
      * module}, whose {@code jk.toml} is {@code file}. It is read as the build reads that file, with
      * what it inherits, and judged through {@link #judge}, so a rule scoped elsewhere never refuses
-     * it and an inherited value is judged where {@code jk guard} judges it.
+     * it and an inherited value is judged where {@code jk guard} judges it. A root edit is judged
+     * at the root and at every member whose inherited values it changes, as {@code jk guard} will
+     * read each of them once the edit is written.
      */
     static Evaluation evaluateProposed(
             Rule rule, Path root, String module, Path file, String proposed, @Nullable Lockfile lock) {
         JkBuild local = JkBuildParser.parseLocal(proposed, file);
         Path dir = file.toAbsolutePath().normalize().getParent();
-        Manifest m = module.isEmpty() || dir == null ? Manifest.root(local) : Manifest.member(root, dir, local);
         // The lock is what the last resolution did, not what this edit does: its arm is the build's.
-        return judge(rule, List.of(m), null);
+        if (!module.isEmpty() && dir != null) return judge(rule, List.of(Manifest.member(root, dir, local)), null);
+        List<Manifest> manifests = new ArrayList<>();
+        manifests.add(Manifest.root(local));
+        manifests.addAll(inheritors(root, local));
+        return judge(rule, manifests, null);
+    }
+
+    /**
+     * The members whose inherited values {@code proposed}, the root's next manifest, changes, each
+     * read with what it inherits from {@code proposed}. A member whose inherited values the edit
+     * leaves alone is not the edit's to judge; one that does not read is the build's to report.
+     */
+    private static List<Manifest> inheritors(Path root, JkBuild proposed) {
+        Path rootManifest = ManifestPaths.manifestIn(root);
+        JkBuild current = null;
+        try {
+            if (Files.isRegularFile(rootManifest)) current = JkBuildParser.parseLocal(rootManifest);
+        } catch (UserConfigParseException unparsed) {
+            throw unparsed; // config.toml's own error, with its position — never this site's fallback
+        } catch (IOException | JkBuildParseException unreadable) {
+            Log.debug("inheritors: an unreadable root leaves every inherited value the edit's", unreadable);
+        }
+        List<Manifest> out = new ArrayList<>();
+        for (String entry : expand(root, proposed.workspaceModules())) {
+            Path dir = root.resolve(entry).normalize();
+            Path f = ManifestPaths.manifestIn(dir);
+            if (!Files.isRegularFile(f) || f.equals(rootManifest)) continue;
+            try {
+                JkBuild local = JkBuildParser.parseLocal(f);
+                if (!local.project().inheritsFromWorkspace()) continue;
+                JkBuild next = WorkspaceLoader.inheritFromRoot(local, proposed);
+                if (current != null
+                        && next.project()
+                                .equals(WorkspaceLoader.inheritFromRoot(local, current)
+                                        .project())) continue;
+                out.add(new Manifest(WorkspaceModel.rel(root, dir), local, next));
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed;
+            } catch (IOException | JkBuildParseException unreadable) {
+                Log.debug("inheritors: a member that does not read is its build's to report", unreadable);
+            }
+        }
+        return out;
     }
 
     /**

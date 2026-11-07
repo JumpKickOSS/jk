@@ -158,4 +158,30 @@ class VocabularyEvaluatorTest {
                 .extracting(Observation::file)
                 .contains("../sib/src/main/java/x/S.java", "mod/src/main/java/x/Uses.java");
     }
+
+    @Test
+    void a_member_nested_in_another_holds_its_own_files(@TempDir Path root) throws Exception {
+        Path m = module(root);
+        Path nested = Files.createDirectories(m.resolve("test/src/main/java/x"));
+        Files.writeString(nested.resolve("N.java"), "package x;\nclass N { String a = \"compile-main\"; }\n");
+        Files.writeString(
+                root.resolve(GuardsPresence.RULES_FILE),
+                "[guards.v]\nkind = \"vocabulary\"\nwhy = \"w\"\ninstead = \"Owner.X\"\nowner = \"" + OWNER
+                        + "\"\nsource-set = \"all\"\nscope = [\"mod\"]\n");
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        Rule rule = load.rules().rule("v").orElseThrow();
+        ClassFacts s = FactsExtractor.extract(FixtureBytes.of(Sample.class));
+        FactsIndex idx = new FactsIndex(Map.of(s.name(), s), Map.of(), "");
+        List<Path> modules = List.of(m, m.resolve("test"));
+        EvalContext ctx = new EvalContext(Lane.TREE, root, "", null, modules, () -> idx, () -> null, List::of);
+
+        Evaluation e = Evaluators.forKind(rule.kind()).evaluate(rule, ctx);
+
+        assertThat(e.observations())
+                .as("mod/test is a member of its own, outside the rule's scope, though its directory is under mod's")
+                .extracting(Observation::file)
+                .contains("mod/src/main/java/x/Uses.java")
+                .doesNotContain("mod/test/src/main/java/x/N.java");
+    }
 }

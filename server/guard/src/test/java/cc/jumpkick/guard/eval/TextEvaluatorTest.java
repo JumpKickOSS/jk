@@ -307,4 +307,48 @@ class TextEvaluatorTest {
                 .isEmpty();
         assertThat(files.moduleOf("README.md")).isEmpty();
     }
+
+    @Test
+    void a_scoped_text_rule_finds_its_owner_file_outside_its_scope(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+                [workspace]
+                modules = ["core", "app"]
+                """);
+        for (String m : List.of("core", "app")) {
+            Files.createDirectories(root.resolve(m + "/src/main/java/p"));
+            Files.writeString(
+                    root.resolve(m + "/jk.toml"),
+                    "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\njdk = 25\n");
+        }
+        Files.writeString(
+                root.resolve("core/src/main/java/p/Wire.java"), "package p;\nclass Wire { String p = \"##JKX:\"; }\n");
+        Files.writeString(
+                root.resolve("app/src/main/java/p/Host.java"), "package p;\nclass Host { String p = \"##JKX:\"; }\n");
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.wire-prefix]
+                kind = "text"
+                pattern = "##JKX:"
+                blank = "none"
+                owner = ["core/src/main/java/p/Wire.java"]
+                scope = ["app"]
+                instead = "Wire.PREFIX"
+                why = "w"
+                """);
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        EvalContext ctx = new EvalContext(
+                Lane.TREE, root, "", null, WorkspaceModules.of(root), () -> FactsIndex.EMPTY, () -> null, List::of);
+
+        Evaluation e = ev(LaneRun.evaluate(LaneRun.rulesFor(Lane.TREE, load.rules(), ""), ctx), "wire-prefix");
+
+        assertThat(e.outcome()).as(e.note()).isEqualTo(Outcome.VIOLATIONS);
+        assertThat(e.observations())
+                .as("the owner in core is read, not judged; the copy in app, in scope, is the violation")
+                .extracting(Observation::file)
+                .containsExactly("app/src/main/java/p/Host.java");
+    }
 }
