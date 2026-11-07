@@ -123,6 +123,9 @@ def repositoryModel(MavenArtifactRepository repo) {
             }
         }
         if (groups) r.groups = groups.unique()
+        // mavenContent { releasesOnly() } / snapshotsOnly(): the kinds of version the repository is asked for.
+        if (privateField(descriptor, 'releases') == false) r.releases = false
+        if (privateField(descriptor, 'snapshots') == false) r.snapshots = false
         if (unmapped) r.unmappedContent = unmapped
     } catch (Throwable ignored) {
     }

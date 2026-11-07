@@ -539,15 +539,17 @@ sibling (two projects sharing a name are each named by their path, with a row), 
 repository other than Central is hoisted onto the root under its Gradle `name` (`repoN` for
 Gradle's generated `maven`, `maven2`, …), the groups its `content { includeGroup … }` filter
 includes as its `groups` (`includeGroupAndSubgroups` adds `g.*`; a filter narrower than a group is
-a row). A repository credential the build reads from an environment variable
+a row), and `mavenContent { releasesOnly() }` / `snapshotsOnly()` as `snapshots = false` /
+`releases = false`. A repository credential the build reads from an environment variable
 (`System.getenv("GITLAB_TOKEN")`, as header or password credentials) is never written into the
 project: a project's `jk.toml` may read no variable but the repository's own `JK_REPO_<ID>_*`
 ([Who may write a `${VAR}` reference](repositories.md#who-may-write-a-var-reference)). The import
-appends the repository to `~/.jk/config.toml` instead, with `groups` and a `${VAR}` reference to
-that variable (`token = "${GITLAB_TOKEN}"`), so it is sent from this machine and the group is asked
-of nothing else; a table of that name already there is left alone, with a row. A row names the CI
-recipe (`JK_REPO_<ID>_TOKEN` with `JK_REPO_<ID>_HOST`), and a credential no variable holds asks for
-`jk repo login <id>`. Configurations land in the table that
+appends the repository to `~/.jk/config.toml` instead, with `groups` and a reference to that
+variable (`token = "${env:GITLAB_TOKEN}"`), so it is sent from this machine and the group is asked
+of nothing else; a table of that name at another URL is left alone, with a row. A row names the CI
+recipe: `JK_REPO_<ID>_TOKEN` with `JK_REPO_<ID>_HOST`, or for a GitLab package registry
+`JK_REPO_<ID>_USERNAME=gitlab-ci-token` and `JK_REPO_<ID>_PASSWORD=$CI_JOB_TOKEN`; a credential no
+variable holds asks for `jk repo login <id>`. Configurations land in the table that
 means the same thing: `implementation` and `api` in `[dependencies]`, `compileOnly` and
 `compileOnlyApi` in `[provided-dependencies]`, `runtimeOnly` in `[runtime-dependencies]`,
 `testImplementation` and `testRuntimeOnly` in `[test-dependencies]` — `testCompileOnly` too, with

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ToolProvisioning;
+import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -13,7 +14,9 @@ import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -270,6 +273,65 @@ class GradleModelQueryNetworkTest {
         assertThat(appBuild.build().javac().args())
                 .as("--release is jk's to pass")
                 .isEmpty();
+    }
+
+    /**
+     * A named repository's content filter, its release policy and the variable its header
+     * credential reads come out of the fork as Gradle evaluates them; the value itself never does.
+     */
+    @Test
+    void a_filtered_repository_with_an_environment_credential_imports_its_name_groups_and_variable(@TempDir Path tmp)
+            throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("ws"));
+        Files.createDirectories(root.resolve("gradle/wrapper"));
+        Files.writeString(
+                root.resolve("gradle/wrapper/gradle-wrapper.properties"),
+                "distributionUrl=https\\://services.gradle.org/distributions/gradle-" + GradleResolver.DEFAULT_VERSION
+                        + "-bin.zip\n");
+        Files.writeString(root.resolve("settings.gradle.kts"), """
+                rootProject.name = "ws"
+                include("lib")
+                """);
+        Files.writeString(root.resolve("build.gradle.kts"), "");
+        Path lib = Files.createDirectories(root.resolve("lib"));
+        Files.writeString(lib.resolve("build.gradle.kts"), """
+                plugins { `java-library` }
+                repositories {
+                    mavenCentral()
+                    maven {
+                        url = uri("https://packages.corp.invalid/api/v4/projects/7/packages/maven")
+                        name = "CorpPackages"
+                        credentials(HttpHeaderCredentials::class) {
+                            name = "Private-Token"
+                            value = System.getenv("JK_TEST_CORP_PULL_TOKEN")
+                        }
+                        authentication { create<HttpHeaderAuthentication>("header") }
+                        content { includeGroup("com.corp") }
+                        mavenContent { releasesOnly() }
+                    }
+                }
+                """);
+        Path source = lib.resolve("src/main/java/corp/Lib.java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "package corp; public class Lib {}");
+        GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
+                JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
+        Map<String, String> shell = new HashMap<>(System.getenv());
+        shell.put("JK_TEST_CORP_PULL_TOKEN", "glpat-not-a-real-token-0123456789");
+
+        GradleBuildImport.Result result = RequestShell.where(
+                shell, () -> gradle.importBuild(root.resolve("settings.gradle.kts"), progress -> {}));
+
+        assertThat(result.root().repositories()).singleElement().satisfies(r -> {
+            assertThat(r.name()).isEqualTo("corppackages");
+            assertThat(r.groups()).containsExactly("com.corp");
+            assertThat(r.snapshots()).isFalse();
+        });
+        assertThat(result.machineRepositories()).singleElement().satisfies(t -> assertThat(t.credential())
+                .containsExactly(Map.entry("token", "${env:JK_TEST_CORP_PULL_TOKEN}")));
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .noneSatisfy(m -> assertThat(m).contains("glpat-not-a-real-token"));
     }
 
     private static JkBuild module(GradleBuildImport.Result result, String path) {

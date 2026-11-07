@@ -30,7 +30,11 @@ record GradleModel(
             String name,
             List<String> groups,
             List<String> unmappedContent,
-            @Nullable Credential credential) {}
+            @Nullable Credential credential,
+            /** False under {@code mavenContent { snapshotsOnly() }}. */
+            boolean releases,
+            /** False under {@code mavenContent { releasesOnly() }}. */
+            boolean snapshots) {}
 
     /**
      * A repository's credential as the names of the environment variables holding it, never its
@@ -225,6 +229,8 @@ record GradleModel(
     static final String TEST = "test";
     static final String VENDOR = "vendor";
     static final String CREDENTIAL = "credential";
+    static final String RELEASES = "releases";
+    static final String SNAPSHOTS = "snapshots";
     static final String GROUPS = "groups";
     static final String KIND = "kind";
     static final String NAME = "name";
@@ -287,7 +293,9 @@ record GradleModel(
                                     str(c, KIND),
                                     Jsonl.topStr(c, SECRET_ENV),
                                     Jsonl.topStr(c, USERNAME_ENV),
-                                    Jsonl.topStr(c, USERNAME))));
+                                    Jsonl.topStr(c, USERNAME)),
+                    Jsonl.bool(r, RELEASES, true),
+                    Jsonl.bool(r, SNAPSHOTS, true)));
         }
         return out;
     }

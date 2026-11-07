@@ -188,11 +188,35 @@ class GradleModelImporterTest {
         assertThat(result.machineRepositories()).singleElement().satisfies(t -> {
             assertThat(t.name()).isEqualTo("gitlab");
             assertThat(t.groups()).containsExactly("com.acme.internal");
-            assertThat(t.credential()).containsExactly(Map.entry("token", "${ACME_PULL_TOKEN}"));
+            assertThat(t.credential()).containsExactly(Map.entry("token", "${env:ACME_PULL_TOKEN}"));
         });
         assertThat(messages(result.report()))
-                .anySatisfy(m -> assertThat(m).contains("${ACME_PULL_TOKEN}").contains("JK_REPO_GITLAB_HOST="))
+                .anySatisfy(m -> assertThat(m)
+                        .contains("${env:ACME_PULL_TOKEN}")
+                        .contains("JK_REPO_GITLAB_USERNAME=gitlab-ci-token")
+                        .contains("JK_REPO_GITLAB_PASSWORD=$CI_JOB_TOKEN")
+                        .contains("JK_REPO_GITLAB_HOST=gitlab.example"))
                 .anySatisfy(m -> assertThat(m).contains("com.other:lib"));
+    }
+
+    /** {@code mavenContent { releasesOnly() }} is {@code snapshots = false}; another host's CI recipe is the generic one. */
+    @Test
+    void a_releases_only_repository_is_asked_for_no_snapshots() {
+        String model = THREE_MODULES.replace(
+                "{\"url\":\"https://maven.acme.example/releases/\",\"name\":\"maven\"}",
+                "{\"url\":\"https://maven.acme.example/releases/\",\"name\":\"acme\",\"snapshots\":false,"
+                        + "\"credential\":{\"kind\":\"header\",\"secretEnv\":\"ACME_TOKEN\"}}");
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
+
+        assertThat(result.root().repositories()).singleElement().satisfies(r -> {
+            assertThat(r.releases()).isTrue();
+            assertThat(r.snapshots()).isFalse();
+        });
+        assertThat(messages(result.report())).anySatisfy(m -> assertThat(m)
+                .contains("export JK_REPO_ACME_TOKEN")
+                .contains("JK_REPO_ACME_HOST=maven.acme.example"));
     }
 
     /** A credential no environment variable holds is a row asking for a login, and nothing is written for it. */
