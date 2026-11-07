@@ -129,7 +129,9 @@ class NewProjectWizardE2eTest {
 
     @BeforeEach
     void page() {
-        context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1360, 900));
+        // Narrow enough that the page column starts under the header's hanging logo, so the
+        // screenshots show the heading clearing it.
+        context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1280, 900));
         page = context.newPage();
     }
 
