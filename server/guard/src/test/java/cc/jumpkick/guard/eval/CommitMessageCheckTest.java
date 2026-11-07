@@ -52,7 +52,7 @@ class CommitMessageCheckTest {
                 .contains("Instead:  author commits as a human contributor")
                 .contains("Why:      attribution trailers are noise in blame")
                 .contains("Explain:  jk guard explain no-agent-trailers");
-        assertThat(bad.render()).contains("2 violations").contains("the commit was refused");
+        assertThat(bad.render()).contains("2 violations").contains("commit refused");
         CommitMessageCheck.Result ok = CommitMessageCheck.check(
                 rules, "Fix the thing\n\nBecause it was broken.\n\nCo-Authored-By: A Human <a@example.com>\n");
         assertThat(ok.ok()).as(ok.render()).isTrue();

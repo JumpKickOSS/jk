@@ -225,7 +225,7 @@ final class VocabularyEvaluator implements BatchEvaluator {
                                 where,
                                 CodeText.lineAt(text, l.start()),
                                 "\"" + value
-                                        + "\" has the shape of the vocabulary but no owner declares it — declare it in "
+                                        + "\" looks like a vocabulary term but no owner declares it; declare it in "
                                         + simpleName(p.owner) + " or name it a homonym"));
             }
         }

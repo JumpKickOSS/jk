@@ -125,8 +125,7 @@ public final class Freezer {
                 return new Result(
                         "`" + ruleId + "` examines less than its baseline recorded (" + shrunk
                                 + (slice.isEmpty() ? "" : " in " + slice)
-                                + "); a shrink is a question, not a fact — `jk guard freeze " + ruleId
-                                + " -U -W \"…\"` records the smaller population as the floor",
+                                + "); if that is right, run jk guard freeze " + ruleId + " -U -W \"…\"",
                         0,
                         baseline.entryCount(),
                         0);

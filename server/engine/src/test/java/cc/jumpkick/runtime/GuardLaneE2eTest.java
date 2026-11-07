@@ -82,7 +82,7 @@ class GuardLaneE2eTest {
         BuildPlanResult again = build(project, cache);
         assertThat(again.success()).isFalse();
         assertThat(again.errors()).anySatisfy(d -> assertThat(d.message())
-                .contains("Thrash:   this site has failed on 2 consecutive builds — stop and ask the user")
+                .contains("Thrash:   failed 2 builds in a row: stop and ask the user")
                 .doesNotContain("Exempt:"));
         // A restart forgets the streak.
         GuardThrash.reset();

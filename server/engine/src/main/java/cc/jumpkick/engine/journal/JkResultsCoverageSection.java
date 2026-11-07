@@ -71,9 +71,7 @@ public final class JkResultsCoverageSection {
             BuildRecord.Coverage was = delta ? Totals.of(before).asCoverage() : null;
             row(sb, "**all**", t.linesCovered, t.linesMissed, t.branchesCovered, t.branchesMissed, delta, was);
         }
-        sb.append("\nHTML: `")
-                .append(htmlPointer(r))
-                .append("` · floor: a `coverage.line` guard, judged by `jk guard`\n\n");
+        sb.append("\nHTML: `").append(htmlPointer(r)).append("` · set a minimum with a `coverage.line` guard\n\n");
     }
 
     private static void row(

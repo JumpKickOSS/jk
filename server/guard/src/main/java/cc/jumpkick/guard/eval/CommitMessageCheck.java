@@ -47,7 +47,7 @@ public final class CommitMessageCheck {
                 sb.append("jk guard commit-msg: ")
                         .append(problems.size())
                         .append(problems.size() == 1 ? " violation" : " violations")
-                        .append(" — the commit was refused; fix the message per Instead");
+                        .append("; commit refused, fix the message as Instead says");
             return sb.toString();
         }
     }

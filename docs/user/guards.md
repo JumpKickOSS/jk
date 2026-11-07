@@ -244,7 +244,7 @@ classes alone needs no `@NullMarked` package-info, and a package with one Java c
 ## Reading a failure
 
 `jk guard` ends with the guards' own verdict on the terminal, beside the build's wedge:
-`Guards: clean · 4 lanes (1 cached)` names the lanes that ran and how many replayed a cached
+`Guards: clean · 4 checks (1 cached)` names the checks that ran and how many replayed a cached
 verdict; `Guards: 2 rules broken (5 sites)` counts what `target/jk-results.md` then details.
 `target/jk-results.md` lists every broken rule with its sites:
 
@@ -273,7 +273,7 @@ lane still reports what it sees but leaves the baseline alone, and says which fi
 The output lane does the same while a module has packaged nothing (a build scoped with `-m`, a
 module not built yet), and checks a POM's dependencies against the packaged set only once every
 module has packaged. Such a run still passes, and its report says so in one line —
-`W guard baseline not tightened: 51 modules unseen by this run (not built yet); …` — so a green
+`W guard baseline not tightened: 51 modules not built by this run; …` — so a green
 scoped `jk test` is not read as a full guard pass. The number has one meaning whichever lane held
 back: a module counts as unseen while a main source file of it has no class, or while it has
 packaged nothing (no jar, POM or native binary). A freeze writes the named rule's new entries and nothing else: stale entries, other

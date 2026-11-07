@@ -204,7 +204,7 @@ public final class JkResultsMarkdown {
                     .append(ManifestPaths.POM)
                     .append(", no ")
                     .append(ManifestPaths.MANIFEST)
-                    .append(" (effective POM, built in place)\n");
+                    .append("\n");
         }
         int tokensAt = sb.length();
         sb.append('\n');
@@ -358,12 +358,12 @@ public final class JkResultsMarkdown {
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests) {
         sb.append("## Files\n\n");
-        sb.append("- High-level report (this file): `")
+        sb.append("- This report: `")
                 .append(pathOr(latestPath, "target/" + FILE_NAME))
                 .append("`\n");
-        sb.append("- Step-by-step transcript: `")
+        sb.append("- Step log (JSONL, as `-O jsonl`): `")
                 .append(pathOr(detailsPath, "details.jsonl"))
-                .append("` — JSONL, same shape as `-O jsonl`\n");
+                .append("`\n");
         boolean ranTests = JkResultsTestsSection.hasTestEntries(tests)
                 || (r.tests() != null && r.tests().total() > 0);
         if (ranTests) {
@@ -439,7 +439,7 @@ public final class JkResultsMarkdown {
             long cached = lanes.stream()
                     .filter(t -> "SKIPPED".equalsIgnoreCase(t.status()))
                     .count();
-            sb.append("Guards: clean · ").append(lanes.size()).append(lanes.size() == 1 ? " lane" : " lanes");
+            sb.append("Guards: clean · ").append(lanes.size()).append(lanes.size() == 1 ? " check" : " checks");
             if (cached > 0) sb.append(" (").append(cached).append(" cached)");
             sb.append("\n\n");
             return;
@@ -462,7 +462,7 @@ public final class JkResultsMarkdown {
             sb.append("### ").append(e.getKey());
             if (!why.isEmpty()) sb.append(" — ").append(why);
             sb.append("  (").append(sites.size()).append(sites.size() == 1 ? " site" : " sites");
-            if (seen > 0) sb.append(", seen ").append(seen).append(" builds running");
+            if (seen > 0) sb.append(", failing ").append(seen).append(" builds in a row");
             sb.append(")\n");
             for (BuildRecord.Diag d : sites) {
                 if (shown >= MAX_GUARD_SITES) {
@@ -483,25 +483,24 @@ public final class JkResultsMarkdown {
                 if (!instead.isEmpty()) sb.append("  → ").append(instead).append('\n');
                 int runs = thrashRuns(d.message());
                 if (runs > 0) {
-                    sb.append("  This site has failed on ")
+                    sb.append("  Failed ")
                             .append(runs)
-                            .append(
-                                    " consecutive builds. Stop and ask the user whether an `allow` with a reason is right here.\n");
+                            .append(" builds in a row: ask the user whether an `allow` entry fits\n");
                 }
                 shown++;
             }
             sb.append('\n');
         }
-        sb.append("To exempt a site, stop and ask the user to add an `allow` entry with a reason to jk-guards.toml. ");
+        sb.append("To exempt a site, ask the user to add an `allow` entry with a reason to jk-guards.toml.\n");
         sb.append(
-                "Never edit jk-guards-baseline.toml by hand; never add a suppression comment. Explain: `jk guard explain <rule>`.\n\n");
+                "Do not edit jk-guards-baseline.toml or add suppression comments. Rule details: `jk guard explain <rule>`.\n\n");
     }
 
     /** The consecutive-build count a {@code Thrash:} line carries, or 0 when the site is not thrashing. */
     static int thrashRuns(String message) {
         String thrash = guardField(message, "Thrash:");
         if (thrash.isEmpty()) return 0;
-        Matcher n = Pattern.compile("(\\d+) consecutive").matcher(thrash);
+        Matcher n = Pattern.compile("(\\d+) builds in a row").matcher(thrash);
         return n.find() ? Integer.parseInt(n.group(1)) : 0;
     }
 
@@ -642,7 +641,10 @@ public final class JkResultsMarkdown {
         }
         JkResultsStopped.appendNote(sb, r);
         if (skipped > 0 && (!r.success() || r.cancelled())) {
-            sb.append("_").append(skipped).append(" tasks skipped (cache)._\n\n");
+            sb.append("_")
+                    .append(skipped)
+                    .append(skipped == 1 ? " step" : " steps")
+                    .append(" cached._\n\n");
         }
     }
 

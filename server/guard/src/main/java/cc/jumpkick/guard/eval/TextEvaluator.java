@@ -152,7 +152,7 @@ final class TextEvaluator implements BatchEvaluator {
             Object view = project(hit, p.blank, TextFiles.Language.JAVA);
             if (!anyMatch(p.patterns, viewText(view))) {
                 return "hit does not match through the `" + blankName(p.blank)
-                        + "` view — the pattern is looking at the wrong layer, or the hit is not a hit";
+                        + "` view; the pattern reads the wrong layer, or the hit is wrong";
             }
         }
         if (miss != null) {

@@ -63,7 +63,7 @@ public final class GuardMessages {
             if (rule.baseline() && Evaluators.acceptsBaseline(rule)) {
                 sb.append("  Accept:   jk guard freeze ")
                         .append(rule.id())
-                        .append(" -W \"…\" records today's sites; the baseline only shrinks after\n");
+                        .append(" -W \"…\" records today's sites; the baseline can then only shrink\n");
             }
             sb.append("  Exempt:   ask the user to add [guards.")
                     .append(rule.id())
@@ -72,8 +72,7 @@ public final class GuardMessages {
         if (r.outcome() == Outcome.SCOPE_SHRUNK) {
             sb.append("  Accept:   jk guard freeze ")
                     .append(rule.id())
-                    .append(" -U -W \"…\" records the smaller population as the floor, if the corpus")
-                    .append(" legitimately shrank; a silent shrink stays red\n");
+                    .append(" -U -W \"…\" accepts the smaller count, if the code really shrank\n");
         }
         sb.append("  Explain:  jk guard explain ").append(rule.id());
         return sb.toString();
@@ -107,11 +106,9 @@ public final class GuardMessages {
         sb.append("  Baseline: new\n");
         sb.append("  Source:   ").append(rule.source().render()).append('\n');
         if (consecutive >= GuardThrash.THRESHOLD) {
-            sb.append("  Thrash:   this site has failed on ")
+            sb.append("  Thrash:   failed ")
                     .append(consecutive)
-                    .append(
-                            " consecutive builds — stop and ask the user whether an `allow` with a reason is right here,")
-                    .append(" or whether the rule needs changing\n");
+                    .append(" builds in a row: stop and ask the user for an `allow` entry or a rule change\n");
         } else {
             sb.append("  Exempt:   ask the user to add [guards.")
                     .append(rule.id())
@@ -180,20 +177,18 @@ public final class GuardMessages {
      */
     public static String withheld(Lane lane, List<String> unseen) {
         boolean output = lane == Lane.OUTPUT;
-        String one = output ? " module has" : " source file has";
-        String many = output ? " modules have" : " source files have";
+        String one = output ? " module" : " source file";
+        String many = output ? " modules" : " source files";
         StringBuilder sb = new StringBuilder("baseline not tightened: ")
                 .append(unseen.size())
                 .append(unseen.size() == 1 ? one : many)
-                .append(output ? " no packaged artefact in this lane's view (" : " no class in this lane's view (");
+                .append(output ? " not packaged yet (" : " not compiled yet (");
         for (int i = 0; i < Math.min(3, unseen.size()); i++) {
             if (i > 0) sb.append(", ");
             sb.append(unseen.get(i));
         }
         if (unseen.size() > 3) sb.append(", +").append(unseen.size() - 3).append(" more");
-        return sb.append(output ? "); a build that packages them" : "); a build that compiles them")
-                .append(" tightens it and judges its scope")
-                .toString();
+        return sb.append(")").toString();
     }
 
     /** The diagnostic code of a lane's {@link #withheldNotice}. */
@@ -215,7 +210,7 @@ public final class GuardMessages {
      */
     public static String withheldSummary(int modules) {
         return WITHHELD_PREFIX + modules + (modules == 1 ? " module" : " modules")
-                + " unseen by this run (not built yet); a build of every module tightens it and judges its scope";
+                + " not built by this run; build every module to tighten it";
     }
 
     /** The module count a {@link #withheldNotice} carries, or 0 when {@code message} is not one. */
@@ -246,6 +241,6 @@ public final class GuardMessages {
 
     /** Printed once per run, after the last violation. */
     public static final String TRAILER =
-            "To exempt a site, stop and ask the user to add an `allow` entry with a reason to jk-guards.toml."
-                    + " Never edit jk-guards-baseline.toml by hand; never add a suppression comment.";
+            "To exempt a site, ask the user to add an `allow` entry with a reason to jk-guards.toml.\n"
+                    + "Do not edit jk-guards-baseline.toml or add suppression comments.";
 }

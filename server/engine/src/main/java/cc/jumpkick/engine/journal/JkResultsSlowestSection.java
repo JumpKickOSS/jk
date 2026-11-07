@@ -17,17 +17,17 @@ final class JkResultsSlowestSection {
     static void append(StringBuilder sb, SlowestTests.Ranking ranking) {
         if (ranking.isEmpty()) return;
         sb.append("## Slowest tests\n\n")
-                .append("Classes and methods of this run that took ")
+                .append("Tests that took ")
                 .append(SlowestTests.duration(SlowestTests.SLOW_MS))
-                .append(" or more; a suite served from cache is not timed. ")
-                .append("To speed one up: share the fixture, seam the wait, or move it to a tier.\n\n");
+                .append(" or more. Cached suites are not timed.\n")
+                .append("To speed one up, share fixtures, avoid real waits, or move it to a slower suite.\n\n");
         table(sb, "Class", ranking.classes());
         table(sb, "Method", ranking.methods());
     }
 
     private static void table(StringBuilder sb, String what, List<SlowestTests.Row> rows) {
         if (rows.isEmpty()) return;
-        sb.append("| ").append(what).append(" | Module | Tier | Took |\n|---|---|---|---|\n");
+        sb.append("| ").append(what).append(" | Module | Suite | Took |\n|---|---|---|---|\n");
         for (SlowestTests.Row r : rows) {
             String name = r.method().isEmpty() ? r.className() : r.className() + "#" + r.method();
             sb.append("| `")

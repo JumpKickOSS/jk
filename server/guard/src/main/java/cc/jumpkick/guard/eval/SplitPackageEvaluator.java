@@ -75,7 +75,7 @@ final class SplitPackageEvaluator implements Evaluator {
                     null,
                     0,
                     e.getKey() + " is declared by " + String.join(" + ", e.getValue())
-                            + " — one module must own it, or an allow entry must say why not"));
+                            + "; move it to one module, or allow it with a reason"));
         }
         Map<String, Long> population = Map.of("packages", (long) modulesByPackage.size());
         if (modulesByPackage.isEmpty())

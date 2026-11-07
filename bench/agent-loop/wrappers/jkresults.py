@@ -563,7 +563,7 @@ def append_counts(out: list[str], r: Report) -> None:
 def append_files(out: list[str], r: Report) -> None:
     out.append("## Files")
     out.append("")
-    out.append(f"- High-level report (this file): `{r.results_path}`")
+    out.append(f"- This report: `{r.results_path}`")
     out.append(f"- Console log: `{r.log_path}` — the tool's own output, verbatim")
     diag_path = str(Path(r.results_path).with_name("jk-diagnostics.json"))
     out.append(f"- Diagnostics JSON: `{diag_path}` — the parsed errors and failing tests")

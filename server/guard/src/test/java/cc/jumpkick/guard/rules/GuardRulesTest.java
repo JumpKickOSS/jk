@@ -107,11 +107,7 @@ class GuardRulesTest {
     @Test
     void allow_without_a_reason_is_an_error(@TempDir Path dir) throws IOException {
         LoadResult r = load(dir, "[guards.x]\nkind = \"split-package\"\nwhy = \"w\"\nallow = [{ in = \"a.b\" }]\n");
-        assertThat(messages(r))
-                .singleElement()
-                .asString()
-                .contains("no `reason`")
-                .contains("suppression");
+        assertThat(messages(r)).singleElement().asString().contains("no `reason`; add one");
     }
 
     @Test
@@ -147,7 +143,7 @@ class GuardRulesTest {
         LoadResult r = load(dir, "[guards]\nextends = [\"com.acme:rules:1\"]\n[rules.x]\nkind = \"forbid\"\n");
         assertThat(messages(r)).anySatisfy(m -> assertThat(m)
                 .contains("pack com.acme:rules:1 is not unpacked")
-                .contains("run `jk lock`"));
+                .contains("run jk lock"));
         assertThat(messages(r)).anySatisfy(m -> assertThat(m).contains("unknown top-level table `rules`"));
     }
 

@@ -128,7 +128,7 @@ public final class FactsIndexing {
         } catch (RuntimeException notAClassFile) {
             throw new IOException(
                     "class file " + rel + " in " + classesDir + " does not parse (" + bytes.length
-                            + " bytes) — a compile is still writing it, or it is not a class file",
+                            + " bytes); a compile may still be writing it",
                     notAClassFile);
         }
     }
@@ -187,8 +187,7 @@ public final class FactsIndexing {
         if (cause instanceof NoSuchFileException || (onWindows && cause instanceof AccessDeniedException)) {
             return new IOException(
                     "class file " + rel + " vanished from " + classesDir
-                            + " between listing and reading — the classes directory changed under the guard step, "
-                            + "so a step that writes it is missing from the step's requires",
+                            + " while the guard step read it; a step that writes it is missing from the step's requires",
                     cause);
         }
         return new IOException(

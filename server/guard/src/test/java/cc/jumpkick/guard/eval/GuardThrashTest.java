@@ -74,7 +74,7 @@ class GuardThrashTest {
                 .doesNotContain("Thrash:");
         String second = GuardMessages.site(r, r.fresh().get(0), 2);
         assertThat(second)
-                .contains("Thrash:   this site has failed on 2 consecutive builds — stop and ask the user")
+                .contains("Thrash:   failed 2 builds in a row: stop and ask the user")
                 .doesNotContain("Exempt:")
                 .endsWith("Explain:  jk guard explain r");
     }

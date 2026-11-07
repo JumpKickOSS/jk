@@ -209,9 +209,8 @@ public final class BaselineFile {
     }
 
     private static IOException refuse(String name, int lineNo, String what) {
-        return new IOException(
-                name + ":" + lineNo + ": " + what
-                        + " — never edit the baseline by hand; delete it and let the engine rewrite it, or run jk guard freeze");
+        return new IOException(name + ":" + lineNo + ": " + what
+                + "; do not edit the baseline by hand, delete it or run jk guard freeze");
     }
 
     public static String render(Baseline b) {

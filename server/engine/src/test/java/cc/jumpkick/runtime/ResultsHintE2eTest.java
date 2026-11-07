@@ -66,8 +66,8 @@ class ResultsHintE2eTest {
         assertThat(md).startsWith("# jk results — FAIL");
         assertThat(md).contains("cannot find symbol");
         assertThat(md)
-                .contains("→ `method missing()` is not declared in `class com.example.Main` and not imported: "
-                        + "fix the name, add the import, or `jk add` the dependency that provides it.");
+                .contains("→ `method missing()` is not declared in `class com.example.Main`: "
+                        + "fix the name, add the import, or `jk add` the dependency that provides it\n");
 
         Matcher tokens = TOKENS.matcher(md);
         assertThat(tokens.find()).as("header carries a tokens line:\n" + md).isTrue();

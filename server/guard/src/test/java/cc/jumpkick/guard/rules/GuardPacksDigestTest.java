@@ -40,7 +40,7 @@ class GuardPacksDigestTest {
                         c.gav(),
                         pinned.substring(0, 12),
                         Hashing.sha256Hex(shelved).substring(0, 12),
-                        "run `jk lock`");
+                        "run jk lock");
         assertThat(GuardPacks.fragment(GuardPacks.unpackedDir(root, c))).doesNotExist();
     }
 

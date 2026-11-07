@@ -20,11 +20,11 @@ class GuardCommandVerdictTest {
                 "",
                 "## Guards",
                 "",
-                "Guards: clean · 4 lanes (1 cached)",
+                "Guards: clean · 4 checks (1 cached)",
                 "",
                 "## Steps",
                 "| step | status |");
-        assertThat(GuardCommand.verdict(results).map(TestAnsi::strip)).hasValue("Guards: clean · 4 lanes (1 cached)");
+        assertThat(GuardCommand.verdict(results).map(TestAnsi::strip)).hasValue("Guards: clean · 4 checks (1 cached)");
     }
 
     @Test
@@ -52,8 +52,8 @@ class GuardCommandVerdictTest {
         assertThat(GuardCommand.terminalLine(plain, 0)).hasValue("Guards: no rules");
         assertThat(GuardCommand.terminalLine(List.of(), 0)).hasValue("Guards: no rules");
         assertThat(GuardCommand.terminalLine(plain, 1)).isEmpty();
-        assertThat(GuardCommand.terminalLine(List.of("## Guards", "", "Guards: clean · 1 lane"), 0)
+        assertThat(GuardCommand.terminalLine(List.of("## Guards", "", "Guards: clean · 1 check"), 0)
                         .map(TestAnsi::strip))
-                .hasValue("Guards: clean · 1 lane");
+                .hasValue("Guards: clean · 1 check");
     }
 }
