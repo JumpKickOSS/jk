@@ -54,7 +54,7 @@ final class GroovyForecastStamps {
                     groovySources,
                     cp,
                     layout.groovyClassesDir(),
-                    mixed ? PlannerKsp.kotlinJavaSourceRoots(true, compact, moduleDir, layout, null) : null,
+                    mixed ? PlannerKsp.kotlinJavaSourceRoots(true, compact, moduleDir, layout, null, false) : null,
                     mixed ? layout.groovyStubsDir() : null,
                     List.of(),
                     release,

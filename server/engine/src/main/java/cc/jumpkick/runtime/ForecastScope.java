@@ -124,6 +124,8 @@ public final class ForecastScope implements StepForecast.Scope {
     private @Nullable TestSources testSources;
     private List<Path> testCompileCp = List.of();
     private boolean ownOutputsProjected;
+    private boolean kspTreeRead;
+    private @Nullable Map<String, String> kspTree;
     private final Map<String, TaskForecast.Task> verdicts = new LinkedHashMap<>();
     private final Map<String, Callable<TaskForecast.@Nullable Task>> deferred = new LinkedHashMap<>();
     private final List<String> order = new ArrayList<>();
@@ -220,6 +222,8 @@ public final class ForecastScope implements StepForecast.Scope {
             boolean mixedKotlin,
             boolean mixedGroovy,
             boolean kotlinModule,
+            boolean ksp,
+            List<Path> kspRoundInputs,
             ProvidedClasspath.Provided provided) {
 
         /** The main compile classpath the build derives: the lock's, the siblings', then the plugin-provided jars. */
@@ -270,14 +274,14 @@ public final class ForecastScope implements StepForecast.Scope {
         InputTrees.coverModule(dir);
         // The source set the build compiles, derived by its owner: the src walk plus the
         // [build] extra-src overlay, plugin source roots, every .scala (one Zinc session
-        // compiles both languages) and the generated roots.
-        List<Path> mainSrc = PlannerCompile.mainJavaSources(
-                PlannerCompile.javaAndScalaSources(
-                        project, dir, compact, CompileSupport.collectJavaSources(mainSrcDir)),
-                layout,
-                pkgDecls);
-        List<Path> ktSrc = PlannerCompile.mainKotlinSourcesWithGenerated(
-                PlannerCompile.mainKotlinSources(project, dir, compact), layout, pkgDecls);
+        // compiles both languages) and the generated roots — the KSP round's only when the
+        // module runs one, as the build plans its round.
+        boolean ksp = PlannerKsp.runsMainRound(project, dir);
+        List<Path> javaAndScala = PlannerCompile.javaAndScalaSources(
+                project, dir, compact, CompileSupport.collectJavaSources(mainSrcDir));
+        List<Path> kotlin = PlannerCompile.mainKotlinSources(project, dir, compact);
+        List<Path> mainSrc = PlannerCompile.mainJavaSources(javaAndScala, layout, pkgDecls, ksp);
+        List<Path> ktSrc = PlannerCompile.mainKotlinSourcesWithGenerated(kotlin, layout, pkgDecls, ksp);
         List<Path> gvSrc = PlannerCompile.mainGroovySourcesWithGenerated(
                 PlannerCompile.mainGroovySources(project, dir, compact), layout, pkgDecls);
         // The same predicate the planner composes the plan from — a source-list emptiness test
@@ -303,6 +307,8 @@ public final class ForecastScope implements StepForecast.Scope {
                 mixedKotlin,
                 mixedGroovy,
                 langs.kotlin(),
+                ksp,
+                ksp ? PlannerKsp.mainRoundInputs(kotlin, javaAndScala, layout, pkgDecls) : List.of(),
                 // The build adds these to every compile and test classpath (PlannerSetup), so a
                 // key priced without them names a compile the build never makes.
                 ProvidedClasspath.forecast(project, dir, lockFile, cas, !skipTests));
@@ -358,6 +364,11 @@ public final class ForecastScope implements StepForecast.Scope {
         Prepared p = prepared();
         try {
             if (classesTreeWhole(p.layout())) return;
+            // The KSP round's bytecode and resources come back from its own record, which
+            // `jk clean` leaves where it took target/ksp. A round with no record runs, and what
+            // it writes cannot be described.
+            Map<String, String> ksp = kspTreeOutputs();
+            if (ksp == null) return;
             List<@Nullable String> keys = new ArrayList<>();
             if (!p.mainSrc().isEmpty()) keys.add(compileMainKey);
             if (!p.ktSrc().isEmpty()) keys.add(compileKotlinKey);
@@ -365,6 +376,7 @@ public final class ForecastScope implements StepForecast.Scope {
             restored.projectFromRecords(
                     p.layout().classesDir(),
                     keys,
+                    ksp,
                     PackagingKeys.packageResourceRoots(dir, p.compact()),
                     PackagingKeys.copiedPluginManifest(dir));
         } catch (IOException e) {
@@ -372,6 +384,41 @@ public final class ForecastScope implements StepForecast.Scope {
             // answer, never a false hit.
             Log.debug("projectOwnOutputs: consumers key on the tree as it is", e);
         }
+    }
+
+    /**
+     * What the main KSP round places in the classes tree, read from the record its current inputs
+     * name ({@link PlannerKsp#forecastClassesTreeOutputs}): empty for a module that runs no round,
+     * null when the round has no record. Once per module.
+     */
+    @Nullable
+    Map<String, String> kspTreeOutputs() {
+        if (kspTreeRead) return kspTree;
+        kspTreeRead = true;
+        try {
+            Prepared p = prepared();
+            if (!p.ksp()) return kspTree = Map.of();
+            WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
+            List<Path> cp =
+                    p.withProvided(PlannerSupport.mainCompileClasspath(dir, project, p.lock(), resolver, sib, false));
+            kspTree = PlannerKsp.forecastClassesTreeOutputs(
+                    project,
+                    dir,
+                    p.lock(),
+                    p.javaHome(),
+                    p.release(),
+                    p.kspRoundInputs(),
+                    cp,
+                    p.processorCp(),
+                    p.layout(),
+                    actionCache,
+                    restored.identity());
+        } catch (Exception e) {
+            // Unknown, so nothing is projected from it: the pessimistic answer.
+            Log.debug("kspTreeOutputs: the round's record could not be named", e);
+            kspTree = null;
+        }
+        return kspTree;
     }
 
     /** The Kotlin and Groovy arms, over this module's dirtiness and its dependencies' hint. */

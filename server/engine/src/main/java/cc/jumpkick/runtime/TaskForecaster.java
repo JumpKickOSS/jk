@@ -13,7 +13,6 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
-import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -673,7 +672,7 @@ public final class TaskForecaster {
     /** Main resource roots (or a module-root {@code jk-plugin.toml}) differ from copies under {@code classesDir}. */
     static boolean mainResourcesOutOfSync(Path dir, JkBuild project, boolean compact, Path classesDir) {
         if (flattenedPluginCatalogPresent(classesDir)) return true;
-        for (Path ksp : PlannerKsp.outputRoots(PlannerKsp.kspOutBase(BuildLayout.moduleTargetDir(dir)))) {
+        for (Path ksp : PlannerKsp.liveOutputRoots(project, dir)) {
             if (resourcesOutOfSync(ksp, classesDir)) return true;
         }
         if (!FilteredResources.layoutRootFiltered(dir, project, compact)

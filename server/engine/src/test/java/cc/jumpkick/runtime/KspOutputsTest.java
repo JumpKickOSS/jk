@@ -8,12 +8,18 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskForecast;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.base.KspResolver;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import java.io.File;
 import java.io.IOException;
@@ -22,7 +28,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -38,7 +46,10 @@ import org.junit.jupiter.api.io.TempDir;
  * writes its bean definitions. Nothing compiles that output, so it reaches the module only through
  * the classes tree: the main round's {@code .class} and {@code .txt} must be in the jar and on the
  * test classpath, and a test round over the test sources must put its own on the test classpath
- * and nowhere else.
+ * and nowhere else. A module that drops its processors keeps nothing of either round, the test
+ * round reads what the test compile reads, a test-only processor gets a test round, and after
+ * {@code jk clean} the forecast reads the main round's files from its record as the build restores
+ * them.
  *
  * <p>The processor is a few lines of Java compiled here against jk's KSP2 closure and published to
  * a {@code file://} repository, so the round runs a processor this test controls. Network test
@@ -115,6 +126,18 @@ class KspOutputsTest {
             }
             """;
 
+    /** The marker processor declared in the shared table, which runs both rounds. */
+    private static final String MAIN_TABLE = """
+            [processor-dependencies]
+            marker = "com.example:marker-proc:1.0"
+            """;
+
+    /** The marker processor declared for the test compile alone. */
+    private static final String TEST_TABLE = """
+            [test-processor-dependencies]
+            marker = "com.example:marker-proc:1.0"
+            """;
+
     private static final String MANIFEST = """
             name    = "marked"
             group   = "com.example"
@@ -122,9 +145,7 @@ class KspOutputsTest {
             java    = 25
             kotlin  = "^2.4.10"
 
-            [processor-dependencies]
-            marker = "com.example:marker-proc:1.0"
-
+            %s
             [test-dependencies]
             junit-jupiter = "6.1.3"
 
@@ -141,51 +162,9 @@ class KspOutputsTest {
         Path repo = tmp.resolve("repo");
         publishProcessor(repo, tmp.resolve("proc"));
         Path project = Files.createDirectories(tmp.resolve("app"));
-        Files.writeString(project.resolve("jk.toml"), MANIFEST.formatted(repo.toUri()));
-        write(project.resolve("src/main/kotlin/demo/Marked.kt"), """
-                package demo
-
-                annotation class Marked
-                """);
+        writeSources(project, true);
         Path greeter = project.resolve("src/main/kotlin/demo/Greeter.kt");
-        write(greeter, """
-                package demo
-
-                @Marked
-                class Greeter
-                """);
-        write(project.resolve("src/test/kotlin/demo/MarkedTest.kt"), """
-                package demo
-
-                import org.junit.jupiter.api.Assertions.assertEquals
-                import org.junit.jupiter.api.Test
-
-                @Marked
-                class Probe
-
-                class MarkedTest {
-                    private fun text(name: String) =
-                        requireNotNull(javaClass.classLoader.getResource(name)) { "no " + name }.readText()
-
-                    @Test
-                    fun the_main_rounds_output_is_on_the_test_classpath() {
-                        Class.forName("demo.GreeterMarker")
-                        assertEquals("Greeter", text("marked/Greeter.txt"))
-                    }
-
-                    @Test
-                    fun the_test_rounds_output_is_on_the_test_classpath() {
-                        Class.forName("demo.ProbeMarker")
-                        assertEquals("Probe", text("marked/Probe.txt"))
-                    }
-                }
-                """);
-        JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
-                .run();
-        assertThat(lock.errors()).isEmpty();
-        BuildLayout layout = BuildLayout.of(project, build);
+        BuildLayout layout = lock(project, manifest(repo, MAIN_TABLE, ""), cache);
 
         BuildPlanResult first = build(project, cache);
         assertThat(first.errors()).isEmpty();
@@ -219,9 +198,222 @@ class KspOutputsTest {
         assertThat(jarEntries(layout.mainJar())).doesNotContain("demo/GreeterMarker.class", "marked/Greeter.txt");
     }
 
+    @Test
+    void a_module_that_drops_its_processors_keeps_nothing_of_either_round(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("ksp-outputs");
+        Path repo = tmp.resolve("repo");
+        publishProcessor(repo, tmp.resolve("proc"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        writeSources(project, false);
+        BuildLayout layout = lock(project, manifest(repo, MAIN_TABLE, ""), cache);
+        BuildPlanResult first = buildSkippingTests(project, cache);
+        assertThat(first.errors()).isEmpty();
+        assertThat(jarEntries(layout.mainJar())).contains("demo/GreeterMarker.class", "marked/Greeter.txt");
+
+        // The processors go. What the old rounds left behind must neither compile nor ship: a stale
+        // generated source that would not compile, and a test round's bytecode.
+        lock(project, manifest(repo, "", ""), cache);
+        Path kspOut = layout.buildDir().resolve("ksp");
+        Path kspTestOut = layout.buildDir().resolve("ksp-test");
+        write(kspOut.resolve("kotlin/demo/Stale.kt"), "package demo\n\nthis does not compile\n");
+        write(kspTestOut.resolve("classes/demo/StaleMarker.class"), "stale");
+        BuildPlanResult dropped = buildSkippingTests(project, cache);
+        assertThat(dropped.errors()).isEmpty();
+        assertThat(dropped.success()).isTrue();
+        assertThat(kspOut).as("the main round's output is removed").doesNotExist();
+        assertThat(kspTestOut).as("the test round's output is removed").doesNotExist();
+        assertThat(layout.classesDir().resolve("demo/GreeterMarker.class")).doesNotExist();
+        assertThat(layout.classesDir().resolve("marked/Greeter.txt")).doesNotExist();
+        assertThat(jarEntries(layout.mainJar()))
+                .contains("demo/Greeter.class")
+                .doesNotContain("demo/GreeterMarker.class", "marked/Greeter.txt", "demo/Stale.class");
+    }
+
+    @Test
+    void the_test_round_leaves_out_what_test_exclude_src_leaves_out(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("ksp-outputs");
+        Path repo = tmp.resolve("repo");
+        publishProcessor(repo, tmp.resolve("proc"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        writeSources(project, true);
+        // Beside a kept test in the same directory, and a whole directory nothing is excluded from.
+        write(project.resolve("src/test/kotlin/demo/ExcludedProbe.kt"), """
+                package demo
+
+                @Marked
+                class Skipped
+                """);
+        write(project.resolve("src/test/kotlin/other/Other.kt"), """
+                package other
+
+                import demo.Marked
+
+                @Marked
+                class Other
+                """);
+        BuildLayout layout =
+                lock(project, manifest(repo, MAIN_TABLE, "[test]\nexclude-src = [\"demo/Excluded*.kt\"]\n"), cache);
+
+        BuildPlanResult result = build(project, cache);
+        assertThat(result.errors()).isEmpty();
+        assertThat(step(result, "run-tests").status()).isEqualTo(TaskStatus.SUCCESS);
+        Path testClasses = layout.testClassesDir();
+        assertThat(testClasses.resolve("demo/ProbeMarker.class"))
+                .as("a kept file beside an excluded one is processed")
+                .isRegularFile();
+        assertThat(testClasses.resolve("demo/OtherMarker.class"))
+                .as("a directory nothing is excluded from is processed")
+                .isRegularFile();
+        assertThat(testClasses.resolve("demo/SkippedMarker.class"))
+                .as("the excluded file is no input of the round")
+                .doesNotExist();
+        assertThat(testClasses.resolve("marked/Skipped.txt")).doesNotExist();
+        assertThat(layout.buildDir().resolve("ksp-test/classes/demo/SkippedMarker.class"))
+                .doesNotExist();
+    }
+
+    @Test
+    void a_test_only_processor_gets_a_test_round(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("ksp-outputs");
+        Path repo = tmp.resolve("repo");
+        publishProcessor(repo, tmp.resolve("proc"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        writeSources(project, false);
+        write(project.resolve("src/test/kotlin/demo/MarkedTest.kt"), """
+                package demo
+
+                import org.junit.jupiter.api.Assertions.assertEquals
+                import org.junit.jupiter.api.Test
+
+                @Marked
+                class Probe
+
+                class MarkedTest {
+                    @Test
+                    fun the_test_rounds_output_is_on_the_test_classpath() {
+                        Class.forName("demo.ProbeMarker")
+                        val text = requireNotNull(javaClass.classLoader.getResource("marked/Probe.txt")).readText()
+                        assertEquals("Probe", text)
+                    }
+                }
+                """);
+        BuildLayout layout = lock(project, manifest(repo, TEST_TABLE, ""), cache);
+
+        BuildPlanResult result = build(project, cache);
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success()).isTrue();
+        assertThat(step(result, "run-tests").status())
+                .as("the test round's output is on the test classpath")
+                .isEqualTo(TaskStatus.SUCCESS);
+        assertThat(layout.testClassesDir().resolve("demo/ProbeMarker.class")).isRegularFile();
+        assertThat(layout.buildDir().resolve("ksp")).as("no main round runs").doesNotExist();
+        assertThat(jarEntries(layout.mainJar())).doesNotContain("demo/GreeterMarker.class", "demo/ProbeMarker.class");
+    }
+
+    @Test
+    void after_a_clean_the_forecast_and_the_build_agree_on_the_rounds_files(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("ksp-outputs");
+        Path repo = tmp.resolve("repo");
+        publishProcessor(repo, tmp.resolve("proc"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        writeSources(project, false);
+        BuildLayout layout = lock(project, manifest(repo, MAIN_TABLE, ""), cache);
+        BuildPlanResult first = buildSkippingTests(project, cache);
+        assertThat(first.errors()).isEmpty();
+        assertThat(jarEntries(layout.mainJar())).contains("demo/GreeterMarker.class", "marked/Greeter.txt");
+
+        // jk clean: target/ goes, the action cache stays.
+        PathUtil.deleteRecursively(layout.buildDir());
+        Map<String, TaskForecast.Task> forecast = forecast(project, cache);
+
+        BuildPlanResult rebuilt = buildSkippingTests(project, cache);
+        assertThat(rebuilt.errors()).isEmpty();
+        assertThat(jarEntries(layout.mainJar())).contains("demo/GreeterMarker.class", "marked/Greeter.txt");
+        for (String name : List.of(TaskNames.COMPILE_KOTLIN, TaskNames.PACKAGE_JAR)) {
+            TaskForecast.Task predicted = requireNonNull(forecast.get(name), () -> "no " + name + " in " + forecast);
+            assertThat(step(rebuilt, name).status())
+                    .as("%s: the build restores what the forecast said it would (%s)", name, predicted.text())
+                    .isEqualTo(TaskStatus.SKIPPED);
+            assertThat(predicted.cached())
+                    .as("%s: the forecast reads the round's files from its record: %s", name, predicted.text())
+                    .isTrue();
+        }
+    }
+
+    /** The main sources: the annotation and a class it marks; with a test that reads both rounds' output. */
+    private static void writeSources(Path project, boolean withTest) throws IOException {
+        write(project.resolve("src/main/kotlin/demo/Marked.kt"), """
+                package demo
+
+                annotation class Marked
+                """);
+        write(project.resolve("src/main/kotlin/demo/Greeter.kt"), """
+                package demo
+
+                @Marked
+                class Greeter
+                """);
+        if (!withTest) return;
+        write(project.resolve("src/test/kotlin/demo/MarkedTest.kt"), """
+                package demo
+
+                import org.junit.jupiter.api.Assertions.assertEquals
+                import org.junit.jupiter.api.Test
+
+                @Marked
+                class Probe
+
+                class MarkedTest {
+                    private fun text(name: String) =
+                        requireNotNull(javaClass.classLoader.getResource(name)) { "no " + name }.readText()
+
+                    @Test
+                    fun the_main_rounds_output_is_on_the_test_classpath() {
+                        Class.forName("demo.GreeterMarker")
+                        assertEquals("Greeter", text("marked/Greeter.txt"))
+                    }
+
+                    @Test
+                    fun the_test_rounds_output_is_on_the_test_classpath() {
+                        Class.forName("demo.ProbeMarker")
+                        assertEquals("Probe", text("marked/Probe.txt"))
+                    }
+                }
+                """);
+    }
+
+    /** The manifest with the processor {@code table} (or none) and {@code extra} tables after it. */
+    private static String manifest(Path repo, String table, String extra) {
+        return MANIFEST.formatted(table, repo.toUri()) + extra;
+    }
+
+    /** Write {@code manifest} and lock it; the module's layout. */
+    private static BuildLayout lock(Path project, String manifest, Path cache) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), manifest);
+        JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
+        BuildPlanResult lock = LockPlans.lockBuildPlan(
+                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                .run();
+        assertThat(lock.errors()).isEmpty();
+        return BuildLayout.of(project, build);
+    }
+
+    /** What the forecast prices each step of the module at, skipping tests as the build does. */
+    private static Map<String, TaskForecast.Task> forecast(Path project, Path cache) throws IOException {
+        BuildGraph.Result graph = BuildGraph.resolve(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        assertThat(graph.hasErrors()).isFalse();
+        // As `jk explain` reads them: artifacts from the store, records from the cache.
+        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
+        List<TaskForecast.Module> modules = ForecastWalk.of(graph, JkStores.storeCas(), actionCache, cache, true);
+        assertThat(modules).hasSize(1);
+        Map<String, TaskForecast.Task> steps = new LinkedHashMap<>();
+        for (TaskForecast.Task t : modules.getFirst().steps()) steps.put(t.name(), t);
+        return steps;
+    }
+
     /** {@link #PROVIDER} compiled against the KSP2 closure, jarred with its service entry, published to {@code repo}. */
     private static void publishProcessor(Path repo, Path work) throws Exception {
-        JkBuild any = JkBuildParser.parse(MANIFEST.formatted(repo.toUri()));
+        JkBuild any = JkBuildParser.parse(manifest(repo, MAIN_TABLE, ""));
         Cas cas = JkStores.storeCas();
         List<Path> kspClasspath = KspResolver.resolveClasspath(
                 RepoGroupBuilder.buildFor(any, null, cas), cas, KspResolver.DEFAULT_VERSION);
