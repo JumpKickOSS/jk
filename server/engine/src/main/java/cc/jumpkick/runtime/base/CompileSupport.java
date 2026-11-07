@@ -227,11 +227,17 @@ public final class CompileSupport {
         if (explicitName != null && !explicitName.isBlank()) {
             return profiles.resolve(explicitName);
         }
-        String auto = Profiles.autoSelect(BuildEnv::get);
+        String auto = activeProfileName(null);
         if (auto != null && profiles.contains(auto)) {
             return profiles.resolve(auto);
         }
         return null;
+    }
+
+    /** The name of the profile a run applies: {@code explicitName} when given, else the CI-selected one, else null. */
+    public static @Nullable String activeProfileName(@Nullable String explicitName) {
+        if (explicitName != null && !explicitName.isBlank()) return explicitName;
+        return Profiles.autoSelect(BuildEnv::get);
     }
 
     private static List<Path> collectFilesWithExtension(Path root, String extension) throws IOException {

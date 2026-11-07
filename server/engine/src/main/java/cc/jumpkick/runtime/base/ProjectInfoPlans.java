@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
+import cc.jumpkick.config.TierTags;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -281,7 +282,8 @@ public final class ProjectInfoPlans {
             throws IOException {
         var format = build.format();
         var boot = build.pluginConfig(JkBuild.SPRING_BOOT_ID).orElse(null);
-        var testTags = JkBuildParser.parseTestTags(buildFile);
+        // The tags a bare `jk test` runs here: the workspace root's, as every run resolves them.
+        var testTags = TierTags.of(dir, null);
         var release = JkBuildParser.releaseTable(rootManifest(buildFile, ws));
         return new ProjectInfo(
                 null,

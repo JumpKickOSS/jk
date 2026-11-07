@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.TierTags;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.run.BuildPlan;
@@ -13,6 +14,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -64,6 +66,25 @@ public final class TestClassMatch {
      */
     public static @Nullable String explainTagExcluded(
             @Nullable String tagExcluded, Profiles profiles, @Nullable String active, Tier defaultTier) {
+        return explainTagExcluded(
+                tagExcluded,
+                profiles.byName().keySet(),
+                name -> {
+                    Profile p = profiles.resolve(name);
+                    return new TierTags(
+                            p.includeTags(), p.excludeTags(), p.includeTagsSet(), p.excludeTagsSet(), p.allSuites());
+                },
+                active,
+                defaultTier);
+    }
+
+    /** As above, each of {@code names} resolved to its tag lists by {@code profile}: the workspace root's, for a run. */
+    public static @Nullable String explainTagExcluded(
+            @Nullable String tagExcluded,
+            Collection<String> names,
+            Function<String, TierTags> profile,
+            @Nullable String active,
+            Tier defaultTier) {
         if (tagExcluded == null || tagExcluded.isBlank()) return tagExcluded;
         Set<String> tags = new TreeSet<>();
         Matcher m = TAG_LIST.matcher(tagExcluded);
@@ -81,9 +102,9 @@ public final class TestClassMatch {
         }
         if (tags.isEmpty()) return tagExcluded;
         List<String> running = new ArrayList<>();
-        for (String name : new TreeSet<>(profiles.byName().keySet())) {
+        for (String name : new TreeSet<>(names)) {
             if (name.equals(active)) continue;
-            if (runs(profiles.resolve(name), tags)) running.add("-p " + name);
+            if (runs(profile.apply(name), tags)) running.add("-p " + name);
         }
         if (running.isEmpty()) return tagExcluded;
         return tagExcluded + "; " + String.join(" or ", running) + " runs " + (one ? "it" : "them");
@@ -102,8 +123,8 @@ public final class TestClassMatch {
      * Whether {@code profile} admits a class carrying {@code tags}: it sets its own exclude list
      * and that list names none of them, and its include list, when it has one, names one.
      */
-    private static boolean runs(Profile profile, Set<String> tags) {
-        if (!profile.excludeTagsSet()) return false;
+    private static boolean runs(TierTags profile, Set<String> tags) {
+        if (!profile.excludeSet()) return false;
         if (profile.excludeTags().stream().map(String::trim).anyMatch(tags::contains)) return false;
         List<String> include = profile.includeTags();
         return include.isEmpty() || include.stream().map(String::trim).anyMatch(tags::contains);

@@ -99,7 +99,7 @@ class TestSelectionResolveTest {
         assertThat(sel.excludeTags()).containsExactly("slow");
     }
 
-    /** From inside a member directory the root's tags are still the baseline layer. */
+    /** From inside a member directory the root's tags are still the baseline layer, whatever the member lists. */
     @Test
     void member_directory_reads_the_workspace_roots_tags(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
@@ -116,10 +116,15 @@ class TestSelectionResolveTest {
                 guard-suites = ["test", "integration"]
                 """);
         Path member = Files.createDirectories(dir.resolve("member"));
-        writeToml(member, "");
+        writeToml(member, """
+                [test]
+                exclude-tags = ["bench"]
+                include-tags = ["unit"]
+                """);
 
         var sel = BuildFlags.testSelection(parse("-C", member.toString()));
         assertThat(sel.excludeTags()).containsExactly("slow");
+        assertThat(sel.includeTags()).isEmpty();
         assertThat(sel.tagsResolved()).isTrue();
 
         var gate = BuildFlags.testSelection(parse("-C", member.toString(), "--guard"));
@@ -218,6 +223,38 @@ class TestSelectionResolveTest {
         assertThatThrownBy(() -> BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("profiles.integration.all-suites must be true or false");
+    }
+
+    @Test
+    void an_inheriting_profile_gets_its_parents_tags_and_all_suites(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                exclude-tags = ["integration"]
+
+                [profiles.integration]
+                include-tags = ["integration"]
+                exclude-tags = []
+                all-suites = true
+
+                [profiles.nightly]
+                inherits = "integration"
+                """);
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "nightly"));
+        assertThat(sel.includeTags()).containsExactly("integration");
+        assertThat(sel.excludeTags()).isEmpty();
+        assertThat(sel.allSuites()).isTrue();
+        assertThat(sel.tagsResolved()).isTrue();
+    }
+
+    @Test
+    void no_profile_is_final_so_the_engine_applies_no_profile_either(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [profiles.integration]
+                include-tags = ["integration"]
+                """);
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration", "-n"));
+        assertThat(sel.includeTags()).isEmpty();
+        assertThat(sel.tagsResolved()).isTrue();
     }
 
     @Test
