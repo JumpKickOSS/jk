@@ -141,10 +141,12 @@ Manager.
 tokenless “watch-only” mode — a bare browser open without a token must not see live builds or
 history. Static content stays open, in two tiers: the classpath shell (`index.html`, JS, CSS,
 images shipped in the jar) is served under the SPA's own CSP so it can show the blocking
-authorization dialog, while files under the on-disk `web-root` (user reports and other
-build-written content) are served with `Content-Security-Policy: sandbox` — a unique opaque
-origin with scripts and forms disabled, so nothing dropped into `web-root` can script the
-dashboard origin or read the stored bearer token.
+authorization dialog, while files under the default on-disk `web-root` (`~/.jk/state/web`, where user reports and
+other build-written content may land) are served with `Content-Security-Policy: sandbox` — a
+unique opaque origin with scripts and forms disabled, so nothing dropped there can script the
+dashboard origin or read the stored bearer token. A `web-root` the user set (`JK_HTTP_WEB_ROOT` or
+`[http] web-root`) is a dashboard source tree they pointed the engine at, so its files get the
+shell's policy and the dashboard runs from it.
 
 Classpath shell files are `Cache-Control: no-cache` plus a version+mtime `ETag`, so a new
 engine jar is visible on the next load (revalidate always; unchanged bytes are a `304`). Disk

@@ -71,6 +71,12 @@ class JkHttpConfigTest {
         assertThat(c.port()).isEqualTo(8911);
         assertThat(c.maxConcurrentRequests()).isEqualTo(4);
         assertThat(c.webRoot()).isEqualTo("/srv/jk-web");
+        assertThat(c.devWebRoot()).isTrue();
+    }
+
+    @Test
+    void only_a_set_web_root_is_a_dev_root() {
+        assertThat(JkHttpConfig.DEFAULTS.devWebRoot()).isFalse();
     }
 
     @Test

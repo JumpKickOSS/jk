@@ -2,8 +2,10 @@
 package cc.jumpkick.engine.http;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.testing.Symlinks;
 import java.net.URI;
 import java.net.http.HttpRequest;
@@ -13,9 +15,11 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Static content over real HTTP: the disk web-root and its classpath fallback, the sandbox CSP,
+ * Static content over real HTTP: the disk web-root and its classpath fallback, the sandbox CSP and
+ * the shell's for a web-root the user set,
  * revalidation headers and 304s, HEAD, the 405 on a mutation, traversal, and the {@code Host}
  * header gate. Fixture in {@link HttpEngineServerHarness}.
  */
@@ -65,6 +69,39 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
         assertThat(shell.headers().firstValue("Content-Security-Policy").orElseThrow())
                 .doesNotContain("sandbox")
                 .startsWith("default-src 'self'");
+    }
+
+    @Test
+    void a_web_root_the_user_set_serves_its_files_under_the_shell_policy(@TempDir Path dev) throws Exception {
+        // A set web-root is a dashboard source tree (JK_HTTP_WEB_ROOT at a checkout): its scripts
+        // must run, so it gets the shell's policy; the default root stays sandboxed.
+        Files.writeString(dev.resolve("index.html"), "<html>dev dash</html>");
+        HttpEngineServer devServer = new HttpEngineServer(
+                new JkHttpConfig("127.0.0.1", 0, 16, 16, dev.toString(), JkHttpConfig.Mcp.DEFAULTS),
+                dev,
+                stateDir.resolve("dev.http-token"),
+                logFile,
+                "9.9.9-test",
+                () -> snapshot,
+                new HttpEvents(),
+                stubJobs,
+                testJournal(),
+                () -> metricsRows,
+                () -> cacheSnapshot,
+                null);
+        devServer.start();
+        try {
+            HttpResponse<String> resp = client.send(
+                    HttpRequest.newBuilder(URI.create(requireNonNull(devServer.url()) + "index.html"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(resp.body()).isEqualTo("<html>dev dash</html>");
+            assertThat(resp.headers().firstValue("Content-Security-Policy")).contains(StaticContent.SHELL_POLICY);
+        } finally {
+            devServer.close();
+        }
+        assertThat(get("/index.html").headers().firstValue("Content-Security-Policy"))
+                .contains(StaticContent.SANDBOX_POLICY);
     }
 
     @Test

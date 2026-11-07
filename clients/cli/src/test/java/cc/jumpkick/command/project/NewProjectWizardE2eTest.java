@@ -40,7 +40,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The dashboard's new-project wizard in a real browser: Playwright's Chromium against the engine's
- * HTTP server in this JVM, serving the checkout's dashboard and the real form, preview and create.
+ * HTTP server in this JVM, serving the checkout's dashboard sources as a dev {@code web-root} and
+ * the real form, preview and create.
  * A Spring Boot and a CLI project are created through the stepper, and the command the review step
  * shows, run through {@code jk new} into another directory, must scaffold the same tree, agent files
  * included; the project page the create opens shows what was wired for agents.
@@ -74,9 +75,9 @@ class NewProjectWizardE2eTest {
 
     @BeforeAll
     static void serve() throws IOException {
-        // No web root on disk: the dashboard is served from the jk-web jar this build made, as the
-        // engine serves it (a disk web root is sandboxed and runs no script).
-        Path web = state.resolve("no-web-root");
+        // The checkout's dashboard sources as the web-root a developer sets: served under the
+        // shell's policy, so the scripts run from disk.
+        Path web = RepoRoot.find(NewProjectWizardE2eTest.class).resolve("clients/web/src/main/resources/web");
         Path tokenFile = state.resolve("http-token");
         Path log = Files.writeString(state.resolve("engine.log"), "jk engine: listening\n");
         EngineHttpJobs jobs = new EngineHttpJobs() {

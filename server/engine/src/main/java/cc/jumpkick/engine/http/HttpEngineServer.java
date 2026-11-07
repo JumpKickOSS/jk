@@ -159,7 +159,7 @@ public final class HttpEngineServer implements AutoCloseable {
             Supplier<CacheSnapshot> cache,
             @Nullable Consumer<String> log) {
         this.config = config;
-        this.staticContent = new StaticContent(webRoot, version);
+        this.staticContent = new StaticContent(webRoot, version, config.devWebRoot());
         this.admission = new HttpAdmission(config);
         this.webRoot = webRoot;
         this.tokens = new HttpTokenGate(tokenFile);

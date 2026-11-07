@@ -260,6 +260,8 @@ jk engine start
 
 Relative `web-root` values resolve against the jk home root (`~/.jk`, or `$JK_HOME`).
 Only files present under the root are overridden; anything missing still falls through to the jar.
+A root set this way is served under the shell's CSP, so the dashboard runs from it; the default
+root is sandboxed ([HTTP](http.md#auth-tiers)).
 
 ### HTTP server knobs
 
