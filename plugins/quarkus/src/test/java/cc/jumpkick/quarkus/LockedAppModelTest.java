@@ -52,7 +52,8 @@ class LockedAppModelTest {
                 "io.quarkus", "quarkus-core", "3.40.1", dir.resolve("store/quarkus-core-3.40.1.jar"), false)));
         Path notices = dir.resolve("notices.txt");
 
-        ApplicationModel enforced = LockedAppModel.enforce(resolved(dir), lock, ForkNotices.to(notices));
+        ApplicationModel enforced =
+                LockedAppModel.enforce(resolved(dir), lock, ForkNotices.to(notices), QuarkusAugmentMain.LOG_PREFIX);
 
         assertThat(enforced.getRuntimeDependencies())
                 .extracting(ResolvedDependency::getArtifactId)
@@ -68,6 +69,20 @@ class LockedAppModelTest {
     }
 
     @Test
+    void the_notice_advises_what_holds_for_a_build_and_for_a_lock(@TempDir Path dir) throws Exception {
+        LockedClosure lock = LockedClosure.of(List.of(new LockedClosure.Artifact(
+                "io.quarkus", "quarkus-core", "3.40.1", dir.resolve("store/quarkus-core-3.40.1.jar"), false)));
+        Path notices = dir.resolve("notices.txt");
+
+        LockedAppModel.enforce(resolved(dir), lock, ForkNotices.to(notices), QuarkusAugmentMain.LOG_PREFIX);
+
+        // "Re-lock" reads oddly while jk lock is the one saying it; the next lock is right in both.
+        assertThat(Files.readString(notices))
+                .isEqualTo("NOT shipped — outside jk-lock.toml (to ship them, declare them under [dependencies];"
+                        + " the next lock pins them): io.smallrye:smallrye-conditional:2.1.0\n");
+    }
+
+    @Test
     void a_closure_the_lock_covers_says_nothing(@TempDir Path dir) throws Exception {
         LockedClosure lock = LockedClosure.of(List.of(
                 new LockedClosure.Artifact("io.quarkus", "quarkus-core", "3.40.1", dir.resolve("core.jar"), false),
@@ -75,7 +90,7 @@ class LockedAppModelTest {
                         "io.smallrye", "smallrye-conditional", "2.1.0", dir.resolve("conditional.jar"), false)));
         Path notices = dir.resolve("notices.txt");
 
-        LockedAppModel.enforce(resolved(dir), lock, ForkNotices.to(notices));
+        LockedAppModel.enforce(resolved(dir), lock, ForkNotices.to(notices), QuarkusAugmentMain.LOG_PREFIX);
 
         FakeBuildIo step = new FakeBuildIo(dir.resolve("step"), "quarkus");
         ForkNotices.relay(notices, step);

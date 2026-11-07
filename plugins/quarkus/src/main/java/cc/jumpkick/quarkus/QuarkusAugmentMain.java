@@ -104,7 +104,8 @@ public final class QuarkusAugmentMain {
                 classesDir,
                 quarkusVersion,
                 null,
-                ForkNotices.fromProperty());
+                ForkNotices.fromProperty(),
+                LOG_PREFIX);
 
         // Platform properties + descriptor (required for config expansion + alignment checks).
         injectPlatform(model, quarkusVersion, platformProps, offline);
@@ -161,7 +162,8 @@ public final class QuarkusAugmentMain {
      *
      * <p>A runtime artifact the resolver finds and the lock does not name is left out of the model
      * ({@link LockedAppModel#enforce}), and {@code notices} hears which: each fork that resolves a
-     * model, the lock closure's included, says the same thing.
+     * model, the lock closure's included, says the same thing. What it logs is labelled {@code
+     * logPrefix}, the calling fork's.
      */
     static ApplicationModel resolveModel(
             LockedClosure locked,
@@ -176,13 +178,14 @@ public final class QuarkusAugmentMain {
             Path classesDir,
             String quarkusVersion,
             @Nullable ResolvedArtifacts record,
-            ForkNotices notices)
+            ForkNotices notices,
+            String logPrefix)
             throws Exception {
         MavenArtifactResolver mvn = resolver(localRepo, closureRepo, offline, routes);
         // What this resolver downloads is the run's, on its board like every other body.
         AetherTransfers.attach(mvn.getSession());
         if (record != null) record.attach(mvn.getSession());
-        System.err.println(LOG_PREFIX + ": remote repositories: " + routes.describe());
+        System.err.println(logPrefix + ": remote repositories: " + routes.describe());
         BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(mvn);
         ArtifactCoords appCoords = ArtifactCoords.jar(group, artifact, version);
         BootstrapRepo.Installer repo = (g, a, v, type, file) -> modelResolver.install(
@@ -206,7 +209,7 @@ public final class QuarkusAugmentMain {
         }
         ArtifactCoords managing = ArtifactCoords.pom("io.quarkus.platform", "quarkus-bom", quarkusVersion);
 
-        System.err.println(LOG_PREFIX + ": resolving ApplicationModel (direct=" + direct.size() + " workspaceDeps="
+        System.err.println(logPrefix + ": resolving ApplicationModel (direct=" + direct.size() + " workspaceDeps="
                 + workspaceDeps + ")…");
         // Bootstrap 3.38+: (app, directDeps, excludedArtifacts, managingProject, reloadableModules).
         // Quarkus decides the deployment closure (build-time only); the lock pins its files and
@@ -214,8 +217,9 @@ public final class QuarkusAugmentMain {
         var model = LockedAppModel.enforce(
                 modelResolver.resolveManagedModel(appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey())),
                 locked,
-                notices);
-        System.err.println(LOG_PREFIX + ": runtime deps="
+                notices,
+                logPrefix);
+        System.err.println(logPrefix + ": runtime deps="
                 + model.getRuntimeDependencies().size() + " deployment deps="
                 + model.getDependencies().size());
         return model;

@@ -40,8 +40,8 @@ import org.junit.jupiter.api.io.TempDir;
 class StepNoticeTest {
 
     private static final Path MODULE = Path.of("/ws/shop");
-    private static final String DROPPED = "NOT shipped — outside jk-lock.toml (declare them under [dependencies]"
-            + " and re-lock to ship them): io.smallrye:smallrye-conditional:2.1.0";
+    private static final String DROPPED = "NOT shipped — outside jk-lock.toml (to ship them, declare them under"
+            + " [dependencies]; the next lock pins them): io.smallrye:smallrye-conditional:2.1.0";
 
     @BeforeEach
     @AfterEach
@@ -167,12 +167,14 @@ class StepNoticeTest {
                     progress,
                     MODULE,
                     "shop",
+                    "quarkus",
                     "quarkus/deployment",
                     PluginReply.diagnostic(PluginProtocol.SEVERITY_NOTICE, null, 0, 0, DROPPED));
             LockClosures.forwardDiagnostic(
                     progress,
                     MODULE,
                     "shop",
+                    "quarkus",
                     "quarkus/deployment",
                     PluginReply.diagnostic("warning", "pom.xml", 4, 0, "relocated artifact"));
             // Outside a plan step the lock has no report: its warning is a run notice instead.
@@ -180,15 +182,48 @@ class StepNoticeTest {
                     LockPipeline.Progress.SILENT,
                     MODULE,
                     "shop",
+                    "quarkus",
                     "quarkus/test-deployment",
                     PluginReply.diagnostic("warning", null, 0, 0, "slow mirror"));
         });
 
         assertThat(lockWarnings).containsExactly("lock quarkus/deployment=pom.xml:4: relocated artifact");
         assertThat(JkResultsAgent.render(acc.toRecord(2_000, false, 900, "0.0.0-test", null)))
-                .contains("\nW shop lock quarkus/deployment: " + DROPPED + "\n")
+                .contains("\nW shop lock quarkus: " + DROPPED + "\n")
                 .contains("\nW lock quarkus/test-deployment: slow mirror\n")
                 .doesNotContain("relocated artifact");
+    }
+
+    @Test
+    void an_artifact_both_closures_leave_out_is_one_notice() {
+        BuildAccumulator acc = new BuildAccumulator("lock", MODULE.toString(), "com.example:shop", "cli");
+        String other = DROPPED.replace("smallrye-conditional", "smallrye-other");
+
+        inRun(acc, () -> {
+            for (String closure : List.of("quarkus/deployment", "quarkus/test-deployment")) {
+                LockClosures.forwardDiagnostic(
+                        LockPipeline.Progress.SILENT,
+                        MODULE,
+                        "shop",
+                        "quarkus",
+                        closure,
+                        PluginReply.diagnostic(PluginProtocol.SEVERITY_NOTICE, null, 0, 0, DROPPED));
+            }
+            // A closure that leaves out something else still says so.
+            LockClosures.forwardDiagnostic(
+                    LockPipeline.Progress.SILENT,
+                    MODULE,
+                    "shop",
+                    "quarkus",
+                    "quarkus/test-deployment",
+                    PluginReply.diagnostic(PluginProtocol.SEVERITY_NOTICE, null, 0, 0, other));
+        });
+
+        String verdict = JkResultsAgent.render(acc.toRecord(2_000, false, 900, "0.0.0-test", null));
+        assertThat(verdict.split("\n", -1))
+                .containsOnlyOnce("W shop lock quarkus: " + DROPPED)
+                .containsOnlyOnce("W shop lock quarkus: " + other);
+        assertThat(verdict).doesNotContain("quarkus/deployment").doesNotContain("quarkus/test-deployment");
     }
 
     /** A body that may throw, run inside {@link Build#run}. */

@@ -551,7 +551,7 @@ final class LockClosures {
                     spec,
                     WorkerEnv.strict(),
                     progress::label,
-                    reply -> forwardDiagnostic(progress, dir, module, closure.resolvedBy(), reply))) {
+                    reply -> forwardDiagnostic(progress, dir, module, plugin, closure.resolvedBy(), reply))) {
                 if (PluginProtocol.PIN.equals(Jsonl.str(line, PluginProtocol.T))) {
                     String held = Jsonl.str(line, "path");
                     files.put(
@@ -577,16 +577,17 @@ final class LockClosures {
 
     /**
      * One {@code diagnostic} reply from the worker asked for the closure {@code resolvedBy} names
-     * ({@code <plugin>/<closure>}), said as a step's is: a
+     * ({@code <plugin>/<closure>}, {@code plugin} being its plugin's id), said as a step's is: a
      * {@linkplain PlannerPlugin#sayNotice notice} is a run notice naming the module and {@code lock
-     * <plugin>/<closure>}; any other severity is the lock's warning under that name. The closure
+     * <plugin>}; any other severity is the lock's warning under {@code lock <plugin>/<closure>}. A
+     * notice names the plugin, not the closure, because one plugin's closures often say the same
+     * thing (an artifact both leave out of the application), and the user hears it once. The closure
      * resolved, so even an {@code error} the plugin reported fails nothing here.
      */
     static void forwardDiagnostic(
-            LockPipeline.Progress progress, Path dir, String module, String resolvedBy, String line) {
-        String step = "lock " + resolvedBy;
-        if (PlannerPlugin.sayNotice(dir, module, step, line)) return;
-        progress.warn(step, PlannerPlugin.diagnosticText(line));
+            LockPipeline.Progress progress, Path dir, String module, String plugin, String resolvedBy, String line) {
+        if (PlannerPlugin.sayNotice(dir, module, "lock " + plugin, line)) return;
+        progress.warn("lock " + resolvedBy, PlannerPlugin.diagnosticText(line));
     }
 
     /** {@code lock} as the module at {@code dir} reads it: a member's partition, the root's own. */

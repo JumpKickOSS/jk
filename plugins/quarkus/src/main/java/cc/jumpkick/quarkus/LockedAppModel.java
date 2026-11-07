@@ -44,14 +44,23 @@ final class LockedAppModel {
      */
     private static final int ANY_FLAG = -1;
 
+    /**
+     * How a notice of what the application leaves out begins, before the artifacts it names. The
+     * advice holds wherever it is said, by a build or by {@code jk lock} as it writes the lock.
+     */
+    static final String DROPPED = "NOT shipped — outside jk-lock.toml (to ship them, declare them under"
+            + " [dependencies]; the next lock pins them): ";
+
     private LockedAppModel() {}
 
     /**
      * The resolved model with its runtime closure replaced by jk's. A runtime artifact the resolver
      * produced and the lock does not name is taken off the runtime classpath, so it would otherwise
-     * ship unlocked, and {@code notices} hears that it was left out.
+     * ship unlocked, and {@code notices} hears that it was left out. Every line it says is labelled
+     * {@code logPrefix}, the calling fork's.
      */
-    static ApplicationModel enforce(ApplicationModel resolved, LockedClosure lock, ForkNotices notices) {
+    static ApplicationModel enforce(
+            ApplicationModel resolved, LockedClosure lock, ForkNotices notices, String logPrefix) {
         Map<String, ResolvedDependencyBuilder> byCoords = new LinkedHashMap<>();
         for (ResolvedDependency dep : resolved.getDependenciesWithAnyFlag(ANY_FLAG)) {
             byCoords.put(coords(dep.getGroupId(), dep.getArtifactId(), dep.getClassifier(), dep.getType()), copy(dep));
@@ -66,7 +75,7 @@ final class LockedAppModel {
                     dep.getGroupId(), dep.getArtifactId(), dep.getClassifier(), dep.getVersion()));
         }
         LockedClosure.Plan plan = lock.plan(runtime);
-        report(plan, notices);
+        report(plan, notices, logPrefix);
 
         // plan() answers in the order it was asked, so pin i belongs to runtime dependency i.
         for (int i = 0; i < plan.pins().size(); i++) {
@@ -162,22 +171,19 @@ final class LockedAppModel {
     /**
      * Say every disagreement out loud — a lock that quietly loses is the defect being fixed. What the
      * application loses is a notice: the build passes without it and the application fails when it
-     * starts, so the user hears it on a passing build too. The rest is the fork's own log.
+     * starts, so the user hears it on a passing build too. The rest is the fork's own log. Each line
+     * is labelled {@code prefix}, so the fork that said it is the one named.
      */
-    private static void report(LockedClosure.Plan plan, ForkNotices notices) {
+    private static void report(LockedClosure.Plan plan, ForkNotices notices, String prefix) {
         for (String override : plan.overrides()) {
-            System.err.println(QuarkusAugmentMain.LOG_PREFIX + ": lock overrides " + override);
+            System.err.println(prefix + ": lock overrides " + override);
         }
         if (!plan.unlocked().isEmpty()) {
-            notices.say(
-                    QuarkusAugmentMain.LOG_PREFIX,
-                    "NOT shipped — outside jk-lock.toml (declare them under [dependencies] and re-lock to"
-                            + " ship them): " + String.join(", ", plan.unlocked()));
+            notices.say(prefix, DROPPED + String.join(", ", plan.unlocked()));
         }
         if (!plan.unresolved().isEmpty()) {
-            System.err.println(
-                    QuarkusAugmentMain.LOG_PREFIX + ": locked but off the augment's runtime classpath (extension"
-                            + " excluded-artifacts): " + String.join(", ", plan.unresolved()));
+            System.err.println(prefix + ": locked but off the augment's runtime classpath (extension"
+                    + " excluded-artifacts): " + String.join(", ", plan.unresolved()));
         }
     }
 

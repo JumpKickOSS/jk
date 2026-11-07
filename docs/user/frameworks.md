@@ -80,9 +80,9 @@ jk new -t quarkus/hello my-api
   native jar for another OS, picked by a POM profile) is downloaded at build time, and an
   offline build refuses it. A runtime artifact Quarkus's resolver reaches that `jk-lock.toml`
   does not name is left out of the application, and a notice naming it (`NOT shipped — outside
-  jk-lock.toml`) is on every verdict of a build that does so. `jk lock` says the same notice
-  when it writes such a lock, before the first build: declare the artifact under
-  `[dependencies]` and re-lock to ship it.
+  jk-lock.toml`) is on every verdict of a build that does so. `jk lock` says the same notice,
+  once even when both closures reach the artifact, when it writes such a lock, before the first
+  build. To ship it, declare it under `[dependencies]`; the next lock pins it.
 - **Runtime closure:** what ships is the lock's runtime closure. `jk lock` follows an
   extension's conditional dependencies the way Quarkus's resolver does: one joins the lock when
   every artifact its `dependency-condition` names is in the closure, and what it brings can meet
