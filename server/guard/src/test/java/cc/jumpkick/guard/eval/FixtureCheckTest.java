@@ -45,9 +45,11 @@ class FixtureCheckTest {
         Evaluation verdict = FixtureCheck.evaluate(new FixtureCheck.Case(rule, dir, "", false), dir, slice, null);
 
         assertThat(verdict.outcome()).isEqualTo(Outcome.CLEAN);
+        // The count is process-wide: other classes in this JVM may release theirs meanwhile, so the
+        // case holds nothing past itself when the count has not grown.
         assertThat(EvalContext.heldContexts())
                 .as("the slice is not held past its case")
-                .isEqualTo(before);
+                .isLessThanOrEqualTo(before);
     }
 
     @Test
