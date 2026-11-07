@@ -186,7 +186,7 @@ class ThirdPartyPluginTest {
                 project.resolve("jk.toml"), Files.readString(project.resolve("jk.toml")) + "\n[bogus]\nx = 1\n");
         assertThatThrownBy(() -> JkBuildParser.reparse(project.resolve("jk.toml")))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[bogus] is not owned by any installed plugin");
+                .hasMessageContaining("[bogus]: no installed plugin reads this table");
         Files.writeString(
                 project.resolve("jk.toml"),
                 Files.readString(project.resolve("jk.toml")).replace("\n[bogus]\nx = 1\n", ""));
