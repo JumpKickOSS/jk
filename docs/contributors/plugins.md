@@ -426,7 +426,14 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   says the input is probed when the step runs. The jOOQ preset's live schema is the one user.
 - **Diagnostics** — a body reports a located finding with `TaskExec.diagnostic(severity, file,
   line, col, message)`; the engine forwards each as the step's warning or error (the
-  `file:line[:col]: message` header the journal parses), before a failing body's throw.
+  `file:line[:col]: message` header the journal parses), before a failing body's throw. What the
+  step left out of what it built, which the user must act on even when the build passes (an
+  artifact a framework resolved outside the lock), is `TaskExec.notice(message)`: the engine makes
+  it a run notice naming the module and step, on the client's stream and on every verdict, a
+  passing one's included. An engine that predates the `notice` severity reports it as the step's
+  warning. A body whose own fork has something to say hands it back as data (the Quarkus forks
+  append to a file the worker names) and calls `notice` from the worker, because a fork's output
+  is shown only when the step fails.
 - The worker wire keeps its legacy spellings (`run-step`, `step:` input refs, `step-output`) —
   protocol literals, not API names.
 

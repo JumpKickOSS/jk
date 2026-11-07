@@ -93,7 +93,19 @@ public final class PluginProtocol {
      */
     public static final String PIN = "pin";
 
-    public static final String DIAGNOSTIC = "diagnostic"; // {sev,file?,line?,col?,key?,msg}
+    /**
+     * {@code {sev,file?,line?,col?,key?,msg}}: {@code sev} is {@code error}, {@code warning} or
+     * {@link #SEVERITY_NOTICE}. A reader treats a severity it does not know as {@code warning}, so a
+     * new one degrades to a warning on an older engine instead of being lost.
+     */
+    public static final String DIAGNOSTIC = "diagnostic";
+
+    /**
+     * The {@link #DIAGNOSTIC} severity of a step's notice: something left out of what the step built
+     * that the user must act on. The engine shows it on every verdict, a passing build's included.
+     */
+    public static final String SEVERITY_NOTICE = "notice";
+
     public static final String PROVENANCE = "provenance"; // {gen,src[]}
     public static final String TEST = "test"; // {event,…} test lifecycle event
     public static final String STEP = "step"; // describe declaration

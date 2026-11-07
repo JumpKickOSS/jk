@@ -53,6 +53,11 @@ final class LockedAppModel {
      *     name — that artifact would otherwise ship unlocked
      */
     static ApplicationModel enforce(ApplicationModel resolved, LockedClosure lock) {
+        return enforce(resolved, lock, ForkNotices.fromProperty());
+    }
+
+    /** As {@link #enforce(ApplicationModel, LockedClosure)}, saying what it leaves out to {@code notices}. */
+    static ApplicationModel enforce(ApplicationModel resolved, LockedClosure lock, ForkNotices notices) {
         Map<String, ResolvedDependencyBuilder> byCoords = new LinkedHashMap<>();
         for (ResolvedDependency dep : resolved.getDependenciesWithAnyFlag(ANY_FLAG)) {
             byCoords.put(coords(dep.getGroupId(), dep.getArtifactId(), dep.getClassifier(), dep.getType()), copy(dep));
@@ -67,7 +72,7 @@ final class LockedAppModel {
                     dep.getGroupId(), dep.getArtifactId(), dep.getClassifier(), dep.getVersion()));
         }
         LockedClosure.Plan plan = lock.plan(runtime);
-        report(plan);
+        report(plan, notices);
 
         // plan() answers in the order it was asked, so pin i belongs to runtime dependency i.
         for (int i = 0; i < plan.pins().size(); i++) {
@@ -160,15 +165,20 @@ final class LockedAppModel {
         return rebuilt.build();
     }
 
-    /** Say every disagreement out loud — a lock that quietly loses is the defect being fixed. */
-    private static void report(LockedClosure.Plan plan) {
+    /**
+     * Say every disagreement out loud — a lock that quietly loses is the defect being fixed. What the
+     * application loses is a notice: the build passes without it and the application fails when it
+     * starts, so the user hears it on a passing build too. The rest is the fork's own log.
+     */
+    private static void report(LockedClosure.Plan plan, ForkNotices notices) {
         for (String override : plan.overrides()) {
             System.err.println(QuarkusAugmentMain.LOG_PREFIX + ": lock overrides " + override);
         }
         if (!plan.unlocked().isEmpty()) {
-            System.err.println(
-                    QuarkusAugmentMain.LOG_PREFIX + ": NOT shipped — outside jk-lock.toml (declare them under"
-                            + " [dependencies] and re-lock to ship them): " + String.join(", ", plan.unlocked()));
+            notices.say(
+                    QuarkusAugmentMain.LOG_PREFIX,
+                    "NOT shipped — outside jk-lock.toml (declare them under [dependencies] and re-lock to"
+                            + " ship them): " + String.join(", ", plan.unlocked()));
         }
         if (!plan.unresolved().isEmpty()) {
             System.err.println(
