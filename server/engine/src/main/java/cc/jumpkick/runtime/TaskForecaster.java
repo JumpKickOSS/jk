@@ -34,6 +34,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.ProjectedFiles;
 import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
@@ -738,6 +739,8 @@ public final class TaskForecaster {
     }
 
     static boolean resourcesOutOfSync(Path resDir, Path outDir) {
+        Map<String, String> projected = ProjectedFiles.at(resDir);
+        if (projected != null) return projectedOutOfSync(projected, outDir);
         // Two readAttributes per resource, not six metadata ops. The source's come from the walk for
         // free; the copy's answer presence, size and mtime together — where isRegularFile + size +
         // size + mtime + mtime each re-resolved a path.
@@ -768,5 +771,19 @@ public final class TaskForecaster {
             return true; // unreadable ⇒ treat as dirty
         }
         return dirty[0];
+    }
+
+    /** Whether a file the build lays into a projected root differs from its copy under {@code outDir}. */
+    private static boolean projectedOutOfSync(Map<String, String> projected, Path outDir) {
+        try {
+            for (Map.Entry<String, String> file : projected.entrySet()) {
+                Path copy = outDir.resolve(file.getKey()).toAbsolutePath().normalize();
+                if (!Files.isRegularFile(copy)
+                        || !FileHashMemo.contentHash(copy).equals(file.getValue())) return true;
+            }
+        } catch (IOException e) {
+            return true; // unreadable ⇒ treat as dirty
+        }
+        return false;
     }
 }

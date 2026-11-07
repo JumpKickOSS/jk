@@ -295,7 +295,7 @@ public final class PlannerGuardSuite {
                 s.dir,
                 p.compact(),
                 p.layout(),
-                p.processorCp(),
+                p.javacProcessorCp(),
                 p.release(),
                 p.javacArgs(),
                 p.javaHome(),

@@ -40,6 +40,8 @@ final class PlannerCompileForecast {
         ForecastScope.Prepared prepared = s.prepared();
         List<Path> mainSrc = prepared.mainSrc();
         if (mainSrc.isEmpty()) return null;
+        KspForecast.Round round = prepared.mainRound();
+        if (round.runs() && round.rewrites(mainSrc)) return kspRewrite(s, TaskNames.COMPILE_JAVA);
         var lock = prepared.lock();
         BuildLayout layout = prepared.layout();
         int release = prepared.release();
@@ -76,7 +78,7 @@ final class PlannerCompileForecast {
         CompileRequest req = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
                 mainSrc,
                 cp,
-                prepared.processorCp(),
+                prepared.javacProcessorCp(),
                 layout,
                 out,
                 release,
@@ -88,7 +90,8 @@ final class PlannerCompileForecast {
                 groovyJar,
                 scalaSetup));
         Optional<FreshnessStamp.Stamp> fresh = Optional.empty();
-        if (!s.compileDepDirty && !s.force && !groovyJarUnavailable) {
+        // A stamp over generated sources the KSP round is about to restore answers for the old ones.
+        if (!s.compileDepDirty && !s.force && !groovyJarUnavailable && !round.rewrites(mainSrc)) {
             try {
                 fresh = FreshnessStamp.freshStamp(
                         out,
@@ -147,9 +150,12 @@ final class PlannerCompileForecast {
         ForecastScope.Prepared prepared = s.prepared();
         if (prepared.ktSrc().isEmpty()) return null;
         BuildLayout layout = prepared.layout();
+        KspForecast.Round round = prepared.mainRound();
+        boolean rewritten = round.rewrites(prepared.ktSrc()) || round.rewrites(prepared.mainSrc());
+        if (round.runs() && rewritten) return kspRewrite(s, TaskNames.COMPILE_KOTLIN);
         ForecastLangArms arms = s.arms();
         ForecastLangArms.KotlinArm arm = arms.kotlinArm(prepared);
-        if (!s.compileDepDirty && !s.force && arms.kotlinStampFresh(prepared, arm)) {
+        if (!s.compileDepDirty && !s.force && !rewritten && arms.kotlinStampFresh(prepared, arm)) {
             s.compileKotlinKey = FreshnessStamp.stampedKey(layout.compileStampDir(), BuildStamps.KOTLIN)
                     .orElse(null);
             return new TaskForecast.Task(TaskNames.COMPILE_KOTLIN, TaskForecast.Status.CACHED, "", null);
@@ -162,6 +168,16 @@ final class PlannerCompileForecast {
             s.ownHint = SourceApiIndex.Hint.UNKNOWN;
         }
         return step.task();
+    }
+
+    /**
+     * A compile over sources a running KSP round rewrites: what the round writes is unknown until
+     * it runs, so the compile is forecast to run, and everything keyed on its output with it.
+     */
+    private static TaskForecast.Task kspRewrite(ForecastScope s, String step) {
+        s.compileDirty = true;
+        s.ownHint = SourceApiIndex.Hint.UNKNOWN;
+        return new TaskForecast.Task(step, TaskForecast.Status.RUN, "recompile · KSP round runs", null);
     }
 
     /** compile-groovy's price: the stamp, then the action key of the build's own groovyc request. */

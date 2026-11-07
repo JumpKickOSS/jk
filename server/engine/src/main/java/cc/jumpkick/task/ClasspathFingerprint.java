@@ -146,7 +146,7 @@ public final class ClasspathFingerprint {
         }
         if (resourceRoots != null) {
             for (Path root : resourceRoots) {
-                if (root == null || !Files.isDirectory(root)) continue;
+                if (root == null || !ProjectedFiles.isDirectory(root)) continue;
                 hashInto(root, digests);
             }
         }
@@ -172,6 +172,11 @@ public final class ClasspathFingerprint {
      * forward-slash relative path: the walk the packagers read the same tree with.
      */
     private static void hashInto(Path root, Map<String, String> digests) throws IOException {
+        Map<String, String> projected = ProjectedFiles.at(root);
+        if (projected != null) {
+            digests.putAll(projected);
+            return;
+        }
         // Through PathUtil (under TreeContent) rather than a hand-rolled walkFileTree: a directory
         // read is a native call the virtual-thread scheduler does not compensate for, so a walk holds its carrier
         // until it ends. This is the largest walk a forecast runs, and the forecast now runs a
@@ -182,9 +187,16 @@ public final class ClasspathFingerprint {
         });
     }
 
-    /** Content identity of a single entry (CAS blob, jar, classes dir, or missing). */
+    /**
+     * Content identity of a single entry (CAS blob, jar, classes dir, or missing). A {@link
+     * ProjectedFiles} root is the tree the build lays there.
+     */
     public static String entry(Path p) throws IOException {
         Path abs = p.toAbsolutePath().normalize();
+        Map<String, String> projected = ProjectedFiles.at(abs);
+        if (projected != null) {
+            return projected.isEmpty() ? "missing:" + PortablePath.of(abs) : entryFromOutputDigests(projected);
+        }
         if (!ENTRY_MEMO.isBound()) return entryOf(abs);
         Map<Path, String> memo = ENTRY_MEMO.get();
         String hit = memo.get(abs);

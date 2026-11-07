@@ -461,6 +461,11 @@ public final class PlannerPackage {
                     s.depOnlyDirty ? "repackage · " + TaskForecast.ONLY_IF_COMPILE_RUNS : "repackage · compile changed",
                     null);
         }
+        if (s.kspRuns()) {
+            // The round's bytecode and resources join the classes tree, and they are unknown until it runs.
+            return new TaskForecast.Task(
+                    TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "repackage · KSP round runs", null);
+        }
         ActivePlugins.@Nullable Declared plugin = prepared.plugin();
         if (PackagingKeys.ownsPackaging(plugin)) {
             // Packaging owned by a plugin (spring-boot, grails, quarkus, minified, android): the

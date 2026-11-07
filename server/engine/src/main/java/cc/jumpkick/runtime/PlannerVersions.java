@@ -245,7 +245,7 @@ public final class PlannerVersions {
             CompileRequest req = versionsCompileRequest(
                     sources,
                     classpath(project, layout, entry, layout.classesDir(), base),
-                    prepared.processorCp(),
+                    prepared.javacProcessorCp(),
                     out,
                     compileRelease(entry, prepared.release()),
                     prepared.javacArgs(),
