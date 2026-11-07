@@ -20,7 +20,6 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ClassSuite;
@@ -33,7 +32,6 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.runtime.base.TestFailureSource;
@@ -43,7 +41,6 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.LangCompile;
-import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
@@ -192,7 +189,7 @@ public final class PlannerTest {
                             outs.mixedGroovy() && javaTests);
                     restored &= compileJavaTests(ctx, in, cas, src, outs.javacClasspath(baseCp), testClasses);
                     mergeLanguageOutputs(src, outs, ctx.require(LAYOUT).buildDir());
-                    copySuiteResources(
+                    SuiteResources.mirror(
                             ctx,
                             in,
                             actionCache,
@@ -443,49 +440,6 @@ public final class PlannerTest {
     }
 
     /**
-     * Test resources ride the test classpath next to compiled tests, so getResourceAsStream
-     * fixtures resolve. Every
-     * suite in this run's selection is copied (default test/resources/ + e.g.
-     * integration/resources/). Fixtures affect test outcomes but target/test-classes is not on the
-     * runtime cp — run-tests folds these dirs into its TestStamp key.
-     */
-    private static void copySuiteResources(
-            TaskContext ctx,
-            BuildPlanner.Inputs in,
-            ActionCache actionCache,
-            boolean compact,
-            List<String> suiteNames,
-            Path testClasses,
-            Map<String, String> beforeNonClass,
-            boolean mixedTest,
-            boolean mixedTestGv)
-            throws IOException {
-        List<Path> suiteResDirs = PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(ctx.require(LAYOUT)));
-        suiteResDirs.addAll(ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames));
-        if (suiteNames.contains(TestSuites.DEFAULT)) {
-            Set<String> unresolved = new TreeSet<>();
-            suiteResDirs.addAll(
-                    FilteredResources.testRoots(in.dir(), ctx.require(PROJECT), ctx.require(LAYOUT), unresolved));
-            PlannerResources.warnUnresolved(ctx, unresolved);
-        }
-        Files.createDirectories(testClasses);
-        // adoptUnowned: a test-resource copy that predates the ledger left files this mirror
-        // must still remove. A file the compile just wrote is protected; main classes already
-        // carry a ledger, so they do not adopt.
-        Path ledger = ctx.require(LAYOUT).buildDir().resolve("incremental").resolve(ResourceMirror.TEST_LEDGER);
-        Set<String> mirrored = ResourceMirror.sync(
-                suiteResDirs, testClasses, ledger, true, ResourceMirror.changedNonClass(testClasses, beforeNonClass));
-        // The compile stored whatever was in the tree, including a resource it did not produce.
-        // Drop those paths so a later restore cannot put a deleted one back.
-        List<String> keys = new ArrayList<>();
-        ctx.get(COMPILE_TEST_ACTION_KEY).ifPresent(keys::add);
-        if (!mixedTest) ctx.get(COMPILE_TEST_KOTLIN_ACTION_KEY).ifPresent(keys::add);
-        if (!mixedTestGv) ctx.get(COMPILE_TEST_GROOVY_ACTION_KEY).ifPresent(keys::add);
-        for (String key : keys) MirroredOutputs.release(actionCache, key, testClasses, mirrored);
-        ctx.put(TEST_RESOURCE_DIRS, suiteResDirs);
-    }
-
-    /**
      * No test-resource ledger yet, so this compile has to be whole: an incremental one can leave a
      * generated resource untouched, and adoption would then remove it with the stale copies.
      */
@@ -648,14 +602,25 @@ public final class PlannerTest {
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
-            JUnitLauncher launcher = TestLaunch.launcher(
+            Supplier<JUnitLauncher> launcher = () -> TestLaunch.launcher(
                             in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec)
-                    .withSuites(suites)
                     .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
                     .withAutoShare(auto)
                     .withReadRecording(reads.flag());
+            TagExcludedCapture listener = tagExcluded;
             try {
-                result = TestLaunch.launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, tagExcluded);
+                result = ctx.get(SUITE_RESOURCES)
+                        .orElse(SuiteResources.NONE)
+                        .launch(
+                                testClasses,
+                                suites,
+                                effectiveSel.classes(),
+                                projectUnderTest.build().testExcludeClasses(),
+                                affected,
+                                launcher,
+                                runtimeCp,
+                                (one, cp) -> TestLaunch.launch(
+                                        ctx, in, one, cp, testWorkers, workerJars, testEnv, listener));
             } catch (TestLauncherFailure e) {
                 TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
                 throw e;
