@@ -19,6 +19,7 @@ import cc.jumpkick.command.pipeline.InstallCommand;
 import cc.jumpkick.command.pipeline.RunVerb;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.EnvLookup;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.config.WorkspaceScan;
@@ -189,11 +190,8 @@ public final class ToolRunCommand implements CliCommand {
                 return null;
             }
             var rootBuild = ProjectInfos.orNull(wsRoot);
-            List<String> moduleDirs = rootBuild != null && rootBuild.workspaceRoot()
-                    ? rootBuild.moduleDirs()
-                    : WorkspaceModules.memberDirs(wsRoot).stream()
-                            .map(Path::toString)
-                            .toList();
+            List<String> moduleDirs =
+                    rootBuild != null && rootBuild.workspaceRoot() ? rootBuild.moduleDirs() : memberDirs(wsRoot);
             if (moduleDirs.isEmpty()) return null;
             String want = name.replace('\\', '/');
             while (want.startsWith("./")) want = want.substring(2);
@@ -229,7 +227,9 @@ public final class ToolRunCommand implements CliCommand {
                 return suffixHits.get(0);
             }
             // Unlisted dirs under the workspace stay on the standalone/file classifiers.
-        } catch (AmbiguousModuleTarget e) {
+        } catch (AmbiguousModuleTarget | JkBuildParseException e) {
+            // A bad member list is the workspace's error, not "no module": the build would fail on
+            // it too, so name it here rather than falling through to the file classifiers.
             throw e;
         } catch (Exception ignored) {
             return null;
@@ -281,6 +281,17 @@ public final class ToolRunCommand implements CliCommand {
                     + root.relativize(dirs.get(0)).toString().replace('\\', '/') + "`");
         }
         return dirs.isEmpty() ? null : dirs.get(0);
+    }
+
+    /** The members {@code wsRoot}'s manifest lists; a member-list error names that manifest. */
+    private static List<String> memberDirs(Path wsRoot) {
+        try {
+            return WorkspaceModules.memberDirs(wsRoot).stream()
+                    .map(Path::toString)
+                    .toList();
+        } catch (JkBuildParseException e) {
+            throw new JkBuildParseException(ManifestPaths.manifestIn(wsRoot) + ": " + e.getMessage(), e);
+        }
     }
 
     /** {@code jk run <leaf>} matched more than one workspace module. */
@@ -490,6 +501,9 @@ public final class ToolRunCommand implements CliCommand {
         } catch (AmbiguousModuleTarget e) {
             CommandWedge.printFail("Run", e.getMessage());
             return Exit.USAGE;
+        } catch (JkBuildParseException e) {
+            CommandWedge.printFail("Run", e.getMessage());
+            return Exit.CONFIG;
         }
         if (moduleHit != null) {
             return runDirectory(moduleHit, toolArgs);

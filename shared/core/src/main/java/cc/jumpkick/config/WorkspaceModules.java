@@ -102,19 +102,48 @@ public final class WorkspaceModules {
     }
 
     /**
-     * True when {@code entries} lists the module at {@code rel} (a {@code /}-separated path relative
-     * to the root): a literal equal to it, or a glob it matches segment by segment. Lexical — no
-     * directory is read — so a root finder can ask it for every ancestor cheaply.
+     * True when {@code entries} names the module at {@code rel} (a {@code /}-separated path relative
+     * to the root): a literal equal to it, or a glob it matches segment by segment where no
+     * wildcard segment matches a hidden ({@code .}-prefixed) name — the rules {@link #expand} walks
+     * by. Lexical — no directory is read — so it answers for a module whose {@code jk.toml} is
+     * not written yet, as an edit registering a new member needs.
      */
     public static boolean lists(List<String> entries, String rel) {
+        return match(entries, rel) != Match.NONE;
+    }
+
+    /**
+     * True when {@code entries}, the list of the workspace at {@code root}, selects the module at
+     * {@code rel}: what {@link #expand} would return it for, a literal as written or a glob match
+     * that holds a {@code jk.toml}. Lexical but for one file check on a glob match, so a root
+     * finder can ask it for every ancestor cheaply.
+     */
+    public static boolean lists(Path root, List<String> entries, String rel) {
+        return switch (match(entries, rel)) {
+            case NONE -> false;
+            case LITERAL -> true;
+            case GLOB -> Files.isRegularFile(root.resolve(rel).resolve(ManifestPaths.MANIFEST));
+        };
+    }
+
+    private enum Match {
+        NONE,
+        LITERAL,
+        GLOB
+    }
+
+    private static Match match(List<String> entries, String rel) {
         String wanted = rel.replace('\\', '/');
+        boolean glob = false;
         for (String entry : entries) {
             if (entry == null) continue;
             String normalized = entry.replace('\\', '/');
-            if (normalized.equals(wanted)) return true;
-            if (isGlob(normalized) && !normalized.contains("**") && globMatches(normalized, wanted)) return true;
+            if (normalized.equals(wanted)) return Match.LITERAL;
+            if (!glob && isGlob(normalized) && !normalized.contains("**") && globMatches(normalized, wanted)) {
+                glob = true;
+            }
         }
-        return false;
+        return glob ? Match.GLOB : Match.NONE;
     }
 
     private static boolean globMatches(String pattern, String rel) {
@@ -122,7 +151,12 @@ public final class WorkspaceModules {
         String[] parts = rel.split("/");
         if (segments.length != parts.length) return false;
         for (int i = 0; i < segments.length; i++) {
-            if (!matcher(segments[i]).matches(Path.of(parts[i]))) return false;
+            if (!isGlob(segments[i])) {
+                if (!segments[i].equals(parts[i])) return false;
+                continue;
+            }
+            // A wildcard never selects a hidden directory: expand skips them while listing.
+            if (parts[i].startsWith(".") || !matcher(segments[i]).matches(Path.of(parts[i]))) return false;
         }
         return true;
     }
