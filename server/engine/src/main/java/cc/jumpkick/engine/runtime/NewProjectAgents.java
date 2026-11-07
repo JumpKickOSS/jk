@@ -40,25 +40,29 @@ public final class NewProjectAgents {
     }
 
     /**
-     * Wire {@code dir} for {@code choice}; the last note names the agents it was wired for. The
-     * project exists already, so a failure is a note, not a failed create.
+     * Wire {@code dir} for {@code choice}; the last note names the agents the wiring wired, those
+     * the setting asked for and those whose folder the template shipped. The project exists
+     * already, so a failure is a note, not a failed create.
      */
     static AgentSetup.Report wire(Path dir, AgentChoice choice) {
         try {
             AgentSetup.Report report = choice.install(dir);
             List<String> notes = new ArrayList<>(report.notes());
-            notes.add(wiredNote(choice));
-            return new AgentSetup.Report(report.changes(), notes);
+            notes.add(wiredNote(report, choice));
+            return new AgentSetup.Report(report.changes(), notes, report.wired());
         } catch (IOException | RuntimeException e) {
             Log.debug("new project: agent wiring failed", e);
             return new AgentSetup.Report(List.of(), List.of("Agent files not written: " + Errors.text(e)));
         }
     }
 
-    /** The note naming the agents {@code choice} wires: {@code Agents wired: claude, codex}. */
-    static String wiredNote(AgentChoice choice) {
+    /**
+     * The note naming the agents {@code report} wired ({@code Agents wired: claude, codex}), or, when
+     * it wired none, why: {@code choice} turned agents off, or found none.
+     */
+    static String wiredNote(AgentSetup.Report report, AgentChoice choice) {
         List<String> names = new ArrayList<>();
-        for (AgentSetup.Host h : choice.wired()) names.add(h.name().toLowerCase(Locale.ROOT));
+        for (AgentSetup.Host h : report.wired()) names.add(h.name().toLowerCase(Locale.ROOT));
         if (!names.isEmpty()) return "Agents wired: " + String.join(", ", names);
         return choice.mode() == AgentSetup.Mode.NONE
                 ? "Agents wired: none (JK_AGENTS=none), AGENTS.md only"

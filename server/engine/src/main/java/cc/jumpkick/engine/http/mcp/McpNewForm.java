@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.engine.runtime.NewProjectAgents;
 import cc.jumpkick.engine.runtime.NewProjectForm;
 import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Field;
@@ -81,7 +82,7 @@ final class McpNewForm {
      */
     private static @Nullable Map<String, Object> viaWizard(
             McpCall in, Form form, Map<String, Object> known, NewProjectWizard site) {
-        String id = site.open();
+        String id = site.open(McpClientAgent.choice(in.connection(), NewProjectAgents.current()));
         try {
             String link = site.link(known, id);
             if (link == null) return null;

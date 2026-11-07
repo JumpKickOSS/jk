@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.docs.AgentChoice;
 import cc.jumpkick.engine.http.mcp.NewProjectWizard;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.runtime.NewProjectAgents;
@@ -36,8 +37,9 @@ import org.jspecify.annotations.Nullable;
  * POST /api/projects                              {rev, answers, elicitation?} → {path, dir, projectId, agents}
  * </pre>
  *
- * {@code agents} is the agent wiring the create did for the engine's agents setting: {@code files}
- * written, by path under the project, and the {@code notes} left to the user.
+ * {@code agents} is the agent wiring the create did for the engine's agents setting, or, with an
+ * {@code elicitation} an MCP call waits on, for that call's: {@code files} written, by path under
+ * the project, and the {@code notes} left to the user.
  *
  * {@code derived} holds the values of the form's derived defaults ({@code git-email},
  * {@code parent-dir}) on this machine; an answer left out takes the same value here.
@@ -105,7 +107,7 @@ final class HttpNewProjectApi {
         if (s == null) return;
         try {
             // The SPA routes #project/<id> immediately, so identity materializes with creation.
-            NewProjectOps.Created created = NewProjectOps.createWithIdentity(s.request());
+            NewProjectOps.Created created = NewProjectOps.createWithIdentity(handedOff(s));
             Map<String, Object> project = new LinkedHashMap<>();
             project.put("path", created.path().toString());
             if (created.projectId() != null) project.put("projectId", created.projectId());
@@ -121,6 +123,16 @@ final class HttpNewProjectApi {
         } catch (IOException e) {
             error(exchange, 500, e.getMessage() == null ? "scaffold failed" : e.getMessage());
         }
+    }
+
+    /**
+     * {@code s}'s request, wired for the agents of the MCP call its {@code elicitation} answers, as
+     * that call would wire a project it created itself; the engine's setting when none is waiting.
+     */
+    private NewProjectOps.Request handedOff(Settled s) {
+        String id = s.elicitation();
+        AgentChoice agents = id == null ? null : wizard.agents(id);
+        return agents == null ? s.request() : s.request().withAgents(agents);
     }
 
     /** Posted answers checked against the form their template names, as a scaffold request. */
