@@ -40,8 +40,8 @@ import org.junit.jupiter.api.io.TempDir;
 class StepNoticeTest {
 
     private static final Path MODULE = Path.of("/ws/shop");
-    private static final String DROPPED = "NOT shipped — outside jk-lock.toml (to ship them, declare them under"
-            + " [dependencies]; the next lock pins them): io.smallrye:smallrye-conditional:2.1.0";
+    private static final String DROPPED = "not shipped, missing from jk-lock.toml; add to [dependencies]:"
+            + " io.smallrye:smallrye-conditional:2.1.0";
 
     @BeforeEach
     @AfterEach

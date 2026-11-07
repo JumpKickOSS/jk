@@ -45,8 +45,8 @@ class AotCacheTrainerTest {
     @Test
     void a_non_boot_exploded_classes_layout_is_refused_with_the_reason() {
         assertThat(AotCacheTrainer.unsupportedReason(plan(Path.of("/w/target/classes"))))
-                .contains("exploded-classes")
-                .contains("directory");
+                .contains("exploded classes")
+                .contains("Spring Boot jar");
     }
 
     /** A packager tree (Quarkus) is never refused for layout — only for host/runtime. */
@@ -69,7 +69,7 @@ class AotCacheTrainerTest {
         if (canTrainOnThisHost(appTree)) {
             assertThat(reason).isNull();
         } else {
-            assertThat(reason).doesNotContain("exploded-classes").contains("container runtime");
+            assertThat(reason).doesNotContain("exploded classes").contains("docker");
         }
     }
 

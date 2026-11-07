@@ -86,8 +86,8 @@ final class TestPluginsStep {
             Http http, List<RepositoryRoute> routes, PackageIo.RuntimeEntry entry, Path to, boolean offline)
             throws IOException, InterruptedException {
         if (offline) {
-            throw new IOException("the Jenkins plugin " + entry.gav() + " needs its .hpi for the tests, and the"
-                    + " build is offline — run once online");
+            throw new IOException(
+                    "Jenkins plugin " + entry.gav() + " needs its .hpi and the build is offline; run once online");
         }
         String path = hpiPath(entry);
         List<String> tried = new ArrayList<>();
@@ -111,7 +111,7 @@ final class TestPluginsStep {
             }
             tried.add(route.id() + " (" + response.statusCode() + ")");
         }
-        throw new IOException("no repository serves the Jenkins plugin archive " + path + " — tried "
+        throw new IOException("no repository serves the Jenkins plugin archive " + path + "; tried "
                 + (tried.isEmpty() ? "no repositories" : String.join(", ", tried)));
     }
 

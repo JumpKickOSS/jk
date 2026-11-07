@@ -126,7 +126,7 @@ class MinifiedJarAuditTest {
         assertThat(warning).contains("com.acme.Box");
         assertThat(warning).contains(BOX_SIG);
         assertThat(warning).contains("now none");
-        assertThat(warning).contains("-keepattributes Signature is not enough");
+        assertThat(warning).contains("may fail at startup");
         // 100% degraded is far past the threshold: the honest advice is a fat jar.
         assertThat(warning).contains("assembly = true");
     }

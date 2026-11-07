@@ -86,7 +86,7 @@ class CodeFormatterTimeoutTest {
         CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), memo, work());
 
         assertThat(tally.errors()).isEqualTo(3);
-        assertThat(out.lineFor("Queued.java")).contains("was left wedged by a file that timed out");
+        assertThat(out.lineFor("Queued.java")).contains("stuck on a file that timed out");
         // It was never attempted, so there is nothing to remember about it: a memo here would make
         // the next run refuse a file that has never been tried.
         Path queued = spec.files.get(2).file().toPath();
@@ -108,7 +108,7 @@ class CodeFormatterTimeoutTest {
 
         CodeFormatter.formatAll(spec, out.writer(), null, work());
 
-        assertThat(out.lineFor("Wedged.java")).contains("deepest expression nesting here is");
+        assertThat(out.lineFor("Wedged.java")).contains("nested parentheses at line");
     }
 
     /**
@@ -199,7 +199,7 @@ class CodeFormatterTimeoutTest {
         long elapsedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000L;
 
         assertThat(tally.errors()).isEqualTo(names.length);
-        assertThat(out.lineFor("Queued50.java")).contains("was left wedged by a file that timed out");
+        assertThat(out.lineFor("Queued50.java")).contains("stuck on a file that timed out");
         // The two timeouts are the whole cost. A poll apiece for the hundred behind them would be 20 s.
         assertThat(elapsedMs).isLessThan(5_000);
     }
@@ -241,9 +241,7 @@ class CodeFormatterTimeoutTest {
         assertThat(memo.timeoutCount()).isZero();
         // And it says so, with the one knob that answers both remaining explanations: a very large
         // file, or a very slow host. A bare "timed out" answers neither.
-        assertThat(out.lineFor("Wedged.java"))
-                .contains("nothing about this file's shape explains that")
-                .contains("jk.format.file-timeout-ms");
+        assertThat(out.lineFor("Wedged.java")).contains("raise jk.format.file-timeout-ms");
     }
 
     @Test

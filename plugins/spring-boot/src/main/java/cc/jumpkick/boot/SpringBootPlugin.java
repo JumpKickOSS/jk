@@ -84,7 +84,7 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
     private static void runAot(TaskExec exec) throws Exception {
         String startClass = exec.project().mainClass();
         if (startClass == null || startClass.isBlank()) {
-            throw new IOException("no application main class — Spring AOT needs the entry point");
+            throw new IOException("no main class for Spring AOT; set [application] main = \"...\"");
         }
         exec.label("Spring AOT processing (" + startClass + ")");
         Path sources = exec.outputDir("sources");
@@ -183,8 +183,7 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
                                 + "spring.aot.enabled=true\n");
                 aotDirs.add(activate);
             } else if (!Files.readString(userProps).contains("spring.aot.enabled")) {
-                io.label("warning: spring.properties lacks spring.aot.enabled=true — the built AOT"
-                        + " artifacts will be ignored at runtime");
+                io.label("warning: AOT output unused; add spring.aot.enabled=true to spring.properties");
             }
         }
 

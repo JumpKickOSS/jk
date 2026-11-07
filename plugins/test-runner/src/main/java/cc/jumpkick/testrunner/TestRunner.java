@@ -48,8 +48,8 @@ public final class TestRunner implements Plugin {
             // project's test classpath, so its absence means a hand-edited lockfile or a
             // classpath jk did not build. Say that instead of quietly running a second engine
             // driver whose tag and event semantics differ from the Launcher's.
-            System.err.println("jk-test-runner: the JUnit Platform Launcher is not on the test classpath — "
-                    + "add org.junit.platform:junit-platform-launcher (or re-run `jk lock`).");
+            System.err.println(
+                    "jk-test-runner: the JUnit Platform Launcher is not on the test classpath;" + " run jk lock");
             // The user's declared test dependencies are wrong — the one thing 2 still means.
             return Exit.CONFIG;
         }
@@ -65,12 +65,11 @@ public final class TestRunner implements Plugin {
         } catch (LinkageError e) {
             String where = String.valueOf(e.getMessage());
             if (where.contains("junit/platform") || where.contains("junit.platform")) {
-                System.err.println("jk-test-runner: incompatible JUnit Platform on the test classpath — "
+                System.err.println("jk-test-runner: incompatible JUnit Platform on the test classpath: "
                         + e.getClass().getSimpleName()
                         + ": "
                         + e.getMessage());
-                System.err.println("  Ensure org.junit.platform:junit-platform-engine is on the test classpath "
-                        + "(Spring Boot: spring-boot-starter-test; bare projects: junit-jupiter).");
+                System.err.println("  add junit-jupiter, or spring-boot-starter-test in a Spring Boot app");
                 return Exit.CONFIG;
             }
             String header = "jk-test-runner: " + e.getClass().getName() + ": " + e.getMessage();
@@ -82,9 +81,7 @@ public final class TestRunner implements Plugin {
             String header = "jk-test-runner: " + t.getClass().getName() + ": " + t.getMessage();
             System.err.println(header);
             if (String.valueOf(t.getMessage()).contains("without at least one TestEngine")) {
-                System.err.println("  No JUnit Platform engine is on the test classpath. Declare the test framework"
-                        + " under [test-dependencies] (junit-jupiter; junit:junit brings the Vintage engine"
-                        + " with it) and re-run `jk lock`.");
+                System.err.println("  no test engine; add junit-jupiter or junit:junit to [test-dependencies]");
             }
             t.printStackTrace(System.err);
             // The engine keeps a bounded head and tail of this stream: the header goes out again
@@ -218,9 +215,8 @@ public final class TestRunner implements Plugin {
                 } else {
                     // A stale installed jk-test-runner driven by a newer engine lands here —
                     // name the likely cause instead of a bare unknown-arg.
-                    throw new IllegalArgumentException("unknown arg: " + a
-                            + " (engine/test-runner version mismatch? reinstall jk so jk-test-runner"
-                            + " matches the engine)");
+                    throw new IllegalArgumentException(
+                            "unknown arg: " + a + "; reinstall jk so the test runner matches the engine");
                 }
             }
             if (scan == null) {

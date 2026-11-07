@@ -221,7 +221,7 @@ class AndroidSpikeTest {
         // boot: refuses gracefully without the emulator component (no ~300MB download in CI).
         var avdBoot = PluginCommands.run(b.project(), b.cache(), "avd", List.of("boot", "spike"));
         assertThat(avdBoot.exit()).isEqualTo(1);
-        assertThat(String.join("\n", avdBoot.output())).contains("emulator component is not installed");
+        assertThat(String.join("\n", avdBoot.output())).contains("emulator not installed");
     }
 
     /** The provisioning surface: component status over the same command machinery. */

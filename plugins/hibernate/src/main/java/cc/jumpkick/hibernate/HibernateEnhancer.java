@@ -91,8 +91,8 @@ final class HibernateEnhancer {
             try {
                 context = loader.loadClass(CONTEXT);
             } catch (ClassNotFoundException e) {
-                throw new IOException("[hibernate] enhance runs the project's own Hibernate, and this module's"
-                        + " runtime classpath has none: declare org.hibernate.orm:hibernate-core");
+                throw new IOException("[hibernate] enhance needs Hibernate on the runtime classpath;"
+                        + " add org.hibernate.orm:hibernate-core");
             }
             try {
                 Object defaults =

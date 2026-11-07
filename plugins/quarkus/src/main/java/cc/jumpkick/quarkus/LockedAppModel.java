@@ -48,8 +48,7 @@ final class LockedAppModel {
      * How a notice of what the application leaves out begins, before the artifacts it names. The
      * advice holds wherever it is said, by a build or by {@code jk lock} as it writes the lock.
      */
-    static final String DROPPED = "NOT shipped — outside jk-lock.toml (to ship them, declare them under"
-            + " [dependencies]; the next lock pins them): ";
+    static final String DROPPED = "not shipped, missing from jk-lock.toml; add to [dependencies]: ";
 
     private LockedAppModel() {}
 
@@ -182,8 +181,8 @@ final class LockedAppModel {
             notices.say(prefix, DROPPED + String.join(", ", plan.unlocked()));
         }
         if (!plan.unresolved().isEmpty()) {
-            System.err.println(prefix + ": locked but off the application's runtime classpath (extension"
-                    + " excluded-artifacts): " + String.join(", ", plan.unresolved()));
+            System.err.println(
+                    prefix + ": locked but excluded by an extension: " + String.join(", ", plan.unresolved()));
         }
     }
 

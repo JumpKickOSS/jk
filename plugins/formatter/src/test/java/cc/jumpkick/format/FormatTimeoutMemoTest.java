@@ -47,7 +47,7 @@ class FormatTimeoutMemoTest {
         assertThat(result.status()).isEqualTo("error");
         assertThat(result.msg())
                 .contains("timed out at a 2000 ms limit on an earlier run")
-                .contains("was not retried");
+                .contains("not retried");
         assertThat(Files.readString(file)).isEqualTo(DIRTY);
     }
 
@@ -59,7 +59,7 @@ class FormatTimeoutMemoTest {
 
         CodeFormatter.FileResult result = format(file, memo, 2_000);
 
-        assertThat(result.msg()).contains("deepest expression nesting here is");
+        assertThat(result.msg()).contains("nested parentheses at line");
     }
 
     @Test

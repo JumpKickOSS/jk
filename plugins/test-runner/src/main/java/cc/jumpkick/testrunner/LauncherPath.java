@@ -304,16 +304,12 @@ final class LauncherPath {
         if (!excludeTags.isEmpty() && !allTags.isEmpty()) {
             sb.append("; pass --include-tags ")
                     .append(String.join(",", allTags))
-                    .append(" (or a -p profile that includes ")
-                    .append(allTags.size() == 1 ? "it" : "them")
-                    .append(") to run ")
+                    .append(" to run ")
                     .append(dropped.size() == 1 ? "it" : "them");
         } else {
-            sb.append("; --include-tags ")
+            sb.append("; drop --include-tags ")
                     .append(String.join(",", includeTags))
-                    .append(" admits only classes carrying ")
-                    .append(includeTags.size() == 1 ? "that tag" : "those tags")
-                    .append(" — drop it, or --no-profile, to run ")
+                    .append(" or pass --no-profile to run ")
                     .append(dropped.size() == 1 ? "it" : "them");
         }
         return sb.toString();
@@ -423,7 +419,7 @@ final class LauncherPath {
                 .append(" under ")
                 .append(scanClasspath)
                 .append(n == 1 ? " declares" : " declare")
-                .append(" a test framework (no test annotation, no specification base), so nothing ran — ")
+                .append(" a test framework: ")
                 .append(String.join(", ", classes.subList(0, Math.min(n, NAMED_CLASSES))));
         if (n > NAMED_CLASSES) sb.append(" and ").append(n - NAMED_CLASSES).append(" more");
         return sb.toString();
@@ -432,10 +428,8 @@ final class LauncherPath {
     /** The failure line: the class count, then where to look. */
     static String noTestsMessage(long classes, Path scanClasspath) {
         return "no tests discovered in " + classes + (classes == 1 ? " class" : " classes") + " under "
-                + scanClasspath
-                + " — the test framework's engine is not on the classpath or not on the launcher's"
-                + " Platform line (`jk why org.junit.platform:junit-platform-launcher`), or a framework"
-                + " classloader failed to load the classes; rerun with -v for the runner's own output.";
+                + scanClasspath + "; rerun with -v for the runner's output"
+                + "\n  check the test engine: jk why org.junit.platform:junit-platform-launcher";
     }
 
     private static boolean hasTest(TestPlan plan) {

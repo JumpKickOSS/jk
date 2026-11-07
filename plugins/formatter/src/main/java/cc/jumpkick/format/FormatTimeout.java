@@ -29,7 +29,7 @@ record FormatTimeout(long ms, String why) {
         if (factor == 1) return new FormatTimeout(ms, "");
         String why = String.format(
                 Locale.ROOT,
-                "the %d ms default stretched %d× for a load average of %.1f over %d processors",
+                "%d ms default ×%d for load %.1f on %d CPUs",
                 FormatWatchdog.DEFAULT_TIMEOUT_MS,
                 factor,
                 loadAverage,

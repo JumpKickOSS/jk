@@ -66,12 +66,12 @@ class LockClosureNoticeTest {
         assertThat(files).containsKey("com.example:widget-extra:1.0");
         // The lock fork labels its own lines, so a failing lock's kept output names the right fork.
         assertThat(said.toString(StandardCharsets.UTF_8))
-                .contains(QuarkusLockClosureMain.LOG_PREFIX + ": NOT shipped — outside jk-lock.toml")
+                .contains(QuarkusLockClosureMain.LOG_PREFIX + ": not shipped, missing from jk-lock.toml")
                 .doesNotContain(QuarkusAugmentMain.LOG_PREFIX + ":");
         FakeBuildIo step = new FakeBuildIo(dir.resolve("step"), "quarkus");
         ForkNotices.relay(notices, step);
         assertThat(step.diagnostics()).singleElement().satisfies(notice -> assertThat(notice)
-                .startsWith("notice: NOT shipped — outside jk-lock.toml")
+                .startsWith("notice: not shipped, missing from jk-lock.toml")
                 .contains("com.example:widget-extra:1.0")
                 .doesNotContain("com.example:widget:"));
     }

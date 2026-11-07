@@ -50,10 +50,8 @@ final class SourceShape {
     static String phrase(Shape shape) {
         if (!shape.explainsAStall()) return "";
         String lambdas = shape.lambdaNesting() >= 2 ? ", " + shape.lambdaNesting() + " nested lambdas" : "";
-        return "; deepest expression nesting here is " + shape.parenDepth() + " parentheses at line "
-                + shape.parenLine() + lambdas
-                + " — a line-break search grows steeply with nesting, so splitting that expression into"
-                + " named locals or helper methods is usually the fix";
+        return "; " + shape.parenDepth() + " nested parentheses at line " + shape.parenLine() + lambdas
+                + "; split that expression into locals or methods";
     }
 
     /** {@link #phrase} for {@code source}, measured. */

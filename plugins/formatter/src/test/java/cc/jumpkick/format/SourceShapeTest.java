@@ -61,10 +61,10 @@ class SourceShapeTest {
     @Test
     void the_post_mortem_names_the_nesting_and_the_line() {
         assertThat(SourceShape.postMortem(NESTED_LAMBDAS))
-                .contains("deepest expression nesting here is")
+                .contains("nested parentheses at line")
                 .contains("at line 5")
                 .contains("6 nested lambdas")
-                .contains("named locals or helper methods");
+                .contains("split that expression into locals or methods");
     }
 
     @Test

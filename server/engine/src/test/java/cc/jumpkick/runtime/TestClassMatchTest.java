@@ -150,7 +150,7 @@ class TestClassMatchTest {
                 "all", new Profile("all", null, List.of(), List.of(), List.of(), List.of()),
                 "args", Profile.of("args")));
         String integration = "--class named 1 class the tag filter excluded: a.OrdersIT [integration];"
-                + " pass --include-tags integration (or a -p profile that includes it) to run it";
+                + " pass --include-tags integration to run it";
 
         assertThat(TestClassMatch.explainTagExcluded(integration, profiles, null, FAST))
                 .isEqualTo(integration + "; -p all or -p integration runs it");
@@ -168,8 +168,7 @@ class TestClassMatchTest {
     @Test
     void a_class_a_profile_dropped_that_the_default_tier_runs_names_that_tier() {
         String untagged = "--class named 1 class the tag filter excluded: a.WarmWorkersTest (untagged);"
-                + " --include-tags integration admits only classes carrying that tag — drop it, or --no-profile,"
-                + " to run it";
+                + " drop --include-tags integration or pass --no-profile to run it";
         String explained = TestClassMatch.explainTagExcluded(untagged, Profiles.empty(), "integration", FAST);
         assertThat(explained)
                 .isEqualTo("the tag filter excluded a.WarmWorkersTest (untagged); it runs in the default tier"
@@ -181,7 +180,7 @@ class TestClassMatchTest {
                         + " excluded a.WarmWorkersTest (untagged); it runs in the default tier (drop -p integration)");
 
         String slow = "--class named 1 class the tag filter excluded: a.BigIT [slow]; pass --include-tags slow"
-                + " (or a -p profile that includes it) to run it";
+                + " to run it";
         assertThat(TestClassMatch.explainTagExcluded(slow, Profiles.empty(), "integration", FAST))
                 .as("the default tier excludes slow too: the runner's advice stands")
                 .isEqualTo(slow);
@@ -195,7 +194,7 @@ class TestClassMatchTest {
             new TestClassMatch.Tier(List.of(), List.of("integration", "slow", "bench"));
 
     private static final String TAG_EXCLUDED = "--class named 1 class the tag filter excluded:"
-            + " a.FormatThreadsBenchTest [bench]; pass --include-tags bench (or a -p profile that includes it)"
+            + " a.FormatThreadsBenchTest [bench]; pass --include-tags bench"
             + " to run it";
 
     @Test

@@ -182,8 +182,8 @@ public final class MavenPublisher {
             }
         } catch (IOException unreadable) {
             throw new IOException(
-                    "could not read " + repoBase.resolve(metadataPath) + " (" + unreadable.getMessage()
-                            + ") — refusing to guess the next build number of " + project.version() + ".",
+                    "could not read " + repoBase.resolve(metadataPath) + " to number the " + project.version()
+                            + " build: " + unreadable.getMessage(),
                     unreadable);
         }
         ZonedDateTime now = ZonedDateTime.now(clock.withZone(ZoneOffset.UTC));
@@ -260,8 +260,8 @@ public final class MavenPublisher {
         }
         if (remote.equals(local)) return Presence.SAME;
         throw new IOException(repoBase.resolve(relPath)
-                + " is already published with other bytes (the repository's sha1 " + remote + ", this build's " + local
-                + "): a published version cannot change. Raise the version in jk.toml.");
+                + " is already published with other bytes; raise the version in jk.toml"
+                + "\n  repository sha1 " + remote + ", this build " + local);
     }
 
     /**
@@ -297,9 +297,9 @@ public final class MavenPublisher {
                     .orElseGet(() -> MavenMetadata.empty(project.group(), project.name()));
         } catch (IOException | IllegalArgumentException e) {
             throw new IOException(
-                    "could not read " + uri + " (" + e.getMessage()
-                            + ") — refusing to replace it with a single-version document. The "
-                            + project.version() + " artifacts are uploaded; re-run publish to update the version list.",
+                    "could not read " + uri + ": " + e.getMessage()
+                            + "\n  left it unchanged; re-run publish to add " + project.version()
+                            + " to the version list",
                     e);
         }
         putWithChecksums(relPath, existing.withVersion(project.version()).render(), "application/xml", results, bytes);
@@ -327,8 +327,8 @@ public final class MavenPublisher {
         out.put(relPath, status);
         bytes[0] += body.length;
         if (status == 409) {
-            throw new IOException("PUT " + uri + " returned 409: the repository already holds this file and does not"
-                    + " allow it to be replaced. Raise the version in jk.toml.");
+            throw new IOException("PUT " + uri + " returned 409: the repository does not allow it to be replaced;"
+                    + " raise the version in jk.toml");
         }
         if (status < 200 || status >= 300) {
             throw new IOException("PUT " + uri + " returned " + status);

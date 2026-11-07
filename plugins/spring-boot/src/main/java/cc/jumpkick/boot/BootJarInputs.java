@@ -44,8 +44,7 @@ public record BootJarInputs(String bootVersion, String startClass, Path loaderJa
     public static BootJarInputs read(PackageIo io) throws IOException {
         String startClass = io.project().mainClass();
         if (startClass == null || startClass.isBlank()) {
-            throw new IOException("no application main class: the compiled classes have no `main` and jk.toml sets"
-                    + " none — a Boot-launcher jar needs a Start-Class; set `[application] main = \"...\"`");
+            throw new IOException("no main class for the Boot jar; set [application] main = \"...\"");
         }
         Path loaderJar = io.extra(LOADER_EXTRA)
                 .orElseThrow(() -> new IOException(LOADER_EXTRA + " artifact missing from the packager inputs"));
@@ -61,9 +60,8 @@ public record BootJarInputs(String bootVersion, String startClass, Path loaderJa
             }
         }
         if (bootVersion.isBlank()) {
-            throw new IOException("the resolved runtime closure carries no " + BOOT_GROUP + ":" + BOOT_ARTIFACT
-                    + ", so this jar has no Spring Boot to launch and no Boot version to record —"
-                    + " declare a Spring Boot starter in [dependencies]");
+            throw new IOException("no " + BOOT_GROUP + ":" + BOOT_ARTIFACT
+                    + " on the runtime classpath; add a Spring Boot starter to [dependencies]");
         }
         return new BootJarInputs(bootVersion, startClass, loaderJar, List.copyOf(libs));
     }

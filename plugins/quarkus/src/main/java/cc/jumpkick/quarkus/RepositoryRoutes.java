@@ -172,8 +172,7 @@ final class RepositoryRoutes {
                 return previous == null ? null : previous.getProxy(repository);
             });
         } catch (IllegalStateException readOnly) {
-            System.err.println("jk-quarkus: warning: the resolver session cannot take jk's proxy routing;"
-                    + " repositories go through the proxy settings.xml names, if any");
+            System.err.println("jk-quarkus: warning: jk's proxy settings not applied; using settings.xml's");
         }
     }
 
@@ -203,8 +202,7 @@ final class RepositoryRoutes {
                         .build();
             });
         } catch (IllegalStateException readOnly) {
-            System.err.println("jk-quarkus: warning: the resolver session cannot take jk's repository routing;"
-                    + " a repository a POM declares is asked where the POM says");
+            System.err.println("jk-quarkus: warning: jk's repository routing not applied to POM repositories");
         }
     }
 
@@ -225,8 +223,8 @@ final class RepositoryRoutes {
                     // fall through to the note
                 }
             }
-            System.err.println("jk-quarkus: warning: repository `" + r.id()
-                    + "` has a bearer credential the resolver session cannot carry; it is asked anonymously");
+            System.err.println(
+                    "jk-quarkus: warning: repository " + r.id() + " bearer token not sent; asking anonymously");
         }
     }
 

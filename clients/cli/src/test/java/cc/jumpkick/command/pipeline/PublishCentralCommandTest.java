@@ -287,7 +287,7 @@ class PublishCentralCommandTest {
         writeZip(dir.resolve("target/widget-1.0.0-javadoc.jar"));
         assertThat(run(args)).isEqualTo(1);
         assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
-                .contains("Maven Central requires POM metadata this manifest lacks: url, licenses, developers, scm");
+                .contains("Maven Central needs POM metadata: url, licenses, developers, scm");
         assertThat(requests).isEmpty();
     }
 

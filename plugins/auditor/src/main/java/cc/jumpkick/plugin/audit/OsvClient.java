@@ -104,9 +104,9 @@ public final class OsvClient {
                         + pending.size()
                         + " quer"
                         + (pending.size() == 1 ? "y" : "ies")
-                        + " still carried a next_page_token after "
+                        + " still had more results after "
                         + MAX_PAGES
-                        + " pages; the audit cannot report the full hit set");
+                        + " pages");
             }
             List<Object> rows = new ArrayList<>(pending.size());
             for (var entry : pending.entrySet()) rows.add(row(queries.get(entry.getKey()), entry.getValue()));
@@ -114,7 +114,7 @@ public final class OsvClient {
             HttpResponse<byte[]> response = http.post(
                     batchUrl, body.getBytes(StandardCharsets.UTF_8), Map.of("Content-Type", "application/json"));
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IOException("OSV batch query failed: HTTP " + response.statusCode() + " — " + text(response));
+                throw new IOException("OSV batch query failed: HTTP " + response.statusCode() + ": " + text(response));
             }
             List<Page> pages = parseBatchResponse(text(response), pending.size());
             Map<Integer, @Nullable String> next = new LinkedHashMap<>();

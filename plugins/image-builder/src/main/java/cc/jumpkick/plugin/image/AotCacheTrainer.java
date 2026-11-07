@@ -90,21 +90,16 @@ final class AotCacheTrainer {
     static @Nullable String unsupportedReason(ImageBuilder.Plan plan) {
         // Layout refusals first — they are intrinsic and more actionable than "no docker".
         if (!plan.hasAppTree() && plan.classesDir() != null && !BootLayout.isBootJar(plan.mainJar())) {
-            return "this module's image is an exploded-classes layout and its main artifact is not a"
-                    + " Spring Boot jar, so there is nothing to unpack into a trainable shape. A CDS"
-                    + " dump refuses any classpath entry that is a directory (JDK-8329980, Won't"
-                    + " Fix)";
+            return "needs a Spring Boot jar, not exploded classes";
         }
         // An app tree (and jar layouts) still need a matching host JVM or a container runtime.
         if (containerRuntime(plan.config().dockerExecutable()) == null
                 && !BaseJre.hostCanExecute(plan.config().platforms())) {
-            return "this host can neither run the image's JVM directly (it builds for "
+            return "needs docker, podman or nerdctl, or a "
                     + (plan.config().platforms().isEmpty()
                             ? "linux/amd64"
                             : String.join(",", plan.config().platforms()))
-                    + ") nor find a container runtime (docker, podman, nerdctl). The cache is only"
-                    + " valid for the exact JVM build that produced it, so training needs one or the"
-                    + " other";
+                    + " host";
         }
         return null;
     }
@@ -149,7 +144,7 @@ final class AotCacheTrainer {
             Path extractTool = localJre != null ? localJre : hostJava();
             BootLayout.Extracted boot = BootLayout.extract(plan.mainJar(), staging, extractTool);
             runArgs = List.of("-jar", boot.launcherJar());
-            log.accept("unpacked the Spring Boot jar for training (" + boot.launcherJar() + " + lib/)");
+            log.accept("unpacked the Spring Boot jar for training: " + boot.launcherJar() + " + lib/");
         } else {
             stageLayout(plan, staging);
             runArgs = List.of("-cp", relativeClasspath(plan), plan.mainClass());
@@ -171,8 +166,8 @@ final class AotCacheTrainer {
             prefixFor = name -> new ArrayList<>(List.of(java));
         } else {
             if (runtime == null) {
-                throw new IOException("no container runtime (docker, podman, nerdctl) to train in, and " + base
-                        + "'s JVM does not run on this host");
+                throw new IOException(
+                        "no docker, podman or nerdctl to train in, and " + base + "'s JVM does not run here");
             }
             String containerRuntime = runtime;
             prefixFor = name -> {
@@ -304,7 +299,7 @@ final class AotCacheTrainer {
             return java != null && PathUtil.isRunnable(java) ? java : null;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            log.accept("could not read " + base + "'s JVM (" + e.getMessage() + ") — training in a container");
+            log.accept("could not read " + base + "'s JVM, training in a container: " + e.getMessage());
             return null;
         }
     }
@@ -536,7 +531,7 @@ final class AotCacheTrainer {
                 long elapsedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000L;
                 long quietMs = (Clock.SYSTEM.nanos() - lastOutput.get()) / 1_000_000L;
                 if (elapsedMs > TRAIN_TIMEOUT_SECONDS * 1000) {
-                    log.accept("the training run did not settle within " + TRAIN_TIMEOUT_SECONDS + "s — stopping it");
+                    log.accept("the training run did not settle within " + TRAIN_TIMEOUT_SECONDS + "s; stopping it");
                     asked = true;
                 } else if (!asked && elapsedMs >= MIN_RUN_MILLIS && quietMs >= QUIET_MILLIS) {
                     asked = true;

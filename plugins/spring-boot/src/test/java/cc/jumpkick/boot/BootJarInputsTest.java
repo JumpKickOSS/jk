@@ -48,7 +48,7 @@ class BootJarInputsTest {
 
         assertThatThrownBy(() -> BootJarInputs.read(io))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("no application main class");
+                .hasMessageContaining("no main class for the Boot jar");
     }
 
     /** The loader jar is an engine-fetched packager dependency; its absence names it. */

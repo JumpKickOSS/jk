@@ -328,8 +328,7 @@ public final class CodeFormatter implements Plugin {
      * the only one who can tell a genuinely enormous source from a host that was busy. Both are
      * answered by the same knob, and a bare "timed out" answers neither.
      */
-    private static final String UNEXPLAINED = "; nothing about this file's shape explains that, so it was not"
-            + " remembered — raise jk.format.file-timeout-ms if the file is simply very large, or this host slow";
+    private static final String UNEXPLAINED = "; raise jk.format.file-timeout-ms for a large file or slow host";
 
     /**
      * Whether a remembered timeout still answers for this run.
@@ -349,8 +348,8 @@ public final class CodeFormatter implements Plugin {
      * waited for.
      */
     private static String rememberedTimeout(long recordedLimitMs, byte[] source) {
-        return "timed out at a " + recordedLimitMs + " ms limit on an earlier run and has not changed"
-                + " since, so it was not retried" + SourceShape.postMortem(text(source));
+        return "not retried: timed out at a " + recordedLimitMs + " ms limit on an earlier run"
+                + SourceShape.postMortem(text(source));
     }
 
     private static byte @Nullable [] readOrNull(File file) {
@@ -373,9 +372,7 @@ public final class CodeFormatter implements Plugin {
      */
     private static FileResult unstarted(FileRef ref) {
         return new FileResult(
-                ref.file(),
-                "error",
-                "not formatted: every formatter thread the run could spare was left wedged by a file that timed out");
+                ref.file(), "error", "not formatted: every formatter thread is stuck on a file that timed out");
     }
 
     /**

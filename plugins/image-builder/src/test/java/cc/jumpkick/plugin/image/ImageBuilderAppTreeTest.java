@@ -96,7 +96,7 @@ class ImageBuilderAppTreeTest {
                 || BaseJre.hostCanExecute(plan.config().platforms())) {
             assertThat(reason).isNull();
         } else {
-            assertThat(reason).doesNotContain("exploded-classes").contains("container runtime");
+            assertThat(reason).doesNotContain("exploded classes").contains("docker");
         }
     }
 }

@@ -113,9 +113,8 @@ final class LockedClosure {
             // Two lock entries under one group:artifact can only differ by classifier, and the
             // runtime-entry list drops classifiers — so there is no honest way to say which jar
             // answers for which. Refuse rather than ship a coin flip.
-            throw new IllegalStateException("jk's runtime closure names " + ambiguous
-                    + " more than once; the augment's runtime list carries no classifier, so the"
-                    + " shipped jar would be ambiguous");
+            throw new IllegalStateException(
+                    "runtime classpath has " + ambiguous + " more than once; Quarkus cannot tell the jars apart");
         }
         this.artifacts = List.copyOf(artifacts);
         this.byGa = Map.copyOf(index);

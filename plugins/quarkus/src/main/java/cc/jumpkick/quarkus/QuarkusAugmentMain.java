@@ -364,8 +364,7 @@ public final class QuarkusAugmentMain {
             if (offline) {
                 throw new IOException(Errors.offlineRefusal(coordinate));
             }
-            throw new IOException(coordinate + " is not at the engine-supplied path " + platformProps
-                    + " — run `jk lock` to refresh the store, then rebuild");
+            throw new IOException(coordinate + " is not at " + platformProps + "; run jk lock, then rebuild");
         }
         platforms.addPlatformProperties(
                 "io.quarkus.platform",
@@ -395,7 +394,7 @@ public final class QuarkusAugmentMain {
         }
         if (found == null) {
             throw new IOException("quarkus.native.sources-only produced no native-sources/ under " + augmentOut
-                    + " — the augment did not run a native build");
+                    + "; the augment ran no native build");
         }
         Files.createDirectories(dest);
         copyTree(found, dest);

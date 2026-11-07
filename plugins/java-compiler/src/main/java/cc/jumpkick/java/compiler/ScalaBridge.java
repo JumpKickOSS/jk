@@ -111,8 +111,7 @@ final class ScalaBridge {
                     "Scala compiler classpath must include scala-library, scala3-compiler_3, and scala3-sbt-bridge");
         }
         if (findJar(allJars, "scala-library") == null && findJar(libraryJars, "scala-library") == null) {
-            throw new IllegalArgumentException(
-                    "Scala compiler classpath must include org.scala-lang:scala-library (the stdlib)");
+            throw new IllegalArgumentException("Scala compiler classpath must include org.scala-lang:scala-library");
         }
         String scalaVersion = mixed.version();
         URL[] libraryUrls = urls(libraryJars);

@@ -193,7 +193,7 @@ class MavenPublisherTest {
                         List.of(new MavenPublisher.Artifact(".jar", "second".getBytes(StandardCharsets.UTF_8)))))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("widget-1.0.0.jar is already published with other bytes")
-                .hasMessageContaining("Raise the version in jk.toml");
+                .hasMessageContaining("raise the version in jk.toml");
         assertThat(putLog).isEmpty();
         assertThat(received.get("/repo/com/example/widget/1.0.0/widget-1.0.0.jar"))
                 .isEqualTo("first".getBytes(StandardCharsets.UTF_8));
@@ -228,7 +228,7 @@ class MavenPublisherTest {
                         new Project("com.example", "widget", "1.0.0", 21),
                         List.of(new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)))))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("refusing to replace it");
+                .hasMessageContaining("left it unchanged");
         assertThat(putLog).contains("/repo/com/example/widget/1.0.0/widget-1.0.0.jar");
     }
 

@@ -25,12 +25,11 @@ class FormatTimeoutTest {
     void a_loaded_host_stretches_the_default_by_its_load_per_processor_and_the_note_says_how() {
         FormatTimeout doubled = FormatTimeout.forHost(48, 24);
         assertThat(doubled.ms()).isEqualTo(6_000);
-        assertThat(doubled.why())
-                .isEqualTo("the 3000 ms default stretched 2× for a load average of 48.0 over 24 processors");
+        assertThat(doubled.why()).isEqualTo("3000 ms default ×2 for load 48.0 on 24 CPUs");
 
         FormatTimeout capped = FormatTimeout.forHost(290.5, 24);
         assertThat(capped.ms()).isEqualTo(FormatWatchdog.DEFAULT_TIMEOUT_MS * HostLoad.MAX_FACTOR);
-        assertThat(capped.why()).contains("stretched 10×").contains("290.5 over 24 processors");
+        assertThat(capped.why()).contains("×10").contains("load 290.5 on 24 CPUs");
     }
 
     @Test

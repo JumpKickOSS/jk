@@ -42,7 +42,7 @@ final class AvdCommand {
 
     private static int list(PluginCommandExec exec, Path avdHome) throws Exception {
         if (!Files.isDirectory(avdHome)) {
-            exec.out("no managed AVDs — create one with `jk avd create <name> --system-image <pkg>`");
+            exec.out("no managed AVDs; create one with jk avd create <name> --system-image <pkg>");
             return 0;
         }
         try (var entries = Files.list(avdHome)) {
@@ -50,7 +50,7 @@ final class AvdCommand {
                     .sorted()
                     .toList();
             if (inis.isEmpty()) {
-                exec.out("no managed AVDs — create one with `jk avd create <name> --system-image <pkg>`");
+                exec.out("no managed AVDs; create one with jk avd create <name> --system-image <pkg>");
                 return 0;
             }
             for (Path ini : inis) {
@@ -69,15 +69,15 @@ final class AvdCommand {
         String name = args.get(1);
         String image = flag(args, "--system-image");
         if (image == null) {
-            exec.out("jk avd create: --system-image <pkg> is required "
-                    + "(e.g. system-images;android-34;aosp_atd;x86_64)");
+            exec.out("jk avd create: --system-image <pkg> is required");
+            exec.out("  example: system-images;android-34;aosp_atd;x86_64");
             return Exit.USAGE;
         }
         // The image must be installed (jk android sdk provisions; licenses gate as always).
         Path imageDir = root.resolve(image.replace(';', '/'));
         if (!Files.isDirectory(imageDir)) {
-            exec.out("jk avd create: system image " + image + " is not installed — " + "run `jk android sdk " + image
-                    + "` first (licenses apply)");
+            exec.out("jk avd create: system image " + image + " is not installed; run jk android sdk " + image
+                    + " first");
             return 1;
         }
         String[] parts = image.split(";");
@@ -126,7 +126,7 @@ final class AvdCommand {
         }
         String name = args.get(1);
         if (!Files.isRegularFile(avdHome.resolve(name + ".ini"))) {
-            exec.out("jk avd boot: no AVD named " + name + " — `jk avd list`");
+            exec.out("jk avd boot: no AVD named " + name + "; see jk avd list");
             return 1;
         }
         // Prefer "emulator missing" over accel errors so CI/macOS (no /dev/kvm) get an actionable
@@ -136,12 +136,11 @@ final class AvdCommand {
                 ? Path.of(override)
                 : root.resolve("emulator").resolve(Os.isWindows() ? "emulator.exe" : "emulator");
         if (!Files.isRegularFile(emulator)) {
-            exec.out("jk avd boot: the emulator component is not installed — " + "run `jk android sdk emulator` first");
+            exec.out("jk avd boot: emulator not installed; run jk android sdk emulator first");
             return 1;
         }
         if (Os.isLinux() && !Files.exists(Path.of("/dev/kvm"))) {
-            exec.out("jk avd boot: /dev/kvm is unavailable — hardware acceleration is required "
-                    + "for a usable emulator");
+            exec.out("jk avd boot: /dev/kvm is unavailable; the emulator needs it for acceleration");
             return 1;
         }
         exec.label("emulator " + name);
@@ -188,7 +187,7 @@ final class AvdCommand {
                         continue;
                     }
                     if (report(partial, out)) {
-                        out.accept("emulator is up (leave it running; `adb devices` sees it)");
+                        out.accept("emulator is up; leave it running");
                         return 0;
                     }
                 }

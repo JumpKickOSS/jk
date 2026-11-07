@@ -38,8 +38,8 @@ final class TestEnvironment {
         for (String dir : exec.config().stringList("plugins")) {
             String id = info.pluginIn(dir);
             if (id == null) {
-                throw new IOException("[intellij] plugins names `" + dir + "`, which is no bundled plugin of "
-                        + info.buildNumber() + " — a directory under " + ide.resolve("plugins"));
+                throw new IOException("[intellij] plugins names `" + dir + "`, not a bundled plugin of "
+                        + info.buildNumber() + "; see " + ide.resolve("plugins"));
             }
             named.add(id);
         }
@@ -50,8 +50,7 @@ final class TestEnvironment {
             if (dir != null && !Files.isDirectory(ide.resolve("plugins").resolve(dir))) absent.add(dir);
         }
         if (!absent.isEmpty()) {
-            throw new IOException("the IDE needs bundled plugins that were not unpacked: add " + absent
-                    + " to [intellij] requires (a plugin's own dependencies may then name more)");
+            throw new IOException("the IDE needs more bundled plugins; add " + absent + " to [intellij] requires");
         }
         List<String> classpath = new ArrayList<>();
         for (String id : closure) {

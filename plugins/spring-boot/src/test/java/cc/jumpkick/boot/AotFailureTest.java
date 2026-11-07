@@ -97,7 +97,7 @@ class AotFailureTest {
         int processor = message.indexOf("processor: org.springframework.boot.SpringApplicationAotProcessor");
         int application = message.indexOf("application: com.acme.Application");
         int classpath = message.indexOf("classpath: 143 entries");
-        int fix = message.indexOf("Fix: the application's own startup failed inside the AOT context refresh");
+        int fix = message.indexOf("fix: give startup the JVM flags it needs");
         int tail = message.indexOf("--- last lines of the processor's output ---");
         assertThat(message).startsWith("Spring AOT processing failed (exit 1): the application failed to start");
         assertThat(List.of(verdict, root, processor, application, classpath, fix, tail))
@@ -121,7 +121,7 @@ class AotFailureTest {
         assertThat(message)
                 .contains("the Spring AOT processor itself crashed")
                 .contains("processor: org.springframework.boot.SpringApplicationAotProcessor with JVM args [-Xmx2g]")
-                .contains("Fix: the application context started; the processor failed generating code");
+                .contains("fix: set [spring-boot] aot = false to package without AOT");
     }
 
     @Test

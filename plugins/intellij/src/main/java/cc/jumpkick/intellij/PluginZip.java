@@ -35,16 +35,15 @@ final class PluginZip {
         String since = io.config().stringOpt("since-build").orElse(null);
         if (since == null) since = ProductInfo.branch(platform);
         if (since == null) {
-            throw new IllegalArgumentException("[intellij] version = \"" + platform + "\" is not an IntelliJ build"
-                    + " number; write the build IntelliJ IDEA's About dialog shows (IC-262.10968.63 is"
-                    + " version = \"262.10968.63\"), or set since-build");
+            throw new IllegalArgumentException(
+                    "[intellij] version = \"" + platform + "\" is not an IntelliJ build number"
+                            + "\n  About shows IC-262.10968.63: write version = \"262.10968.63\", or set since-build");
         }
         String until = io.config().stringOpt("until-build").orElse(null);
 
         Path pluginXml = io.classesDir().resolve(PLUGIN_XML);
         if (!Files.isRegularFile(pluginXml)) {
-            throw new IllegalStateException("no " + PLUGIN_XML + " in the module's resources — an IntelliJ plugin"
-                    + " is described by src/main/resources/" + PLUGIN_XML);
+            throw new IllegalStateException("no src/main/resources/" + PLUGIN_XML + " in the module");
         }
         byte[] patched = PluginXml.patch(Files.readString(pluginXml, StandardCharsets.UTF_8), version, since, until)
                 .getBytes(StandardCharsets.UTF_8);

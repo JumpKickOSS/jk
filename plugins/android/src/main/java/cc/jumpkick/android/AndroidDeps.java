@@ -127,7 +127,7 @@ final class AndroidDeps {
             var entry = zip.getEntry(binaryName);
             if (entry == null) {
                 throw new IOException(
-                        "no " + binaryName + " inside " + aapt2Jar.getFileName() + " — wrong classifier for this OS?");
+                        "no " + binaryName + " inside " + aapt2Jar.getFileName() + "; wrong classifier for this OS?");
             }
             try (var in = zip.getInputStream(entry)) {
                 Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);

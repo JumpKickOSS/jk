@@ -44,9 +44,8 @@ final class SpotBugsFloor {
         if (jdk <= 0) return;
         Optional<String> floor = floorFor(jdk);
         if (floor.isEmpty() || !below(version, floor.get())) return;
-        throw new IllegalStateException("SpotBugs " + version + " cannot read the class files of JDK " + jdk
-                + ", which this step runs on; the oldest release that can is " + floor.get()
-                + ": set [lint] spotbugs-version = \"" + floor.get() + "\" or newer");
+        throw new IllegalStateException("SpotBugs " + version + " cannot read JDK " + jdk
+                + " class files; set [lint] spotbugs-version = \"" + floor.get() + "\" or newer");
     }
 
     /** True when {@code version} orders before {@code floor}, segment by numeric segment; false when either is not numeric. */

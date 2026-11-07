@@ -126,10 +126,8 @@ final class AnalysisOffCompile {
                 null,
                 0,
                 0,
-                "compiled without incremental analysis: the analysis loads this module's classes and their library"
-                        + " supertypes with the compiler worker's JDK, which has no " + missingType
-                        + " — javac compiled the module at its --release, so every build compiles it in full;"
-                        + " a change to the compile classpath or a clean build tries the analysis again"));
+                "compiled without incremental analysis: the compiler's JDK has no " + missingType
+                        + "\n  each build compiles in full until the classpath changes or a clean build"));
         return new ZincJavaCompiler.Result(true, diags, javac.compiledSources(), generated);
     }
 

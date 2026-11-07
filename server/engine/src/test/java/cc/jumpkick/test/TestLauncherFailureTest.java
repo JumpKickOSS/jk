@@ -259,8 +259,7 @@ class TestLauncherFailureTest {
 
     @Test
     void the_launcher_missing_from_the_classpath_keeps_the_runner_sentence_as_headline() {
-        String out = "jk-test-runner: the JUnit Platform Launcher is not on the test classpath — add"
-                + " org.junit.platform:junit-platform-launcher (or re-run `jk lock`).";
+        String out = "jk-test-runner: the JUnit Platform Launcher is not on the test classpath;" + " run jk lock";
         TestLauncherFailure f = TestLauncherFailure.runner("m", 2, out);
 
         assertThat(f.exceptionClass()).isEmpty();

@@ -290,8 +290,8 @@ public final class BootJarPackager {
         private static void requireResolvedVersion(String bootVersion) {
             Objects.requireNonNull(bootVersion, "bootVersion");
             if (bootVersion.isBlank() || bootVersion.equals("latest") || !bootVersion.matches("[\\w.+-]+")) {
-                throw new IllegalArgumentException("Spring-Boot-Version must be a resolved version, not the selector \""
-                        + bootVersion + "\" — read it off the runtime closure");
+                throw new IllegalArgumentException(
+                        "Spring-Boot-Version must be a resolved version, not \"" + bootVersion + "\"");
             }
         }
 
