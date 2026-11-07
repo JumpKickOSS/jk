@@ -6,6 +6,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.ChangeSummary;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -19,7 +20,6 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -123,8 +123,12 @@ public final class ImportCommand implements CliCommand {
         }
 
         Path cache = JkDirs.cache();
+        String project = ChangeSummary.name(projectDir);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        // The live view shows each stage's detail on its row; without one the milestones print.
+        boolean live = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
 
-        // Progress lines print as they stream; written files and issues wait for the summary.
+        // Written files and issues wait for the summary.
         List<ChangeSummary.Change> changes = new ArrayList<>();
         List<String> issues = new ArrayList<>();
         HostedEvents.NoteObserver observer = (kind, text) -> {
@@ -134,7 +138,9 @@ public final class ImportCommand implements CliCommand {
                 case "report" -> {
                     if (reportPath != null) changes.add(new ChangeSummary.Change("Wrote", Path.of(text)));
                 }
-                default -> CliOutput.out(text);
+                default -> {
+                    if (!live && mode != BuildPlanConsole.Mode.JSON) CliOutput.out(text);
+                }
             }
         };
 
@@ -152,7 +158,7 @@ public final class ImportCommand implements CliCommand {
                             reportPath,
                             cache,
                             profiles),
-                    steps -> new BuildPlanListener() {},
+                    steps -> BuildPlanConsole.stagedConsoleListener("Import", project, steps, mode),
                     observer);
         } catch (IOException e) {
             CommandWedge.printFail("Import", e.getMessage());
@@ -175,7 +181,6 @@ public final class ImportCommand implements CliCommand {
             }
         }
 
-        String project = ChangeSummary.name(projectDir);
         ChangeSummary.printChanges(project, changes, projectDir);
         ChangeSummary.printNotes("Import notes", "issue", issues);
         if (!changes.isEmpty() || !issues.isEmpty()) CliOutput.out("");

@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ProjectImport;
 import cc.jumpkick.gradle.GradleBuildImport;
@@ -129,7 +130,7 @@ class PomDeclaredPinsImportTest {
                 true,
                 false,
                 report,
-                note -> {},
+                ImportProgress.NONE,
                 ProjectImport.PinRaise.NONE);
 
         assertThat(outcome.exit()).isZero();

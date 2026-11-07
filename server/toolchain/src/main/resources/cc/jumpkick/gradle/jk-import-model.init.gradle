@@ -27,7 +27,9 @@ import org.gradle.api.attributes.Category
 def outPath = gradle.startParameter.projectProperties['jk.import.out']
 def probeIds = (gradle.startParameter.projectProperties['jk.import.plugins'] ?: '').split(',').findAll { it }
 
-// One line per evaluated project: the import's progress counter.
+// The import's progress: how many projects there are, then one line per project configured and
+// one per project whose classpaths are resolved and described.
+gradle.projectsLoaded { g -> println("jk-import: projects " + g.rootProject.allprojects.size()) }
 gradle.afterProject { Project p -> println("jk-import: evaluated " + p.path) }
 
 // The classpaths whose resolved versions the import compares declared versions against.
@@ -42,6 +44,7 @@ gradle.allprojects { Project p ->
             def m = describeProject(p, p.rootProject, probeIds)
             m.resolved = resolvedVersions(p)
             projectFile(p).text = JsonOutput.toJson(m)
+            println("jk-import: described " + p.path)
         }
     }
 }

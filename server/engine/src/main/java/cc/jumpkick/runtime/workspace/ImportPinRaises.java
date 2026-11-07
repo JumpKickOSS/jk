@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.resolver.LockOrchestrator;
@@ -29,12 +30,15 @@ public final class ImportPinRaises {
 
     private ImportPinRaises() {}
 
-    /** Raise the pins of the lock scope at {@code lockDir}; one line per raise, empty when none moved. */
-    public static List<String> apply(Path lockDir, Path cache) throws Exception {
-        return apply(lockDir, cache, null);
+    /**
+     * Raise the pins of the lock scope at {@code lockDir}; one line per raise, empty when none moved.
+     * {@code progress} hears each probe round and the packages its solves settle.
+     */
+    public static List<String> apply(Path lockDir, Path cache, ImportProgress progress) throws Exception {
+        return rounds(lockDir, cache, null, true, progress).lines();
     }
 
-    /** {@link #apply(Path, Path)} resolving from {@code repoUrl} in place of the default repositories. */
+    /** {@link #apply(Path, Path, ImportProgress)} resolving from {@code repoUrl} in place of the default repositories. */
     static List<String> apply(Path lockDir, Path cache, @Nullable URI repoUrl) throws Exception {
         return rounds(lockDir, cache, repoUrl, true).lines();
     }
@@ -51,6 +55,11 @@ public final class ImportPinRaises {
      * round solves everything — the same answers, at the cost of a full solve each.
      */
     static Outcome rounds(Path lockDir, Path cache, @Nullable URI repoUrl, boolean reuse) throws Exception {
+        return rounds(lockDir, cache, repoUrl, reuse, ImportProgress.NONE);
+    }
+
+    private static Outcome rounds(
+            Path lockDir, Path cache, @Nullable URI repoUrl, boolean reuse, ImportProgress progress) throws Exception {
         List<String> lines = new ArrayList<>();
         List<Round> spent = new ArrayList<>();
         LockOrchestrator.Rounds series =
@@ -61,6 +70,8 @@ public final class ImportPinRaises {
             LockPlans.LockScope scope = LockPlans.lockScope(lockDir);
             PROBES.increment();
             series.resetCounts();
+            String prefix = "round " + (round + 1) + " · ";
+            progress.detail(prefix + "resolving with each pin as a floor");
             Lockfile probe = new LockPipeline(
                             scope.lockDir(),
                             scope.effective(),
@@ -70,7 +81,7 @@ public final class ImportPinRaises {
                             true,
                             new LockMode.PinFloors())
                     .withRounds(series)
-                    .resolve(null, ResolveObserver.NOOP, LockPipeline.Progress.SILENT);
+                    .resolve(null, observer(progress, prefix), lockProgress(progress, prefix));
             spent.add(new Round(series.memberSolves(), series.memberReuses(), series.mergedSolves()));
             ManifestUpdates.Plan plan = ManifestUpdates.raise(lockDir, probe);
             if (plan.rewrites().isEmpty()) break;
@@ -83,6 +94,49 @@ public final class ImportPinRaises {
             series.reuseMergedNext(!movesMerged(probe, lockDir, plan.rewrites()));
         }
         return new Outcome(lines, spent);
+    }
+
+    /** The probe's resolve phases and settled packages as the import step's detail and units. */
+    private static ResolveObserver observer(ImportProgress progress, String prefix) {
+        return new ResolveObserver() {
+            private int seen;
+            private int settled;
+
+            @Override
+            public synchronized void onTotal(int total) {
+                if (total > seen) progress.grow(total - seen);
+                seen = Math.max(seen, total);
+            }
+
+            @Override
+            public void onPackage(String module, String version) {}
+
+            @Override
+            public void onPhase(String label) {
+                if (label != null && !label.isBlank()) progress.detail(prefix + label);
+            }
+
+            @Override
+            public synchronized void onGraphPackage(String module, String version) {
+                // Units only up to the total the solver announced: a round re-solving settled members
+                // must not run the bar past its end.
+                if (settled < seen) {
+                    settled++;
+                    progress.advance(1);
+                }
+                progress.detail(prefix + "resolved " + module + " " + version);
+            }
+        };
+    }
+
+    /** The probe's lock labels as the import step's detail. */
+    private static LockPipeline.Progress lockProgress(ImportProgress progress, String prefix) {
+        return new LockPipeline.Progress() {
+            @Override
+            public void label(String text) {
+                progress.detail(prefix + text);
+            }
+        };
     }
 
     /**

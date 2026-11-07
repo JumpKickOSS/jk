@@ -526,9 +526,14 @@ the plugins it applies, the dependencies each configuration declares, its toolch
 roots, repositories, the BOMs its `dependencyManagement` block imports and script-registered
 tasks. Version catalogs, `subprojects { }` / `allprojects { }`, `ext` and `gradle.properties`
 placeholders, `buildSrc` and convention plugins therefore all import as what they evaluate to.
-The fork's output is the import's progress, and a fork whose output stands still for the resolve
-stall window (`JK_RESOLVE_TIMEOUT_MS`, 120 s) is stopped and refused with the last line it
-printed, so an import never sits silent.
+`jk import` runs as stages under the same live view `jk build` draws — **Evaluate with Gradle**
+(or **Read POMs**), **Write manifests**, **Check pins**, **Report** — with the bar across all of
+them, the running stage's detail on its row (`resolved :core (12/51)`: Gradle counts each project
+once configured and once its classpaths are resolved) and a line under the tree per finished
+stage; the downloads any stage makes show beside it. Without a terminal each stage prints its line
+as it ends. A fork whose output stands still for the resolve stall window
+(`JK_RESOLVE_TIMEOUT_MS`, 120 s) is stopped and refused with the last line it printed, so an
+import never sits silent.
 
 The evaluated build imports as a workspace: the root `jk.toml` names every compiled project under
 `[workspace] modules` (root-relative paths, a project that applies no JVM plugin and declares

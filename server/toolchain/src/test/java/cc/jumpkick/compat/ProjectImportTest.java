@@ -33,7 +33,7 @@ class ProjectImportTest {
                 false,
                 false,
                 null,
-                note -> {},
+                ImportProgress.NONE,
                 ProjectImport.PinRaise.NONE);
 
         assertThat(outcome.exit()).isEqualTo(Exit.CANT_CREATE);
@@ -71,8 +71,8 @@ class ProjectImportTest {
                 false,
                 false,
                 root.resolve("report.md"),
-                note -> {},
-                lockDir -> {
+                ImportProgress.NONE,
+                (lockDir, progress) -> {
                     Path manifest = lockDir.resolve("jk.toml");
                     Files.writeString(manifest, Files.readString(manifest) + "# raised\n");
                     return List.of("raised one pin");
@@ -101,7 +101,7 @@ class ProjectImportTest {
                 true,
                 false,
                 root.resolve("report.md"),
-                note -> {},
+                ImportProgress.NONE,
                 ProjectImport.PinRaise.NONE);
 
         assertThat(outcome.exit()).isZero();
@@ -149,7 +149,7 @@ class ProjectImportTest {
                 false,
                 false,
                 root.resolve("report.md"),
-                note -> {},
+                ImportProgress.NONE,
                 ProjectImport.PinRaise.NONE);
 
         assertThat(outcome.exit()).isZero();
@@ -214,8 +214,8 @@ class ProjectImportTest {
                 false,
                 false,
                 null,
-                note -> {},
-                lockDir -> {
+                ImportProgress.NONE,
+                (lockDir, progress) -> {
                     probed.add(lockDir);
                     return List.of();
                 });
