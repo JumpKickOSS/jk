@@ -9,6 +9,7 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.BuildVerbCommand;
+import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -246,15 +247,28 @@ class TestSelectionResolveTest {
         assertThat(sel.tagsResolved()).isTrue();
     }
 
+    /**
+     * {@code --no-profile} reaches the engine as the no-profile marker, so the engine applies none of
+     * the profile ({@code env}, {@code jvm-args}, {@code javac}) and resolves tags without it, which
+     * leaves the selection itself unresolved.
+     */
     @Test
-    void no_profile_is_final_so_the_engine_applies_no_profile_either(@TempDir Path dir) throws Exception {
+    void no_profile_sends_the_engine_no_profile(@TempDir Path dir) throws Exception {
         writeToml(dir, """
                 [profiles.integration]
                 include-tags = ["integration"]
+                env = { ONLY_HERE = "1" }
                 """);
-        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration", "-n"));
-        assertThat(sel.includeTags()).isEmpty();
-        assertThat(sel.tagsResolved()).isTrue();
+        var flags = BuildFlags.from(parse("-C", dir.toString(), "-p", "integration", "-n"));
+        assertThat(flags.profile()).isEqualTo(Profiles.NO_PROFILE);
+        assertThat(flags.testSelection().includeTags()).isEmpty();
+        assertThat(flags.testSelection().tagsResolved()).isFalse();
+        assertThat(BuildFlags.from(parse("-C", dir.toString(), "-n")).profile())
+                .as("not even the CI-selected profile")
+                .isEqualTo(Profiles.NO_PROFILE);
+        assertThat(BuildFlags.from(parse("-C", dir.toString(), "-p", "integration"))
+                        .profile())
+                .isEqualTo("integration");
     }
 
     @Test

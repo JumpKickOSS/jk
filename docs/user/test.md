@@ -152,8 +152,9 @@ Under `-p` the line names the profile, and when the class runs in the default ti
 no test in profile integration matches --class com.example.WarmWorkersTest: the tag filter excluded com.example.WarmWorkersTest (untagged); it runs in the default tier (drop -p integration)
 ```
 
-Run it again with that `--profile` (or `--include-tags`), or without `-p`. `--no-profile` lifts
-only a profile's filters, not `[test] exclude-tags`. A wildcard composes with the tag filter: `--class '*Orders*'`
+Run it again with that `--profile` (or `--include-tags`), or without `-p`. `--no-profile` (`-n`)
+applies no profile at all, neither `-p`'s nor CI's `ci`: its tags, `env`, `jvm-args` and `javac`
+all stay out, while `[test] exclude-tags` still holds. A wildcard composes with the tag filter: `--class '*Orders*'`
 runs the matches the filter keeps and warns about the ones it drops; a run in which the dropped
 ones were the only matches fails with that line.
 

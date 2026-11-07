@@ -72,7 +72,7 @@ public record BuildFlags(
         List<Opt> opts = new ArrayList<>();
         opts.add(Opt.value("<name>", "Build profile (default auto)", "-p", "--profile"));
         if (tests != WorkspaceTarget.Tests.NOT_RUN) {
-            opts.add(Opt.flag("Skip profile tag filters", "-n", "--no-profile"));
+            opts.add(Opt.flag("Apply no profile, not even CI's", "-n", "--no-profile"));
             opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
             if (tests == WorkspaceTarget.Tests.UNLESS_SKIPPED) opts.add(CommonOpts.skipTests());
             opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
@@ -119,7 +119,7 @@ public record BuildFlags(
         TestSelection selection = testSelection(in);
         return new BuildFlags(
                 GlobalOptions.from(in),
-                in.value("profile").orElse(null),
+                profileChoice(in),
                 // A negative -w is not "auto in the other direction".
                 in.value("workers")
                         .map(Integer::parseInt)
@@ -138,6 +138,16 @@ public record BuildFlags(
                 CommonOpts.modulesSpec(in),
                 affectedSince,
                 affectedWip);
+    }
+
+    /**
+     * The profile the engine applies: {@link Profiles#NO_PROFILE} under {@code --no-profile}, so
+     * neither {@code -p} nor the CI-selected profile reaches its {@code env}, {@code jvm-args} or
+     * {@code javac}; else {@code -p}, or null for automatic selection.
+     */
+    static @Nullable String profileChoice(Invocation in) {
+        if (in.isSet("no-profile")) return Profiles.NO_PROFILE;
+        return in.value("profile").orElse(null);
     }
 
     /** The concurrent module budget: {@code -j} / {@code JK_JOBS} / {@code [engine] jobs}. */
@@ -298,9 +308,9 @@ public record BuildFlags(
         List<String> exclude = new ArrayList<>(tiers.excludeTags());
         // Only a layer that explicitly resolved the tag lists makes the selection final
         // (tagsResolved); otherwise the engine resolves per module through the same TierTags,
-        // which may fall back to a member's own [test] lists. --no-profile is final too: the
-        // engine would otherwise apply the profile the flag turned off.
-        boolean spoke = tiers.spoke() || (noProfile && profileName != null);
+        // which may fall back to a member's own [test] lists. Under --no-profile the engine is
+        // sent no profile (profileChoice), so it resolves those lists without one too.
+        boolean spoke = tiers.spoke();
         boolean profileAllSuites = tiers.allSuites();
         if (cliInclude) {
             include = new ArrayList<>(in.values("include-tags"));

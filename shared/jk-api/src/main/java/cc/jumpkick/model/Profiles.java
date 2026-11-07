@@ -23,6 +23,13 @@ public record Profiles(Map<String, Profile> byName) {
         byName = Map.copyOf(byName);
     }
 
+    /**
+     * The profile a run names when it asked for none ({@code --no-profile}): neither the named nor the
+     * CI-selected profile applies. It rides the request's profile field, where {@code null} already
+     * means "select automatically", and is no name a manifest can declare as a bare key.
+     */
+    public static final String NO_PROFILE = "<none>";
+
     public static Profiles empty() {
         return new Profiles(Map.of());
     }
@@ -74,6 +81,21 @@ public record Profiles(Map<String, Profile> byName) {
                 excludeSet,
                 mergedEnv,
                 current.allSuites() || parent.allSuites());
+    }
+
+    /**
+     * The profile a run applies: none under {@link #NO_PROFILE}, {@code requested} when it names one,
+     * else the one {@link #autoSelect} picks from {@code env}.
+     */
+    public static @Nullable String active(@Nullable String requested, Function<String, @Nullable String> env) {
+        if (NO_PROFILE.equals(requested)) return null;
+        if (requested != null && !requested.isBlank()) return requested;
+        return autoSelect(env);
+    }
+
+    /** The profile {@code requested} names outright: null when blank, absent or {@link #NO_PROFILE}. */
+    public static @Nullable String named(@Nullable String requested) {
+        return requested == null || requested.isBlank() || NO_PROFILE.equals(requested) ? null : requested;
     }
 
     /** Picks the auto-selected profile name based on env, or {@code null}. */

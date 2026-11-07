@@ -83,8 +83,9 @@ public final class TestClassMatch {
             @Nullable String tagExcluded,
             Collection<String> names,
             Function<String, TierTags> profile,
-            @Nullable String active,
+            @Nullable String requested,
             Tier defaultTier) {
+        String active = Profiles.named(requested);
         if (tagExcluded == null || tagExcluded.isBlank()) return tagExcluded;
         Set<String> tags = new TreeSet<>();
         Matcher m = TAG_LIST.matcher(tagExcluded);
@@ -96,7 +97,7 @@ public final class TestClassMatch {
         boolean one = !tagExcluded.contains("to run them");
         Matcher dropped = DROPPED.matcher(tagExcluded);
         boolean untagged = tagExcluded.contains("(untagged)");
-        if (active != null && !active.isBlank() && dropped.find() && admits(defaultTier, tags, untagged)) {
+        if (active != null && dropped.find() && admits(defaultTier, tags, untagged)) {
             return "the tag filter excluded " + dropped.group(1).strip() + "; " + (one ? "it runs" : "they run")
                     + " in the default tier (drop -p " + active + ")";
         }
@@ -177,10 +178,11 @@ public final class TestClassMatch {
      */
     public static String noMatchMessage(
             TestSelection selection,
-            @Nullable String profile,
+            @Nullable String requested,
             @Nullable String tagExcluded,
             @Nullable String suiteHint) {
-        boolean named = profile != null && !profile.isBlank();
+        String profile = Profiles.named(requested);
+        boolean named = profile != null;
         String head = named
                 ? "no test in profile " + profile + " matches --class " + String.join(", ", selection.classes())
                 : noMatchMessage(selection.classes());
