@@ -465,7 +465,7 @@ stops the private engine, swaps the binary, the engine jar and the shelf, and st
 |---|---|
 | `bin/jk` — the binary `jk build` linked | the managed JDK root, `~/.jdks` (`JK_JDKS_DIR`): the private engine and its compilers run on JDKs the default home already installed |
 | `lib/jk-engine/` — the engine jar from `target/dist/lib/`, its pointer and the shelf manifest pinning the workers to it | `~/.m2`, read for third-party jars when `[m2] integration` is on |
-| `store/repos/jk-local/` — every module jar from `target/dist/repos/`: the workers the engine launches, the rule packs, the libraries | nothing else: `JK_STORE_DIR=$HOME/.jk/store` shares the artifact store on purpose when a cold store is the wrong cost |
+| `store/repos/jk-local/` — every module jar from `target/dist/repos/`: the workers the engine launches, the rule packs, the libraries | nothing else. A private home never shelves into `~/.jk/store`: `repos/jk-local` lives in the store while its pins live in this home, so a dist shelved there would shadow the default home's installs with no pin naming it. `jk self shelve` (the installer's shelf step) and `jk install` refuse when `JK_STORE_DIR` or a `store` link points this home at the default store |
 | `store/` (artifacts, templates, the library catalog), `cache/` (action cache), `state/` (the engine's socket, log and build history), `config.toml`, `creds/` | |
 
 The engine a private client starts is the one under its own `lib/jk-engine/`, paired with the
