@@ -460,6 +460,32 @@ public final class ToolRunCommand implements CliCommand {
                 .run(fetched, merged);
     }
 
+    /**
+     * The run of a workspace module the invocation names, or null when it names none and the other
+     * target rules apply: `jk run -m <module>` with no target names the project the way
+     * `jk run <module>` does (that module's cone builds and its own main launches, never the
+     * workspace root's), and a target such as `clients/cli` or `cli` resolves against the
+     * workspace's members before the other classifiers.
+     */
+    private @Nullable Integer runModuleTarget(Invocation in, boolean targetGiven)
+            throws IOException, InterruptedException {
+        if (!targetGiven) {
+            Integer ran = runSelectedModule(CommonOpts.modulesSpec(in));
+            if (ran != null) return ran;
+        }
+        Path moduleHit;
+        try {
+            moduleHit = resolveWorkspaceModule(global.workingDir(), target);
+        } catch (AmbiguousModuleTarget e) {
+            CommandWedge.printFail("Run", e.getMessage());
+            return Exit.USAGE;
+        } catch (JkBuildParseException e) {
+            CommandWedge.printFail("Run", e.getMessage());
+            return Exit.CONFIG;
+        }
+        return moduleHit == null ? null : runDirectory(moduleHit, toolArgs);
+    }
+
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.invocation = in;
@@ -486,28 +512,8 @@ public final class ToolRunCommand implements CliCommand {
         // the selection rides the ambient session into the delegate's build + deploy command.
         VariantSelection.install(in, global.workingDir());
 
-        // `jk run -m <module>` with no target names the project the way `jk run <module>` does: that
-        // module's cone builds and its own main launches, never the workspace root's.
-        if (!targetGiven) {
-            Integer ran = runSelectedModule(CommonOpts.modulesSpec(in));
-            if (ran != null) return ran;
-        }
-
-        // Workspace module selector: `jk run clients/cli` or `jk run cli` from the workspace root
-        // (or any cwd) resolves against workspace.modules before other target classifiers.
-        Path moduleHit;
-        try {
-            moduleHit = resolveWorkspaceModule(global.workingDir(), target);
-        } catch (AmbiguousModuleTarget e) {
-            CommandWedge.printFail("Run", e.getMessage());
-            return Exit.USAGE;
-        } catch (JkBuildParseException e) {
-            CommandWedge.printFail("Run", e.getMessage());
-            return Exit.CONFIG;
-        }
-        if (moduleHit != null) {
-            return runDirectory(moduleHit, toolArgs);
-        }
+        Integer moduleRun = runModuleTarget(in, targetGiven);
+        if (moduleRun != null) return moduleRun;
 
         // A local file target (by extension) is compiled/run by ScriptRunner; the
         // extension is the signal even when the file is missing, so the user gets
