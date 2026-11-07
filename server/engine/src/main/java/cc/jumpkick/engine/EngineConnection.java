@@ -208,8 +208,8 @@ final class EngineConnection {
                             writer,
                             ProtoLifecycle.error(
                                     EngineProtocol.ERR_VERSION_SKEW,
-                                    "client speaks protocol " + clientProto + " but this engine speaks "
-                                            + EngineProtocol.PROTOCOL + " — start a matching engine"));
+                                    "client protocol " + clientProto + " is newer than this engine's "
+                                            + EngineProtocol.PROTOCOL + "; restart the engine"));
                     return true;
                 }
                 WireWriter.send(

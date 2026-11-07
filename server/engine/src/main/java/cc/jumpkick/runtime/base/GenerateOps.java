@@ -88,7 +88,7 @@ public final class GenerateOps {
         Loaded loaded = load(dir);
         Path lockPath = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockPath)) {
-            return GeneratedFiles.error("no jk-lock.toml — run `jk lock` before `jk export bom`");
+            return GeneratedFiles.error("no jk-lock.toml; run jk lock before jk export bom");
         }
         Lockfile lock = MemberRows.view(LockfileReader.read(lockPath), lockPath, dir);
         String scopeName = params.getOrDefault("scope", "main");

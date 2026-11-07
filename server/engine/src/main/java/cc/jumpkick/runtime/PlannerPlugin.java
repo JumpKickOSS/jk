@@ -95,30 +95,25 @@ public final class PlannerPlugin {
             if (!s.transforms()) continue;
             if (transform != null) {
                 throw new IllegalStateException("plugin tasks " + transform.name() + " and " + s.name()
-                        + " both declare transformsClasses — at most one task may replace the classes dir"
-                        + " (conflicts are errors, not priorities)");
+                        + " both declare transformsClasses; only one task may replace the classes");
             }
             if (beforeCompile(s)) {
                 throw new IllegalStateException("plugin task " + s.name()
-                        + " declares transformsClasses but is source-generating — a transform rewrites"
-                        + " compiled classes after compile");
+                        + ": transformsClasses runs after compile, not on a source-generating task");
             }
             if (!s.packageTime()) {
-                throw new IllegalStateException("plugin task " + s.name()
-                        + " declares transformsClasses but is not package-time — the transform must"
-                        + " finish before anything consumes the replaced classes");
+                throw new IllegalStateException(
+                        "plugin task " + s.name() + ": transformsClasses needs a package-time task");
             }
             if (!s.inputs().contains("classes")) {
-                throw new IllegalStateException("plugin task " + s.name()
-                        + " declares transformsClasses but not In.classes() — the classes dir is what"
-                        + " it transforms");
+                throw new IllegalStateException(
+                        "plugin task " + s.name() + ": transformsClasses needs In.classes() as an input");
             }
             if (!s.contributesClasses().isEmpty()
                     || !s.contributesResources().isEmpty()
                     || !s.contributesSources().isEmpty()) {
-                throw new IllegalStateException("plugin task " + s.name()
-                        + " declares transformsClasses and contributes* — a transform REPLACES the"
-                        + " classes dir; contributions merge, and the two don't compose");
+                throw new IllegalStateException(
+                        "plugin task " + s.name() + ": transformsClasses cannot be combined with contributes*");
             }
             if (!s.outputs().contains(s.transformsClasses())) {
                 throw new IllegalStateException("plugin task " + s.name() + " transformsClasses(\""
@@ -163,14 +158,13 @@ public final class PlannerPlugin {
         String declared = step.stage();
         if (declared == null || declared.isBlank()) return window;
         BuildStage stage = BuildStage.fromWireExact(declared)
-                .orElseThrow(() -> new IllegalStateException("plugin task " + step.name() + " declares stage `"
-                        + declared + "` — expected one of " + BuildStage.wireNames()));
+                .orElseThrow(() -> new IllegalStateException("plugin task " + step.name() + ": unknown stage `"
+                        + declared + "`; expected one of " + BuildStage.wireNames()));
         BuildStage ceiling = pluginCeiling(step);
         if (stage.pipelineOrder() < window.pipelineOrder() || stage.pipelineOrder() > ceiling.pipelineOrder()) {
-            throw new IllegalStateException("plugin task " + step.name() + " declares stage `" + stage.wireName()
-                    + "` but is scheduled in the " + window.wireName() + " window"
-                    + (ceiling == BuildStage.TEST ? " and is required by run-tests" : "")
-                    + " — declare a stage between `" + window.wireName() + "` and `" + ceiling.wireName() + "`");
+            throw new IllegalStateException("plugin task " + step.name() + ": stage `" + stage.wireName()
+                    + "` must be between `" + window.wireName() + "` and `" + ceiling.wireName() + "`"
+                    + (ceiling == BuildStage.TEST ? " because run-tests needs it" : ""));
         }
         return stage;
     }
@@ -184,9 +178,8 @@ public final class PlannerPlugin {
     static List<String> pluginRequires(TaskDecl step, @Nullable TaskDecl transform) {
         boolean beforeCompile = beforeCompile(step);
         if (beforeCompile && step.inputs().contains("classes")) {
-            throw new IllegalStateException("plugin task " + step.name()
-                    + " is source-generating but declares In.classes() — generated-source tasks"
-                    + " consume project files (In.projectFiles), config, or other task outputs");
+            throw new IllegalStateException(
+                    "plugin task " + step.name() + ": a source-generating task cannot read In.classes()");
         }
         List<String> requires = new ArrayList<>();
         // Explicit plugin-declared edges first.

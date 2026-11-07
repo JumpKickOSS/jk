@@ -294,7 +294,7 @@ public final class CompatPlans {
         try {
             BuildTool tool = BuildTool.bySlug(toolSlug)
                     .orElseThrow(() -> new IllegalArgumentException(
-                            "unknown build tool '" + toolSlug + "' — known: " + BuildTool.slugs()));
+                            "unknown build tool '" + toolSlug + "'; known: " + BuildTool.slugs()));
             dist = BuildToolDistributions.of(tool, version);
             ToolProvisioning.Result result = ToolProvisioning.provision(
                     dist,

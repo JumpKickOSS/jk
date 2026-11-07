@@ -188,7 +188,7 @@ class SourceProjectBuilderTest {
             Files.writeString(libs.resolve("two-1.0.jar"), "x");
             assertThatThrownBy(() -> SourceProjectBuilder.selectMainJar(libs, dir))
                     .isInstanceOf(IOException.class)
-                    .hasMessageContaining("ambiguous");
+                    .hasMessageContaining("more than one jar");
         }
 
         @Test

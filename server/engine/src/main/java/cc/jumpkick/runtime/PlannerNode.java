@@ -169,7 +169,7 @@ final class PlannerNode {
                     Path out = ctx.get(NODE_OUT).orElse(unit.out());
                     if (!Files.isDirectory(out)) {
                         throw new IOException(unit.module() + ": no "
-                                + unit.node().out() + "/ to package — run the build once without --skip-node");
+                                + unit.node().out() + "/ to package; build once without --skip-node");
                     }
                     JkBuild project = unit.project();
                     Path stage = NodePackaging.sideBySideStage(project, ctx.require(LAYOUT));
@@ -208,14 +208,14 @@ final class PlannerNode {
                         ctx.label(
                                 start != null
                                         ? "server · start: " + start
-                                        : "not packaged · nothing depends on this module and [node] classpath-root is unset");
+                                        : "not packaged · no module depends on it and [node] classpath-root is unset");
                         ctx.progress(1);
                         return;
                     }
                     Path out = ctx.get(NODE_OUT).orElse(null);
                     if (out == null || !Files.isDirectory(out)) {
                         throw new IOException(unit.module() + ": no "
-                                + unit.node().out() + "/ to package — run the build once without --skip-node");
+                                + unit.node().out() + "/ to package; build once without --skip-node");
                     }
                     BuildLayout layout = BuildLayout.of(unit.moduleDir(), project);
                     Path jar = layout.mainJar();
@@ -343,7 +343,7 @@ final class PlannerNode {
                     case YARN -> "yarn.lock";
                     case BUN -> "bun.lock";
                 };
-        throw new IOException(unit.project().project().name() + ": no " + lockfile + " — run " + manager.id()
+        throw new IOException(unit.project().project().name() + ": no " + lockfile + "; run " + manager.id()
                 + " install once and commit it");
     }
 
@@ -406,7 +406,7 @@ final class PlannerNode {
                     }
                     if (!Files.isDirectory(out)) {
                         throw new IOException(describe(command) + " wrote no "
-                                + unit.node().out() + "/ — set [node] out to the directory it writes");
+                                + unit.node().out() + "/; set [node] out to the directory it writes");
                     }
                     cache.store(keyed.taskId(), keyed.key(), keyed.inputs(), out);
                     ctx.put(NODE_OUT, out);
@@ -694,7 +694,7 @@ final class PlannerNode {
         if (command.kind() != NodeTable.Command.Kind.RUN) return;
         if (NodeProject.script(unit.nodeDir(), command.value()) == null) {
             throw new IOException(unit.project().project().name() + ": package.json has no `" + command.value()
-                    + "` script — add it or set [node] build");
+                    + "` script; add it or set [node] build");
         }
     }
 

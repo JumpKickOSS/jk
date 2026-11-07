@@ -176,7 +176,7 @@ final class MemoInputs {
 
     /** Why a link to a directory in a source or resource root is refused, as a clause. */
     static final String DIRECTORY_LINK =
-            "a link to a directory, which jk does not follow: name its target as a source or resource root";
+            "a link to a directory, which jk does not follow; list its target as a source or resource root";
 
     /** A link to a directory in an input root: jk does not enter it, so it vouches for nothing there. */
     static final class DirectoryLink extends RuntimeException {

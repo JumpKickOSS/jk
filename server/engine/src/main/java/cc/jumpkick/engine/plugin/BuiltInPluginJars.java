@@ -87,9 +87,8 @@ public final class BuiltInPluginJars {
      */
     static String doesNotOwn(PluginJar plugin, Path jar, String table) {
         return "the installed " + plugin.artifactId() + " (" + jar + ") does not own [" + table
-                + "] — the project was written for a newer " + plugin.artifactId()
-                + " than this shelf holds. Run `jk install` from the jk checkout that has it, or set -D"
-                + plugin.jarProperty() + "=<path to its jar> to use that jar";
+                + "]; the project needs a newer " + plugin.artifactId() + "; run jk install from a jk checkout"
+                + " that has it, or set -D" + plugin.jarProperty() + "=<path to its jar>";
     }
 
     /**
@@ -109,12 +108,10 @@ public final class BuiltInPluginJars {
         String artifact = located.plugin().artifactId();
         String owner = describedWorker(descriptor);
         if (!owner.equals(artifact)) {
-            throw new IllegalStateException(located.path() + " is the " + artifact + " worker but its root "
-                    + ManifestPaths.PLUGIN_MANIFEST + " describes plugin `" + descriptor.id() + "` (table ["
-                    + descriptor.table() + "], worker " + owner
-                    + ") — a vendored sibling's descriptor took the jar root; the jar is not registered."
-                    + " Reinstall it so its own descriptor sits at the root: `jk install` from the jk checkout,"
-                    + " or `jk storage clean -w` and let the next build fetch the published jar.");
+            throw new IllegalStateException("not registered: " + located.path() + " is the " + artifact
+                    + " worker but its " + ManifestPaths.PLUGIN_MANIFEST + " describes plugin `" + descriptor.id()
+                    + "` (table [" + descriptor.table() + "], worker " + owner + "); reinstall it with jk install"
+                    + " from the jk checkout, or jk storage clean -w to fetch the published jar");
         }
         return descriptor;
     }

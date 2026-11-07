@@ -107,7 +107,7 @@ class PackagerDependencyVersionTest {
         assertThatThrownBy(
                         () -> PluginBuild.fetchPackagerDependencies(build, tmp, new Cas(tmp.resolve("cas")), lockFile))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("pins no [[tool]] row for " + BOOT + ":spring-boot-loader:4.1.1");
+                .hasMessageContaining("has no [[tool]] row for " + BOOT + ":spring-boot-loader:4.1.1");
     }
 
     @Test

@@ -122,9 +122,8 @@ public final class PublishPlans {
                     if (project.project().version().endsWith("-SNAPSHOT") && !req.allowSnapshot()) {
                         ctx.error(
                                 "snapshot",
-                                "refusing to publish a SNAPSHOT version "
-                                        + "(use --allow-snapshot, or rename to -dev.N / -rc.N "
-                                        + "per publish policy).");
+                                "refusing to publish a SNAPSHOT version; pass --allow-snapshot, or use -dev.N"
+                                        + " or -rc.N");
                         throw new RuntimeException("snapshot refused");
                     }
                     // A branch-tracked git dep is locked in jk-lock.toml, but its pin moves on the next
@@ -134,11 +133,8 @@ public final class PublishPlans {
                     if (branchGit != null) {
                         ctx.error(
                                 "branch-git-dep",
-                                "refusing to publish: dependency `"
-                                        + branchGit.module()
-                                        + "` tracks a git branch, which is not a stable reference for"
-                                        + " published consumers. Pin it to an immutable git tag/rev"
-                                        + " (or a released `version = \"…\"`) before publishing.");
+                                "refusing to publish: dependency `" + branchGit.module()
+                                        + "` tracks a git branch; pin a tag, rev or released version");
                         throw new RuntimeException("branch git dependency refused");
                     }
                     BuildLayout layout = BuildLayout.of(projectDir, project);
@@ -169,10 +165,7 @@ public final class PublishPlans {
                     ctx.put(DRY_RUN, req.dryRun());
                     Path jar = ctx.require(JAR);
                     if (!Files.exists(jar)) {
-                        ctx.error(
-                                "missing-jar",
-                                "jar not found at " + jar
-                                        + " — the build did not write it; pass --jar to name another.");
+                        ctx.error("missing-jar", "jar not found at " + jar + "; pass --jar to name another");
                         throw new RuntimeException("missing jar");
                     }
                     ctx.label(

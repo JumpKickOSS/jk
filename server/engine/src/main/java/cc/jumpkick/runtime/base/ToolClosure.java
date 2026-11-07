@@ -68,8 +68,8 @@ final class ToolClosure {
             shas.add(hit.get().fetched().sha256());
         }
         if (jars.isEmpty()) {
-            throw new IOException(label + " closure for " + version + " resolved to no jars — is " + module + ":"
-                    + version + " available in the configured repositories?");
+            throw new IOException(label + " " + version + " resolved to no jars; check that a repository has " + module
+                    + ":" + version);
         }
         writeCachedClosure(cacheFile, shas);
         stamp(cas, tool, version);

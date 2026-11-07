@@ -99,7 +99,7 @@ final class ToolClosures {
         ToolEntry row =
                 lock == null ? null : ToolEntry.closureIn(lock.tools(), rootSpec, dep.with(), dep.managedBySpec());
         if (row == null) {
-            throw new IOException("jk-lock.toml pins no [[tool]] closure for " + rootSpec + " — run `jk lock`");
+            throw new IOException("jk-lock.toml pins no [[tool]] closure for " + rootSpec + "; run jk lock");
         }
         Map<Coordinate, String> pinned = new LinkedHashMap<>();
         for (String jar : row.closure()) {

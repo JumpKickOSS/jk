@@ -146,7 +146,8 @@ public final class ImagePlans {
                         // Jib mode: main class required; load dep jars for classpath layering.
                         String chosen = resolveMainClass(mainClass, config, project, projectDir);
                         if (chosen == null || chosen.isBlank()) {
-                            ctx.error("no-main", "no main class — pass --main, set image.main, or set project.main.");
+                            ctx.error(
+                                    "no-main", "no main class; pass --main, or set [image] main or [application] main");
                             throw new RuntimeException("missing main class");
                         }
                         // This module's production runtime closure — the same set the fat jar
@@ -663,7 +664,7 @@ public final class ImagePlans {
                     .toList();
             if (mains.size() == 1) return mains.get(0);
             if (mains.size() > 1) {
-                throw new RuntimeException("Multiple main classes discovered. Set image.main in jk.toml.");
+                throw new RuntimeException("several main classes found; set [image] main in jk.toml");
             }
         } catch (RuntimeException e) {
             throw e;

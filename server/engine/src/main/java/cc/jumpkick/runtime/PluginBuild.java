@@ -428,8 +428,7 @@ public final class PluginBuild {
             throws IOException, InterruptedException {
         String sha256 = lockedSha256(coord, lock);
         return repos.tryFetchArtifact(coord, sha256)
-                .orElseThrow(() -> new IOException("cannot fetch " + coord
-                        + " — the coordinate a plugin's tool names must exist in a declared repo"))
+                .orElseThrow(() -> new IOException("cannot fetch plugin tool " + coord + " from any repository"))
                 .fetched()
                 .cachePath();
     }
@@ -469,8 +468,7 @@ public final class PluginBuild {
     }
 
     private static IOException unpinned(String coordinate) {
-        return new IOException(
-                "jk-lock.toml pins no [[tool]] row for " + coordinate + " on this platform — run `jk lock`");
+        return new IOException("jk-lock.toml has no [[tool]] row for " + coordinate + " on this platform; run jk lock");
     }
 
     /** The {@code [[sdk]]} revision pins of {@code lockFile}, or empty (no lock / none recorded). */
@@ -504,7 +502,7 @@ public final class PluginBuild {
             JkBuild project, Path moduleDir, Cas cas, Path lockFile, String pluginId) throws IOException {
         if (PluginContributions.lockClosures(project, moduleDir).isEmpty()) return List.of();
         if (!Files.isRegularFile(lockFile)) {
-            throw new IOException("no jk-lock.toml pins the closures " + pluginId + " resolves — run `jk lock`");
+            throw new IOException("plugin " + pluginId + " needs a jk-lock.toml; run jk lock");
         }
         // Read, not lockOrNull: a lock that does not parse says why, rather than "run jk lock".
         Lockfile lock = LockfileReader.read(lockFile);
@@ -553,7 +551,7 @@ public final class PluginBuild {
         }
         int colon = module.indexOf(':');
         if (colon <= 0 || colon != module.lastIndexOf(':')) {
-            throw new IllegalArgumentException("tool module must be group:artifact — got " + module);
+            throw new IllegalArgumentException("tool module must be group:artifact, not " + module);
         }
         return PlatformBomVersions.resolve(
                 repos, module.substring(0, colon), module.substring(colon + 1), VersionSelector.parse(versionSpec));
@@ -839,8 +837,8 @@ public final class PluginBuild {
         PluginDeclaration declaration = active.declaration();
         if (declaration != null) {
             return PluginDescriptorOps.jarFor(active.moduleDir(), declaration, cache)
-                    .orElseThrow(() -> new IOException("plugin " + declaration.coordinateWithVersion()
-                            + " is not in the local cache — run `jk sync` first"));
+                    .orElseThrow(() -> new IOException(
+                            "plugin " + declaration.coordinateWithVersion() + " is not downloaded; run jk sync"));
         }
         // A built-in plugin is the running jk's own copy: the lock's row for it records which jk
         // built last (see FirstPartyPins), it does not choose the bytes.
@@ -851,8 +849,8 @@ public final class PluginBuild {
                             "plugin " + active.manifest().id() + " names unregistered worker " + worker));
             return workerJar.locate(JkStores.storeCas());
         }
-        throw new IOException("plugin " + active.manifest().id()
-                + " has no matching [plugins] declaration — declare it (or run `jk sync`)");
+        throw new IOException(
+                "plugin " + active.manifest().id() + " is not declared under [plugins]; declare it, or run jk sync");
     }
 
     /**

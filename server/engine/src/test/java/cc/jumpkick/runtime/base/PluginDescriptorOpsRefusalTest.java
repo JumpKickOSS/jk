@@ -35,7 +35,7 @@ class PluginDescriptorOpsRefusalTest {
                 .hasMessageContaining("com.acme:acme-plugin")
                 .hasMessageContaining("describes plugin `acme`")
                 .hasMessageContaining("worker other-plugin")
-                .hasMessageContaining("Publish acme-plugin with its own " + ManifestPaths.PLUGIN_MANIFEST);
+                .hasMessageContaining("publish acme-plugin with its own " + ManifestPaths.PLUGIN_MANIFEST);
         assertThat(PluginDescriptorStore.fileFor(tmp, SHA)).doesNotExist();
     }
 
@@ -59,7 +59,7 @@ class PluginDescriptorOpsRefusalTest {
         assertThatThrownBy(() -> PluginDescriptorOps.materialize(tmp, SHA, grails, "cc.jumpkick:jk-spring-boot"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("worker jk-grails")
-                .hasMessageContaining("not the pinned artifact jk-spring-boot");
+                .hasMessageContaining("), not jk-spring-boot");
         assertThat(PluginDescriptorStore.fileFor(tmp, SHA)).doesNotExist();
 
         PluginDescriptorOps.materialize(tmp, SHA, grails, "cc.jumpkick:jk-grails");

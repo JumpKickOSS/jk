@@ -32,11 +32,7 @@ class FormatReconcileTest {
         String d = FormatWorker.reconcile(500, 2063, 139);
 
         assertThat(d).isNotNull();
-        assertThat(d)
-                .contains("500 of 2063")
-                .contains("1563 were never visited")
-                .contains("worker exit 139")
-                .contains("retries them");
+        assertThat(d).contains("500 of 2063").contains("worker exit 139").contains("retries the other 1563");
     }
 
     /**
@@ -49,7 +45,7 @@ class FormatReconcileTest {
         String d = FormatWorker.reconcile(12, 8, 0);
 
         assertThat(d).isNotNull();
-        assertThat(d).contains("12 files but only 8 were planned").contains("4 more results than files");
+        assertThat(d).contains("reported 12 results for 8 files");
     }
 
     /**
@@ -58,11 +54,8 @@ class FormatReconcileTest {
      */
     @Test
     void an_exit_outside_the_workers_vocabulary_fails_even_when_the_count_balances() {
-        assertThat(FormatWorker.reconcile(8, 8, 139))
-                .isNotNull()
-                .contains("exited 139")
-                .contains("exit law is 0 or 1");
-        assertThat(FormatWorker.reconcile(8, 8, 137)).isNotNull().contains("exited 137");
+        assertThat(FormatWorker.reconcile(8, 8, 139)).isNotNull().contains("crashed with exit 139");
+        assertThat(FormatWorker.reconcile(8, 8, 137)).isNotNull().contains("exit 137");
         assertThat(FormatWorker.reconcile(8, 8, 70))
                 .as("Exit.SOFTWARE out of PluginMain means the worker jar is built wrong — still a death")
                 .isNotNull();

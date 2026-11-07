@@ -228,14 +228,14 @@ public final class UserPluginPins {
         Path jar = pin.jar();
         if (!Files.isRegularFile(jar)) {
             throw new IllegalStateException(
-                    config + " [plugins] pins " + jar + " but no file exists there — fix or remove the pin");
+                    config + " [plugins] pins " + jar + ", which does not exist; fix or remove the pin");
         }
         String toml;
         try {
             String actual = Hashing.sha256Hex(jar);
             if (!actual.equals(pin.sha256())) {
                 throw new IllegalStateException(config + " [plugins] pin " + jar + " hash mismatch: declared sha256 "
-                        + pin.sha256() + ", file is " + actual + " — update the pin after rebuilding the jar");
+                        + pin.sha256() + ", file is " + actual + "; update the pin after rebuilding the jar");
             }
             toml = BuiltInPluginJars.manifestToml(jar);
         } catch (IOException e) {

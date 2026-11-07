@@ -596,9 +596,8 @@ public final class WorkerLeases {
                     ? ownerOf(waiter) + " needs " + format(waiter.demand.worstBytes)
                     : "the pinned " + waiter.demand.pin + " needs " + format(waiter.demand.worstBytes)
                             + " with its overhead";
-            throw new LeaseRefused(what + "; the "
-                    + format(cap) + " worker budget never leases more than " + format(most)
-                    + " (twice the budget). Lower the heap, or raise " + WorkerContainment.BUDGET_ENV + ".");
+            throw new LeaseRefused(what + ", over the " + format(most) + " a " + format(cap)
+                    + " worker budget allows; lower the heap, or raise " + WorkerContainment.BUDGET_ENV);
         }
 
         /** Under the lock: {@code waiter} reached its deadline. */

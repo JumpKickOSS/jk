@@ -157,15 +157,8 @@ public final class GitFetcher {
         private final String actualSha;
 
         public TagRewriteException(GitSource source, String expectedSha, String actualSha) {
-            super("git tag/branch rewrite detected for "
-                    + source.canonicalUrl()
-                    + " "
-                    + source.ref().token()
-                    + ": lock says "
-                    + expectedSha
-                    + ", upstream now resolves to "
-                    + actualSha
-                    + " (re-run with `jk update` to accept).");
+            super("git ref " + source.ref().token() + " of " + source.canonicalUrl() + " was rewritten: locked "
+                    + expectedSha + ", now " + actualSha + "; run jk update to accept it");
             this.source = source;
             this.expectedSha = expectedSha;
             this.actualSha = actualSha;

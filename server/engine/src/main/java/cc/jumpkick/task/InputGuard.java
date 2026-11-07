@@ -76,7 +76,7 @@ public final class InputGuard {
             Path name = p.getFileName();
             names.append(name == null ? p.toString() : name.toString());
         }
-        return (moved.size() == 1 ? "an input" : moved.size() + " inputs") + " of " + step + " changed while it ran ("
-                + names + "); its result is not cached and the next build runs it again";
+        return (moved.size() == 1 ? "an input" : moved.size() + " inputs") + " of " + step + " changed while it ran: "
+                + names + "; the next build runs it again";
     }
 }

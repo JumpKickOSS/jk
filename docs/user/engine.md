@@ -81,9 +81,9 @@ estimate. An idle engine admits any job the heap holds alone. Raising `[engine] 
 the default cap runs one build of a large workspace at a time.
 
 A job whose estimate exceeds the whole cap is **refused at once** rather than admitted to die of
-`OutOfMemoryError` and take the engine's other jobs with it: `a lock of /home/me/reactor is
-estimated to need 300 MiB of engine heap and the engine's cap is 256 MiB — set [engine]
-max-heap-mb in ~/.jk/config.toml (or JK_ENGINE_MAX_HEAP_MB) to at least 332, then jk engine stop`.
+`OutOfMemoryError` and take the engine's other jobs with it: `a lock of /home/me/reactor needs
+about 300 MiB of engine heap, over the 256 MiB cap`, then `set [engine] max-heap-mb = 332 in
+~/.jk/config.toml, then run jk engine stop`.
 The engine cannot grow its own heap; the next command starts one under the new cap.
 
 **Fairness.** One long job never holds the whole budget for hours. Two rules judge a job by
@@ -270,8 +270,8 @@ Inside `workers` each worker gets its own group, `workers/w<pid>`, with `memory.
 three quarters of the worker budget (never below the worker's own lease) and
 `memory.swap.max` 0. One runaway worker is then stopped by the kernel at its cap, and the
 rest of the build and the host keep the last quarter. A worker killed there is reported as
-`killed for memory at its worker cap of 10.1 GiB; the memory was outside the heap
-(metaspace, thread stacks, direct buffers), so a larger -Xmx does not help`, and it is not
+`killed for memory at its worker cap of 10.1 GiB; the memory was outside the heap, so a
+larger -Xmx does not help`, and it is not
 retried. The engine log names the worker and its cap. The group is removed once the worker
 and anything it started have exited. Where the memory controller cannot be handed down
 below `workers`, workers share that one group. `jk engine status` reads

@@ -147,10 +147,9 @@ public final class WorkerLaunchClasspath {
             }
             return cas.pathFor(pinned);
         }
-        throw new IllegalStateException("this engine was installed with the POM of " + coordinate + " at "
-                + pinned.substring(0, 12) + from + ", the shelf holds another install's, and the store has no copy"
-                + " of those bytes — run `jk install` from that checkout, or let the next `jk` invocation take the"
-                + " engine over to the install the home names");
+        throw new IllegalStateException("POM of " + coordinate + ": this engine needs " + pinned.substring(0, 12)
+                + from + ", but another install replaced it; run jk install from that checkout, or rerun jk to"
+                + " start the installed engine");
     }
 
     /**
@@ -187,10 +186,9 @@ public final class WorkerLaunchClasspath {
             }
             return cas.pathFor(pinned);
         }
-        throw new IllegalStateException("the shelf holds " + coordinate + " at " + hex.substring(0, 12)
-                + " but this engine was installed with " + pinned.substring(0, 12) + from
-                + ", and the store has no copy of those bytes — run `jk install` from that checkout, or let the"
-                + " next `jk` invocation take the engine over to the install the home names");
+        throw new IllegalStateException(coordinate + ": this engine needs " + pinned.substring(0, 12) + from
+                + ", but another install replaced it with " + hex.substring(0, 12)
+                + "; run jk install from that checkout, or rerun jk to start the installed engine");
     }
 
     /**

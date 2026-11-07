@@ -208,9 +208,7 @@ public final class CachePlans {
                     }
                     long actionBudget = JkCacheConfig.resolve().maxCacheSizeBytes();
                     if (actionBudget > 0 && retention.finalActionBytes() > actionBudget) {
-                        ctx.warn(
-                                "prune",
-                                "cache is still over budget — raise cache.max-cache-size-gb (or JK_MAX_CACHE_SIZE_GB)");
+                        ctx.warn("prune", "cache is still over its size limit; raise cache.max-cache-size-gb");
                     }
 
                     ctx.put(FILES, totalFiles);

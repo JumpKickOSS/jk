@@ -286,7 +286,7 @@ public final class NewProjectOps {
         if (name.isEmpty()) throw new IllegalArgumentException("missing \"name\"");
         if (!NAME.matcher(name).matches()) {
             throw new IllegalArgumentException(
-                    "invalid name '" + name + "' (lowercase letters, digits and -, starting with a letter)");
+                    "invalid name '" + name + "': use lowercase letters, digits and -, starting with a letter");
         }
         String parentRaw = req.parentDir() == null ? "" : req.parentDir().strip();
         if (parentRaw.isEmpty()) throw new IllegalArgumentException("missing \"parentDir\"");
@@ -492,19 +492,10 @@ public final class NewProjectOps {
                 return cloneRemoteTemplate(ref);
             }
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
-            throw new IllegalArgumentException("template short name not found: "
-                    + ref
-                    + " (looked under $JK_TEMPLATES, "
-                    + JkDirs.templates()
-                    + ", monorepo templates/; try `jk new -t "
-                    + ref
-                    + "` once to populate the store, or drop a .g8 with .jk-template.toml under "
-                    + JkDirs.templates().resolve("<lang>").resolve("<framework>")
-                    + "/"
-                    + (twoSegments ? ref.substring(ref.indexOf('/') + 1) : ref)
-                    + ".g8; official="
-                    + cfg.officialUrl()
-                    + ")");
+            throw new IllegalArgumentException("template not found: " + ref + "\nlooked in $JK_TEMPLATES, "
+                    + JkDirs.templates() + ", templates/ and " + cfg.officialUrl() + "\nto add one, write "
+                    + JkDirs.templates().resolve("<lang>").resolve("<framework>") + "/"
+                    + (twoSegments ? ref.substring(ref.indexOf('/') + 1) : ref) + ".g8 with a .jk-template.toml");
         }
         if (looksRemoteTemplate(ref)) {
             return cloneRemoteTemplate(ref);

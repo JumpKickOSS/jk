@@ -72,7 +72,7 @@ class BuildLogicScriptsTest {
             assertThat(warned).anySatisfy(w -> assertThat(w)
                     .contains("befor-compile.groovy")
                     .contains("will not run")
-                    .contains("Did you mean before-compile?")
+                    .contains("did you mean before-compile?")
                     .contains("before-compile / after-compile / after-resources / before-package")
                     .contains("after-build / guard"));
             assertThat(warned).anySatisfy(w -> assertThat(w)

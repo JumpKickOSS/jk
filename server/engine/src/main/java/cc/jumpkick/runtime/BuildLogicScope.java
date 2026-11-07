@@ -58,14 +58,9 @@ public enum BuildLogicScope {
     /** The stems to use instead, for the refusal a misplaced script earns. */
     String use() {
         return switch (this) {
-            case MEMBER ->
-                "before-compile / after-compile / after-resources / before-package —"
-                        + " after-build and gate are the invocation root's anchors";
-            case WORKSPACE_ROOT ->
-                "after-build or gate — the root has no compile or package step for the others to cut against";
-            case STANDALONE ->
-                "guard for a once-per-build check — after-build belongs to a workspace root that"
-                        + " compiles nothing itself, and this project compiles its own sources";
+            case MEMBER -> "before-compile, after-compile, after-resources or before-package";
+            case WORKSPACE_ROOT -> "after-build or gate";
+            case STANDALONE -> "a module stem, or guard for a check once per build";
         };
     }
 

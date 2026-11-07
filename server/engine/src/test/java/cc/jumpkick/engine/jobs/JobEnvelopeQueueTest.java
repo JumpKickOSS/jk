@@ -280,8 +280,8 @@ class JobEnvelopeQueueTest {
         assertThat(Jsonl.str(error, "message"))
                 .startsWith("gave up after waiting 2m for engine memory behind 0 jobs; live: test " + suite + " (jid "
                         + first + ") since ")
-                .contains("`jk engine status` lists them")
-                .contains("[engine] queue-wait-ms / JK_ENGINE_QUEUE_WAIT_MS");
+                .contains("jk engine status lists the jobs")
+                .contains("[engine] queue-wait-ms sets the wait");
         assertThat(host.events)
                 .anyMatch(e -> e.startsWith("request-finish:")
                         && e.contains("\"success\":false")

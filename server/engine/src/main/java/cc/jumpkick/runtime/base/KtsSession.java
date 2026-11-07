@@ -198,7 +198,7 @@ final class KtsSession {
                 drop(session);
                 throw new IllegalStateException(
                         "[build] logic: the .kts host died running " + script.getFileName()
-                                + " (a script calling System.exit, or an out-of-memory, takes the shared host with it)"
+                                + "; System.exit or running out of memory in a script stops it"
                                 + (e.tail().isEmpty() ? "" : ":\n" + e.tail()),
                         e);
             } catch (Refused e) {
@@ -209,8 +209,8 @@ final class KtsSession {
                 session.process.waitFor(5, TimeUnit.SECONDS);
                 drop(session);
                 throw new IllegalStateException(
-                        "[build] logic: the .kts host refused " + script.getFileName() + " — " + e.getMessage()
-                                + "; the host was replaced",
+                        "[build] logic: the .kts host refused " + script.getFileName() + ": " + e.getMessage()
+                                + "; it was restarted",
                         e);
             } finally {
                 // A host killed for ignoring a cancel — the probe's or an interrupt's — is dropped

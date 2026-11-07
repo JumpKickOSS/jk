@@ -30,14 +30,13 @@ final class UrlTools {
         Path file = file(url, cas);
         if (Files.isRegularFile(file) && Hashing.sha256Hex(file).equalsIgnoreCase(sha256Hex)) return file;
         if (SessionContext.current().offline()) {
-            throw new IOException("cannot fetch " + url + " under --offline and the store holds no copy of the"
-                    + " bytes jk-lock.toml pins; run once online to cache it");
+            throw new IOException("offline: " + url + " is not downloaded yet; run once online");
         }
         byte[] body = get(url);
         String served = Hashing.sha256Hex(body);
         if (!served.equalsIgnoreCase(sha256Hex)) {
-            throw new IOException("jk-lock.toml pins sha256 " + sha256Hex + " for " + url + " but the server serves "
-                    + served + "; if the file changed upstream, re-pin it with `jk lock -F`");
+            throw new IOException(url + ": server sends sha256 " + served + ", jk-lock.toml pins " + sha256Hex
+                    + "; if the file changed upstream, run jk lock -F");
         }
         store(file, body);
         return file;
@@ -51,8 +50,7 @@ final class UrlTools {
         Path file = file(url, cas);
         if (SessionContext.current().offline()) {
             if (Files.isRegularFile(file)) return file;
-            throw new IOException("cannot fetch " + url + " under --offline and no copy is in the store yet; run once"
-                    + " online to cache it");
+            throw new IOException("offline: " + url + " is not downloaded yet; run once online");
         }
         store(file, get(url));
         return file;

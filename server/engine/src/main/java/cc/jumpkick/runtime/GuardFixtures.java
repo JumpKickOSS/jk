@@ -241,10 +241,8 @@ public final class GuardFixtures {
             if (Files.isRegularFile(idx)) continue;
             String rel = WorkspaceModel.rel(root, m);
             out.add((rel.isEmpty() ? "the workspace root" : rel)
-                    + " declares a guard suite under src/guard and its compiled index "
-                    + root.relativize(idx).toString().replace('\\', '/')
-                    + " is missing — guard tests and their fixtures are discovered from the compiled suite, and"
-                    + " this one compiled to no classes");
+                    + " declares a guard suite under src/guard, but it compiled to no classes: "
+                    + root.relativize(idx).toString().replace('\\', '/') + " is missing");
         }
         return out;
     }

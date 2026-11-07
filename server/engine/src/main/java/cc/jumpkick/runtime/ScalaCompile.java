@@ -46,9 +46,8 @@ public final class ScalaCompile {
             // the bundled default, possibly outside the requested range.
             var selector = project == null ? null : project.project().scala();
             if (selector != null) {
-                Log.warn("jk: warning: no resolved Scala version in the lock for selector `"
-                        + selector.raw() + "` — falling back to " + version
-                        + "; run `jk lock` online to pin the intended version.");
+                Log.warn("jk: warning: jk-lock.toml has no Scala version for `" + selector.raw() + "`, using " + version
+                        + "; run jk lock online");
             }
         }
         try {

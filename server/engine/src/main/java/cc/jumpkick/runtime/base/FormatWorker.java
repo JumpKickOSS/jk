@@ -178,8 +178,7 @@ public final class FormatWorker {
                     heaps.note(key, failed);
                     Long bigger = HeapLadder.next(ranOut);
                     if (bigger == null) {
-                        exhausted = "format worker " + HeapLadder.ranOut(ranOut)
-                                + "; raise it with [jvm] args = [\"-Xmx...\"]";
+                        exhausted = "format worker " + HeapLadder.ranOut(ranOut) + "; raise -Xmx in [jvm] args";
                         break;
                     }
                     HeapNotes.note(HeapNotes.line(bigger, failed, false));
@@ -321,20 +320,17 @@ public final class FormatWorker {
      */
     static @Nullable String reconcile(int reported, int total, int exit) {
         if (reported < total) {
-            return "format worker reported on " + reported + " of " + total + " files — " + (total - reported)
-                    + " were never visited (worker exit " + exit
-                    + "); nothing was recorded for them, so the next `jk format` retries them";
+            return "format worker stopped after " + reported + " of " + total + " files, worker exit " + exit
+                    + "; the next jk format retries the other " + (total - reported);
         }
         if (reported > total) {
-            return "format worker reported on " + reported + " files but only " + total + " were planned — "
-                    + (reported - total) + " more results than files (worker exit " + exit + ")";
+            return "format worker reported " + reported + " results for " + total + " files, worker exit " + exit;
         }
         if (exit != 0 && exit != 1) {
             if (WorkerContainment.killedForMemory(exit)) {
                 return "format worker killed for memory after reporting on all " + total + " files";
             }
-            return "format worker exited " + exit + " after reporting on all " + total
-                    + " files; its exit law is 0 or 1, so " + exit + " is a crash, not a verdict";
+            return "format worker crashed with exit " + exit + " after all " + total + " files";
         }
         return null;
     }

@@ -229,7 +229,7 @@ class InstallPlansPolicyTest {
 
         assertThat(InstallPlans.shadowedByRelease(snapshot, moduleDir, m2Dir, null))
                 .contains("ex.acme:money:1.0.0-SNAPSHOT would be hidden by the release ex.acme:money:1.0.0")
-                .contains("Raise the version in jk.toml");
+                .contains("raise the version in jk.toml");
         assertThat(InstallPlans.shadowedByRelease(release, moduleDir, m2Dir, null))
                 .as("a release is not shadowed by anything")
                 .isNull();

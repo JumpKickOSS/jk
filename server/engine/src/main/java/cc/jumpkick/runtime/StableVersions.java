@@ -197,24 +197,22 @@ public final class StableVersions {
                     : repos.availableVersions(Coordinate.of(group, artifact, "0"));
         } catch (IOException e) {
             throw new IOException(
-                    "could not look up the current version of " + coord + " (" + e.getMessage()
-                            + "); pass the version you want explicitly as " + coord + ":<version>",
+                    "could not look up the newest version of " + coord + ": " + e.getMessage() + "; pass one as "
+                            + coord + ":<version>",
                     e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted while looking up the current version of " + coord, e);
         }
         if (available == null) {
-            throw new IOException("offline: no file: repository lists " + coord
-                    + ", and a remote one is asked nothing; pass the version you want explicitly as " + coord
-                    + ":<version>");
+            throw new IOException(
+                    "offline: no local repository lists " + coord + "; pass a version as " + coord + ":<version>");
         }
         String stable = newestOf(available, true);
         if (stable != null) return stable;
         String any = newestOf(available, false);
         if (any != null) {
-            throw new IOException(coord + " has no stable release; the newest is the pre-release " + any
-                    + " — pass it explicitly, e.g. " + coord + ":" + any);
+            throw new IOException(coord + " has no stable release; to use the pre-release, pass " + coord + ":" + any);
         }
         throw new IOException(noSuchModule(group, artifact));
     }

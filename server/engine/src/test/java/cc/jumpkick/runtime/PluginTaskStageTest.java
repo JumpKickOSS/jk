@@ -141,7 +141,7 @@ class PluginTaskStageTest {
         assertThatThrownBy(() -> PlannerPlugin.pluginStage(bad))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("late-codegen")
-                .hasMessageContaining("compile window");
+                .hasMessageContaining("must be between `compile`");
     }
 
     @Test

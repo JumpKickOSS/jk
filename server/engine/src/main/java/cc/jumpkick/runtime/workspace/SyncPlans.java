@@ -217,7 +217,7 @@ public final class SyncPlans {
 
                         @Override
                         public void failed(Lockfile.Artifact pkg, @Nullable String error) {
-                            ctx.error("dep", formatCoord(label, pkg) + " — " + error);
+                            ctx.error("dep", formatCoord(label, pkg) + ": " + error);
                             ctx.progress(1);
                         }
                     };
@@ -427,11 +427,9 @@ public final class SyncPlans {
                     if (got == null || !got.equalsIgnoreCase(hex)) {
                         ctx.error(
                                 "plugin",
-                                pe.coordinate() + ":" + pe.version()
-                                        + " — repository serves different bytes than the lock pins"
-                                        + " (sha256 " + shortSha(got) + " vs locked " + shortSha(hex)
-                                        + "); if the upstream republished, re-lock with"
-                                        + " `jk lock -F`");
+                                pe.coordinate() + ":" + pe.version() + ": repository sends sha256 " + shortSha(got)
+                                        + ", the lock pins " + shortSha(hex)
+                                        + "; if it was republished, run jk lock -F");
                         ctx.progress(1);
                         continue;
                     }
@@ -443,7 +441,7 @@ public final class SyncPlans {
                     ctx.error("plugin", pe.coordinate() + " not found in any repo");
                 }
             } catch (Exception e) {
-                ctx.error("plugin", pe.coordinate() + " — " + e.getMessage());
+                ctx.error("plugin", pe.coordinate() + ": " + e.getMessage());
             }
             ctx.progress(1);
         }
@@ -484,7 +482,7 @@ public final class SyncPlans {
 
                         @Override
                         public void failed(Lockfile.Artifact pkg, @Nullable String error) {
-                            ctx.warn("sources", pkg.displayCoord() + " — " + error);
+                            ctx.warn("sources", pkg.displayCoord() + ": " + error);
                             ctx.progress(1);
                         }
                     };
@@ -558,10 +556,10 @@ public final class SyncPlans {
             var pom = repos.tryFetchArtifact(
                     new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "pom"));
             if (pom.isEmpty()) {
-                ctx.warn("plugin", coord.toGav() + ": no POM in any repo — worker launch will refuse this plugin");
+                ctx.warn("plugin", coord.toGav() + ": no repository has its POM, so the plugin cannot start");
             }
         } catch (Exception e) {
-            ctx.warn("plugin", coord.toGav() + ": POM fetch failed — " + e.getMessage());
+            ctx.warn("plugin", coord.toGav() + ": POM fetch failed: " + e.getMessage());
         }
     }
 
@@ -602,21 +600,21 @@ public final class SyncPlans {
         if (!jar.isAbsolute()) jar = dir.resolve(jar).normalize();
         try {
             if (!Files.isRegularFile(jar)) {
-                ctx.error("plugin", pe.coordinate() + " — " + jar + " is not a readable file");
+                ctx.error("plugin", pe.coordinate() + ": " + jar + " is not a readable file");
                 return;
             }
             String got = Hashing.sha256Hex(jar);
             if (!got.equalsIgnoreCase(hex)) {
                 ctx.error(
                         "plugin",
-                        pe.coordinate() + " — " + jar + " has sha256 " + shortSha(got) + " but the lock pins "
-                                + shortSha(hex) + "; re-lock after rebuilding the jar");
+                        pe.coordinate() + ": " + jar + " has sha256 " + shortSha(got) + ", the lock pins "
+                                + shortSha(hex) + "; run jk lock after rebuilding the jar");
                 return;
             }
             cas.putFile(jar, hex);
             ctx.label("copied " + pe.coordinate());
         } catch (IOException e) {
-            ctx.error("plugin", pe.coordinate() + " — " + e.getMessage());
+            ctx.error("plugin", pe.coordinate() + ": " + e.getMessage());
         }
     }
 }

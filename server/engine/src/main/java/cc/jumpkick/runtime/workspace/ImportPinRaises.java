@@ -74,7 +74,7 @@ public final class ImportPinRaises {
             PROBES.increment();
             series.resetCounts();
             String prefix = "round " + (round + 1) + " · ";
-            progress.detail(prefix + "resolving with each pin as a floor");
+            progress.detail(prefix + "resolving with each pin as a minimum version");
             Lockfile probe = new LockPipeline(
                             scope.lockDir(),
                             scope.effective(),

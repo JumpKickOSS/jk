@@ -630,11 +630,10 @@ public final class CacheInventoryOps {
     private static String stillHeldMessage(IOException cause, List<Long> killedTrainers) {
         String base = cause.getMessage() == null ? cause.toString() : cause.getMessage();
         if (killedTrainers.isEmpty()) {
-            return base + " — the engines were stopped and no jk trainer was running, so the holder"
-                    + " is a process outside jk (an editor, an antivirus scan, or a shell in that directory)";
+            return base + "\nheld by a process outside jk: an editor, a virus scan, or a shell in that directory";
         }
-        return base + " — stopped " + killedTrainers.size() + " jk startup-cache trainer(s) (pid " + killedTrainers
-                + ") first, so the holder is a process outside jk";
+        return base + "\nheld by a process outside jk; jk's startup-cache trainers " + killedTrainers
+                + " were stopped first";
     }
 
     private static String pack(String name, long files, long bytes) {

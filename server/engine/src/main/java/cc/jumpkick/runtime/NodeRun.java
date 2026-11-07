@@ -75,9 +75,8 @@ public final class NodeRun {
         if (node.start() == null) {
             return ExecPlan.error(
                     "run",
-                    project.project().name() + " builds static files and has nothing to start — a JVM module that"
-                            + " depends on it serves them; to run a server set [node] start, or add a start script"
-                            + " to package.json");
+                    project.project().name() + " has nothing to start: it builds static files"
+                            + "\nto run a server, set [node] start or add a start script to package.json");
         }
         NodeHome home = home(dir);
         String path = path(home, nodeDir, callerPath);
@@ -123,8 +122,7 @@ public final class NodeRun {
         Dev dev = dev(dir, project, callerPath);
         if (dev == null) {
             return ExecPlan.error(
-                    "dev",
-                    project.project().name() + " has no dev script — add one to package.json, or set [node] dev");
+                    "dev", project.project().name() + " has no dev script; add one to package.json, or set [node] dev");
         }
         ExecPlan.Probe ready = dev.url().isEmpty()
                 ? ExecPlan.Probe.NONE
@@ -176,7 +174,7 @@ public final class NodeRun {
         Path lockFile = LockPaths.lockFile(dir);
         NodePin pin =
                 Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile).node() : null;
-        if (pin == null) throw new IOException("Node.js is not locked yet — run `jk build` first");
+        if (pin == null) throw new IOException("Node.js is not locked yet; run jk build first");
         return PlannerNodeSetup.ensure(PlannerNodeSetup.provisioning.get(), pin, PROGRESS.orElse(ToolProgress.NONE));
     }
 

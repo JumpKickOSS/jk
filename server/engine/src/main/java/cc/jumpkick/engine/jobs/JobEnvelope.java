@@ -352,8 +352,8 @@ public final class JobEnvelope {
                 "gave up after waiting " + JobRow.duration(admission.timing().queueWaitMs())
                         + " for engine memory behind "
                         + ahead + (ahead == 1 ? " job" : " jobs") + liveSummary(liveRows())
-                        + " — `jk cancel <jid>` frees a live job, `jk engine status` lists them;"
-                        + " [engine] queue-wait-ms / JK_ENGINE_QUEUE_WAIT_MS sets the wait";
+                        + "\njk engine status lists the jobs, jk cancel <jid> stops one;"
+                        + " [engine] queue-wait-ms sets the wait";
         return refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_QUEUE_WAIT, message);
     }
 
@@ -366,10 +366,9 @@ public final class JobEnvelope {
         long estimate = admission.estimateFor(kind, dir);
         long cap = admission.heapMaxBytes();
         long needed = mib(estimate + MemoryAdmission.RESERVE_BYTES);
-        String message = "a " + kind + " of " + dir + " is estimated to need " + mib(estimate)
-                + " MiB of engine heap and the engine's cap is " + mib(cap)
-                + " MiB — set [engine] max-heap-mb in ~/.jk/config.toml (or JK_ENGINE_MAX_HEAP_MB) to at least "
-                + needed + ", then `jk engine stop`; the next command starts the engine under the new cap";
+        String message = "a " + kind + " of " + dir + " needs about " + mib(estimate)
+                + " MiB of engine heap, over the " + mib(cap) + " MiB cap\nset [engine] max-heap-mb = " + needed
+                + " in ~/.jk/config.toml, then run jk engine stop";
         return refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_ENGINE_HEAP, message);
     }
 
@@ -454,7 +453,7 @@ public final class JobEnvelope {
                         writer,
                         ProtoLifecycle.error(
                                 EngineProtocol.ERR_SHUTTING_DOWN,
-                                "the engine is shutting down (draining) — retry; the successor engine takes over"));
+                                "the engine is shutting down; retry to start a new one"));
             if (writer != null) WireWriter.awaitLanded(writer);
         } catch (IOException ignored) {
             // Client vanished mid-refusal — nothing to do; the connection is closing anyway.

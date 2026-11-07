@@ -101,8 +101,8 @@ public final class TemplateLint {
         String framework = frameworkDir.getFileName().toString();
         if (JkTemplateToml.matching(meta, lang, framework, name).isPresent()) return null;
         return JkTemplateToml.file(template) + ": declares " + meta.language() + "/" + meta.framework() + "/"
-                + meta.name() + ", but it sits at " + lang + "/" + framework + "/" + name
-                + ": the catalogue leaves it out until the two agree";
+                + meta.name() + " but sits at " + lang + "/" + framework + "/" + name
+                + "; the catalogue skips it until they match";
     }
 
     private static String relative(Path base, String message) {
