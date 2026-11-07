@@ -640,8 +640,7 @@ public final class PomImporter {
         }
         version = concreteVersion(version, model, report);
         int level = javaLevel(model, report);
-        String description = model.getDescription();
-        if (description != null && description.isBlank()) description = null;
+        String description = description(em);
         VersionSelector kotlin = kotlinFrom(model, report);
         // A Kotlin module leaves `java` at 0; one whose main tree also carries Java sources is
         // mixed and declares both, so javac compiles those against kotlinc's output.
@@ -654,6 +653,22 @@ public final class PomImporter {
                 .javadocMode(sourceTree.javadoc())
                 .description(description)
                 .build();
+    }
+
+    /**
+     * The POM's own {@code <description>}, or one inherited from a parent in the same source tree;
+     * a published parent's describes the framework, never this project, so it is dropped.
+     */
+    private static @Nullable String description(EffectiveModel em) {
+        String description = em.model().getDescription();
+        if (description == null || description.isBlank()) return null;
+        if (em.raw().getDescription() != null) return description;
+        boolean published = em.ancestors().stream()
+                .filter(a -> a.raw().getDescription() != null)
+                .findFirst()
+                .map(EffectiveModel.Ancestor::published)
+                .orElse(false);
+        return published ? null : description;
     }
 
     /**

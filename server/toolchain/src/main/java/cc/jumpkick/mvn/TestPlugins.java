@@ -10,6 +10,7 @@ import cc.jumpkick.model.TestJvm;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -269,7 +270,7 @@ final class TestPlugins {
                     configured = true;
                     args.addAll(jvmArgs(argLine));
                 }
-                props.putAll(systemProperties(config, label, report));
+                props.putAll(systemProperties(config, model.getProjectDirectory(), label, report));
             }
             if (!configured) {
                 String argLine = model.getProperties().getProperty("argLine");
@@ -316,33 +317,67 @@ final class TestPlugins {
      * k -> v}. A value the effective model left uninterpolated ({@code ${…}} / {@code @{…}}) names a
      * build-time path or a plugin placeholder jk has no value for; it is a row, not a property.
      */
-    private static Map<String, String> systemProperties(Xpp3Dom config, String label, ImportReport.Builder report) {
+    private static Map<String, String> systemProperties(
+            Xpp3Dom config, @Nullable File moduleDir, String label, ImportReport.Builder report) {
         Map<String, String> out = new LinkedHashMap<>();
         Xpp3Dom variables = config.getChild("systemPropertyVariables");
         if (variables != null) {
             for (Xpp3Dom variable : variables.getChildren()) {
-                put(out, variable.getName(), PluginFacts.text(variable), label, report);
+                put(out, variable.getName(), PluginFacts.text(variable), moduleDir, label, report);
             }
         }
         Xpp3Dom properties = config.getChild("systemProperties");
         if (properties != null) {
             for (Xpp3Dom property : properties.getChildren()) {
                 String name = PluginFacts.child(property, "name");
-                if (name != null) put(out, name, PluginFacts.text(property.getChild("value")), label, report);
+                if (name != null) {
+                    put(out, name, PluginFacts.text(property.getChild("value")), moduleDir, label, report);
+                }
             }
         }
         return out;
     }
 
     private static void put(
-            Map<String, String> out, String name, @Nullable String raw, String label, ImportReport.Builder report) {
+            Map<String, String> out,
+            String name,
+            @Nullable String raw,
+            @Nullable File moduleDir,
+            String label,
+            ImportReport.Builder report) {
         String value = raw == null ? "" : raw.trim();
         if (value.contains("${") || value.contains("@{")) {
             report.warning(label + " system property " + name + "=" + value
                     + ": Maven placeholder; set it in [test] system-properties");
             return;
         }
-        out.put(name, value);
+        out.put(name, portablePath(name, value, moduleDir, label, report));
+    }
+
+    /**
+     * The effective model interpolates {@code ${project.basedir}}, {@code ${project.build.directory}}
+     * and the like into this checkout's absolute paths. A path under the module is written relative
+     * to it, since jk forks the test JVM in the module directory, as Surefire does; any other
+     * absolute path stays as written, with a row.
+     */
+    private static String portablePath(
+            String name, String value, @Nullable File moduleDir, String label, ImportReport.Builder report) {
+        if (moduleDir == null) return value;
+        Path path;
+        try {
+            path = Path.of(value);
+        } catch (InvalidPathException e) {
+            return value;
+        }
+        if (!path.isAbsolute()) return value;
+        if (path.normalize().startsWith(moduleDir.toPath().toAbsolutePath().normalize())) {
+            String relative = SourceTreePlugins.moduleRelative(value, moduleDir.toPath());
+            return relative.isEmpty() ? "." : relative;
+        }
+        report.warning("`" + label + "` system property " + name + "=" + value
+                + " is an absolute path outside the module, written as is; it holds only on this machine,"
+                + " so make it relative to the module directory, the test JVM's working directory.");
+        return value;
     }
 
     /** {@code <skipTests>} / {@code <skip>} in the configuration or as a property. */
