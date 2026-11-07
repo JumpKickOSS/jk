@@ -69,6 +69,39 @@ public final class PluginContributions {
         return out;
     }
 
+    /**
+     * The {@code [contribute.test-system-properties]} of every plugin whose table the module
+     * declares, in manifest order; the first plugin to name a key keeps it. The parse folds them
+     * under the module's own {@code [test]} settings.
+     */
+    public static Map<String, String> testSystemProperties(
+            Map<String, PluginConfig> pluginConfigs, List<PluginDescriptor> manifests) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (PluginDescriptor manifest : manifests) {
+            if (!pluginConfigs.containsKey(manifest.id())) continue;
+            manifest.contributions().testSystemProperties().forEach(out::putIfAbsent);
+        }
+        return out;
+    }
+
+    /**
+     * The table of the first plugin whose {@code [contribute.lib-dir]} holds for the module, or
+     * null when none does: that plugin's table gives the module the lib-dir layout by default.
+     */
+    public static @Nullable String libDirImpliedBy(
+            Project project,
+            boolean nativeDeclared,
+            Map<String, PluginConfig> pluginConfigs,
+            List<PluginDescriptor> manifests) {
+        for (PluginDescriptor manifest : manifests) {
+            PluginConfig config = pluginConfigs.get(manifest.id());
+            PluginDescriptor.LibDir libDir = manifest.contributions().libDir();
+            if (config == null || libDir == null) continue;
+            if (holds(libDir.when(), config, project, nativeDeclared, null, manifest.id())) return manifest.table();
+        }
+        return null;
+    }
+
     /** One plugin's {@code [contribute.jvm-modules]}, resolved: the module-name prefix and the modules to add. */
     public record JvmModuleUse(String modulePrefix, List<String> addModules) {}
 

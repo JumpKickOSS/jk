@@ -116,7 +116,7 @@ class SchemaPresetExamplesTest {
     }
 
     /** The worker jar this build produced, when the resident engine did not hand it over. */
-    private static void workerJarFromWorkspace(PluginJar worker, String module) throws IOException {
+    static void workerJarFromWorkspace(PluginJar worker, String module) throws IOException {
         if (System.getProperty(worker.jarProperty()) != null) return;
         Path dir = ROOT.resolve(module);
         Path jar =

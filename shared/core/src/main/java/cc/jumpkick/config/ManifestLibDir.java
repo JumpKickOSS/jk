@@ -19,9 +19,14 @@ final class ManifestLibDir {
 
     private ManifestLibDir() {}
 
-    /** The declared layout, or {@code null} when {@code application} declares none. */
-    static @Nullable LibDir parse(TomlTable application) {
-        boolean declared = application.contains(LIB_DIR) && !Boolean.FALSE.equals(boolOrNull(application));
+    /**
+     * The declared layout, or {@code null} when {@code application} declares none. {@code implied}:
+     * a plugin's table asks for the layout by default ({@code [contribute.lib-dir]}), so a table
+     * that does not write {@code lib-dir} gets {@code libs/}, shaped by its {@code lib-versions} and
+     * {@code lib-exclude}; a written {@code lib-dir}, {@code false} included, wins.
+     */
+    static @Nullable LibDir parse(TomlTable application, boolean implied) {
+        boolean declared = application.contains(LIB_DIR) ? !Boolean.FALSE.equals(boolOrNull(application)) : implied;
         if (!declared) {
             if (application.contains(LIB_VERSIONS) || application.contains(LIB_EXCLUDE)) {
                 throw new JkBuildParseException("[application] `lib-versions` and `lib-exclude` shape the lib-dir"
@@ -29,7 +34,7 @@ final class ManifestLibDir {
             }
             return null;
         }
-        String dir = application.isBoolean(LIB_DIR)
+        String dir = !application.contains(LIB_DIR) || application.isBoolean(LIB_DIR)
                 ? LibDir.DEFAULT_DIR
                 : checkDir(application.isString(LIB_DIR) ? application.getString(LIB_DIR) : null);
         boolean versions = true;

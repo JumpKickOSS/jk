@@ -1,0 +1,58 @@
+# Built-in Helidon plugin, for Helidon 27 and later (SE; 27 ships no MicroProfile).
+# Declarative: the platform BOM, Helidon's annotation processors, the test JVM's config profile and
+# Helidon's <name>.jar + libs/ deployable. The worker carries no step yet: binding, generate-main and
+# validate are read from the table for the step that generates the application binding.
+
+[plugin]
+id        = "helidon"
+table     = "helidon"
+version   = "0.1.0"
+jk-compat = ">=0.50"
+# Helidon 27 is compiled for Java 27 (class file version 71).
+min-java  = 27
+
+[code]
+worker          = "jk-helidon"
+protocol-prefix = "##JKHEL:"
+
+[schema]
+version       = { type = "string", required = true, min-version = "27", example = "27.0.1", hint = "io.helidon:helidon-dependencies version, 27 or later — a release such as 27.0.1 (exact), ^27 for the newest 27.x, or latest" }
+# Tri-state: absent = on when a class carries @Service.GenerateBinding.
+binding       = { type = "bool" }
+generate-main = { type = "bool", default = false }
+validate      = { type = "bool", default = true }
+layout        = { type = "string", default = "libs", one-of = ["libs", "jar"], hint = "libs (default): target/<name>.jar + target/libs/, Helidon's deployable; jar: the plain jar alone" }
+declarative   = { type = "bool", default = false }
+
+# The BOM Helidon applications import: Helidon's own modules and the third-party versions they
+# were built with, so dependencies are versionless or short names.
+[[contribute.platform-dependency]]
+coordinate = "io.helidon:helidon-dependencies:${config.version}"
+
+# The service registry's code generator, behind Helidon's annotation-processor front end: service
+# descriptors for @Service types and the application binding @Service.GenerateBinding asks for.
+# Every Helidon application has the registry (helidon-config depends on it); the processors
+# generate nothing for a module whose types carry no Helidon annotation.
+[[contribute.processor-dependency]]
+coordinate = "io.helidon.codegen:helidon-codegen-apt:${config.version}"
+when       = { classpath-has = "io.helidon.service:helidon-service-registry" }
+
+[[contribute.processor-dependency]]
+coordinate = "io.helidon.service:helidon-service-codegen:${config.version}"
+when       = { classpath-has = "io.helidon.service:helidon-service-registry" }
+
+# Helidon Declarative: every code generator Helidon ships (endpoints, typed clients, fault
+# tolerance, scheduling, validation, data repositories, JSON) and the API-stability check. No
+# artifact marks a Declarative module, and the stability check fails a compile that uses an
+# incubating API, so it is asked for. It holds the two above; the processor path carries each jar once.
+[[contribute.processor-dependency]]
+coordinate = "io.helidon.bundles:helidon-bundles-apt:${config.version}"
+when       = { config = "declarative", equals = "true" }
+
+# What Helidon's application parent passes Surefire: tests read application-test.yaml.
+[contribute.test-system-properties]
+"helidon.config.profile" = "test"
+
+# Helidon's deployable, as its application parent lays it out and its Dockerfiles copy it.
+[contribute.lib-dir]
+when = { config = "layout", equals = "libs" }

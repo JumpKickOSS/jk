@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.50.4-SNAPSHOT"
-generated-by-build = "60c823b2ae65"
-generated-by-build-time = "2026-11-07T05:55:23Z"
+generated-by-build = "b5eae7689f6d"
+generated-by-build-time = "2026-11-07T08:04:35Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "8f9c88e8fe37b463c1b6695c26bbfa24b37496732f72921c6c5f6d2a14090189"
+manifests-sha256 = "90b9d0ca5968a4fee5aa4161bc576ac2a169de241d8ec5f76fab7b9fe4a76326"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -1794,7 +1794,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d78396e3c5bce3f2865c9186647481e5589d34cacc632484715b686108d17c66"
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
-members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
+members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/helidon", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
 
 [[artifact]]
 name     = "net.jqwik:jqwik-api:jar:"
@@ -7113,6 +7113,15 @@ name    = "jk-groovy-compiler"
 version = "0.50.4"
 java    = 25
 description = "JumpKick's Groovy compiler plugin"
+install.destination = "jk"
+
+[[module]]
+path    = "plugins/helidon"
+group   = "cc.jumpkick"
+name    = "jk-helidon"
+version = "0.50.4"
+java    = 25
+description = "JumpKick's Helidon plugin: the Helidon platform BOM, its annotation processors, the test config profile and the libs/ deployable for Helidon 27+ applications"
 install.destination = "jk"
 
 [[module]]

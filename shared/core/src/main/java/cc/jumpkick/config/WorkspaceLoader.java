@@ -130,6 +130,7 @@ public final class WorkspaceLoader {
             }
             JkBuild member = inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root, moduleDir);
             NodeShape.check(member, moduleDir);
+            PluginJavaFloor.check(member, moduleDir);
             modules.put(moduleDir, member);
         }
         if (!bad.isEmpty()) {

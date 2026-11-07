@@ -35,7 +35,13 @@ public record PluginDescriptor(
          * The {@code [sub-schema]} every {@code [<table>.<name>]} entry validates against
          * ({@code [entries] schema}), or null when the owned table is a table of keys only.
          */
-        @Nullable String entrySchema) {
+        @Nullable String entrySchema,
+        /**
+         * The lowest {@code java} level a module declaring the owned table may build for ({@code
+         * [plugin] min-java}), or 0 for none: a framework compiled for a newer class file version
+         * than the module targets cannot be compiled against.
+         */
+        int minJava) {
 
     public PluginDescriptor {
         Objects.requireNonNull(id, "id");
@@ -170,11 +176,18 @@ public record PluginDescriptor(
             /** {@code [[contribute.lock-closure]]}: the closures the plugin resolves for {@code jk lock} to pin. */
             List<LockClosure> lockClosures,
             /** {@code [contribute.resolution.conditional-dependencies]}: what {@code jk lock} follows, or null. */
-            @Nullable ConditionalDependencies conditionalDependencies) {
+            @Nullable ConditionalDependencies conditionalDependencies,
+            /**
+             * {@code [contribute.test-system-properties]}: {@code -D} defaults for the module's forked
+             * test JVMs, each one the module's own {@code [test]} setting of the same key replaces.
+             */
+            Map<String, String> testSystemProperties,
+            /** {@code [contribute.lib-dir]}: when the module gets the lib-dir layout by default, or null. */
+            @Nullable LibDir libDir) {
 
         public static final Contributions NONE = new Contributions(
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), null, null, List.of(), null);
+                List.of(), null, null, List.of(), null, Map.of(), null);
 
         public Contributions {
             platformDependencies = platformDependencies == null ? List.of() : List.copyOf(platformDependencies);
@@ -188,6 +201,9 @@ public record PluginDescriptor(
             providedClasspath = providedClasspath == null ? List.of() : List.copyOf(providedClasspath);
             sourceRoots = sourceRoots == null ? List.of() : List.copyOf(sourceRoots);
             lockClosures = lockClosures == null ? List.of() : List.copyOf(lockClosures);
+            testSystemProperties = testSystemProperties == null || testSystemProperties.isEmpty()
+                    ? Map.of()
+                    : Collections.unmodifiableMap(new LinkedHashMap<>(testSystemProperties));
         }
 
         public boolean isEmpty() {
@@ -202,9 +218,19 @@ public record PluginDescriptor(
                     && sourceRoots.isEmpty()
                     && jvmModules == null
                     && lockClosures.isEmpty()
-                    && conditionalDependencies == null;
+                    && conditionalDependencies == null
+                    && testSystemProperties.isEmpty()
+                    && libDir == null;
         }
     }
+
+    /**
+     * {@code [contribute.lib-dir]}: a module declaring the owned table and an {@code [application]}
+     * gets {@code [application] lib-dir = true} when {@code when} holds (always, when null), unless
+     * the module writes {@code lib-dir} itself. Evaluated as the manifest is parsed, so {@code
+     * classpath-has} cannot gate it.
+     */
+    public record LibDir(@Nullable Condition when) {}
 
     /**
      * {@code [contribute.resolution.conditional-dependencies]}: dependencies an artifact declares in
@@ -453,7 +479,9 @@ public record PluginDescriptor(
      * tri-state pattern). {@code example} and {@code hint} feed the required-key error message
      * so schema-driven validation keeps the hand-written diagnostics' quality. {@code inherit}
      * is an entry-schema key's: an entry that leaves it unset reads the table's value of the
-     * same key wherever a per-entry tool names it as {@code ${entry.<key>}}.
+     * same key wherever a per-entry tool names it as {@code ${entry.<key>}}. A string key may
+     * carry {@code oneOf}, the only values it accepts, and {@code minVersion}, the lowest version
+     * its value (a version selector) may be anchored on.
      */
     public record SchemaKey(
             String name,
@@ -463,18 +491,12 @@ public record PluginDescriptor(
             @Nullable String example,
             @Nullable String hint,
             boolean secret,
-            boolean inherit) {
+            boolean inherit,
+            List<String> oneOf,
+            @Nullable String minVersion) {
 
-        /** A key an entry does not inherit from its table. */
-        public SchemaKey(
-                String name,
-                Type type,
-                boolean required,
-                @Nullable Object defaultValue,
-                @Nullable String example,
-                @Nullable String hint,
-                boolean secret) {
-            this(name, type, required, defaultValue, example, hint, secret, false);
+        public SchemaKey {
+            oneOf = oneOf == null ? List.of() : List.copyOf(oneOf);
         }
 
         public enum Type {

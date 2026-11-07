@@ -1,0 +1,35 @@
+# Helidon's inject quickstart (helidon-examples, quickstarts/helidon-quickstart-inject): @Service
+# types in main and test sources and @Service.GenerateBinding on Main, compiled by the processors
+# the [helidon] table contributes, with no [processor-dependencies]. jk-libs.toml holds the
+# registry's short names, so the lock does not depend on the host's downloaded catalog.
+name    = "quickstart-inject"
+group   = "io.helidon.examples"
+version = "1.0.0"
+java    = 27
+
+[application]
+main = "io.helidon.examples.quickstart.inject.Main"
+
+[helidon]
+version = "27.0.1"
+
+[dependencies]
+helidon-service-registry          = { group = "io.helidon.service", name = "helidon-service-registry" }
+helidon-webserver                 = "managed"
+helidon-http-media-jsonp          = "managed"
+helidon-webserver-observe-health  = "managed"
+helidon-webserver-observe-metrics = "managed"
+helidon-config-yaml               = "managed"
+helidon-health-checks             = "managed"
+helidon-metrics-system-meters     = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+helidon-openapi                   = { group = "io.helidon.openapi", name = "helidon-openapi" }
+jakarta-json-api                  = { group = "jakarta.json", name = "jakarta.json-api" }
+
+[runtime-dependencies]
+helidon-logging-jul = "managed"
+
+[test-dependencies]
+junit-jupiter                    = "managed"
+helidon-webserver-testing-junit5 = "managed"
+helidon-webclient                = "managed"
+hamcrest-all                     = { group = "org.hamcrest", name = "hamcrest-all" }

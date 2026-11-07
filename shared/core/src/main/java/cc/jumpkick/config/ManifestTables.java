@@ -802,9 +802,10 @@ public final class ManifestTables {
     /**
      * The optional {@code [application]} table. Presence marks the project as an application
      * ({@link JkBuild#isApplication}). {@code main} is required. {@code Optional.empty} when the
-     * table is absent.
+     * table is absent. {@code libDirImplied}: a plugin's table gives the module the lib-dir layout
+     * unless the table writes {@code lib-dir} itself ({@link ManifestLibDir#parse}).
      */
-    static Optional<JkBuild.Application> parseApplication(TomlTable root) {
+    static Optional<JkBuild.Application> parseApplication(TomlTable root, boolean libDirImplied) {
         rejectFlattenedApplicationKeys(root);
         TomlTable application = root.getTable("application");
         if (application == null) return Optional.empty();
@@ -833,7 +834,7 @@ public final class ManifestTables {
                 config,
                 parseRelocate(application, "[application]"),
                 jvmArgsList(application, "application"),
-                ManifestLibDir.parse(application)));
+                ManifestLibDir.parse(application, libDirImplied)));
     }
 
     /**
@@ -917,7 +918,7 @@ public final class ManifestTables {
      * {@code key = value} form that can only be a misplacement. Same shape as the {@code [m2]}
      * guard, which rejects the flattened {@code m2integration} by name.
      */
-    private static void rejectFlattenedApplicationKeys(TomlTable root) {
+    static void rejectFlattenedApplicationKeys(TomlTable root) {
         for (String key : APPLICATION_KEYS) {
             if (!root.contains(key) || root.isTable(key)) continue;
             // `native` and `config` are also real top-level TABLES with their own semantics
@@ -937,6 +938,12 @@ public final class ManifestTables {
      * fat jar, {@code minified} adds the R8 jar and implies the fat one — so each key is a plain
      * boolean rather than a mode.
      */
+    /** Whether {@code [application] native} asks for a native image (the table read as written). */
+    static boolean nativeAsked(TomlTable root) {
+        TomlTable application = root.getTable("application");
+        return application != null && artifactFlag(application, "native");
+    }
+
     static boolean artifactFlag(TomlTable application, String key) {
         return artifactFlag(application, key, "[application]");
     }

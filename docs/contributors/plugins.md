@@ -121,12 +121,19 @@ table     = "spring-boot"     # jk.toml table you own
 version   = "1.0.0"
 jk-compat = ">=0.10"
 # sdk = "0.41.1"              # out-of-tree plugins: the jk-plugin-sdk release compiled against
+# min-java = 27               # a module declaring the table must build for java 27 or later
 
 [schema]
 version = { type = "string", required = true, example = "4.1.0",
             hint = "platform BOM version — a release such as 4.1.0 (exact), ^4 for the newest 4.x, or latest" }
 aot     = { type = "bool" }   # no default = tri-state
 ```
+
+A string key may carry `one-of = ["libs", "jar"]`, the only values it accepts, and `min-version =
+"27"`, the oldest release its value may name: a selector anchored below it (`4.3.0`, `^4`) is
+refused at parse naming the key and the `example`; `latest` passes. `[plugin] min-java` refuses a
+module that declares the table and builds for a lower `java` (or names none), once workspace
+inheritance has made its level concrete, with the line that fixes it.
 
 Schema types: `string`, `coordinate` (a `group:artifact:version` the user writes, a classifier and
 `!type` allowed after it — fewer than three segments fails parse naming the table and key), `bool`,
@@ -171,6 +178,12 @@ id         = "org.jetbrains.kotlin.noarg"
 coordinate = "org.jetbrains.kotlin:kotlin-noarg-compiler-plugin-embeddable:${kotlin.version}"
 options    = ["preset=jpa"]
 when       = { classpath-has = "jakarta.persistence:jakarta.persistence-api" }
+
+[contribute.test-system-properties]   # -D defaults for the module's forked test JVMs; the
+"helidon.config.profile" = "test"     # module's own [test] system-properties / jvm-args win
+
+[contribute.lib-dir]                  # the [application] lib-dir layout by default, for a module
+when = { config = "layout", equals = "libs" }   # with [application]; its own lib-dir wins
 
 [[contribute.processor-dependency]]   # an annotation processor appended to the module's
 coordinate = "io.helidon.service:helidon-service-codegen:${config.version}"   # processor path
@@ -230,6 +243,15 @@ the contribution steps aside from both compiles, in `[test-processor-dependencie
 — the rule `[[contribute.platform-dependency]]` follows against `[platform-dependencies]`. The
 build and `jk explain` derive the contributed jars from one body, so a forecast keys the
 `-processorpath` the build hands javac.
+
+**Module defaults.** `[contribute.test-system-properties]` and `[contribute.lib-dir]` are folded
+into the module as its manifest is parsed, so every reader (the test fork, its stamp, `jk explain`,
+the packaging tail, `jk image`) sees one model. A test property the module sets in `[test]
+system-properties`, or as a `-D` in `[test] jvm-args`, keeps the module's value; when two plugins
+name one key, the first in registry order keeps it. `lib-dir` applies to a module with an
+`[application]` that does not write `lib-dir` itself (`lib-dir = false` included), and its `when`
+is a parse-time predicate (`config`/`equals`, `native-declared`, `kotlin-project`; never
+`classpath-has`). `[helidon]` uses both.
 
 **Archives (`unpack`).** A `coordinate` (not `transitive`) or `url` entry with `unpack = true` is
 a zip handed over unpacked: extracted once into scratch space (`state/tmp/unpacked/<sha256 of the

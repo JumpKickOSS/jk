@@ -144,7 +144,8 @@ public final class PluginDescriptors {
                 gradleImports,
                 subSchemas,
                 subTables,
-                entrySchema);
+                entrySchema,
+                ManifestDefaults.minJava(plugin, displayPath));
     }
 
     /** Typed schema keys from one table of {@code key = { type = "…", … }} specs. */
@@ -164,6 +165,9 @@ public final class PluginDescriptors {
             var type = PluginDescriptor.SchemaKey.Type.parse(typeRaw, where + "." + key);
             boolean required = Boolean.TRUE.equals(spec.getBoolean("required"));
             Object defaultValue = defaultFor(spec, type, where + "." + key);
+            List<String> oneOf = stringList(spec, "one-of", where + "." + key);
+            String minVersion = spec.getString("min-version");
+            ManifestDefaults.checkStringConstraints(where + "." + key, type, defaultValue, oneOf, minVersion);
             schema.put(
                     key,
                     new PluginDescriptor.SchemaKey(
@@ -174,7 +178,9 @@ public final class PluginDescriptors {
                             spec.getString("example"),
                             spec.getString("hint"),
                             Boolean.TRUE.equals(spec.getBoolean("secret")),
-                            Boolean.TRUE.equals(spec.getBoolean("inherit"))));
+                            Boolean.TRUE.equals(spec.getBoolean("inherit")),
+                            oneOf,
+                            minVersion));
         }
         return schema;
     }
@@ -337,7 +343,9 @@ public final class PluginDescriptors {
                 jvmEnvironment,
                 jvmModules,
                 lockClosures,
-                conditionalDependencies);
+                conditionalDependencies,
+                ManifestDefaults.testSystemProperties(contribute, displayPath),
+                ManifestDefaults.libDir(contribute, displayPath));
     }
 
     /**
@@ -755,7 +763,7 @@ public final class PluginDescriptors {
      * PluginDescriptor.Condition} — the closed predicate set; two predicates in one {@code when}
      * (or an unknown one) is a load error, never a silently-false condition.
      */
-    private static PluginDescriptor.@Nullable Condition parseCondition(TomlTable entry, String where) {
+    static PluginDescriptor.@Nullable Condition parseCondition(TomlTable entry, String where) {
         if (!entry.contains("when")) return null;
         TomlTable when = entry.getTable("when");
         if (when == null) {

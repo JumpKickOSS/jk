@@ -171,6 +171,71 @@ service declares it the ordinary way — Testcontainers in the test, or a `[test
 what CI provides. The gap versus `mn:run` / `./gradlew run` with test-resources is exactly that
 one convenience: no service is started for you.
 
+## Helidon
+
+**Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).
+
+`[helidon]` builds Helidon 27 and later applications (Helidon SE; 27 has no MicroProfile and no
+GraalVM native image). The version is the only required key:
+
+```toml
+name    = "quickstart"
+group   = "com.example"
+version = "1.0.0"
+java    = 27                  # Helidon 27 is compiled for Java 27; jk installs the JDK
+
+[application]
+main = "com.example.Main"
+
+[helidon]
+version = "27.0.1"            # required: 27.0.1 (exact), ^27 (newest 27.x) or latest
+# layout        = "libs"      # libs (default): target/<name>.jar + target/libs/ | jar
+# declarative   = false       # true: Helidon Declarative's code generators run
+# binding       = true        # default: on when a class carries @Service.GenerateBinding
+# generate-main = false       # also generate ApplicationMain, the reflection-free entry point
+# validate      = true        # fail the build on an invalid injection graph
+
+[dependencies]
+helidon-webserver = "managed"
+helidon-config-yaml = "managed"
+
+[test-dependencies]
+helidon-webserver-testing-junit5 = "managed"
+junit-jupiter = "managed"
+```
+
+What the table does:
+
+- **Platform BOM.** `io.helidon:helidon-dependencies` at `version` joins
+  `[platform-dependencies]`, so Helidon modules and the third-party libraries Helidon was built with
+  are `"managed"` or bare short names. A BOM the module declares itself under the same coordinate
+  wins.
+- **Annotation processors.** `helidon-codegen-apt` with `helidon-service-codegen` join the main and
+  test processor paths (every Helidon application has the service registry): service descriptors
+  for `@Service` types and the binding `@Service.GenerateBinding` asks for. `declarative = true`
+  adds `helidon-bundles-apt`, every generator Helidon ships plus its API-stability check, which
+  fails a compile that uses an incubating API. They are appended to the module's own processors
+  ([Annotation processors](build.md#annotation-processors)), locked at the BOM's version; a
+  processor the module declares itself keeps its own pin.
+- **Test config profile.** The test JVM gets `-Dhelidon.config.profile=test`, as Helidon's
+  application parent passes Surefire, so tests read `application-test.yaml`. A
+  `helidon.config.profile` in `[test] system-properties` or `jvm-args` replaces it.
+- **Deployable.** `layout = "libs"` turns on the [lib-dir layout](packaging.md#lib-dir-layout):
+  `target/<name>.jar` with a `Class-Path` over `target/libs/`, what Helidon's Dockerfiles copy,
+  and `jk image` ships it as layers. `lib-versions` and `lib-exclude` under `[application]` shape
+  it; `[application] lib-dir` written by the module (`false` included) wins. A module without an
+  `[application]` gets no layout.
+- **Floors.** A Helidon version below 27 (`4.3.0`, `^4`) and a module below `java = 27` are
+  refused with the line that fixes them.
+
+`binding`, `generate-main` and `validate` are read but not acted on yet: the
+application binding is the empty one the processor writes, and Helidon logs at startup that it falls
+back to classpath discovery. The application runs the same either way.
+
+Tests run under `junit-jupiter`, or `junit-jupiter-api` alone (jk adds the engine as Surefire
+does), with no launcher pin. `jk dev` restarts the application on every change, as `helidon dev`
+does.
+
 ## Android
 
 **Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).

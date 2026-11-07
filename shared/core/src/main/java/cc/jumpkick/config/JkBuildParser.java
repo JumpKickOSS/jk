@@ -29,6 +29,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginModule;
@@ -217,6 +218,7 @@ public final class JkBuildParser {
     private static JkBuild resolved(Path moduleDir, JkBuild local) {
         JkBuild resolved = WorkspaceResolve.applyWorkspace(moduleDir, local);
         NodeShape.check(resolved, moduleDir);
+        PluginJavaFloor.check(resolved, moduleDir);
         List<PluginDeclaration> user = UserPlugins.fromConfig();
         if (user.isEmpty()) return resolved;
         return resolved.withPlugins(UserPlugins.merge(user, resolved.plugins()));
@@ -431,8 +433,23 @@ public final class JkBuildParser {
         ManifestTables.checkFeatureDeps(result, features, deps);
         Map<String, String> manifest = ManifestTables.parseManifest(result);
         List<PluginDeclaration> plugins = ManifestBuild.parsePlugins(result);
+        // A misplaced top-level `native = true` or `minified = true` reads as a table name to the
+        // plugin-table and [native] parsing below; reject it first, with the error that names
+        // [application], before either looks it up as a table.
+        ManifestTables.rejectFlattenedApplicationKeys(result);
+        // Cold-store engines install built-ins lazily: fetch owners of referenced tables before
+        // the manifest set below is captured, so this very parse validates their configs.
+        Map<String, String> builtInFetchFailures = ManifestBuild.ensureBuiltInTables(result);
+        List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
+        Map<String, PluginConfig> pluginConfigs = ManifestTables.parsePluginTables(result, installedManifests);
+        JkBuild.NativeConfig nativeConfig =
+                ManifestBuild.parseNativeConfig(result).orElse(null);
+        // A plugin's table may give the module the lib-dir layout ([contribute.lib-dir]); the
+        // [application] table's own lib-dir, when written, wins.
+        String libDirImpliedBy = PluginContributions.libDirImpliedBy(
+                project, nativeConfig != null || ManifestTables.nativeAsked(result), pluginConfigs, installedManifests);
         JkBuild.Application application =
-                ManifestTables.parseApplication(result).orElse(null);
+                ManifestTables.parseApplication(result, libDirImpliedBy != null).orElse(null);
         JkBuild.Library library = ManifestTables.parseLibrary(result).orElse(null);
         if (application != null && PluginModule.isWorker(moduleDir)) {
             throw new JkBuildParseException(
@@ -441,26 +458,19 @@ public final class JkBuildParser {
                             + PluginModule.WORKER_MAIN
                             + "; drop the [application] table");
         }
-        JkBuild.NativeConfig nativeConfig =
-                ManifestBuild.parseNativeConfig(result).orElse(null);
         if (application != null
                 && application.nativeImage()
                 && nativeConfig != null
                 && nativeConfig.enabled() == JkBuild.NativeMode.DISABLED) {
             throw new JkBuildParseException("[application].native = true conflicts with [native] enabled = false");
         }
-        // Cold-store engines install built-ins lazily: fetch owners of referenced tables before
-        // the manifest set below is captured, so this very parse validates their configs.
-        Map<String, String> builtInFetchFailures = ManifestBuild.ensureBuiltInTables(result);
-        List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
-        Map<String, PluginConfig> pluginConfigs = ManifestTables.parsePluginTables(result, installedManifests);
         // minified = true enables the minified packager without requiring an empty [minified] table.
         pluginConfigs = ManifestTables.ensureMinifiedPluginConfigured(application, pluginConfigs, installedManifests);
         ManifestBuild.checkUnownedTables(result, moduleDir, plugins, installedManifests, builtInFetchFailures);
         boolean nativeDeclared = nativeConfig != null || (application != null && application.nativeImage());
         deps = ManifestBuild.withPlatformContributions(
                 deps, project, nativeDeclared, pluginConfigs, installedManifests);
-        BuildBlock build = ManifestBuild.parseBuild(result);
+        BuildBlock build = PluginTestDefaults.fold(ManifestBuild.parseBuild(result), pluginConfigs, installedManifests);
         List<BuildBlock.KotlinPluginDecl> kotlinPlugins = ManifestBuild.parseKotlinPlugins(result);
         if (!kotlinPlugins.isEmpty()) build = build.withKotlinPlugins(kotlinPlugins);
         // [javac] is a compile input: compile-main and compile-test both lower it into javac's argv.

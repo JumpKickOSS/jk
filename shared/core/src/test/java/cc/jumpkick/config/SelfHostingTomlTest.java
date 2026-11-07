@@ -110,6 +110,7 @@ class SelfHostingTomlTest {
                         "plugins/hibernate",
                         "plugins/intellij",
                         "plugins/javafx",
+                        "plugins/helidon",
                         "plugins/graph");
     }
 

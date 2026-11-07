@@ -159,6 +159,10 @@ CMD ["java", "-jar", "app.jar"]
   `Class-Path` is a fact of `target/<name>.jar` alone. The step (`package-lib-dir`) is cached like
   the fat jar, and runs beside the tests.
 
+`[helidon]` turns the layout on for a module with an `[application]` (its `layout = "libs"`, the
+default), so `lib-versions` and `lib-exclude` shape it without `lib-dir`; a `lib-dir` the module
+writes, `false` included, wins ([Helidon](frameworks.md#helidon)).
+
 `jk image` ships the layout as it is when the module declares it: the dependency jars at
 `/app/libs/` in the release and volatile layers, then `<name>.jar` at `/app` in its own layer, with
 `java -jar <name>.jar` as the entrypoint ([Images](images.md)).
