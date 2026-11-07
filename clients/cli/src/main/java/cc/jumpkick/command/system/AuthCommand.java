@@ -39,7 +39,7 @@ public final class AuthCommand extends GroupCommand {
     static ForgeKind requireKind(String raw) {
         return ForgeKind.fromId(raw)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "unknown provider '" + raw + "'; use github, gitlab, gitea or bitbucket"));
+                        "unknown provider '" + raw + "'; use github, gitlab, gitea (Forgejo, Codeberg) or bitbucket"));
     }
 
     static ForgeAuth authFor(@Nullable Path credentialsDir) {

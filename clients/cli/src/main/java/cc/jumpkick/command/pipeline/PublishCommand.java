@@ -382,7 +382,9 @@ public final class PublishCommand implements CliCommand {
         RepoCredential cred = new RepoCredentialResolver().resolve(CENTRAL_CREDENTIAL, portal, Optional.empty());
         if (cred.isAnonymous()) {
             throw new IllegalStateException("no Central Portal token; run `jk repo login " + CENTRAL_CREDENTIAL + " -U "
-                    + portal + " -s <token-name>` with the token's password on stdin");
+                    + portal + " -s <token-name>` with the token's password on stdin\n"
+                    + "  on CI, set JK_REPO_CENTRAL_USERNAME, JK_REPO_CENTRAL_PASSWORD, JK_REPO_CENTRAL_HOST="
+                    + portal.getHost());
         }
         return cred;
     }
