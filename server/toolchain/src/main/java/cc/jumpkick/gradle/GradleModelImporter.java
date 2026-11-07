@@ -791,7 +791,9 @@ final class GradleModelImporter {
             return;
         }
         String name = repositoryName(repo.name());
-        repositories.put(normalized, new RepositorySpec(name, uri, null, null, repo.groups()));
+        repositories.put(
+                normalized,
+                new RepositorySpec(name, uri, null, null, repo.groups()).withPolicy(repo.releases(), repo.snapshots()));
         if (!repo.unmappedContent().isEmpty()) {
             report.warning(
                     "repository `" + name + "` filters its content by " + String.join(", ", repo.unmappedContent())
@@ -806,22 +808,19 @@ final class GradleModelImporter {
         Map<String, String> keys = new LinkedHashMap<>();
         switch (credential.kind()) {
             case "header" -> {
-                if (secretEnv != null) keys.put("token", "${" + secretEnv + "}");
+                if (secretEnv != null) keys.put("token", envReference(secretEnv));
             }
             case "password" -> {
-                String username = credential.usernameEnv() != null
-                        ? "${" + credential.usernameEnv() + "}"
-                        : credential.username();
+                String usernameEnv = credential.usernameEnv();
+                String username = usernameEnv != null ? envReference(usernameEnv) : credential.username();
                 if (secretEnv != null && username != null) {
                     keys.put("username", username);
-                    keys.put("password", "${" + secretEnv + "}");
+                    keys.put("password", envReference(secretEnv));
                 }
             }
             default -> {}
         }
-        String prefix = "JK_REPO_" + name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_") + "_";
-        String ci = " Where that table is not (CI), export " + prefix + "TOKEN (or " + prefix + "USERNAME + " + prefix
-                + "PASSWORD) with " + prefix + "HOST=" + url.getHost() + ".";
+        String ci = ciRecipe(name, url);
         if (keys.isEmpty()) {
             report.warning("repository `" + name + "` takes a credential (" + credential.kind() + ") the build reads"
                     + " from no environment variable jk can name; run `jk repo login " + name + "`." + ci);
@@ -832,6 +831,26 @@ final class GradleModelImporter {
                 + String.join(" and ", keys.values()) + ": a project's jk.toml may not read that variable, so"
                 + " jk import declares [repositories." + name + "] at the same URL with the reference in"
                 + " ~/.jk/config.toml." + ci);
+    }
+
+    private static String envReference(String variable) {
+        return "${env:" + variable + "}";
+    }
+
+    /**
+     * How CI, which has no {@code ~/.jk/config.toml}, sends the credential: the repository's own
+     * {@code JK_REPO_<ID>_*} variables bound to its host. A GitLab package registry takes the job
+     * token as Basic auth under the user {@code gitlab-ci-token}.
+     */
+    private static String ciRecipe(String name, URI url) {
+        String prefix = "JK_REPO_" + name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_") + "_";
+        String host = prefix + "HOST=" + url.getHost();
+        if (url.getPath().contains("/api/v4/") && url.getPath().contains("/packages/maven")) {
+            return " On GitLab CI, which has no such table, export " + prefix + "USERNAME=gitlab-ci-token, " + prefix
+                    + "PASSWORD=$CI_JOB_TOKEN and " + host + ".";
+        }
+        return " Where that table is not (CI), export " + prefix + "TOKEN (or " + prefix + "USERNAME + " + prefix
+                + "PASSWORD) with " + host + ".";
     }
 
     /**
