@@ -781,12 +781,12 @@ final class GradleModelImporter {
                 case "groovy", "scala" ->
                     local.warning(id + ": set project." + id + " to the build's compiler version");
                 case "checkstyle", "pmd" -> local.warning(id + ": configure [lint] by hand");
-                default -> local.warning("Gradle plugin " + id + " not mapped");
+                default -> local.warning("Gradle plugin " + id + ": not imported");
             }
         }
         for (String cls : p.pluginClasses()) {
             if (MAPPED_PLUGIN_CLASSES.stream().anyMatch(cls::startsWith)) continue;
-            local.warning("Gradle plugin " + cls + " not mapped");
+            local.warning("Gradle plugin " + cls + ": not imported");
         }
     }
 
@@ -846,7 +846,7 @@ final class GradleModelImporter {
         if (url.startsWith("file:") && url.replace('\\', '/').matches(".*/\\.m2/repository/?")) {
             if (mavenLocal) return;
             mavenLocal = true;
-            report.warning("mavenLocal() not mapped; jk reads ~/.m2 already");
+            report.warning("mavenLocal() ignored; jk reads ~/.m2 already");
             return;
         }
         String normalized = url.endsWith("/") ? url : url + "/";

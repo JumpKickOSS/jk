@@ -81,7 +81,7 @@ class GradleBuildImportTest {
         assertThat(messages(result.report())).anySatisfy(m -> assertThat(m)
                 .startsWith("Gradle failed (")
                 .contains("com.acme.house")
-                .contains("scanned build.gradle.kts alone"));
+                .contains("read build.gradle.kts only"));
         assertThat(result.report().hasErrors()).isTrue();
     }
 
@@ -107,7 +107,7 @@ class GradleBuildImportTest {
 
         assertThatThrownBy(() -> gradle.importBuild(root.resolve("settings.gradle"), ImportProgress.NONE))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("settings.gradle names a build with no build script beside it")
+                .hasMessageContaining("settings.gradle has no build script beside it")
                 .hasMessageContaining("none is installed");
     }
 

@@ -101,11 +101,10 @@ class ToolInstallerTest {
 
         assertThatThrownBy(() -> installer.install(dist))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("cannot be verified")
-                .hasMessageContaining("no .sha512 or .sha1 checksum")
+                .hasMessageContaining("has no published .sha512 or .sha1 checksum")
                 .hasMessageContaining("/maven.zip.sha512 returned 404")
                 .hasMessageContaining("/maven.zip.sha1 returned 404")
-                .hasMessageContaining("accept this download once with --accept-unverified-tool");
+                .hasMessageContaining("trust it once with --accept-unverified-tool");
         assertThat(tempDir.resolve("tools/maven/3.9.9")).doesNotExist();
         assertThat(http.requestsFor("/maven.zip"))
                 .as("the archive is not even downloaded when nothing vouches for it")
@@ -304,7 +303,7 @@ class ToolInstallerTest {
 
         assertThatThrownBy(() -> installer.install(dist))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("cannot be verified")
+                .hasMessageContaining("has no published .sha512")
                 .hasMessageContaining(archive.toUri() + ".sha512");
         assertThat(tempDir.resolve("tools/maven/3.9.9")).doesNotExist();
     }

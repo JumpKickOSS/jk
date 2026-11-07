@@ -137,7 +137,7 @@ class MavenImportRoundTripTest {
         assertThat(JkBuildParser.parse(rendered).project().java()).isEqualTo(17);
         assertThat(result.report().issues())
                 .extracting(i -> i.message())
-                .contains("maven.compiler.target 8 raised to java = 17 (jk's floor). Set java = 8 back if it needs a"
+                .contains("maven.compiler.target 8 raised to java = 17, jk's minimum. Set java = 8 back if it needs a"
                         + " removed API");
     }
 

@@ -679,7 +679,7 @@ public final class PomImporter {
         int release = declared.get().release();
         if (release >= PluginFacts.JAVA_FLOOR) return release;
         report.warning(declared.get().origin() + " " + release + " raised to java = " + PluginFacts.JAVA_FLOOR
-                + " (jk's floor). Set java = " + release + " back if it needs a removed API");
+                + ", jk's minimum. Set java = " + release + " back if it needs a removed API");
         return PluginFacts.JAVA_FLOOR;
     }
 
@@ -689,7 +689,7 @@ public final class PomImporter {
         String spec = pin.get();
         if (Project.majorOf(spec) < PluginFacts.JAVA_FLOOR) {
             report.warning(
-                    "toolchain JDK " + spec + " is below jk's floor " + PluginFacts.JAVA_FLOOR + "; no jdk written");
+                    "toolchain JDK " + spec + " is below jk's minimum " + PluginFacts.JAVA_FLOOR + "; no jdk written");
             return null;
         }
         report.warning("<toolchains> JDK " + spec + " written as jdk = \"" + spec

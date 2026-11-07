@@ -313,8 +313,8 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
                     String last = output.lastLine;
                     throw new IOException(PomImporter.BUDGET_EXCEEDED + "no Gradle output for "
                             + TimeUnit.NANOSECONDS.toSeconds(still) + " s while evaluating " + buildRoot + " (" + label
-                            + ")" + (last.isEmpty() ? "" : "; the last line was `" + last.trim() + "`")
-                            + ". JK_RESOLVE_TIMEOUT_MS widens the window.");
+                            + ")" + (last.isEmpty() ? "" : "; last line: " + last.trim())
+                            + "; JK_RESOLVE_TIMEOUT_MS sets this limit");
                 }
             }
             pump.join(TimeUnit.SECONDS.toMillis(5));

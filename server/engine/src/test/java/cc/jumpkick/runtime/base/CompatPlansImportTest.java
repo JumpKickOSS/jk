@@ -114,7 +114,7 @@ class CompatPlansImportTest {
         plan.run();
 
         assertThat(plan.get(CompatPlans.EXIT)).contains(Exit.CANT_CREATE);
-        assertThat(plan.get(CompatPlans.ERROR).orElse("")).contains("refusing to overwrite");
+        assertThat(plan.get(CompatPlans.ERROR).orElse("")).contains("already exists; nothing written");
         assertThat(notes).noneMatch(n -> n.startsWith("wrote:"));
         assertThat(root.resolve("jk.toml")).doesNotExist();
     }

@@ -434,7 +434,7 @@ class PomPluginImportTest {
                 .as("a pin below the floor is dropped, not written")
                 .isNull();
         assertThat(below.jkBuild().project().java()).isEqualTo(17);
-        assertThat(messages(below)).anyMatch(m -> m.equals("toolchain JDK 8 is below jk's floor 17; no jdk written"));
+        assertThat(messages(below)).anyMatch(m -> m.equals("toolchain JDK 8 is below jk's minimum 17; no jdk written"));
         assertThat(messages(below)).anyMatch(m -> m.startsWith("<target> 8 raised to java = 17"));
     }
 

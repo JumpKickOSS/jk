@@ -429,7 +429,7 @@ class GradleModelImporterTest {
         assertThat(Objects.requireNonNull(core.project().kotlin()).raw()).isEqualTo(KotlinResolver.FLOOR_VERSION);
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anySatisfy(m -> assertThat(m).contains("Kotlin 2.2.21 is below jk's floor"));
+                .anySatisfy(m -> assertThat(m).contains("Kotlin 2.2.21 is below jk's minimum"));
     }
 
     @Test
@@ -516,7 +516,7 @@ class GradleModelImporterTest {
         assertThat(application.build().buildInfo()).isNotNull();
         assertThat(result.root().project().name()).isEqualTo("gs-multi-module");
         assertThat(messages(result.report())).anySatisfy(m -> assertThat(m)
-                .isEqualTo("library: Gradle plugin com.acme.gradle.HousePlugin not mapped"));
+                .isEqualTo("library: Gradle plugin com.acme.gradle.HousePlugin: not imported"));
     }
 
     /** A library under dependency-management importing Spring Cloud's BOM beside Boot's, as the script text names them. */

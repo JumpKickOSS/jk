@@ -36,18 +36,16 @@ public final class WrapperDistribution {
                 if (RepositorySpec.loopback(uri.getHost())) return uri;
                 throw new IOException("distributionUrl in "
                         + wrapperFile
-                        + " is plaintext http ("
+                        + " uses plain http ("
                         + uri
-                        + "): the archive it names is executed, so it must be fetched over https."
-                        + " Change the URL to https:// or point it at a loopback mirror.");
+                        + "); change it to https:// or a loopback mirror");
             }
             default ->
                 throw new IOException("distributionUrl in "
                         + wrapperFile
                         + " ("
                         + trimmed
-                        + ") uses a scheme the installer cannot fetch from. Supported: https://,"
-                        + " http:// on a loopback host, and file:// for an archive already on this machine.");
+                        + ") has an unsupported scheme; use https://, file:// or http:// on a loopback host");
         }
     }
 }

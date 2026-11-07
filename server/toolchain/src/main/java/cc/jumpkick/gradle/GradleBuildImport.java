@@ -116,14 +116,14 @@ public final class GradleBuildImport {
         Path script = settingsSource ? buildScriptIn(dir) : source;
         progress.detail("scanning " + (script == null ? source.getFileName() : script.getFileName()));
         if (script == null) {
-            throw new IOException(source.getFileName() + " names a build with no build script beside it, so only"
-                    + " Gradle can read it" + (modelFailure == null ? "." : ", and Gradle could not: " + modelFailure));
+            throw new IOException(source.getFileName() + " has no build script beside it, so only Gradle can read it"
+                    + (modelFailure == null ? "" : ", and Gradle failed: " + modelFailure));
         }
         GradleImporter.Result scanned = GradleImporter.importFrom(script);
         ImportReport.Builder report = ImportReport.builder();
         if (modelFailure != null) {
-            report.error("Gradle failed (" + modelFailure + "); scanned " + script.getFileName()
-                    + " alone, so computed subprojects, configurations and tasks are missing");
+            report.error("Gradle failed (" + modelFailure + "); read " + script.getFileName()
+                    + " only, so computed subprojects, configurations and tasks are missing");
         } else if (settings == null) {
             Path parent = dir.getParent();
             Path parentSettings = parent == null ? null : settingsIn(parent);

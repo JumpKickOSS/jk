@@ -41,7 +41,7 @@ class GradleResolverTest {
         wrapper(project, "distributionUrl=http\\://mirror.example.com/gradle-8.14-bin.zip\n");
         assertThatThrownBy(() -> new GradleResolver().resolve(project))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("plaintext http")
+                .hasMessageContaining("uses plain http")
                 .hasMessageContaining("gradle-wrapper.properties");
     }
 

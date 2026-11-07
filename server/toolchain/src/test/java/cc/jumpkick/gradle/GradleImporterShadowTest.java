@@ -44,7 +44,7 @@ class GradleImporterShadowTest {
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .noneMatch(m -> m.contains("relocate"))
-                .noneMatch(m -> m.contains("Gradle plugin") && m.contains("not mapped"));
+                .noneMatch(m -> m.contains("Gradle plugin") && m.contains("not imported"));
     }
 
     @Test

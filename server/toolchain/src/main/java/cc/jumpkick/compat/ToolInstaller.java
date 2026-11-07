@@ -310,16 +310,15 @@ public final class ToolInstaller {
         return dist.tool().slug()
                 + " distribution "
                 + dist.downloadUri()
-                + " cannot be verified: no "
+                + " has no published "
                 + suffixes
-                + " checksum is published beside it ("
+                + " checksum ("
                 + String.join("; ", tried)
-                + "). Refusing to install an archive nothing vouches for; pin its SHA-256"
-                + " (wrapper distributionSha256Sum), or accept this download once with "
+                + "); set distributionSha256Sum in the wrapper, or trust it once with "
                 + ToolRegistry.ACCEPT_FLAG
-                + " (or "
+                + " or "
                 + ToolRegistry.ACCEPT_ENV
-                + "=1) — jk records its digest under the tools store and verifies later downloads against it.";
+                + "=1";
     }
 
     static void extract(Path archive, Path destDir, String archiveType) throws IOException {

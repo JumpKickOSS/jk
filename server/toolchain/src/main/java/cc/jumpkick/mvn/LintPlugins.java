@@ -417,7 +417,7 @@ final class LintPlugins {
             report.warning(CHECKSTYLE + " "
                     + (config == null ? "default rule set" : config)
                     + (property ? " (undefined property)" : " (inside the plugin)")
-                    + ": copy it into the module and point [lint] checkstyle at it; lints nothing until then");
+                    + ": copy it into the module and set [lint] checkstyle; no checks until then");
             return named;
         }
         if (url) return config;
@@ -494,7 +494,7 @@ final class LintPlugins {
             if (unread.isEmpty()) {
                 report.warning(CHECKSTYLE + " " + what + " " + resource + ": in none of "
                         + String.join(", ", coordinates)
-                        + "; lints nothing until its jar joins checkstyle-classpath or the file is in the module");
+                        + "; add its jar to checkstyle-classpath or copy the file into the module");
             } else {
                 report.warning(CHECKSTYLE + " " + what + " " + resource + ": unconfirmed; no repository serves "
                         + String.join(", ", unread));
