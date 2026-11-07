@@ -820,6 +820,49 @@ class GradleModelImporterTest {
         assertThat(result.pinsResolved()).isTrue();
     }
 
+    /**
+     * The Avro plugin, as a Kafka service build uses it: one module reads src/main/avro, another
+     * reads schemas a registry-download task writes under build/.
+     */
+    private static final String AVRO_MODULES = """
+            {"gradle":"9.8.0","rootName":"shop","settingsRepositories":[],"projects":[
+              {"path":":","projectName":"shop","dir":"","group":"com.acme","version":"1.0","plugins":[],"pluginClasses":[],
+               "pluginVersions":{},"bootBuildInfo":false,"repositories":[],"configurations":[],"tasks":[]},
+              {"path":":events","projectName":"events","dir":"events","group":"com.acme","version":"1.0",
+               "plugins":["java","com.github.davidmc24.gradle.plugin.avro","com.github.davidmc24.gradle.plugin.avro-base"],
+               "pluginClasses":["com.github.davidmc24.gradle.plugin.avro.AvroPlugin","com.github.davidmc24.gradle.plugin.avro.AvroBasePlugin"],
+               "pluginVersions":{},"bootBuildInfo":false,"repositories":[],"configurations":[],"tasks":[],
+               "avro":{"sources":["src/main/avro"],"buildDir":"build","stringType":"String","fieldVisibility":"PRIVATE",
+                       "createSetters":true,"createOptionalGetters":false,"enableDecimalLogicalType":true},
+               "resolved":["org.apache.avro:avro@1.11.5"]},
+              {"path":":flags","projectName":"flags","dir":"flags","group":"com.acme","version":"1.0",
+               "plugins":["java","com.github.davidmc24.gradle.plugin.avro"],
+               "pluginClasses":["com.github.davidmc24.gradle.plugin.avro.AvroPlugin"],
+               "pluginVersions":{},"bootBuildInfo":false,"repositories":[],"configurations":[],"tasks":[],
+               "avro":{"sources":["build/generated/avro/shared"],"buildDir":"build","stringType":"CharSequence",
+                       "fieldVisibility":"PUBLIC","createSetters":false,"enableDecimalLogicalType":false}}
+            ]}
+            """;
+
+    @Test
+    void the_avro_plugin_imports_as_the_avro_table_with_only_what_differs() {
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(AVRO_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
+
+        assertThat(module(result, "events").pluginConfig("avro").orElseThrow().values())
+                .as("src/main/avro and String are the table's defaults; the plugin's decimal default is not")
+                .containsOnly(Map.entry("decimal-logical-type", true), Map.entry("version", "1.11.5"));
+        assertThat(module(result, "flags").pluginConfig("avro").orElseThrow().values())
+                .containsOnly(
+                        Map.entry("string-type", "CharSequence"),
+                        Map.entry("field-visibility", "PUBLIC"),
+                        Map.entry("setters", false));
+        assertThat(messages(result.report()))
+                .contains(
+                        "flags: Avro schemas are generated into build/generated/avro/shared; put them in src/main/avro")
+                .noneMatch(m -> m.contains("davidmc24"));
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }

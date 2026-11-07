@@ -77,6 +77,8 @@ record GradleModel(
             List<RelocationRules.Relocation> relocations,
             /** The xjc plugin's configuration; null when the project does not apply it. */
             @Nullable Xjc xjc,
+            /** The Avro plugin's configuration; null when the project does not apply it. */
+            @Nullable Avro avro,
             /** {@code group:artifact} → the highest version the project's classpaths resolve it to. */
             Map<String, String> resolved,
             /** What {@code compileJava} hands javac, argument providers included; null without the task. */
@@ -131,6 +133,21 @@ record GradleModel(
             @Nullable String defaultPackage,
             List<String> bindingFiles,
             List<String> options) {}
+
+    /**
+     * The {@code com.github.davidmc24.gradle.plugin.avro} extension and its {@code generateAvroJava}
+     * task: the directories it reads schemas from and the project's build directory (both
+     * project-relative), and each generator option the build sets, null when it leaves the default.
+     */
+    record Avro(
+            List<String> sources,
+            @Nullable String buildDir,
+            @Nullable String stringType,
+            @Nullable String fieldVisibility,
+            @Nullable String encoding,
+            @Nullable Boolean setters,
+            @Nullable Boolean optionalGetters,
+            @Nullable Boolean decimalLogicalType) {}
 
     record SourceSet(String name, List<String> java, List<String> resources, List<String> kotlin) {}
 
@@ -256,6 +273,7 @@ record GradleModel(
     static final String TOOLCHAIN = "toolchain";
     static final String TYPE = "type";
     static final String XJC = "xjc";
+    static final String AVRO = "avro";
 
     /** The {@code test} task's system properties with string values, and its JVM arguments. */
     record TestTask(Map<String, String> systemProperties, List<String> jvmArgs) {}
@@ -378,6 +396,7 @@ record GradleModel(
                 tasks,
                 relocations,
                 xjc(Jsonl.nested(p, XJC)),
+                avro(Jsonl.nested(p, AVRO)),
                 resolved(Jsonl.strArray(p, RESOLVED)),
                 compilerArgs == null || !Jsonl.has(compilerArgs, COMPILE_JAVA)
                         ? null
@@ -399,6 +418,24 @@ record GradleModel(
                 Jsonl.topStr(json, "defaultPackage"),
                 Jsonl.strArray(json, "bindingFiles"),
                 Jsonl.strArray(json, "options"));
+    }
+
+    private static @Nullable Avro avro(@Nullable String json) {
+        if (json == null) return null;
+        return new Avro(
+                Jsonl.strArray(json, "sources"),
+                Jsonl.topStr(json, "buildDir"),
+                Jsonl.topStr(json, "stringType"),
+                Jsonl.topStr(json, "fieldVisibility"),
+                Jsonl.topStr(json, "outputCharacterEncoding"),
+                flag(json, "createSetters"),
+                flag(json, "createOptionalGetters"),
+                flag(json, "enableDecimalLogicalType"));
+    }
+
+    /** The boolean at {@code key}, null when the init script wrote none. */
+    private static @Nullable Boolean flag(String json, String key) {
+        return Jsonl.has(json, key) ? Jsonl.bool(json, key, false) : null;
     }
 
     /** {@code group:artifact@version} rows as each module's highest version. */

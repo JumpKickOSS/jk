@@ -585,6 +585,14 @@ nothing defines is a row. A task the build script registers (`tasks.register("re
 naming the task, never an error; a source set other than `main`, `test` and `testFixtures`, or a
 source root outside jk's layout, is a row; a plugin nothing maps is a row naming its id or class.
 
+The Avro plugin (`com.github.davidmc24.gradle.plugin.avro`) imports as `[avro]`: the directory
+`generateAvroJava` reads becomes `src` (left out when it is `src/main/avro`), its `stringType`,
+`fieldVisibility`, `createSetters`, `createOptionalGetters`, `enableDecimalLogicalType` and
+`outputCharacterEncoding` become the table's keys where they differ from its defaults (the plugin
+turns the decimal logical type on; `[avro]` does not), and `version` is the Avro the module
+resolves. Schemas another task writes under `build/` (a schema-registry download, say) have no jk
+equivalent; a row names the directory, and they belong in `src/main/avro`.
+
 `java-test-fixtures` imports as [fixtures](workspaces.md): the producer's `[test] fixtures` names
 its `testFixtures` Java root where it is (`fixtures = "src/testFixtures/java"`), its
 `testFixturesApi` / `testFixturesImplementation` / `testFixturesCompileOnly` dependencies join its

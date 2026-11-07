@@ -185,7 +185,8 @@ final class StackWatchLoop {
                     m.plan = plan;
                 }
                 if (m.plan.hotReload() && !changes.manifest()) {
-                    CliOutput.err(loop.logPrefix() + ": " + m.name + ": " + pass.done + "; DevTools restarts the context");
+                    CliOutput.err(
+                            loop.logPrefix() + ": " + m.name + ": " + pass.done + "; DevTools restarts the context");
                     continue;
                 }
                 ProcessTrees.stop(List.of(process.toHandle()), Clock.SYSTEM);

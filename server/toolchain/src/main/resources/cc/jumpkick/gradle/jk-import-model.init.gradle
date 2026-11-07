@@ -242,6 +242,39 @@ def describeProject(Project p, Project root, List<String> probeIds) {
         }
     } catch (Throwable ignored) { }
 
+    try {
+        // The Avro plugin (com.github.davidmc24.gradle.plugin.avro): its generator options, the
+        // schema directories generateAvroJava reads, and the build directory to tell generated ones apart.
+        def avro = p.extensions.findByName('avro')
+        def gen = p.tasks.findByName('generateAvroJava')
+        if (avro != null && gen != null) {
+            def a = [:]
+            for (String k : ['stringType', 'fieldVisibility', 'outputCharacterEncoding']) {
+                try { def v = avro."$k"?.orNull; if (v != null) a[k] = v.toString() } catch (Throwable ignored) { }
+            }
+            // The boolean options are Property<Boolean> behind isX() getters, which Groovy property syntax cannot read.
+            for (String k : ['createSetters', 'createOptionalGetters', 'enableDecimalLogicalType']) {
+                try {
+                    def v = avro."is${k.capitalize()}"()
+                    if (v != null && v.respondsTo('getOrNull')) v = v.orNull
+                    if (v != null) a[k] = v as boolean
+                } catch (Throwable ignored) { }
+            }
+            def roots = [] as LinkedHashSet
+            try {
+                gen.source.visit { d ->
+                    if (!d.directory) {
+                        String path = d.file.path
+                        roots << new File(path.substring(0, path.length() - d.relativePath.pathString.length() - 1))
+                    }
+                }
+            } catch (Throwable ignored) { }
+            a.sources = relDirs(p, roots)
+            a.buildDir = relDirs(p, [p.layout.buildDirectory.get().asFile])[0]
+            m.avro = a
+        }
+    } catch (Throwable ignored) { }
+
     try { m.mainClass = p.extensions.findByName('application')?.mainClass?.orNull } catch (Throwable ignored) { }
     if (!m.mainClass) {
         try { m.mainClass = p.extensions.findByName('springBoot')?.mainClass?.orNull } catch (Throwable ignored) { }

@@ -51,6 +51,11 @@ final class GradleModelImporter {
     /** The xjc schema-compiler plugin, whose extension is the {@code [jaxb]} table. */
     static final String XJC_PLUGIN = "com.github.bjornvester.xjc";
 
+    /** The Avro Gradle plugin and its base plugin. */
+    static final String AVRO_PLUGIN = "com.github.davidmc24.gradle.plugin.avro";
+
+    static final String AVRO_BASE_PLUGIN = "com.github.davidmc24.gradle.plugin.avro-base";
+
     /** The plugin ids every project is asked about, beside the installed plugins' import rules. */
     private static final List<String> KNOWN_PLUGINS = List.of(
             "java",
@@ -79,6 +84,8 @@ final class GradleModelImporter {
             "com.gradleup.shadow",
             "com.github.johnrengelman.shadow",
             "io.github.goooler.shadow",
+            AVRO_PLUGIN,
+            AVRO_BASE_PLUGIN,
             XJC_PLUGIN);
 
     /** Plugin ids whose effect needs no row: implicit in jk, or absorbed by another mapping. */
@@ -103,6 +110,8 @@ final class GradleModelImporter {
             GradleImporter.DOKKA_PLUGIN,
             GradleImporter.GIT_PROPERTIES_PLUGIN,
             "java-test-fixtures",
+            AVRO_PLUGIN,
+            AVRO_BASE_PLUGIN,
             XJC_PLUGIN);
 
     /** Plugin class-name prefixes the probed ids already account for. */
@@ -118,7 +127,8 @@ final class GradleModelImporter {
             "io.quarkus",
             "com.diffplug.gradle.spotless",
             "com.github.jengelman.gradle.plugins.shadow",
-            "com.github.bjornvester.xjc");
+            "com.github.bjornvester.xjc",
+            "com.github.davidmc24.gradle.plugin.avro");
 
     /** Configurations Gradle and its plugins declare for their own tooling, not the build's dependencies. */
     private static final List<String> TOOL_CONFIGURATION_PREFIXES = List.of(
@@ -331,6 +341,8 @@ final class GradleModelImporter {
                 new ArrayList<>(GradleImporter.mapPluginTables(applied, p.pluginVersions(), importRules, local));
         GradleModel.Xjc xjc = p.xjc();
         if (xjc != null) plugins.add(jaxbTable(xjc, local));
+        GradleModel.Avro avro = p.avro();
+        if (avro != null) plugins.add(avroTable(p, avro, local));
         String groovy = applied.contains("groovy") ? groovyVersion(p, local) : null;
         Set<String> unreported = new LinkedHashSet<>(applied);
         unreported.remove("groovy");
@@ -511,6 +523,47 @@ final class GradleModelImporter {
                 + "; kept jakarta.xml.bind-api and jaxb-runtime");
         return new PluginConfig("jaxb", table);
     }
+
+    /**
+     * The Avro plugin as the {@code [avro]} table: the schema directory, the generator options and
+     * the Avro version the project resolves, each written only where it differs from the table's
+     * default. A schema directory under the build directory is filled by another task, which jk
+     * cannot run, so it is a row instead.
+     */
+    private static PluginConfig avroTable(GradleModel.Project p, GradleModel.Avro avro, ImportReport.Builder local) {
+        Map<String, Object> table = new LinkedHashMap<>();
+        String build = avro.buildDir() == null ? null : avro.buildDir() + "/";
+        List<String> sources = new ArrayList<>();
+        for (String dir : avro.sources()) {
+            if (build != null && (dir + "/").startsWith(build)) {
+                local.warning("Avro schemas are generated into " + dir + "; put them in src/main/avro");
+            } else {
+                sources.add(dir);
+            }
+        }
+        if (!sources.isEmpty() && !sources.getFirst().equals(AVRO_DEFAULT_SRC)) table.put("src", sources.getFirst());
+        if (sources.size() > 1) local.warning("Avro: imported " + sources.getFirst() + " only");
+        if (avro.stringType() != null && !avro.stringType().equals("String"))
+            table.put("string-type", avro.stringType());
+        String visibility =
+                avro.fieldVisibility() == null ? null : avro.fieldVisibility().toUpperCase(Locale.ROOT);
+        if ("PUBLIC".equals(visibility)) table.put("field-visibility", "PUBLIC");
+        else if (visibility != null && !visibility.equals("PRIVATE")) {
+            local.warning("Avro fieldVisibility " + avro.fieldVisibility() + ": not imported");
+        }
+        if (Boolean.FALSE.equals(avro.setters())) table.put("setters", false);
+        if (Boolean.TRUE.equals(avro.optionalGetters())) table.put("optional-getters", true);
+        if (Boolean.TRUE.equals(avro.decimalLogicalType())) table.put("decimal-logical-type", true);
+        if (avro.encoding() != null) table.put("encoding", avro.encoding());
+        String version = p.resolved().get("org.apache.avro:avro");
+        if (version != null && !version.equals(AVRO_DEFAULT_VERSION)) table.put("version", version);
+        return new PluginConfig("avro", table);
+    }
+
+    /** The {@code [avro]} table's own defaults. */
+    private static final String AVRO_DEFAULT_SRC = "src/main/avro";
+
+    private static final String AVRO_DEFAULT_VERSION = "1.12.2";
 
     /** The {@code [jaxb]} table's own default schema directory. */
     private static final String JAXB_DEFAULT_SRC = "src/main/xsd";
