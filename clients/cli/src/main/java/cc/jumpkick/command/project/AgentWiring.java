@@ -8,6 +8,7 @@ import cc.jumpkick.docs.AgentChoice;
 import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.layout.GraphLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphRequest;
@@ -33,8 +34,13 @@ public final class AgentWiring {
 
     private AgentWiring() {}
 
+    /**
+     * One environment variable: the request's environment when one is bound, else the process's
+     * with any {@code jk.env.<NAME>} override applied ({@link JkDirs#env}), so a test can fix which
+     * agents look installed without depending on the machine's {@code PATH}.
+     */
     private static @Nullable String env(String name) {
-        return ENV.isBound() ? ENV.get().apply(name) : System.getenv(name);
+        return ENV.isBound() ? ENV.get().apply(name) : JkDirs.env(name);
     }
 
     /** Wire {@code dir} and print what it wrote and the steps left to the user. */
