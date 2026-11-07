@@ -479,27 +479,12 @@ public final class PreflightMemo {
                         .append(u.origin().name())
                         .append('\n');
             }
-            appendEdges(sb, "edge", root, graph.edges());
-            appendEdges(sb, "test", root, graph.testEdges());
+            GraphMemoEdges.append(sb, "edge", root, graph.edges());
+            GraphMemoEdges.append(sb, "test", root, graph.testEdges());
             AtomicWrites.replaceIfChanged(file, sb.toString());
         } catch (Exception e) {
             // fail-open
             Log.debug("storeGraph: fail-open", e);
-        }
-    }
-
-    private static void appendEdges(StringBuilder sb, String kind, Path root, Map<Path, Set<Path>> edges) {
-        for (var e : edges.entrySet()) {
-            String from = relKey(root, e.getKey().toAbsolutePath().normalize());
-            for (Path prereq : e.getValue()) {
-                String to = relKey(root, prereq.toAbsolutePath().normalize());
-                sb.append(kind)
-                        .append('\t')
-                        .append(from)
-                        .append('\t')
-                        .append(to)
-                        .append('\n');
-            }
         }
     }
 
@@ -581,7 +566,8 @@ public final class PreflightMemo {
                 edges.put(dir, new LinkedHashSet<>());
             }
             Map<Path, Set<Path>> testEdges = new LinkedHashMap<>();
-            if (!resolveRels(edgeRels, dirByRel, edges) || !resolveRels(testRels, dirByRel, testEdges)) {
+            if (!GraphMemoEdges.resolve(edgeRels, dirByRel, edges)
+                    || !GraphMemoEdges.resolve(testRels, dirByRel, testEdges)) {
                 return Optional.empty();
             }
             return Optional.of(
@@ -591,21 +577,6 @@ public final class PreflightMemo {
         } catch (Exception e) {
             return Optional.empty();
         }
-    }
-
-    /** Fill {@code into} from {@code rels}; false when a rel names no unit. */
-    private static boolean resolveRels(
-            Map<String, Set<String>> rels, Map<String, Path> dirByRel, Map<Path, Set<Path>> into) {
-        for (var e : rels.entrySet()) {
-            Path from = dirByRel.get(e.getKey());
-            if (from == null) return false;
-            for (String toRel : e.getValue()) {
-                Path to = dirByRel.get(toRel);
-                if (to == null) return false;
-                into.computeIfAbsent(from, k -> new LinkedHashSet<>()).add(to);
-            }
-        }
-        return true;
     }
 
     /** True when the on-disk graph memo's structure key matches {@code graph}'s unit set. */
@@ -1004,7 +975,7 @@ public final class PreflightMemo {
         return root.resolve(rel).normalize();
     }
 
-    private static String relKey(Path root, Path dir) {
+    static String relKey(Path root, Path dir) {
         String rel = root.relativize(dir).toString().replace('\\', '/');
         return rel.isEmpty() ? "." : rel;
     }

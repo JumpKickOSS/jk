@@ -61,6 +61,21 @@ public final class PlannerPlugin {
 
     private PlannerPlugin() {}
 
+    /**
+     * The production classpath a plugin step reads is the siblings' jars. A source generator runs
+     * ahead of the compile and reads it only for shape; every other step packages or tests with it
+     * and waits for the siblings to have written it — a test-stage step or one reading the test
+     * runtime for the test-only siblings too.
+     */
+    private static void awaitSiblings(TaskDecl step, TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
+        if (beforeCompile(step)) return;
+        if (pluginStage(step) == BuildStage.TEST || step.inputs().contains("test-runtime-entries")) {
+            PlannerSetup.awaitSiblingTestRuntime(ctx, in);
+        } else {
+            PlannerSetup.awaitSiblingArtifacts(ctx, in);
+        }
+    }
+
     static boolean beforeCompile(TaskDecl step) {
         if (step.sourceGenerating()) return true;
         if (step.testOnly() || step.packageTime()) return false;
@@ -523,18 +538,7 @@ public final class PlannerPlugin {
                     String startClass =
                             beforeCompile(step) ? project.mainClass() : resolvedMain(project, in.dir(), classes);
 
-                    // The production classpath below is the siblings' jars. A source generator
-                    // runs ahead of the compile and reads it only for shape; every other step
-                    // packages or tests with it and waits for the siblings to have written it — a
-                    // test-stage step or one reading the test runtime for the test-only ones too.
-                    if (!beforeCompile(step)) {
-                        if (pluginStage(step) == BuildStage.TEST
-                                || step.inputs().contains("test-runtime-entries")) {
-                            PlannerSetup.awaitSiblingTestRuntime(ctx, in);
-                        } else {
-                            PlannerSetup.awaitSiblingArtifacts(ctx, in);
-                        }
-                    }
+                    awaitSiblings(step, ctx, in);
                     List<Path> classpath = PluginBuild.productionClasspath(in.dir(), cx.cas(), in.lockFile(), project);
                     List<Path> compileClasspath =
                             PluginBuild.compileClasspath(in.dir(), cx.cas(), in.lockFile(), project);
