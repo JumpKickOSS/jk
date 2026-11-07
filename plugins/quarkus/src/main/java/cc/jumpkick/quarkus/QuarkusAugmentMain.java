@@ -103,7 +103,8 @@ public final class QuarkusAugmentMain {
                 appJar,
                 classesDir,
                 quarkusVersion,
-                null);
+                null,
+                ForkNotices.fromProperty());
 
         // Platform properties + descriptor (required for config expansion + alignment checks).
         injectPlatform(model, quarkusVersion, platformProps, offline);
@@ -157,6 +158,10 @@ public final class QuarkusAugmentMain {
      * <p>The resolver is built and dropped here: no method of this class takes or returns a
      * resolver type, so a miss can never fall back to resolving through the user's Maven settings
      * (QuarkusPlatformPropertiesTest reflects on the signatures to hold that).
+     *
+     * <p>A runtime artifact the resolver finds and the lock does not name is left out of the model
+     * ({@link LockedAppModel#enforce}), and {@code notices} hears which: each fork that resolves a
+     * model, the lock closure's included, says the same thing.
      */
     static ApplicationModel resolveModel(
             LockedClosure locked,
@@ -170,7 +175,8 @@ public final class QuarkusAugmentMain {
             Path appJar,
             Path classesDir,
             String quarkusVersion,
-            @Nullable ResolvedArtifacts record)
+            @Nullable ResolvedArtifacts record,
+            ForkNotices notices)
             throws Exception {
         MavenArtifactResolver mvn = resolver(localRepo, closureRepo, offline, routes);
         // What this resolver downloads is the run's, on its board like every other body.
@@ -207,7 +213,8 @@ public final class QuarkusAugmentMain {
         // owns what ships.
         var model = LockedAppModel.enforce(
                 modelResolver.resolveManagedModel(appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey())),
-                locked);
+                locked,
+                notices);
         System.err.println(LOG_PREFIX + ": runtime deps="
                 + model.getRuntimeDependencies().size() + " deployment deps="
                 + model.getDependencies().size());

@@ -47,16 +47,10 @@ final class LockedAppModel {
     private LockedAppModel() {}
 
     /**
-     * The resolved model with its runtime closure replaced by jk's.
-     *
-     * @throws IllegalStateException when the resolver produced a runtime artifact the lock does not
-     *     name — that artifact would otherwise ship unlocked
+     * The resolved model with its runtime closure replaced by jk's. A runtime artifact the resolver
+     * produced and the lock does not name is taken off the runtime classpath, so it would otherwise
+     * ship unlocked, and {@code notices} hears that it was left out.
      */
-    static ApplicationModel enforce(ApplicationModel resolved, LockedClosure lock) {
-        return enforce(resolved, lock, ForkNotices.fromProperty());
-    }
-
-    /** As {@link #enforce(ApplicationModel, LockedClosure)}, saying what it leaves out to {@code notices}. */
     static ApplicationModel enforce(ApplicationModel resolved, LockedClosure lock, ForkNotices notices) {
         Map<String, ResolvedDependencyBuilder> byCoords = new LinkedHashMap<>();
         for (ResolvedDependency dep : resolved.getDependenciesWithAnyFlag(ANY_FLAG)) {

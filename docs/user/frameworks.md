@@ -78,7 +78,11 @@ jk new -t quarkus/hello my-api
   store, so a clean build downloads nothing and `jk build -o` augments offline. The augment reads
   those files and nothing else on the machine — never `~/.m2`. A file the lock does not pin (a
   native jar for another OS, picked by a POM profile) is downloaded at build time, and an
-  offline build refuses it.
+  offline build refuses it. A runtime artifact Quarkus's resolver reaches that `jk-lock.toml`
+  does not name is left out of the application, and a notice naming it (`NOT shipped — outside
+  jk-lock.toml`) is on every verdict of a build that does so. `jk lock` says the same notice
+  when it writes such a lock, before the first build: declare the artifact under
+  `[dependencies]` and re-lock to ship it.
 - **Runtime closure:** what ships is the lock's runtime closure. `jk lock` follows an
   extension's conditional dependencies the way Quarkus's resolver does: one joins the lock when
   every artifact its `dependency-condition` names is in the closure, and what it brings can meet
