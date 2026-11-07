@@ -10,7 +10,7 @@ JavaScript front end beside any of them (Vite, Next, Angular, …) is a node mod
 [Node.js](node.md).
 
 Each framework template ships a **rule pack** (`cc.jumpkick.guards:spring`, `:quarkus`,
-`:android`; libraries `:library`, workspaces `:monorepo`) through `[guards] extends` in
+`:helidon`, `:android`; libraries `:library`, workspaces `:monorepo`) through `[guards] extends` in
 `jk-guards.toml`: one logger, Jakarta not javax, test libraries in the test scope, `java.time`,
 a file-size ratchet, and the framework's own rules. `jk guard explain` lists them; a violation
 names its `Instead:`.
@@ -221,8 +221,9 @@ profile), so `jk test` needs no database. With a database server, `jlink` and `d
 the build's training starts of the image (`aot-cache = false`, `test-start = false`): they start
 the application, which needs its database up. `health` adds a check that queries the database.
 
-None of the templates ships a `jk-guards.toml` yet: the Helidon rule pack is still to come.
-Helidon's `custom` application type has no template: it is the quickstart's questions, with
+Each template ships a `jk-guards.toml` that extends the `cc.jumpkick.guards:helidon` rule pack:
+no MicroProfile (Helidon 27 is SE only), Jakarta not `javax`, and Helidon's test support and test
+libraries in `[test-dependencies]` only. Helidon's `custom` application type has no template: it is the quickstart's questions, with
 `jk add` for the rest.
 
 jk's own tests diff these questions against the inputs of Helidon's archetypes

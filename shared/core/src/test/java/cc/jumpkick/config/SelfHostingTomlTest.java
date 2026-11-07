@@ -74,6 +74,7 @@ class SelfHostingTomlTest {
                         "server/engine",
                         "server/guard/packs/spring",
                         "server/guard/packs/quarkus",
+                        "server/guard/packs/helidon",
                         "server/guard/packs/android",
                         "server/guard/packs/library",
                         "server/guard/packs/monorepo",
