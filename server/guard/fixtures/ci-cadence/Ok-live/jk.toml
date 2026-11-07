@@ -2,3 +2,8 @@ group = "cc.jumpkick"
 name = "jk"
 version = "1.4.0"
 java = 25
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = ["slow"]
+all-suites = true

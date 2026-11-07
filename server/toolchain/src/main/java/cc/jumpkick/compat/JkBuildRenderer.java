@@ -314,7 +314,7 @@ public final class JkBuildRenderer {
         });
     }
 
-    /** One {@code [profiles.<name>]} per profile: {@code javac}, {@code jvm-args}, tag filters when set. */
+    /** One {@code [profiles.<name>]} per profile: {@code javac}, {@code jvm-args}, tag filters when set, {@code all-suites}. */
     private static void renderProfiles(StringBuilder sb, JkBuild jkBuild) {
         for (Profile p : jkBuild.profiles().byName().values()) {
             sb.append("\n[profiles.").append(safeKey(p.name())).append("]\n");
@@ -328,6 +328,7 @@ public final class JkBuildRenderer {
                 sb.append("include-tags = ").append(list(p.includeTags())).append('\n');
             if (p.excludeTagsSet())
                 sb.append("exclude-tags = ").append(list(p.excludeTags())).append('\n');
+            if (p.allSuites()) sb.append("all-suites = true\n");
         }
     }
 

@@ -35,7 +35,7 @@ public record Profiles(Map<String, Profile> byName) {
      * Walk the inherits chain and merge — javac/JVM args: parent first, child appends; env: a child
      * entry replaces the parent's of the same name. Tag lists:
      * child replaces parent when the child sets that key; otherwise inherit the parent's list and
-     * set-flag. Cycle in the chain → {@link IllegalStateException}.
+     * set-flag. {@code all-suites}: set when either sets it. Cycle in the chain → {@link IllegalStateException}.
      */
     public Profile resolve(String name) {
         if (!byName.containsKey(name)) {
@@ -63,7 +63,17 @@ public record Profiles(Map<String, Profile> byName) {
         List<String> exclude = current.excludeTagsSet() ? current.excludeTags() : parent.excludeTags();
         Map<String, String> mergedEnv = new LinkedHashMap<>(parent.env());
         mergedEnv.putAll(current.env());
-        return new Profile(name, null, mergedJavac, mergedJvm, include, exclude, includeSet, excludeSet, mergedEnv);
+        return new Profile(
+                name,
+                null,
+                mergedJavac,
+                mergedJvm,
+                include,
+                exclude,
+                includeSet,
+                excludeSet,
+                mergedEnv,
+                current.allSuites() || parent.allSuites());
     }
 
     /** Picks the auto-selected profile name based on env, or {@code null}. */
