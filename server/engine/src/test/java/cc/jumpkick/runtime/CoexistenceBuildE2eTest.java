@@ -130,14 +130,14 @@ class CoexistenceBuildE2eTest {
         // What the effective POM declares that the in-place build does not carry is one warning
         // with the remedy, on the build after the POM changed, and not again.
         assertThat(messages(built))
-                .filteredOn(w -> w.contains("<build><extensions>"))
+                .filteredOn(w -> w.contains("extension com.acme:lifecycle-extension"))
                 .hasSize(1)
                 .allSatisfy(w -> assertThat(w).contains("jk import pom.xml"));
 
         BuildPlan second = plan(project, cache, false);
         BuildPlanResult again = second.run();
         assertThat(again.success()).isTrue();
-        assertThat(messages(again)).noneMatch(w -> w.contains("<build><extensions>"));
+        assertThat(messages(again)).noneMatch(w -> w.contains("extension com.acme:lifecycle-extension"));
         assertThat(Files.readString(shadow)).isEqualTo(toml);
     }
 
