@@ -226,6 +226,24 @@
             "type": "string"
           },
           "description": "Another spelling of jvm-args; jvm-args wins when both are set."
+        },
+        "lib-dir": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "description": "Write target/<name>.jar with a Class-Path manifest and its runtime jars under target/<dir>/ (true means libs)."
+        },
+        "lib-versions": {
+          "type": "boolean",
+          "description": "Whether the lib-dir jar file names carry their versions (default true)."
+        },
+        "lib-exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Runtime dependencies left out of the lib-dir layout: artifact, group:artifact or group:*."
         }
       }
     },

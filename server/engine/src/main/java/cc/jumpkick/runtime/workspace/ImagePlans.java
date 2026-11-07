@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.compile.LibDirLayout;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.ManifestImage;
@@ -22,7 +23,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.LibDir;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -153,9 +154,16 @@ public final class ImagePlans {
                         // nests — layered by how often each part churns. Never the whole workspace
                         // lock, and never the CAS alone: with [m2] integration on, the jars live
                         // in ~/.m2.
+                        // The lib-dir layout ships exactly its own directory: its exclusions and
+                        // file names, so the image's lib layer is what the jar's Class-Path names.
+                        Path lockFile = LockPaths.lockFile(layout.moduleRoot());
+                        LibDir libDir = project.libDir();
                         ctx.put(
                                 RUNTIME_JARS,
-                                runtimeJars(layout.moduleRoot(), project, LockPaths.lockFile(layout.moduleRoot())));
+                                libDir == null
+                                        ? runtimeJars(layout.moduleRoot(), project, lockFile)
+                                        : runtimeJars(LibDirLayout.libs(
+                                                layout.moduleRoot(), project, lockFile, JkStores.storeCas(), libDir)));
                     }
                     ctx.progress(1);
                 })
@@ -383,7 +391,19 @@ public final class ImagePlans {
                             .toList());
         }
         if (!config.platforms().isEmpty()) sw.configList("platforms", config.platforms());
-        sw.artifact(layout.mainJar());
+        // The lib-dir layout runs as itself: its jar at /app, its directory beside it.
+        LibDir libDir = project.libDir();
+        if (libDir != null) {
+            Path libDirJar = layout.libDirJar();
+            if (!Files.isRegularFile(libDirJar)) {
+                throw new RuntimeException("image needs the lib-dir layout's " + libDirJar
+                        + " ([application] lib-dir) — build the module first");
+            }
+            sw.artifact(libDirJar);
+            sw.configString("libDir", libDir.dir());
+        } else {
+            sw.artifact(layout.mainJar());
+        }
         // Releases ship as the stable layer; snapshots and workspace siblings as the volatile one.
         for (Path dep : jars.releases()) sw.entry(jars.name(dep), dep, false, null);
         for (Path dep : jars.snapshots()) sw.entry(jars.name(dep), dep, true, null);
@@ -699,6 +719,23 @@ public final class ImagePlans {
                 ModuleRuntimeClasspath.jars(moduleDir, project, lockFile, JkStores.storeCas()), lockRows(lockFile));
     }
 
+    /** The lib-dir layout's jars, layered by kind and named as its directory names them. */
+    static RuntimeJars runtimeJars(List<LibDirLayout.Lib> libs) {
+        List<Path> releases = new ArrayList<>();
+        List<Path> snapshots = new ArrayList<>();
+        List<Path> siblings = new ArrayList<>();
+        Map<Path, String> names = new LinkedHashMap<>();
+        for (LibDirLayout.Lib lib : libs) {
+            switch (lib.kind()) {
+                case RELEASE -> releases.add(lib.jar());
+                case SNAPSHOT -> snapshots.add(lib.jar());
+                case SIBLING -> siblings.add(lib.jar());
+            }
+            names.put(lib.jar(), lib.name());
+        }
+        return new RuntimeJars(releases, snapshots, siblings, names);
+    }
+
     /** Pure half of {@link #runtimeJars}: layer by lock row, and name every locked jar. */
     static RuntimeJars split(List<Path> jars, Map<Path, Lockfile.Artifact> rows) throws IOException {
         List<Path> releases = new ArrayList<>();
@@ -736,7 +773,7 @@ public final class ImagePlans {
         Map<Path, String> names = new LinkedHashMap<>();
         Map<String, Set<Path>> byName = new LinkedHashMap<>();
         for (var row : rows.entrySet()) {
-            String base = coordinateJarName(row.getValue());
+            String base = LibDirLayout.fileName(row.getValue(), true);
             names.put(row.getKey(), base);
             byName.computeIfAbsent(base, k -> new LinkedHashSet<>()).add(row.getKey());
         }
@@ -753,14 +790,5 @@ public final class ImagePlans {
             }
         }
         return names;
-    }
-
-    private static String coordinateJarName(Lockfile.Artifact pkg) {
-        String classifier = "";
-        if (PackageId.isMavenPackageKey(pkg.name())) {
-            String c = PackageId.parse(pkg.name()).classifier();
-            if (c != null) classifier = c;
-        }
-        return pkg.moduleArtifact() + "-" + pkg.version() + (classifier.isEmpty() ? "" : "-" + classifier) + ".jar";
     }
 }

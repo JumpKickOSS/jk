@@ -66,7 +66,14 @@ public final class ImageBuilder {
              */
             @Nullable Path appDir,
             /** The jar to run inside {@link #appDir}. */
-            @Nullable String appJar) {
+            @Nullable String appJar,
+            /**
+             * The lib-dir layout's directory name, or null. When set, {@link #mainJar} is the
+             * layout's runnable jar, shipped at {@code /app} and started with {@code java -jar},
+             * and the dependency jars land under {@code /app/<libDir>}, where its {@code
+             * Class-Path} looks for them.
+             */
+            @Nullable String libDir) {
 
         /** Without coordinate names: jars keep their on-disk file name. */
         public Plan(
@@ -88,6 +95,7 @@ public final class ImageBuilder {
                     snapshotJars,
                     classesDir,
                     Map.of(),
+                    null,
                     null,
                     null);
         }
@@ -120,7 +128,13 @@ public final class ImageBuilder {
                     classesDir,
                     jarNames,
                     null,
+                    null,
                     null);
+        }
+
+        /** True when the plan ships the lib-dir layout. */
+        public boolean hasLibDir() {
+            return libDir != null && !libDir.isBlank();
         }
 
         /** True when the packager handed over a complete runnable tree. */
@@ -281,8 +295,26 @@ public final class ImageBuilder {
         return entry;
     }
 
+    /**
+     * Entrypoint for the lib-dir layout: {@code java -jar <jar>} from {@code /app}, where the jar's
+     * {@code Class-Path} finds the lib directory beside it.
+     */
+    static List<String> libDirEntrypoint(Plan plan) {
+        List<String> entry = new ArrayList<>();
+        entry.add("java");
+        entry.addAll(javaOpts(plan.config()));
+        entry.add("-jar");
+        entry.add(plan.mainJar().getFileName().toString());
+        return entry;
+    }
+
     /** Dependency jars at {@code /app/libs}, named by coordinate rather than by CAS digest. */
     private static FileEntriesLayer namedJarLayer(Plan plan, List<Path> jars) {
+        return namedJarLayer(plan, jars, "libs");
+    }
+
+    /** Dependency jars at {@code /app/<dir>}, named by coordinate rather than by CAS digest. */
+    private static FileEntriesLayer namedJarLayer(Plan plan, List<Path> jars, String dir) {
         FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
         Set<String> seen = new HashSet<>();
         for (Path jar : jars) {
@@ -291,9 +323,9 @@ public final class ImageBuilder {
             // missing from the runtime classpath. The engine disambiguates names; this guards
             // the fallback (raw file names) and any future naming drift.
             if (!seen.add(name)) {
-                throw new IllegalStateException("duplicate image jar name /app/libs/" + name);
+                throw new IllegalStateException("duplicate image jar name /app/" + dir + "/" + name);
             }
-            layer.addEntry(jar, AbsoluteUnixPath.get("/app/libs/" + name));
+            layer.addEntry(jar, AbsoluteUnixPath.get("/app/" + dir + "/" + name));
         }
         return layer.build();
     }
@@ -336,6 +368,22 @@ public final class ImageBuilder {
                 builder = builder.addFileEntriesLayer(treeLayer(trained.cache(), AotCacheTrainer.CACHE_FILE));
             }
             builder = builder.setEntrypoint(appTreeEntrypoint(plan, aot));
+            return finish(builder, plan.config(), containerizer, auth);
+        }
+
+        // The lib-dir layout, as its own directory: release jars, then snapshot and sibling jars,
+        // then the runnable jar, each its own layer so an app rebuild ships only the last one.
+        if (plan.hasLibDir() && !cfg.aotCache()) {
+            String dir = Objects.requireNonNull(plan.libDir());
+            if (!plan.dependencyJars().isEmpty()) {
+                builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.dependencyJars(), dir));
+            }
+            if (!plan.snapshotJars().isEmpty()) {
+                builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.snapshotJars(), dir));
+            }
+            builder = builder.addFileEntriesLayer(treeLayer(plan.mainJar(), null));
+            builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
+            builder = builder.setEntrypoint(libDirEntrypoint(plan));
             return finish(builder, plan.config(), containerizer, auth);
         }
 

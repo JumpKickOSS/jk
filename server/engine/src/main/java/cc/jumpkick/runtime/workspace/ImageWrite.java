@@ -11,6 +11,7 @@ import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.LibDir;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.PluginBuild;
@@ -214,13 +215,20 @@ final class ImageWrite {
     }
 
     /**
-     * Fingerprint of the packager app tree an app-tree image ships (empty when none is
-     * declared). The tree's content is not derivable from the main jar + dep jars tokens — a
+     * Fingerprint of the packager app tree an app-tree image ships, or of the lib-dir layout's jar
+     * (empty when neither is declared). The tree's content is not derivable from the main jar + dep jars tokens — a
      * packager config flip (e.g. Quarkus fast-jar vs uber-jar) rewrites the tree without
      * touching either, and a stale cache hit would restore an image missing what the config now
      * demands.
      */
     private static String appTreeToken(JkBuild project, BuildLayout layout) throws IOException {
+        LibDir libDir = project.libDir();
+        if (libDir != null) {
+            // The lib-dir jar carries the Class-Path the image runs by, which the thin jar does not.
+            Path jar = layout.libDirJar();
+            return "lib-dir|" + libDir.dir() + "|"
+                    + (Files.isRegularFile(jar) ? ClasspathFingerprint.entry(jar) : "absent");
+        }
         var shape = PluginBuild.shape(project, layout.moduleRoot());
         String appDir = shape.map(sh -> sh.appDir()).orElse("");
         String appJar = shape.map(sh -> sh.appJar()).orElse("");

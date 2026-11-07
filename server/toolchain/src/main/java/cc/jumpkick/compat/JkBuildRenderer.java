@@ -12,6 +12,7 @@ import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.LibDir;
 import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
@@ -517,6 +518,15 @@ public final class JkBuildRenderer {
             sb.append("config   = ").append(quote(app.config())).append('\n');
         if (!app.jvmArgs().isEmpty())
             sb.append("jvm-args = ").append(list(app.jvmArgs())).append('\n');
+        LibDir libDir = app.libDir();
+        if (libDir != null) {
+            sb.append("lib-dir  = ")
+                    .append(libDir.dir().equals(LibDir.DEFAULT_DIR) ? "true" : quote(libDir.dir()))
+                    .append('\n');
+            if (!libDir.versions()) sb.append("lib-versions = false\n");
+            if (!libDir.exclude().isEmpty())
+                sb.append("lib-exclude = ").append(list(libDir.exclude())).append('\n');
+        }
     }
 
     /** {@code [library]} table — a library's fat jar and the packages it relocates. */

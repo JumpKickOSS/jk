@@ -274,6 +274,8 @@ public final class PomImporter {
         // hibernate-maven-plugin is the table only when it enhances; its other goals keep the row.
         PluginConfig hibernate = HibernateEnhancePlugin.map(em.model(), report);
         if (hibernate != null) consumedPlugins.add(HibernateEnhancePlugin.MAVEN_PLUGIN);
+        LibDirPlugins.Mapped libDir = LibDirPlugins.map(em.model(), PluginFacts.mainClass(em.model()), report);
+        if (libDir.consumed()) consumedPlugins.add(LibDirPlugins.DEPENDENCY_PLUGIN);
         SourceTreePlugins.SourceTree sourceTree =
                 SourceTreePlugins.map(em, generators.outputRoots(), consumedPlugins, report, inherited, false);
         Project project = mapProject(em, report, sourceTree);
@@ -299,7 +301,15 @@ public final class PomImporter {
         // The fat jar is the application's when the module has a main; a shaded library — neo4j's
         // lucene9-shaded, nacos's client — ships it under [library], relocations included.
         JkBuild.Application application = mainClass != null
-                ? new JkBuild.Application(mainClass, packaging.fatJar(), false, false, null, packaging.relocate())
+                ? new JkBuild.Application(
+                        mainClass,
+                        packaging.fatJar(),
+                        false,
+                        false,
+                        null,
+                        packaging.relocate(),
+                        List.of(),
+                        libDir.libDir())
                 : null;
         JkBuild.Library library =
                 mainClass == null && packaging.fatJar() ? new JkBuild.Library(true, packaging.relocate()) : null;

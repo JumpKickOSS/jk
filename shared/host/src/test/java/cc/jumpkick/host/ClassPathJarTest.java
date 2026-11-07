@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command;
+package cc.jumpkick.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.command.pipeline.AotCachePackage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -28,13 +27,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk build -T} rewrites the app jar into {@code target/aot-cache/} with a
- * {@code Class-Path} manifest. That rewrite is an archive jk produces, so it obeys the same rule as
- * every other: entries carry the one pinned instant, 1980-02-01T00:00:00Z, via
- * {@link ZipEntry#setTimeLocal}. Left unpinned, the staged jar changed on every run — which both
- * breaks reproducibility and churns the trained cache's inputs.
+ * {@link ClassPathJar} rewrites a thin jar with a {@code Class-Path} manifest, for {@code jk build -T}
+ * and the lib-dir layout. That rewrite is an archive jk produces, so it obeys the same rule as every
+ * other: entries carry the one pinned instant, 1980-02-01T00:00:00Z, via
+ * {@link ZipEntry#setTimeLocal}. Left unpinned, the jar changed on every run, which breaks
+ * reproducibility and churns the inputs of everything keyed on it.
  */
-class AotCacheJarTimestampTest {
+class ClassPathJarTest {
 
     /** 19 hours apart, neither observing DST: no wall clock reading can agree between them. */
     private static final TimeZone TOKYO = TimeZone.getTimeZone("Asia/Tokyo");
@@ -84,9 +83,32 @@ class AotCacheJarTimestampTest {
                 .isEqualTo("lib/dep-2.0.jar");
     }
 
+    @Test
+    void an_existing_class_path_is_replaced_and_a_missing_main_class_added(@TempDir Path tmp) throws Exception {
+        Path source = tmp.resolve("bare.jar");
+        Manifest manifest = new Manifest();
+        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(Attributes.Name.CLASS_PATH, "old.jar");
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(source), manifest)) {
+            jar.putNextEntry(new ZipEntry("a.txt"));
+            jar.closeEntry();
+        }
+        Path out = tmp.resolve("out/app.jar");
+        ClassPathJar.write(source, out, ClassPathJar.under("libs", List.of("a-1.jar", "b.jar")), "ex.Main");
+        Manifest written = manifestOf(Files.readAllBytes(out));
+        assertThat(written.getMainAttributes().getValue(Attributes.Name.CLASS_PATH))
+                .isEqualTo("libs/a-1.jar libs/b.jar");
+        assertThat(written.getMainAttributes().getValue(Attributes.Name.MAIN_CLASS))
+                .isEqualTo("ex.Main");
+
+        ClassPathJar.write(source, out, List.of(), "");
+        assertThat(manifestOf(Files.readAllBytes(out)).getMainAttributes().getValue(Attributes.Name.CLASS_PATH))
+                .isNull();
+    }
+
     private static byte[] rewriteUnder(TimeZone zone, Path source, Path out) throws IOException {
         TimeZone.setDefault(zone);
-        AotCachePackage.rewriteAppJar(source, out, List.of("dep-2.0.jar"), "com.example.App");
+        ClassPathJar.write(source, out, ClassPathJar.under("lib", List.of("dep-2.0.jar")), "com.example.App");
         return Files.readAllBytes(out);
     }
 

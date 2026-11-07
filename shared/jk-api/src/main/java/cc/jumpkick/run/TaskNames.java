@@ -136,6 +136,9 @@ public final class TaskNames {
     /** The {@code [war]} web archive, exploded and archived beside the module jar. */
     public static final String PACKAGE_WAR = "package-war";
 
+    /** {@code [application] lib-dir}: the runnable {@code <name>.jar} and its lib directory beside the module jar. */
+    public static final String PACKAGE_LIB_DIR = "package-lib-dir";
+
     /** {@code -javadoc.jar} for a library, built from its Java sources beside the module jar. */
     public static final String PACKAGE_JAVADOC = "package-javadoc";
 
@@ -174,8 +177,14 @@ public final class TaskNames {
      * branch conditions: a module's wall is its compile prefix plus the longer of its test branch
      * and this tail, not the sum of its steps.
      */
-    public static final Set<String> PACKAGING_TAILS =
-            Set.of(PACKAGE_ASSEMBLY, PACKAGE_MINIFIED, NATIVE_IMAGE, PACKAGE_SOURCES, PACKAGE_JAVADOC, PACKAGE_WAR);
+    public static final Set<String> PACKAGING_TAILS = Set.of(
+            PACKAGE_ASSEMBLY,
+            PACKAGE_MINIFIED,
+            NATIVE_IMAGE,
+            PACKAGE_SOURCES,
+            PACKAGE_JAVADOC,
+            PACKAGE_WAR,
+            PACKAGE_LIB_DIR);
 
     public static final String SET_DEFAULT = "set-default";
     public static final String SYNC_CAS = "sync-cas";

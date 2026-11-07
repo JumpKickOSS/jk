@@ -832,7 +832,8 @@ public final class ManifestTables {
                 nativeImage,
                 config,
                 parseRelocate(application, "[application]"),
-                jvmArgsList(application, "application")));
+                jvmArgsList(application, "application"),
+                ManifestLibDir.parse(application)));
     }
 
     /**
@@ -888,8 +889,18 @@ public final class ManifestTables {
      * Every key that belongs to {@code [application]}. Written down so a misplacement is caught as
      * a class rather than one key at a time.
      */
-    static final List<String> APPLICATION_KEYS =
-            List.of("main", "assembly", "minified", "native", "config", "relocate", "jvm-args", "java-opts");
+    static final List<String> APPLICATION_KEYS = List.of(
+            "main",
+            "assembly",
+            "minified",
+            "native",
+            "config",
+            "relocate",
+            "jvm-args",
+            "java-opts",
+            ManifestLibDir.LIB_DIR,
+            ManifestLibDir.LIB_VERSIONS,
+            ManifestLibDir.LIB_EXCLUDE);
 
     /**
      * Reject an {@code [application]} key written at the top level.

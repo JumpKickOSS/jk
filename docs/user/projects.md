@@ -152,6 +152,7 @@ main     = "com.example.App"   # required to `jk run` / fat jar
 assembly = true                # also write `-all.jar`
 # minified = true              # also write `-min.jar` via R8
 # native   = true              # native-image on jk build / jk install
+# lib-dir  = true              # also write target/<name>.jar + target/libs/ (Class-Path layout)
 ```
 
 Absent `[application]` means **library**: `jk build` also writes the `-sources.jar` and

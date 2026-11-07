@@ -13,6 +13,7 @@ R8 minification is **opt-in**, never the default.
 | Sources jar `*-sources.jar` | library (no `[application]`, nothing runnable), or `sources = "always"` | `jk build` / `jk package` |
 | Javadoc jar `*-javadoc.jar` | library, unless `javadoc = false` | `jk build` / `jk package` |
 | Fat jar `*-all.jar` | `[application] assembly = true` | `jk assemble` / `jk build` |
+| Runnable `target/<name>.jar` + `target/libs/` | `[application] lib-dir = true` | `jk build` |
 | Minified jar `*-min.jar` | `[application] minified = true` | `jk assemble` / `jk build` (also builds the fat jar) |
 | War `target/<name>-<version>.war`, exploded beside it | `[war]` | `jk build` |
 | Node module's resource jar `target/<name>-<version>.jar` | a node module a sibling depends on, or `[node] classpath-root` | `jk build` |
@@ -26,6 +27,7 @@ main     = "com.example.App"   # required for run / fat / typical apps
 assembly = true
 # relocate = { "com.google.common" = "com.example.shaded.guava" }   # move a bundled package
 # minified = true
+# lib-dir  = true                   # target/<name>.jar + target/libs/, see Lib-dir layout
 # config   = "config/install.toml"  # optional template → ~/.jk/config/<bin>/config.toml
 ```
 
@@ -119,6 +121,51 @@ outside a git checkout (an exported tree) builds with a warning and no `git.prop
 
 `jk import` writes the table for `git-commit-id-maven-plugin`, `pl.project13.maven:git-commit-id-plugin`,
 Boot's `build-info` goal, `com.gorylenko.gradle-git-properties` and `springBoot { buildInfo() }`.
+
+## Lib-dir layout
+
+```toml
+[application]
+main    = "com.example.Main"
+lib-dir = true                  # or the directory's name: lib-dir = "lib"
+# lib-versions = false          # okio.jar rather than okio-3.9.0.jar
+# lib-exclude  = ["okio", "com.example:extra", "org.unwanted:*"]
+```
+
+`lib-dir` writes the deployable Maven builds with `maven-dependency-plugin:copy-dependencies` and
+`maven-jar-plugin`'s `addClasspath` / `classpathPrefix`: `target/<name>.jar`, a copy of the thin jar
+whose manifest names `Main-Class` and a `Class-Path` of `libs/<jar> …`, and `target/libs/` holding
+those jars. `java -jar target/<name>.jar` runs it, and so does any copy of the pair, since a jar's
+`Class-Path` resolves against the jar's own directory:
+
+```dockerfile
+COPY target/app.jar ./
+COPY target/libs ./libs
+CMD ["java", "-jar", "app.jar"]
+```
+
+- The directory holds the module's runtime classpath, the jars the fat jar would bundle: its
+  runtime dependencies from the lock and its workspace siblings' thin jars. `provided`, test and
+  dev dependencies stay out.
+- A locked jar is named by its coordinate, `<artifact>-<version>[-<classifier>].jar`, or
+  `<artifact>[-<classifier>].jar` under `lib-versions = false`. Two jars that would share a name are
+  both prefixed with their group; a sibling keeps its own file name.
+- `lib-exclude` leaves a dependency out of the directory and the `Class-Path`. An entry is an
+  artifact name (any group), `group:artifact`, or `group:*`.
+- The directory is the step's own: a jar in it that the layout does not name, such as a dependency
+  you removed, is deleted on the next build. Other files are left alone.
+- The thin jar `target/<name>-<version>.jar` is still written and published unchanged; the
+  `Class-Path` is a fact of `target/<name>.jar` alone. The step (`package-lib-dir`) is cached like
+  the fat jar, and runs beside the tests.
+
+`jk image` ships the layout as it is when the module declares it: the dependency jars at
+`/app/libs/` in the release and volatile layers, then `<name>.jar` at `/app` in its own layer, with
+`java -jar <name>.jar` as the entrypoint ([Images](images.md)).
+
+`jk import` writes `lib-dir` for a `copy-dependencies` execution into a directory under `target/`
+on a module with a main class, the directory as its value, `<stripVersion>` as `lib-versions =
+false`, and `<excludeArtifactIds>` / `<excludeGroupIds>` as `lib-exclude`. Helidon's application
+parent (`copy-libs` into `target/libs`, excluding `okio`) imports with no row.
 
 ## War
 

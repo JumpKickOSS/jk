@@ -63,7 +63,8 @@ class AotCacheTrainerTest {
                 null,
                 Map.of(),
                 Path.of("/w/target/quarkus-app"),
-                "quarkus-run.jar");
+                "quarkus-run.jar",
+                null);
         assertThat(appTree.hasAppTree()).isTrue();
         String reason = AotCacheTrainer.unsupportedReason(appTree);
         if (canTrainOnThisHost(appTree)) {
