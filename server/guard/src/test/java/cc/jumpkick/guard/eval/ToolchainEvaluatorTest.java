@@ -222,6 +222,49 @@ class ToolchainEvaluatorTest {
     }
 
     @Test
+    void a_rule_scoped_to_one_module_does_not_fire_on_another_that_violates_it(@TempDir Path root) throws Exception {
+        // app builds for 17 and the root declares corp; a floor and a repository list scoped to lib
+        // judge lib alone, and never the workspace lock, whose leaked source names no module
+        Evaluation e = ev(run(root, """
+                [guards.lib-floor]
+                kind         = "toolchain"
+                scope        = "lib"
+                java         = ">=21"
+                repositories = { only = ["central"] }
+                why          = "lib ships to a newer runtime"
+                """), "lib-floor");
+        assertThat(e.outcome()).as(e.note()).isEqualTo(Outcome.CLEAN);
+        assertThat(e.population()).containsEntry("manifests", 1L).containsEntry("artifacts", 0L);
+        Evaluation app = ev(run(root, """
+                [guards.app-floor]
+                kind  = "toolchain"
+                scope = "app"
+                java  = ">=21"
+                why   = "w"
+                """), "app-floor");
+        assertThat(app.observations()).extracting(Observation::key).containsExactly("java app");
+    }
+
+    @Test
+    void an_edit_outside_a_rules_scope_is_not_refused(@TempDir Path root) throws Exception {
+        workspace(root);
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.repos]
+                kind         = "toolchain"
+                scope        = "lib"
+                repositories = { only = ["central", "corp"] }
+                why          = "no artifact from an unvetted repository"
+                """);
+        String shady = "\n[repositories]\nshady = { url = \"https://shady.example/m2/\" }\n";
+        Path app = root.resolve("app/" + ManifestPaths.MANIFEST);
+        assertThat(MutationCheck.check(app, Files.readString(app) + shady)).isNull();
+        Path lib = root.resolve("lib/" + ManifestPaths.MANIFEST);
+        assertThat(MutationCheck.check(lib, Files.readString(lib) + shady))
+                .isNotNull()
+                .contains("lib declares repository `shady`");
+    }
+
+    @Test
     void a_member_outside_the_root_is_keyed_by_its_relative_spelling(@TempDir Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("ws"));
         workspace(root);

@@ -63,17 +63,35 @@ final class ToolchainEvaluator implements Evaluator {
             }
         }
         Path lockFile = ctx.root().resolve(ManifestPaths.LOCK);
-        Lockfile lock = Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile) : null;
-        return evaluate(rule, manifests, lock);
+        Lockfile lock =
+                DependEvaluator.readsLock(rule) && Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile) : null;
+        return judge(rule, manifests, lock);
     }
 
-    /** The mutation-time entry: {@code proposed} is the manifest text about to be written for {@code module}. */
+    /**
+     * The mutation-time entry: {@code proposed} is the manifest text about to be written for {@code
+     * module}, judged through {@link #judge} like the build's manifests, so a rule scoped elsewhere
+     * never refuses it.
+     */
     static Evaluation evaluateProposed(Rule rule, String module, String proposed, @Nullable Lockfile lock) {
         // The lock is what the last resolution did, not what this edit does: its arm is the build's.
-        return evaluate(rule, List.of(new Manifest(module, JkBuildParser.parse(proposed))), null);
+        return judge(rule, List.of(new Manifest(module, JkBuildParser.parse(proposed))), null);
     }
 
-    static Evaluation evaluate(Rule rule, List<Manifest> manifests, @Nullable Lockfile lock) {
+    /**
+     * {@code rule} over what it reads of the manifests and lock on offer: the manifests of the
+     * modules in its scope, and the lock only when the rule is unscoped. The lock names no module,
+     * and a lock source counts as declared when any manifest declares it, so a rule that reads only
+     * some manifests cannot judge it honestly. The one place both the build's evaluation and the
+     * mutation-time check decide what a rule sees.
+     */
+    static Evaluation judge(Rule rule, List<Manifest> manifests, @Nullable Lockfile lock) {
+        List<Manifest> read =
+                manifests.stream().filter(m -> rule.applies(m.module())).toList();
+        return evaluate(rule, read, DependEvaluator.readsLock(rule) ? lock : null);
+    }
+
+    private static Evaluation evaluate(Rule rule, List<Manifest> manifests, @Nullable Lockfile lock) {
         TomlTable t = rule.table();
         String java = t.getString("java");
         String kotlin = t.getString("kotlin");

@@ -175,4 +175,64 @@ class OutputEvaluatorTest {
         assertThat(ev(allowed, "jar-shape").outcome()).isEqualTo(Outcome.CLEAN);
         assertThat(ev(allowed, "stale").outcome()).isEqualTo(Outcome.STALE_ALLOW);
     }
+
+    /** Two members, core and api; the artefacts sit where the layout says they do. */
+    static List<OutputArtifacts.Module> twoMembers(Path root) throws IOException {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "ws"
+                version = "1.0.0"
+                jdk = 25
+                [workspace]
+                modules = ["core", "api"]
+                """);
+        for (String member : List.of("core", "api")) {
+            Files.createDirectories(root.resolve(member));
+            Files.writeString(
+                    root.resolve(member + "/jk.toml"),
+                    "group = \"com.acme\"\nname = \"" + member + "\"\nversion = \"1.0.0\"\njdk = 25\n");
+        }
+        return OutputArtifacts.of(root, List.of(root.resolve("core"), root.resolve("api")), null);
+    }
+
+    static Map<String, Evaluation> runTwo(Path root, String rules, Lane lane) throws Exception {
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), rules);
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        EvalContext ctx = new EvalContext(
+                        lane,
+                        root,
+                        "",
+                        null,
+                        List.of(root.resolve("core"), root.resolve("api")),
+                        () -> FactsIndex.EMPTY,
+                        () -> null,
+                        List::of)
+                .withRules(load.rules());
+        return LaneRun.evaluate(LaneRun.rulesFor(lane, load.rules(), ""), ctx);
+    }
+
+    @Test
+    void a_rule_scoped_to_one_module_does_not_fire_on_another_that_violates_it(@TempDir Path root) throws Exception {
+        List<OutputArtifacts.Module> mods = twoMembers(root);
+        jar(mods.get(0).jar(), Map.of(), "x/Y.kt");
+        jar(mods.get(1).jar(), Map.of(), "x/Y.class");
+        Map<String, Evaluation> r = runTwo(root, """
+                [guards.api-jar]
+                kind  = "output"
+                scope = "api"
+                jar   = { forbid-entries = ["**/*.kt"] }
+                why   = "the api jar carries no sources"
+                [guards.every-jar]
+                kind  = "output"
+                jar   = { forbid-entries = ["**/*.kt"] }
+                why   = "w"
+                """, Lane.OUTPUT);
+        Evaluation scoped = ev(r, "api-jar");
+        assertThat(scoped.outcome()).as(scoped.note()).isEqualTo(Outcome.CLEAN);
+        assertThat(scoped.population()).containsEntry("jars", 1L);
+        assertThat(ev(r, "every-jar").observations())
+                .extracting(Observation::file)
+                .containsExactly("core/target/core-1.0.0.jar");
+    }
 }

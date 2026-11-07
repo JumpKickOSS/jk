@@ -58,7 +58,8 @@ final class OutputEvaluator implements Evaluator {
         // The packaged set is known only when every module has packaged: a sibling this build did
         // not reach is not evidence that a dependency on it names nothing.
         boolean publishedKnown = OutputArtifacts.unbuilt(modules).isEmpty();
-        for (OutputArtifacts.Module m : modules) {
+        // What every module published is read above; only the modules in scope are judged.
+        for (OutputArtifacts.Module m : OutputArtifacts.judgedBy(rule, modules)) {
             Allow allow = allowing(rule.allow(), m.module());
             if (allow != null) allowUsed.put(allow, true);
             if (pom != null) {
