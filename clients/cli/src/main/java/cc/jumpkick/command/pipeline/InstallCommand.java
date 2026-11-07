@@ -403,14 +403,13 @@ public final class InstallCommand {
         Set<Path> selected = cwdScope.scoped() ? Set.of(cwdScope.workingDir()) : Set.of();
         AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
         if (!reshelving) {
-            List<AlwaysNativeGraal.Module> alwaysNative = new ArrayList<>();
-            for (Path mod : moduleDirs) {
-                var info = Objects.requireNonNull(infoByDir.get(mod), () -> "no project info for " + mod);
-                if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
-                alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal(), info.javaRelease()));
-            }
-            Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.homes(
-                    alwaysNative, new GraalResolver(jdksDir, global.yes, BuildPlanConsole.modeFor(global))::resolve);
+            List<Path> alwaysNative = moduleDirs.stream()
+                    .filter(mod -> AlwaysNativeGraal.alwaysNative(infoByDir.get(mod)))
+                    .toList();
+            Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.reached(
+                    alwaysNative,
+                    infoByDir::get,
+                    new GraalResolver(jdksDir, global.yes, BuildPlanConsole.modeFor(global))::resolve);
             if (resolved.isEmpty()) return 1;
             graal = resolved.get();
         }
