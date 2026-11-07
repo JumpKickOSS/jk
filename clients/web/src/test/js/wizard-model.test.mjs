@@ -147,8 +147,19 @@ test("a create's agent wiring is kept for its project's page, and nothing when i
     projectId: 'id-1',
     files: ['AGENTS.md', '.mcp.json'],
     notes: ['Trust this folder'],
+    callEnded: false,
   });
+  assert.equal(m.agentNotes({ path: '/p', projectId: 'id-1', agents, handedOff: true }).callEnded, false);
   assert.equal(m.agentNotes({ path: '/p', projectId: 'id-1', agents: { files: [], notes: [] } }), null);
   assert.equal(m.agentNotes({ path: '/p', projectId: 'id-1' }), null);
   assert.equal(m.agentNotes({ path: '/p', agents }), null);
+});
+
+test('a create the agent had stopped waiting for says so, even with no agent files', () => {
+  assert.deepEqual(m.agentNotes({ path: '/p', projectId: 'id-1', handedOff: false }), {
+    projectId: 'id-1',
+    files: [],
+    notes: [],
+    callEnded: true,
+  });
 });

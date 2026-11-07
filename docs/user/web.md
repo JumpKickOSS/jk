@@ -170,7 +170,8 @@ joined with commas.
 
 MCP `new` hands out such a link when its client supports only URL elicitation
 ([MCP](mcp.md#new)); the wizard then says an agent is waiting, and the agent's call returns the
-project you create.
+project you create. A create after the call stopped waiting (five minutes) is still wired for that
+agent, and the new project's page says the agent was not told.
 
 Live events: `GET /api/events` (SSE). Cancel: `POST /api/cancel`. Implementation of the
 SPA and HTTP contract: [contributor web client](../contributors/webclient.md),

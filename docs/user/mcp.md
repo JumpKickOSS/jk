@@ -280,7 +280,7 @@ depends on the client:
 | The client declared | The call |
 |---|---|
 | Form elicitation | asks the human for exactly the missing fields, one step at a time (the name, then the template's questions; a question whose condition names one being asked comes in the next round), then scaffolds. Declining creates nothing and says so |
-| URL elicitation only | asks the host to open the dashboard's [new-project wizard](web.md#new-project), pre-filled with every answer the call gave, and waits up to five minutes for the human to create the project there; the call then returns that project as if it had created it. Declining, or leaving the wizard unfinished, creates nothing and says so |
+| URL elicitation only | asks the host to open the dashboard's [new-project wizard](web.md#new-project), pre-filled with every answer the call gave, and waits up to five minutes for the human to create the project there; the call then returns that project as if it had created it. Declining, or leaving the wizard unfinished, creates nothing and says so; a project created through the link afterwards is still wired for the calling client's agent, and the wizard says the call had ended |
 | No elicitation | fails (`-32602`) with one line per missing question and the values it takes, so the agent can fill them in `params` and call again rather than guess |
 
 A misfit answer (`database=oracle`) fails at once with the values the question takes, whatever the

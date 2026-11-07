@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  */
 final class McpNewForm {
 
-    /** How long the call waits for the human; under the tool-call timeouts hosts use. */
+    /** How long the call waits for the human, at each step; under the tool-call timeouts hosts use. */
     static final Duration WAIT = Duration.ofMinutes(5);
 
     private static final String NEEDS = " needs a value";
@@ -107,16 +107,23 @@ final class McpNewForm {
 
     private static Map<String, Object> awaitCreate(NewProjectWizard site, String id) {
         try {
-            return site.created(id).get(WAIT.toMillis(), TimeUnit.MILLISECONDS);
+            return site.created(id).get(site.waiting().toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             throw new McpError(
-                    -32000, "the wizard was not finished within " + WAIT.toMinutes() + " minutes; nothing was created");
+                    -32000,
+                    "the wizard was not finished within " + span(site.waiting()) + "; nothing was created"
+                            + " yet, and a project made through the link later is not reported to this call");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new McpError(-32000, "interrupted while waiting for the wizard");
         } catch (ExecutionException e) {
             throw new McpError(-32000, "the wizard failed: " + e.getCause());
         }
+    }
+
+    /** {@code d} in whole minutes, or seconds under one. */
+    private static String span(Duration d) {
+        return d.toMinutes() > 0 ? d.toMinutes() + " minutes" : d.toSeconds() + " seconds";
     }
 
     /** Tells the client the interaction {@code id} named is over. */

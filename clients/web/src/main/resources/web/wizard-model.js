@@ -423,11 +423,15 @@ export function treeRows(paths) {
   return rows;
 }
 
-/** A create response's agent wiring, for the project page; null when it wired nothing worth saying. */
+/**
+ * A create response's agent wiring, for the project page, and whether the agent whose link opened
+ * the wizard had stopped waiting, so it was never told; null when there is nothing worth saying.
+ */
 export function agentNotes(res) {
   const agents = (res && res.agents) || {};
   const files = agents.files || [];
   const notes = agents.notes || [];
-  if (!res || !res.projectId || (!files.length && !notes.length)) return null;
-  return { projectId: res.projectId, files, notes };
+  const callEnded = !!res && res.handedOff === false;
+  if (!res || !res.projectId || (!files.length && !notes.length && !callEnded)) return null;
+  return { projectId: res.projectId, files, notes, callEnded };
 }
