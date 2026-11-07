@@ -71,17 +71,38 @@ final class DependEvaluator implements Evaluator {
             if (Files.isRegularFile(f))
                 manifests.add(manifest(WorkspaceModel.rel(ctx.root(), m), JkBuildParser.parse(f), Files.readString(f)));
         }
-        // A scoped rule reads the scoped manifests. The lock is workspace-wide and names no module,
-        // so it is read only by an unscoped rule: a ban scoped to one module cannot judge it honestly.
-        if (!rule.scope().isEmpty()) manifests.removeIf(m -> !rule.applies(m.module()));
         Path lockFile = ctx.root().resolve(ManifestPaths.LOCK);
-        Lockfile lock = rule.scope().isEmpty() && Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile) : null;
-        return evaluate(rule, manifests, lock);
+        Lockfile lock = readsLock(rule) && Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile) : null;
+        return judge(rule, manifests, lock);
     }
 
-    /** The mutation-time entry: {@code proposed} is the manifest text about to be written for {@code module}. */
+    /**
+     * The mutation-time entry: {@code proposed} is the manifest text about to be written for {@code
+     * module}. It reads what {@code jk guard} reads, through {@link #judge}: a test-scope add is
+     * judged in its own table, and a scoped rule never reads the workspace lock's rows.
+     */
     static Evaluation evaluateProposed(Rule rule, String module, String proposed, @Nullable Lockfile lock) {
-        return evaluate(rule, List.of(manifest(module, JkBuildParser.parse(proposed), proposed)), lock);
+        return judge(rule, List.of(manifest(module, JkBuildParser.parse(proposed), proposed)), lock);
+    }
+
+    /**
+     * Whether {@code rule} reads the lock. The lock is workspace-wide and names no module, so only
+     * an unscoped rule reads it: a row's scopes are the union over every module that declares it,
+     * and a ban scoped to one module would read another module's main-scope junit as its own.
+     */
+    static boolean readsLock(Rule rule) {
+        return rule.scope().isEmpty();
+    }
+
+    /**
+     * {@code rule} over what it reads of the manifests and lock on offer: the manifests of the
+     * modules in its scope, and the lock only when {@link #readsLock}. The one place both the
+     * build's evaluation and the mutation-time check decide what a rule sees.
+     */
+    static Evaluation judge(Rule rule, List<Manifest> manifests, @Nullable Lockfile lock) {
+        List<Manifest> read =
+                manifests.stream().filter(m -> rule.applies(m.module())).toList();
+        return evaluate(rule, read, readsLock(rule) ? lock : null);
     }
 
     static Manifest manifest(String module, JkBuild build, String text) {
