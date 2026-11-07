@@ -87,10 +87,10 @@ final class LintStep {
                     null,
                     0,
                     0,
-                    label + ": `" + missing + "` is not a file in the module, so nothing was linted — copy the rule"
-                            + " set to that path, or point `[lint] " + tool.id() + "` at the file that holds it"
+                    label + ": `" + missing + "` is not a file in the module; nothing linted"
+                            + "\n  copy the rule set there or point [lint] " + tool.id() + " at it"
                             + (tool == LintTool.CHECKSTYLE
-                                    ? " (a resource of a jar is one when `checkstyle-classpath` names the jar)"
+                                    ? "\n  a jar resource works when checkstyle-classpath names the jar"
                                     : ""));
             exec.label(label + " (no configuration)");
             Files.writeString(report, "");
@@ -287,8 +287,7 @@ final class LintStep {
                     null,
                     0,
                     0,
-                    "pmd: `" + file.get() + "` (`[lint] pmd-exclude`) is not a file in the module; nothing is left out"
-                            + " of the report");
+                    "pmd: [lint] pmd-exclude `" + file.get() + "` is not a file in the module; nothing excluded");
             return PmdExclusions.NONE;
         }
         return PmdExclusions.read(path);

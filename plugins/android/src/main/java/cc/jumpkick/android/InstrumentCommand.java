@@ -19,7 +19,7 @@ final class InstrumentCommand {
     static int run(PluginCommandExec exec) throws Exception {
         Path app = exec.mainArtifact().orElse(null);
         if (app == null || !app.toString().endsWith(".apk")) {
-            exec.out("jk test --device: no APK built yet — run `jk build` first");
+            exec.out("jk test --device: no APK built yet; run jk build first");
             return 1;
         }
         Path adb = pathArg(exec, "--adb").orElseGet(() -> exec.requireExtra("adb"));

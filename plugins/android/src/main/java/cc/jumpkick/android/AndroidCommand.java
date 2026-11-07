@@ -56,15 +56,14 @@ final class AndroidCommand {
         }
         Path dir = root.resolve("licenses");
         if (!yes) {
-            exec.out("The Android SDK components are distributed under these licenses:");
+            exec.out("Android SDK licenses:");
             for (var e : licenses.entrySet()) {
                 boolean accepted = accepted(dir.resolve(e.getKey()), hash(e.getValue()));
                 exec.out("  " + e.getKey() + (accepted ? "  (accepted)" : ""));
             }
             exec.out("");
-            exec.out("Review them at https://developer.android.com/studio/terms — then run");
-            exec.out("`jk android licenses -y` to accept (recorded in " + dir + ",");
-            exec.out("the same format sdkmanager and Android Studio use).");
+            exec.out("review them at https://developer.android.com/studio/terms");
+            exec.out("accept with jk android licenses -y; saved to " + dir);
             return 0;
         }
         Files.createDirectories(dir);

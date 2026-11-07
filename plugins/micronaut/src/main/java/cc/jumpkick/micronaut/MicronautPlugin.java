@@ -86,8 +86,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         if (declared.isPresent()
                 && runtime.equals(RUNTIME_JIT)
                 && exec.project().nativeDeclared()) {
-            exec.label("note: aot-runtime=jit with [native] declared — the JIT optimizers are not"
-                    + " native-oriented; remove the key to follow the project");
+            exec.label("note: aot-runtime = jit with [native]; remove it to get native optimizers");
         }
 
         String pkg = exec.config()
@@ -228,9 +227,8 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         }
         Path named = moduleDir.resolve(spec);
         if (!Files.isRegularFile(named)) {
-            throw new IOException("[micronaut] aot-config = \"" + spec + "\" does not name a readable file ("
-                    + named.toAbsolutePath().normalize()
-                    + "). Fix the path, or remove the key to use jk's default optimizers.");
+            throw new IOException("[micronaut] aot-config: no file at "
+                    + named.toAbsolutePath().normalize() + "; fix the path or remove the key");
         }
         return named;
     }

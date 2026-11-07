@@ -209,7 +209,7 @@ public final class JooqMain {
                 Path target = dir.resolve(script.getFileName().toString());
                 if (Files.exists(target)) {
                     throw new IllegalArgumentException("two scripts share the name " + script.getFileName()
-                            + "; DDLDatabase applies scripts by file name, so each needs one of its own");
+                            + "; give each script a unique file name");
                 }
                 Files.copy(script, target, StandardCopyOption.COPY_ATTRIBUTES);
             }

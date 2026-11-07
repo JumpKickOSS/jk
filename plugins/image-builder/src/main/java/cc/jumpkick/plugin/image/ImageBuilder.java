@@ -348,7 +348,7 @@ public final class ImageBuilder {
         if (cfg.aotCache()) {
             String blocked = AotCacheTrainer.unsupportedReason(plan);
             if (blocked != null) {
-                throw new IOException("[image] aot-cache = true, but " + blocked);
+                throw new IOException("[image] aot-cache: " + blocked);
             }
             aot = AotCacheTrainer.train(
                     plan, dirOf(plan.mainJar()), cacheRoot, auth, msg -> System.err.println("jk: " + msg));

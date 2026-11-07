@@ -165,8 +165,7 @@ final class ProvenanceJavac implements JavaCompiler {
     }
 
     /** What a failed compile that reported no diagnostic and wrote no text has to say. */
-    static final String SILENT_FAILURE = "javac reported failure without a diagnostic and wrote nothing; "
-            + "a javac plugin or annotation processor may have failed to start";
+    static final String SILENT_FAILURE = "javac failed with no output; check its plugins and annotation processors";
 
     /** The lead of the diagnostic made from javac's own output when it reported no error. */
     static final String TEXT_FAILURE = "javac reported failure without a diagnostic; it wrote:\n";

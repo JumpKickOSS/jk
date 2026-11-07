@@ -113,7 +113,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         // refusing here keeps the two halves of an image build saying the same thing.
         if (ctx.offline()) {
             throw new IOException(Errors.offlineRefusal((base == null ? "the default base image" : base)
-                    + (registry == null ? "" : " (and the push to " + registry + ")")));
+                    + (registry == null ? "" : " and the push to " + registry)));
         }
 
         // A node or static image has no main class: it names its own layers and entrypoint.

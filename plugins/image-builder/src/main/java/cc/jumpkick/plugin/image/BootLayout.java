@@ -79,7 +79,7 @@ final class BootLayout {
         String launcher = launcherJarIn(dest);
         if (launcher == null) {
             throw new IOException("`-Djarmode=tools extract` produced no launcher jar in " + dest
-                    + ". It needs Spring Boot 3.3 or newer:\n" + output);
+                    + "; it needs Spring Boot 3.3 or newer:\n" + output);
         }
         return new Extracted(dest, launcher);
     }

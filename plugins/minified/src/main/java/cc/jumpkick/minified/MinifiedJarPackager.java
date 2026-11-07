@@ -205,9 +205,8 @@ final class MinifiedJarPackager {
             if (mapping != null) io.produced(mapping);
             int absent = ByNameIndex.countMissingClasses(result.output());
             if (absent > 0) {
-                io.label(absent + " optional " + (absent == 1 ? "class is" : "classes are")
-                        + " absent from the closure — run with -v to list them, or set"
-                        + " [minified] strict-warnings = true to fail on them");
+                io.label(absent + " optional " + (absent == 1 ? "class" : "classes")
+                        + " not bundled; -v lists them, [minified] strict-warnings = true fails");
             }
 
             auditByNameIndexes(derived, shrunk);
@@ -246,10 +245,8 @@ final class MinifiedJarPackager {
 
         StringBuilder message = new StringBuilder("R8 removed ")
                 .append(expected.size())
-                .append(expected.size() == 1 ? " class that is" : " classes that are")
-                .append(" named by a service file or index in this jar, so nothing can load ")
-                .append(expected.size() == 1 ? "it" : "them")
-                .append(" at runtime:\n");
+                .append(expected.size() == 1 ? " class" : " classes")
+                .append(" that a service file or index still names:\n");
         int shown = 0;
         for (String name : expected) {
             if (shown++ == 20) {
@@ -258,7 +255,7 @@ final class MinifiedJarPackager {
             }
             message.append("  ").append(name).append('\n');
         }
-        message.append("\nKeep them with [minified] keep, or a keep-files rule file:\n")
+        message.append("\nkeep them with [minified] keep or a keep-files rule file:\n")
                 .append(KeepRuleEmitter.emit(
                         ByNameIndex.surface(expected.stream().limit(3).toList())));
         if (expected.size() > 3) message.append("  …\n");
@@ -310,28 +307,21 @@ final class MinifiedJarPackager {
     static String signatureWarning(SignatureAudit audit) {
         int n = audit.degraded().size();
         StringBuilder sb = new StringBuilder();
-        sb.append(n)
-                .append(" of ")
-                .append(audit.compared())
-                .append(" classes lost or raw-ified their generic Signature (e.g. ");
+        sb.append(n).append(" of ").append(audit.compared()).append(" classes lost their generic signature, e.g. ");
         for (int i = 0; i < Math.min(3, n); i++) {
             SignatureDrift d = audit.degraded().get(i);
-            if (i > 0) sb.append("; ");
+            if (i > 0) sb.append(", ");
             sb.append(d.className())
                     .append(" was `")
                     .append(d.before())
                     .append("`, now ")
                     .append(d.after() == null ? "none" : "`" + d.after() + "`");
         }
-        sb.append("). -keepattributes Signature is not enough in classfile full mode — a class"
-                + " keeps its signature only when it and the types the signature references are"
-                + " explicitly kept. Anything resolving types by runtime generic matching will"
-                + " fail at startup. ");
+        sb.append("\n  code that matches generic types at run time may fail at startup\n  ");
         if (n * 100L >= (long) audit.compared() * ASSEMBLY_ADVICE_PERCENT) {
-            sb.append("At this scale keep rules cannot restore them: this application is not a"
-                    + " minify candidate — use [application] assembly = true.");
+            sb.append("too many to keep; use [application] assembly = true instead of minifying");
         } else {
-            sb.append("Keep the referenced types with [minified] keep to restore them.");
+            sb.append("keep the referenced types with [minified] keep");
         }
         return sb.toString();
     }

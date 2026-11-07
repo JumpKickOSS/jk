@@ -66,10 +66,8 @@ final class HiltTransformStep {
         String newSuper = pkg + "Hilt_" + simple;
         Path generatedBase = classesDir.resolve(newSuper + ".class");
         if (!Files.isRegularFile(generatedBase)) {
-            throw new IllegalStateException("Hilt transform: " + name.replace('/', '.')
-                    + " is annotated for injection but the generated base " + newSuper.replace('/', '.')
-                    + " is missing — did the Hilt KSP processor run? (declare hilt-android-compiler"
-                    + " under [processor-dependencies])");
+            throw new IllegalStateException("hilt: no generated base " + newSuper.replace('/', '.') + " for "
+                    + name.replace('/', '.') + "; add hilt-android-compiler to [processor-dependencies]");
         }
         // Receiver-shaped when the generated base declares onReceive — that's where Hilt puts
         // the injection for BroadcastReceivers, and the subclass's override must call up into it.

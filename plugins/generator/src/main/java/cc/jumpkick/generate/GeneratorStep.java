@@ -158,9 +158,8 @@ final class GeneratorStep {
                 : classpath.stream()
                         .filter(jar -> jar.getFileName().toString().startsWith(artifact + "-"))
                         .findFirst()
-                        .orElseThrow(() -> new IllegalStateException("[generate." + entry.name() + "] resolved "
-                                + entry.toolCoordinate() + " but no jar named " + artifact + "-*.jar is in its closure;"
-                                + " set main = \"<class>\""));
+                        .orElseThrow(() -> new IllegalStateException("[generate." + entry.name() + "] no " + artifact
+                                + "-*.jar among the jars of " + entry.toolCoordinate() + "; set main = \"<class>\""));
         @Nullable String main;
         try (JarFile jar = new JarFile(own.toFile())) {
             Manifest manifest = jar.getManifest();

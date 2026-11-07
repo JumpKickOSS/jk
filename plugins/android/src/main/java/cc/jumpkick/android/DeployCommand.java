@@ -25,7 +25,7 @@ final class DeployCommand {
         Path artifact = exec.mainArtifact().orElse(null);
         if (artifact == null
                 || !(artifact.toString().endsWith(".apk") || artifact.toString().endsWith(".aab"))) {
-            exec.out("jk run: no APK/AAB built yet — run `jk build` first");
+            exec.out("jk run: no APK or AAB built yet; run jk build first");
             return 1;
         }
         Path adb = adbPath(exec);
@@ -122,7 +122,7 @@ final class DeployCommand {
             if (!line.isBlank()) exec.out("  " + line);
         });
         if (exit != 0) {
-            exec.out("adb " + args[0] + " failed (exit " + exit + ") — is a device connected? (`adb devices`)");
+            exec.out("adb " + args[0] + " failed (exit " + exit + "); check adb devices for a connected device");
         }
         return exit;
     }
@@ -151,6 +151,6 @@ final class DeployCommand {
             return name;
         }
         throw new IllegalStateException(
-                "no MAIN/LAUNCHER activity in " + manifest + " — declare one to make the app launchable");
+                "no MAIN/LAUNCHER activity in " + manifest + "; declare one so the app can launch");
     }
 }

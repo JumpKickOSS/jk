@@ -247,7 +247,7 @@ public final class ZincJavaCompiler {
                 0,
                 0,
                 "the mixed Java and Scala compile failed to link: " + Errors.text(e)
-                        + " — check that the Scala compiler, its sbt bridge and the Zinc runtime agree on versions"));
+                        + "\n  check the Scala compiler, sbt bridge and Zinc versions match"));
         return new Result(false, diags, List.of());
     }
 

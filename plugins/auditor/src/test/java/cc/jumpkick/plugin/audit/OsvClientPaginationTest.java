@@ -59,7 +59,7 @@ class OsvClientPaginationTest {
 
         assertThatThrownBy(() -> client.queryBatch(List.of(new OsvClient.Query("Maven", "g:a", "1.0"))))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("next_page_token")
+                .hasMessageContaining("still had more results")
                 .hasMessageContaining("after " + OsvClient.MAX_PAGES + " pages");
         assertThat(postBodies).hasSize(OsvClient.MAX_PAGES);
     }

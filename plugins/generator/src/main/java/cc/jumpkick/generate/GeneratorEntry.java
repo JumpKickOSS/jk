@@ -78,12 +78,10 @@ public record GeneratorEntry(
         classpath = List.copyOf(classpath);
         discard = List.copyOf(discard);
         if (inputs.isEmpty() && unpack == null && keyProbe == null) {
-            throw new IllegalArgumentException("[generate." + name + "] declares no inputs — name the files the tool"
-                    + " reads (inputs), or the jar whose contents it reads (unpack)");
+            throw new IllegalArgumentException("[generate." + name + "] declares no inputs; set inputs or unpack");
         }
         if (toolArtifact == null && (main == null || classpath.isEmpty())) {
-            throw new IllegalArgumentException(
-                    "[generate." + name + "] names no tool, so it needs a main and the classpath carrying it");
+            throw new IllegalArgumentException("[generate." + name + "] names no tool; set main and its classpath");
         }
     }
 

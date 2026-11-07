@@ -51,8 +51,7 @@ final class ManifestStep {
             // (package + uses-sdk injected by the merger properties below, same as AGP).
             // An APPLICATION still needs a real manifest: it declares the launchable surface.
             if (!exec.config().bool("library", false)) {
-                throw new IllegalStateException(
-                        "an [android] application needs an AndroidManifest.xml at the module root or src/main/");
+                throw new IllegalStateException("no AndroidManifest.xml at the module root or src/main/");
             }
             manifest = exec.scratch().resolve("synthesized/AndroidManifest.xml");
             Files.createDirectories(manifest.getParent());

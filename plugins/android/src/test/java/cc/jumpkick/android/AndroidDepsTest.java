@@ -57,7 +57,7 @@ class AndroidDepsTest {
 
     /**
      * Neither exists, and the answer still has to be a path — it goes straight into
-     * "an [android] application needs an AndroidManifest.xml at …", so it must name the convention
+     * "no AndroidManifest.xml at …", so it must name the convention
      * a reader should follow rather than the fallback they did not use.
      */
     @Test

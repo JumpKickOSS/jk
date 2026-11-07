@@ -103,7 +103,7 @@ record AotFailure(Kind kind, String headline, String rootCause) {
                 .append(run.applicationClass())
                 .append("\n  classpath: ")
                 .append(run.classpathEntries())
-                .append(" entries (the module's classes and its runtime closure)")
+                .append(" entries")
                 .append("\n  ")
                 .append(f.fix());
         sb.append("\n  --- last lines of the processor's output ---\n").append(tail(output));
@@ -123,19 +123,12 @@ record AotFailure(Kind kind, String headline, String rootCause) {
     String fix() {
         return switch (kind) {
             case APPLICATION ->
-                "Fix: the application's own startup failed inside the AOT context refresh, so it"
-                        + " fails the same way at run time unless its JVM carries a flag this run lacked;"
-                        + " `[spring-boot] aot-jvm-args = [\"--add-opens=java.base/java.lang=ALL-UNNAMED\"]` hands"
-                        + " JVM flags to the processor, `[spring-boot] aot-args` hands application arguments."
-                        + " `[spring-boot] aot = false` packages the Boot jar without AOT.";
+                "fix: give startup the JVM flags it needs, for example\n"
+                        + "  [spring-boot] aot-jvm-args = [\"--add-opens=java.base/java.lang=ALL-UNNAMED\"]\n"
+                        + "  app arguments go in [spring-boot] aot-args; aot = false skips AOT";
             case PROCESSOR ->
-                "Fix: the application context started; the processor failed generating code from it"
-                        + " — a Spring AOT limitation on one of the module's bean definitions, or a processor missing"
-                        + " from this Boot line. `[spring-boot] aot = false` packages the Boot jar without AOT; a"
-                        + " `[native]` image still needs the processor's output.";
-            case UNKNOWN ->
-                "Fix: the output above is the processor's whole account; `[spring-boot] aot-jvm-args`"
-                        + " reaches its JVM, and `[spring-boot] aot = false` packages the Boot jar without AOT.";
+                "fix: set [spring-boot] aot = false to package without AOT\n  a [native] image cannot skip AOT";
+            case UNKNOWN -> "fix: add JVM flags with [spring-boot] aot-jvm-args, or set aot = false";
         };
     }
 

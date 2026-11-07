@@ -54,8 +54,8 @@ class SpotBugsFloorTest {
         Files.writeString(jdk21.resolve("release"), "JAVA_VERSION=\"21.0.12.1\"\n", StandardCharsets.UTF_8);
 
         assertThatThrownBy(() -> SpotBugsFloor.check("4.7.3", jdk21))
-                .hasMessage("SpotBugs 4.7.3 cannot read the class files of JDK 21, which this step runs on; the oldest"
-                        + " release that can is 4.8.0: set [lint] spotbugs-version = \"4.8.0\" or newer");
+                .hasMessage("SpotBugs 4.7.3 cannot read JDK 21 class files; set [lint] spotbugs-version = \"4.8.0\""
+                        + " or newer");
         assertThatCode(() -> SpotBugsFloor.check("4.8.0", jdk21)).doesNotThrowAnyException();
         assertThatCode(() -> SpotBugsFloor.check("4.10.4", jdk21)).doesNotThrowAnyException();
         assertThatCode(() -> SpotBugsFloor.check("4.7.3", tmp.resolve("no-release-file")))

@@ -171,10 +171,9 @@ class LintStepTest {
         LintStep.run(io, LintTool.CHECKSTYLE);
 
         assertThat(io.diagnostics())
-                .containsExactly("warning: checkstyle: `config/sun_checks.xml` is not a file in the module, so"
-                        + " nothing was linted — copy the rule set to that path, or point `[lint] checkstyle` at"
-                        + " the file that holds it (a resource of a jar is one when `checkstyle-classpath` names"
-                        + " the jar)");
+                .containsExactly("warning: checkstyle: `config/sun_checks.xml` is not a file in the module;"
+                        + " nothing linted\n  copy the rule set there or point [lint] checkstyle at it"
+                        + "\n  a jar resource works when checkstyle-classpath names the jar");
         assertThat(io.labels()).containsExactly("checkstyle (no configuration)");
         assertThat(tmp.resolve("scratch/lint/checkstyle/checkstyle.xml")).isEmptyFile();
     }
@@ -479,9 +478,8 @@ class LintStepTest {
 
         assertThatThrownBy(() -> LintStep.run(io, LintTool.SPOTBUGS))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("SpotBugs 4.0.6 cannot read the class files of JDK " + jdk + ", which this step runs on;"
-                        + " the oldest release that can is " + floor + ": set [lint] spotbugs-version = \"" + floor
-                        + "\" or newer");
+                .hasMessage("SpotBugs 4.0.6 cannot read JDK " + jdk + " class files; set [lint] spotbugs-version = \""
+                        + floor + "\" or newer");
         assertThat(io.labels()).isEmpty();
     }
 
