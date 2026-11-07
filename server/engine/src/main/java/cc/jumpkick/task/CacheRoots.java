@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
  * Collects CAS shas named by on-disk roots ({@code actions/keys}, {@code actions/synced},
@@ -32,13 +31,18 @@ public final class CacheRoots {
      * touched.
      */
     public static Set<String> collect(Cas cas, Path actionsDir, Path toolsDir) throws IOException {
+        return collect(cas, actionsDir, toolsDir, PruneYield.NEVER);
+    }
+
+    /** As {@link #collect(Cas, Path, Path)}, stopping between files at {@code yield}'s say-so: it only reads. */
+    public static Set<String> collect(Cas cas, Path actionsDir, Path toolsDir, PruneYield yield) throws IOException {
         Set<String> refs = new HashSet<>();
         for (ActionTree root : List.of(ActionTree.KEYS, ActionTree.SYNCED)) {
             Path dir = root.under(actionsDir);
-            if (Files.isDirectory(dir)) scanTextFilesRecursively(dir, cas, refs);
+            if (Files.isDirectory(dir)) scanTextFilesRecursively(dir, cas, refs, yield);
         }
         if (Files.isDirectory(toolsDir.resolve("envs"))) {
-            scanTextFilesRecursively(toolsDir.resolve("envs"), cas, refs);
+            scanTextFilesRecursively(toolsDir.resolve("envs"), cas, refs, yield);
         }
         // repos/jk-local is a PUBLISH DESTINATION (jk install / jk publish local), not a derived
         // cache: a freshly published worker is legitimately unreferenced by any action until the
@@ -47,15 +51,11 @@ public final class CacheRoots {
         List<Path> firstPartyRepos = List.of(cas.root().resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL));
         for (Path localRepo : firstPartyRepos) {
             if (!Files.isDirectory(localRepo)) continue;
-            try (Stream<Path> stream = Files.walk(localRepo)) {
-                for (Path file : (Iterable<Path>) stream::iterator) {
-                    if (!Files.isRegularFile(file)
-                            || !file.getFileName().toString().endsWith(".jk")) {
-                        continue;
-                    }
-                    ArtifactMemo.read(file).map(ArtifactMemo::sha256).ifPresent(refs::add);
-                }
-            }
+            PathUtil.forEachRegularFile(localRepo, (file, attrs) -> {
+                yield.check();
+                if (!file.getFileName().toString().endsWith(".jk")) return;
+                ArtifactMemo.read(file).map(ArtifactMemo::sha256).ifPresent(refs::add);
+            });
         }
         return refs;
     }
@@ -64,9 +64,11 @@ public final class CacheRoots {
      * Walk {@code dir}, read every regular file as text, pull explicit sha tokens AND any CAS-style
      * path fragments into {@code refs}.
      */
-    private static void scanTextFilesRecursively(Path dir, Cas cas, Set<String> refs) throws IOException {
+    private static void scanTextFilesRecursively(Path dir, Cas cas, Set<String> refs, PruneYield yield)
+            throws IOException {
         // Guard G45: regular-file-ness comes from the attributes the walk already read.
         PathUtil.forEachRegularFile(dir, (file, attrs) -> {
+            yield.check();
             String body;
             try {
                 body = Files.readString(file, StandardCharsets.UTF_8);

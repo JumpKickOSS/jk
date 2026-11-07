@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,7 +30,16 @@ public final class CasSweep {
      * above). {@code dryRun = true} reports what would be deleted without touching the filesystem.
      */
     public static Report sweep(Cas cas, Set<String> liveRefs, boolean dryRun) throws IOException {
-        long sweepStartMillis = System.currentTimeMillis();
+        return sweep(cas, liveRefs, dryRun, PruneYield.NEVER);
+    }
+
+    /**
+     * As {@link #sweep(Cas, Set, boolean)}, stopping at {@code yield}'s say-so between files of the
+     * walk and between single victims: each victim is a blob no root named, so the ones already
+     * unlinked were garbage whether or not the rest follow.
+     */
+    public static Report sweep(Cas cas, Set<String> liveRefs, boolean dryRun, PruneYield yield) throws IOException {
+        long sweepStartMillis = Clock.SYSTEM.millis();
         long minAgeMillis = Cas.MIN_AGE_FOR_SWEEP.toMillis();
 
         Path shaRoot = cas.root().resolve("sha256");
@@ -44,6 +54,7 @@ public final class CasSweep {
         // One walk: each entry already carries mtime and size, so the sweep does not re-stat.
         int[] keptCount = {0};
         PathUtil.forEachRegularFile(shaRoot, (file, attrs) -> {
+            yield.check();
             // Skip atomic-write tempfiles (covered by step 1 of prune).
             String name = file.getFileName().toString();
             if (name.startsWith(".put-")) return;
@@ -72,6 +83,7 @@ public final class CasSweep {
         long freedBytes = 0;
         if (!dryRun) {
             for (Victim v : victims) {
+                yield.check();
                 Files.deleteIfExists(v.file());
             }
         }

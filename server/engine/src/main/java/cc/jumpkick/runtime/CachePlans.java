@@ -33,12 +33,14 @@ import cc.jumpkick.repo.StoreRepoGc;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.CacheRetention;
 import cc.jumpkick.task.CacheRoots;
 import cc.jumpkick.task.CasSweep;
 import cc.jumpkick.task.HeavyActionPolicy;
+import cc.jumpkick.task.PruneYield;
 import cc.jumpkick.task.TmpGc;
 import cc.jumpkick.util.AccessLedger;
 import cc.jumpkick.util.JkDirs;
@@ -84,137 +86,23 @@ public final class CachePlans {
      * {@code state/tmp} and collects the artifact store's CAS ({@link StoreCasGc}).
      */
     public static BuildPlan pruneBuildPlan(Path root, boolean dryRun, boolean includeJkTmp) {
+        return pruneBuildPlan(root, dryRun, includeJkTmp, PruneYield.NEVER);
+    }
+
+    /**
+     * As {@link #pruneBuildPlan(Path, boolean, boolean)}, stopping at {@code yield}'s safe points
+     * when a build waits for the cache. A stopped pass ends its step normally with no totals put;
+     * the caller reads {@link PruneYield#yielded()} and runs the whole pass again later.
+     */
+    public static BuildPlan pruneBuildPlan(Path root, boolean dryRun, boolean includeJkTmp, PruneYield yield) {
         Task pruneStep = Task.builder("prune")
                 .ticks(1)
                 .execute(ctx -> {
-                    // Drop retired engine jars and parked PATH binaries.
                     try {
-                        var pruned = EngineInstall.current().gc();
-                        if (!pruned.isEmpty()) {
-                            ctx.warn("prune", "retired " + pruned.size() + " displaced jk install file(s)");
-                        }
-                    } catch (RuntimeException e) {
-                        // install-file sweep is best-effort maintenance
-                        Log.debug("pruneBuildPlan: install-file sweep is best-effort maintenance", e);
+                        prune(ctx, root, dryRun, includeJkTmp, yield);
+                    } catch (PruneYield.Yielded stopped) {
+                        // What it deleted was safe to delete; the rest waits for the next pass.
                     }
-
-                    ctx.label("Cleaning cache…");
-                    long totalFiles = 0;
-                    long totalBytes = 0;
-
-                    // Cache-tier CAS temps under <cacheRoot>/sha256/
-                    TempSweep cacheTemps = sweepCasTemps(CacheTree.CACHE_CAS.under(root), dryRun);
-                    totalFiles += cacheTemps.files();
-                    totalBytes += cacheTemps.bytes();
-
-                    var timingsReport = StepTimings.prune(
-                            root,
-                            StepTimings.Limits.resolve(JkDirs.userConfigFile(), ProcessEnv::get),
-                            System.currentTimeMillis(),
-                            dryRun);
-                    totalFiles += timingsReport.evictedByAge() + timingsReport.evictedBySize();
-
-                    if (includeJkTmp) {
-                        var tmpReport = TmpGc.sweep(JkDirs.tmp(), TmpGc.DEFAULT_TTL, dryRun);
-                        totalFiles += tmpReport.deleted();
-                        totalBytes += tmpReport.freedBytes();
-                    }
-
-                    // Reclaim unreferenced payloads before the budget prune: garbage the sweep frees
-                    // is a shortfall the prune then does not have to cover by evicting live entries.
-                    var cacheCas = JkStores.cacheCas(root);
-                    var cacheLive = CacheRoots.collect(cacheCas, CacheTree.ACTIONS.under(root), root.resolve("tools"));
-                    var cacheSweep = CasSweep.sweep(cacheCas, cacheLive, dryRun);
-                    totalFiles += cacheSweep.deleted();
-                    totalBytes += cacheSweep.freedBytes();
-
-                    // Every tier under the cache root, plus a sweep of anything the table does not
-                    // name. The sweep's victims are still on disk in a dry run, so hand them over:
-                    // without that the action prune counts the same blob twice and dry-run totals
-                    // diverge.
-                    var retention = CacheRetention.sweep(root, cacheCas, cacheSweep.deletedShas(), dryRun);
-                    totalFiles += retention.deletedFiles();
-                    totalBytes += retention.freedBytes();
-                    ctx.put(FINAL_ACTION_BYTES, retention.finalActionBytes());
-
-                    // The artifact store's CAS has no other collector: what installs and syncs leave there
-                    // ages out by what it is and how big, faster as the volume fills.
-                    if (includeJkTmp) {
-                        var space = JkCacheConfig.DiskSpace.probe(JkStores.store());
-                        double pressure = DiskPressure.factor(space);
-                        long now = System.currentTimeMillis();
-                        Path toolsRoot = JkStores.store().resolve("tools");
-                        AccessLedger toolLedger = ToolUse.ledger(toolsRoot);
-                        // What the GC collects, the next sync stages again rather than trusting its memo.
-                        if (!dryRun) BuildForks.forgetStaged();
-                        var toolsGc = ToolsGc.run(toolsRoot, toolFamilies(), toolLedger.load(), pressure, now, dryRun);
-                        totalFiles += toolsGc.deleted();
-                        totalBytes += toolsGc.freedBytes();
-                        SweepReport legacy = reclaimLegacyClosures(dryRun);
-                        totalFiles += legacy.files();
-                        totalBytes += legacy.bytes();
-                        if (!dryRun) {
-                            toolLedger.compact(key -> ToolUse.exists(toolsRoot, key));
-                        }
-                        // The unpacked archives (an IDE distribution) live in scratch space, not the store.
-                        Path scratch = JkDirs.tmp();
-                        AccessLedger scratchLedger = ToolUse.ledger(scratch);
-                        var unpackedGc = ToolsGc.run(scratch, Set.of(), scratchLedger.load(), pressure, now, dryRun);
-                        totalFiles += unpackedGc.deleted();
-                        totalBytes += unpackedGc.freedBytes();
-                        if (!dryRun) {
-                            scratchLedger.compact(key -> ToolUse.exists(scratch, key));
-                        }
-                        Path storeRoot = JkStores.store();
-                        AccessLedger blobLedger = AccessLedger.at(storeRoot.resolve(".access"));
-                        var storeGc = StoreCasGc.run(
-                                JkStores.storeCas(),
-                                StoreCasGc.pinnedShas(),
-                                blobLedger.load(),
-                                StoreCasGc.Policy.defaults(pressure).withBudget(DiskPressure.budgetBytes(space)),
-                                now,
-                                dryRun);
-                        if (!dryRun) {
-                            Cas untracked = new Cas(storeRoot);
-                            blobLedger.compact(key -> key.startsWith("cas:") && untracked.contains(key.substring(4)));
-                        }
-                        totalFiles += storeGc.deleted();
-                        totalBytes += storeGc.freedBytes();
-                        var repoGc = StoreRepoGc.run(storeRoot, pressure, now, dryRun);
-                        totalFiles += repoGc.deleted();
-                        totalBytes += repoGc.freedBytes();
-                        SweepReport shadowed = reclaimShadowedArtifacts(dryRun);
-                        totalFiles += shadowed.files();
-                        totalBytes += shadowed.bytes();
-                        // Only on an admin's say-so: the local repository is shared, and jk never reclaims it
-                        // on its own account.
-                        if (JkM2Config.resolve().autoClean()) {
-                            M2Clean.Report m2 = cleanM2(null, 0, dryRun);
-                            totalFiles += m2.removed().size();
-                            totalBytes += m2.freedBytes();
-                        }
-                        if (pressure < DiskPressure.NONE) {
-                            ctx.warn(
-                                    "prune",
-                                    "disk space is low: store retention windows are scaled to "
-                                            + Math.round(pressure * 100) + "%");
-                        }
-                    }
-                    if (!retention.unknownEntries().isEmpty()) {
-                        ctx.warn(
-                                "prune",
-                                "reclaimed unrecognised cache entries: "
-                                        + String.join(", ", retention.unknownEntries()));
-                    }
-                    long actionBudget = JkCacheConfig.resolve().maxCacheSizeBytes();
-                    if (actionBudget > 0 && retention.finalActionBytes() > actionBudget) {
-                        ctx.warn(
-                                "prune",
-                                "cache is still over budget — raise cache.max-cache-size-gb (or JK_MAX_CACHE_SIZE_GB)");
-                    }
-
-                    ctx.put(FILES, totalFiles);
-                    ctx.put(BYTES, totalBytes);
                     ctx.progress(1);
                 })
                 .build();
@@ -222,6 +110,147 @@ public final class CachePlans {
                 .stateKeys(FILES, BYTES, FINAL_ACTION_BYTES)
                 .addTask(pruneStep)
                 .build();
+    }
+
+    /** The prune step's body; {@link PruneYield.Yielded} unwinds it from a safe point. */
+    private static void prune(TaskContext ctx, Path root, boolean dryRun, boolean includeJkTmp, PruneYield yield)
+            throws Exception {
+        // Drop retired engine jars and parked PATH binaries.
+        try {
+            var pruned = EngineInstall.current().gc();
+            if (!pruned.isEmpty()) {
+                ctx.warn("prune", "retired " + pruned.size() + " displaced jk install file(s)");
+            }
+        } catch (RuntimeException e) {
+            // install-file sweep is best-effort maintenance
+            Log.debug("pruneBuildPlan: install-file sweep is best-effort maintenance", e);
+        }
+
+        ctx.label("Cleaning cache…");
+        long totalFiles = 0;
+        long totalBytes = 0;
+
+        // Cache-tier CAS temps under <cacheRoot>/sha256/
+        yield.check();
+        TempSweep cacheTemps = sweepCasTemps(CacheTree.CACHE_CAS.under(root), dryRun, yield);
+        totalFiles += cacheTemps.files();
+        totalBytes += cacheTemps.bytes();
+
+        yield.check();
+        var timingsReport = StepTimings.prune(
+                root,
+                StepTimings.Limits.resolve(JkDirs.userConfigFile(), ProcessEnv::get),
+                Clock.SYSTEM.millis(),
+                dryRun);
+        totalFiles += timingsReport.evictedByAge() + timingsReport.evictedBySize();
+
+        yield.check();
+        if (includeJkTmp) {
+            var tmpReport = TmpGc.sweep(JkDirs.tmp(), TmpGc.DEFAULT_TTL, dryRun);
+            totalFiles += tmpReport.deleted();
+            totalBytes += tmpReport.freedBytes();
+        }
+
+        // Reclaim unreferenced payloads before the budget prune: garbage the sweep frees
+        // is a shortfall the prune then does not have to cover by evicting live entries.
+        // Roots and sweep are one mark-and-sweep: a stop anywhere in it drops the roots with it, and
+        // the next pass collects them again rather than sweep against a set a build has since
+        // outgrown.
+        yield.check();
+        var cacheCas = JkStores.cacheCas(root);
+        var cacheLive = CacheRoots.collect(cacheCas, CacheTree.ACTIONS.under(root), root.resolve("tools"), yield);
+        var cacheSweep = CasSweep.sweep(cacheCas, cacheLive, dryRun, yield);
+        totalFiles += cacheSweep.deleted();
+        totalBytes += cacheSweep.freedBytes();
+
+        // Every tier under the cache root, plus a sweep of anything the table does not
+        // name. The sweep's victims are still on disk in a dry run, so hand them over:
+        // without that the action prune counts the same blob twice and dry-run totals
+        // diverge.
+        var retention = CacheRetention.sweep(root, cacheCas, cacheSweep.deletedShas(), dryRun, yield);
+        totalFiles += retention.deletedFiles();
+        totalBytes += retention.freedBytes();
+        ctx.put(FINAL_ACTION_BYTES, retention.finalActionBytes());
+
+        // The artifact store's CAS has no other collector: what installs and syncs leave there
+        // ages out by what it is and how big, faster as the volume fills.
+        if (includeJkTmp) {
+            var space = JkCacheConfig.DiskSpace.probe(JkStores.store());
+            double pressure = DiskPressure.factor(space);
+            long now = Clock.SYSTEM.millis();
+            Path toolsRoot = JkStores.store().resolve("tools");
+            AccessLedger toolLedger = ToolUse.ledger(toolsRoot);
+            // What the GC collects, the next sync stages again rather than trusting its memo.
+            if (!dryRun) BuildForks.forgetStaged();
+            yield.check();
+            var toolsGc = ToolsGc.run(toolsRoot, toolFamilies(), toolLedger.load(), pressure, now, dryRun);
+            totalFiles += toolsGc.deleted();
+            totalBytes += toolsGc.freedBytes();
+            yield.check();
+            SweepReport legacy = reclaimLegacyClosures(dryRun);
+            totalFiles += legacy.files();
+            totalBytes += legacy.bytes();
+            if (!dryRun) {
+                toolLedger.compact(key -> ToolUse.exists(toolsRoot, key));
+            }
+            // The unpacked archives (an IDE distribution) live in scratch space, not the store.
+            yield.check();
+            Path scratch = JkDirs.tmp();
+            AccessLedger scratchLedger = ToolUse.ledger(scratch);
+            var unpackedGc = ToolsGc.run(scratch, Set.of(), scratchLedger.load(), pressure, now, dryRun);
+            totalFiles += unpackedGc.deleted();
+            totalBytes += unpackedGc.freedBytes();
+            if (!dryRun) {
+                scratchLedger.compact(key -> ToolUse.exists(scratch, key));
+            }
+            yield.check();
+            Path storeRoot = JkStores.store();
+            AccessLedger blobLedger = AccessLedger.at(storeRoot.resolve(".access"));
+            var storeGc = StoreCasGc.run(
+                    JkStores.storeCas(),
+                    StoreCasGc.pinnedShas(),
+                    blobLedger.load(),
+                    StoreCasGc.Policy.defaults(pressure).withBudget(DiskPressure.budgetBytes(space)),
+                    now,
+                    dryRun);
+            if (!dryRun) {
+                Cas untracked = new Cas(storeRoot);
+                blobLedger.compact(key -> key.startsWith("cas:") && untracked.contains(key.substring(4)));
+            }
+            totalFiles += storeGc.deleted();
+            totalBytes += storeGc.freedBytes();
+            yield.check();
+            var repoGc = StoreRepoGc.run(storeRoot, pressure, now, dryRun);
+            totalFiles += repoGc.deleted();
+            totalBytes += repoGc.freedBytes();
+            yield.check();
+            SweepReport shadowed = reclaimShadowedArtifacts(dryRun);
+            totalFiles += shadowed.files();
+            totalBytes += shadowed.bytes();
+            // Only on an admin's say-so: the local repository is shared, and jk never reclaims it
+            // on its own account.
+            yield.check();
+            if (JkM2Config.resolve().autoClean()) {
+                M2Clean.Report m2 = cleanM2(null, 0, dryRun);
+                totalFiles += m2.removed().size();
+                totalBytes += m2.freedBytes();
+            }
+            if (pressure < DiskPressure.NONE) {
+                ctx.warn(
+                        "prune",
+                        "disk space is low: store retention windows are scaled to " + Math.round(pressure * 100) + "%");
+            }
+        }
+        if (!retention.unknownEntries().isEmpty()) {
+            ctx.warn("prune", "reclaimed unrecognised cache entries: " + String.join(", ", retention.unknownEntries()));
+        }
+        long actionBudget = JkCacheConfig.resolve().maxCacheSizeBytes();
+        if (actionBudget > 0 && retention.finalActionBytes() > actionBudget) {
+            ctx.warn("prune", "cache is still over budget — raise cache.max-cache-size-gb (or JK_MAX_CACHE_SIZE_GB)");
+        }
+
+        ctx.put(FILES, totalFiles);
+        ctx.put(BYTES, totalBytes);
     }
 
     /**
@@ -616,10 +645,16 @@ public final class CachePlans {
      * cache tier and the artifact store — the only difference is which root resolves the dir.
      */
     static TempSweep sweepCasTemps(Path shaDir, boolean dryRun) throws IOException {
+        return sweepCasTemps(shaDir, dryRun, PruneYield.NEVER);
+    }
+
+    /** As {@link #sweepCasTemps(Path, boolean)}, stopping between files at {@code yield}'s say-so. */
+    static TempSweep sweepCasTemps(Path shaDir, boolean dryRun, PruneYield yield) throws IOException {
         if (!Files.isDirectory(shaDir)) return new TempSweep(0, 0);
         long files = 0;
         long bytes = 0;
-        for (Path file : tempFiles(shaDir)) {
+        for (Path file : tempFiles(shaDir, yield)) {
+            yield.check();
             bytes += Files.size(file);
             if (!dryRun) Files.deleteIfExists(file);
             files++;
@@ -627,13 +662,13 @@ public final class CachePlans {
         return new TempSweep(files, bytes);
     }
 
-    private static List<Path> tempFiles(Path dir) throws IOException {
-        try (var stream = Files.walk(dir)) {
-            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards.
-            return stream.filter(p -> p.getFileName().toString().startsWith(".put-"))
-                    .filter(Files::isRegularFile)
-                    .toList();
-        }
+    private static List<Path> tempFiles(Path dir, PruneYield yield) throws IOException {
+        List<Path> temps = new ArrayList<>();
+        // The walk hands each entry's attributes over, so the name test is the only question asked.
+        PathUtil.forEachRegularFile(dir, (file, attrs) -> {
+            yield.check();
+            if (file.getFileName().toString().startsWith(".put-")) temps.add(file);
+        });
+        return temps;
     }
 }
