@@ -79,8 +79,8 @@ jk new -t quarkus/hello my-api
   those files and nothing else on the machine — never `~/.m2`. A file the lock does not pin (a
   native jar for another OS, picked by a POM profile) is downloaded at build time, and an
   offline build refuses it. A runtime artifact Quarkus's resolver reaches that `jk-lock.toml`
-  does not name is left out of the application, and a notice naming it (`NOT shipped — outside
-  jk-lock.toml`) is on every verdict of a build that does so. `jk lock` says the same notice,
+  does not name is left out of the application, and a notice naming it (`not shipped, missing
+  from jk-lock.toml`) is on every verdict of a build that does so. `jk lock` says the same notice,
   once even when both closures reach the artifact, when it writes such a lock, before the first
   build. To ship it, declare it under `[dependencies]`; the next lock pins it.
 - **Runtime closure:** what ships is the lock's runtime closure. `jk lock` follows an

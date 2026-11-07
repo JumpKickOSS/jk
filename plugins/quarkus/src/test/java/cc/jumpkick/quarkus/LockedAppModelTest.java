@@ -63,7 +63,7 @@ class LockedAppModelTest {
         ForkNotices.relay(notices, step);
 
         assertThat(step.diagnostics()).singleElement().satisfies(notice -> assertThat(notice)
-                .startsWith("notice: NOT shipped — outside jk-lock.toml")
+                .startsWith("notice: not shipped, missing from jk-lock.toml")
                 .contains("io.smallrye:smallrye-conditional:2.1.0")
                 .doesNotContain("quarkus-core"));
     }
@@ -76,10 +76,10 @@ class LockedAppModelTest {
 
         LockedAppModel.enforce(resolved(dir), lock, ForkNotices.to(notices), QuarkusAugmentMain.LOG_PREFIX);
 
-        // "Re-lock" reads oddly while jk lock is the one saying it; the next lock is right in both.
+        // The same words fit a build and a lock.
         assertThat(Files.readString(notices))
-                .isEqualTo("NOT shipped — outside jk-lock.toml (to ship them, declare them under [dependencies];"
-                        + " the next lock pins them): io.smallrye:smallrye-conditional:2.1.0\n");
+                .isEqualTo("not shipped, missing from jk-lock.toml; add to [dependencies]:"
+                        + " io.smallrye:smallrye-conditional:2.1.0\n");
     }
 
     @Test
@@ -101,7 +101,7 @@ class LockedAppModelTest {
     @Test
     void a_fork_named_no_notices_file_only_prints(@TempDir Path dir) throws Exception {
         assertThat(System.getProperty(ForkNotices.PROPERTY)).isNull();
-        ForkNotices.fromProperty().say("jk-quarkus-augment", "NOT shipped — outside jk-lock.toml: a:b:1");
+        ForkNotices.fromProperty().say("jk-quarkus-augment", "not shipped, missing from jk-lock.toml: a:b:1");
         try (var listing = Files.list(dir)) {
             assertThat(listing).isEmpty();
         }
