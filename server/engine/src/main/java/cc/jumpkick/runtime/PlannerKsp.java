@@ -19,6 +19,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
@@ -40,6 +41,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -80,6 +82,18 @@ public final class PlannerKsp {
     static List<Path> pluginContributedTestSources(
             BuildLayout layout, @Nullable PluginDeclarations decls, String suffix) throws IOException {
         return contributed(layout, decls, suffix, TaskDecl::contributesTestSources);
+    }
+
+    /**
+     * The generated test sources compile-test reads beside the suites' own: the plugin-contributed
+     * ones, then the test KSP round's. A test round's bytecode and resources come first among the
+     * roots mirrored into the test classes ({@link #outputRoots}), so a hand-written resource wins.
+     */
+    static List<Path> generatedTestSources(BuildLayout layout, @Nullable PluginDeclarations decls, String suffix)
+            throws IOException {
+        List<Path> out = pluginContributedTestSources(layout, decls, suffix);
+        out.addAll(generatedSources(kspTestOutBase(layout), suffix));
+        return out;
     }
 
     private static List<Path> contributed(
@@ -165,10 +179,6 @@ public final class PlannerKsp {
         return ctx.get(PROVIDED_CP).orElse(List.of());
     }
 
-    /** Generated-source dirs the KSP round writes (checked by the compile-step unions). */
-    /** One processor-authored KSP diagnostic: the reporting severity plus the bare message. */
-    // KspDiagnostic lives on BuildPlanner so existing tests keep their type name.
-
     /**
      * The processor-authored diagnostics in a successful KSP round's output.
      *
@@ -204,21 +214,57 @@ public final class PlannerKsp {
         return out;
     }
 
+    /** The subdirectories a round writes under its output base, cleared before each round. */
+    private static final List<String> OUTPUT_DIRS = List.of("kotlin", "java", "classes", "resources");
+
+    /** The main round's output base: {@code target/ksp}. */
     static Path kspOutBase(BuildLayout layout) {
-        return layout.moduleTargetDir().resolve("ksp");
+        return kspOutBase(layout.moduleTargetDir());
     }
 
-    /** Files with {@code suffix} under the KSP output tree, sorted — empty when no round ran. */
+    /** The main round's output base under a module's {@code target/} directory. */
+    static Path kspOutBase(Path moduleTargetDir) {
+        return moduleTargetDir.resolve("ksp");
+    }
+
+    /** The test round's output base: {@code target/ksp-test}. */
+    static Path kspTestOutBase(BuildLayout layout) {
+        return layout.moduleTargetDir().resolve("ksp-test");
+    }
+
+    /** Files with {@code suffix} under the main KSP output tree, sorted — empty when no round ran. */
     static List<Path> kspGeneratedSources(BuildLayout layout, String suffix) throws IOException {
+        return generatedSources(kspOutBase(layout), suffix);
+    }
+
+    /** Files with {@code suffix} under a round's generated-source dirs, sorted — empty when it never ran. */
+    static List<Path> generatedSources(Path outBase, String suffix) throws IOException {
         List<Path> out = new ArrayList<>();
         for (String lang : List.of("kotlin", "java")) {
-            Path dir = kspOutBase(layout).resolve(lang);
+            Path dir = outBase.resolve(lang);
             if (!Files.isDirectory(dir)) continue;
-            try (var walk = Files.walk(dir)) {
-                walk.filter(f -> f.toString().endsWith(suffix) && Files.isRegularFile(f))
-                        .sorted()
-                        .forEach(out::add);
-            }
+            List<Path> found = new ArrayList<>();
+            PathUtil.forEachRegularFile(dir, (file, attrs) -> {
+                if (file.toString().endsWith(suffix)) found.add(file);
+            });
+            found.sort(null);
+            out.addAll(found);
+        }
+        return out;
+    }
+
+    /**
+     * The bytecode and resources a round wrote under {@code outBase} that exist, in that order. A
+     * processor that emits bytecode (Micronaut's bean definitions) or a resource (a service
+     * registration) writes them here rather than as sources, so nothing compiles them: the resource
+     * copy mirrors these roots into the classes tree like any resource root, which puts them in the
+     * tree's key, on every classpath that reads the tree, and in the jar.
+     */
+    static List<Path> outputRoots(Path outBase) {
+        List<Path> out = new ArrayList<>();
+        for (String sub : List.of("classes", "resources")) {
+            Path dir = outBase.resolve(sub);
+            if (Files.isDirectory(dir)) out.add(dir);
         }
         return out;
     }
@@ -248,10 +294,9 @@ public final class PlannerKsp {
                 .build();
     }
 
-    /** The KSP2 round: split the processors, check the stamp, resolve the toolchain, fork, stamp. */
+    /** The main KSP2 round: split the processors, then run the round over the main sources. */
     private static void runKsp(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
             throws Exception {
-        BuildPlanner.Inputs in = cx.in();
         List<Path> processorCp = ctx.require(PROCESSOR_CP);
         var split = KspProcessors.split(processorCp);
         ctx.put(JAVAC_PROCESSOR_CP, split.javac());
@@ -261,18 +306,51 @@ public final class PlannerKsp {
             return;
         }
         BuildLayout layout = ctx.require(LAYOUT);
-        Path outBase = kspOutBase(layout);
-        List<Path> classpath = ctx.require(CLASSPATH);
-        List<Path> ktSources = kotlinSources(ctx);
-        List<Path> javaSources = javaSources(ctx);
-
-        List<Path> stampInputs = new ArrayList<>(ktSources);
-        stampInputs.addAll(javaSources);
+        List<Path> stampInputs = new ArrayList<>(kotlinSources(ctx));
+        stampInputs.addAll(javaSources(ctx));
         // Contributed sources are round input too — an extra-src/protoc edit re-runs.
-        stampInputs.addAll(pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".kt"));
-        stampInputs.addAll(pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".java"));
-        List<Path> stampCp = new ArrayList<>(classpath);
-        stampCp.addAll(split.ksp());
+        stampInputs.addAll(pluginContributedSources(layout, pluginDecls, ".kt"));
+        stampInputs.addAll(pluginContributedSources(layout, pluginDecls, ".java"));
+        JkBuild project = ctx.require(PROJECT);
+        Round round = new Round(
+                kspOutBase(layout),
+                TaskNames.KSP,
+                kspSourceRoots(cx.in(), project, layout, pluginDecls, cx.compact()),
+                stampInputs,
+                ctx.require(CLASSPATH),
+                processorCp,
+                split.ksp());
+        if (!runRound(ctx, cx, round)) {
+            ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
+            ctx.label("up to date");
+        }
+        ctx.progress(1);
+    }
+
+    /**
+     * One KSP2 round's inputs. {@code outBase} receives {@code kotlin/}, {@code java/}, {@code
+     * classes/} and {@code resources/}; {@code stampInputs} are the hand-written sources the round
+     * reads; {@code processorCp} is the whole processor closure and {@code kspJars} the jars in it
+     * that register a {@code SymbolProcessorProvider}.
+     */
+    record Round(
+            Path outBase,
+            String producer,
+            List<Path> sourceRoots,
+            List<Path> stampInputs,
+            List<Path> classpath,
+            List<Path> processorCp,
+            List<Path> kspJars) {}
+
+    /**
+     * Run {@code round} unless its stamp is fresh: resolve the toolchain, clear the previous
+     * outputs, fork KSP, surface its diagnostics and stamp. False when the stamp held and nothing ran.
+     */
+    static boolean runRound(TaskContext ctx, BuildPlanner.Ctx cx, Round round) throws Exception {
+        BuildPlanner.Inputs in = cx.in();
+        Path outBase = round.outBase();
+        List<Path> stampCp = new ArrayList<>(round.classpath());
+        stampCp.addAll(round.kspJars());
         boolean rerun = in.session().config().rebuildOr(false);
         JkBuild project = ctx.require(PROJECT);
         String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), project);
@@ -292,29 +370,33 @@ public final class PlannerKsp {
                 ctx.require(RELEASE));
         if (!rerun
                 && FreshnessStamp.isFresh(
-                        outBase, BuildStamps.KSP, stampInputs, stampCp, ctx.require(RELEASE), optionsDigest)) {
-            ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
-            ctx.label("up to date");
-            ctx.progress(1);
-            return;
+                        outBase, BuildStamps.KSP, round.stampInputs(), stampCp, ctx.require(RELEASE), optionsDigest)) {
+            return false;
         }
 
-        ctx.label("KSP " + kspVersion + ": " + split.ksp().size() + " processor jar(s)");
+        ctx.label("KSP " + kspVersion + ": " + round.kspJars().size() + " processor jar(s)");
         // Before the round reads a source: a source edited while it runs is stale next time.
         long readClock = FreshnessStamp.clockNow(outBase);
         KspToolchain toolchain = resolveKspToolchain(project, cx.cas(), kotlinVersion, kspVersion);
 
-        // A stale round's outputs must not survive into the source union.
-        for (String sub : List.of("kotlin", "java", "classes", "resources")) {
+        // A stale round's outputs must not survive into the source union or the classes tree.
+        for (String sub : OUTPUT_DIRS) {
             PathUtil.deleteRecursively(outBase.resolve(sub));
         }
         Files.createDirectories(outBase.resolve("caches"));
 
-        List<Path> ktRoots = kspSourceRoots(in, project, layout, pluginDecls, cx.compact());
-        List<Path> libs = new ArrayList<>(classpath);
+        List<Path> libs = new ArrayList<>(round.classpath());
         libs.add(toolchain.stdlib());
         List<String> cmd = kspCommand(
-                ctx, in, project, outBase, toolchain.kspClasspath(), ktRoots, libs, kotlinVersion, processorCp);
+                ctx,
+                in,
+                project,
+                outBase,
+                toolchain.kspClasspath(),
+                round.sourceRoots(),
+                libs,
+                kotlinVersion,
+                round.processorCp());
         String output = runKspProcess(ctx, in, cmd);
         // A green round still has things to say. Processor `logger.warn`/`info` is how
         // an annotation-driven framework explains what it did and what to do
@@ -327,14 +409,93 @@ public final class PlannerKsp {
         FreshnessStamp.write(
                 outBase,
                 BuildStamps.KSP,
-                TaskNames.KSP,
+                round.producer(),
                 "",
-                stampInputs,
+                round.stampInputs(),
                 stampCp,
                 ctx.require(RELEASE),
                 optionsDigest,
                 readClock);
-        ctx.progress(1);
+        return true;
+    }
+
+    /**
+     * The test round, run by compile-test before the test compilers in a module whose main build
+     * runs one: the processors over the selected suites' hand-written sources, into {@code
+     * target/ksp-test}. {@code classpath} is the test compile classpath, so the main classes (and
+     * the main round's output already mirrored into them) are what the processors resolve against.
+     * The processors are the shared table's closure plus what {@code [test-processor-dependencies]}
+     * adds. Its generated sources join {@link PlannerTest.TestSources}; its bytecode and resources
+     * are mirrored into the test classes with the test resources. A module with no KSP processor
+     * keeps no test round output. True when the output tree may have changed.
+     */
+    static boolean runTestRound(
+            TaskContext ctx,
+            BuildPlanner.Ctx cx,
+            PlannerTest.TestSources src,
+            List<Path> classpath,
+            List<String> compiledSuites,
+            @Nullable PluginDeclarations decls)
+            throws Exception {
+        BuildLayout layout = ctx.require(LAYOUT);
+        if (!cx.ksp()) return dropTestRound(layout);
+        Path outBase = kspTestOutBase(layout);
+        List<Path> processorCp = new ArrayList<>(ctx.require(PROCESSOR_CP));
+        for (Path p : ctx.get(TEST_PROCESSOR_CP).orElse(List.of())) {
+            if (!processorCp.contains(p)) processorCp.add(p);
+        }
+        List<Path> kspJars = KspProcessors.split(processorCp).ksp();
+        List<Path> roots =
+                testSourceRoots(ctx.require(PROJECT), cx.in().dir(), cx.compact(), compiledSuites, layout, decls);
+        if (kspJars.isEmpty() || roots.isEmpty()) return dropTestRound(layout);
+        List<Path> handWritten = new ArrayList<>();
+        for (Path source : src.all()) {
+            if (!source.startsWith(outBase)) handWritten.add(source);
+        }
+        return runRound(
+                ctx,
+                cx,
+                new Round(outBase, TaskNames.COMPILE_TEST, roots, handWritten, classpath, processorCp, kspJars));
+    }
+
+    /** Remove a test round's output, which no round will refresh; true when there was any. */
+    static boolean dropTestRound(BuildLayout layout) throws IOException {
+        Path outBase = kspTestOutBase(layout);
+        if (!Files.exists(outBase)) return false;
+        PathUtil.deleteRecursively(outBase);
+        return true;
+    }
+
+    /**
+     * The test round's source roots that exist: each compiled suite's Kotlin and Java roots, the
+     * {@code [test] extra-src} directories and the plugin-contributed test source dirs.
+     */
+    static List<Path> testSourceRoots(
+            JkBuild project,
+            Path moduleDir,
+            boolean compact,
+            List<String> compiledSuites,
+            BuildLayout layout,
+            @Nullable PluginDeclarations decls) {
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
+        for (String suite : compiledSuites) {
+            roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
+        }
+        for (String rel : project.build().testExtraSrc())
+            roots.add(moduleDir.resolve(rel).normalize());
+        if (decls != null) {
+            for (TaskDecl step : decls.steps()) {
+                for (String rel : step.contributesTestSources()) {
+                    roots.add(PluginBuild.taskScratch(layout, step.name()).resolve(rel));
+                }
+            }
+        }
+        List<Path> out = new ArrayList<>();
+        for (Path root : roots) {
+            if (Files.isDirectory(root)) out.add(root);
+        }
+        return out;
     }
 
     /**

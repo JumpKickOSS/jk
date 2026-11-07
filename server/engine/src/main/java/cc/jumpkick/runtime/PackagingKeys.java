@@ -630,9 +630,10 @@ public final class PackagingKeys {
         return ClasspathFingerprint.entryProjectedAfterResourceCopy(layout.classesDir(), roots);
     }
 
-    /** Resource roots that {@code copy-resources} merges into {@code classes/} (main + plugin). */
+    /** Resource roots that {@code copy-resources} merges into {@code classes/} (KSP output, main, plugin). */
     static List<Path> packageResourceRoots(Path dir, boolean compact) {
-        List<Path> resDirs = new ArrayList<>();
+        List<Path> resDirs =
+                new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspOutBase(BuildLayout.moduleTargetDir(dir))));
         Path resMain = ModuleLayout.mainResourcesDir(dir, compact);
         if (Files.isDirectory(resMain)) resDirs.add(resMain);
         for (var root : ModuleLayoutPlugins.pluginContributedRoots(dir)) {

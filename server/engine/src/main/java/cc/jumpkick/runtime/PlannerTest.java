@@ -142,10 +142,14 @@ public final class PlannerTest {
                         ctx.progress(1);
                         return;
                     }
-                    // Store combined test sources for the TestStamp in run-tests.
-                    ctx.put(TEST_SOURCES, src.all());
                     PlannerSetup.awaitSiblingTestOutputs(ctx, in);
                     List<Path> baseCp = testCompileClasspath(ctx, cx, cas, src);
+                    if (PlannerKsp.runTestRound(ctx, cx, src, baseCp, compiledSuites, pluginDecls)) {
+                        src = TestSources.collect( // the round rewrote its generated sources
+                                project, in.dir(), compact, suiteNames, ctx.require(LAYOUT), pluginDecls);
+                    }
+                    // Store combined test sources for the TestStamp in run-tests.
+                    ctx.put(TEST_SOURCES, src.all());
                     Path testClasses = ctx.require(TEST_CLASSES);
                     String selectionKey = String.join(",", compiledSuites);
                     resetOnSelectionChange(ctx, testClasses, selectionKey);
@@ -263,13 +267,13 @@ public final class PlannerTest {
                     dir, compact, selectedSuites, project.build().testClassSuites());
             LinkedHashSet<Path> javaTest = new LinkedHashSet<>(TestSuites.collectJavaSources(dir, compact, suiteNames));
             javaTest.addAll(TestSupport.testExtraSources(project, dir, ".java"));
-            javaTest.addAll(PlannerKsp.pluginContributedTestSources(layout, decls, ".java"));
+            javaTest.addAll(PlannerKsp.generatedTestSources(layout, decls, ".java"));
             TestSources all = new TestSources(
                     TestSuites.primaryJavaRoot(dir, compact, suiteNames),
                     List.copyOf(javaTest),
                     CompileSupport.concatDistinct(
                             TestSuites.collectKotlinSources(dir, compact, suiteNames),
-                            PlannerKsp.pluginContributedTestSources(layout, decls, ".kt")),
+                            PlannerKsp.generatedTestSources(layout, decls, ".kt")),
                     CompileSupport.concatDistinct(
                             TestSuites.collectGroovySources(dir, compact, suiteNames),
                             PlannerKsp.pluginContributedTestSources(layout, decls, ".groovy")),
@@ -543,7 +547,8 @@ public final class PlannerTest {
             boolean mixedTest,
             boolean mixedTestGv)
             throws IOException {
-        List<Path> suiteResDirs = new ArrayList<>(ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames));
+        List<Path> suiteResDirs = PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(ctx.require(LAYOUT)));
+        suiteResDirs.addAll(ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames));
         if (suiteNames.contains(TestSuites.DEFAULT)) {
             Set<String> unresolved = new TreeSet<>();
             suiteResDirs.addAll(

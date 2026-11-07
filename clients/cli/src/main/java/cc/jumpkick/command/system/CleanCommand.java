@@ -226,6 +226,7 @@ public final class CleanCommand implements CliCommand {
             "kotlin",
             "groovy",
             "ksp",
+            "ksp-test",
             "versions",
             "incremental",
             "plugin",

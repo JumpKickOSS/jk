@@ -912,7 +912,9 @@ public final class PlannerSupport {
                 TestStamp.withCompileTest(testStampExtras(dir, project, profileName, identity), compileTestKeys);
         List<String> compiledSuites =
                 TestSuites.compiled(dir, compact, suites, project.build().testClassSuites());
-        List<Path> stampRes = new ArrayList<>(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
+        // As the live copy: the test KSP round's output roots, then the suites' resources.
+        List<Path> stampRes = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(layout)));
+        stampRes.addAll(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
         if (compiledSuites.contains(TestSuites.DEFAULT)) {
             // The live run keys the default suite's [resources] test-dirs and staged test-filtered
             // roots too. A staged root that no longer holds what its source expands to is one the
