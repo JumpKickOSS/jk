@@ -7,6 +7,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.http.mcp.McpTools;
+import cc.jumpkick.engine.http.mcp.NewProjectWizard;
 import cc.jumpkick.engine.http.mcp.tools.NewTool;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.runtime.NewProjectJava;
@@ -15,6 +16,8 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -34,12 +37,14 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * MCP {@code new} with a template that asks every kind a template may ask, none of them defaulted,
  * through a fake client: one that answers form elicitation (on both revisions that have it), one
- * that declines, and one that declared none, which gets the missing keys and their values instead.
+ * that declines, one that declared URL elicitation alone, which is sent to the dashboard's wizard,
+ * and one that declared none, which gets the missing keys and their values instead.
  */
 class McpNewFormTest {
 
     private final ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor();
-    private final McpHandler mcp = handler();
+    private final NewProjectWizard wizard = new NewProjectWizard(() -> "http://127.0.0.1:8910/", () -> "T");
+    private final McpHandler mcp = handler(wizard);
 
     @TempDir
     Path temp;
@@ -228,6 +233,57 @@ class McpNewFormTest {
     }
 
     @Test
+    void url_elicitation_opens_the_wizard_pre_filled_and_returns_what_it_created() throws Exception {
+        String session = initialize("2025-11-25", "{\"elicitation\":{\"url\":{}}}");
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call = CompletableFuture.supplyAsync(
+                () -> mcp.handle(
+                        call(Map.of("name", "widget", "params", Map.of("motto", "hi"))),
+                        session,
+                        null,
+                        null,
+                        sent::add),
+                threads);
+
+        Map<String, Object> ask = nextQuestion(sent);
+        Map<String, Object> params = object(ask, "params");
+        String id = String.valueOf(params.get("elicitationId"));
+        assertThat(params).containsEntry("mode", "url");
+        assertThat(String.valueOf(params.get("url")))
+                .startsWith("http://127.0.0.1:8910/#new?")
+                .contains("name=widget", "motto=hi", "dir=" + enc(parent.toString()), "template=")
+                .contains("&elicitation=" + id, "&t=T");
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":" + Jsonl.quote(String.valueOf(ask.get("id")))
+                        + ",\"result\":{\"action\":\"accept\"}}",
+                session);
+        // The wizard's create, as POST /api/projects hands it over.
+        String made = parent.resolve("widget").toString();
+        while (!wizard.complete(id, Map.of("path", made, "projectId", "abc123"))) Thread.sleep(20);
+
+        assertThat(call.get(30, TimeUnit.SECONDS).body()).contains("\"created\"", "abc123");
+        Map<String, Object> done = requireNonNull(sent.poll(5, TimeUnit.SECONDS), "no completion notice");
+        assertThat(done.get("method")).isEqualTo("notifications/elicitation/complete");
+        assertThat(object(done, "params")).containsEntry("elicitationId", id);
+    }
+
+    @Test
+    void a_declined_wizard_link_creates_nothing() throws Exception {
+        String session = initialize("2025-11-25", "{\"elicitation\":{\"url\":{}}}");
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call = CompletableFuture.supplyAsync(
+                () -> mcp.handle(call(Map.of("name", "widget")), session, null, null, sent::add), threads);
+
+        Map<String, Object> ask = nextQuestion(sent);
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + ask.get("id") + "\",\"result\":{\"action\":\"decline\"}}", session);
+
+        Map<String, Object> error = error(call.get(30, TimeUnit.SECONDS));
+        assertThat(String.valueOf(error.get("message"))).contains("declined", "wizard", "nothing was created");
+        assertThat(parent.resolve("widget")).doesNotExist();
+    }
+
+    @Test
     void action_form_lists_one_line_per_field_and_templates_stay_lean() {
         String session = initialize("2025-11-25", "{}");
         String form = mcp.handle(
@@ -349,7 +405,11 @@ class McpNewFormTest {
                 .openedSessionId());
     }
 
-    private static McpHandler handler() {
+    private static String enc(String s) {
+        return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    private static McpHandler handler(NewProjectWizard wizard) {
         McpHandler h = new McpHandler(
                 () -> new StatusSnapshot(
                         "0.13.7",
@@ -383,6 +443,7 @@ class McpNewFormTest {
                 List::of,
                 "0.13.7");
         h.tools(new McpTools(List.of(new NewTool())));
+        h.wizard(wizard);
         return h;
     }
 }

@@ -115,7 +115,7 @@ the default template.
 | CLI with no terminal | the same requests | `NewForm.settle` checks flags and defaults; what is left is `NewForm.Unsettled`, one `jk new: <key> …: <flag>` line per field |
 | CLI on a terminal | `new-project-form-request` (no template: jk's step and the catalogue; a template: both steps and the resolved id) | `NewForm` walks it with `FormRenderer`, then scaffolds through `NewTemplate`; the summary names the resolved id, so it reproduces the same template whatever language was asked |
 | CLI `-t <ref> --help` | the same request | `NewForm.help`, a `FieldLine` per field |
-| MCP `new` | `NewProjectOps.templateForm` in process | `McpNewForm` settles the answers: arguments and `params`, then defaults, then form elicitation for what is still required, else an error of `FieldLine`s |
+| MCP `new` | `NewProjectOps.templateForm` in process | `McpNewForm` settles the answers: arguments and `params`, then defaults, then form elicitation for what is still required, then URL elicitation into the web wizard pre-filled with what the call gave, else an error of `FieldLine`s |
 | Web wizard (`#new`) | `GET /api/forms/new-project` (the form, the resolved id, the derived defaults' values) | `wizard-model.js` reads the form as `Form` does (conditions, defaults, `check`, the `FormCommand` spelling) and `wizard.js` renders a widget per kind; `POST /api/projects` settles the posted answers with `NewProjectPost` ([HTTP](http.md#new-project)) |
 
 `FieldLine` is the one compact spelling of a field (`key: a|b = a  # Label`), shared by MCP

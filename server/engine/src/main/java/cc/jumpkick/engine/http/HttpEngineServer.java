@@ -204,6 +204,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.coverageReport = new HttpCoverageReport(journal, tokens);
         this.projectApi = new HttpProjectApi();
         NewProjectWizard wizard = new NewProjectWizard(this::url, tokens::tokenText);
+        if (this.mcp != null) this.mcp.wizard(wizard);
         HttpNewProjectApi newProjectApi = new HttpNewProjectApi(journal, wizard);
         this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);
         api.register("GET", "/api/status", readApi::handleStatus);
