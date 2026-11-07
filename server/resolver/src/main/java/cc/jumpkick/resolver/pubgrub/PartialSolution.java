@@ -4,6 +4,7 @@ package cc.jumpkick.resolver.pubgrub;
 import cc.jumpkick.resolve.ResolveProfile;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -288,6 +290,11 @@ public final class PartialSolution {
         return first == null ? null : first.getValue();
     }
 
+    /** Every package {@link #nextUndecidedPositive} could return, earliest-mentioned first. */
+    public Collection<String> undecidedPositives() {
+        return Collections.unmodifiableCollection(undecidedPositive.values());
+    }
+
     /**
      * True iff at least one positive term about {@code pkg} has been recorded — i.e. the partial
      * solution requires the package to exist at some version. False for "phantom" packages mentioned
@@ -338,6 +345,13 @@ public final class PartialSolution {
         PackageState s = byPackage.get(pkg);
         if (s == null || s.allowed == null) return null;
         return s.allowed.choosePreferred(declared);
+    }
+
+    /** As {@link #choosePreferred(String, Set)}, over only the allowed versions {@code admitted} accepts. */
+    public @Nullable String choosePreferred(String pkg, Set<String> declared, Predicate<String> admitted) {
+        PackageState s = byPackage.get(pkg);
+        if (s == null || s.allowed == null) return null;
+        return s.allowed.choosePreferred(declared, admitted);
     }
 
     /**

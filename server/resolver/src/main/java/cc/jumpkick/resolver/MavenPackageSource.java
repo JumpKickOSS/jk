@@ -1170,9 +1170,9 @@ public final class MavenPackageSource implements PackageSource {
                 String pick = exact.or(() -> preferredVersion(pkg)).orElse(null);
                 if (pick == null) {
                     List<String> candidates = versions(pkg);
-                    // Plain versions the edges wrote steer the solver to the highest of them.
-                    pick = CandidateWindow.highestOf(
-                            new ArrayList<>(declaredVersions(pkg).keySet()));
+                    // Plain versions the edges wrote, and a pin read as a floor, steer the solver
+                    // to the highest of them.
+                    pick = CandidateWindow.highestOf(new ArrayList<>(wantedVersions(pkg)));
                     if (pick == null && !candidates.isEmpty()) pick = candidates.getFirst();
                     if (pick == null) return;
                 }

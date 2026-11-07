@@ -618,6 +618,7 @@ public class PubGrubSolver {
         // which grew quadratic over a solve on large BOM graphs.
         String pkg = solution.nextUndecidedPositive();
         if (pkg == null) return null;
+        if (!pinFloors.isEmpty()) pkg = deferExhaustedPins(pkg);
         phase = "choosing a version for " + pkg;
         ensureUniverse(pkg);
         // Lazy singleton may project empty (pref outside constraint) or after Unavailable.
@@ -629,7 +630,14 @@ public class PubGrubSolver {
         if (!lazyUniverses.contains(pkg)) admitDeclared(pkg, candidatesNamedFor(pkg));
         Set<String> declared = steeringDeclarations(pkg);
 
-        String pick = solution.hasNoCandidates(pkg) ? null : solution.choosePreferred(pkg, declared);
+        Optional<Set<String>> asked = pinCandidates(pkg);
+        String pick = choose(pkg, declared, asked);
+        if (pick == null && asked.isPresent() && widenable(pkg)) {
+            // A lazy seed that is none of the asked versions hides them.
+            expandUniverse(pkg);
+            admitDeclared(pkg, candidatesNamedFor(pkg));
+            pick = choose(pkg, declared, pinCandidates(pkg));
+        }
         if (pick == null) {
             // Diagnostics: if we never widened, expand once for a useful sample.
             if (widenable(pkg)) {
@@ -640,10 +648,14 @@ public class PubGrubSolver {
             VersionSet allowed = solution.positiveSet(pkg);
             if (allowed.isEmpty()) allowed = VersionSet.ALL;
             List<String> available = unknownPackage ? List.of() : sampleAvailable(pkg);
+            List<String> notes = new ArrayList<>(source.refusalNotes(pkg));
+            if (asked.isPresent() && solution.choosePreferred(pkg, declared) != null) {
+                notes.add("an exact pin read as a floor rises only to a version a dependency asks for, and none of "
+                        + String.join(", ", asked.get()) + " fits");
+            }
             addIncompatibility(new Incompatibility(
                     List.of(Term.positive(pkg, allowed)),
-                    new Incompatibility.Cause.NoVersions(
-                            pkg, allowed, unknownPackage, available, source.refusalNotes(pkg))));
+                    new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, available, notes)));
             return pkg;
         }
 
@@ -735,6 +747,52 @@ public class PubGrubSolver {
             if (Versions.compare(v, floor.get()) > 0) steer.add(v);
         }
         return steer;
+    }
+
+    /**
+     * The first undecided package that is not a floored pin whose candidates are all ruled out, else
+     * {@code first}. Every other package is decided before such a pin fails, so each edge that could
+     * still name it a candidate is recorded by then.
+     */
+    private String deferExhaustedPins(String first) {
+        for (String pkg : solution.undecidedPositives()) {
+            Optional<Set<String>> asked = pinCandidates(pkg);
+            if (asked.isEmpty() || !universes.containsKey(pkg)) return pkg;
+            if (choose(pkg, Set.of(), asked) != null) return pkg;
+        }
+        return first;
+    }
+
+    private @Nullable String choose(String pkg, Set<String> declared, Optional<Set<String>> asked) {
+        if (solution.hasNoCandidates(pkg)) return null;
+        if (asked.isEmpty()) return solution.choosePreferred(pkg, declared);
+        return solution.choosePreferred(pkg, declared, asked.get()::contains);
+    }
+
+    /**
+     * The only candidates of a floored pin's package: the pin, and the lowest version each recorded
+     * dependency edge onto the package admits. Empty when {@code pkg} has no pin floor. Highest wins
+     * resolves to one of these, so no other release is tried, and a conflict cannot walk every newer
+     * release. Edges are only ever added, so the set only grows as the solve reads POMs.
+     */
+    private Optional<Set<String>> pinCandidates(String pkg) {
+        Optional<String> pin = pinFloor(pkg);
+        if (pin.isEmpty()) return Optional.empty();
+        Set<String> asked = new LinkedHashSet<>();
+        asked.add(pin.get());
+        VersionUniverse u = universes.get(pkg);
+        if (u == null) return Optional.of(asked);
+        for (Incompatibility inco : incompatibilitiesByPackage.getOrDefault(pkg, List.of())) {
+            if (!(inco.cause() instanceof Incompatibility.Cause.Dependency dependency)) continue;
+            Term to = dependency.to();
+            if (!to.positive() || !to.pkg().equals(pkg)) continue;
+            String lowest = null;
+            for (String v : u.versions()) {
+                if (to.versions().contains(v) && (lowest == null || Versions.compare(v, lowest) < 0)) lowest = v;
+            }
+            if (lowest != null) asked.add(lowest);
+        }
+        return Optional.of(asked);
     }
 
     /** The pin floor of {@code pkg}, a package key whose first two segments are its {@code group:artifact}. */

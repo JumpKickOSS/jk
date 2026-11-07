@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -122,6 +123,118 @@ class PinFloorsLockTest {
 
         assertThat(row(lock, INJECT_API).version()).isEqualTo("2.0.1.MR");
         assertThat(row(lock, SHIRO_LANG).deps()).contains(INJECT_API + "@2.0.1.MR");
+    }
+
+    /**
+     * Every serializer release needs a clients version nobody publishes, so the floored serializer
+     * pin cannot hold. Nothing in the graph declares a serializer above the pin, so the probe gives
+     * up after reading the pinned POM rather than trying each of the newer releases.
+     */
+    @Test
+    void read_as_floors_a_conflicting_pin_does_not_walk_every_newer_release(@TempDir Path tempDir) {
+        publishSerializer(v -> false);
+
+        assertThatThrownBy(() -> new LockOrchestrator(repoGroup(tempDir))
+                        .withPinsAsFloors(true)
+                        .lock(serializerProject(List.of()), "test"))
+                .isInstanceOf(UnsatisfiableException.class)
+                .hasMessageContaining("org.ex:serializer")
+                .hasMessageContaining("rises only to a version a dependency asks for");
+        assertThat(serializerPomsRead()).containsExactly("7.4.8");
+    }
+
+    /**
+     * A dependency declares serializer 7.30.0, which conflicts like the pin; only the newest release
+     * would fit, and nothing asks for it. The pin rises only to versions the graph names, so the
+     * probe reads those two POMs and gives up instead of floating to the newest release.
+     */
+    @Test
+    void read_as_floors_a_pin_rises_only_to_a_version_the_graph_names(@TempDir Path tempDir) {
+        publishSerializer(v -> v.equals("7.64.0"));
+        publishConsumer();
+
+        assertThatThrownBy(() -> new LockOrchestrator(repoGroup(tempDir))
+                        .withPinsAsFloors(true)
+                        .lock(
+                                serializerProject(
+                                        List.of(new Dependency("org.ex:consumer", VersionSelector.parse("=1.0")))),
+                                "test"))
+                .isInstanceOf(UnsatisfiableException.class)
+                .hasMessageContaining("org.ex:serializer");
+        assertThat(serializerPomsRead()).containsExactlyInAnyOrder("7.4.8", "7.30.0");
+    }
+
+    /**
+     * The pin conflicts and the 7.30.0 a dependency declares fits. The pin's failure waits until the
+     * dependency naming 7.30.0 is read, so the pin rises to it.
+     */
+    @Test
+    void read_as_floors_a_conflicting_pin_rises_to_a_version_a_later_dependency_names(@TempDir Path tempDir)
+            throws Exception {
+        publishSerializer(v -> v.equals("7.30.0"));
+        publishConsumer();
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withPinsAsFloors(true)
+                .lock(
+                        serializerProject(List.of(new Dependency("org.ex:consumer", VersionSelector.parse("=1.0")))),
+                        "test");
+
+        assertThat(row(lock, "org.ex:serializer:jar:").version()).isEqualTo("7.30.0");
+        assertThat(serializerPomsRead()).containsExactlyInAnyOrder("7.4.8", "7.30.0");
+    }
+
+    /** Consumer 1.0, which declares serializer 7.30.0. */
+    private void publishConsumer() {
+        upstream.metadata("org.ex", "consumer", "1.0");
+        upstream.pom("org.ex", "consumer", "1.0", """
+                <project>
+                  <groupId>org.ex</groupId><artifactId>consumer</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>org.ex</groupId><artifactId>serializer</artifactId><version>7.30.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+    }
+
+    /** Serializer 7.4.8 and sixty newer releases; each needs clients 9.0, which nobody publishes, unless {@code fits}. */
+    private void publishSerializer(Predicate<String> fits) {
+        List<String> serializer = new ArrayList<>();
+        serializer.add("7.4.8");
+        for (int minor = 5; minor < 65; minor++) serializer.add("7." + minor + ".0");
+        upstream.metadata("org.ex", "serializer", serializer.toArray(String[]::new));
+        for (String v : serializer) {
+            upstream.pom("org.ex", "serializer", v, """
+                    <project>
+                      <groupId>org.ex</groupId><artifactId>serializer</artifactId><version>%s</version>
+                      <dependencies>
+                        <dependency><groupId>org.ex</groupId><artifactId>clients</artifactId><version>[%s]</version></dependency>
+                      </dependencies>
+                    </project>
+                    """.formatted(v, fits.test(v) ? "1.0" : "9.0"));
+        }
+        upstream.metadata("org.ex", "clients", "1.0");
+        upstream.pom("org.ex", "clients", "1.0", MavenStub.emptyPom("org.ex", "clients", "1.0"));
+    }
+
+    /** A project pinning serializer 7.4.8 and clients 1.0, plus {@code more}. */
+    private static JkBuild serializerProject(List<Dependency> more) {
+        List<Dependency> main = new ArrayList<>(List.of(
+                new Dependency("org.ex:serializer", VersionSelector.parse("=7.4.8")),
+                new Dependency("org.ex:clients", VersionSelector.parse("=1.0"))));
+        main.addAll(more);
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.MAIN, main);
+        return new JkBuild(new Project("org.ex", "app", "1.0", 25), new JkBuild.Dependencies(byScope));
+    }
+
+    /** The serializer versions whose POM the lock requested. */
+    private List<String> serializerPomsRead() {
+        return http.requested().stream()
+                .filter(p -> p.startsWith("/org/ex/serializer/") && p.endsWith(".pom"))
+                .map(p -> p.split("/")[4])
+                .distinct()
+                .toList();
     }
 
     /**

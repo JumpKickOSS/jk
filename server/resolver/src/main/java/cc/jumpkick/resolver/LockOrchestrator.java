@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
@@ -172,6 +173,7 @@ public final class LockOrchestrator {
         private final AtomicInteger memberSolves = new AtomicInteger();
         private final AtomicInteger memberReuses = new AtomicInteger();
         private final AtomicInteger mergedSolves = new AtomicInteger();
+        private final AtomicLong reads = new AtomicLong();
 
         private record Remembered(MemberInputs inputs, MemberPartitions.MemberSolve solve) {}
 
@@ -211,10 +213,20 @@ public final class LockOrchestrator {
             return mergedSolves.get();
         }
 
+        /** Catalog and POM reads the solves completed since the last {@link #resetCounts}, speculative ones included. */
+        public long reads() {
+            return reads.get();
+        }
+
         public void resetCounts() {
             memberSolves.set(0);
             memberReuses.set(0);
             mergedSolves.set(0);
+            reads.set(0);
+        }
+
+        void read(long count) {
+            reads.addAndGet(count);
         }
 
         @Nullable
@@ -816,6 +828,7 @@ public final class LockOrchestrator {
         ScopeSolves scopeSolves =
                 new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, floorPin, conditionals);
         ScopeSolves.Solved solved = scopeSolves.solve(roots, prefs, progress);
+        if (rounds != null && sharedSource != null) rounds.read(sharedSource.readsCompleted());
         for (String line : scopeSolves.overrides()) observer.onOverride(line);
         if (sharedSource != null) {
             for (String line : sharedSource.governingOverrides()) observer.onOverride(line);

@@ -11,6 +11,7 @@ import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -245,6 +246,56 @@ class ImportPinRaisesTest {
                 [dependencies]
                 api = "org.ex:api:1.0"
                 """);
+    }
+
+    /**
+     * The serializer pin conflicts, as does every release but the 7.30.0 a dependency declares. The
+     * probe raises the pin to 7.30.0 reading a handful of files, not one POM per newer release.
+     */
+    @Test
+    void a_conflicting_pin_rises_to_the_version_a_dependency_names_without_reading_every_release(@TempDir Path project)
+            throws Exception {
+        List<String> releases = new ArrayList<>(List.of("7.4.8"));
+        for (int minor = 5; minor < 65; minor++) releases.add("7." + minor + ".0");
+        upstream.metadata("org.ex", "serializer", releases.toArray(String[]::new));
+        for (String v : releases) {
+            upstream.pom("org.ex", "serializer", v, """
+                    <project>
+                      <groupId>org.ex</groupId><artifactId>serializer</artifactId><version>%s</version>
+                      <dependencies>
+                        <dependency><groupId>org.ex</groupId><artifactId>clients</artifactId><version>[%s]</version></dependency>
+                      </dependencies>
+                    </project>
+                    """.formatted(v, v.equals("7.30.0") ? "1.0" : "9.0"));
+        }
+        upstream.leaf("org.ex", "clients", "1.0");
+        upstream.metadata("org.ex", "consumer", "1.0");
+        upstream.pom("org.ex", "consumer", "1.0", """
+                <project>
+                  <groupId>org.ex</groupId><artifactId>consumer</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>org.ex</groupId><artifactId>serializer</artifactId><version>7.30.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "org.ex"
+                name = "app"
+                version = "1.0"
+                java = 25
+
+                [dependencies]
+                serializer = "org.ex:serializer:7.4.8"
+                clients = "org.ex:clients:1.0"
+                consumer = "org.ex:consumer:1.0"
+                """);
+
+        ImportPinRaises.Outcome outcome = ImportPinRaises.rounds(project, project.resolve("cache"), http.base(), true);
+
+        assertThat(outcome.lines()).singleElement().asString().startsWith("org.ex:serializer raised 7.4.8 → 7.30.0");
+        assertThat(outcome.rounds().getFirst().reads())
+                .as("a walk of the newer releases reads at least one POM for each of them")
+                .isLessThan(40);
     }
 
     @Test

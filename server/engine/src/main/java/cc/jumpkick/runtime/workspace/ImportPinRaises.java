@@ -39,8 +39,11 @@ public final class ImportPinRaises {
         return rounds(lockDir, cache, repoUrl, true).lines();
     }
 
-    /** What one probe round solved: member solves run and reused, and whether the merged solve ran. */
-    record Round(int memberSolves, int memberReuses, int mergedSolves) {}
+    /**
+     * What one probe round solved: member solves run and reused, whether the merged solve ran, and the
+     * catalog and POM reads its solves completed.
+     */
+    record Round(int memberSolves, int memberReuses, int mergedSolves, long reads) {}
 
     /** The report lines and each round's solve counts. */
     record Outcome(List<String> lines, List<Round> rounds) {}
@@ -71,7 +74,7 @@ public final class ImportPinRaises {
                             new LockMode.PinFloors())
                     .withRounds(series)
                     .resolve(null, ResolveObserver.NOOP, LockPipeline.Progress.SILENT);
-            spent.add(new Round(series.memberSolves(), series.memberReuses(), series.mergedSolves()));
+            spent.add(new Round(series.memberSolves(), series.memberReuses(), series.mergedSolves(), series.reads()));
             ManifestUpdates.Plan plan = ManifestUpdates.raise(lockDir, probe);
             if (plan.rewrites().isEmpty()) break;
             ManifestUpdates.apply(plan);

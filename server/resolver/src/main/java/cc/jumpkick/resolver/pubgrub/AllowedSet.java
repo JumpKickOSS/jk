@@ -5,6 +5,7 @@ import cc.jumpkick.version.Versions;
 import java.util.BitSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -95,16 +96,22 @@ public final class AllowedSet {
      * still wins over both.
      */
     public @Nullable String choosePreferred(Set<String> declared) {
+        return choosePreferred(declared, v -> true);
+    }
+
+    /** As {@link #choosePreferred(Set)}, over only the allowed versions {@code admitted} accepts. */
+    public @Nullable String choosePreferred(Set<String> declared, Predicate<String> admitted) {
         int first = bits.nextSetBit(0);
         if (first < 0) return null;
         // Soft-prefer front: index 0 is not a strict max of the universe → pin was front-loaded.
-        if (first == 0 && universe.softPreferFront()) {
+        if (first == 0 && universe.softPreferFront() && admitted.test(universe.version(0))) {
             return universe.version(0);
         }
         String stable = null;
         String prerelease = null;
         for (int i = first; i >= 0; i = bits.nextSetBit(i + 1)) {
             String v = universe.version(i);
+            if (!admitted.test(v)) continue;
             if (declared.contains(v)) return v;
             if (Versions.isStable(v)) {
                 if (stable == null) stable = v;
