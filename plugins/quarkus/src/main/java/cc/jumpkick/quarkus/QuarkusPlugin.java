@@ -164,7 +164,9 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      * lock being written — the extensions' {@code -deployment} artifacts and their closure, and each
      * POM it walks — resolved in a fork on the augment's own tool classpath ({@link
      * QuarkusLockClosureMain}), each with where the resolver holds its bytes. The lock pins them and
-     * the sync stages them, so the augment and the test model read them from the store.
+     * the sync stages them, so the augment and the test model read them from the store. What the
+     * fork says a build of this lock would leave out of the application reaches {@code exec} as a
+     * notice, which {@code jk lock} says.
      */
     @Override
     public List<Pin> lockClosure(String name, TaskExec exec, List<PackageIo.RuntimeEntry> testRuntimeEntries)
@@ -182,10 +184,12 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         Path list = writeRuntimeList(entries, scratch.resolve(name + "-jars.tsv"));
         Path out = scratch.resolve(name + ".txt");
         Path routes = writeRepositoryRoutes(exec);
+        Path notices = Files.createTempFile("jk-quarkus-notices-", ".txt");
         TaskExec.ToolRun.Result run;
         try {
             run = exec.java()
                     .classpath(toolClasspath(exec))
+                    .arg(ForkNotices.flag(notices))
                     .mainClass(QuarkusLockClosureMain.class.getName())
                     .args(List.of(
                             exec.classesDir().toString(),
@@ -201,8 +205,10 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                             out.toString()))
                     .cwd(exec.moduleDir())
                     .run();
+            ForkNotices.relay(notices, exec);
         } finally {
             Files.deleteIfExists(routes);
+            Files.deleteIfExists(notices);
         }
         if (run.exit() != 0 || !Files.isRegularFile(out)) {
             throw new IOException("quarkus " + name + " closure failed (exit " + run.exit() + "):\n"

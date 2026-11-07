@@ -25,6 +25,10 @@ import org.jspecify.annotations.Nullable;
  * engine builds from the store, so a clean build downloads nothing and an offline one has
  * everything.
  *
+ * <p>The model is checked against the lock as the step's own is ({@link LockedAppModel#enforce}): a
+ * runtime artifact it reaches outside the lock, which a build would leave out of the application,
+ * is appended to the notices file the worker names, and {@code jk lock} says it.
+ *
  * <p>Quarkus decides what a deployment closure is (each runtime extension's descriptor, its
  * conditional dependencies and capabilities, the platform BOM); this fork asks it rather than
  * repeating that logic.
@@ -54,8 +58,18 @@ public final class QuarkusLockClosureMain {
         boolean offline = EnvValues.parseBool(args[9]).orElse(false);
         Path out = Path.of(args[10]).toAbsolutePath().normalize();
 
-        Map<String, Path> files =
-                resolve(locked, seed, classesDir, scratch, group, artifact, version, quarkusVersion, routes, offline);
+        Map<String, Path> files = resolve(
+                locked,
+                seed,
+                classesDir,
+                scratch,
+                group,
+                artifact,
+                version,
+                quarkusVersion,
+                routes,
+                offline,
+                ForkNotices.fromProperty());
         List<String> lines = new ArrayList<>(files.size());
         files.forEach((coordinate, file) -> lines.add(coordinate + "\t" + file));
         Files.write(out, lines, StandardCharsets.UTF_8);
@@ -65,7 +79,9 @@ public final class QuarkusLockClosureMain {
     /**
      * Every file the resolver reads building {@code locked}'s application model over a fresh local
      * repository under {@code scratch}, each to where it holds the bytes; the application and the
-     * workspace siblings are left out, since neither comes from a repository.
+     * workspace siblings are left out, since neither comes from a repository. A runtime artifact
+     * the model reaches and {@code locked} does not name is one a build of this lock would leave
+     * out of the application; {@code notices} hears it now, when the lock is written.
      */
     static Map<String, Path> resolve(
             LockedClosure locked,
@@ -77,7 +93,8 @@ public final class QuarkusLockClosureMain {
             String version,
             String quarkusVersion,
             RepositoryRoutes routes,
-            boolean offline)
+            boolean offline,
+            ForkNotices notices)
             throws Exception {
         Path localRepo = Files.createDirectories(scratch.resolve("m2"));
         Path appJar = scratch.resolve("app.jar");
@@ -100,7 +117,8 @@ public final class QuarkusLockClosureMain {
                 appJar,
                 classesDir,
                 quarkusVersion,
-                record);
+                record,
+                notices);
         return record.files();
     }
 
