@@ -346,7 +346,7 @@ shows it, with the command that accepts it, and may decline it, but a bearer-tok
 accepts it: an agent can read the token and drive a browser. [Security](security.md#decisions).
 
 **`jk decide`** lists the open decisions; at a terminal it asks one (`jk decide <id>`, or a pick
-when there are several) with the same widgets `jk new` uses. `--decline` declines it. Away from a
+when there are several) with the same widgets `jk new` uses. `-d` (`--decline`) declines it. Away from a
 terminal it lists and refuses to answer.
 
 ## Resources

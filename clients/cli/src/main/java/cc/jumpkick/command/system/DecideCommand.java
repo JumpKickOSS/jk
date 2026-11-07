@@ -54,7 +54,7 @@ public final class DecideCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Decline the decision instead of answering its form", "--decline"));
+        return List.of(Opt.flag("Decline the decision instead of answering its form", "-d", "--decline"));
     }
 
     @Override
