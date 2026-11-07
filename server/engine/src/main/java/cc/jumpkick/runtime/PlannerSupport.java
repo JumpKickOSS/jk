@@ -625,7 +625,7 @@ public final class PlannerSupport {
      * run(only=member)} runs what {@code jk test -m member} runs. {@code jk test} resolves through
      * the same {@link TierTags} CLI-side and its selection already carries them.
      */
-    static TestSelection effectiveSelection(TestSelection sel, Path moduleDir, @Nullable String profileName) {
+    public static TestSelection effectiveSelection(TestSelection sel, Path moduleDir, @Nullable String profileName) {
         // tagsResolved: the CLI already applied baseline/profile/flag layers — an empty list may
         // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty.
         if (sel.tagsResolved()) return sel;
