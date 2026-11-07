@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -74,6 +75,31 @@ class SuiteClassFilterTest {
         assertThat(runs.matcher("com.acme.CheckoutIT").matches()).isTrue();
         assertThat(runs.matcher("com.acme.FooIT").matches()).isFalse();
         assertThat(runs.matcher("com.acme.FooTest").matches()).isTrue();
+    }
+
+    @Test
+    void a_directory_suite_run_apart_keeps_its_own_classes_and_leaves_the_rest(@TempDir Path module) throws Exception {
+        Path e2e = Files.createDirectories(module.resolve("src/e2e/java/com/acme"));
+        Files.writeString(e2e.resolve("CheckoutIT.java"), "package com.acme; class CheckoutIT {}");
+        SuiteClassFilter suites = SuiteClassFilter.of(module, false, List.of("test", "integration", "e2e"), FAILSAFE);
+
+        Pattern withDefault = runs(Objects.requireNonNull(suites.part("test")));
+        assertThat(withDefault.matcher("com.acme.FooTest").matches()).isTrue();
+        assertThat(withDefault.matcher("com.acme.FooIT").matches())
+                .as("a class-pattern suite runs beside the default suite's resources")
+                .isTrue();
+        assertThat(withDefault.matcher("com.acme.CheckoutIT").matches()).isFalse();
+        assertThat(withDefault.matcher("com.acme.CheckoutIT$Nested").matches()).isFalse();
+
+        Pattern alone = runs(Objects.requireNonNull(suites.part("e2e")));
+        assertThat(alone.matcher("com.acme.CheckoutIT").matches()).isTrue();
+        assertThat(alone.matcher("com.acme.CheckoutIT$Nested").matches()).isTrue();
+        assertThat(alone.matcher("com.acme.FooTest").matches()).isFalse();
+        assertThat(alone.matcher("com.acme.FooIT").matches()).isFalse();
+
+        assertThat(SuiteClassFilter.of(module, false, List.of("e2e"), Map.of()).part("test"))
+                .as("a selection with nothing beside the default suite's resources")
+                .isNull();
     }
 
     @Test

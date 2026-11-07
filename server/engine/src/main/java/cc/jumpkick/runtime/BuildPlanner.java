@@ -160,6 +160,10 @@ public final class BuildPlanner {
     public static final BuildPlanKey<List<Path>> TEST_RESOURCE_DIRS =
             BuildPlanKey.list("test-resource-dirs", Path.class);
 
+    /** Each directory suite's own resource roots when a run compiles several apart; empty otherwise. */
+    static final BuildPlanKey<SuiteResources> SUITE_RESOURCES =
+            BuildPlanKey.scalar("suite-resources", SuiteResources.class);
+
     public static final BuildPlanKey<String> BUILD_OUTCOME = BuildPlanKey.scalar("build-outcome", String.class);
     public static final BuildPlanKey<String> KOTLIN_OUTCOME = BuildPlanKey.scalar("kotlin-outcome", String.class);
     public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.scalar("groovy-outcome", String.class);
@@ -221,6 +225,7 @@ public final class BuildPlanner {
             GROOVY_STAMP_CLOCK,
             TEST_SOURCES,
             TEST_RESOURCE_DIRS,
+            SUITE_RESOURCES,
             BUILD_OUTCOME,
             KOTLIN_OUTCOME,
             GROOVY_OUTCOME,
