@@ -4,7 +4,7 @@ generated-by-build = "5eb9c213f3bf"
 generated-by-build-time = "2026-11-07T04:42:27Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "aad6ec0fdec65f80e992b123d9bd15e95d4ab5c2794d87551c461916a8a489a0"
+manifests-sha256 = "ba350c5723a1f0f0e0d37a7db0654adef59e4bfb0826c4272f4cac08b52e5e1e"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -405,7 +405,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b49c5c958316ed67a09c699dda9aa749caf434d51d863dea599ef36a49b9c855"
 scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
-members  = ["clients/maven-spy"]
+members  = ["clients/cli", "clients/maven-spy"]
 
 [[artifact]]
 name     = "com.google.errorprone:error_prone_annotations:jar:"
@@ -774,6 +774,37 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f412ecbb235c2460b45e63584109723dea8d94b819c78c9bfc38f50cba8546c0"
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "com.microsoft.playwright:driver-bundle:jar:"
+version  = "1.64.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c04dce9bd95e758c2c5784dfb9b508ba8f4b7601aa1a4f738ae269e5c0bd49a9"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "com.microsoft.playwright:driver:jar:"
+version  = "1.64.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:116badd0cfc74d85bc58fef74fe492e63da72035d4ec8569ad88188332b839c5"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "com.microsoft.playwright:playwright:jar:"
+version  = "1.64.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b4a40f4af4b8e0b8aec0b461c2f475aed6a5e6693bdbf65de2fee6d31cd17c7b"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+deps = [
+  "com.google.code.gson:gson:jar:@2.14.0",
+  "com.microsoft.playwright:driver-bundle:jar:@1.64.0",
+  "com.microsoft.playwright:driver:jar:@1.64.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.opentest4j:opentest4j:jar:@1.3.0",
+]
 
 [[artifact]]
 name     = "com.puppycrawl.tools:checkstyle:jar:"
