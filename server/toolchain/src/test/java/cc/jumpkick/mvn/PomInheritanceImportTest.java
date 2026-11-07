@@ -605,6 +605,83 @@ class PomInheritanceImportTest {
     }
 
     /**
+     * Maven inherits {@code <description>}, but a published parent's describes the framework: the
+     * module imports with none, and its own still wins over the parent's.
+     */
+    @Test
+    void a_published_parents_description_is_not_the_modules(@TempDir Path tempDir) throws Exception {
+        http.serve(TestImporters.pomPath("org.fw", "fw-parent", "1"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.fw</groupId>
+                  <artifactId>fw-parent</artifactId>
+                  <version>1</version>
+                  <packaging>pom</packaging>
+                  <description>Parent pom for framework applications</description>
+                </project>
+                """);
+        String child = """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>org.fw</groupId>
+                    <artifactId>fw-parent</artifactId>
+                    <version>1</version>
+                    <relativePath/>
+                  </parent>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>0.1.0</version>
+                  %s
+                </project>
+                """;
+        Path inherits = Files.createDirectories(tempDir.resolve("inherits")).resolve("pom.xml");
+        Files.writeString(inherits, child.formatted(""));
+        Path declares = Files.createDirectories(tempDir.resolve("declares")).resolve("pom.xml");
+        Files.writeString(declares, child.formatted("<description>The quickstart service</description>"));
+
+        JkBuild bare =
+                TestImporters.over(tempDir, http.base()).importFrom(inherits).jkBuild();
+        assertThat(bare.project().description()).isNull();
+        assertThat(JkBuildRenderer.render(bare)).doesNotContain("description");
+        JkBuild own =
+                TestImporters.over(tempDir, http.base()).importFrom(declares).jkBuild();
+        assertThat(own.project().description()).isEqualTo("The quickstart service");
+    }
+
+    /** A reactor parent is the same project, so its {@code <description>} reaches a member that declares none. */
+    @Test
+    void a_reactor_parents_description_reaches_the_member(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <description>The shop backend</description>
+                  <modules><module>app</module></modules>
+                </project>
+                """);
+        Files.createDirectories(root.resolve("app"));
+        Files.writeString(root.resolve("app/pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.ex</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0.0</version>
+                  </parent>
+                  <artifactId>app</artifactId>
+                </project>
+                """);
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+        assertThat(requireNonNull(result.modules().get("app")).project().description())
+                .isEqualTo("The shop backend");
+    }
+
+    /**
      * A member whose versions come from two managers — a published parent chain and a BOM leaf of
      * the reactor — is written with each version where the lock finds it: the published chain's as
      * {@code managed}, since its {@code [platform-dependencies]} row carries the whole inherited

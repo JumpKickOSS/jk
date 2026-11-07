@@ -21,8 +21,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A green run with zero tests is never the answer. The injected launcher follows the declared
- * Jupiter's Platform line, so a Jupiter 5 suite locks a Platform 1 launcher and runs; and a suite
+ * A green run with zero tests is never the answer. The injected launcher follows the resolved
+ * Jupiter's Platform line, so a Jupiter 5 suite locks a Platform 1 launcher and runs, a suite that
+ * declares only the Jupiter API gets its engine as under Surefire, and a suite
  * whose classes hold no test fails the run-tests step with the class count instead of reporting
  * success.
  */
@@ -74,6 +75,68 @@ class JupiterLineE2eTest {
         TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
         assertThat(tests.total()).as("the Jupiter 5 engine ran its test").isEqualTo(1);
         assertThat(tests.succeeded()).isEqualTo(1);
+    }
+
+    @Test
+    void a_declared_jupiter_api_alone_gets_its_engine_and_runs(@TempDir Path tmp) throws Exception {
+        Path project = suite(tmp, "api-only", """
+                junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version = "5.12.2" }  # off the train: Helidon 27's Jupiter line is the point of this fixture
+                """);
+
+        BuildPlan plan = lockAndPlan(project);
+        BuildPlanResult result = plan.run();
+        assertThat(Files.readString(project.resolve("jk-lock.toml")))
+                .contains("org.junit.jupiter:junit-jupiter-engine:jar:\"\nversion  = \"5.12.2\"")
+                .contains("org.junit.platform:junit-platform-launcher:jar:\"\nversion  = \"1.12.2\"");
+        assertThat(result.errors()).isEmpty();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        assertThat(tests.succeeded())
+                .as("the injected engine ran the API-only suite")
+                .isEqualTo(1);
+    }
+
+    @Test
+    void a_jupiter_a_test_library_brings_in_locks_a_launcher_on_its_line_and_runs(@TempDir Path tmp) throws Exception {
+        Path project = suite(tmp, "transitive", """
+                helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5", version = "27.0.1" }
+                """);
+
+        BuildPlan plan = lockAndPlan(project);
+        BuildPlanResult result = plan.run();
+        assertThat(Files.readString(project.resolve("jk-lock.toml")))
+                .as("no launcher pin: the launcher follows the Jupiter 5.12.2 the library brings in")
+                .contains("org.junit.platform:junit-platform-launcher:jar:\"\nversion  = \"1.12.2\"");
+        assertThat(result.errors()).isEmpty();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        assertThat(tests.succeeded()).isEqualTo(1);
+    }
+
+    /** A project named {@code name} whose {@code [test-dependencies]} are {@code testDependencies}, with one passing test. */
+    private static Path suite(Path tmp, String name, String testDependencies) throws IOException {
+        Path project = Files.createDirectories(tmp.resolve(name));
+        Files.writeString(project.resolve("jk.toml"), """
+                name    = "%s"
+                group   = "com.example"
+                version = "1.0.0"
+                java    = 25
+
+                [test-dependencies]
+                %s""".formatted(name, testDependencies) + REPOSITORIES);
+        Path test = Files.createDirectories(project.resolve("test/src/com/example"));
+        Files.writeString(test.resolve("ApiTest.java"), """
+                package com.example;
+
+                import org.junit.jupiter.api.Assertions;
+                import org.junit.jupiter.api.Test;
+
+                class ApiTest {
+                    @Test
+                    void runs() {
+                        Assertions.assertTrue(true);
+                    }
+                }
+                """);
+        return project;
     }
 
     @Test

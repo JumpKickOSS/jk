@@ -113,7 +113,8 @@ final class TextEvaluator implements BatchEvaluator {
         Path root = ctx.lane() == Lane.MODULE && moduleDir != null ? moduleDir : ctx.root();
         // Files are scanned in parallel and merged in corpus order, so a rule sees its files in the
         // same order whatever the scheduling: a failure stops a rule at the same file every run.
-        List<List<Seen>> perFile = ParallelMap.map(TextFiles.corpus(root), f -> scanFile(f, live));
+        FileModules modules = FileModules.of(ctx);
+        List<List<Seen>> perFile = ParallelMap.map(TextFiles.corpus(root), f -> scanFile(f, live, modules));
         for (List<Seen> seen : perFile) {
             for (Seen s : seen) {
                 Prepared p = s.rule();
@@ -186,7 +187,12 @@ final class TextEvaluator implements BatchEvaluator {
         return n;
     }
 
-    private static boolean applies(Prepared p, TextFiles.Entry f) {
+    /**
+     * Whether {@code p} reads {@code f}: its module is in scope, or it is an {@code owner} file, which
+     * the rule reads wherever it lives; and {@code languages} and {@code files} take it.
+     */
+    private static boolean applies(Prepared p, TextFiles.Entry f, FileModules modules) {
+        if (!modules.judges(p.rule, f.rel()) && !matchesAny(p.owners, f.rel())) return false;
         if (!p.languages.isEmpty() && !p.languages.contains(f.language().id())) return false;
         if (p.files.isEmpty()) return f.rel().contains("/src/") || f.rel().startsWith("src/");
         return matchesAny(p.files, f.rel());
@@ -228,9 +234,9 @@ final class TextEvaluator implements BatchEvaluator {
             @Nullable String failure) {}
 
     /** Every applicable rule's view of one file; touches no rule state, so files scan in parallel. */
-    private static List<Seen> scanFile(TextFiles.Entry f, List<Prepared> live) throws IOException {
+    private static List<Seen> scanFile(TextFiles.Entry f, List<Prepared> live, FileModules modules) throws IOException {
         List<Prepared> applicable = new ArrayList<>();
-        for (Prepared p : live) if (applies(p, f)) applicable.add(p);
+        for (Prepared p : live) if (applies(p, f, modules)) applicable.add(p);
         if (applicable.isEmpty()) return List.of();
         String text = TextFiles.read(f.file());
         if (text == null) return List.of();

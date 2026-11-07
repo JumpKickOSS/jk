@@ -12,6 +12,8 @@ import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Jlink;
+import cc.jumpkick.model.LibDir;
 import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
@@ -74,6 +76,7 @@ public final class JkBuildRenderer {
         renderBuild(sb, jkBuild.build());
         renderBuildInfo(sb, jkBuild.build().buildInfo());
         renderWar(sb, jkBuild.build().war());
+        renderJlink(sb, jkBuild.build().jlink());
         renderResources(sb, jkBuild.build().resources());
         NodeTomlRenderer.renderNode(sb, jkBuild);
         NodeTomlRenderer.renderEnv(sb, jkBuild.build().env());
@@ -214,6 +217,34 @@ public final class JkBuildRenderer {
         }
     }
 
+    /** {@code [jlink]}, its keys only when off their defaults. */
+    private static void renderJlink(StringBuilder sb, @Nullable Jlink jlink) {
+        if (jlink == null) return;
+        sb.append("\n[jlink]\n");
+        if (!jlink.modules().isEmpty())
+            sb.append("modules = ").append(list(jlink.modules())).append('\n');
+        if (!jlink.stripDebug()) sb.append("strip-debug = false\n");
+        switch (jlink.aotCache()) {
+            case AUTO -> {}
+            case OFF -> sb.append("aot-cache = false\n");
+            case CDS -> sb.append("aot-cache = \"cds\"\n");
+        }
+        if (!jlink.jvmArgs().isEmpty())
+            sb.append("jvm-args = ").append(list(jlink.jvmArgs())).append('\n');
+        if (!jlink.args().isEmpty())
+            sb.append("args = ").append(list(jlink.args())).append('\n');
+        if (jlink.startTimeoutSeconds() != Jlink.DEFAULT_START_TIMEOUT) {
+            sb.append("start-timeout = ").append(jlink.startTimeoutSeconds()).append('\n');
+        }
+        if (!jlink.testStart()) sb.append("test-start = false\n");
+        if (!jlink.trainingEnv().isEmpty()) {
+            sb.append("\n[jlink.training-env]\n");
+            new TreeMap<>(jlink.trainingEnv())
+                    .forEach((k, v) ->
+                            sb.append(k).append(" = ").append(quote(v)).append('\n'));
+        }
+    }
+
     /** {@code [dokka]} — only when a key is off its default. */
     private static void renderDokka(StringBuilder sb, BuildBlock.Dokka dokka) {
         if (dokka.isDefault()) return;
@@ -322,7 +353,7 @@ public final class JkBuildRenderer {
         });
     }
 
-    /** One {@code [profiles.<name>]} per profile: {@code javac}, {@code jvm-args}, tag filters when set. */
+    /** One {@code [profiles.<name>]} per profile: {@code javac}, {@code jvm-args}, tag filters when set, {@code all-suites}. */
     private static void renderProfiles(StringBuilder sb, JkBuild jkBuild) {
         for (Profile p : jkBuild.profiles().byName().values()) {
             sb.append("\n[profiles.").append(safeKey(p.name())).append("]\n");
@@ -336,6 +367,7 @@ public final class JkBuildRenderer {
                 sb.append("include-tags = ").append(list(p.includeTags())).append('\n');
             if (p.excludeTagsSet())
                 sb.append("exclude-tags = ").append(list(p.excludeTags())).append('\n');
+            if (p.allSuites()) sb.append("all-suites = true\n");
         }
     }
 
@@ -524,6 +556,15 @@ public final class JkBuildRenderer {
             sb.append("config   = ").append(quote(app.config())).append('\n');
         if (!app.jvmArgs().isEmpty())
             sb.append("jvm-args = ").append(list(app.jvmArgs())).append('\n');
+        LibDir libDir = app.libDir();
+        if (libDir != null) {
+            sb.append("lib-dir  = ")
+                    .append(libDir.dir().equals(LibDir.DEFAULT_DIR) ? "true" : quote(libDir.dir()))
+                    .append('\n');
+            if (!libDir.versions()) sb.append("lib-versions = false\n");
+            if (!libDir.exclude().isEmpty())
+                sb.append("lib-exclude = ").append(list(libDir.exclude())).append('\n');
+        }
     }
 
     /** {@code [library]} table — a library's fat jar and the packages it relocates. */

@@ -6,6 +6,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.LibDir;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -435,6 +436,24 @@ public final class BuildLayout {
 
     private String warName(BuildBlock.War war) {
         return war.name() != null ? war.name() : artifact + "-" + version;
+    }
+
+    /**
+     * {@code <artifactDir>/<artifact>.jar}: the lib-dir layout's runnable jar, whose {@code
+     * Class-Path} names the jars under {@link #libDir}.
+     */
+    public Path libDirJar() {
+        return artifactDir().resolve(artifact + ".jar");
+    }
+
+    /** {@code <artifactDir>/<dir>/}: where the lib-dir layout copies the runtime jars. */
+    public Path libDir(LibDir libDir) {
+        return artifactDir().resolve(libDir.dir());
+    }
+
+    /** {@code <artifactDir>/<artifact>-jri/}: the {@code [jlink]} runtime image. */
+    public Path jlinkImage() {
+        return artifactDir().resolve(artifact + "-jri");
     }
 
     /** {@code <artifactDir>/<artifact>-<version>-all.jar} — the fat / shaded jar (deps included). */

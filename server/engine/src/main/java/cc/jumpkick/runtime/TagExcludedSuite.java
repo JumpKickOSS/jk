@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.model.Profiles;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
 import java.util.ArrayList;
@@ -37,11 +38,12 @@ final class TagExcludedSuite {
      * filter, a test ran, or the suite failed.
      */
     static @Nullable String line(
-            TestSelection selection, @Nullable String profile, boolean exactClassList, TestSummary result) {
+            TestSelection selection, @Nullable String requested, boolean exactClassList, TestSummary result) {
+        String profile = Profiles.named(requested);
         if (exactClassList || !selection.classes().isEmpty()) return null;
         if (selection.includeTags().isEmpty() && selection.excludeTags().isEmpty()) return null;
         if (result.total() != 0 || result.failed() != 0) return null;
-        if (profile == null || profile.isBlank()) return "0 tests (all excluded by " + tagFilter(selection) + ")";
+        if (profile == null) return "0 tests (all excluded by " + tagFilter(selection) + ")";
         List<String> dropped = selection.includeTags().stream()
                 .filter(selection.excludeTags()::contains)
                 .toList();

@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -145,6 +146,14 @@ public final class OutputArtifacts {
                     rel, dir, jar, pom, layout.nativeBinary(), coverage, layout.pluginDir(), checkstyleRuns));
         }
         return out;
+    }
+
+    /**
+     * The modules of {@code modules} in {@code rule}'s scope: the ones an output-lane rule judges.
+     * The lane reads every module once; a scoped rule asserts over its own.
+     */
+    static List<Module> judgedBy(Rule rule, List<Module> modules) {
+        return modules.stream().filter(m -> rule.applies(m.module())).toList();
     }
 
     /**

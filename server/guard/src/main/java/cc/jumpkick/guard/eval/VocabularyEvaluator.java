@@ -118,10 +118,15 @@ final class VocabularyEvaluator implements BatchEvaluator {
                 ownerSources.put(p, ownerSourceRel(p.ownerFacts, m));
             }
             if (here.isEmpty()) continue;
-            // One pass over the module's sources for every rule of the lane: files are read and
-            // lexed in parallel, then scanned in corpus order.
-            List<@Nullable Lexed> lexed = ParallelMap.<TextFiles.Entry, @Nullable Lexed>map(
-                    TextFiles.corpus(m), f -> lex(f, here, ownerSources));
+            // One pass over the module's own sources for every rule of the lane: files are read and
+            // lexed in parallel, then scanned in corpus order. A member nested in this one's directory
+            // holds its files, so they are its and never this module's.
+            FileModules nested = FileModules.of(m, ctx.modules());
+            List<TextFiles.Entry> own = TextFiles.corpus(m).stream()
+                    .filter(f -> nested.moduleOf(f.rel()).isEmpty())
+                    .toList();
+            List<@Nullable Lexed> lexed =
+                    ParallelMap.<TextFiles.Entry, @Nullable Lexed>map(own, f -> lex(f, here, ownerSources));
             for (Lexed l : lexed) {
                 if (l == null) continue;
                 for (Prepared p : here) {

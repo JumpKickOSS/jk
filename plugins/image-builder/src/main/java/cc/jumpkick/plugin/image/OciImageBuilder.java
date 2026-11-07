@@ -163,7 +163,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 classesDir,
                 jarNames,
                 appDir == null ? null : Path.of(appDir),
-                appJar);
+                appJar,
+                c.stringOpt("libDir").orElse(null));
 
         String ref = config.targetReference(artifact, version);
         Optional<String> tarball = c.stringOpt("tarball");

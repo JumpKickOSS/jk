@@ -2,6 +2,7 @@
 package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.GraalResolver;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceModules;
@@ -11,17 +12,20 @@ import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The GraalVM home each always-native module builds with, resolved on the client before the request
- * ships — the one owner for {@code jk build} and {@code jk install}. The engine is a daemon: a
+ * ships — the one owner for {@code jk build}, {@code jk run}, {@code jk install} and {@code jk native}. The engine is a daemon: a
  * GraalVM it found for itself would answer from the shell that started it, and a prompt or an
  * install belongs to the terminal the user is looking at. So the client's resolver decides (pin,
  * lock, inventory, then prompt or install) and the request carries the answer per module.
@@ -53,15 +57,8 @@ final class AlwaysNativeGraal {
      */
     static List<Module> fromManifests(Path root) {
         Path abs = WorkingDirectory.resolve(root);
-        List<String> rels = TomlScan.scan(ManifestPaths.manifestIn(abs), "workspace.modules")
-                .stringArray("workspace.modules");
-        List<Path> dirs = new ArrayList<>();
-        if (rels.isEmpty()) {
-            dirs.add(abs);
-        } else {
-            for (String rel : WorkspaceModules.expand(abs, rels))
-                dirs.add(abs.resolve(rel).normalize());
-        }
+        List<Path> dirs = WorkspaceModules.memberDirs(abs);
+        if (dirs.isEmpty()) dirs = List.of(abs);
         List<Module> out = new ArrayList<>();
         for (Path dir : dirs) {
             Module m = fromManifest(dir);
@@ -138,6 +135,70 @@ final class AlwaysNativeGraal {
         WorkspaceSpec onto(WorkspaceSpec spec) {
             return spec.withGraalByDir(homes).withGraalInstalls(installs);
         }
+    }
+
+    /**
+     * The GraalVM of every always-native module a build of {@code entryDir} reaches, decided before any
+     * progress UI opens: the resolver may prompt or install, and the request carries the answer (the
+     * engine is a daemon and must not pick one from the shell that started it). A member the selection
+     * leaves out is not asked about. Empty when the resolver could not decide; it printed why.
+     */
+    static Optional<Graal> reached(BuildRun run, Path entryDir, BuildRun.Selection selection) {
+        return reached(
+                run.standalone(),
+                entryDir,
+                selection,
+                () -> ProjectInfos.orNull(entryDir),
+                new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())::resolve);
+    }
+
+    /**
+     * {@link #reached(BuildRun, Path, BuildRun.Selection)} over its inputs: {@code rootInfo} is the
+     * engine's summary of {@code entryDir}, asked only when some module links a native image.
+     */
+    static Optional<Graal> reached(
+            boolean standalone,
+            Path entryDir,
+            BuildRun.Selection selection,
+            Supplier<@Nullable ProjectInfo> rootInfo,
+            Resolve resolve) {
+        List<Module> members;
+        if (standalone) {
+            Module self = fromManifest(entryDir);
+            members = self == null ? List.of() : List.of(self);
+        } else {
+            members = fromManifests(entryDir);
+            if (selection.confines()) members = within(members, selection.dirs());
+        }
+        // A member that inherits its `java` from the root declares none of its own; the summary has it.
+        if (!members.isEmpty()) members = withEffectiveReleases(members, rootInfo.get());
+        return homes(members, resolve);
+    }
+
+    /**
+     * The GraalVM of each of {@code dirs}, modules already known to link a native image, gathered from
+     * the engine's summary of each: {@code jk native}'s native-eligible modules and {@code jk install}'s
+     * always-native ones. A module that pins no {@code graal} resolves with {@link #DEFAULT_SPEC}, and
+     * one the engine could not summarize targets no release. Empty when the resolver could not
+     * decide; it printed why.
+     */
+    static Optional<Graal> reached(
+            Collection<Path> dirs, Function<Path, @Nullable ProjectInfo> summary, Resolve resolve) {
+        List<Module> modules = new ArrayList<>();
+        for (Path dir : dirs) modules.add(fromSummary(dir, summary.apply(dir)));
+        return homes(modules, resolve);
+    }
+
+    /** Whether the engine's summary of a module says its build always links a native image. */
+    static boolean alwaysNative(@Nullable ProjectInfo info) {
+        return info != null && info.error() == null && "ALWAYS".equals(info.nativeMode());
+    }
+
+    /** {@code dir} as a native module, its spec and release read from the engine's summary {@code info}. */
+    static Module fromSummary(Path dir, @Nullable ProjectInfo info) {
+        if (info == null) return new Module(dir, DEFAULT_SPEC, 0);
+        String spec = info.graal().isBlank() ? DEFAULT_SPEC : info.graal();
+        return new Module(dir, spec, info.javaRelease());
     }
 
     /** {@code dir} as an always-native module, or null when its build links no native image. */

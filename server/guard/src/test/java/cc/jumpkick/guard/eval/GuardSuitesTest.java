@@ -345,6 +345,12 @@ class GuardSuitesTest {
         assertThat(esc.observations())
                 .extracting(Observation::key)
                 .containsExactly("z.Ghost#g()V -> java.lang.System#exit(I)V");
+
+        // scoped to m, the workspace guard leaves n's site to n
+        Rule scoped = Objects.requireNonNull(rules.get("ws")).withScope(List.of("m"));
+        assertThat(Evaluators.forKind(Kind.TEST).evaluate(scoped, ctx).observations())
+                .extracting(Observation::key)
+                .containsExactly("z.Ghost#g()V -> java.lang.System#exit(I)V");
     }
 
     @Test

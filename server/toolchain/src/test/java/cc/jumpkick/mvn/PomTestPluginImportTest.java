@@ -162,6 +162,49 @@ class PomTestPluginImportTest {
         assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("<argLine>"));
     }
 
+    /**
+     * The effective model interpolates {@code ${project.build.outputDirectory}} into this checkout's
+     * absolute path; under the module it is written relative, since the test JVM runs in the module
+     * directory. A path elsewhere stays as written, with a row.
+     */
+    @Test
+    void a_system_property_path_under_the_module_is_written_relative(@TempDir Path tempDir) throws Exception {
+        Path outside = tempDir.resolve("shared/test.conf").toAbsolutePath();
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>svc</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.2</version>
+                    <configuration>
+                      <systemPropertyVariables>
+                        <java.util.logging.config.file>${project.build.outputDirectory}/logging.properties</java.util.logging.config.file>
+                        <data.dir>${project.basedir}</data.dir>
+                        <shared.conf>%s</shared.conf>
+                        <mode>test</mode>
+                      </systemPropertyVariables>
+                    </configuration>
+                  </plugin></plugins></build>
+                </project>
+                """.formatted(outside));
+
+        assertThat(result.jkBuild().build().testJvm().systemProperties())
+                .containsExactly(
+                        Map.entry("java.util.logging.config.file", "target/classes/logging.properties"),
+                        Map.entry("data.dir", "."),
+                        Map.entry("shared.conf", outside.toString()),
+                        Map.entry("mode", "test"));
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.startsWith("`maven-surefire-plugin` system property shared.conf=" + outside
+                        + " is an absolute path outside the module"))
+                .noneMatch(m -> m.contains("java.util.logging.config.file"))
+                .noneMatch(m -> m.contains("data.dir"));
+    }
+
     @Test
     void failsafe_includes_and_excludes_are_the_integration_suites_classes(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """

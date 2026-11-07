@@ -20,13 +20,20 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Which generated file came from which source, carried across builds in {@code provenance.tsv}.
+ * Which generated file came from which source, carried across builds in a ledger beside the class
+ * output: {@code target/incremental/classes-generated.tsv} for {@code target/classes}.
  *
  * <p>Its own owner because it answers a question Zinc cannot: generated files are not in Zinc's
  * source set, so their class files are unattributed products it never prunes. Deciding that a
  * generated file is now stale needs last run's origin map, and that map is a fact about the workdir
  * with a lifetime longer than one compile — unrelated to the invalidation analysis {@link
- * ZincWorkdir} keeps beside it.
+ * ZincWorkdir} keeps in the compile-state directory.
+ *
+ * <p>The ledger lives with the files it names rather than in that directory, which is cache: an
+ * idle prune takes the compile state whole and leaves {@code target/classes} as it was, and a full
+ * compile that then found no ledger could not delete the files a processor reads back and merges
+ * into, so Helidon's {@code service-registry.json} would keep the row of a source deleted since.
+ * {@code rm -rf target} takes the ledger together with those files.
  *
  * <p>Paths are compared through {@link Canon}, which resolves links in directories only: a source
  * file that is itself a link never reaches this class, because jk's source walks do not follow file
@@ -36,12 +43,21 @@ final class GeneratedProvenance {
 
     private final Path file;
 
-    private GeneratedProvenance(Path workdir) {
-        this.file = workdir.resolve("provenance.tsv");
+    private GeneratedProvenance(Path file) {
+        this.file = file;
     }
 
-    static GeneratedProvenance of(Path workdir) {
-        return new GeneratedProvenance(workdir);
+    /** The ledger of what processors generated into {@code classOutput} and its source output. */
+    static GeneratedProvenance of(Path classOutput) {
+        return new GeneratedProvenance(ledgerFor(classOutput));
+    }
+
+    /** {@code target/incremental/classes-generated.tsv} for {@code target/classes}: beside the references. */
+    static Path ledgerFor(Path classOutput) {
+        Path classes = classOutput.toAbsolutePath().normalize();
+        Path target = classes.getParent();
+        if (target == null) throw new IllegalArgumentException("a class output has a parent: " + classOutput);
+        return target.resolve("incremental").resolve(classes.getFileName() + "-generated.tsv");
     }
 
     /**
@@ -89,6 +105,24 @@ final class GeneratedProvenance {
             merged.put(canon.canonical(e.getKey()), canon.all(e.getValue()));
         }
         write(merged);
+    }
+
+    /**
+     * Delete every file the previous build's processors generated under the two output roots, with
+     * the classes of each generated source, before a compile of every source. Such a compile runs
+     * every processor over every source, so each file that is still wanted is written again; one left
+     * in place is a file a processor can read back through the {@code Filer} and merge this run's
+     * rows into, which carries a deleted source's row into a full build and into the action cache
+     * that stores it. The map itself is left for {@link #reconcile} to rewrite.
+     */
+    void deletePrevious(@Nullable Path sourceOutput, Path classOutput) throws IOException {
+        Canon canon = new Canon(sourceOutput == null ? List.of(classOutput) : List.of(sourceOutput, classOutput));
+        Path srcRoot = sourceOutput == null ? null : canon.canonical(sourceOutput);
+        Path classRoot = canon.canonical(classOutput);
+        for (Path gen : read(canon).keySet()) {
+            boolean ours = gen.startsWith(classRoot) || (srcRoot != null && gen.startsWith(srcRoot));
+            if (ours) deleteOutputs(gen, srcRoot, classRoot);
+        }
     }
 
     /**
@@ -275,9 +309,8 @@ final class GeneratedProvenance {
             for (Path origin : e.getValue()) sb.append('\t').append(escape(origin.toString()));
             lines.add(sb.toString());
         }
-        // The workdir is cache: a prune may have taken it while this compile ran, and the map this
-        // compile built is still the right one to keep.
-        Path dir = Objects.requireNonNull(file.getParent(), "provenance.tsv lives in the workdir");
+        // Nothing else may have created target/incremental yet on a module's first compile.
+        Path dir = Objects.requireNonNull(file.getParent(), "the ledger lives in target/incremental");
         Files.createDirectories(dir);
         // Written beside and renamed over: a compile killed mid-write leaves last run's map, not
         // a truncated one whose missing rows would read as classes nobody generated.

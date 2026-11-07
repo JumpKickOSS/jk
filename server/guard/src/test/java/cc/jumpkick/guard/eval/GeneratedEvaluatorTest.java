@@ -133,4 +133,12 @@ class GeneratedEvaluatorTest {
         assertThat(ev(r, "as-toml").observations().get(0).detail()).contains("+ constants = [\"KIND\", \"FLOOR\"]");
         assertThat(ev(r, "chain").observations().get(0).detail()).contains("+ UNIT -> INTEGRATION -> SLOW");
     }
+
+    @Test
+    void a_rule_scoped_away_from_the_module_holding_its_file_is_not_evaluated(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("tiers.md"), "<!-- tiers:start -->\n<!-- tiers:end -->\n");
+        Evaluation e = ev(run(root, RULE.replace("why ", "scope    = [\"app\"]\nwhy ")), "tier-doc");
+        assertThat(e.outcome()).isEqualTo(Outcome.NOT_EVALUATED);
+        assertThat(e.note()).contains("tiers.md belongs to the workspace root, outside the rule's scope");
+    }
 }

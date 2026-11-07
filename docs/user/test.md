@@ -12,6 +12,7 @@ jk test -g -b          # guard suites, skip extra scripts
 jk test -s integration              # climb one named suite
 jk test -s e2e                      # UI / compose / contract; not a habit
 jk test -A                        # every suite; tag excludes cleared. Nightly / release.
+jk test -p integration            # a profile's tags; every suite when it sets all-suites = true
 jk test -E slow,bench
 jk test -I smoke
 jk test -S OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
@@ -50,6 +51,12 @@ Canonical extra suite **names** are `integration` and `e2e`. Any other suite
 directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that
 crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
 directory.
+
+What every suite shares comes from outside the suites: the module's own `[test] fixtures`
+(`src/fixtures/java`) ride every suite's classpath, and `[test] extra-src` roots and files compile
+into whichever suites are selected. A file `extra-src` names brings the `package-info.java` beside
+it, so its package's annotations (`@NullMarked`) hold in a suite that does not declare the package
+itself.
 
 ## Suites by class name (`[test.suites.<name>] classes`)
 
@@ -145,8 +152,9 @@ Under `-p` the line names the profile, and when the class runs in the default ti
 no test in profile integration matches --class com.example.WarmWorkersTest: the tag filter excluded com.example.WarmWorkersTest (untagged); it runs in the default tier (drop -p integration)
 ```
 
-Run it again with that `--profile` (or `--include-tags`), or without `-p`. `--no-profile` lifts
-only a profile's filters, not `[test] exclude-tags`. A wildcard composes with the tag filter: `--class '*Orders*'`
+Run it again with that `--profile` (or `--include-tags`), or without `-p`. `--no-profile` (`-n`)
+applies no profile at all, neither `-p`'s nor CI's `ci`: its tags, `env`, `jvm-args` and `javac`
+all stay out, while `[test] exclude-tags` still holds. A wildcard composes with the tag filter: `--class '*Orders*'`
 runs the matches the filter keeps and warns about the ones it drops; a run in which the dropped
 ones were the only matches fails with that line.
 
@@ -366,8 +374,24 @@ exclude-tags = ["slow", "network", "bench"]
 | Layer | Behavior |
 |-------|----------|
 | `[test] include-tags` / `exclude-tags` | Baseline for bare `jk test` |
-| Active profile (`--profile` / CI auto `ci`) | Replaces a list **only if that key is present** (including `= []` to clear) |
+| Active profile (`--profile` / CI auto `ci`) | Replaces a list **only if that key is present** (including `= []` to clear); a key it leaves out comes from its `inherits` parent, and `all-suites` holds when any profile in the chain sets it |
 | `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
+
+**A profile can widen the suites.** `all-suites = true` in `[profiles.<name>]` runs every suite
+a module has (every suite directory and class-pattern suite, as `--all` does) under the profile's
+own tags; without it a profile runs the default suite alone. Unlike `--all` it leaves the tag
+filters as the profile resolved them, so a tier stays a tier: `jk test -p integration` with
+
+```toml
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+all-suites = true
+```
+
+runs the `integration`-tagged tests of `src/test` and `src/e2e` alike. A module without a second
+suite runs its default suite; nothing errors. `--suite` and `--guard` name the suites themselves and
+win over the switch. Any value but `true` or `false` is a config error.
 
 A module whose tests all carry tags the active profile drops reports
 `0 tests (all excluded by profile <name>)` as a plain results line: that tier has no tests in the
@@ -413,11 +437,27 @@ every member:
 
 - `[test] include-tags` / `exclude-tags`
 - `[test] guard-suites`
-- `[profiles.<name>] include-tags` / `exclude-tags`
+- `[profiles.<name>] include-tags` / `exclude-tags` / `all-suites`
 
 A member's own tags are used only when the root resolved none — the root wins outright rather
 than merging, so a workspace has one answer for "which tests". Running from inside a member
-directory makes no difference: the CLI rehomes to the workspace root first.
+directory makes no difference: the CLI rehomes to the workspace root first. Every path resolves
+the same way: `jk test`, `jk build`, MCP and BSP runs that name no tags, the tier `--class` hints
+name, and the tags `jk info` shows.
+
+The rest of a profile is a workspace fact too: a profile the root declares applies in every member,
+and means the same in each. Where a member declares a `[profiles.<name>]` of the same name, the two
+merge key by key and the root wins unless the key is additive per member:
+
+| Key | Rule | Why |
+|-----|------|-----|
+| `include-tags`, `exclude-tags`, `all-suites` | The root's | They pick the tier; a workspace has one tier table |
+| `env` | Additive; the root's value wins a variable both set | A member adds what only its tests need, such as its own database |
+| `jvm-args` | Additive; the root's follow the member's, so the root wins a flag both set | A member adds flags only its test JVMs need |
+| `javac` | The root's when it sets the key, else the member's | The compiler flags a profile names (`-Werror` on CI) hold for the whole workspace; a module's own flags go in its `[javac]` |
+| `inherits` | The root's when it sets the key, else the member's | One chain per profile name |
+
+A profile only one of them declares is that one's, whole.
 
 Everything else under `[test]` is per-module and is never inherited, including `extra-src`,
 `workers`, `assertions`, `jvm-args`, `system-properties` and `env`. This is not the `key.workspace = true` spelling that identity keys
@@ -546,13 +586,22 @@ lock's pin is part of the stamp: a Node upgrade re-runs the suites. See [Node.js
 puts `junit-platform-launcher` on every test classpath, and `junit-jupiter` on a module that
 declares no `[test-dependencies]` at all. Once you own that table, the framework is yours.
 
-The launcher follows the Jupiter you declare. Jupiter 5.x.y runs on Platform 1.x.y and Jupiter 6
-shares the Platform's number, so `junit-jupiter = "5.9.0"` locks `junit-platform-launcher 1.9.0`,
-`"^5.9"` locks `^1.9`, and a module with no Jupiter (or a range) takes `latest`. A Platform 6
-launcher beside a Jupiter 5 engine would drop the engine without a word and the run would report
-success with no tests; a lock whose launcher and Jupiter engine sit on different lines — your own
-launcher pin on the wrong line — is refused by `jk lock` with the pin that aligns them. In a
-workspace each member is judged on the rows it reads, and the refusal names the member.
+The lock reads the solved test graph — what you declare and what it brings in — the way Maven
+Surefire reads the resolved test classpath. A `junit-jupiter-api` on that graph with no
+`junit-jupiter-engine` gets the engine at the API's version, so declaring only the API (as Helidon's
+archetypes and many Maven projects do) runs the tests. The launcher follows the resolved Jupiter:
+Jupiter 5.x.y runs on Platform 1.x.y and Jupiter 6 shares the Platform's number, so
+`junit-jupiter = "5.9.0"` locks `junit-platform-launcher 1.9.0`, and a test library that brings in
+Jupiter 5.12.2 (`helidon-webserver-testing-junit5` 27.0.1) locks `1.12.2` with no pin of yours. A
+graph with no Jupiter follows the `junit-platform-engine` a Vintage or TestNG engine carries, and
+`latest` otherwise. Gradle infers none of this — you declare the engine and the launcher there — and
+jk departs from Surefire in one place: Vintage joins only for a `junit:junit` you declare, never one
+a test library such as Testcontainers 1.x brings in. Your `jk.toml` is not touched; the lock records
+the result. A launcher you declare yourself always wins, so a Platform 6 launcher beside a Jupiter
+5 engine — which would drop the engine without a word and report success with no tests — can only
+be your own pin, and `jk lock` refuses it with the pin that aligns them. In a workspace each member
+is judged on the rows it reads: a member whose tests reach no Jupiter gets no Jupiter engine, and
+the refusal names the member.
 
 A run that discovers no test where test classes declare one fails the `run-tests` step with the
 count (`no tests discovered in 3 classes under …`): an engine missing from the classpath, a
@@ -565,7 +614,7 @@ reports as *No tests to run*: the module passes with zero tests and one warning
 it skipped. A green with zero tests where a test was declared is never the answer.
 
 A framework that has no Platform engine of its own gets one from the lock. Declare `junit:junit`
-and `jk lock` adds `org.junit.vintage:junit-vintage-engine` beside the launcher, on the declared
+and `jk lock` adds `org.junit.vintage:junit-vintage-engine` beside the launcher, on the resolved
 Jupiter's line (`latest` when there is none) so both sit on one Platform line:
 
 ```toml

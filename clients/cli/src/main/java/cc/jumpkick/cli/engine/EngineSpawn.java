@@ -468,12 +468,22 @@ public final class EngineSpawn {
             }
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         }
-        EngineArtifact engine = resolved.orElseThrow(() -> new IOException(
-                "no build engine for jk " + clientVersion + "; run `jk self update`, or set JK_ENGINE_EXE"));
+        EngineArtifact engine = resolved.orElseThrow(() -> new IOException(noEngine(clientVersion)));
         if (engine.kind() != EngineArtifact.Kind.JAR) {
             return new EngineTarget(engine, null);
         }
         return new EngineTarget(engine, resolveEngineJdk().home());
+    }
+
+    /**
+     * What a client with no engine of its version says. A dev client is installed by {@code jk
+     * snapshot}, never by installing a {@code jk build} dist into the default home: that dist is
+     * release-versioned, and its shelved release would hide every later snapshot of the same version.
+     */
+    static String noEngine(String clientVersion) {
+        return "no build engine for jk " + clientVersion + "\n"
+                + "  run `jk self update` or `jk self materialize …`, or set JK_ENGINE_EXE\n"
+                + "  in jk's checkout, `jk snapshot` installs the client with its engine";
     }
 
     /**

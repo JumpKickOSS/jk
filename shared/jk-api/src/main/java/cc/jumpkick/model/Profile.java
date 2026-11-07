@@ -12,7 +12,9 @@ import org.jspecify.annotations.Nullable;
  * Selected via {@code --profile}; {@code ci} auto-selects in CI.
  *
  * <p>{@link #includeTagsSet()} / {@link #excludeTagsSet()} record whether the TOML key was present
- * so an empty list can clear {@code [test]} filters when the profile is applied.
+ * so an empty list can clear {@code [test]} filters when the profile is applied. {@link #allSuites()}
+ * is {@code all-suites = true}: the profile's tags run in every test suite a module has, not the
+ * default suite alone.
  */
 public record Profile(
         String name,
@@ -26,7 +28,9 @@ public record Profile(
         boolean includeTagsSet,
         boolean excludeTagsSet,
         /** Environment for every forked test JVM while this profile is active; wins over {@code [test] env}. */
-        Map<String, String> env) {
+        Map<String, String> env,
+        /** {@code all-suites = true}: run every suite a module has, as {@code --all} does, under this profile's tags. */
+        boolean allSuites) {
 
     public Profile {
         Objects.requireNonNull(name, "name");
@@ -37,6 +41,20 @@ public record Profile(
         includeTags = includeTags == null ? List.of() : List.copyOf(includeTags);
         excludeTags = excludeTags == null ? List.of() : List.copyOf(excludeTags);
         env = env == null ? Map.of() : Map.copyOf(env);
+    }
+
+    /** Runs the default suite alone. */
+    public Profile(
+            String name,
+            @Nullable String inherits,
+            List<String> javacArgs,
+            List<String> jvmArgs,
+            List<String> includeTags,
+            List<String> excludeTags,
+            boolean includeTagsSet,
+            boolean excludeTagsSet,
+            Map<String, String> env) {
+        this(name, inherits, javacArgs, jvmArgs, includeTags, excludeTags, includeTagsSet, excludeTagsSet, env, false);
     }
 
     /** No test environment of its own. */

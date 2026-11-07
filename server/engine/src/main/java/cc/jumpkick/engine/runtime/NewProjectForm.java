@@ -7,11 +7,13 @@ import cc.jumpkick.form.Step;
 import cc.jumpkick.form.Values;
 import cc.jumpkick.giter8.JkTemplateToml;
 import cc.jumpkick.scaffold.NewProjectStep;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The new-project form every surface renders: jk's step ({@link NewProjectStep}), then the template's
@@ -76,6 +78,31 @@ public final class NewProjectForm {
             out.put(e.getKey(), Values.text(e.getValue()));
         }
         return out;
+    }
+
+    /**
+     * The scaffold request for a settled form: jk's step names the project and where it goes, every
+     * other value is a template property. A standalone project, with relative template paths
+     * resolved against {@code cwd}.
+     */
+    public static NewProjectOps.Request request(Map<String, Object> values, String template, Path cwd) {
+        return new NewProjectOps.Request(
+                text(values, "name"),
+                text(values, "dir"),
+                text(values, "group"),
+                text(values, "lang"),
+                text(values, "layout"),
+                template,
+                true,
+                templateParams(values),
+                false,
+                null,
+                cwd.toString());
+    }
+
+    private static @Nullable String text(Map<String, Object> values, String key) {
+        Object value = values.get(key);
+        return value == null ? null : Values.text(value);
     }
 
     /** The template's language: its id's first segment, else its descriptor's, else the default. */

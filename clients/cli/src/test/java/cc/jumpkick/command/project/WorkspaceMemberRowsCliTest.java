@@ -28,7 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A two-member workspace whose members disagree: {@code app} holds a BOM that manages {@code
- * com.foo:leaf} at 2.0, {@code lib} reaches leaf through {@code middle}, whose POM declares 1.0.
+ * com.foo.rows:leaf} at 2.0, {@code lib} reaches leaf through {@code middle}, whose POM declares 1.0.
  * The workspace's row is the 1.0 the POM declares, {@code app} reads a row of its own at the BOM's
  * 2.0, and every surface that reads one member's rows says so.
  */
@@ -50,26 +50,26 @@ class WorkspaceMemberRowsCliTest {
                 "org.example",
                 "the-bom",
                 "1.0",
-                MavenStub.bom("org.example", "the-bom", "1.0", List.of("com.foo:leaf:2.0")));
+                MavenStub.bom("org.example", "the-bom", "1.0", List.of("com.foo.rows:leaf:2.0")));
         upstream.metadata("org.example", "the-bom", "1.0");
-        upstream.metadata("com.foo", "middle", "1.0");
-        upstream.metadata("com.foo", "leaf", "1.0", "2.0");
-        upstream.pom("com.foo", "middle", "1.0", """
+        upstream.metadata("com.foo.rows", "middle", "1.0");
+        upstream.metadata("com.foo.rows", "leaf", "1.0", "2.0");
+        upstream.pom("com.foo.rows", "middle", "1.0", """
                 <project>
-                  <groupId>com.foo</groupId>
+                  <groupId>com.foo.rows</groupId>
                   <artifactId>middle</artifactId>
                   <version>1.0</version>
                   <dependencies>
                     <dependency>
-                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                      <groupId>com.foo.rows</groupId><artifactId>leaf</artifactId><version>1.0</version>
                     </dependency>
                   </dependencies>
                 </project>
                 """);
-        upstream.jar("com.foo", "middle", "1.0");
+        upstream.jar("com.foo.rows", "middle", "1.0");
         for (String v : List.of("1.0", "2.0")) {
-            upstream.pom("com.foo", "leaf", v, MavenStub.emptyPom("com.foo", "leaf", v));
-            upstream.jar("com.foo", "leaf", v);
+            upstream.pom("com.foo.rows", "leaf", v, MavenStub.emptyPom("com.foo.rows", "leaf", v));
+            upstream.jar("com.foo.rows", "leaf", v);
         }
     }
 
@@ -110,9 +110,9 @@ class WorkspaceMemberRowsCliTest {
         assertThat(lock(root)).isEqualTo(0);
 
         String lib = tree(root, ":lib");
-        assertThat(lib).contains("com.foo:leaf:1.0").doesNotContain("leaf:2.0");
+        assertThat(lib).contains("com.foo.rows:leaf:1.0").doesNotContain("leaf:2.0");
         String app = tree(root, ":app");
-        assertThat(app).contains("com.foo:leaf:2.0").doesNotContain("leaf:1.0");
+        assertThat(app).contains("com.foo.rows:leaf:2.0").doesNotContain("leaf:1.0");
 
         String whole = tree(root, null);
         int appNode = whole.indexOf("com.acme:app:0.1.0");
@@ -121,12 +121,12 @@ class WorkspaceMemberRowsCliTest {
         assertThat(libNode).isGreaterThan(appNode);
         // app reads its own leaf: its node names the row's readers and claims no 1.0 for app.
         assertThat(whole.substring(appNode, libNode))
-                .contains("com.foo:leaf:2.0")
+                .contains("com.foo.rows:leaf:2.0")
                 .contains("(for app)")
                 .doesNotContain("leaf:1.0");
         // lib reads the workspace's row, shown plain under its own expansion of middle.
         assertThat(whole.substring(libNode))
-                .contains("com.foo:leaf:1.0")
+                .contains("com.foo.rows:leaf:1.0")
                 .doesNotContain("(for ")
                 .doesNotContain("leaf:2.0");
     }
@@ -139,10 +139,10 @@ class WorkspaceMemberRowsCliTest {
 
         int[] exit = new int[1];
         Capture.Streams out =
-                Capture.both(() -> exit[0] = run("why", "com.foo:middle", "-C", root.toString(), "--no-progress"));
+                Capture.both(() -> exit[0] = run("why", "com.foo.rows:middle", "-C", root.toString(), "--no-progress"));
         assertThat(exit[0]).as(out.out() + out.err()).isEqualTo(0);
         String why = out.out().replaceAll("\u001b\\[[\\d;]*m", "");
-        assertThat(why).contains("com.foo:middle:1.0 (declared 1.0 by com.acme:app, com.acme:lib)");
+        assertThat(why).contains("com.foo.rows:middle:1.0 (declared 1.0 by com.acme:app, com.acme:lib)");
     }
 
     @Test
@@ -168,9 +168,9 @@ class WorkspaceMemberRowsCliTest {
         assertThat(exit).isEqualTo(0);
 
         String lib = Files.readString(root.resolve("lib/lib.iml"));
-        assertThat(lib).contains("com.foo:leaf:jar::1.0").doesNotContain("com.foo:leaf:jar::2.0");
+        assertThat(lib).contains("com.foo.rows:leaf:jar::1.0").doesNotContain("com.foo.rows:leaf:jar::2.0");
         String app = Files.readString(root.resolve("app/app.iml"));
-        assertThat(app).contains("com.foo:leaf:jar::2.0").doesNotContain("com.foo:leaf:jar::1.0");
+        assertThat(app).contains("com.foo.rows:leaf:jar::2.0").doesNotContain("com.foo.rows:leaf:jar::1.0");
     }
 
     private String tree(Path root, @Nullable String module) {
@@ -212,7 +212,7 @@ class WorkspaceMemberRowsCliTest {
                 the-bom = { group = "org.example", version = "1.0" }
 
                 [dependencies]
-                middle = { group = "com.foo", version = "1.0" }
+                middle = { group = "com.foo.rows", version = "1.0" }
                 """);
         Path lib = Files.createDirectories(root.resolve("lib"));
         Files.writeString(lib.resolve("jk.toml"), """
@@ -221,7 +221,7 @@ class WorkspaceMemberRowsCliTest {
                 version = "0.1.0"
 
                 [dependencies]
-                middle = { group = "com.foo", version = "1.0" }
+                middle = { group = "com.foo.rows", version = "1.0" }
                 """);
     }
 }

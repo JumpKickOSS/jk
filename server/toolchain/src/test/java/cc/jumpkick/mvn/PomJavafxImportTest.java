@@ -6,9 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.Jlink;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -63,6 +65,50 @@ class PomJavafxImportTest {
         assertThat(messages(result))
                 .anyMatch(m ->
                         m.equals("javafx-maven-plugin <options> not imported; put test JVM flags in [test] jvm-args"));
+    }
+
+    @Test
+    void the_jlink_settings_become_the_jlink_table_without_a_start(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, pom(List.of("javafx-controls"), """
+                <plugin>
+                  <groupId>org.openjfx</groupId>
+                  <artifactId>javafx-maven-plugin</artifactId>
+                  <version>0.0.8</version>
+                  <configuration>
+                    <mainClass>org.openjfx.App</mainClass>
+                    <options><option>-Dprism.order=sw</option></options>
+                    <stripDebug>true</stripDebug>
+                    <noManPages>true</noManPages>
+                    <launcher>app</launcher>
+                    <jlinkImageName>app</jlinkImageName>
+                  </configuration>
+                </plugin>
+                """));
+
+        Jlink jlink = Objects.requireNonNull(result.jkBuild().build().jlink());
+        assertThat(jlink.stripDebug()).isTrue();
+        assertThat(jlink.jvmArgs()).containsExactly("-Dprism.order=sw");
+        assertThat(jlink.aotCache()).isEqualTo(Jlink.AotCache.OFF);
+        assertThat(jlink.testStart()).isFalse();
+        assertThat(messages(result))
+                .anyMatch(m -> m.startsWith("javafx-maven-plugin <launcher> not imported"))
+                .anyMatch(m -> m.startsWith("javafx-maven-plugin jlink became [jlink]"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered)
+                .contains("[jlink]\naot-cache = false\njvm-args = [\"-Dprism.order=sw\"]\ntest-start = false\n");
+        assertThat(JkBuildParser.parse(rendered).build().jlink()).isEqualTo(jlink);
+    }
+
+    @Test
+    void no_jlink_setting_means_no_image(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, pom(List.of("javafx-controls"), """
+                <plugin>
+                  <groupId>org.openjfx</groupId>
+                  <artifactId>javafx-maven-plugin</artifactId>
+                  <configuration><mainClass>org.openjfx.App</mainClass></configuration>
+                </plugin>
+                """));
+        assertThat(result.jkBuild().build().jlink()).isNull();
     }
 
     private static String pom(List<String> openjfx, String plugin) {

@@ -134,7 +134,8 @@ final class WorkspaceFinalPhase {
                     graph,
                     request.skipTests(),
                     request.profile(),
-                    resources.preflight().forecast());
+                    resources.preflight().forecast(),
+                    ModuleInputProvenance.RunTrees.transforms(request.cache()));
         }
         // Any run that left a module's classes current vouches for them to the graph, a test run too:
         // an agent's loop is `run` (tests), and a graph that waited for a full build had no calls.
@@ -161,6 +162,20 @@ final class WorkspaceFinalPhase {
             boolean skipTests,
             @Nullable String profile,
             Optional<BuildForecasting.Preflight> forecast) {
+        certifyClean(entryDir, graph, skipTests, profile, forecast, ModuleInputProvenance.RunTrees.NONE);
+    }
+
+    /**
+     * As above, recording the trees {@code runTrees} names with the outputs: a classes transform's,
+     * which the compile goal rewrites behind a memo that still says these inputs are clean.
+     */
+    static void certifyClean(
+            Path entryDir,
+            BuildGraph.Result graph,
+            boolean skipTests,
+            @Nullable String profile,
+            Optional<BuildForecasting.Preflight> forecast,
+            ModuleInputProvenance.RunTrees runTrees) {
         Map<Path, String> fingerprints = SettledReads.amend(
                 forecast.map(BuildForecasting.Preflight::fingerprints).orElse(Map.of()));
         if (fingerprints.isEmpty()) return;
@@ -168,7 +183,7 @@ final class WorkspaceFinalPhase {
         // One set of fingerprints, two records: the memo says these inputs are clean, and this
         // says the outputs on disk are the ones they produce. The second is what lets preflight
         // tell "nothing to do" from "the artifacts here are from another run".
-        ModuleInputProvenance.record(entryDir, graph, fingerprints);
+        ModuleInputProvenance.record(entryDir, graph, fingerprints, runTrees);
     }
 
     /**

@@ -71,8 +71,17 @@ public final class ModuleOutputs {
             return true;
         }
         if (build.assembly() && !Files.isRegularFile(layout.assemblyJar())) return true;
+        if (jlinkImageMissing(build, layout)) return true;
         if (build.nativeMode() == JkBuild.NativeMode.ALWAYS && !nativePresent(layout, build)) return true;
         return false;
+    }
+
+    /** A declared {@code [jlink]} image whose launcher or application jar is gone. */
+    static boolean jlinkImageMissing(JkBuild build, BuildLayout layout) {
+        if (build.build().jlink() == null) return false;
+        Path image = layout.jlinkImage();
+        return !Files.isRegularFile(image.resolve("release"))
+                || !Files.isRegularFile(image.resolve("app").resolve(layout.artifact() + ".jar"));
     }
 
     /**

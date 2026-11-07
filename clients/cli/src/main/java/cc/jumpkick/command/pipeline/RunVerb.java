@@ -24,11 +24,13 @@ import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -49,7 +51,10 @@ public final class RunVerb implements BuildVerb {
 
     private Path cache = Path.of("");
 
-    private RunVerb(List<String> appArgs, @Nullable DebugJvm debugJvm) {
+    /** Client-resolved GraalVM home per always-native module the run builds; empty when it links none. */
+    private AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
+
+    RunVerb(List<String> appArgs, @Nullable DebugJvm debugJvm) {
         this.appArgs = List.copyOf(appArgs);
         this.debugJvm = debugJvm;
     }
@@ -94,13 +99,29 @@ public final class RunVerb implements BuildVerb {
         return -1;
     }
 
+    /** The GraalVM homes a native module links with, resolved here as {@code jk build} resolves them. */
+    @Override
+    public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
+        return prepared(AlwaysNativeGraal.reached(run, entryDir, selection));
+    }
+
+    /** {@code resolved} kept for the request: an exit code when it could not be decided, else {@code -1}. */
+    int prepared(Optional<AlwaysNativeGraal.Graal> resolved) {
+        if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
+        this.graal = resolved.get();
+        return -1;
+    }
+
+    /** The goal this run asks the engine for, with the GraalVM homes the client resolved. */
+    WorkspaceSpec spec() {
+        // The run goal, not a plain build: a selected run builds the cone the module runs on.
+        return graal.onto(WorkspaceSpec.of(WorkspaceTarget.RUN));
+    }
+
     @Override
     public WorkspaceResult workspace(BuildRun run, Path entryDir, List<String> modules, WorkspaceBuildListener listener)
             throws IOException {
-        return EngineClient.buildWorkspace(
-                EnginePaths.current(),
-                run.workspaceRequest(entryDir, modules, run.flags().jobs()),
-                listener);
+        return EngineClient.buildWorkspace(EnginePaths.current(), run.request(entryDir, modules, spec()), listener);
     }
 
     @Override
@@ -131,7 +152,7 @@ public final class RunVerb implements BuildVerb {
                         return null;
                     } catch (EntryPointUnresolvedException e) {
                         String coord = ProjectInfos.buildTarget(ManifestPaths.manifestIn(projectDir), projectDir);
-                        return mainIssueSentence(e.issue(), coord);
+                        return mainIssueSentence(e.issue(), coord, e.getMessage());
                     } catch (IOException e) {
                         return null;
                     }
@@ -168,8 +189,8 @@ public final class RunVerb implements BuildVerb {
             }
         } catch (EntryPointUnresolvedException e) {
             String coord = ProjectInfos.buildTarget(ManifestPaths.manifestIn(projectDir), projectDir);
-            CommandWedge.printLine(
-                    JkWedge.failureLineCustom("Run", GlobalConfig.nerdFont(), mainIssueSentence(e.issue(), coord)));
+            CommandWedge.printLine(JkWedge.failureLineCustom(
+                    "Run", GlobalConfig.nerdFont(), mainIssueSentence(e.issue(), coord, e.getMessage())));
             return Exit.DATA_ERR;
         } catch (IOException e) {
             CommandWedge.printFail("Run", e.getMessage());
@@ -294,17 +315,18 @@ public final class RunVerb implements BuildVerb {
 
     /**
      * {@code Failed to run {coord}. No valid [yellow]main[/] method was specified or detected} (or,
-     * for {@code issue = "ambiguous"}, {@code Multiple [yellow]main[/] methods found.}) — the
-     * sentence {@link cc.jumpkick.cli.tui.JkWedge#failedTo} renders after the red chip.
+     * for {@code issue = "ambiguous"}, {@code Multiple [yellow]main[/] methods found.}), then the
+     * engine's own account: the candidates it found and how to choose one — the sentence {@link
+     * cc.jumpkick.cli.tui.JkWedge#failedTo} renders after the red chip.
      */
-    private static String mainIssueSentence(String issue, String coord) {
+    static String mainIssueSentence(String issue, String coord, @Nullable String detail) {
         Theme t = Theme.active();
         String main = Theme.colorize("main", t.highlight());
         String head = Theme.colorize("Failed", t.error()) + " to run " + Coord.module(coord) + ". ";
-        return head
-                + ("ambiguous".equals(issue)
-                        ? "Multiple " + main + " methods found."
-                        : "No valid " + main + " method was specified or detected");
+        String sentence = "ambiguous".equals(issue)
+                ? "Multiple " + main + " methods found"
+                : "No valid " + main + " method was specified or detected";
+        return head + sentence + (detail == null || detail.isBlank() ? "." : ": " + detail);
     }
 
     /**

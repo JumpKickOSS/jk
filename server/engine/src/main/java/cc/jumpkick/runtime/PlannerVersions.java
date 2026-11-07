@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
+import static cc.jumpkick.runtime.BuildPlanner.CONTRIBUTED_PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
@@ -151,6 +152,7 @@ public final class PlannerVersions {
             List<Path> sources,
             List<Path> classpath,
             List<Path> processorPath,
+            List<Path> contributedProcessors,
             Path outputDir,
             int release,
             List<String> javacArgs,
@@ -170,7 +172,7 @@ public final class PlannerVersions {
                 .release(release)
                 .extraOptions(List.copyOf(options))
                 .javaHome(javaHome)
-                .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, classpath))
+                .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, contributedProcessors, classpath))
                 .build();
     }
 
@@ -246,6 +248,7 @@ public final class PlannerVersions {
                     sources,
                     classpath(project, layout, entry, layout.classesDir(), base),
                     prepared.javacProcessorCp(),
+                    prepared.contributedProcessors().main(),
                     out,
                     compileRelease(entry, prepared.release()),
                     prepared.javacArgs(),
@@ -335,6 +338,7 @@ public final class PlannerVersions {
                 sources,
                 classpath(project, layout, entry, mainClasses, ctx.require(CLASSPATH)),
                 ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP)),
+                ctx.require(CONTRIBUTED_PROCESSOR_CP),
                 out,
                 compileRelease(entry, ctx.require(RELEASE)),
                 ctx.require(JAVAC_ARGS),

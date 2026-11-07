@@ -2,7 +2,6 @@
 package cc.jumpkick.builds;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Log;
@@ -12,7 +11,6 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -46,7 +44,8 @@ public final class DeclaredDeps {
 
         TreeSet<String> out = new TreeSet<>();
         collectFromToml(rootToml, catalog, out);
-        for (Path moduleDir : moduleDirs(root, rootToml)) {
+        // The build's expansion of the member list: a glob that matches nothing fails as the build does.
+        for (Path moduleDir : WorkspaceModules.memberDirs(root)) {
             Path mt = ManifestPaths.manifestIn(moduleDir);
             if (Files.isRegularFile(mt)) collectFromToml(mt, catalog, out);
         }
@@ -87,44 +86,6 @@ public final class DeclaredDeps {
             if (d.isPath() || d.isGit() || d.isWorkspace() || d.isFile()) continue;
             String key = normalize(d, catalog);
             if (!key.isBlank()) out.add(key);
-        }
-    }
-
-    /** Module directories listed under {@code [workspace] modules}, relative to {@code root}. */
-    private static List<Path> moduleDirs(Path root, Path rootToml) {
-        List<String> rels = List.of();
-        try {
-            JkBuild rootBuild = JkBuildParser.parse(rootToml);
-            if (rootBuild.isWorkspaceRoot()) {
-                rels = rootBuild.workspaceModules();
-            }
-        } catch (UserConfigParseException unparsed) {
-            throw unparsed; // config.toml's own error, with its position — never this site's fallback
-        } catch (Exception e) {
-            TomlScan scan = TomlScan.scan(rootToml, "workspace.modules");
-            rels = scan.stringArray("workspace.modules");
-        }
-        if (rels.isEmpty()) {
-            TomlScan scan = TomlScan.scan(rootToml, "workspace.modules");
-            List<String> scanned = scan.stringArray("workspace.modules");
-            if (!scanned.isEmpty()) rels = scanned;
-        }
-        List<Path> dirs = new ArrayList<>(rels.size());
-        for (String rel : expandQuietly(root, rels)) {
-            if (rel == null || rel.isBlank()) continue;
-            dirs.add(root.resolve(rel).normalize());
-        }
-        return dirs;
-    }
-
-    /** Globs expanded; a pattern that matches nothing maps no changes rather than failing a scan. */
-    private static List<String> expandQuietly(Path root, List<String> rels) {
-        try {
-            return WorkspaceModules.expand(root, rels);
-        } catch (RuntimeException e) {
-            return rels.stream()
-                    .filter(r -> r != null && !WorkspaceModules.isGlob(r))
-                    .toList();
         }
     }
 }

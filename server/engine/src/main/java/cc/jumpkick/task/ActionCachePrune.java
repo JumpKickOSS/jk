@@ -172,22 +172,36 @@ public final class ActionCachePrune {
      */
     public static Report run(Path cacheRoot, Cas cacheCas, Policy policy, Set<String> alreadyFreedShas, boolean dryRun)
             throws IOException {
-        long now = System.currentTimeMillis();
+        return run(cacheRoot, cacheCas, policy, alreadyFreedShas, dryRun, PruneYield.NEVER);
+    }
+
+    /**
+     * As {@link #run(Path, Cas, Policy, Set, boolean)}, stopping at {@code yield}'s say-so between
+     * Zinc trees, between files of the scans, and before each entry the evictor takes, never
+     * between a key and the blobs it frees.
+     */
+    public static Report run(
+            Path cacheRoot, Cas cacheCas, Policy policy, Set<String> alreadyFreedShas, boolean dryRun, PruneYield yield)
+            throws IOException {
+        long now = Clock.SYSTEM.millis();
         long grace = Cas.MIN_AGE_FOR_SWEEP.toMillis();
         Path actionsDir = CacheTree.ACTIONS.under(cacheRoot);
         if (!Files.isDirectory(actionsDir)) return Report.EMPTY;
 
-        Incremental incremental = pruneIncremental(actionsDir, policy, now, grace, dryRun);
+        // Each Zinc tree goes whole and alone: the pass stops between trees and between files of
+        // the read-only measuring walk, never inside a tree it has begun to delete.
+        yield.check();
+        Incremental incremental = pruneIncremental(actionsDir, policy, now, grace, dryRun, yield);
 
         Blobs blobs = new Blobs();
-        long used = scanCas(cacheCas, alreadyFreedShas, blobs);
+        long used = scanCas(cacheCas, alreadyFreedShas, blobs, yield);
 
         Path keysDir = ActionTree.KEYS.under(actionsDir);
         Path tasksDir = ActionTree.TASKS.under(actionsDir);
-        Scan scan = scanActions(actionsDir, keysDir, tasksDir, blobs);
+        Scan scan = scanActions(actionsDir, keysDir, tasksDir, blobs, yield);
         used += scan.bytes();
 
-        Evictor evictor = new Evictor(keysDir, tasksDir, cacheCas, blobs, now, grace, dryRun);
+        Evictor evictor = new Evictor(keysDir, tasksDir, cacheCas, blobs, now, grace, dryRun, yield);
 
         List<Entry> actions = new ArrayList<>();
         List<Entry> memos = new ArrayList<>();
@@ -270,12 +284,21 @@ public final class ActionCachePrune {
         private final long now;
         private final long grace;
         private final boolean dryRun;
+        private final PruneYield yield;
 
         int deletedKeys;
         int deletedBlobs;
         long freed;
 
-        Evictor(Path keysDir, Path tasksDir, Cas cacheCas, Blobs blobs, long now, long grace, boolean dryRun) {
+        Evictor(
+                Path keysDir,
+                Path tasksDir,
+                Cas cacheCas,
+                Blobs blobs,
+                long now,
+                long grace,
+                boolean dryRun,
+                PruneYield yield) {
             this.keysDir = keysDir;
             this.tasksDir = tasksDir;
             this.cacheCas = cacheCas;
@@ -283,11 +306,14 @@ public final class ActionCachePrune {
             this.now = now;
             this.grace = grace;
             this.dryRun = dryRun;
+            this.yield = yield;
         }
 
         /** Bytes freed by taking {@code entry}, or {@code 0} if the grace window protects it. */
         long evict(Entry entry) throws IOException {
             if (entry.deleted()) return 0L;
+            // Before the key, never after it: the blobs only this key names go with it or not at all.
+            yield.check();
             long live = liveMtime(keysDir.resolve(entry.actionKey()), entry.mtime());
             if (now - live < grace) return 0L;
             if (!dryRun && !deleteKey(keysDir, tasksDir, entry.actionKey(), entry.taskId(), entry.superseded(), grace))
@@ -440,11 +466,13 @@ public final class ActionCachePrune {
     private record Incremental(int deletedFiles, long freedBytes, long finalBytes) {}
 
     /** Records size and mtime per live cache-CAS blob in {@code blobs} and returns their total bytes. */
-    private static long scanCas(Cas cacheCas, Set<String> alreadyFreedShas, Blobs blobs) throws IOException {
+    private static long scanCas(Cas cacheCas, Set<String> alreadyFreedShas, Blobs blobs, PruneYield yield)
+            throws IOException {
         Path shaRoot = cacheCas.root().resolve("sha256");
         if (!Files.isDirectory(shaRoot)) return 0L;
         long[] bytes = {0L};
         PathUtil.forEachRegularFile(shaRoot, (file, attrs) -> {
+            yield.check();
             if (file.getFileName().toString().startsWith(".put-")) return;
             var hex = cacheCas.hashFromPath(file);
             if (hex.isEmpty() || alreadyFreedShas.contains(hex.get())) return;
@@ -462,12 +490,14 @@ public final class ActionCachePrune {
      * state push the action budget over a line no amount of key eviction could bring back. A record
      * is parsed as the walk meets it, so the pass holds one record's text at a time.
      */
-    private static Scan scanActions(Path actionsDir, Path keysDir, Path tasksDir, Blobs blobs) throws IOException {
+    private static Scan scanActions(Path actionsDir, Path keysDir, Path tasksDir, Blobs blobs, PruneYield yield)
+            throws IOException {
         // A null pointer set means "could not tell": every key then counts as current.
         Set<String> live = livePointers(tasksDir);
         List<Entry> entries = new ArrayList<>();
         long[] bytes = {0L};
         PathUtil.forEachRegularFile(actionsDir, dir -> underIncremental(actionsDir, dir), (file, attrs) -> {
+            yield.check();
             bytes[0] += attrs.size();
             if (!keysDir.equals(file.getParent())) return;
             String body;
@@ -566,30 +596,33 @@ public final class ActionCachePrune {
      * by any engine on the machine is inside the grace window. The prune holds only this engine's
      * locks; that stamp is what keeps it off another engine's compile.
      */
-    private static Incremental pruneIncremental(Path actionsDir, Policy policy, long now, long grace, boolean dryRun)
-            throws IOException {
+    private static Incremental pruneIncremental(
+            Path actionsDir, Policy policy, long now, long grace, boolean dryRun, PruneYield yield) throws IOException {
         record Tree(Path dir, long bytes, long mtime) {}
         List<Tree> trees = new ArrayList<>();
         long used = 0L;
         for (Path root : ActionTree.incrementalUnder(actionsDir)) {
-            if (!Files.isDirectory(root)) continue;
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(root)) {
-                for (Path dir : stream) {
-                    if (!Files.isDirectory(dir)) continue;
-                    long[] size = {0L};
-                    long[] newest = {0L};
-                    try (Stream<Path> walk = Files.walk(dir)) {
-                        for (Path entry : (Iterable<Path>) walk::iterator) {
-                            newest[0] = Math.max(
-                                    newest[0], Files.getLastModifiedTime(entry).toMillis());
-                            if (Files.isRegularFile(entry)) size[0] += Files.size(entry);
-                        }
-                    } catch (NoSuchFileException vanished) {
-                        continue;
-                    }
-                    trees.add(new Tree(dir, size[0], newest[0]));
-                    used += size[0];
-                }
+            List<Path> dirs = new ArrayList<>();
+            PathUtil.forEachChild(root, (child, attrs) -> {
+                if (attrs.isDirectory()) dirs.add(child);
+                return true;
+            });
+            for (Path dir : dirs) {
+                yield.check();
+                long[] size = {0L};
+                long[] newest = {0L};
+                boolean[] seen = {false};
+                // Directories count toward the age: a compile creates them before it writes a file.
+                PathUtil.forEachEntry(dir, skip -> false, (entry, attrs) -> {
+                    yield.check();
+                    seen[0] = true;
+                    newest[0] = Math.max(newest[0], attrs.lastModifiedTime().toMillis());
+                    if (attrs.isRegularFile()) size[0] += attrs.size();
+                    return true;
+                });
+                if (!seen[0]) continue; // taken by another engine since the listing
+                trees.add(new Tree(dir, size[0], newest[0]));
+                used += size[0];
             }
         }
         if (trees.isEmpty()) return new Incremental(0, 0L, 0L);
@@ -606,6 +639,7 @@ public final class ActionCachePrune {
             boolean overBudget = budget > 0 && used > budget;
             if (!stale && !overBudget) continue;
             if (now - tree.mtime() < grace) continue;
+            yield.check();
             deletedFiles += dryRun ? countFiles(tree.dir()) : deleteTree(tree.dir());
             freed += tree.bytes();
             used -= tree.bytes();

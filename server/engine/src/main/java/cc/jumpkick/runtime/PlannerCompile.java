@@ -208,12 +208,14 @@ public final class PlannerCompile {
      * Every fact compile-main's {@link CompileRequest} is derived from. {@code classpath} is the
      * <em>base</em> compile classpath (lock + workspace siblings); {@link #mainCompileRequest}
      * adds the sibling-language outputs, because which of those belong on it is part of the
-     * derivation and not a caller's decision.
+     * derivation and not a caller's decision. {@code processorPath} is the module's declared
+     * processor path, {@code contributedProcessors} the plugins' ({@link #effectiveProcessorPath}).
      */
     public record MainCompile(
             List<Path> sources,
             List<Path> classpath,
             List<Path> processorPath,
+            List<Path> contributedProcessors,
             BuildLayout layout,
             Path outputDir,
             int release,
@@ -260,7 +262,7 @@ public final class PlannerCompile {
                 .release(in.release())
                 .extraOptions(javacOptions(options, in.javac()))
                 .javaHome(in.javaHome())
-                .processorPath(effectiveProcessorPath(in.processorPath(), classpath));
+                .processorPath(effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath));
         return withScala(req, in.scala()).build();
     }
 
@@ -275,10 +277,23 @@ public final class PlannerCompile {
      * same classpath the module compiles against, so a processor whose helpers ride along as
      * ordinary dependencies (a Log4j plugin processor, Dagger's compiler) runs. A classpath that
      * registers no processor hands javac none, so the key hashes the classpath by ABI alone.
+     *
+     * <p>The processors the module's plugins contribute ({@code contributed}) are appended to
+     * whichever of the two the module's own path is, each jar once. Which one it is depends on
+     * {@code declared} alone: a contribution never turns discovery off, so a classpath processor
+     * (Lombok as a plain dependency) runs beside the plugin's, and a declared path keeps every
+     * processor it names.
      */
-    public static List<Path> effectiveProcessorPath(List<Path> declared, List<Path> classpath) {
-        if (!declared.isEmpty()) return declared;
-        return ClasspathProcessors.discover(classpath).isEmpty() ? List.of() : List.copyOf(classpath);
+    public static List<Path> effectiveProcessorPath(List<Path> declared, List<Path> contributed, List<Path> classpath) {
+        List<Path> own = !declared.isEmpty()
+                ? declared
+                : ClasspathProcessors.discover(classpath).isEmpty() ? List.of() : classpath;
+        if (contributed.isEmpty()) return List.copyOf(own);
+        List<Path> out = new ArrayList<>(own);
+        for (Path jar : contributed) {
+            if (!out.contains(jar)) out.add(jar);
+        }
+        return List.copyOf(out);
     }
 
     /**
@@ -286,12 +301,14 @@ public final class PlannerCompile {
      * TestSources#javacSources}; {@code classpath} is the base test compile classpath,
      * to which {@link #testCompileRequest} adds the Scala toolchain's library jars; {@code
      * mainClasses} is the module's own main classes tree, whose module descriptor (when it has one)
-     * the test sources patch.
+     * the test sources patch. {@code processorPath} and {@code contributedProcessors} are as for
+     * {@link MainCompile}.
      */
     public record TestCompile(
             List<Path> sources,
             List<Path> classpath,
             List<Path> processorPath,
+            List<Path> contributedProcessors,
             Path outputDir,
             int release,
             List<String> javacArgs,
@@ -317,7 +334,7 @@ public final class PlannerCompile {
                 .extraOptions(ModularCompile.testOptions(
                         javacOptions(in.javacArgs(), in.javac()), in.mainClasses(), in.sources()))
                 .javaHome(in.javaHome())
-                .processorPath(effectiveProcessorPath(in.processorPath(), classpath));
+                .processorPath(effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath));
         return withScala(req, in.scala()).build();
     }
 
@@ -445,6 +462,7 @@ public final class PlannerCompile {
                 sources,
                 baseClasspath,
                 processorCp,
+                ctx.require(CONTRIBUTED_PROCESSOR_CP),
                 ctx.require(LAYOUT),
                 javaOut,
                 ctx.require(RELEASE),

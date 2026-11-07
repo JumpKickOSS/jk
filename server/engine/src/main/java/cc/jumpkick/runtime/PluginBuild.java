@@ -102,12 +102,22 @@ public final class PluginBuild {
      */
     public static Path runClassesDir(JkBuild project, BuildLayout layout, Path cache)
             throws IOException, InterruptedException {
+        Path out = transformOutput(project, layout, cache);
+        return out != null && Files.isDirectory(out) ? out : layout.classesDir();
+    }
+
+    /**
+     * Where the module's classes transform ({@code transformsClasses}) writes the classes it
+     * replaces the compiler's with, whether or not a build has written it yet; null when no active
+     * plugin declares one.
+     */
+    public static @Nullable Path transformOutput(JkBuild project, BuildLayout layout, Path cache)
+            throws IOException, InterruptedException {
         ActivePlugins.Declared declared =
                 ActivePlugins.declared(project, layout.moduleRoot(), cache, layout.moduleTargetDir());
         TaskDecl transform = declared == null ? null : PlannerPlugin.transformStep(declared.decls());
-        if (transform == null) return layout.classesDir();
-        Path out = taskScratch(layout, transform.name()).resolve(Objects.requireNonNull(transform.transformsClasses()));
-        return Files.isDirectory(out) ? out : layout.classesDir();
+        if (transform == null) return null;
+        return taskScratch(layout, transform.name()).resolve(Objects.requireNonNull(transform.transformsClasses()));
     }
 
     /** Every dir the declared steps contribute as classes/resources, in declaration order. */
@@ -247,7 +257,8 @@ public final class PluginBuild {
 
     /**
      * Every tool the lock pins for the module at {@code moduleDir} on this platform — the step,
-     * command and packager lanes' Maven artifacts, closures and URL files, and the files of each
+     * command and packager lanes' Maven artifacts, closures and URL files, the contributed
+     * annotation processors' closures, and the files of each
      * closure its plugins resolved for the lock ({@link LockClosures#stage}) — fetched into the CAS
      * and verified as a build fetches them; SDK components are left to their own provisioning.
      * What {@code jk sync} prefetches. Answers the tools' names.
@@ -262,12 +273,15 @@ public final class PluginBuild {
         for (PluginContributions.StepDep dep : PluginContributions.commandDependencies(project, moduleDir, pins)) {
             if (dep.sdkComponent() == null) lanes.add(dep);
         }
+        Lockfile lock = lockOrNull(lockFile);
+        if (lock != null) {
+            lanes.addAll(PluginContributions.processorClosures(
+                    project, moduleDir, pins, PlannerSupport.lockModules(memberLock(lockFile, moduleDir))));
+        }
         List<String> out = new ArrayList<>(
                 // Downloaded and verified, not unpacked: the archive is unpacked by the build that reads it.
-                fetchTools(lanes, project, cas, lockOrNull(lockFile), false, false)
-                        .keySet());
+                fetchTools(lanes, project, cas, lock, false, false).keySet());
         out.addAll(fetchPackagerDependencies(project, moduleDir, cas, lockFile).keySet());
-        Lockfile lock = lockOrNull(lockFile);
         if (lock != null)
             out.addAll(LockClosures.stage(
                     project, lockDir(lockFile), moduleDir, cas, lock, memberLock(lockFile, moduleDir)));

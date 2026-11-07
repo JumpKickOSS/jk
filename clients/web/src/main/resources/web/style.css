@@ -51,6 +51,8 @@
 
   /* Named chrome/state values — one home for the palette (color means state, never decoration). */
   --header-bg: #0a0d11;             /* sticky nav: a touch darker than the page */
+  --header-h: 64px;                 /* the sticky header bar */
+  --statusbar-h: 34px;              /* the fixed footer status bar; pages keep this much room below */
   --header-bd: #1c2833;
   --run-line: #5ab0ff;              /* running step-node border — brighter than --run on --runc fill */
   --run-fg: #d6ecff;                /* running step-node text */
@@ -135,7 +137,7 @@ body {
   font: 13.5px/1.5 var(--mono);
   -webkit-font-smoothing: antialiased;
   /* room for the fixed footer status bar (see .statusbar) */
-  padding-bottom: 34px;
+  padding-bottom: var(--statusbar-h);
 }
 
 .spacer { flex: 1; }
@@ -152,7 +154,7 @@ header {
   display: flex;
   align-items: center;
   gap: 16px;
-  height: 64px;
+  height: var(--header-h);
   padding: 0 20px;
   background: var(--header-bg);
   border-bottom: 1px solid rgba(var(--cn-rgb), 0.18);
@@ -400,6 +402,11 @@ nav button.active {
 /* ---- layout ---- */
 
 main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
+/* The logo hangs 29px below the header and reaches x≈140px. Where a page's column starts under it
+ * (a 66rem column below 66rem + 2 × 124px of viewport; the files viewer's 96rem one below 96rem +
+ * 2 × 124px), the page's first row starts below the sprite instead of beside it. */
+@media (max-width: 1304px) { main { padding-top: 40px; } }
+@media (max-width: 1784px) { main.code-view { padding-top: 40px; } }
 
 .feed-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .feed-head h2,
@@ -1015,6 +1022,22 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 .detail-head { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 4px; }
 /* The checkout picker under the project header: one button per live worktree of the id. */
+.agent-notes { margin: 2px 0 12px; padding: 8px 12px; border: 1px solid var(--bd); border-radius: 6px; background: var(--s1); font-size: 12.5px; }
+.agent-notes-head { display: flex; align-items: center; justify-content: space-between; }
+.agent-notes .agent-files { margin: 4px 0; color: var(--mu); }
+.agent-notes .agent-call-ended { margin: 4px 0; color: var(--warn); }
+.agent-notes ol { margin: 4px 0 0; padding-left: 18px; }
+.agent-notes-head button.ghost {
+  display: inline-flex;
+  padding: 2px;
+  background: none;
+  color: var(--mu);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.agent-notes-head button.ghost:hover { color: var(--cn); border-color: var(--bd); }
+.agent-notes-head .ico { width: 14px; height: 14px; }
 .checkouts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
 .checkouts button.ghost {
   background: var(--s1);
@@ -1708,7 +1731,7 @@ button.browse:hover::before {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 34px;
+  height: var(--statusbar-h);
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1813,10 +1836,8 @@ button.browse:hover::before {
 /* ---- Help / About modal ---- */
 .modal.about { width: 460px; }
 
-/* New project form. Primary/ghost/browse chrome lives with the shared interactive polish
- * rules above; this block is form layout + field surfaces + custom checkbox. */
-.modal.new-project-modal { width: min(520px, 94vw); }
-/* Stack above the new-project modal (base .modal-bg is z-index 60) when browsing a parent dir. */
+/* New project form (the #new wizard). Primary/ghost/browse chrome lives with the shared interactive
+ * polish rules above; this block is form layout + field surfaces + custom checkbox. */
 .browser-modal-bg { z-index: 70; }
 
 /* In-page confirm (code editor Save). Same framed-console modal as Help / New project. */
@@ -2017,18 +2038,6 @@ label.check:hover .check-box {
   justify-content: flex-end;
 }
 .new-project-form .error { color: var(--err); margin: 0; font: 500 12.5px var(--mono); }
-/* Read-only note when a template is selected: its layout is fixed by the template, not the blank
- * simple/traditional control. */
-.new-project-form .template-meta {
-  margin: -2px 0 0;
-  font: 500 11.5px var(--mono);
-  color: var(--mu);
-}
-.new-project-form .template-meta b {
-  color: var(--cn);
-  font-weight: 700;
-  text-transform: none;
-}
 .about-logo {
   width: 45px;
   height: auto;
@@ -2493,3 +2502,90 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 table.stats.history tr.pinnable { cursor: pointer; }
 table.stats.history tr.pinnable:hover td { background: rgba(var(--cn-rgb), 0.06); }
 table.stats.history tr.pinned td { background: rgba(var(--cn-rgb), 0.12); }
+
+/* ---- New project wizard (#new): stepper + fields on the left, live preview on the right ---- */
+.wizard { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 960px) { .wizard { grid-template-columns: 1fr; } }
+.wizard-main {
+  background: var(--s1);
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-xl);
+  padding: 16px 18px;
+}
+.wizard-agent { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); font: 600 12px var(--mono); }
+.wizard-stepper { display: flex; gap: 6px; list-style: none; margin: 0 0 6px; padding: 0; flex-wrap: wrap; }
+.wizard-stepper button {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: none; border: 1px solid transparent; border-radius: var(--r-md);
+  padding: 5px 10px 5px 6px; color: var(--dim); font: 600 12px var(--mono); cursor: pointer;
+}
+.wizard-stepper .wz-n {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  border: 1px solid var(--bd); font-size: 11px;
+}
+.wizard-stepper .wz-n .ico { width: 12px; height: 12px; }
+.wizard-stepper li.done button { color: var(--mu); }
+.wizard-stepper li.done .wz-n { border-color: rgba(var(--okc-rgb), 0.6); color: var(--ok); }
+.wizard-stepper li.bad .wz-n { border-color: rgba(var(--err-rgb), 0.6); color: var(--err); }
+.wizard-stepper li.on button { color: var(--cn); border-color: rgba(var(--cn-rgb), 0.35); background: rgba(var(--cn-rgb), 0.06); }
+.wizard-stepper li.on .wz-n { border-color: var(--cn); }
+.wizard-stepper button:hover { color: var(--tx); }
+.wizard-notice { display: flex; gap: 8px; align-items: center; margin: 0; color: var(--warn); font: 500 12.5px var(--mono); }
+.wizard-step { display: flex; flex-direction: column; gap: 14px; }
+.wz-field { display: flex; flex-direction: column; gap: 6px; }
+.new-project-form .wz-field > label:not(.check) { gap: 2px; }
+.wz-field.bad input, .wz-field.bad select { border-color: rgba(var(--err-rgb), 0.6); }
+.wz-problem { color: var(--err); font: 500 11.5px var(--mono); margin: 0; }
+.wz-seg, .wz-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.wz-seg button, .wz-chips button {
+  background: var(--s1); border: 1px solid var(--bd); border-radius: var(--r-md);
+  padding: 5px 11px; color: var(--mu); font: 500 12.5px var(--mono); cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.wz-chips button { border-radius: var(--r-pill); }
+.wz-seg button:hover, .wz-chips button:hover { color: var(--tx); border-color: rgba(var(--cn-rgb), 0.35); }
+.wz-seg button.on, .wz-chips button.on { color: var(--cn); border-color: rgba(var(--cn-rgb), 0.5); background: rgba(var(--cn-rgb), 0.07); }
+.wz-chips button.on::before { content: '✓ '; }
+.wz-id { color: var(--cn); margin-right: 8px; }
+.wz-fold {
+  align-self: flex-start; background: none; border: 1px dashed var(--bd); border-radius: var(--r-md);
+  padding: 6px 10px; color: var(--mu); font: 500 12px var(--mono); cursor: pointer; text-align: left;
+}
+.wz-fold:hover { color: var(--tx); border-color: rgba(var(--cn-rgb), 0.35); }
+.wz-summary { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font: 12.5px var(--mono); }
+.wz-summary dt { color: var(--mu); }
+.wz-summary dd { margin: 0; color: var(--bright); overflow-wrap: anywhere; }
+.wz-cmd-head { display: flex; align-items: center; gap: 8px; font: 600 11px var(--mono); color: var(--mu); text-transform: uppercase; letter-spacing: 0.04em; }
+.wz-cmd, .wz-manifest {
+  margin: 0; background: var(--console-bg); border: 1px solid var(--bd2); border-radius: var(--r-md);
+  padding: 10px 12px; font: 12px/1.55 var(--mono); color: var(--tx); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.wz-cmd { color: var(--ok); user-select: all; }
+.wizard-actions { border-top: 1px solid var(--bd2); padding-top: 12px !important; margin-top: 8px !important; }
+.wizard-preview {
+  position: sticky; top: calc(var(--header-h) + 8px);
+  background: var(--s1); border: 1px solid var(--bd2); border-radius: var(--r-xl);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; overflow: auto;
+  /* stuck under the header, it ends 16px above the status bar */
+  max-height: calc(100vh - var(--header-h) - 8px - var(--statusbar-h) - 16px);
+}
+/* Beside the form, the page fills the viewport between the header and the status bar and the
+ * preview fills its column: it sizes as if empty (contain: size), so the form alone sets the row,
+ * and stretches to the row, scrolling inside. The page does not scroll unless the form outgrows the
+ * viewport, so the status bar never sits over the preview, in a full-page screenshot included. */
+@media (min-width: 961px) {
+  main.wizard-page {
+    display: flex; flex-direction: column; box-sizing: border-box;
+    min-height: calc(100vh - var(--header-h) - var(--statusbar-h));
+  }
+  .wizard-page .wizard { flex: 1; }
+  .wizard-preview { position: static; align-self: stretch; contain: size; max-height: none; }
+}
+.wz-pv-head { display: flex; align-items: baseline; gap: 10px; }
+.wz-path { color: var(--path); overflow-wrap: anywhere; }
+.wz-tree { list-style: none; margin: 0; padding: 8px 10px; background: var(--console-bg); border: 1px solid var(--bd2); border-radius: var(--r-md); font: 12px/1.6 var(--mono); }
+.wz-tree li { display: flex; align-items: center; gap: 6px; color: var(--tx); white-space: nowrap; }
+.wz-tree li.dir { color: var(--path); }
+.wz-tree .ico { width: 13px; height: 13px; color: var(--dim); flex: none; }
+.wz-tree li.dir .ico { color: var(--path); }
+.new-project-form .wz-field > label > .dim { text-transform: none; letter-spacing: 0; font-weight: 500; }

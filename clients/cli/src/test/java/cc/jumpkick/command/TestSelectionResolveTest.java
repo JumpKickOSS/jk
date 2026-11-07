@@ -9,6 +9,7 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.pipeline.BuildFlags;
 import cc.jumpkick.command.pipeline.BuildVerbCommand;
+import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -99,7 +100,7 @@ class TestSelectionResolveTest {
         assertThat(sel.excludeTags()).containsExactly("slow");
     }
 
-    /** From inside a member directory the root's tags are still the baseline layer. */
+    /** From inside a member directory the root's tags are still the baseline layer, whatever the member lists. */
     @Test
     void member_directory_reads_the_workspace_roots_tags(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
@@ -116,10 +117,15 @@ class TestSelectionResolveTest {
                 guard-suites = ["test", "integration"]
                 """);
         Path member = Files.createDirectories(dir.resolve("member"));
-        writeToml(member, "");
+        writeToml(member, """
+                [test]
+                exclude-tags = ["bench"]
+                include-tags = ["unit"]
+                """);
 
         var sel = BuildFlags.testSelection(parse("-C", member.toString()));
         assertThat(sel.excludeTags()).containsExactly("slow");
+        assertThat(sel.includeTags()).isEmpty();
         assertThat(sel.tagsResolved()).isTrue();
 
         var gate = BuildFlags.testSelection(parse("-C", member.toString(), "--guard"));
@@ -171,6 +177,98 @@ class TestSelectionResolveTest {
         assertThat(sel.allSuites()).isTrue();
         assertThat(sel.excludeTags()).containsExactly("bench");
         assertThat(sel.tagsResolved()).isTrue();
+    }
+
+    @Test
+    void a_profiles_all_suites_widens_the_suites_and_keeps_its_tags(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                exclude-tags = ["integration"]
+
+                [profiles.integration]
+                include-tags = ["integration"]
+                exclude-tags = []
+                all-suites = true
+                """);
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration"));
+        assertThat(sel.allSuites()).isTrue();
+        assertThat(sel.includeTags()).containsExactly("integration");
+        assertThat(sel.excludeTags()).isEmpty();
+
+        var fast = BuildFlags.testSelection(parse("-C", dir.toString()));
+        assertThat(fast.allSuites()).as("the switch is the profile's alone").isFalse();
+    }
+
+    @Test
+    void a_named_suite_or_the_gate_wins_over_a_profiles_all_suites(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [profiles.integration]
+                include-tags = ["integration"]
+                all-suites = true
+                """);
+        var named = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration", "-s", "e2e"));
+        assertThat(named.allSuites()).isFalse();
+        assertThat(named.suites()).containsExactly("e2e");
+
+        var gate = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration", "--guard"));
+        assertThat(gate.allSuites()).isFalse();
+        assertThat(gate.suites()).containsExactly("test", "integration");
+    }
+
+    @Test
+    void a_profiles_all_suites_must_be_a_boolean(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [profiles.integration]
+                all-suites = "yes"
+                """);
+        assertThatThrownBy(() -> BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("profiles.integration.all-suites must be true or false");
+    }
+
+    @Test
+    void an_inheriting_profile_gets_its_parents_tags_and_all_suites(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                exclude-tags = ["integration"]
+
+                [profiles.integration]
+                include-tags = ["integration"]
+                exclude-tags = []
+                all-suites = true
+
+                [profiles.nightly]
+                inherits = "integration"
+                """);
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "nightly"));
+        assertThat(sel.includeTags()).containsExactly("integration");
+        assertThat(sel.excludeTags()).isEmpty();
+        assertThat(sel.allSuites()).isTrue();
+        assertThat(sel.tagsResolved()).isTrue();
+    }
+
+    /**
+     * {@code --no-profile} reaches the engine as the no-profile marker, so the engine applies none of
+     * the profile ({@code env}, {@code jvm-args}, {@code javac}) and resolves tags without it, which
+     * leaves the selection itself unresolved.
+     */
+    @Test
+    void no_profile_sends_the_engine_no_profile(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [profiles.integration]
+                include-tags = ["integration"]
+                env = { ONLY_HERE = "1" }
+                """);
+        var flags = BuildFlags.from(parse("-C", dir.toString(), "-p", "integration", "-n"));
+        assertThat(flags.profile()).isEqualTo(Profiles.NO_PROFILE);
+        assertThat(flags.testSelection().includeTags()).isEmpty();
+        assertThat(flags.testSelection().tagsResolved()).isFalse();
+        assertThat(BuildFlags.from(parse("-C", dir.toString(), "-n")).profile())
+                .as("not even the CI-selected profile")
+                .isEqualTo(Profiles.NO_PROFILE);
+        assertThat(BuildFlags.from(parse("-C", dir.toString(), "-p", "integration"))
+                        .profile())
+                .isEqualTo("integration");
     }
 
     @Test

@@ -121,16 +121,10 @@ final class NativeVerb implements BuildVerb {
             run.fail(NativePreflight.NO_MAIN);
             return Exit.CONFIG;
         }
-        List<AlwaysNativeGraal.Module> modules = new ArrayList<>();
-        for (Path dir : eligible) {
-            ProjectInfo info = ProjectInfos.orNull(dir);
-            String spec = info == null || info.graal() == null || info.graal().isBlank()
-                    ? AlwaysNativeGraal.DEFAULT_SPEC
-                    : info.graal();
-            modules.add(new AlwaysNativeGraal.Module(dir, spec, info == null ? 0 : info.javaRelease()));
-        }
-        Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.homes(
-                modules, new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())::resolve);
+        Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.reached(
+                eligible,
+                ProjectInfos::orNull,
+                new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())::resolve);
         if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
         this.graal = resolved.get();
         this.nativeModules = eligible.size();

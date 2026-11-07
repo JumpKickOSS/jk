@@ -360,6 +360,18 @@ public final class PlannerSetup {
                         testProcessorSiblings,
                         ClasspathResolver.PROCESSOR_PATH,
                         true));
+        // The processors the module's plugins contribute, appended to whichever path the module's
+        // own is (PlannerCompile.effectiveProcessorPath). Each is a closure the lock pins; one the
+        // lock lacks fails here, as a declared processor the lock lacks does above.
+        ContributedProcessors.Paths contributedProcessors;
+        try {
+            contributedProcessors = ContributedProcessors.resolve(project, in.dir(), lock, cas);
+        } catch (IOException e) {
+            ctx.error("processor", String.valueOf(e.getMessage()));
+            throw new RuntimeException("unresolved contributed processors", e);
+        }
+        ctx.put(CONTRIBUTED_PROCESSOR_CP, contributedProcessors.main());
+        ctx.put(CONTRIBUTED_TEST_PROCESSOR_CP, contributedProcessors.test());
 
         WorkspaceClasspath.Result testSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);

@@ -80,6 +80,11 @@ final class LockRoots {
             };
         }
 
+        /** These roots with the test graph's replaced by {@code test}. */
+        Roots withTest(List<Dependency> test) {
+            return new Roots(main, test, processor, fileDeps);
+        }
+
         /** Every root plus every file dependency — the progress budget's seed. */
         int declaredCount() {
             return main.size() + test.size() + processor.size() + fileDeps.size();
@@ -94,7 +99,10 @@ final class LockRoots {
      * declares nowhere is a workspace edge the merge dropped before the solve (a sibling has no lock
      * row) and is left out. The JUnit Platform launcher always rides the test graph, JUnit
      * Jupiter joins it only when the user declared no test dependencies at all, and a declared
-     * framework's Platform engine joins it when the framework has none ({@link TestEngines}). Cross-package
+     * framework's Platform engine joins it when the framework has none ({@link
+     * TestEngines#seedRoots}); the solved test graph then settles their versions and whether the
+     * Jupiter engine joins too ({@link TestEngines#injectedRoots(JkBuild,
+     * java.util.function.Function, java.util.function.Function)}). Cross-package
      * features on {@code path=} libraries are expanded by the engine before the path dep is rewritten
      * to a coordinate, so they arrive here as ordinary main roots.
      */
@@ -140,8 +148,8 @@ final class LockRoots {
                 case MAIN -> mainDeduped.putIfAbsent(opt.packageKey(), opt);
             }
         }
-        // junit infrastructure rides the test graph only.
-        for (Dependency d : TestEngines.injectedRoots(project)) testDeduped.putIfAbsent(d.packageKey(), d);
+        // junit infrastructure rides the test graph only; the solved graph settles it (ScopeSolves).
+        for (Dependency d : TestEngines.seedRoots(project)) testDeduped.putIfAbsent(d.packageKey(), d);
         return new Declared(mainDeduped, testDeduped, processorDeduped);
     }
 

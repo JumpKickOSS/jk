@@ -10,6 +10,7 @@ import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.UnmappedPolicy;
+import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
@@ -563,7 +564,11 @@ public final class LockOrchestrator {
             try {
                 lockfile = partitions.apply(lockfile, members, prefs.members(), solver, observer);
                 for (Member member : members) {
-                    if (JupiterLine.declaredJupiter(member.manifest()) == null) continue;
+                    if (JupiterLine.declaredJupiter(member.manifest()) == null
+                            && !TestEngines.declaredTestKeys(member.manifest())
+                                    .contains(TestEngines.LAUNCHER.packageKey())) {
+                        continue;
+                    }
                     JupiterAlignment.check(lockfile.forMember(member.path()), member.path());
                 }
             } finally {
@@ -825,8 +830,8 @@ public final class LockOrchestrator {
                 ? null
                 : new ConditionalDependencies(
                         conditionalRules, sharedSource != null ? sharedSource::reposFor : pkg -> repos, bomConstraints);
-        ScopeSolves scopeSolves =
-                new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, floorPin, conditionals);
+        ScopeSolves scopeSolves = new ScopeSolves(
+                resolverOverride, sharedSource, pomBuilder, kmp, floorPin, conditionals, testRoots(project));
         ScopeSolves.Solved solved = scopeSolves.solve(roots, prefs, progress);
         if (rounds != null && sharedSource != null) rounds.read(sharedSource.readsCompleted());
         for (String line : scopeSolves.overrides()) observer.onOverride(line);
@@ -836,7 +841,23 @@ public final class LockOrchestrator {
             for (String line : sharedSource.workspaceSubstitutionNotes()) observer.onNote(line);
             declaredRepositories.putAll(sharedSource.declaredRepositoriesByUrl());
         }
-        return new Solve(constraints, roots, solved, sharedSource, kmp);
+        return new Solve(constraints, roots.withTest(solved.testRoots()), solved, sharedSource, kmp);
+    }
+
+    /**
+     * The roots jk adds to {@code project}'s test graph, read off the solved graph as Surefire reads
+     * the resolved test classpath ({@link TestEngines#injectedRoots(JkBuild, Function, Function)}).
+     */
+    private static ScopeSolves.TestRoots testRoots(JkBuild project) {
+        return test -> TestEngines.injectedRoots(
+                project, keys -> LockfileAssembler.reachableFrom(keys, test), ga -> versionOf(test, ga));
+    }
+
+    /** The version {@code graph} resolved for {@code group:artifact}'s jar, or null. */
+    private static @Nullable String versionOf(Resolution graph, String ga) {
+        Resolution.ResolvedModule held =
+                graph.modules().get(new Dependency(ga, VersionSelector.parse("latest")).packageKey());
+        return held == null ? null : held.version();
     }
 
     /**

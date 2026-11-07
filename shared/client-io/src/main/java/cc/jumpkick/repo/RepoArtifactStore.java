@@ -13,6 +13,7 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.AccessLedger;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.PoolUse;
 import java.io.IOException;
 import java.net.URI;
@@ -172,8 +173,12 @@ public final class RepoArtifactStore {
      * Make a loopback tree this process's: once per tree per process, a tree whose marker carries
      * another process's token (or none) is removed whole, so a stub that reappears on a reused port
      * in a later run never serves a predecessor's artifacts from disk; the first write then marks the
-     * tree with this process's token, and a tree so marked is left as it is — within one process the
-     * port is one holder. A tree nothing is written to is not created.
+     * tree with this process's token, and a tree so marked is left as it is. That does not make the
+     * port one holder within a process: a long-running engine outlives many stubs, and two that bind
+     * the same port in its lifetime share this check. What keeps them apart is the URL, not this
+     * cleanup: a stub whose base path carries a token of its own start has a store id of its own, so
+     * a later stub on the same port reads a different tree. A tree nothing is written to is not
+     * created.
      */
     private void claim() {
         Path tree = Objects.requireNonNull(root, "a loopback store has a root");
@@ -964,6 +969,23 @@ public final class RepoArtifactStore {
         return writeToLocalStore(artifactRoot, relativePath, source, null);
     }
 
+    /**
+     * Why nothing may be shelved under {@code artifactRoot}: it is the default home's store while
+     * this process runs another home, whose shelf pins live in that home alone. Null when the shelf
+     * is this home's own.
+     */
+    public static @Nullable String borrowedShelf(Path artifactRoot) {
+        JkDirs dirs = JkDirs.current();
+        Path defaultStore = dirs.borrowedDefaultStore(artifactRoot);
+        if (defaultStore == null) return null;
+        Path home = dirs.homeDir();
+        return "refusing to shelve into " + defaultStore.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL)
+                + ": it is the default home's shelf, and this home (" + home + ") pins what it shelves in its own "
+                + "lib/jk-engine/ — jars written there would shadow the default home's installs with no pin naming them."
+                + " Give this home its own store: unset JK_STORE_DIR, or make " + home.resolve("store")
+                + " a directory rather than a link";
+    }
+
     /** The lock every shelf publish under one store takes; lives at the shelf root. */
     public static final String SHELF_LOCK_NAME = ".shelf.lock";
 
@@ -983,6 +1005,8 @@ public final class RepoArtifactStore {
         // The caller picks the root deliberately: the engine install plan passes the
         // store (where resolvers read since the cache/store split); plugin install-local may pass
         // an isolated --cache-dir root on purpose.
+        String borrowed = borrowedShelf(artifactRoot);
+        if (borrowed != null) throw new IOException(borrowed);
         Path shelf = artifactRoot.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
         Path target = MavenLayout.safeResolve(shelf, relativePath);
         Path memoFile = target.resolveSibling(

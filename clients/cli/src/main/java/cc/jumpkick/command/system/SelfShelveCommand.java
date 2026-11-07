@@ -73,8 +73,15 @@ public final class SelfShelveCommand implements CliCommand {
             CommandWedge.printFail("Self", "nothing to shelve under " + source);
             return Exit.SOFTWARE;
         }
-        String packagedBy = materializedEngineSha();
         Path store = JkStores.store();
+        // A private home installing a dist must not shelve it into the default home's store: the
+        // pins below would land in this home while the jars shadow the default home's installs.
+        String borrowed = RepoArtifactStore.borrowedShelf(store);
+        if (borrowed != null) {
+            CommandWedge.printFail("Self", borrowed);
+            return Exit.SOFTWARE;
+        }
+        String packagedBy = materializedEngineSha();
         Map<String, String> jars = new LinkedHashMap<>();
         Map<String, String> poms = new LinkedHashMap<>();
         for (Path artifact : artifacts) {

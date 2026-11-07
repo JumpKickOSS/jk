@@ -28,6 +28,12 @@ sibling modules' externals, and the siblings' thin jars — exactly what `jk bui
 never the whole workspace lock. The entrypoint is
 `java <JAVA_OPTS…> -cp /app/classpath/*:/app/libs/* <main>`.
 
+A module with [`[application] lib-dir`](packaging.md#lib-dir-layout) ships that layout instead: the
+same dependency layers under `/app/<lib-dir>/`, named and filtered as the lib directory is, then
+`/app/<name>.jar` in its own layer, and `java <JAVA_OPTS…> -jar <name>.jar` from `/app` as the
+entrypoint. It replaces a Dockerfile that copies `target/<name>.jar` and `target/libs`. With
+`aot-cache = true` the trained layout below ships instead.
+
 `JAVA_OPTS` is the one JVM-flag hook. Its tokens lead the entrypoint and, when `aot-cache = true`,
 every training run as well: a cache is only valid for the collector and heap shape it was trained
 with, so the two cannot be allowed to differ.

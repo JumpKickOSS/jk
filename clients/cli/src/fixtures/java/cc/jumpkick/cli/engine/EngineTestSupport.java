@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.cli.engine;
+
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.testing.RepoRoot;
+import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.EnginePaths;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * Suite fixture for wire-only CLI tests: materialize {@code jk-engine} into the test {@code JK_HOME}
+ * and stop the resident engine so {@code @TempDir} can delete project trees that held open CAS
+ * links.
+ */
+public final class EngineTestSupport {
+
+    /** The product libraries this JVM has materialized the engine into: the tier's, and each isolated home's. */
+    private static final Set<Path> MATERIALIZED = ConcurrentHashMap.newKeySet();
+
+    private EngineTestSupport() {}
+
+    /**
+     * Idempotent materialize of the engine assembly into EngineInstall under the current {@code
+     * JK_HOME} (the tier's, or an {@code IsolatedHome}'s): {@code -Djk.engine.jar} (the run-tests step names the workspace engine's fat jar),
+     * else the checkout's assembly. Never the installed engine, which is not the code under test.
+     */
+    public static void ensureEngineMaterialized() {
+        Path lib = JkDirs.productLib();
+        if (MATERIALIZED.contains(lib)) return;
+        synchronized (MATERIALIZED) {
+            if (MATERIALIZED.contains(lib)) return;
+            Path engineJar = resolveEngineJar();
+            if (engineJar == null || !Files.isRegularFile(engineJar)) {
+                throw new IllegalStateException("no engine assembly at "
+                        + (engineJar == null
+                                ? "server/engine/target/jk-engine-" + JkVersion.VERSION + "-all.jar"
+                                : engineJar)
+                        + " — CLI tests run the checkout's engine; `jk test -m jk-cli` packages it");
+            }
+            try {
+                // Ensure UDS parent exists (pure-jk isolation creates it once; do not rely on a
+                // previous class having left it intact).
+                String state = System.getenv("JK_STATE_DIR");
+                if (state != null && !state.isBlank()) {
+                    Files.createDirectories(Path.of(state));
+                }
+                EngineInstall install = EngineInstall.current();
+                // Always materialize: EngineInstall is content-aware (same bytes return
+                // immediately; same version + different bytes publishes a sibling jar).
+                String wantSha = Hashing.sha256Hex(engineJar);
+                boolean bitsChanged = !install.engineSha(JkVersion.VERSION)
+                        .map(wantSha::equals)
+                        .orElse(false);
+                Path cacheRoot = JkDirs.cache();
+                Files.createDirectories(cacheRoot);
+                Cas cas = new Cas(cacheRoot);
+                // The test home serves exactly the engine under test, so an install another kind of
+                // run left (a plain test run stamps the release version, a snapshot run the
+                // -SNAPSHOT one, which orders older) is replaced rather than refused.
+                install.materializeFromFiles(JkVersion.VERSION, cas, engineJar, true);
+                if (bitsChanged) {
+                    // Same version string, different bits: a resident engine surviving from a
+                    // previous test invocation still serves the OLD jar off its socket — the
+                    // version handshake cannot catch it, so stop the fleet (scoped to this
+                    // test JK_HOME) and let the next connect spawn fresh.
+                    EngineFleet.stopAll(true);
+                }
+            } catch (IOException e) {
+                // The cause's text rides in the message: the test runner prints a container failure's
+                // message and nothing below it, and a bare "failed to materialize" names no path.
+                throw new IllegalStateException("failed to materialize engine jar into JK_HOME: " + e, e);
+            }
+            MATERIALIZED.add(lib);
+        }
+    }
+
+    /** Whether this JVM has materialized the engine under test into the current {@code JK_HOME}. */
+    public static boolean materialized() {
+        return MATERIALIZED.contains(JkDirs.productLib());
+    }
+
+    /**
+     * {@code -Djk.engine.jar} when set, else the checkout's engine assembly ({@code
+     * server/engine/target/…-all.jar}, then {@code target/dist/lib}).
+     */
+    static @Nullable Path resolveEngineJar() {
+        String jarProp = System.getProperty("jk.engine.jar");
+        if (jarProp != null && !jarProp.isBlank()) return Path.of(jarProp);
+        String ver = JkVersion.VERSION;
+        Path root = RepoRoot.find(EngineTestSupport.class);
+        for (Path cand : List.of(
+                root.resolve("server/engine/target/jk-engine-" + ver + "-all.jar"),
+                root.resolve("target/dist/lib/jk-engine-" + ver + ".jar"))) {
+            if (Files.isRegularFile(cand)) return cand;
+        }
+        return null;
+    }
+
+    /** Force-stop the engine if running (no state-dir cleanup). Safe when already stopped. */
+    public static void stopEngineOnly() {
+        try {
+            EnginePaths.Paths paths = EnginePaths.current();
+            Path socket = EnginePaths.activeSocket(paths);
+            // forceStop waits for pid death when the pid file is present.
+            long pid = EngineProcessControl.readPidForSocket(socket);
+            if (pid <= 0) {
+                var status = EngineProbe.status(socket);
+                if (status.isEmpty()) return;
+                pid = status.get().pid();
+            }
+            if (!EngineProcessControl.forceStop(socket)) {
+                EngineProcessControl.hardKill(pid);
+                EngineProcessControl.waitForDeathOrKill(pid, Duration.ofMillis(1_500));
+            }
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
+    }
+
+    /**
+     * Force-stop any engine serving this test process's {@link EnginePaths}. Safe when no engine is
+     * running.
+     *
+     * <p>Does <strong>not</strong> delete {@code JK_STATE_DIR}: the suite shares one short state
+     * dir for the whole JVM. Deleting it after every class left later tests
+     * with a missing UDS parent and {@code no build engine} / exit 70 under pure-jk. Suite-end
+     * cleanup is the test task's job ({@code /tmp/jk-cli-*} is ephemeral).
+     */
+    public static void stopEngineAndRelease() {
+        stopEngineOnly();
+    }
+
+    /**
+     * Best-effort delete of an isolated {@code /tmp/jk-cli-*} state dir (suite-end / manual). Not
+     * used between classes.
+     */
+    public static void deleteIsolatedStateDirIfPresent() {
+        String state = System.getenv("JK_STATE_DIR");
+        if (state != null && !state.isBlank() && state.startsWith("/tmp/jk-cli-")) {
+            deleteRecursively(Path.of(state));
+        }
+    }
+
+    private static void deleteRecursively(Path root) {
+        if (!Files.isDirectory(root)) return;
+        try (Stream<Path> walk = Files.walk(root)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException ignored) {
+                    // engine may still be tearing down
+                }
+            });
+        } catch (IOException | UncheckedIOException ignored) {
+            // Engine may delete socket/pid/lock while we walk — Files.walk wraps a mid-walk
+            // disappearance as UncheckedIOException (not IOException). Best-effort only.
+        }
+    }
+}

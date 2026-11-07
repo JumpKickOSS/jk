@@ -218,6 +218,28 @@ public final class JkDirs {
         return Path.of(userHome).resolve(HOME_DIR);
     }
 
+    /**
+     * The default home's own store, {@code $HOME/.jk/store}, when this home is another one and
+     * {@code store} is that same directory, reached through {@code JK_STORE_DIR} or a link; null
+     * otherwise. Such a home may read the default store, but it pins what it shelves in its own
+     * {@code lib/jk-engine/}: a jar it shelved there would sit in the default home's {@code
+     * repos/jk-local} with no pin naming it, where it shadows the default home's own installs.
+     */
+    public @Nullable Path borrowedDefaultStore(Path store) {
+        Path defaultHome = realOrNormal(Path.of(userHome).resolve(HOME_DIR));
+        if (realOrNormal(homeDir()).equals(defaultHome)) return null;
+        Path defaultStore = realOrNormal(defaultHome.resolve("store"));
+        return realOrNormal(store).equals(defaultStore) ? defaultStore : null;
+    }
+
+    private static Path realOrNormal(Path path) {
+        try {
+            return path.toRealPath();
+        } catch (IOException missing) {
+            return path.toAbsolutePath().normalize();
+        }
+    }
+
     /** True when the home comes from the overlay, so the environment's root overrides describe another home. */
     private boolean overlayHome() {
         return nonBlank(overlay.apply("JK_HOME")) != null;

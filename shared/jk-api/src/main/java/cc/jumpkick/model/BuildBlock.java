@@ -182,7 +182,9 @@ public record BuildBlock(
         /** {@code [resources]}: extra and filtered resource roots; {@link Resources#EMPTY} when absent. */
         Resources resources,
         /** {@code [nullness]} as written; {@code null} when the table is absent. */
-        @Nullable NullnessConfig nullness) {
+        @Nullable NullnessConfig nullness,
+        /** {@code [jlink]} — the custom runtime image the module packages; {@code null} for none. */
+        @Nullable Jlink jlink) {
 
     /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
     public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -227,6 +229,7 @@ public record BuildBlock(
             null,
             null,
             Resources.EMPTY,
+            null,
             null);
 
     public BuildBlock {
@@ -428,6 +431,11 @@ public record BuildBlock(
     /** The same block with the {@code [war]} table set. */
     public BuildBlock withWar(@Nullable War war) {
         return with(f -> f.war = war);
+    }
+
+    /** The same block with the {@code [jlink]} table set. */
+    public BuildBlock withJlink(@Nullable Jlink jlink) {
+        return with(f -> f.jlink = jlink);
     }
 
     /** The same block with the {@code [dokka]} table set. */

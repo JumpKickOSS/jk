@@ -155,10 +155,10 @@ public final class JavaCompile {
         Files.createDirectories(gen);
         if (!useCache) {
             deleteClasses(out);
-            if (Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
+            forgetState(stateDir);
             Files.createDirectories(stateDir);
         } else if (Files.isDirectory(stateDir) && !hasClasses(out)) {
-            PathUtil.deleteRecursively(stateDir);
+            forgetState(stateDir);
             Files.createDirectories(stateDir);
         }
         ActionCachePrune.markInUse(stateDir);
@@ -216,7 +216,7 @@ public final class JavaCompile {
             // pair its earlier hash with classes from its later bytes: a revert to those earlier
             // bytes would then compile nothing. Nothing is recorded and the analysis goes, so the
             // next build compiles the module whole from what is on disk.
-            if (Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
+            forgetState(stateDir);
             WorkCounters.compiled(wr.compiledSources().size());
             return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), moved, wr.waitMillis());
         }
@@ -462,6 +462,11 @@ public final class JavaCompile {
     private static List<Path> changedSources(CompileRequest request, Map<String, String> priorInputs)
             throws IOException {
         return ActionKey.changedSources(request.sources(), priorInputs);
+    }
+
+    /** Drop the compile state — the analysis and every marker — so the next compile is a full one. */
+    static void forgetState(Path stateDir) throws IOException {
+        if (Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
     }
 
     private static boolean hasClasses(Path dir) throws IOException {

@@ -16,7 +16,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * {@code parity}: two extractions must agree. The set differences are the violations, the element is
  * the fingerprint; {@code direction = "left-in-right"} asks only that the left be contained. Either
- * side empty is {@code blind}: a parity over nothing proves nothing.
+ * side empty is {@code blind}: a parity over nothing proves nothing. A site sits in the file of the
+ * side holding the element, and a scoped rule judges only the sites in files of modules in its
+ * scope ({@link FileModules}); a rule with neither side in scope is not evaluated.
  */
 final class ParityEvaluator implements Evaluator {
 
@@ -49,18 +51,23 @@ final class ParityEvaluator implements Evaluator {
                     List.of(),
                     (l.rows().isEmpty() ? l.label() : r.label()) + " yielded nothing, so there is nothing to compare");
         }
+        FileModules modules = FileModules.of(ctx);
+        boolean leftJudged = judged(rule, l, modules);
+        boolean rightJudged = judged(rule, r, modules);
+        if (!leftJudged && !rightJudged)
+            return Evaluation.notEvaluated("neither " + l.file() + " nor " + r.file() + " is in the rule's scope");
         Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         for (Allow a : rule.allow()) allowUsed.put(a, false);
         List<Observation> out = new ArrayList<>();
         Set<String> lk = l.keys();
         Set<String> rk = r.keys();
         for (String e : new TreeSet<>(lk)) {
-            if (rk.contains(e)) continue;
+            if (rk.contains(e) || !leftJudged) continue;
             add(out, allowUsed, rule, e, l, r, "left-only");
         }
         if (direction.equals("both")) {
             for (String e : new TreeSet<>(rk)) {
-                if (lk.contains(e)) continue;
+                if (lk.contains(e) || !rightJudged) continue;
                 add(out, allowUsed, rule, e, r, l, "right-only");
             }
         }
@@ -72,6 +79,15 @@ final class ParityEvaluator implements Evaluator {
                     Outcome.STALE_ALLOW, population, out, "allow entries matched nothing: " + String.join(", ", stale));
         }
         return Evaluation.of(population, out);
+    }
+
+    /**
+     * Whether a side's sites are judged: its file belongs to a module in {@code rule}'s scope. A side
+     * read from no file (the guard catalog, the schema) belongs to no module and is always judged.
+     */
+    private static boolean judged(Rule rule, Extraction side, FileModules modules) {
+        String file = side.file();
+        return file == null || modules.judges(rule, file);
     }
 
     private static void add(

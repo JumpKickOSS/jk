@@ -266,6 +266,12 @@ as `jk new`.
   bound project, for `action=form` and the scaffold alike. As with `jk new`, the project's `java`
   is the major of the machine's default JDK (`jk jdk default`), or the template's own when there
   is none, unless `params` answers `java`.
+- The new project is wired for coding agents as `jk new` wires one ([Agents](agents.md#wiring-a-project-for-agents)):
+  for the agent the client named itself in `initialize` (`clientInfo.name`: `claude-code`, `Cursor`,
+  `gemini-cli-…`, `opencode`, `antigravity…`, `codex-…`), plus what the engine's `JK_AGENTS` and
+  detected agents add. A client jk does not recognise gets the engine's setting alone, and
+  `JK_AGENTS=none` in the engine's environment wires none, whoever asks. The result's `agents`
+  lists the files written and the notes, the last of which names the agents wired.
 
 A question the call leaves out takes its default; only a required question with no default holds
 the call up, and an agent that passes every answer is never asked anything. What happens to one
@@ -274,10 +280,11 @@ depends on the client:
 | The client declared | The call |
 |---|---|
 | Form elicitation | asks the human for exactly the missing fields, one step at a time (the name, then the template's questions; a question whose condition names one being asked comes in the next round), then scaffolds. Declining creates nothing and says so |
+| URL elicitation only | asks the host to open the dashboard's [new-project wizard](web.md#new-project), pre-filled with every answer the call gave, and waits up to five minutes for the human to create the project there; the call then returns that project as if it had created it. Declining, or leaving the wizard unfinished, creates nothing and says so; a project created through the link afterwards is still wired for the calling client's agent, and the wizard says the call had ended |
 | No elicitation | fails (`-32602`) with one line per missing question and the values it takes, so the agent can fill them in `params` and call again rather than guess |
 
 A misfit answer (`database=oracle`) fails at once with the values the question takes, whatever the
-client declared. URL elicitation into the web wizard is not offered yet.
+client declared.
 
 Token, loopback bind, and how to report a hole in that gate: [Security](security.md).
 

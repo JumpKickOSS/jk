@@ -33,19 +33,28 @@ public final class SuiteClassFilter {
      * The filter of a module that runs its default suite alone, without class-pattern suites: every
      * compiled class is the run's and belongs to {@link TestSuites#DEFAULT}.
      */
-    public static final SuiteClassFilter NONE = new SuiteClassFilter(Map.of(), List.of(), Map.of());
+    public static final SuiteClassFilter NONE = new SuiteClassFilter(Map.of(), List.of(), Map.of(), null);
 
     private final Map<String, ClassSuite> patternSuites;
     /** The resolved suites, in selection order. */
     private final List<String> selected;
     /** Each class compiled from a selected directory suite other than the default one, to that suite. */
     private final Map<String, String> directoryClasses;
+    /**
+     * Classes compiled into the same tree from a directory suite this filter leaves to another JVM
+     * of the run, when it is a {@link #part}; null for a filter over the whole selection.
+     */
+    private final @Nullable Set<String> others;
 
     private SuiteClassFilter(
-            Map<String, ClassSuite> patternSuites, List<String> selected, Map<String, String> directoryClasses) {
+            Map<String, ClassSuite> patternSuites,
+            List<String> selected,
+            Map<String, String> directoryClasses,
+            @Nullable Set<String> others) {
         this.patternSuites = patternSuites;
         this.selected = selected;
         this.directoryClasses = directoryClasses;
+        this.others = others;
     }
 
     /**
@@ -62,7 +71,34 @@ public final class SuiteClassFilter {
             for (String name : sourceClasses(moduleDir, compact, suite)) directoryClasses.putIfAbsent(name, suite);
         }
         return new SuiteClassFilter(
-                patternSuites, List.copyOf(new LinkedHashSet<>(suites)), Collections.unmodifiableMap(directoryClasses));
+                patternSuites,
+                List.copyOf(new LinkedHashSet<>(suites)),
+                Collections.unmodifiableMap(directoryClasses),
+                null);
+    }
+
+    /**
+     * The part of this selection that runs beside {@code directorySuite}'s own resources: that
+     * suite's classes alone, or for the default suite the selected default and class-pattern suites
+     * (their classes are the default suite's), never a class another selected directory suite
+     * declares. Null when the selection runs nothing there.
+     */
+    public @Nullable SuiteClassFilter part(String directorySuite) {
+        List<String> group = new ArrayList<>();
+        for (String suite : selected) {
+            boolean withDefault = TestSuites.DEFAULT.equals(suite) || patternSuites.containsKey(suite);
+            if (TestSuites.DEFAULT.equals(directorySuite) ? withDefault : suite.equals(directorySuite))
+                group.add(suite);
+        }
+        if (group.isEmpty()) return null;
+        Map<String, String> own = new LinkedHashMap<>();
+        Set<String> rest = new TreeSet<>();
+        directoryClasses.forEach((name, suite) -> {
+            if (group.contains(suite)) own.put(name, suite);
+            else rest.add(name);
+        });
+        return new SuiteClassFilter(
+                patternSuites, List.copyOf(group), Collections.unmodifiableMap(own), Collections.unmodifiableSet(rest));
     }
 
     /**
@@ -84,6 +120,16 @@ public final class SuiteClassFilter {
      * classes. Null when the selection keeps every compiled class.
      */
     public @Nullable String body() {
+        String own = selectionBody();
+        Set<String> leftOut = others;
+        if (leftOut == null) return own;
+        if (own == null && !selected.contains(TestSuites.DEFAULT)) own = directoryKeep();
+        if (leftOut.isEmpty()) return own;
+        return "(?!(?:" + quoted(leftOut) + ")(?:\\$.*)?$)(?:" + (own == null ? ".*" : own) + ")";
+    }
+
+    /** {@link #body} before the classes left to another JVM of the run are taken out. */
+    private @Nullable String selectionBody() {
         List<String> left = new ArrayList<>();
         List<String> kept = new ArrayList<>();
         for (Map.Entry<String, ClassSuite> suite : patternSuites.entrySet()) {
@@ -106,6 +152,17 @@ public final class SuiteClassFilter {
         if (!defaultSelected) return keep;
         String rest = "(?!(?:" + String.join("|", left) + ")$).*";
         return keep.isEmpty() ? rest : "(?:" + keep + ")|" + rest;
+    }
+
+    /** This filter's directory-suite classes and their nested classes; a pattern matching nothing when it has none. */
+    private String directoryKeep() {
+        return directoryClasses.isEmpty() ? "(?!)" : "(?:" + quoted(directoryClasses.keySet()) + ")(?:\\$.*)?";
+    }
+
+    private static String quoted(Set<String> names) {
+        List<String> out = new ArrayList<>();
+        for (String name : names) out.add(Pattern.quote(name));
+        return String.join("|", out);
     }
 
     /** Whether this run's suites run a class, by {@link #body}; always true when it keeps every class. */

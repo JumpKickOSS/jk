@@ -34,7 +34,8 @@ final class ToolPins {
     /**
      * Pin every plugin tool the root or a member fetches as one Maven artifact — the step, command
      * and packager lanes — or as a file at a URL, by the sha256 of its bytes, and every tool it
-     * fetches as a runtime closure by a closure row naming each jar, each jar a row of its own. A
+     * fetches as a runtime closure — an annotation processor it contributes among them — by a
+     * closure row naming each jar, each jar a row of its own. A
      * tool whose coordinate follows the host is pinned for each {@link Interpolation.Host#LOCKED} platform that publishes it, so a machine on
      * another OS verifies its own download against the lock; the running host's artifact must
      * exist. A plain {@code jk lock} keeps a floating tool's locked version and reuses the digests
@@ -72,7 +73,11 @@ final class ToolPins {
             for (PluginContributions.LockedTool url : PluginContributions.lockedUrls(build, dir, view.platformPins())) {
                 urls.merge(url.id(), url.host(), Boolean::logicalOr);
             }
-            for (PluginContributions.StepDep tool : PluginContributions.closureTools(build, dir, view.platformPins())) {
+            List<PluginContributions.StepDep> closureTools =
+                    new ArrayList<>(PluginContributions.closureTools(build, dir, view.platformPins()));
+            closureTools.addAll(PluginContributions.processorClosures(
+                    build, dir, view.platformPins(), PlannerSupport.lockModules(view)));
+            for (PluginContributions.StepDep tool : closureTools) {
                 if (repos == null) repos = RepoGroupBuilder.buildFor(build, repoUrl, cas, BuildEnv.forModule(dir));
                 ToolEntry row = closureRow(tool, previous, repos, progress);
                 closures.add(row);

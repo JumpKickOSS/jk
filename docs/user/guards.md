@@ -356,6 +356,16 @@ with the fix named (`jk lock` to pin the jar you have, or put the pinned jar bac
 the rules the lock says it is. The root file may `allow` against a pack rule or turn a ban into a
 baseline, unless the pack marked the rule `locked = true`. A workspace member's own
 `<module>/jk-guards.toml` may only tighten, and its rules default to that module's scope.
+A rule's `scope` is judged by module for every kind. A file belongs to the module whose directory
+most deeply holds it (a pack nested under its parent's directory is its own module), or to the
+workspace root for a file outside every member: `text`, a text `metric`, `parity` and `generated`
+read only the files of the modules in scope, so a member's text rule never fires on a sibling;
+a text rule's `owner` file is read wherever it lives. `vocabulary` leaves a nested member's files
+to it. `classes` with `only-be-accessed-by` and a workspace guard test judge the classes the
+members in scope compiled. A scoped `toolchain` rule that leaves the root out judges each member
+with what it inherits from the root, and `jk add` reads the edit it is about to write the same
+way: an edit to the root is also judged at every member whose inherited values it changes.
+`toolchain` reads the root as its file says, without the plugins `~/.jk/config.toml` pins.
 `jk guard explain` groups the catalog by layer. Every `jk new` framework template ships the
 pack for its framework — [Templates](templates.md), [Frameworks](frameworks.md). `jk outdated`
 lists a pack with a newer release (from the first-party shelf or the project's repositories) and
@@ -381,8 +391,11 @@ lanes and CI remain the enforcement.
 - **Groovy and Scala** are `text`-scannable only with `blank = "none"`: the blanker lexes
   Java, Kotlin and JavaScript, so a code-view rule over those files reports `unsupported`
   rather than guessing at their comments.
-- **Generated sources** count as sources unless a rule's `files` or `scope` excludes them;
-  a text block in Java is a string, so `blank = "comments+strings"` hides its contents.
+- **Generated sources** count as sources: a bytecode rule reads the classes compiled from them
+  beside the module's own, and a `scope` that leaves their module out excludes them. A text rule
+  never scans `target/`, where processors write; a generated tree kept in the source tree is read
+  unless `files`, or a `scope` leaving out the module that holds it, excludes it. A text block in
+  Java is a string, so `blank = "comments+strings"` hides its contents.
 - **`split-package` discounts generated packages**: a module whose share of a package exists
   only under its generated trees (`target/generated-sources/*`, `target/ksp/java`,
   `target/ksp/kotlin`) and under none of its source roots does not claim it, so a package a

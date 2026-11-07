@@ -82,6 +82,7 @@ final class PlannerTestForecast {
                     testSrc,
                     javacCp,
                     prepared.javacTestProcessorCp(),
+                    prepared.contributedProcessors().test(),
                     testOut,
                     s.project.javac().testRelease(release),
                     prepared.javacArgs(),

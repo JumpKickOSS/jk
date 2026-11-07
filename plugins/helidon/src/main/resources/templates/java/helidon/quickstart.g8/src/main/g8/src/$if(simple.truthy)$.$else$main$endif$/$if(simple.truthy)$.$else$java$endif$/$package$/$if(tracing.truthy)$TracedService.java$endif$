@@ -1,0 +1,39 @@
+package $package$;
+
+import static io.helidon.http.Method.GET;
+
+import io.helidon.service.registry.Services;
+import io.helidon.tracing.Span;
+import io.helidon.tracing.Tracer;
+import io.helidon.webserver.http.Handler;
+import io.helidon.webserver.http.HttpRules;
+import io.helidon.webserver.http.HttpService;
+import io.helidon.webserver.http.ServerRequest;
+import io.helidon.webserver.http.ServerResponse;
+import io.helidon.webserver.http1.Http1Route;
+import io.helidon.webserver.http2.Http2Route;
+
+/** Opens a span of its own inside the request's: {@code curl http://localhost:8080/traced}. */
+public class TracedService implements HttpService {
+
+    @Override
+    public void routing(HttpRules rules) {
+        rules.route(Http1Route.route(GET, "/", new TracedHandler("HTTP/1.1 route")))
+                .route(Http2Route.route(GET, "/", new TracedHandler("HTTP/2 route")));
+    }
+
+    private record TracedHandler(String message) implements Handler {
+
+        @Override
+        public void handle(ServerRequest req, ServerResponse res) {
+            Tracer tracer = req.context().get(Tracer.class).orElseGet(() -> Services.get(Tracer.class));
+            Span span = tracer.spanBuilder("custom-span").start();
+            try {
+                span.addEvent("my nice log");
+                res.send(message);
+            } finally {
+                span.end();
+            }
+        }
+    }
+}

@@ -73,8 +73,9 @@ public final class JobSelect {
     }
 
     /**
-     * Tag/suite filter. Any explicit list means the selection is final ({@code tagsResolved=true})
-     * so per-module {@code [test]} tags are not folded back in.
+     * Tag/suite filter. An explicit tag list means the tags are final ({@code tagsResolved=true});
+     * naming only suites or classes leaves them to the engine, which takes the workspace's tiers
+     * as {@code jk test --suite} does.
      */
     public static TestSelection testSelection(
             List<String> includeTags, List<String> excludeTags, List<String> suites, List<String> classes) {
@@ -83,7 +84,7 @@ public final class JobSelect {
         List<String> su = suites == null ? List.of() : suites;
         TestSelection base = inc.isEmpty() && exc.isEmpty() && su.isEmpty()
                 ? TestSelection.DEFAULT
-                : TestSelection.of(su, false, inc, exc, true);
+                : TestSelection.of(su, false, inc, exc, !inc.isEmpty() || !exc.isEmpty());
         return classes == null || classes.isEmpty() ? base : base.withClasses(classes);
     }
 }

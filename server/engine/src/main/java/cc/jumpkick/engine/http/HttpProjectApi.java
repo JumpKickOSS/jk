@@ -5,18 +5,14 @@ import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.api.JsonOut;
-import cc.jumpkick.engine.journal.BuildJournal;
-import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
-import cc.jumpkick.host.Log;
+import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
 import cc.jumpkick.runtime.base.ProjectCard;
-import cc.jumpkick.scaffold.NewGroupGuess;
-import cc.jumpkick.scaffold.NewParentDirGuess;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -28,110 +24,44 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
-/** New-project, templates, project metadata, and dependency graph. */
+/** The template catalogue, project metadata, files, and dependency graph. */
 final class HttpProjectApi {
 
     /**
-     * {@code GET /api/templates} response cache — building the index walks every template root
-     *. One immutable holder rather than two volatiles: a reader must never pair the old
-     * JSON with the new timestamp and serve stale rows for a full TTL.
+     * {@code GET /api/templates} catalogue cache — building the index walks every template root.
+     * One immutable holder rather than two volatiles: a reader must never pair the old rows with
+     * the new timestamp and serve stale rows for a full TTL.
      */
-    private record TemplatesCache(String json, long atNanos) {}
+    private record TemplatesCache(List<TemplateSpec> entries, long atNanos) {}
 
     private static final long TEMPLATES_TTL_NANOS = TimeUnit.SECONDS.toNanos(30);
 
-    private final BuildJournal journal;
     private volatile @Nullable TemplatesCache templatesCache;
 
-    HttpProjectApi(BuildJournal journal) {
-        this.journal = journal;
-    }
-
     /**
-     * {@code POST /api/projects} — scaffold a new project under {@code parentDir}, from a template as
-     * {@code jk new} does. With no template, {@code executable} (default true) picks the blank
-     * application, {@code false} the blank library.
+     * {@code GET /api/templates[?lang=<lang>]} — the catalogue the new-project form's template
+     * search lists ({@link cc.jumpkick.giter8.Giter8TemplateIndex}), filtered to one language when
+     * {@code lang} names one.
      */
-    void handleNewProject(HttpExchange exchange) throws IOException {
-        String body = HttpRequests.body(exchange);
-        String name = Jsonl.str(body, "name");
-        String parentDir = Jsonl.str(body, "parentDir");
-        String group = Jsonl.str(body, "group");
-        String lang = Jsonl.str(body, "lang");
-        String layout = Jsonl.str(body, "layout");
-        String template = Jsonl.str(body, "template");
-        boolean executable = Jsonl.bool(body, "executable", true);
-        if ((template == null || template.isBlank()) && !executable) template = "library";
+    void handleTemplates(HttpExchange exchange) throws IOException {
+        String lang;
         try {
-            // The SPA routes #project/<id> immediately, so identity materializes with creation.
-            var result = NewProjectOps.createWithIdentity(
-                    new NewProjectOps.Request(name, parentDir, group, lang, layout, template));
-            JsonOut created = JsonOut.object()
-                    .put("path", result.path().toString())
-                    .put("dir", result.path().toString());
-            if (result.projectId() != null) created.put("projectId", result.projectId());
-            HttpResponses.sendJson(exchange, 201, created.toString());
+            lang = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "lang");
         } catch (IllegalArgumentException e) {
             HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-        } catch (IllegalStateException e) {
-            HttpResponses.sendJson(
-                    exchange, 409, JsonOut.object().put("error", e.getMessage()).toString());
-        } catch (IOException e) {
-            HttpResponses.sendJson(
-                    exchange,
-                    500,
-                    JsonOut.object()
-                            .put("error", e.getMessage() == null ? "scaffold failed" : e.getMessage())
-                            .toString());
-        }
-    }
-
-    /**
-     * {@code GET /api/projects/defaults} — educated guesses for the New project modal (group from
-     * git email like {@code jk new}, parent dir from history / well-known roots / git clusters).
-     */
-    void handleProjectDefaults(HttpExchange exchange) throws IOException {
-        String group = NewGroupGuess.guess();
-        List<Path> historyDirs = new ArrayList<>();
-        try {
-            for (var rec : journal.list()) {
-                if (rec != null && rec.dir() != null && !rec.dir().isBlank()) {
-                    historyDirs.add(Path.of(rec.dir()));
-                }
-            }
-        } catch (RuntimeException e) {
-            // journal empty / unreadable — parent guess still works without it
-            Log.debug("handleProjectDefaults: journal empty / unreadable", e);
-        }
-        Path parent = NewParentDirGuess.guess(
-                Optional.ofNullable(System.getProperty("user.home"))
-                        .map(Path::of)
-                        .orElse(null),
-                historyDirs);
-        HttpResponses.sendJson(
-                exchange,
-                200,
-                JsonOut.object()
-                        .put("group", group)
-                        .put("parentDir", parent.toString())
-                        .toString());
-    }
-
-    /**
-     * {@code GET /api/templates} — unified catalog for the new-project picker
-     * ({@link cc.jumpkick.giter8.Giter8TemplateIndex}).
-     */
-    void handleTemplates(HttpExchange exchange) throws IOException {
-        TemplatesCache cached = templatesCache;
-        if (cached != null && System.nanoTime() - cached.atNanos() < TEMPLATES_TTL_NANOS) {
-            HttpResponses.sendJson(exchange, 200, cached.json());
             return;
         }
-        var entries = Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots());
+        TemplatesCache cached = templatesCache;
+        if (cached == null || System.nanoTime() - cached.atNanos() >= TEMPLATES_TTL_NANOS) {
+            cached = new TemplatesCache(
+                    List.copyOf(Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots())), System.nanoTime());
+            templatesCache = cached;
+        }
         var arr = new StringBuilder("[");
         boolean first = true;
-        for (var e : entries) {
+        for (TemplateSpec e : cached.entries()) {
+            if (lang != null && !lang.isBlank() && !lang.strip().equalsIgnoreCase(e.language())) continue;
             if (!first) arr.append(',');
             first = false;
             JsonOut row = JsonOut.object()
@@ -146,9 +76,7 @@ final class HttpProjectApi {
             arr.append(row.toString());
         }
         arr.append(']');
-        String json = arr.toString();
-        templatesCache = new TemplatesCache(json, System.nanoTime());
-        HttpResponses.sendJson(exchange, 200, json);
+        HttpResponses.sendJson(exchange, 200, arr.toString());
     }
 
     /**

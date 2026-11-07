@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.docs.AgentChoice;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
@@ -251,7 +252,8 @@ public final class EngineRequests {
      * A lock/update request's terminal outcome. {@code errors} carries pre-plan failures (manifest
      * parse, workspace module load) as plain text; {@code refreshed} is {@code jk update -g}'s
      * refreshed count ({@code -1} otherwise). {@code exitCode} is authoritative — computed
-     * engine-side from the step statuses (resolve failure exits 6, config problems 2).
+     * engine-side from the step statuses (a resolve failure exits {@code Exit.RESOLVE}, a config
+     * problem {@code Exit.CONFIG}).
      */
     public record LockOutcome(boolean success, int exitCode, List<String> errors, int refreshed) {}
 
@@ -329,7 +331,8 @@ public final class EngineRequests {
             Map<String, String> templateParams,
             boolean relaxParent,
             @Nullable String targetDir,
-            String cwd) {}
+            String cwd,
+            @Nullable AgentChoice agents) {}
 
     public record GitFetchRequest(
             String url, String canonicalUrl, String ref, Path cache, boolean refresh, boolean requireJkToml) {

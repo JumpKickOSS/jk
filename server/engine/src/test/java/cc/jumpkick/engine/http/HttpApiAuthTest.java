@@ -173,7 +173,7 @@ class HttpApiAuthTest extends HttpEngineServerHarness {
     @Test
     void api_config_requires_the_token_even_on_loopback() throws Exception {
         // Payload names the owner's config path and verbatim values (templates.official can embed
-        // credentials) — same class as /api/projects/defaults.
+        // credentials) — same class as /api/forms/new-project.
         HttpResponse<String> noToken = client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/config")).build(),
                 HttpResponse.BodyHandlers.ofString());

@@ -125,6 +125,7 @@ public final class WorkspaceLoader {
             }
             JkBuild member = inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root, moduleDir);
             NodeShape.check(member, moduleDir);
+            PluginJavaFloor.check(member, moduleDir);
             modules.put(moduleDir, member);
         }
         if (!bad.isEmpty()) {
@@ -178,27 +179,57 @@ public final class WorkspaceLoader {
     }
 
     /**
-     * {@code module} carrying the workspace root's profiles, its own winning by name.
+     * {@code module} carrying the workspace root's profiles: the one place a member's profiles
+     * resolve. A profile is a workspace fact, so naming one the root alone declares works in every
+     * member, and a profile means the same in every member.
      *
-     * <p>A profile is a workspace fact — {@code docs/user/test.md} says the root's
-     * {@code [profiles.<name>]} tag lists "are read once and apply to every member" — but the
-     * table itself was only ever read off the manifest being built. The tag half already behaved:
-     * the CLI rehomes to the root before it scans them. The other half did not, so naming a
-     * profile the root alone declares failed the build on the first member that did not:
-     * {@code jk test -p integration} died with "no profile named `integration`" against a
-     * root whose {@code jk.toml} defines it, and the documented push-gate command could not run.
+     * <p>Where the member declares a profile of the same name, the two merge key by key, and the
+     * root wins unless the key is additive per member:
      *
-     * <p>Not a {@code key.workspace = true} inherit: those are opt-in per field because they say
-     * what a module IS. A profile names an invocation, so the workspace answers for it, and a
-     * member that declares its own keeps it — the merge is by name, not wholesale replacement.
+     * <ul>
+     *   <li>{@code include-tags}, {@code exclude-tags}, {@code all-suites}: the root's. They pick
+     *       the tier, and a workspace has one tier table ({@link TierTags} reads them off the root).
+     *   <li>{@code env}: additive. A member adds the variables only its tests need (its own
+     *       database, its own port); a variable both set takes the root's value.
+     *   <li>{@code jvm-args}: additive. A member adds flags only its test JVMs need; the root's
+     *       follow the member's, so a flag both set (a later {@code -D} or {@code -Xmx} wins)
+     *       takes the root's value.
+     *   <li>{@code javac}: the root's when the root's profile sets it, else the member's. The
+     *       compiler flags a profile names (say {@code -Werror} on CI) are what the profile means
+     *       for the whole workspace; flags one module always needs belong in its own {@code [javac]}.
+     *   <li>{@code inherits}: the root's when the root's profile sets it, else the member's.
+     * </ul>
+     *
+     * A profile only one side declares is that side's, whole. Not a {@code key.workspace = true}
+     * inherit: those are opt-in per field because they say what a module IS, and a profile names an
+     * invocation.
      */
     public static JkBuild inheritProfiles(JkBuild module, JkBuild root) {
         Objects.requireNonNull(module, "module");
         Objects.requireNonNull(root, "root");
         if (root.profiles().byName().isEmpty()) return module;
         Map<String, Profile> merged = new LinkedHashMap<>(root.profiles().byName());
-        merged.putAll(module.profiles().byName());
+        module.profiles().byName().forEach((name, own) -> merged.merge(name, own, WorkspaceLoader::mergeProfile));
         return module.withProfiles(new Profiles(merged));
+    }
+
+    /** {@code [profiles.<name>]} as the root and a member both declare it, by the rules on {@link #inheritProfiles}. */
+    static Profile mergeProfile(Profile fromRoot, Profile fromMember) {
+        List<String> jvmArgs = new ArrayList<>(fromMember.jvmArgs());
+        jvmArgs.addAll(fromRoot.jvmArgs());
+        Map<String, String> env = new LinkedHashMap<>(fromMember.env());
+        env.putAll(fromRoot.env());
+        return new Profile(
+                fromRoot.name(),
+                fromRoot.inherits() != null ? fromRoot.inherits() : fromMember.inherits(),
+                fromRoot.javacArgs().isEmpty() ? fromMember.javacArgs() : fromRoot.javacArgs(),
+                jvmArgs,
+                fromRoot.includeTags(),
+                fromRoot.excludeTags(),
+                fromRoot.includeTagsSet(),
+                fromRoot.excludeTagsSet(),
+                env,
+                fromRoot.allSuites());
     }
 
     /**

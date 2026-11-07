@@ -17,9 +17,11 @@ import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.TierTags;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.groovy.GroovyResolver;
@@ -295,8 +297,7 @@ public final class PlannerSupport {
         Path root = rootOpt.get();
         JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
         if (!rootManifest.isWorkspaceRoot()) return out;
-        for (String module : rootManifest.workspaceModules()) {
-            Path dir = root.resolve(module);
+        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
             Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.exists(manifest)) continue;
             JkBuild sib = siblingOrNull(manifest);
@@ -414,8 +415,8 @@ public final class PlannerSupport {
         Path root = rootOpt.get();
         JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
         if (!rootManifest.isWorkspaceRoot()) return out;
-        for (String module : rootManifest.workspaceModules()) {
-            Path manifest = ManifestPaths.manifestIn(root.resolve(module));
+        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
+            Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.exists(manifest)) continue;
             JkBuild sib = siblingOrNull(manifest);
             if (sib == null) continue;
@@ -429,8 +430,7 @@ public final class PlannerSupport {
     private static Path siblingDir(Path moduleDir, JkBuild sibling) throws IOException {
         Path root = WorkspaceLocator.findRoot(moduleDir).orElseThrow();
         JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
-        for (String module : rootManifest.workspaceModules()) {
-            Path dir = root.resolve(module);
+        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
             Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.exists(manifest)) continue;
             // an unparsable sibling cannot be the one already parsed
@@ -619,48 +619,32 @@ public final class PlannerSupport {
     }
 
     /**
-     * The selection the runner actually executes: the session's, with this module's {@code [test]
-     * include-tags} / {@code exclude-tags} folded in when the session carries no tags at all (jk
-     * build / BSP / an MCP run without data), or the workspace root's when the module has none: a
-     * member inherits the root's tiers, so an MCP {@code run(only=member)} skips what {@code jk test
-     * -m member} skips. {@code jk test} resolves tags CLI-side and its selection already carries them.
+     * The selection the runner actually executes: the session's, or, when it carries no resolved
+     * tags (jk build, BSP, an MCP run naming none), the tags and every-suite switch {@link TierTags}
+     * gives this module under the active profile: the workspace root's, so an MCP {@code
+     * run(only=member)} runs what {@code jk test -m member} runs. {@code jk test} resolves through
+     * the same {@link TierTags} CLI-side and its selection already carries them.
      */
-    static TestSelection effectiveSelection(TestSelection sel, Path moduleDir) {
+    public static TestSelection effectiveSelection(TestSelection sel, Path moduleDir, @Nullable String profileName) {
         // tagsResolved: the CLI already applied baseline/profile/flag layers — an empty list may
         // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty.
         if (sel.tagsResolved()) return sel;
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
-        var fromToml = JkBuildParser.parseTestTags(ManifestPaths.manifestIn(moduleDir));
-        if (fromToml.isEmpty()) {
-            Path root = rootOf(moduleDir);
-            if (root != null) fromToml = JkBuildParser.parseTestTags(ManifestPaths.manifestIn(root));
-        }
-        if (fromToml.isEmpty()) return sel;
+        TierTags tiers = TierTags.of(moduleDir, CompileSupport.activeProfileName(profileName));
+        boolean allSuites =
+                sel.allSuites() || (tiers.allSuites() && sel.suites().isEmpty() && !sel.guard());
+        if (!tiers.spoke() && allSuites == sel.allSuites()) return sel;
         return TestSelection.of(
-                sel.suites(),
-                sel.allSuites(),
-                fromToml.includeTags(),
-                fromToml.excludeTags(),
-                false,
-                sel.guard(),
-                sel.scriptsOnly(),
-                sel.noScripts(),
-                sel.classes());
-    }
-
-    /** The workspace root above {@code moduleDir}, or null when it is not a member of one. */
-    private static @Nullable Path rootOf(Path moduleDir) {
-        try {
-            Path root = WorkspaceLocator.findRoot(moduleDir).orElse(null);
-            return root == null
-                            || root.toAbsolutePath()
-                                    .normalize()
-                                    .equals(moduleDir.toAbsolutePath().normalize())
-                    ? null
-                    : root;
-        } catch (IOException e) {
-            return null;
-        }
+                        sel.suites(),
+                        allSuites,
+                        tiers.includeTags(),
+                        tiers.excludeTags(),
+                        false,
+                        sel.guard(),
+                        sel.scriptsOnly(),
+                        sel.noScripts(),
+                        sel.classes())
+                .withOnlyModules(sel.onlyModules());
     }
 
     /**
@@ -698,7 +682,7 @@ public final class PlannerSupport {
         // live run (PlannerTest feeds in.session().testSelection()), or a widened build
         // (`jk build -A`) forecasts "tests cached" off the unit-tier marker and the whole
         // workspace short-circuits to "up to date" without running the widened tier.
-        TestSelection selection = effectiveSelection(SessionContext.current().testSelection(), dir);
+        TestSelection selection = effectiveSelection(SessionContext.current().testSelection(), dir, profileName);
         TestTier tier = TestTier.of(selection, profileName, PlannerTest.fastMethodBudget(project, dir));
         List<String> extras = new ArrayList<>(NodeTestStamp.testStampExtras(
                 testStampWorkerJars(dir, project),
@@ -1013,8 +997,8 @@ public final class PlannerSupport {
         Map<String, Path> dirByName = new LinkedHashMap<>();
         Map<String, Path> dirByCoord = new LinkedHashMap<>();
         Map<Path, JkBuild> byDir = new LinkedHashMap<>();
-        for (String module : rootManifest.workspaceModules()) {
-            Path dir = root.resolve(module);
+        // The build's expansion, outside the fallback: a glob that selects nothing is the build's error.
+        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
             Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(manifest)) continue;
             JkBuild sib = siblingOrNull(manifest);

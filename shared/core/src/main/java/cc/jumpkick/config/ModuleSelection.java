@@ -175,7 +175,8 @@ public final class ModuleSelection {
     static List<Candidate> candidates(Path root, JkBuild entryBuild, boolean withNames) {
         List<Candidate> out = new ArrayList<>();
         if (entryBuild.isWorkspaceRoot()) {
-            for (String m : entryBuild.workspaceOpt().orElseThrow().modules()) {
+            // The build's expansion: a glob names the members it selects, never itself.
+            for (String m : WorkspaceModules.expand(root, entryBuild.workspaceModules())) {
                 String rel = normalizeRel(m);
                 out.add(candidateFor(root, rel, withNames));
             }

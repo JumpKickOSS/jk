@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.COMPILE_TEST_CP;
+import static cc.jumpkick.runtime.BuildPlanner.CONTRIBUTED_PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVAC_PROCESSOR_CP;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
@@ -93,6 +94,7 @@ public final class PlannerFixtures {
             List<Path> sources,
             List<Path> classpath,
             List<Path> processorPath,
+            List<Path> contributedProcessors,
             Path outputDir,
             int release,
             List<String> javacArgs,
@@ -105,7 +107,7 @@ public final class PlannerFixtures {
                 .release(release)
                 .extraOptions(PlannerCompile.javacOptions(javacArgs, javac))
                 .javaHome(javaHome)
-                .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, classpath))
+                .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, contributedProcessors, classpath))
                 .build();
     }
 
@@ -121,6 +123,7 @@ public final class PlannerFixtures {
             Path dir,
             BuildLayout layout,
             List<Path> processorCp,
+            List<Path> contributedProcessors,
             int release,
             List<String> javacArgs,
             Path javaHome,
@@ -148,6 +151,7 @@ public final class PlannerFixtures {
                 fixtureSrc,
                 fxCp,
                 processorCp,
+                contributedProcessors,
                 layout.testFixturesClassesDir(),
                 release,
                 javacArgs,
@@ -220,6 +224,7 @@ public final class PlannerFixtures {
                             sources,
                             classpath,
                             processorCp,
+                            ctx.require(CONTRIBUTED_PROCESSOR_CP),
                             out,
                             ctx.require(RELEASE),
                             javacArgs,
@@ -297,6 +302,7 @@ public final class PlannerFixtures {
                 s.dir,
                 p.layout(),
                 p.javacProcessorCp(),
+                p.contributedProcessors().main(),
                 p.release(),
                 p.javacArgs(),
                 p.javaHome(),

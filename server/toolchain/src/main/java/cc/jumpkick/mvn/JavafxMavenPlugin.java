@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.model.Jlink;
 import cc.jumpkick.model.PluginConfig;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,8 +18,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * {@code javafx-maven-plugin} is the {@code [javafx]} table. Its {@code mainClass} is the
  * application's main (read with the other plugins'); the modules are the OpenJFX artifacts the POM
- * depends on, written only when they differ from the table's default. {@code options} and the jlink
- * settings have no key and are reported.
+ * depends on, written only when they differ from the table's default. {@code options} has no key
+ * there and is reported. The plugin's jlink settings are the {@code [jlink]} table ({@link #jlink}).
  */
 final class JavafxMavenPlugin {
 
@@ -38,16 +39,68 @@ final class JavafxMavenPlugin {
         List<String> modules = modules(model.getDependencies());
         if (!modules.isEmpty() && !modules.equals(DEFAULT_MODULES)) values.put("modules", modules);
         for (Xpp3Dom config : PluginFacts.configurations(plugin.get())) {
-            for (String unmapped : List.of("options", "jlinkImageName", "launcher", "jlinkZipName")) {
-                if (config.getChild(unmapped) != null) {
-                    report.warning(PLUGIN + " <" + unmapped + "> not imported"
-                            + ("options".equals(unmapped) ? "; put test JVM flags in [test] jvm-args" : ""));
-                }
+            if (config.getChild("options") != null) {
+                report.warning(PLUGIN + " <options> not imported; put test JVM flags in [test] jvm-args");
             }
         }
         report.warning(
                 PLUGIN + " became [javafx]. For java -jar, use a main class that doesn't extend" + " Application");
         return new PluginConfig("javafx", values);
+    }
+
+    /** The settings of the plugin's {@code javafx:jlink} goal; any one of them means the build links an image. */
+    static final List<String> JLINK_SETTINGS = List.of(
+            "jlinkImageName",
+            "launcher",
+            "jlinkZipName",
+            "stripDebug",
+            "compress",
+            "noHeaderFiles",
+            "noManPages",
+            "bindServices",
+            "jlinkVerbose",
+            "jlinkExecutable",
+            "ignoreSigningInformation");
+
+    /**
+     * {@code javafx:jlink} as {@code [jlink]}, or {@code null} when the plugin carries no jlink
+     * setting: its {@code stripDebug} (the plugin's default is off) and its {@code options}, which
+     * the plugin's launcher runs with. The goal never starts the application, and training a
+     * cache would open a window on the build host, so the table writes neither a start nor a
+     * cache; the image and launcher names are jk's.
+     */
+    static @Nullable Jlink jlink(Model model, ImportReport.Builder report) {
+        Optional<Plugin> plugin = PluginFacts.plugin(model, PLUGIN);
+        if (plugin.isEmpty()) return null;
+        boolean declared = false;
+        boolean stripDebug = false;
+        List<String> jvmArgs = new ArrayList<>();
+        for (Xpp3Dom config : PluginFacts.configurations(plugin.get())) {
+            for (String setting : JLINK_SETTINGS) declared |= config.getChild(setting) != null;
+            Xpp3Dom strip = config.getChild("stripDebug");
+            if (strip != null)
+                stripDebug =
+                        Boolean.parseBoolean(String.valueOf(strip.getValue()).trim());
+            Xpp3Dom options = config.getChild("options");
+            if (options != null) {
+                for (Xpp3Dom option : options.getChildren()) {
+                    String value = option.getValue();
+                    if (value != null && !value.isBlank() && !jvmArgs.contains(value.trim())) jvmArgs.add(value.trim());
+                }
+            }
+        }
+        if (!declared) return null;
+        for (Xpp3Dom config : PluginFacts.configurations(plugin.get())) {
+            for (String named : List.of("jlinkImageName", "launcher", "jlinkZipName")) {
+                if (config.getChild(named) != null) {
+                    report.warning(PLUGIN + " <" + named + "> not imported: jk writes the image to target/<name>-jri/"
+                            + " with bin/start as its launcher, and zips nothing");
+                }
+            }
+        }
+        report.warning(PLUGIN + " jlink became [jlink] without a startup cache; aot-cache = true trains one by"
+                + " starting the application, which needs a display on the build host");
+        return new Jlink(List.of(), stripDebug, Jlink.AotCache.OFF, jvmArgs, List.of(), 0, false, Map.of());
     }
 
     /** {@code org.openjfx:javafx-controls} → {@code javafx.controls}, in declaration order. */

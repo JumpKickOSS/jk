@@ -37,12 +37,14 @@ class PackagingTailsRegistryTest {
                 TaskNames.PACKAGE_SOURCES, PlannerTails.sourcesStep(cache),
                 TaskNames.PACKAGE_JAVADOC, PlannerTails.javadocStep(cache),
                 TaskNames.PACKAGE_WAR, PlannerWar.warStep(cache, lock, true),
+                TaskNames.PACKAGE_LIB_DIR, PlannerLibDir.libDirStep(cache, lock, true),
+                TaskNames.PACKAGE_JLINK, PlannerJlink.jlinkStep(cache, lock, true),
                 TaskNames.NATIVE_IMAGE,
                         PlannerNative.nativeStep(tmp, cache, lock, tmp.resolve("jdks"), null, null, List.of()));
 
         // package-minified needs a full Inputs to construct, so it is asserted by count rather
         // than built: add another tail and this line fails until someone checks it here too.
-        assertThat(TaskNames.PACKAGING_TAILS).hasSize(6).containsAll(built.keySet());
+        assertThat(TaskNames.PACKAGING_TAILS).hasSize(8).containsAll(built.keySet());
 
         for (var e : built.entrySet()) {
             assertThat(TaskNames.PACKAGING_TAILS)

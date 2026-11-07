@@ -56,7 +56,8 @@ class ImageBuilderAppTreeTest {
                 null,
                 Map.of(),
                 app,
-                "quarkus-run.jar");
+                "quarkus-run.jar",
+                null);
 
         assertThat(plan.hasAppTree()).isTrue();
         assertThat(ImageBuilder.appTreeEntrypoint(plan, false)).containsExactly("java", "-jar", "quarkus-run.jar");
@@ -86,7 +87,8 @@ class ImageBuilderAppTreeTest {
                 null,
                 Map.of(),
                 app,
-                "quarkus-run.jar");
+                "quarkus-run.jar",
+                null);
 
         // hasAppTree skips the Boot-only exploded-classes refusal; training uses
         // settle+SIGTERM for any server, not a per-framework exit flag. Hosts without a

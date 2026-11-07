@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.gradle.GradleExporter;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.SourceLayout;
@@ -15,6 +16,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
+import cc.jumpkick.model.Workspace;
 import cc.jumpkick.mvn.PomExporter;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
 import java.io.IOException;
@@ -146,6 +148,12 @@ public final class GenerateOps {
         }
         JkBuild root = JkBuildParser.parse(toml);
         Map<Path, JkBuild> modules = root.isWorkspaceRoot() ? WorkspaceLoader.loadModules(dir, root) : Map.of();
+        Workspace workspace = root.workspace();
+        if (workspace != null && workspace.modules().stream().anyMatch(WorkspaceModules::isGlob)) {
+            // A POM's <modules> names directories: the exported root lists what each glob selects.
+            root = root.withWorkspace(
+                    new Workspace(WorkspaceModules.expand(dir, workspace.modules()), workspace.dependencies()));
+        }
         Map<String, String> locked = new LinkedHashMap<>(lockedVersions(dir));
         for (Path moduleDir : modules.keySet()) {
             lockedVersions(moduleDir).forEach(locked::putIfAbsent);

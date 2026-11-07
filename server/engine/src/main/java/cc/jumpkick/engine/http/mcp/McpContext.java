@@ -115,6 +115,13 @@ public final class McpContext {
     @Setter
     private volatile @Nullable SessionLog sessions;
 
+    /**
+     * The dashboard's new-project wizard, where MCP {@code new} sends a human by URL elicitation.
+     * {@code null} when no dashboard is wired: that rung is skipped.
+     */
+    @Setter
+    private volatile @Nullable NewProjectWizard wizard;
+
     /** How long one second of a wait's {@code timeout_s} lasts. Tests shrink it to expire a wait quickly. */
     @Setter
     private volatile long waitSecondMs = 1_000;

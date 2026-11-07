@@ -152,10 +152,13 @@ main     = "com.example.App"   # required to `jk run` / fat jar
 assembly = true                # also write `-all.jar`
 # minified = true              # also write `-min.jar` via R8
 # native   = true              # native-image on jk build / jk install
+# lib-dir  = true              # also write target/<name>.jar + target/libs/ (Class-Path layout)
 ```
 
 Absent `[application]` means **library**: `jk build` also writes the `-sources.jar` and
-`-javadoc.jar` Maven Central requires. Packaging matrix: [Packaging](packaging.md).
+`-javadoc.jar` Maven Central requires. Packaging matrix: [Packaging](packaging.md). A `[jlink]`
+table beside `[application]` also writes a runtime image, `target/<name>-jri/`, with a startup
+cache ([Runtime image](packaging.md#runtime-image-jlink)).
 
 ## Features, profiles, variants
 
@@ -185,7 +188,10 @@ exclude-tags = ["slow"]             # replaces the [test] list when present
 `jvm-args` and `env` are test inputs: `-p probe` re-runs a suite a plain run left green, and `jk
 explain` keys the step the same way. A child profile's `env` entries replace its parent's of the
 same name. They do not reach `jk run` — an application's JVM flags are
-its own, not a profile's. Tag precedence and the `ci` auto-profile: [Test](test.md#tag-filters).
+its own, not a profile's. `--no-profile` applies none, not even CI's `ci`. In a workspace a
+member's same-named profile can add `env` and `jvm-args` but not change the root's
+([Test § Workspace scope](test.md#workspace-scope-tag-filters-come-from-the-root)). Tag precedence
+and the `ci` auto-profile: [Test](test.md#tag-filters).
 
 ```toml
 [dependencies]

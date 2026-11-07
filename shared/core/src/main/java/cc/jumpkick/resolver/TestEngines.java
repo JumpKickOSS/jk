@@ -3,27 +3,34 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.version.Versions;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The JUnit Platform engines {@code jk lock} adds to a test classpath for the test frameworks a
- * module declares. {@code jk test} discovers and runs tests only through the Platform launcher, so
- * a framework with no engine of its own on the classpath is a suite the launcher cannot see; each
- * row here names such a framework and the engine that runs it.
+ * The JUnit Platform launcher and engines {@code jk lock} adds to a test classpath. {@code jk
+ * test} discovers and runs tests only through the Platform launcher, so a framework with no engine
+ * of its own on the classpath is a suite the launcher cannot see. As Maven Surefire does, the
+ * solved test graph decides: a Jupiter API it reaches without an engine gets the engine at the
+ * API's version, and the launcher rides the resolved Jupiter's Platform line. Unlike Surefire, the
+ * Vintage engine follows a declared {@code junit:junit} only, never one a test library brings in;
+ * each {@link Row} names such a declared framework and the engine that runs it.
  *
- * <p>An engine the JUnit team releases with the Platform (Vintage) is injected on the declared
+ * <p>An engine the JUnit team releases with the Platform (Vintage) is injected on the resolved
  * Jupiter's version line — the line the launcher rides too ({@link JupiterLine}) — and {@code
- * latest} when no Jupiter is declared, so PubGrub aligns launcher and engines on one Platform
- * line. An engine released on a line of its own (the TestNG engine) is injected at its row's
- * own selector and rides the launcher's Platform through its own {@code junit-platform-engine}
- * edge. The framework's declared version stays the framework version: an exact pin on the
+ * latest} when the graph holds no Jupiter, so launcher and engines land on one Platform line. An
+ * engine released on a line of its own (the TestNG engine) is injected at its row's own selector
+ * and rides the launcher's Platform through its own {@code junit-platform-engine} edge. The framework's declared version stays the framework version: an exact pin on the
  * trigger mediates the engine's own edge onto it ({@link #declaredTriggerPins}), as a direct
  * dependency mediates a transitive one in Maven.
  */
@@ -45,17 +52,112 @@ public final class TestEngines {
             new Dependency("org.junit.jupiter:junit-jupiter", VersionSelector.parse("latest"));
 
     /**
-     * What jk adds to a module's test graph beyond its declarations: the launcher on the declared
-     * Jupiter's Platform line ({@link JupiterLine}), Jupiter when the module declares no test
-     * dependencies, and the engine of every declared framework that has none of its own. The lock
-     * solves these and the module's test classpaths read them, so both see the same roots.
+     * What {@code jk lock} first solves a module's test graph with beyond its declarations: the
+     * launcher on the declared Jupiter's Platform line ({@link JupiterLine}), Jupiter when the
+     * module declares no test dependencies, and the engine of every declared framework that has none
+     * of its own. The solved graph then decides what is added for good ({@link #injectedRoots(JkBuild,
+     * Function, Function)}); these seeds only spare the second solve when they already say the same.
      */
-    public static List<Dependency> injectedRoots(JkBuild project) {
+    public static List<Dependency> seedRoots(JkBuild project) {
         List<Dependency> roots = new ArrayList<>();
         roots.add(new Dependency(LAUNCHER.module(), JupiterLine.launcherSelector(project)));
-        if (project.dependencies().of(Scope.TEST).isEmpty()) roots.add(JUPITER);
-        roots.addAll(injected(project));
+        roots.addAll(frameworkRoots(project, JupiterLine.engineSelector(project)));
         return roots;
+    }
+
+    /**
+     * What jk adds to a module's test graph beyond its declarations, read off the solved graph the
+     * way Maven Surefire reads the resolved test classpath. A Jupiter API the module's test roots
+     * reach without an engine gets the Jupiter engine at the API's version; the launcher rides the
+     * Platform line of the resolved Jupiter (engine, else API), else of the resolved {@code
+     * junit-platform-engine} a Vintage or TestNG engine carries, else {@code latest}; Jupiter joins
+     * when the module declares no test dependencies; a declared framework's engine joins on the
+     * resolved Jupiter's line. Anything the module declares itself is its own and is not added.
+     *
+     * @param reach the package keys the test graph reaches from the given package keys
+     * @param resolved the version the test graph resolved for a {@code group:artifact}, or null
+     */
+    public static List<Dependency> injectedRoots(
+            JkBuild project, Function<Set<String>, Set<String>> reach, Function<String, @Nullable String> resolved) {
+        Set<String> declared = declaredTestKeys(project);
+        Set<String> reached = gas(reach.apply(walkStart(project, declared)));
+        String api = reached.contains(JupiterLine.API) ? resolved.apply(JupiterLine.API) : null;
+        String engine = reached.contains(JupiterLine.ENGINE) ? resolved.apply(JupiterLine.ENGINE) : null;
+        String jupiter = engine != null ? engine : api;
+        List<Dependency> roots = new ArrayList<>();
+        String platform =
+                jupiter != null ? JupiterLine.platformVersion(jupiter) : resolved.apply(JupiterLine.PLATFORM_ENGINE);
+        roots.add(new Dependency(LAUNCHER.module(), platform == null ? LAUNCHER.version() : exact(platform)));
+        roots.addAll(frameworkRoots(project, jupiter == null ? JupiterLine.engineSelector(project) : exact(jupiter)));
+        if (api != null) roots.add(new Dependency(JupiterLine.ENGINE, exact(engine != null ? engine : api)));
+        roots.removeIf(root -> declared.contains(root.packageKey()));
+        return roots;
+    }
+
+    /**
+     * The package keys of the roots jk adds to a module's test graph ({@link #injectedRoots(JkBuild,
+     * Function, Function)}), for a reader that walks the lock's rows rather than a solve: the
+     * launcher, Jupiter when the module declares no test dependencies, each declared framework's
+     * engine, and the Jupiter engine when the walk from the rest reaches a Jupiter API.
+     *
+     * @param declared the package keys the module's {@code [test-dependencies]} and {@code
+     *     [test-dev-dependencies]} stand for in the graph walked
+     * @param reach the package keys the graph reaches from the given package keys
+     */
+    public static List<String> injectedKeys(
+            JkBuild project, Set<String> declared, Function<Set<String>, Set<String>> reach) {
+        Set<String> start = walkStart(project, declared);
+        List<String> keys = new ArrayList<>(start);
+        keys.removeAll(declared);
+        if (gas(reach.apply(start)).contains(JupiterLine.API)) {
+            keys.add(new Dependency(JupiterLine.ENGINE, LAUNCHER.version()).packageKey());
+        }
+        return keys;
+    }
+
+    /** The package keys of {@code project}'s declared test and test-dev dependencies. */
+    public static Set<String> declaredTestKeys(JkBuild project) {
+        Set<String> keys = new LinkedHashSet<>();
+        for (Scope scope : new Scope[] {Scope.TEST, Scope.TEST_DEV}) {
+            for (Dependency d : project.dependencies().of(scope)) keys.add(d.packageKey());
+        }
+        return keys;
+    }
+
+    /**
+     * Where the walk that asks whether the module reaches a Jupiter API starts: its declared test
+     * roots plus every root jk adds whatever the graph holds (launcher, Jupiter, framework engines).
+     */
+    private static Set<String> walkStart(JkBuild project, Set<String> declared) {
+        Set<String> start = new LinkedHashSet<>(declared);
+        start.add(LAUNCHER.packageKey());
+        for (Dependency d : frameworkRoots(project, LAUNCHER.version())) start.add(d.packageKey());
+        return start;
+    }
+
+    /**
+     * Jupiter when the module declares no test dependencies, then the engine of each declared
+     * framework that has none of its own: a Platform-line engine at {@code line}, another at its
+     * own selector. Refuses a declared exact framework pin below its engine's floor.
+     */
+    private static List<Dependency> frameworkRoots(JkBuild project, VersionSelector line) {
+        List<Dependency> roots = new ArrayList<>();
+        if (project.dependencies().of(Scope.TEST).isEmpty()) roots.add(JUPITER);
+        roots.addAll(injected(project, line));
+        return roots;
+    }
+
+    private static VersionSelector exact(String version) {
+        return VersionSelector.parse("=" + version);
+    }
+
+    /** The {@code group:artifact} of every Maven package key among {@code keys}. */
+    private static Set<String> gas(Set<String> keys) {
+        Set<String> gas = new HashSet<>();
+        for (String key : keys) {
+            if (PackageId.isMavenPackageKey(key)) gas.add(PackageId.parse(key).ga());
+        }
+        return gas;
     }
 
     /**
@@ -156,11 +258,10 @@ public final class TestEngines {
 
     /**
      * The engines {@code project}'s declared test dependencies call for, in row order — a
-     * Platform-line engine on the declared Jupiter's line, another at its own selector. Refuses a
-     * declared exact framework pin below its engine's floor.
+     * Platform-line engine at {@code line}, another at its own selector. Refuses a declared exact
+     * framework pin below its engine's floor.
      */
-    private static List<Dependency> injected(JkBuild project) {
-        VersionSelector line = JupiterLine.engineSelector(project);
+    private static List<Dependency> injected(JkBuild project, VersionSelector line) {
         return ROWS.stream()
                 .filter(row -> {
                     Dependency declared = row.declaredIn(project);

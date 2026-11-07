@@ -86,6 +86,14 @@ public final class BuildPlanner {
     /** The compile-test processor path: {@link #PROCESSOR_CP} plus the {@code [test-processor-dependencies]} closure. */
     public static final BuildPlanKey<List<Path>> TEST_PROCESSOR_CP = BuildPlanKey.list("test-processor-cp", Path.class);
 
+    /** The annotation-processor jars the module's plugins append to compile-main's processor path. */
+    public static final BuildPlanKey<List<Path>> CONTRIBUTED_PROCESSOR_CP =
+            BuildPlanKey.list("contributed-processor-cp", Path.class);
+
+    /** The annotation-processor jars the module's plugins append to compile-test's processor path. */
+    public static final BuildPlanKey<List<Path>> CONTRIBUTED_TEST_PROCESSOR_CP =
+            BuildPlanKey.list("contributed-test-processor-cp", Path.class);
+
     /** The [[contribute.provided-classpath]] jars (platform), published for the test step. */
     public static final BuildPlanKey<List<Path>> PROVIDED_CP = BuildPlanKey.list("provided-cp", Path.class);
 
@@ -160,6 +168,10 @@ public final class BuildPlanner {
     public static final BuildPlanKey<List<Path>> TEST_RESOURCE_DIRS =
             BuildPlanKey.list("test-resource-dirs", Path.class);
 
+    /** Each directory suite's own resource roots when a run compiles several apart; empty otherwise. */
+    static final BuildPlanKey<SuiteResources> SUITE_RESOURCES =
+            BuildPlanKey.scalar("suite-resources", SuiteResources.class);
+
     public static final BuildPlanKey<String> BUILD_OUTCOME = BuildPlanKey.scalar("build-outcome", String.class);
     public static final BuildPlanKey<String> KOTLIN_OUTCOME = BuildPlanKey.scalar("kotlin-outcome", String.class);
     public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.scalar("groovy-outcome", String.class);
@@ -201,6 +213,8 @@ public final class BuildPlanner {
             PROCESSOR_CP,
             JAVAC_PROCESSOR_CP,
             TEST_PROCESSOR_CP,
+            CONTRIBUTED_PROCESSOR_CP,
+            CONTRIBUTED_TEST_PROCESSOR_CP,
             PROVIDED_CP,
             COMPILE_TEST_CP,
             TEST_RUNTIME_CP,
@@ -221,6 +235,7 @@ public final class BuildPlanner {
             GROOVY_STAMP_CLOCK,
             TEST_SOURCES,
             TEST_RESOURCE_DIRS,
+            SUITE_RESOURCES,
             BUILD_OUTCOME,
             KOTLIN_OUTCOME,
             GROOVY_OUTCOME,

@@ -1,0 +1,108 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "$package$.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/$name$.jar with target/libs/. `declarative` adds every Declarative code generator
+# (helidon-bundles-apt): the endpoint's routing, its service descriptors and the binding.
+[helidon]
+version = "27.0.1"
+declarative = true
+$if(generate_main.truthy)$
+# The binding step also writes ApplicationMain, which starts the application with no reflection.
+generate-main = true
+
+$else$
+
+$endif$
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-service-registry = { group = "io.helidon.service", name = "helidon-service-registry" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+$if(media_jsonp.truthy)$
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+$endif$
+$if(media_json.truthy)$
+helidon-http-media-json = { group = "io.helidon.http.media", name = "helidon-http-media-json" }
+$endif$
+$if(metrics.truthy)$
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+$endif$
+$if(health.truthy)$
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+$endif$
+$if(tracing.truthy)$
+helidon-tracing = { group = "io.helidon.tracing", name = "helidon-tracing" }
+helidon-webserver-observe-tracing = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-tracing" }
+helidon-tracing-providers-opentelemetry = { group = "io.helidon.tracing.providers", name = "helidon-tracing-providers-opentelemetry" }
+
+$else$
+
+$endif$
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+$if(metrics.truthy)$
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+
+$else$
+
+$endif$
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+$if(docker.truthy)$
+# `jk image`: target/$name$.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "$name$"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+aot-cache = true
+
+$endif$
+$if(jlink.truthy)$
+# jk build also writes target/$name$-jri/: a runtime linked from the project JDK with the modules
+# jdeps finds, the application under app/, bin/start, and an AOT cache trained by starting it.
+[jlink]
+
+# The training starts bind a free port, so a build beside a running copy does not collide.
+[jlink.training-env]
+SERVER_PORT = "0"
+
+$endif$
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"

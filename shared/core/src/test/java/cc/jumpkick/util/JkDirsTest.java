@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.testing.ShortTempDirs;
+import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -437,5 +438,44 @@ class JkDirsTest {
         assertThat(layered(Map.of(), Map.of("JK_JDKS_DIR", tmp("jk-shell-jdks").toString()))
                         .jdksDir())
                 .isEqualTo(tmp("jk-shell-jdks"));
+    }
+
+    @Test
+    void the_default_home_owns_its_store(@TempDir Path user) throws Exception {
+        Files.createDirectories(user.resolve(".jk/store"));
+        JkDirs dirs = JkDirs.of(NO_ENV::get, user.toString());
+
+        assertThat(dirs.borrowedDefaultStore(dirs.storeDir())).isNull();
+    }
+
+    @Test
+    void a_private_home_with_its_own_store_borrows_nothing(@TempDir Path user) throws Exception {
+        Files.createDirectories(user.resolve(".jk/store"));
+        Path home = user.resolve("scratch/jk-home");
+        Files.createDirectories(home.resolve("store"));
+        JkDirs dirs = JkDirs.of(Map.of("JK_HOME", home.toString())::get, user.toString());
+
+        assertThat(dirs.borrowedDefaultStore(dirs.storeDir())).isNull();
+    }
+
+    @Test
+    void a_private_home_pointed_at_the_default_store_borrows_it(@TempDir Path user) throws Exception {
+        Path defaultStore = Files.createDirectories(user.resolve(".jk/store"));
+        Path home = Files.createDirectories(user.resolve("scratch/jk-home"));
+        JkDirs dirs = JkDirs.of(
+                Map.of("JK_HOME", home.toString(), "JK_STORE_DIR", defaultStore.toString())::get, user.toString());
+
+        assertThat(dirs.borrowedDefaultStore(dirs.storeDir())).isEqualTo(defaultStore.toRealPath());
+    }
+
+    @Test
+    void a_private_home_whose_store_links_to_the_default_store_borrows_it(@TempDir Path user) throws Exception {
+        Path defaultStore = Files.createDirectories(user.resolve(".jk/store"));
+        Path home = Files.createDirectories(user.resolve("scratch/jk-home"));
+        Symlinks.create(home.resolve("store"), defaultStore);
+        JkDirs dirs = JkDirs.of(Map.of("JK_HOME", home.toString())::get, user.toString());
+
+        assertThat(dirs.storeDir()).isEqualTo(home.resolve("store"));
+        assertThat(dirs.borrowedDefaultStore(dirs.storeDir())).isEqualTo(defaultStore.toRealPath());
     }
 }

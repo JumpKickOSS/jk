@@ -121,12 +121,19 @@ table     = "spring-boot"     # jk.toml table you own
 version   = "1.0.0"
 jk-compat = ">=0.10"
 # sdk = "0.41.1"              # out-of-tree plugins: the jk-plugin-sdk release compiled against
+# min-java = 27               # a module declaring the table must build for java 27 or later
 
 [schema]
 version = { type = "string", required = true, example = "4.1.0",
             hint = "platform BOM version — a release such as 4.1.0 (exact), ^4 for the newest 4.x, or latest" }
 aot     = { type = "bool" }   # no default = tri-state
 ```
+
+A string key may carry `one-of = ["libs", "jar"]`, the only values it accepts, and `min-version =
+"27"`, the oldest release its value may name: a selector anchored below it (`4.3.0`, `^4`) is
+refused at parse naming the key and the `example`; `latest` passes. `[plugin] min-java` refuses a
+module that declares the table and builds for a lower `java` (or names none), once workspace
+inheritance has made its level concrete, with the line that fixes it.
 
 Schema types: `string`, `coordinate` (a `group:artifact:version` the user writes, a classifier and
 `!type` allowed after it — fewer than three segments fails parse naming the table and key), `bool`,
@@ -172,6 +179,17 @@ coordinate = "org.jetbrains.kotlin:kotlin-noarg-compiler-plugin-embeddable:${kot
 options    = ["preset=jpa"]
 when       = { classpath-has = "jakarta.persistence:jakarta.persistence-api" }
 
+[contribute.test-system-properties]   # -D defaults for the module's forked test JVMs; the
+"helidon.config.profile" = "test"     # module's own [test] system-properties / jvm-args win
+
+[contribute.lib-dir]                  # the [application] lib-dir layout by default, for a module
+when = { config = "layout", equals = "libs" }   # with [application]; its own lib-dir wins
+
+[[contribute.processor-dependency]]   # an annotation processor appended to the module's
+coordinate = "io.helidon.service:helidon-service-codegen:${config.version}"   # processor path
+when       = { classpath-has = "io.helidon.service:helidon-service-registry" }
+scope      = "both"                   # main | test | both (default): compile-main, compile-test
+
 [[contribute.step-dependency]]        # a tool your steps (and packagers) read — engine-fetched,
 artifact   = "aapt2"                  # handed to the worker by name, in the key of each step
 coordinate = "com.android.tools.build:aapt2:9.3.1-15703166:${host.os}"
@@ -206,6 +224,34 @@ the first the root, the rest `with` it in one closure — so the lint plugin's
 A tool both lanes need is declared once, as a `step-dependency` — commands receive both lanes,
 so one artifact may not sit in both (parse error). `[[contribute.provided-classpath]]` resolves
 against the step lane only: a command-only tool never joins a compile classpath.
+
+**Annotation processors.** A `[[contribute.processor-dependency]]` is appended to the processor
+path of compile-main (`scope = "main"`), compile-test (`"test"`) or both (the default, and what a
+codegen processor wants: tests carry annotated types too); the main path also reaches the
+test-fixtures, guard-suite and multi-release compiles, which run compile-main's processors. It is
+appended to whichever path the module has — the one its `[processor-dependencies]` declares, or
+the compile classpath when it declares none and a classpath jar registers a processor — so the
+plugin's processors run beside Lombok whether the user declared Lombok or just depends on it, and a
+contribution never turns discovery off ([Annotation processors](../user/build.md#annotation-processors)).
+Its coordinate (`group:artifact:version`, one per entry, a `${config.<key>}` your platform reads
+being the locked platform version as for any tool) is the root of a closure `jk lock` resolves from
+its POMs and pins as a closure row, each jar by digest, exactly like a `transitive` step tool: the
+build fetches the pinned jars and resolves nothing, and a contribution the lock has no closure for
+makes the lock stale. `classpath-has` reads the module's locked rows, as it does for compiler args.
+A module that declares the same `group:artifact` itself keeps its own: in `[processor-dependencies]`
+the contribution steps aside from both compiles, in `[test-processor-dependencies]` from compile-test
+— the rule `[[contribute.platform-dependency]]` follows against `[platform-dependencies]`. The
+build and `jk explain` derive the contributed jars from one body, so a forecast keys the
+`-processorpath` the build hands javac.
+
+**Module defaults.** `[contribute.test-system-properties]` and `[contribute.lib-dir]` are folded
+into the module as its manifest is parsed, so every reader (the test fork, its stamp, `jk explain`,
+the packaging tail, `jk image`) sees one model. A test property the module sets in `[test]
+system-properties`, or as a `-D` in `[test] jvm-args`, keeps the module's value; when two plugins
+name one key, the first in registry order keeps it. `lib-dir` applies to a module with an
+`[application]` that does not write `lib-dir` itself (`lib-dir = false` included), and its `when`
+is a parse-time predicate (`config`/`equals`, `native-declared`, `kotlin-project`; never
+`classpath-has`). `[helidon]` uses both.
 
 **Archives (`unpack`).** A `coordinate` (not `transitive`) or `url` entry with `unpack = true` is
 a zip handed over unpacked: extracted once into scratch space (`state/tmp/unpacked/<sha256 of the
@@ -428,7 +474,16 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   appends each non-blank line of a file it wrote as one flag; `contributesTestClasspath(path)`
   appends a directory it wrote, or, when the path is a file, each non-blank line as one absolute
   entry (jars it located rather than wrote — the IntelliJ battery's bundled plugins);
-  `oneTestJvm()` runs the module's suites in one JVM (an application that owns its state).
+  `oneTestJvm()` runs the module's suites in one JVM (an application that owns its state). Such a
+  step may declare `In.testClasses()` to read what compile-test wrote (`TaskExec.testClassesDir()`):
+  it then waits for compile-test, and its key moves with the test classes. A step that shapes
+  anything besides the test JVM may not declare it — the plan is rejected.
+- **Recompiles** — a step that declares `In.recompile()` reads `TaskExec.recompile()`, true when
+  the build is the compile goal alone (`jk compile`, and the rebuild `jk dev` runs on every change).
+  It may take a cheaper path then, as long as its output still runs; its key carries the goal, so a
+  full build never restores a recompile's output, and a step that does not declare it is keyed the
+  same under either goal. `[helidon]`'s binding step keeps the empty binding on a recompile rather
+  than scanning the classpath on every edit.
 - **Action keys include plugin worker jar hashes** — upgrading the plugin invalidates cache.
 - Tasks declare inputs/outputs so incrementality and `jk explain` stay correct.
 - **Repositories** — a step whose own resolver fetches outside the lock (a framework's build-time

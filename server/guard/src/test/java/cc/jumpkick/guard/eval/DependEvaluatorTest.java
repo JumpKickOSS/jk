@@ -322,8 +322,8 @@ class DependEvaluatorTest {
         LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
         String proposed =
                 "name = \"m\"\ngroup = \"g\"\nversion = \"1\"\n\n[dependencies]\njunit = { group = \"junit\", name = \"junit\", version = \"=4.13.2\" }\n";
-        Evaluation e =
-                DependEvaluator.evaluateProposed(load.rules().rule("no-junit4").orElseThrow(), "m", proposed, null);
+        Evaluation e = DependEvaluator.evaluateProposed(
+                load.rules().rule("no-junit4").orElseThrow(), "m", root.resolve("m/jk.toml"), proposed, null);
         assertThat(e.outcome()).isEqualTo(Outcome.VIOLATIONS);
         assertThat(e.observations())
                 .singleElement()

@@ -13,6 +13,8 @@ R8 minification is **opt-in**, never the default.
 | Sources jar `*-sources.jar` | library (no `[application]`, nothing runnable), or `sources = "always"` | `jk build` / `jk package` |
 | Javadoc jar `*-javadoc.jar` | library, unless `javadoc = false` | `jk build` / `jk package` |
 | Fat jar `*-all.jar` | `[application] assembly = true` | `jk assemble` / `jk build` |
+| Runnable `target/<name>.jar` + `target/libs/` | `[application] lib-dir = true` | `jk build` |
+| Runtime image `target/<name>-jri/` (jlink, with a startup cache) | `[jlink]` | `jk build` |
 | Minified jar `*-min.jar` | `[application] minified = true` | `jk assemble` / `jk build` (also builds the fat jar) |
 | War `target/<name>-<version>.war`, exploded beside it | `[war]` | `jk build` |
 | Node module's resource jar `target/<name>-<version>.jar` | a node module a sibling depends on, or `[node] classpath-root` | `jk build` |
@@ -26,6 +28,7 @@ main     = "com.example.App"   # required for run / fat / typical apps
 assembly = true
 # relocate = { "com.google.common" = "com.example.shaded.guava" }   # move a bundled package
 # minified = true
+# lib-dir  = true                   # target/<name>.jar + target/libs/, see Lib-dir layout
 # config   = "config/install.toml"  # optional template → ~/.jk/config/<bin>/config.toml
 ```
 
@@ -119,6 +122,140 @@ outside a git checkout (an exported tree) builds with a warning and no `git.prop
 
 `jk import` writes the table for `git-commit-id-maven-plugin`, `pl.project13.maven:git-commit-id-plugin`,
 Boot's `build-info` goal, `com.gorylenko.gradle-git-properties` and `springBoot { buildInfo() }`.
+
+## Lib-dir layout
+
+```toml
+[application]
+main    = "com.example.Main"
+lib-dir = true                  # or the directory's name: lib-dir = "lib"
+# lib-versions = false          # okio.jar rather than okio-3.9.0.jar
+# lib-exclude  = ["okio", "com.example:extra", "org.unwanted:*"]
+```
+
+`lib-dir` writes the deployable Maven builds with `maven-dependency-plugin:copy-dependencies` and
+`maven-jar-plugin`'s `addClasspath` / `classpathPrefix`: `target/<name>.jar`, a copy of the thin jar
+whose manifest names `Main-Class` and a `Class-Path` of `libs/<jar> …`, and `target/libs/` holding
+those jars. `java -jar target/<name>.jar` runs it, and so does any copy of the pair, since a jar's
+`Class-Path` resolves against the jar's own directory:
+
+```dockerfile
+COPY target/app.jar ./
+COPY target/libs ./libs
+CMD ["java", "-jar", "app.jar"]
+```
+
+- The directory holds the module's runtime classpath, the jars the fat jar would bundle: its
+  runtime dependencies from the lock and its workspace siblings' thin jars. `provided`, test and
+  dev dependencies stay out.
+- A locked jar is named by its coordinate, `<artifact>-<version>[-<classifier>].jar`, or
+  `<artifact>[-<classifier>].jar` under `lib-versions = false`. Two jars that would share a name are
+  both prefixed with their group; a sibling keeps its own file name.
+- `lib-exclude` leaves a dependency out of the directory and the `Class-Path`. An entry is an
+  artifact name (any group), `group:artifact`, or `group:*`.
+- The directory is the step's own: a jar in it that the layout does not name, such as a dependency
+  you removed, is deleted on the next build. Other files are left alone.
+- The thin jar `target/<name>-<version>.jar` is still written and published unchanged; the
+  `Class-Path` is a fact of `target/<name>.jar` alone. The step (`package-lib-dir`) is cached like
+  the fat jar, and runs beside the tests.
+
+`[helidon]` turns the layout on for a module with an `[application]` (its `layout = "libs"`, the
+default), so `lib-versions` and `lib-exclude` shape it without `lib-dir`; a `lib-dir` the module
+writes, `false` included, wins ([Helidon](frameworks.md#helidon)).
+
+`jk image` ships the layout as it is when the module declares it: the dependency jars at
+`/app/libs/` in the release and volatile layers, then `<name>.jar` at `/app` in its own layer, with
+`java -jar <name>.jar` as the entrypoint ([Images](images.md)).
+
+`jk import` writes `lib-dir` for a `copy-dependencies` execution into a directory under `target/`
+on a module with a main class, the directory as its value, `<stripVersion>` as `lib-versions =
+false`, and `<excludeArtifactIds>` / `<excludeGroupIds>` as `lib-exclude`. Helidon's application
+parent (`copy-libs` into `target/libs`, excluding `okio`) imports with no row.
+
+## Runtime image (jlink)
+
+```toml
+[application]
+main = "com.example.Main"
+
+[jlink]                                   # the table alone is the whole declaration
+# modules       = ["jdk.crypto.ec"]       # JDK modules beside the ones jdeps finds
+# strip-debug   = true
+# aot-cache     = true                    # false, or "cds" for a CDS archive on any JDK
+# jvm-args      = ["-XX:+UseSerialGC"]    # bin/start's flags; the training runs use them too
+# args          = ["serve"]               # bin/start's arguments when it is given none
+# start-timeout = 60                      # seconds a start may take to settle
+# test-start    = true                    # false needs aot-cache = false
+
+# [jlink.training-env]                    # what the build's starts see and the image does not
+# SERVER_PORT = "0"
+```
+
+`[jlink]` makes `jk build` write a self-contained runtime image of the application, what
+`helidon-maven-plugin:jlink-image` and `javafx:jlink` write for Maven builds:
+
+```
+target/<name>-jri/
+  bin/java, lib/, conf/, legal/, release   the runtime, linked from the project JDK
+  bin/start                                the launcher (bin/start.bat on Windows)
+  app/<name>.jar                           Main-Class and a Class-Path of libs/…
+  app/libs/                                the runtime jars
+  app/<name>.aot                           the startup cache (<name>.jsa for a CDS archive)
+```
+
+- **Modules.** `jdeps --print-module-deps --ignore-missing-deps`, at the module's `java` release,
+  reads the application jar and its runtime jars; `modules` adds what jdeps cannot see, such as a
+  provider reached through `ServiceLoader` or reflection (`jdk.crypto.ec`, `jdk.localedata`,
+  `jdk.zipfs`). The JDWP agent is always linked, for `--debug`.
+- **The JDK.** The runtime is linked from the JDK the module compiles with (`java = 27` links a
+  27 runtime). A JDK that ships `jmods/` links any module. A JDK without `jmods/` links from its
+  own run-time image, which most JDK 24+ builds can do (JumpKick's Temurin installs are such
+  builds), with two limits: it cannot link `jdk.jlink`, and only for the host's own platform. The
+  build names the JDK when jlink refuses.
+- **The libs.** The same jars as [Lib-dir layout](#lib-dir-layout), and `lib-versions` and
+  `lib-exclude` shape them here too when the module declares `lib-dir`.
+- **bin/start** runs the image's `java` with `jvm-args`, then `$JAVA_OPTS`, then the cache, on
+  `app/<name>.jar`, passing its arguments or `args` when it has none. `bin/start --debug` adds a
+  JDWP agent on port 5005 (`JDWP_PORT`, and `JDWP_SUSPEND=y` to wait for the debugger) and leaves
+  the cache out.
+- **The startup cache.** The build trains it by starting the image: on JDK 25 and newer a
+  JEP 483/514 AOT cache (a recording run, then an assembling run), below 25, or with
+  `aot-cache = "cds"`, a dynamic CDS archive over the base archive jlink writes. A start that has
+  printed nothing for 4 seconds, after at least 3, has settled and is asked to stop (SIGTERM), and
+  the JVM writes its recording as it exits: a server trains the way a command that ends on its
+  own does, with nothing to configure per framework. A last start with the cache proves the JVM
+  maps it. A start that exits with an error fails the build with its output, so the training is
+  also the image's test; with `aot-cache = false` the build still starts the image once unless
+  `test-start = false`. Starts see the module's worker environment ([env]) with
+  `[jlink.training-env]` over it, which is how a server that binds a fixed port trains beside a
+  running copy (Helidon reads `SERVER_PORT`). A GUI application needs a display at build time:
+  `DISPLAY` from the shell, or `xvfb-run`.
+- **What voids the cache.** The JVM checks each jar's size and modification time and the
+  image's flags: every file in the image carries the same fixed time, so a copy that keeps times
+  (`cp -a`, a Dockerfile `COPY`) keeps the cache, and so does moving the whole image. Other
+  `$JAVA_OPTS` collectors or heap shapes make the JVM decline the cache and start without it.
+  Windows trains no cache: a process there cannot be asked to stop politely.
+- **Caching.** The step (`package-jlink`) is cached like the fat jar: an unchanged rebuild
+  neither links nor trains, and a deleted image is restored from the action cache. Its key is the
+  jars, the JDK and every key of the table.
+
+The quickstart of Helidon 27 (SE, three JDK modules) links to 99 MiB: 56 MiB of runtime, 11 MiB of
+libs and a 31 MiB AOT cache. `bin/start` answers its first `GET /greet` after about 170 ms with the
+cache and 520 ms without.
+
+`jk import` writes `[jlink]` from `javafx-maven-plugin`'s jlink settings: `<stripDebug>`, and
+`<options>` as `jvm-args`; the image and launcher names are JumpKick's, and the table trains no
+cache (`aot-cache = false`, `test-start = false`), since that would open a window on the build
+host.
+
+### Design
+
+One table, one packaging tail, beside the thin jar like every other artifact on this page; OCI
+images are their own surface ([Images](images.md)). The image is the lib-dir layout under `app/`
+on a runtime jlink links from the project JDK, so the jars a Dockerfile copies and the jars the
+image runs are the same files. The startup cache is trained by starting the image the way its
+launcher does (the absolute path of the jar, the launcher's flags), by the trainer `[image]
+aot-cache` uses, so a server needs no framework hook to be trained.
 
 ## War
 
@@ -231,6 +368,16 @@ Fat and minified never share an action-cache key.
 - Merge `META-INF/spring.factories`, `spring.handlers` and `spring.schemas` as the `Properties`
   files Spring reads them as: every jar's values for a key are kept (comma-joined, first seen
   first), where concatenation would have let the last jar's line win
+- Merge Helidon's `META-INF/helidon` files that every jar carries at the same path, with or without
+  a Helidon table:
+  - `manifest`: one `#HELIDON MANIFEST#` header, then every jar's paths, repeats dropped, first seen first
+  - `config-metadata.json`, and the top-level `feature-registry.json` / `service-registry.json`
+    (Helidon 4's layout): one JSON array holding every jar's elements
+  - `service.loader`: every jar's lines, repeats dropped
+  - `serial-config.properties`: every jar's `;`-separated patterns per key, first seen first,
+    with the catch-all `!*` moved last
+
+  The per-module files under `META-INF/helidon/<module>/` have a path of their own and are kept whole.
 - Project classes win on path conflict; dependency jars earlier in the graph win among themselves
 
 **Dropped:** signature files (`META-INF/*.SF` / `*.RSA` / `*.DSA` / `*.EC` / `SIG-*`) and

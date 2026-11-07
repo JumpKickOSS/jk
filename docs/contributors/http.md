@@ -141,10 +141,12 @@ Manager.
 tokenless “watch-only” mode — a bare browser open without a token must not see live builds or
 history. Static content stays open, in two tiers: the classpath shell (`index.html`, JS, CSS,
 images shipped in the jar) is served under the SPA's own CSP so it can show the blocking
-authorization dialog, while files under the on-disk `web-root` (user reports and other
-build-written content) are served with `Content-Security-Policy: sandbox` — a unique opaque
-origin with scripts and forms disabled, so nothing dropped into `web-root` can script the
-dashboard origin or read the stored bearer token.
+authorization dialog, while files under the default on-disk `web-root` (`~/.jk/state/web`, where user reports and
+other build-written content may land) are served with `Content-Security-Policy: sandbox` — a
+unique opaque origin with scripts and forms disabled, so nothing dropped there can script the
+dashboard origin or read the stored bearer token. A `web-root` the user set (`JK_HTTP_WEB_ROOT` or
+`[http] web-root`) is a dashboard source tree they pointed the engine at, so its files get the
+shell's policy and the dashboard runs from it.
 
 Classpath shell files are `Cache-Control: no-cache` plus a version+mtime `ETag`, so a new
 engine jar is visible on the next load (revalidate always; unchanged bytes are a `304`). Disk
@@ -408,7 +410,31 @@ The tier names come from `BuildMetrics.SCOPE_*`; the socket `metrics-entry` fram
 Effective machine `~/.jk/config.toml` (plus env) as `{ path, rows: [{ key, default, value,
 overridden }] }` for the Status Configuration panel — every known scalar key with its default and
 whether the effective value differs. Token-gated even on loopback: the payload names the
-owner's config path and raw values, the same class as `/api/projects/defaults`.
+owner's config path and raw values, the same class as `/api/forms/new-project`.
+
+### New project
+
+The dashboard's wizard renders the engine's new-project form (`NewProjectForm`: `NewProjectStep`
+then the template's `[[ask]]`), the same model `jk new` and MCP `new` render.
+`HttpNewProjectApi` serves it and `NewProjectPost` settles what comes back:
+
+| Endpoint | Shape |
+| --- | --- |
+| `GET /api/forms/new-project?template=<ref>&lang=<lang>` | `{ form, template, derived }`: the form as `Form#toJson` writes it, `rev` included; the id the ref resolved to (no ref: the default template); and this machine's values of the form's derived defaults, `{ "git-email": …, "parent-dir": … }` |
+| `POST /api/projects/preview` | `{ rev, answers }` → `{ path, template, files, manifest }`, scaffolded and wired for agents into a scratch directory; nothing is written |
+| `POST /api/projects` | `{ rev, answers, elicitation? }` → **201** `{ path, dir, projectId, agents, handedOff? }`; `agents` is `{ files, notes }`, the agent files the create wrote for the engine's `JK_AGENTS` setting and the steps left to the user; `handedOff` comes with an `elicitation`, false when no MCP call was still waiting on it |
+| `GET /api/templates?lang=<lang>` | the catalogue the form's `template` search lists, one language when `lang` names one |
+
+`answers` maps form keys to answers (a string, a boolean for `bool`, a list for `multi`); the
+answers' `template` and `lang` name the form they settle. A `rev` that no longer names that form's
+content is a **409** carrying `{ error, form, template, derived }` for the form in force; answers
+that do not settle it are a **400** `{ error, problems: [{ key, message }] }`. A left-out answer
+takes its default, a derived one from `derived`. A target that already exists is a **409** on both
+the preview and the create. `elicitation` is the id from a wizard link MCP `new` handed out by URL
+elicitation (`NewProjectWizard`): the create completes the call waiting on it and is wired for that
+call's agents. The link outlives the call's five-minute wait by up to an hour from when it opened
+(at most 64 are kept), so a create that lands after the call gave up still gets the call's agents
+and says `handedOff: false`; the wizard tells the human the agent was not told.
 
 The token file persists across restarts precisely so an open tab survives an upgrade or crash
 respawn. `jk engine rotate-token` is the explicit way to invalidate it.
@@ -456,6 +482,12 @@ separate `POST`; `McpRpc` hands any message with an id and no method to the conn
 completes the waiting call by request id. The wait yields the RPC admission permit, as a parked
 `run` does. `jk mcp` (`McpBridge`) asks for both content types, writes each streamed request to
 stdout, and posts the host's response lines back.
+
+MCP `new` climbs from form mode to URL mode (`McpNewForm`): with only URL mode declared, it opens an
+id in `NewProjectWizard`, sends a `mode: "url"` request whose link is the dashboard's wizard
+(`#new?<key>=<value>&…&elicitation=<id>&t=<token>`), and after an accept waits for
+`POST /api/projects` to carry that `elicitation`. The create completes the wait, the call answers
+with the created project and sends `notifications/elicitation/complete`.
 
 ## Starting a job (`POST /api/build`)
 

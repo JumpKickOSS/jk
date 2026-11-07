@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Session;
+import cc.jumpkick.docs.AgentChoice;
+import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.runtime.NewProjectOps;
@@ -10,7 +12,9 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.NewProjectAck;
 import cc.jumpkick.wire.protocol.NewProjectRequest;
 import java.io.BufferedWriter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 public final class NewProjectVerb implements HostedVerb {
@@ -63,9 +67,18 @@ public final class NewProjectVerb implements HostedVerb {
                         wire.templateParams(),
                         wire.relaxParent(),
                         wire.targetDir(),
-                        wire.cwd());
+                        wire.cwd(),
+                        wire.agents() == null ? null : AgentChoice.parse(wire.agents(), wire.agentHosts()));
                 NewProjectOps.Created created = NewProjectOps.createWithIdentity(req);
-                ack = NewProjectAck.of(created.path().toString(), created.projectId(), created.filesWritten());
+                Map<String, String> files = new LinkedHashMap<>();
+                for (AgentSetup.Change c : created.agents().changes())
+                    files.put(c.file().toString(), c.action());
+                ack = NewProjectAck.of(
+                        created.path().toString(),
+                        created.projectId(),
+                        created.filesWritten(),
+                        files,
+                        created.agents().notes());
             } catch (Exception e) {
                 ack = NewProjectAck.error(Errors.text(e));
             }

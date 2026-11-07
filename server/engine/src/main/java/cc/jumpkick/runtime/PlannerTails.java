@@ -101,6 +101,14 @@ public final class PlannerTails {
                 b.addTask(PlannerWar.warStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_WAR);
             }
+            if (deliver && PlannerLibDir.declared(project)) {
+                b.addTask(PlannerLibDir.libDirStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+                leaves.add(TaskNames.PACKAGE_LIB_DIR);
+            }
+            if (deliver && PlannerJlink.declared(project)) {
+                b.addTask(PlannerJlink.jlinkStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+                leaves.add(TaskNames.PACKAGE_JLINK);
+            }
             if (deliver && project.minified()) {
                 b.addTask(minifiedStep(in, graalHome));
                 leaves.add(TaskNames.PACKAGE_MINIFIED);

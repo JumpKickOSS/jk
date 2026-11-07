@@ -1,0 +1,862 @@
+# The new-project corpus of java/helidon/quickstart: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+layout = traditional
+media = jsonp
+metrics = true
+health = true
+tracing = false
+docker = true
+jlink = false
+k8s = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+app.yaml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/package-info.java
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/test/java/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+# `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+aot-cache = true
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== metrics=false health=false docker=false k8s=false
+layout = traditional
+media = jsonp
+metrics = false
+health = false
+tracing = false
+docker = false
+jlink = false
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/package-info.java
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/test/java/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== media=json tracing=true jlink=true
+layout = traditional
+media = json
+metrics = true
+health = true
+tracing = true
+docker = true
+jlink = true
+k8s = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+app.yaml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/TracedService.java
+src/main/java/com/acme/package-info.java
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/test/java/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-json = { group = "io.helidon.http.media", name = "helidon-http-media-json" }
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+helidon-webserver-observe-tracing = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-tracing" }
+helidon-webserver-http2 = { group = "io.helidon.webserver", name = "helidon-webserver-http2" }
+helidon-tracing-providers-opentelemetry = { group = "io.helidon.tracing.providers", name = "helidon-tracing-providers-opentelemetry" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+# `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+aot-cache = true
+
+# jk build also writes target/demo-jri/: a runtime linked from the project JDK with the modules
+# jdeps finds, the application under app/, bin/start, and an AOT cache trained by starting it.
+[jlink]
+
+# The training starts bind a free port, so a build beside a running copy does not collide.
+[jlink.training-env]
+SERVER_PORT = "0"
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== layout=simple health=false tracing=true docker=false jlink=true k8s=false
+layout = simple
+media = jsonp
+metrics = true
+health = false
+tracing = true
+docker = false
+jlink = true
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk.toml
+resources/application.yaml
+resources/logging.properties
+src/com/acme/GreetService.java
+src/com/acme/Main.java
+src/com/acme/TracedService.java
+src/com/acme/package-info.java
+test/src/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+helidon-webserver-observe-tracing = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-tracing" }
+helidon-webserver-http2 = { group = "io.helidon.webserver", name = "helidon-webserver-http2" }
+helidon-tracing-providers-opentelemetry = { group = "io.helidon.tracing.providers", name = "helidon-tracing-providers-opentelemetry" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+# jk build also writes target/demo-jri/: a runtime linked from the project JDK with the modules
+# jdeps finds, the application under app/, bin/start, and an AOT cache trained by starting it.
+[jlink]
+
+# The training starts bind a free port, so a build beside a running copy does not collide.
+[jlink.training-env]
+SERVER_PORT = "0"
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== layout=simple media=json metrics=false
+layout = simple
+media = json
+metrics = false
+health = true
+tracing = false
+docker = true
+jlink = false
+k8s = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+app.yaml
+jk.toml
+resources/application.yaml
+resources/logging.properties
+src/com/acme/GreetService.java
+src/com/acme/Main.java
+src/com/acme/package-info.java
+test/src/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-json = { group = "io.helidon.http.media", name = "helidon-http-media-json" }
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+# `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+aot-cache = true
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== metrics=false tracing=true docker=false
+layout = traditional
+media = jsonp
+metrics = false
+health = true
+tracing = true
+docker = false
+jlink = false
+k8s = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+app.yaml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/TracedService.java
+src/main/java/com/acme/package-info.java
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/test/java/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+helidon-webserver-observe-tracing = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-tracing" }
+helidon-webserver-http2 = { group = "io.helidon.webserver", name = "helidon-webserver-http2" }
+helidon-tracing-providers-opentelemetry = { group = "io.helidon.tracing.providers", name = "helidon-tracing-providers-opentelemetry" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== media=json metrics=false health=false docker=false jlink=true k8s=false
+layout = traditional
+media = json
+metrics = false
+health = false
+tracing = false
+docker = false
+jlink = true
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/package-info.java
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/test/java/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-json = { group = "io.helidon.http.media", name = "helidon-http-media-json" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+# jk build also writes target/demo-jri/: a runtime linked from the project JDK with the modules
+# jdeps finds, the application under app/, bin/start, and an AOT cache trained by starting it.
+[jlink]
+
+# The training starts bind a free port, so a build beside a running copy does not collide.
+[jlink.training-env]
+SERVER_PORT = "0"
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== metrics=false health=false k8s=false
+layout = traditional
+media = jsonp
+metrics = false
+health = false
+tracing = false
+docker = true
+jlink = false
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/package-info.java
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/test/java/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+# `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+aot-cache = true
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== health=false docker=false
+layout = traditional
+media = jsonp
+metrics = true
+health = false
+tracing = false
+docker = false
+jlink = false
+k8s = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+app.yaml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/package-info.java
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/test/java/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== metrics=false docker=false k8s=false
+layout = traditional
+media = jsonp
+metrics = false
+health = true
+tracing = false
+docker = false
+jlink = false
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/package-info.java
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/test/java/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"

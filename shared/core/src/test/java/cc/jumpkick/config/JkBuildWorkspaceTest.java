@@ -557,6 +557,37 @@ class JkBuildWorkspaceTest {
     }
 
     @Test
+    void a_glob_lists_only_what_expand_selects(@TempDir Path tempDir) throws IOException {
+        List<String> entries = List.of("libs/*", "apps/web");
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                name = "root"
+
+                [workspace]
+                modules = ["libs/*", "apps/web"]
+                """);
+        Files.createDirectories(tempDir.resolve("libs/core"));
+        Files.writeString(tempDir.resolve("libs/core/jk.toml"), "name = \"core\"\n");
+        Files.createDirectories(tempDir.resolve("libs/.scratch"));
+        Files.writeString(tempDir.resolve("libs/.scratch/jk.toml"), "name = \"scratch\"\n");
+        Files.createDirectories(tempDir.resolve("libs/docs"));
+
+        assertThat(WorkspaceModules.expand(tempDir, entries)).containsExactly("libs/core", "apps/web");
+        assertThat(WorkspaceModules.lists(tempDir, entries, "libs/core")).isTrue();
+        // Hidden: expand never lists it, so neither does the lexical answer.
+        assertThat(WorkspaceModules.lists(entries, "libs/.scratch")).isFalse();
+        assertThat(WorkspaceModules.lists(tempDir, entries, "libs/.scratch")).isFalse();
+        // No jk.toml: the glob matches the name, but expand selects no member there.
+        assertThat(WorkspaceModules.lists(entries, "libs/docs")).isTrue();
+        assertThat(WorkspaceModules.lists(tempDir, entries, "libs/docs")).isFalse();
+        // A literal is listed as written, as expand returns it.
+        assertThat(WorkspaceModules.lists(tempDir, entries, "apps/web")).isTrue();
+        assertThat(WorkspaceScan.findRoot(tempDir.resolve("libs/core")))
+                .contains(tempDir.toAbsolutePath().normalize());
+        assertThat(WorkspaceScan.findRoot(tempDir.resolve("libs/docs"))).isEmpty();
+        assertThat(WorkspaceScan.findRoot(tempDir.resolve("libs/.scratch"))).isEmpty();
+    }
+
+    @Test
     void workspace_loader_reports_missing_module(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group    = "com.example"

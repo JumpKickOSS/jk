@@ -333,8 +333,9 @@ public final class GuardSuites {
     /**
      * One report line as an evaluation, with the guard's allows applied. With {@code owners} — a
      * workspace-scoped suite — a bytecode site resolves against the roots of the member that
-     * compiled its class, and an allow naming a module is judged against that member; without,
-     * against {@code moduleDir}, the suite's own module.
+     * compiled its class, an allow naming a module is judged against that member, and a site of a
+     * member outside the rule's scope is not the rule's; without, against {@code moduleDir}, the
+     * suite's own module.
      */
     @SuppressWarnings("unchecked")
     public static Evaluation evaluate(
@@ -355,7 +356,6 @@ public final class GuardSuites {
         Object violations = MiniJson.get(line, "violations");
         int found = 0;
         for (Object v : violations instanceof List<?> l ? l : List.<Object>of()) {
-            found++;
             // the report writer names every site's fingerprint and detail; a line without them is not a report
             String fingerprint = Objects.requireNonNull(MiniJson.str(v, "fingerprint"), "fingerprint");
             String detail = Objects.requireNonNull(MiniJson.str(v, "detail"), "detail");
@@ -367,6 +367,9 @@ public final class GuardSuites {
                     module,
                     moduleDir,
                     owners);
+            // a workspace suite reports every member's sites; a scoped rule judges its own members'
+            if (owners != null && !rule.applies(placed.module())) continue;
+            found++;
             int at = MiniJson.get(v, "line") instanceof Number n ? n.intValue() : 0;
             Allow allow = allowing(rule.allow(), fingerprint, placed.file(), placed.module());
             if (allow != null) {

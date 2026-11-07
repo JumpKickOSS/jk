@@ -210,6 +210,28 @@ public final class SpecWriter {
         return this;
     }
 
+    /**
+     * The module's compiled test classes, for a TEST-window step that declared {@code
+     * In.testClasses()}: its own {@code test-classes} line, so a spec without it reads as before.
+     */
+    public SpecWriter testClasses(Path testClassesDir) {
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "test-classes")
+                .string("dir", String.valueOf(testClassesDir))
+                .finish());
+        return this;
+    }
+
+    /**
+     * The build is a recompile — the compile goal alone, which is what {@code jk compile} and
+     * {@code jk dev}'s rebuild on change run — so a step may take a cheaper path whose output still
+     * runs. Written only for a recompile.
+     */
+    public SpecWriter recompile() {
+        lines.add(JsonFields.object().string(PluginProtocol.T, "recompile").finish());
+        return this;
+    }
+
     public SpecWriter entry(String fileName, @Nullable Path jar, boolean snapshot, @Nullable Path container) {
         return entry(fileName, jar, snapshot, container, "", "", "");
     }

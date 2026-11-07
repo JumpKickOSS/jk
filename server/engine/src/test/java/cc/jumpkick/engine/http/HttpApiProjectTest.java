@@ -23,8 +23,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The project-facing reads over real HTTP: the module DAG, the identity-scoped file tree and its
- * editor, the metrics and cache breakdowns, the log tail, the filesystem browser, and the new-project
- * defaults. Fixture in {@link HttpEngineServerHarness}.
+ * editor, the metrics and cache breakdowns, the log tail and the filesystem browser. Fixture in
+ * {@link HttpEngineServerHarness}.
  */
 @Tag("integration")
 class HttpApiProjectTest extends HttpEngineServerHarness {
@@ -745,22 +745,5 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
         } finally {
             PathUtil.deleteRecursively(pick);
         }
-    }
-
-    @Test
-    void project_defaults_require_the_token_even_on_loopback() throws Exception {
-        // Derived from the owner's git identity + home layout — same class as /api/fs.
-        HttpResponse<String> noToken = client.send(
-                HttpRequest.newBuilder(URI.create(baseUrl + "api/projects/defaults"))
-                        .build(),
-                HttpResponse.BodyHandlers.ofString());
-        assertThat(noToken.statusCode()).isEqualTo(401);
-    }
-
-    @Test
-    void project_defaults_return_group_and_parent_dir_with_token() throws Exception {
-        HttpResponse<String> resp = get("/api/projects/defaults", "Authorization", "Bearer " + token());
-        assertThat(resp.statusCode()).isEqualTo(200);
-        assertThat(resp.body()).contains("\"group\":").contains("\"parentDir\":");
     }
 }

@@ -141,17 +141,17 @@ final class PlannerGuards {
         if (TestSuites.hasGuardSuite(root, ModuleLayout.isCompact(root))) return true;
         Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return false;
+        JkBuild build;
         try {
-            JkBuild build = JkBuildParser.parse(manifest);
-            if (build.workspace() == null) return false;
-            for (String m : build.workspace().modules()) {
-                Path dir = root.resolve(m);
-                if (Files.isDirectory(dir) && TestSuites.hasGuardSuite(dir, ModuleLayout.isCompact(dir))) return true;
-            }
+            build = JkBuildParser.parse(manifest);
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException e) {
-            return false;
+            return false; // parse-build reports it
+        }
+        // The build's expansion, outside the fallback: a glob that selects nothing is the build's error.
+        for (Path dir : WorkspaceModules.members(root, build)) {
+            if (Files.isDirectory(dir) && TestSuites.hasGuardSuite(dir, ModuleLayout.isCompact(dir))) return true;
         }
         return false;
     }
@@ -1080,21 +1080,20 @@ final class PlannerGuards {
         if (project != null && project.workspace() != null) return moduleDirs(root, project);
         Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return List.of();
+        JkBuild build;
         try {
-            return moduleDirs(root, JkBuildParser.parse(manifest));
+            build = JkBuildParser.parse(manifest);
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (IOException | RuntimeException unparseable) {
-            return List.of();
+            return List.of(); // parse-build reports it
         }
+        // Outside the fallback: a glob that selects nothing fails the guard as it fails the build.
+        return moduleDirs(root, build);
     }
 
     private static List<Path> moduleDirs(Path root, @Nullable JkBuild rootBuild) {
-        List<Path> out = new ArrayList<>();
-        if (rootBuild != null && rootBuild.workspace() != null) {
-            for (String m : rootBuild.workspace().modules()) out.add(root.resolve(m));
-        }
-        return out;
+        return rootBuild == null ? new ArrayList<>() : new ArrayList<>(WorkspaceModules.members(root, rootBuild));
     }
 
     private static Supplier<@Nullable FactsIndex> testFacts(FactsIndexing.@Nullable Ensured test) {

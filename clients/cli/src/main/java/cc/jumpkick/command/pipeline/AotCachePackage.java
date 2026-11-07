@@ -6,7 +6,7 @@ import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.AotCacheFiles;
-import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.ClassPathJar;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -27,12 +27,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
-import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
-import java.util.jar.JarInputStream;
-import java.util.jar.JarOutputStream;
-import java.util.jar.Manifest;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -44,8 +38,6 @@ public final class AotCachePackage {
 
     /** Non-Boot training must finish inside this window (Boot exits at refresh on its own). */
     private static final long TRAINING_TIMEOUT_SECONDS = 180;
-
-    private static final DeterministicZip ZIP = DeterministicZip.PINNED;
 
     private AotCachePackage() {}
 
@@ -405,49 +397,9 @@ public final class AotCachePackage {
                     StandardCopyOption.REPLACE_EXISTING);
         }
         String appJarName = mainJar.getFileName().toString();
-        rewriteAppJar(mainJar, outDir.resolve(appJarName), plan.libNames(), plan.mainClass());
+        ClassPathJar.write(
+                mainJar, outDir.resolve(appJarName), ClassPathJar.under("lib", plan.libNames()), plan.mainClass());
         return appJarName;
-    }
-
-    /**
-     * Copy {@code from} to {@code to}, adding a {@code Class-Path} manifest entry with relative
-     * {@code lib/} refs (a jar's Class-Path resolves against the jar's own location, so the layout
-     * is relocatable) and {@code Main-Class} when the source jar has none.
-     *
-     * <p>Every entry — the manifest included — is pinned by {@link DeterministicZip}, so
-     * re-running {@code --aot-cache} over an unchanged app yields a byte-identical jar. That is
-     * why the manifest is written by hand instead of through
-     * {@code new JarOutputStream(out, manifest)}: the convenience constructor stamps it with
-     * {@code System.currentTimeMillis()}.
-     */
-    public static void rewriteAppJar(Path from, Path to, List<String> libNames, String mainClass) throws IOException {
-        try (var jarIn = new JarInputStream(Files.newInputStream(from))) {
-            Manifest manifest = jarIn.getManifest();
-            if (manifest == null) manifest = new Manifest();
-            manifest.getMainAttributes().putIfAbsent(Attributes.Name.MANIFEST_VERSION, "1.0");
-            if (manifest.getMainAttributes().getValue(Attributes.Name.MAIN_CLASS) == null && !mainClass.isEmpty()) {
-                manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, mainClass);
-            }
-            if (!libNames.isEmpty()) {
-                StringBuilder cp = new StringBuilder();
-                for (String name : libNames) {
-                    if (cp.length() > 0) cp.append(' ');
-                    cp.append("lib/").append(name);
-                }
-                manifest.getMainAttributes().put(Attributes.Name.CLASS_PATH, cp.toString());
-            }
-            try (var jarOut = new JarOutputStream(DeterministicZip.archiveStream(to))) {
-                ZIP.writeManifest(jarOut, manifest);
-                JarEntry entry;
-                while ((entry = jarIn.getNextJarEntry()) != null) {
-                    if (entry.getName().equals(JarFile.MANIFEST_NAME)) continue;
-                    // jarIn stays open for the next entry, so this must not be writeEntryStreaming.
-                    jarOut.putNextEntry(ZIP.entry(entry.getName()));
-                    jarIn.transferTo(jarOut);
-                    jarOut.closeEntry();
-                }
-            }
-        }
     }
 
     /** The last ~25 lines — JVM/App startup logs are long; the failure is at the bottom. */

@@ -6,6 +6,7 @@ import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.http.mcp.McpConnections;
 import cc.jumpkick.engine.http.mcp.McpTools;
+import cc.jumpkick.engine.http.mcp.NewProjectWizard;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.Log;
@@ -158,7 +159,7 @@ public final class HttpEngineServer implements AutoCloseable {
             Supplier<CacheSnapshot> cache,
             @Nullable Consumer<String> log) {
         this.config = config;
-        this.staticContent = new StaticContent(webRoot, version);
+        this.staticContent = new StaticContent(webRoot, version, config.devWebRoot());
         this.admission = new HttpAdmission(config);
         this.webRoot = webRoot;
         this.tokens = new HttpTokenGate(tokenFile);
@@ -201,7 +202,10 @@ public final class HttpEngineServer implements AutoCloseable {
         this.mcpFront = this.mcp == null ? null : new McpFront(this.mcp, sse, version);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.coverageReport = new HttpCoverageReport(journal, tokens);
-        this.projectApi = new HttpProjectApi(journal);
+        this.projectApi = new HttpProjectApi();
+        NewProjectWizard wizard = new NewProjectWizard(this::url, tokens::tokenText);
+        if (this.mcp != null) this.mcp.wizard(wizard);
+        HttpNewProjectApi newProjectApi = new HttpNewProjectApi(journal, wizard);
         this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);
         api.register("GET", "/api/status", readApi::handleStatus);
         api.register("GET", "/api/config", readApi::handleConfig);
@@ -221,8 +225,9 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/project/file", projectApi::handleProjectFile);
         api.register("PUT", "/api/project/file", projectApi::handleProjectFilePut);
         api.register("GET", "/api/project/file/raw", projectApi::handleProjectFileRaw);
-        api.register("POST", "/api/projects", projectApi::handleNewProject);
-        api.register("GET", "/api/projects/defaults", projectApi::handleProjectDefaults);
+        api.register("GET", "/api/forms/new-project", newProjectApi::handleForm);
+        api.register("POST", "/api/projects/preview", newProjectApi::handlePreview);
+        api.register("POST", "/api/projects", newProjectApi::handleCreate);
         api.register("GET", "/api/templates", projectApi::handleTemplates);
     }
 

@@ -14,6 +14,7 @@ import cc.jumpkick.engine.http.mcp.McpPrompts;
 import cc.jumpkick.engine.http.mcp.McpResources;
 import cc.jumpkick.engine.http.mcp.McpRpc;
 import cc.jumpkick.engine.http.mcp.McpTools;
+import cc.jumpkick.engine.http.mcp.NewProjectWizard;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.mcp.McpRevision;
 import java.nio.file.Path;
@@ -99,6 +100,11 @@ public final class McpHandler {
     /** Wire the journal's {@code details.jsonl} locator for {@code details}. Optional. */
     public void detailsFile(Function<String, Optional<Path>> resolver) {
         if (resolver != null) ctx.detailsFile(resolver);
+    }
+
+    /** Wire the dashboard's new-project wizard, which MCP {@code new} opens by URL elicitation. Optional. */
+    public void wizard(NewProjectWizard wizard) {
+        ctx.wizard(wizard);
     }
 
     /** Wire the shared cache/store snapshot supplier (memoized in the live engine). Optional. */

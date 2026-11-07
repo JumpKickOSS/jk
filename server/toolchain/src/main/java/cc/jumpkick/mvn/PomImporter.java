@@ -16,6 +16,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Jlink;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
@@ -47,6 +48,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.jar.Attributes;
 import java.util.stream.Collectors;
 import org.apache.maven.model.Model;
@@ -274,15 +276,29 @@ public final class PomImporter {
         // hibernate-maven-plugin is the table only when it enhances; its other goals keep the row.
         PluginConfig hibernate = HibernateEnhancePlugin.map(em.model(), report);
         if (hibernate != null) consumedPlugins.add(HibernateEnhancePlugin.MAVEN_PLUGIN);
+        LibDirPlugins.Mapped libDir = LibDirPlugins.map(em.model(), PluginFacts.mainClass(em.model()), report);
+        if (libDir.consumed()) consumedPlugins.add(LibDirPlugins.DEPENDENCY_PLUGIN);
+        HelidonPlugins.Helidon helidon =
+                HelidonPlugins.map(em, libDir.libDir(), PluginFacts.mainClass(em.model()), report);
+        if (helidon != null) consumedPlugins.addAll(helidon.consumedPlugins());
         SourceTreePlugins.SourceTree sourceTree =
                 SourceTreePlugins.map(em, generators.outputRoots(), consumedPlugins, report, inherited, false);
         Project project = mapProject(em, report, sourceTree);
         PluginFacts.ProcessorPaths processorPaths = PluginFacts.annotationProcessorPaths(em.model());
+        // The [helidon] table contributes Helidon's processors and its BOM.
+        if (helidon != null) processorPaths = helidon.processors(processorPaths);
         Set<String> platformSupplied = new HashSet<>();
         Set<String> bomSupplied = new HashSet<>();
         Set<String> reactorSupplied = new HashSet<>();
         Map<Scope, List<Dependency>> byScope = mapDependencies(
-                em, report, processorPaths.all(), hoisted, platformSupplied, bomSupplied, reactorSupplied);
+                em,
+                report,
+                processorPaths.all(),
+                hoisted,
+                helidon == null ? module -> false : helidon::replacesPlatform,
+                platformSupplied,
+                bomSupplied,
+                reactorSupplied);
         mapProcessorPaths(processorPaths, byScope, report);
         ProfileMapping.Mapped profiles = ProfileMapping.map(em, report, profileBoms(resolver, report));
         var renamedHandles = OptionalProfileDeps.add(byScope, profiles.optionalDeps(), profiles.optionalDepFeatures());
@@ -294,12 +310,21 @@ public final class PomImporter {
 
         String mainClass = PluginFacts.mainClass(em.model());
         TestPlugins.TestSettings tests = TestPlugins.map(em.model(), report);
+        if (helidon != null) tests = helidon.tests(tests);
         MigrationPlugins.report(em.model(), report);
         PackagingPlugins.Packaging packaging = PackagingPlugins.map(em, mainClass, report);
         // The fat jar is the application's when the module has a main; a shaded library — neo4j's
         // lucene9-shaded, nacos's client — ships it under [library], relocations included.
         JkBuild.Application application = mainClass != null
-                ? new JkBuild.Application(mainClass, packaging.fatJar(), false, false, null, packaging.relocate())
+                ? new JkBuild.Application(
+                        mainClass,
+                        packaging.fatJar(),
+                        false,
+                        false,
+                        null,
+                        packaging.relocate(),
+                        List.of(),
+                        helidon == null ? libDir.libDir() : helidon.libDir(libDir.libDir()))
                 : null;
         JkBuild.Library library =
                 mainClass == null && packaging.fatJar() ? new JkBuild.Library(true, packaging.relocate()) : null;
@@ -319,6 +344,7 @@ public final class PomImporter {
                 .image(packaging.image())
                 .pluginConfig(packaging.springBoot())
                 .pluginConfig(packaging.quarkus())
+                .pluginConfig(helidon == null ? null : helidon.table())
                 .pluginConfig(hibernate)
                 .pluginConfig(JavafxMavenPlugin.map(em.model(), report))
                 .pluginConfig(LintPlugins.map(em, report, inherited, resolver.repos()));
@@ -328,7 +354,8 @@ public final class PomImporter {
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))
                         .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(BuildBlock.Dokka.DEFAULT))
                         .withMultiRelease(releases)
-                        .withWar(packaging.war()))
+                        .withWar(packaging.war())
+                        .withJlink(jlink(em, mainClass, helidon, report)))
                 .build();
         jkBuild = NullnessImport.map(jkBuild, report);
         Map<String, String> manifest = new LinkedHashMap<>(PluginFacts.manifestEntries(em.model()));
@@ -342,6 +369,21 @@ public final class PomImporter {
                     NodeImportMapping.quinoa(em.model().getProjectDirectory().toPath(), report));
         }
         return new Imported(jkBuild, report.build(), platformSupplied, bomSupplied, reactorSupplied);
+    }
+
+    /**
+     * {@code [jlink]} for an application: {@code javafx-maven-plugin}'s jlink settings, else
+     * {@code helidon-maven-plugin}'s {@code jlink-image} goal under a {@code [helidon]} table.
+     */
+    private static @Nullable Jlink jlink(
+            EffectiveModel em,
+            @Nullable String mainClass,
+            HelidonPlugins.@Nullable Helidon helidon,
+            ImportReport.Builder report) {
+        if (mainClass == null) return null;
+        Jlink javafx = JavafxMavenPlugin.jlink(em.model(), report);
+        if (javafx != null || helidon == null) return javafx;
+        return helidon.jlink();
     }
 
     /**
@@ -640,8 +682,7 @@ public final class PomImporter {
         }
         version = concreteVersion(version, model, report);
         int level = javaLevel(model, report);
-        String description = model.getDescription();
-        if (description != null && description.isBlank()) description = null;
+        String description = description(em);
         VersionSelector kotlin = kotlinFrom(model, report);
         // A Kotlin module leaves `java` at 0; one whose main tree also carries Java sources is
         // mixed and declares both, so javac compiles those against kotlinc's output.
@@ -654,6 +695,22 @@ public final class PomImporter {
                 .javadocMode(sourceTree.javadoc())
                 .description(description)
                 .build();
+    }
+
+    /**
+     * The POM's own {@code <description>}, or one inherited from a parent in the same source tree;
+     * a published parent's describes the framework, never this project, so it is dropped.
+     */
+    private static @Nullable String description(EffectiveModel em) {
+        String description = em.model().getDescription();
+        if (description == null || description.isBlank()) return null;
+        if (em.raw().getDescription() != null) return description;
+        boolean published = em.ancestors().stream()
+                .filter(a -> a.raw().getDescription() != null)
+                .findFirst()
+                .map(EffectiveModel.Ancestor::published)
+                .orElse(false);
+        return published ? null : description;
     }
 
     /**
@@ -729,16 +786,19 @@ public final class PomImporter {
     /**
      * {@code processorPaths} count as users of a managed version too, so their pins are not reported
      * unused; {@code hoisted} collects the reactor parent's inline pins for the workspace root, and is
-     * {@code null} for a POM imported on its own. {@code platformSupplied} collects the modules
-     * declared without a version that a written {@code [platform-dependencies]} entry supplies, and
-     * {@code bomSupplied} those of them a BOM import supplied rather than an ancestor's own entry;
-     * {@code reactorSupplied} those a reactor parent's own entry supplied.
+     * {@code null} for a POM imported on its own; {@code pluginPlatform} names the BOMs and parents a
+     * plugin table contributes, which get no {@code [platform-dependencies]} row. {@code
+     * platformSupplied} collects the modules declared without a version that a platform entry (one
+     * written, or the plugin table's) supplies, and {@code bomSupplied} those of them a BOM import
+     * supplied rather than an ancestor's own entry; {@code reactorSupplied} those a reactor parent's
+     * own entry supplied.
      */
     private static Map<Scope, List<Dependency>> mapDependencies(
             EffectiveModel em,
             ImportReport.Builder report,
             List<Pom.Dep> processorPaths,
             @Nullable List<Dependency> hoisted,
+            Predicate<String> pluginPlatform,
             Set<String> platformSupplied,
             Set<String> bomSupplied,
             Set<String> reactorSupplied) {
@@ -777,7 +837,7 @@ public final class PomImporter {
             }
             mapDependency(declared.dep(), byScope, report);
         }
-        mapManagement(mgmt, byScope, report, hoisted);
+        mapManagement(mgmt, byScope, report, hoisted, pluginPlatform);
         managedBy.forEach((source, modules) ->
                 report.warning("versions for " + String.join(", ", modules) + " managed by " + source));
         inheritedFrom.forEach((source, modules) ->
@@ -845,7 +905,8 @@ public final class PomImporter {
     /**
      * BOM imports become {@code [platform]} entries with their versions resolved; a published parent
      * whose chain manages versions is carried as one {@code [platform]} entry of its own, so the
-     * inherited table governs transitive versions too. Bare pins nothing declared uses, and every
+     * inherited table governs transitive versions too. A BOM or parent a plugin table contributes
+     * ({@code pluginPlatform}: the {@code [helidon]} table's {@code helidon-dependencies}) is left out. Bare pins nothing declared uses, and every
      * entry with {@code <exclusions>}, become {@code [managed-dependencies]} rows, which govern
      * transitive versions and prune every edge onto the module the way Maven's inline {@code
      * dependencyManagement} does; the ones a reactor parent owns are gathered into {@code hoisted}
@@ -855,8 +916,10 @@ public final class PomImporter {
             EffectiveModel.Management mgmt,
             Map<Scope, List<Dependency>> byScope,
             ImportReport.Builder report,
-            @Nullable List<Dependency> hoisted) {
+            @Nullable List<Dependency> hoisted,
+            Predicate<String> pluginPlatform) {
         for (Pom.Dep bom : mgmt.platform()) {
+            if (pluginPlatform.test(bom.module())) continue;
             if (PluginFacts.usable(bom.version()) == null) {
                 reportUnresolvedBom(bom, report);
                 continue;
@@ -864,7 +927,7 @@ public final class PomImporter {
             byScope.computeIfAbsent(Scope.PLATFORM, s -> new ArrayList<>()).add(DependencyMapping.toDependency(bom));
         }
         EffectiveModel.Ancestor parent = mgmt.parentPlatform();
-        if (parent != null) {
+        if (parent != null && !pluginPlatform.test(parent.groupId() + ":" + parent.artifactId())) {
             String module = parent.groupId() + ":" + parent.artifactId();
             byScope.computeIfAbsent(Scope.PLATFORM, s -> new ArrayList<>())
                     .add(Dependency.of(parent.artifactId(), module, VersionSelector.parse(parent.version())));

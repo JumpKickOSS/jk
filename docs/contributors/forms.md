@@ -101,11 +101,11 @@ POSIX shell.
 
 ## The new-project form
 
-`jk new` and MCP `new` render one form, which the engine builds (`NewProjectForm`): jk's step, then
+`jk new`, MCP `new` and the dashboard's wizard render one form, which the engine builds (`NewProjectForm`): jk's step, then
 the template's own `[[ask]]` step. jk's step is one field list, `NewProjectStep` in `:core`, which the
 engine serves and the CLI and MCP read their keys from: `lang`, `template` (a search over the
 catalogue, default `app`), `name`, `group`, `dir` (the parent directory, derived per surface:
-`--dir`/the cwd in the CLI, `parentDir` in MCP), and `layout` when the template renders more than
+`--dir`/the cwd in the CLI, `parentDir` in MCP, a guess from build history in the web wizard), and `layout` when the template renders more than
 one. Once a template is chosen, `lang` defaults to its language. The keys of jk's step are
 reserved, so no template may ask for one. There is no other way to make a project: no template is
 the default template.
@@ -115,7 +115,8 @@ the default template.
 | CLI with no terminal | the same requests | `NewForm.settle` checks flags and defaults; what is left is `NewForm.Unsettled`, one `jk new: <key> …: <flag>` line per field |
 | CLI on a terminal | `new-project-form-request` (no template: jk's step and the catalogue; a template: both steps and the resolved id) | `NewForm` walks it with `FormRenderer`, then scaffolds through `NewTemplate`; the summary names the resolved id, so it reproduces the same template whatever language was asked |
 | CLI `-t <ref> --help` | the same request | `NewForm.help`, a `FieldLine` per field |
-| MCP `new` | `NewProjectOps.templateForm` in process | `McpNewForm` settles the answers: arguments and `params`, then defaults, then form elicitation for what is still required, else an error of `FieldLine`s |
+| MCP `new` | `NewProjectOps.templateForm` in process | `McpNewForm` settles the answers: arguments and `params`, then defaults, then form elicitation for what is still required, then URL elicitation into the web wizard pre-filled with what the call gave, else an error of `FieldLine`s |
+| Web wizard (`#new`) | `GET /api/forms/new-project` (the form, the resolved id, the derived defaults' values) | `wizard-model.js` reads the form as `Form` does (conditions, defaults, `check`, the `FormCommand` spelling) and `wizard.js` renders a widget per kind; `POST /api/projects` settles the posted answers with `NewProjectPost` ([HTTP](http.md#new-project)) |
 
 `FieldLine` is the one compact spelling of a field (`key: a|b = a  # Label`), shared by MCP
 `action=form`, `--help` and the missing-answer errors; `FieldLine.param` is its `-p` form.
@@ -140,8 +141,14 @@ the default template.
   template builds only where an Android SDK has its licenses accepted, and is skipped otherwise; a
   template with a known defect (`KNOWN_DEFECTS`, each with its reason) is scaffolded but not built.
 - **Conformance** (`NewProjectConformanceTest`, CLI, fast tier). One scripted answer set through
-  the terminal walk and through MCP form elicitation with a fake client: the posted answers and
-  the scaffolded trees must be identical. The web wizard joins as a third surface when it exists.
+  the terminal walk, through MCP form elicitation with a fake client, and through the web wizard's
+  view model under Node (a wizard link carrying the script, then the body the wizard posts, settled
+  by `NewProjectPost`): the posted answers and the scaffolded trees must be identical. The view
+  model's own suite is `clients/web/src/test/js/wizard-model.test.mjs`.
+- **The wizard in a browser** (`NewProjectWizardE2eTest`, CLI, release tier: Playwright's Chromium
+  and the CDN the dashboard loads Vue from). A Spring Boot and a CLI project created in the wizard
+  against an in-process HTTP server; the review step's command, run through `jk new`, must scaffold
+  the same tree.
 
 ## Adding a kind
 

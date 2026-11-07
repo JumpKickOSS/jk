@@ -324,11 +324,16 @@ public final class WorkspaceBuildVerb implements HostedVerb {
         return body.testOnly() ? WorkspaceTarget.TEST : WorkspaceTarget.PACKAGE;
     }
 
-    /** True for a goal whose tail applies to the modules the request selects, not to every module. */
+    /**
+     * True for a goal whose tail applies to the modules the request selects, not to every module. A
+     * run is one: it builds the cone of the module it launches, through the dependencies that module
+     * runs on, and none of the root's build logic, so {@code jk run -m <module>} never assembles the
+     * workspace's dist.
+     */
     private static boolean selectsByModule(WorkspaceTarget target) {
         return switch (target) {
-            case COMPILE, TEST_COMPILE, NATIVE, IMAGE, INSTALL, RESHELVE, TRAIN, PUBLISH -> true;
-            case PACKAGE, TEST, RUN, SYNC -> false;
+            case COMPILE, TEST_COMPILE, NATIVE, IMAGE, INSTALL, RESHELVE, TRAIN, PUBLISH, RUN -> true;
+            case PACKAGE, TEST, SYNC -> false;
         };
     }
 

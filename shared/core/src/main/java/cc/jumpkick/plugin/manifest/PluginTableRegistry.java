@@ -7,6 +7,8 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -26,6 +28,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
@@ -81,7 +84,8 @@ public final class PluginTableRegistry {
             new BuiltIn("micronaut", "micronaut"),
             new BuiltIn("hibernate", "hibernate"),
             new BuiltIn("intellij", "intellij"),
-            new BuiltIn("javafx", "javafx"));
+            new BuiltIn("javafx", "javafx"),
+            new BuiltIn("helidon", "helidon"));
 
     private static final List<String> BUILT_IN =
             BUILT_INS.stream().map(b -> b.id() + BUILT_IN_SUFFIX).toList();
@@ -444,6 +448,39 @@ public final class PluginTableRegistry {
         return out;
     }
 
+    /** A {@code one-of} key's value must be one of the listed values. */
+    private static void checkOneOf(String where, PluginDescriptor.SchemaKey key, String value) {
+        if (key.oneOf().isEmpty() || key.oneOf().contains(value)) return;
+        throw new JkBuildParseException(where + " = \"" + value + "\" must be one of "
+                + key.oneOf().stream().map(v -> "\"" + v + "\"").collect(Collectors.joining(", ")));
+    }
+
+    /**
+     * A {@code min-version} key's selector must be anchored at or above the floor: {@code 4.3.0}
+     * and {@code ^4} are refused under a floor of 27, and {@code latest}, which names no anchor,
+     * passes.
+     */
+    private static void checkMinVersion(String tableName, PluginDescriptor.SchemaKey key, String value) {
+        String floor = key.minVersion();
+        if (floor == null) return;
+        String anchor;
+        try {
+            anchor = switch (VersionSelector.parse(value)) {
+                case VersionSelector.Exact e -> e.version();
+                case VersionSelector.Caret c -> c.version();
+                case VersionSelector.Tilde t -> t.version();
+                default -> null;
+            };
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException(
+                    "[" + tableName + "]." + key.name() + " = \"" + value + "\": " + e.getMessage());
+        }
+        if (anchor == null || Versions.compare(anchor, floor) >= 0) return;
+        throw new JkBuildParseException("[" + tableName + "]." + key.name() + " = \"" + value + "\" is older than "
+                + floor + ", the oldest release jk supports here — set " + key.name() + " = \""
+                + (key.example() != null ? key.example() : floor) + "\"");
+    }
+
     private static @Nullable Object read(String tableName, PluginDescriptor.SchemaKey key, TomlTable table) {
         if (!table.contains(key.name())) return null;
         String where = "[" + tableName + "]." + key.name();
@@ -451,6 +488,8 @@ public final class PluginTableRegistry {
             case STRING -> {
                 String v = getOr(() -> table.getString(key.name()), where + " must be a string");
                 if (v == null || v.isBlank()) yield null;
+                checkOneOf(where, key, v);
+                checkMinVersion(tableName, key, v);
                 yield v;
             }
             case COORDINATE -> {

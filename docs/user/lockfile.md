@@ -427,7 +427,7 @@ tool an active plugin fetches is stale, so the next build relocks first. A float
 digests a row already has instead of downloading every platform again. SDK components are pinned by their `[[sdk]]` rows instead.
 
 A tool a plugin fetches as its runtime closure (`transitive` — Checkstyle, PMD, the jOOQ code
-generator, bundletool) is resolved once, by `jk lock`, from the tool's POMs. Its closure row names
+generator, bundletool — and every annotation processor a plugin contributes) is resolved once, by `jk lock`, from the tool's POMs. Its closure row names
 the root as resolved, the other roots resolved `with` it and its BOM (`managed-by`), and every jar
 of the closure; each jar is a `[[tool]]` row of its own with its digest:
 

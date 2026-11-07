@@ -20,6 +20,7 @@ import cc.jumpkick.config.ConfigSources;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
@@ -216,17 +217,15 @@ public final class TreeCommand implements CliCommand {
      * ({@code workspace.modules} + each member's {@code name}).
      */
     private static TreeDir matchColonNameBootstrap(Path root, String spec, String want) {
-        List<String> rels = TomlScan.scan(ManifestPaths.manifestIn(root), "workspace.modules")
-                .stringArray("workspace.modules");
+        List<Path> members = WorkspaceModules.memberDirs(WorkingDirectory.resolve(root));
         List<String> dirs = new ArrayList<>();
         List<String> names = new ArrayList<>();
-        if (rels.isEmpty()) {
+        if (members.isEmpty()) {
             dirs.add(root.toString());
             String n = TomlScan.scan(ManifestPaths.manifestIn(root), "name").get("name");
             names.add(n == null || n.isBlank() ? root.getFileName().toString() : n);
         } else {
-            for (String rel : rels) {
-                Path d = WorkingDirectory.resolve(root.resolve(rel));
+            for (Path d : members) {
                 dirs.add(d.toString());
                 String n = TomlScan.scan(ManifestPaths.manifestIn(d), "name").get("name");
                 names.add(n == null || n.isBlank() ? d.getFileName().toString() : n);

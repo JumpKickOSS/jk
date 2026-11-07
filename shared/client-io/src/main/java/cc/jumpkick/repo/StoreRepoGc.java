@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.cache.SafePoint;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.AccessLedger;
@@ -53,6 +54,17 @@ public final class StoreRepoGc {
     public record Report(int deleted, long freedBytes) {}
 
     public static Report run(Path storeRoot, double pressure, long nowMillis, boolean dryRun) throws IOException {
+        return run(storeRoot, pressure, nowMillis, dryRun, SafePoint.NONE);
+    }
+
+    /**
+     * As {@link #run(Path, double, long, boolean)}, asking {@code safePoint} before each tree, each
+     * file of the memo walk and each artifact it weighs. An artifact goes with its memo and checksum
+     * files in one step, so a stop lands between artifacts, never inside one; a tree it stops in
+     * keeps its ledger uncompacted until a pass finishes it.
+     */
+    public static Report run(Path storeRoot, double pressure, long nowMillis, boolean dryRun, SafePoint safePoint)
+            throws IOException {
         Path repos = storeRoot.resolve("repos");
         List<Path> trees = new ArrayList<>();
         PathUtil.forEachChild(repos, (child, attrs) -> {
@@ -62,14 +74,17 @@ public final class StoreRepoGc {
         int deleted = 0;
         long freed = 0;
         for (Path tree : trees) {
+            safePoint.check();
             Path fileOrigin = fileOrigin(tree);
             Map<String, AccessLedger.Use> uses =
                     AccessLedger.at(tree.resolve(RepoArtifactStore.ACCESS_DIR)).load();
             List<Path> memos = new ArrayList<>();
             PathUtil.forEachRegularFile(tree, RepoArtifactStore::isAccessDir, (file, attrs) -> {
+                safePoint.check();
                 if (file.getFileName().toString().endsWith(".jk")) memos.add(file);
             });
             for (Path memo : memos) {
+                safePoint.check();
                 Path artifact = M2Clean.artifactFor(tree, tree.relativize(memo));
                 if (artifact == null) continue; // the artifact lives elsewhere (the local repository)
                 if (fileOrigin != null && !Files.isRegularFile(fileOrigin.resolve(tree.relativize(artifact)))) {

@@ -15,6 +15,7 @@ import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Jlink;
 import cc.jumpkick.model.NodeTable;
 import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.PluginConfig;
@@ -28,6 +29,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginModule;
@@ -194,13 +196,40 @@ public final class JkBuildParser {
      *     its {@code [plugins]} pins in
      */
     public static JkBuild parse(Path file) throws IOException {
-        Path abs = file.toAbsolutePath().normalize();
-        Path moduleDir = moduleDirOf(abs);
-        JkBuild resolved = WorkspaceResolve.applyWorkspace(moduleDir, parseLocal(file));
+        return resolved(moduleDirOf(file.toAbsolutePath().normalize()), parseLocal(file));
+    }
+
+    /**
+     * {@code toml}, the text about to be written as {@code file}, read as {@link #parse(Path)} will
+     * read the file once written: a check made before the write judges what the build then reads.
+     */
+    public static JkBuild parse(String toml, Path file) {
+        return resolved(moduleDirOf(file.toAbsolutePath().normalize()), parseLocal(toml, file));
+    }
+
+    /** {@code toml}, the text about to be written as {@code file}, read as {@link #parseLocal(Path)} will read it. */
+    public static JkBuild parseLocal(String toml, Path file) {
+        PluginTableRegistry.syncUserPins();
+        Path moduleDir = moduleDirOf(file.toAbsolutePath().normalize());
+        return build(document(toml), catalogOf(moduleDir), moduleDir);
+    }
+
+    /** The module at {@code moduleDir}, read as written, with what {@link #parse(Path)} adds: inheritance and user pins. */
+    private static JkBuild resolved(Path moduleDir, JkBuild local) {
+        JkBuild resolved = WorkspaceResolve.applyWorkspace(moduleDir, local);
         NodeShape.check(resolved, moduleDir);
+        PluginJavaFloor.check(resolved, moduleDir);
         List<PluginDeclaration> user = UserPlugins.fromConfig();
         if (user.isEmpty()) return resolved;
         return resolved.withPlugins(UserPlugins.merge(user, resolved.plugins()));
+    }
+
+    private static LibraryCatalog catalogOf(Path moduleDir) {
+        try {
+            return LibraryCatalog.forProject(moduleDir);
+        } catch (IllegalStateException e) {
+            throw new JkBuildParseException(e.getMessage(), e);
+        }
     }
 
     /**
@@ -227,13 +256,7 @@ public final class JkBuildParser {
                     String body = stamp.body() != null ? stamp.body() : readManifest(key);
                     TomlParseResult root = document(key, stamp, body);
                     Path moduleDir = moduleDirOf(key);
-                    LibraryCatalog catalog;
-                    try {
-                        catalog = LibraryCatalog.forProject(moduleDir);
-                    } catch (IllegalStateException e) {
-                        throw new JkBuildParseException(e.getMessage(), e);
-                    }
-                    JkBuild built = build(root, catalog, moduleDir);
+                    JkBuild built = build(root, catalogOf(moduleDir), moduleDir);
                     provisional[0] = PluginDescriptorStore.hasUnresolved(moduleDir, built.plugins());
                     return built;
                 } catch (IOException e) {
@@ -409,33 +432,41 @@ public final class JkBuildParser {
         ManifestTables.checkFeatureDeps(result, features, deps);
         Map<String, String> manifest = ManifestTables.parseManifest(result);
         List<PluginDeclaration> plugins = ManifestBuild.parsePlugins(result);
+        // A misplaced top-level `native = true` or `minified = true` reads as a table name to the
+        // plugin-table and [native] parsing below; reject it first, with the error that names
+        // [application], before either looks it up as a table.
+        ManifestTables.rejectFlattenedApplicationKeys(result);
+        // Cold-store engines install built-ins lazily: fetch owners of referenced tables before
+        // the manifest set below is captured, so this very parse validates their configs.
+        Map<String, String> builtInFetchFailures = ManifestBuild.ensureBuiltInTables(result);
+        List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
+        Map<String, PluginConfig> pluginConfigs = ManifestTables.parsePluginTables(result, installedManifests);
+        JkBuild.NativeConfig nativeConfig =
+                ManifestBuild.parseNativeConfig(result).orElse(null);
+        // A plugin's table may give the module the lib-dir layout ([contribute.lib-dir]); the
+        // [application] table's own lib-dir, when written, wins.
+        String libDirImpliedBy = PluginContributions.libDirImpliedBy(
+                project, nativeConfig != null || ManifestTables.nativeAsked(result), pluginConfigs, installedManifests);
         JkBuild.Application application =
-                ManifestTables.parseApplication(result).orElse(null);
+                ManifestTables.parseApplication(result, libDirImpliedBy != null).orElse(null);
         JkBuild.Library library = ManifestTables.parseLibrary(result).orElse(null);
         if (application != null && PluginModule.isWorker(moduleDir)) {
             throw new JkBuildParseException(
                     "[application] does not apply to a plugin worker; drop the [application] table");
         }
-        JkBuild.NativeConfig nativeConfig =
-                ManifestBuild.parseNativeConfig(result).orElse(null);
         if (application != null
                 && application.nativeImage()
                 && nativeConfig != null
                 && nativeConfig.enabled() == JkBuild.NativeMode.DISABLED) {
             throw new JkBuildParseException("[application].native = true conflicts with [native] enabled = false");
         }
-        // Cold-store engines install built-ins lazily: fetch owners of referenced tables before
-        // the manifest set below is captured, so this very parse validates their configs.
-        Map<String, String> builtInFetchFailures = ManifestBuild.ensureBuiltInTables(result);
-        List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
-        Map<String, PluginConfig> pluginConfigs = ManifestTables.parsePluginTables(result, installedManifests);
         // minified = true enables the minified packager without requiring an empty [minified] table.
         pluginConfigs = ManifestTables.ensureMinifiedPluginConfigured(application, pluginConfigs, installedManifests);
         ManifestBuild.checkUnownedTables(result, moduleDir, plugins, installedManifests, builtInFetchFailures);
         boolean nativeDeclared = nativeConfig != null || (application != null && application.nativeImage());
         deps = ManifestBuild.withPlatformContributions(
                 deps, project, nativeDeclared, pluginConfigs, installedManifests);
-        BuildBlock build = ManifestBuild.parseBuild(result);
+        BuildBlock build = PluginTestDefaults.fold(ManifestBuild.parseBuild(result), pluginConfigs, installedManifests);
         List<BuildBlock.KotlinPluginDecl> kotlinPlugins = ManifestBuild.parseKotlinPlugins(result);
         if (!kotlinPlugins.isEmpty()) build = build.withKotlinPlugins(kotlinPlugins);
         // [javac] is a compile input: compile-main and compile-test both lower it into javac's argv.
@@ -473,6 +504,8 @@ public final class JkBuildParser {
         if (!resources.isEmpty()) build = build.withResources(resources);
         Optional<BuildBlock.War> war = ManifestTables.parseWar(result);
         if (war.isPresent()) build = build.withWar(war.get());
+        Optional<Jlink> jlink = ManifestJlink.parse(result);
+        if (jlink.isPresent()) build = build.withJlink(jlink.get());
         Optional<BuildBlock.Dokka> dokka = ManifestTables.parseDokka(result);
         if (dokka.isPresent()) build = build.withDokka(dokka.get());
         // [multi-release] adds release source sets to the compile and the jar.

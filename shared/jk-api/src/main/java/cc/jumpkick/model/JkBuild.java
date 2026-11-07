@@ -131,6 +131,11 @@ public record JkBuild(
         return application == null ? List.of() : application.jvmArgs();
     }
 
+    /** {@code [application] lib-dir}, or {@code null} when the module does not declare it. */
+    public @Nullable LibDir libDir() {
+        return application == null ? null : application.libDir();
+    }
+
     /** True when a {@code main} class is set — the {@code [application]} table declares one. */
     public boolean isRunnable() {
         return mainClass() != null;
@@ -258,7 +263,14 @@ public record JkBuild(
                 manifest,
                 plugins,
                 new Application(
-                        app.main(), assembly, minified, app.nativeImage(), app.config(), app.relocate(), app.jvmArgs()),
+                        app.main(),
+                        assembly,
+                        minified,
+                        app.nativeImage(),
+                        app.config(),
+                        app.relocate(),
+                        app.jvmArgs(),
+                        app.libDir()),
                 nativeConfig,
                 pluginConfigs,
                 build,
@@ -790,7 +802,11 @@ public record JkBuild(
         return workspace != null && !workspace.isEmpty();
     }
 
-    /** Module paths from the {@code [workspace]} block; empty when this is not a workspace root. */
+    /**
+     * The {@code [workspace] modules} entries as written, globs included; empty when this is not a
+     * workspace root. Member directories come from {@code config.WorkspaceModules.expand}, never
+     * from resolving an entry directly.
+     */
     public List<String> workspaceModules() {
         return workspace == null ? List.of() : workspace.modules();
     }
@@ -842,6 +858,9 @@ public record JkBuild(
      *     that name it. Empty for a fat jar that bundles classes under their own names.
      * @param jvmArgs {@code jvm-args}: flags {@code jk run} and {@code jk dev} put on the
      *     application's JVM, before the classpath; empty for none
+     * @param libDir {@code lib-dir}: a runnable {@code <name>.jar} whose manifest
+     *     {@code Class-Path} names the runtime jars copied into a directory beside it; {@code null}
+     *     without the layout
      */
     public record Application(
             @Nullable String main,
@@ -850,7 +869,8 @@ public record JkBuild(
             boolean nativeImage,
             @Nullable String config,
             Map<String, String> relocate,
-            List<String> jvmArgs) {
+            List<String> jvmArgs,
+            @Nullable LibDir libDir) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
@@ -861,6 +881,18 @@ public record JkBuild(
             if (minified) assembly = true;
             relocate = relocate == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(relocate));
             jvmArgs = jvmArgs == null ? List.of() : List.copyOf(jvmArgs);
+        }
+
+        /** Convenience: no lib-dir layout. */
+        public Application(
+                @Nullable String main,
+                boolean assembly,
+                boolean minified,
+                boolean nativeImage,
+                @Nullable String config,
+                Map<String, String> relocate,
+                List<String> jvmArgs) {
+            this(main, assembly, minified, nativeImage, config, relocate, jvmArgs, null);
         }
 
         /** Convenience: no application JVM flags. */

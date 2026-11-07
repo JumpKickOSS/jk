@@ -6,17 +6,32 @@ import static cc.jumpkick.engine.http.JsonFields.parseObject;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.engine.http.mcp.McpTools;
+import cc.jumpkick.engine.http.mcp.NewProjectWizard;
 import cc.jumpkick.engine.http.mcp.tools.NewTool;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.runtime.NewProjectAgents;
 import cc.jumpkick.engine.runtime.NewProjectJava;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
+import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,12 +49,16 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * MCP {@code new} with a template that asks every kind a template may ask, none of them defaulted,
  * through a fake client: one that answers form elicitation (on both revisions that have it), one
- * that declines, and one that declared none, which gets the missing keys and their values instead.
+ * that declines, one that declared URL elicitation alone, which is sent to the dashboard's wizard,
+ * and one that declared none, which gets the missing keys and their values instead. A created
+ * project is wired for the agent the client's {@code clientInfo.name} names, and for the engine's
+ * agents setting, whether the call creates it or the wizard's create answers the call's link.
  */
 class McpNewFormTest {
 
     private final ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor();
-    private final McpHandler mcp = handler();
+    private final NewProjectWizard wizard = new NewProjectWizard(() -> "http://127.0.0.1:8910/", () -> "T");
+    private final McpHandler mcp = handler(wizard);
 
     @TempDir
     Path temp;
@@ -113,6 +132,7 @@ class McpNewFormTest {
 
     @AfterEach
     void stop() {
+        NewProjectAgents.env(null);
         threads.shutdownNow();
     }
 
@@ -147,6 +167,80 @@ class McpNewFormTest {
         assertThat(Files.readString(parent.resolve("widget/jk.toml")))
                 .contains("motto = \"hi\"", "db = \"postgres\"", "cache = \"on\"", "libs = \"jackson\"")
                 .contains("flavour = \"plain\"", "[native]");
+    }
+
+    @Test
+    void a_created_project_is_wired_for_the_engine_s_agents_setting_and_the_reply_says_what_was_left() {
+        NewProjectAgents.env(key -> "JK_AGENTS".equals(key) ? "all" : null);
+        String session = initialize("2025-11-25", "{}");
+        Map<String, Object> params =
+                Map.of("motto", "hi", "native", false, "database", "none", "libs", List.of("guava"));
+
+        McpHandler.Reply reply = mcp.handle(call(Map.of("name", "widget", "params", params)), session);
+
+        assertThat(reply.body()).contains("\"created\"", "AGENTS.md", "CLAUDE.md", AgentSetup.TRUST_NOTE);
+        assertThat(parent.resolve("widget/AGENTS.md")).isRegularFile();
+        assertThat(parent.resolve("widget/.mcp.json")).isRegularFile();
+        assertThat(parent.resolve("widget/.claude/settings.json")).isRegularFile();
+    }
+
+    @Test
+    void a_known_client_gets_its_own_agent_s_files_with_no_agents_setting_in_the_engine() {
+        NewProjectAgents.env(key -> null);
+        String session = initialize("2025-11-25", "{}", "claude-code");
+
+        McpHandler.Reply reply = mcp.handle(call(Map.of("name", "widget", "params", answered())), session);
+
+        assertThat(reply.body()).contains("\"created\"", "CLAUDE.md", "Agents wired: claude");
+        assertThat(parent.resolve("widget/AGENTS.md")).isRegularFile();
+        assertThat(parent.resolve("widget/CLAUDE.md")).isRegularFile();
+        assertThat(parent.resolve("widget/.claude/settings.json")).isRegularFile();
+        assertThat(parent.resolve("widget/.gemini")).doesNotExist();
+    }
+
+    @Test
+    void an_unknown_client_is_wired_for_the_engine_s_agents_setting_alone() {
+        NewProjectAgents.env(key -> null);
+        String session = initialize("2025-11-25", "{}", "some-editor");
+
+        McpHandler.Reply reply = mcp.handle(call(Map.of("name", "widget", "params", answered())), session);
+
+        assertThat(reply.body()).contains("\"created\"", "Agents wired: none detected");
+        assertThat(parent.resolve("widget/AGENTS.md")).isRegularFile();
+        assertThat(parent.resolve("widget/CLAUDE.md")).doesNotExist();
+        assertThat(parent.resolve("widget/.claude")).doesNotExist();
+    }
+
+    @Test
+    void agents_off_in_the_engine_wire_none_even_for_a_known_client() {
+        NewProjectAgents.env(key -> "JK_AGENTS".equals(key) ? "none" : null);
+        String session = initialize("2025-11-25", "{}", "claude-code");
+
+        McpHandler.Reply reply = mcp.handle(call(Map.of("name", "widget", "params", answered())), session);
+
+        assertThat(reply.body()).contains("\"created\"", "Agents wired: none (JK_AGENTS=none)");
+        assertThat(parent.resolve("widget/AGENTS.md")).isRegularFile();
+        assertThat(parent.resolve("widget/CLAUDE.md")).doesNotExist();
+        assertThat(parent.resolve("widget/.mcp.json")).doesNotExist();
+        assertThat(parent.resolve("widget/.claude")).doesNotExist();
+    }
+
+    @Test
+    void a_template_that_ships_its_own_claude_folder_is_named_wired_for_claude() throws IOException {
+        NewProjectAgents.env(key -> null);
+        Files.createDirectories(template.resolve("src/main/g8/.claude"));
+        Files.writeString(template.resolve("src/main/g8/.claude/settings.local.json"), "{}\n");
+        String session = initialize("2025-11-25", "{}");
+
+        McpHandler.Reply reply = mcp.handle(call(Map.of("name", "widget", "params", answered())), session);
+
+        assertThat(reply.body()).contains("\"created\"", "Agents wired: claude").doesNotContain("none detected");
+        assertThat(parent.resolve("widget/.claude/settings.local.json")).isRegularFile();
+        assertThat(parent.resolve("widget/.claude/settings.json")).isRegularFile();
+    }
+
+    private static Map<String, Object> answered() {
+        return Map.of("motto", "hi", "native", false, "database", "none", "libs", List.of("guava"));
     }
 
     @Test
@@ -224,6 +318,168 @@ class McpNewFormTest {
 
         Map<String, Object> error = error(call.get(30, TimeUnit.SECONDS));
         assertThat(String.valueOf(error.get("message"))).contains("declined", "motto", "nothing was created");
+        assertThat(parent.resolve("widget")).doesNotExist();
+    }
+
+    @Test
+    void url_elicitation_opens_the_wizard_pre_filled_and_returns_what_it_created() throws Exception {
+        String session = initialize("2025-11-25", "{\"elicitation\":{\"url\":{}}}");
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call = CompletableFuture.supplyAsync(
+                () -> mcp.handle(
+                        call(Map.of("name", "widget", "params", Map.of("motto", "hi"))),
+                        session,
+                        null,
+                        null,
+                        sent::add),
+                threads);
+
+        Map<String, Object> ask = nextQuestion(sent);
+        Map<String, Object> params = object(ask, "params");
+        String id = String.valueOf(params.get("elicitationId"));
+        assertThat(params).containsEntry("mode", "url");
+        assertThat(String.valueOf(params.get("url")))
+                .startsWith("http://127.0.0.1:8910/#new?")
+                .contains("name=widget", "motto=hi", "dir=" + enc(parent.toString()), "template=")
+                .contains("&elicitation=" + id, "&t=T");
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":" + Jsonl.quote(String.valueOf(ask.get("id")))
+                        + ",\"result\":{\"action\":\"accept\"}}",
+                session);
+        // The wizard's create, as POST /api/projects hands it over.
+        String made = parent.resolve("widget").toString();
+        while (!wizard.complete(id, Map.of("path", made, "projectId", "abc123"))) Thread.sleep(20);
+
+        assertThat(call.get(30, TimeUnit.SECONDS).body()).contains("\"created\"", "abc123");
+        Map<String, Object> done = requireNonNull(sent.poll(5, TimeUnit.SECONDS), "no completion notice");
+        assertThat(done.get("method")).isEqualTo("notifications/elicitation/complete");
+        assertThat(object(done, "params")).containsEntry("elicitationId", id);
+    }
+
+    @Test
+    void the_wizard_s_create_for_a_url_elicitation_wires_the_calling_client_s_agent() throws Exception {
+        NewProjectAgents.env(key -> null);
+        HttpServer site = createSite(wizard);
+        try {
+            String session = initialize("2025-11-25", "{\"elicitation\":{\"url\":{}}}", "claude-code");
+            BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+            CompletableFuture<McpHandler.Reply> call = callWidget(mcp, session, sent);
+            String id = acceptLink(mcp, session, sent);
+
+            // The human finishes the wizard: its POST /api/projects carries the link's elicitation id.
+            HttpResponse<String> created = createThrough(site, id);
+
+            assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+            assertThat(parseObject(created.body())).containsEntry("handedOff", true);
+            assertThat(call.get(30, TimeUnit.SECONDS).body()).contains("\"created\"", "Agents wired: claude");
+            assertThat(parent.resolve("widget/CLAUDE.md")).isRegularFile();
+            assertThat(parent.resolve("widget/.mcp.json")).isRegularFile();
+            assertThat(parent.resolve("widget/.claude/settings.json")).isRegularFile();
+            assertThat(parent.resolve("widget/.gemini")).doesNotExist();
+        } finally {
+            site.stop(0);
+        }
+    }
+
+    @Test
+    void a_create_after_the_call_stopped_waiting_still_gets_its_agents_and_says_the_call_ended() throws Exception {
+        NewProjectAgents.env(key -> null);
+        NewProjectWizard brief =
+                new NewProjectWizard(() -> "http://127.0.0.1:8910/", () -> "T", Duration.ofMillis(200), Clock.SYSTEM);
+        McpHandler briefMcp = handler(brief);
+        HttpServer site = createSite(brief);
+        try {
+            String session = initialize(briefMcp, "2025-11-25", "{\"elicitation\":{\"url\":{}}}", "claude-code");
+            BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+            CompletableFuture<McpHandler.Reply> call = callWidget(briefMcp, session, sent);
+            String id = acceptLink(briefMcp, session, sent);
+
+            Map<String, Object> error = error(call.get(30, TimeUnit.SECONDS));
+            assertThat(String.valueOf(error.get("message")))
+                    .contains("not finished within", "not reported to this call");
+
+            HttpResponse<String> created = createThrough(site, id);
+
+            assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+            assertThat(parseObject(created.body())).containsEntry("handedOff", false);
+            assertThat(parent.resolve("widget/CLAUDE.md")).isRegularFile();
+            assertThat(parent.resolve("widget/.claude/settings.json")).isRegularFile();
+            assertThat(brief.agents(id)).as("a create spends its link").isNull();
+        } finally {
+            site.stop(0);
+        }
+    }
+
+    /** {@code POST /api/projects} over {@code links}, as the engine's router serves it. */
+    private HttpServer createSite(NewProjectWizard links) throws IOException {
+        HttpServer site = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        HttpNewProjectApi api = new HttpNewProjectApi(new BuildJournal(temp.resolve("journal")), links);
+        // As the engine's router does: the handler answers, the router closes the exchange.
+        site.createContext("/api/projects", exchange -> {
+            try (exchange) {
+                api.handleCreate(exchange);
+            }
+        });
+        site.start();
+        return site;
+    }
+
+    private CompletableFuture<McpHandler.Reply> callWidget(
+            McpHandler server, String session, BlockingQueue<Map<String, Object>> sent) {
+        return CompletableFuture.supplyAsync(
+                () -> server.handle(
+                        call(Map.of("name", "widget", "params", Map.of("motto", "hi"))),
+                        session,
+                        null,
+                        null,
+                        sent::add),
+                threads);
+    }
+
+    /** Accepts the wizard link the call sent; its elicitation id. */
+    private static String acceptLink(McpHandler server, String session, BlockingQueue<Map<String, Object>> sent)
+            throws Exception {
+        Map<String, Object> ask = nextQuestion(sent);
+        String id = String.valueOf(object(ask, "params").get("elicitationId"));
+        server.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":" + Jsonl.quote(String.valueOf(ask.get("id")))
+                        + ",\"result\":{\"action\":\"accept\"}}",
+                session);
+        return id;
+    }
+
+    /** The wizard's create of {@code widget} through the link {@code id} names. */
+    private HttpResponse<String> createThrough(HttpServer site, String id) throws IOException, InterruptedException {
+        Map<String, Object> answers = new LinkedHashMap<>(answered());
+        answers.putAll(Map.of(
+                "lang", "java",
+                "template", template.toString(),
+                "name", "widget",
+                "group", "org.example",
+                "dir", parent.toString()));
+        return HttpClient.newHttpClient()
+                .send(
+                        HttpRequest.newBuilder(URI.create(
+                                        "http://127.0.0.1:" + site.getAddress().getPort() + "/api/projects"))
+                                .POST(HttpRequest.BodyPublishers.ofString(
+                                        MiniJson.write(Map.of("answers", answers, NewProjectWizard.ELICITATION, id))))
+                                .build(),
+                        HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void a_declined_wizard_link_creates_nothing() throws Exception {
+        String session = initialize("2025-11-25", "{\"elicitation\":{\"url\":{}}}");
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call = CompletableFuture.supplyAsync(
+                () -> mcp.handle(call(Map.of("name", "widget")), session, null, null, sent::add), threads);
+
+        Map<String, Object> ask = nextQuestion(sent);
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + ask.get("id") + "\",\"result\":{\"action\":\"decline\"}}", session);
+
+        Map<String, Object> error = error(call.get(30, TimeUnit.SECONDS));
+        assertThat(String.valueOf(error.get("message"))).contains("declined", "wizard", "nothing was created");
         assertThat(parent.resolve("widget")).doesNotExist();
     }
 
@@ -341,15 +597,27 @@ class McpNewFormTest {
     }
 
     private String initialize(String version, String capabilities) {
-        return requireNonNull(mcp.handle(
+        return initialize(version, capabilities, "fake");
+    }
+
+    private String initialize(String version, String capabilities, String client) {
+        return initialize(mcp, version, capabilities, client);
+    }
+
+    private static String initialize(McpHandler server, String version, String capabilities, String client) {
+        return requireNonNull(server.handle(
                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\""
                                 + version + "\",\"capabilities\":" + capabilities
-                                + ",\"clientInfo\":{\"name\":\"fake\",\"version\":\"1\"}}}",
+                                + ",\"clientInfo\":{\"name\":" + Jsonl.quote(client) + ",\"version\":\"1\"}}}",
                         null)
                 .openedSessionId());
     }
 
-    private static McpHandler handler() {
+    private static String enc(String s) {
+        return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    private static McpHandler handler(NewProjectWizard wizard) {
         McpHandler h = new McpHandler(
                 () -> new StatusSnapshot(
                         "0.13.7",
@@ -383,6 +651,7 @@ class McpNewFormTest {
                 List::of,
                 "0.13.7");
         h.tools(new McpTools(List.of(new NewTool())));
+        h.wizard(wizard);
         return h;
     }
 }

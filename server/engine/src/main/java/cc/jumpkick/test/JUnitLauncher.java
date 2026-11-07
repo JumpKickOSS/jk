@@ -1089,8 +1089,8 @@ public final class JUnitLauncher {
         return slash < 0 ? path : path.substring(slash + 1);
     }
 
-    /** The sharded pool's summary and the serial-tag pool's as one suite result. */
-    static TestSummary merge(TestSummary a, TestSummary b) {
+    /** Two runs of one module as one suite result: the sharded and serial-tag pools, or two suites run apart. */
+    public static TestSummary merge(TestSummary a, TestSummary b) {
         var failures = new ArrayList<>(a.failures());
         failures.addAll(b.failures());
         var walls = new LinkedHashMap<>(a.classWallMs());

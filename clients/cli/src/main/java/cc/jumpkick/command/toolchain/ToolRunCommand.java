@@ -19,8 +19,10 @@ import cc.jumpkick.command.pipeline.InstallCommand;
 import cc.jumpkick.command.pipeline.RunVerb;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.EnvLookup;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceModules;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
@@ -170,7 +172,8 @@ public final class ToolRunCommand implements CliCommand {
                 var peek = ProjectInfos.orNull(start);
                 if (peek != null && peek.workspaceRoot()) wsRoot = start;
                 else if (peek == null
-                        && !workspaceModules(ManifestPaths.manifestIn(start)).isEmpty()) {
+                        && !WorkspaceScan.modulesListed(ManifestPaths.manifestIn(start))
+                                .isEmpty()) {
                     wsRoot = start;
                 }
             }
@@ -186,10 +189,10 @@ public final class ToolRunCommand implements CliCommand {
                 if (Files.isRegularFile(ManifestPaths.manifestIn(direct))) return direct;
                 return null;
             }
-            var rootBuild = ProjectInfos.orNull(wsRoot);
-            List<String> moduleDirs = rootBuild != null && rootBuild.workspaceRoot()
-                    ? rootBuild.moduleDirs()
-                    : workspaceModules(ManifestPaths.manifestIn(wsRoot));
+            // The members as the build expands them, engine or not: the engine's project-info view
+            // drops a glob that selects nothing (so `jk new` can describe a workspace before its new
+            // member exists), which would read a bad member list here as "no such module".
+            List<String> moduleDirs = memberDirs(wsRoot);
             if (moduleDirs.isEmpty()) return null;
             String want = name.replace('\\', '/');
             while (want.startsWith("./")) want = want.substring(2);
@@ -225,7 +228,9 @@ public final class ToolRunCommand implements CliCommand {
                 return suffixHits.get(0);
             }
             // Unlisted dirs under the workspace stay on the standalone/file classifiers.
-        } catch (AmbiguousModuleTarget e) {
+        } catch (AmbiguousModuleTarget | JkBuildParseException e) {
+            // A bad member list is the workspace's error, not "no module": the build would fail on
+            // it too, so name it here rather than falling through to the file classifiers.
             throw e;
         } catch (Exception ignored) {
             return null;
@@ -233,8 +238,61 @@ public final class ToolRunCommand implements CliCommand {
         return null;
     }
 
-    private static List<String> workspaceModules(Path jkToml) {
-        return TomlScan.scan(jkToml, "workspace.modules").stringArray("workspace.modules");
+    /** Runs the one module {@code -m} selects; null when it selects none, so the target rules apply. */
+    private @Nullable Integer runSelectedModule(@Nullable String spec) throws IOException, InterruptedException {
+        Path selected;
+        try {
+            selected = selectedModule(global.workingDir(), spec);
+        } catch (AmbiguousModuleTarget e) {
+            CommandWedge.printFail("Run", e.getMessage());
+            return Exit.USAGE;
+        }
+        return selected == null ? null : runDirectory(selected, toolArgs);
+    }
+
+    /**
+     * The one workspace module {@code spec} (the run's {@code -m}) selects, resolved by the engine
+     * exactly as the build resolves it; null when {@code spec} is absent, {@code cwd} is in no
+     * workspace, or the selector matches nothing (the build then says so). A run launches one
+     * program, so a selector that matches several modules is refused with them named.
+     */
+    static @Nullable Path selectedModule(Path cwd, @Nullable String spec) {
+        if (spec == null || spec.isBlank()) return null;
+        Path start = WorkingDirectory.resolve(cwd);
+        var peek = ProjectInfos.orNull(start);
+        if (peek == null) return null;
+        Path root = peek.workspaceRoot()
+                ? start
+                : peek.workspaceRootDir().isBlank() ? null : Path.of(peek.workspaceRootDir());
+        if (root == null) return null;
+        var selection = ProjectInfos.orError(root, spec, null);
+        if (selection.error() != null && !selection.error().isBlank()) return null;
+        List<Path> dirs = selection.moduleDirs().stream()
+                .map(d -> Path.of(d).isAbsolute()
+                        ? Path.of(d).normalize()
+                        : root.resolve(d).normalize())
+                .distinct()
+                .toList();
+        if (dirs.size() > 1) {
+            String names = dirs.stream()
+                    .map(d -> root.relativize(d).toString().replace('\\', '/'))
+                    .collect(Collectors.joining(", "));
+            throw new AmbiguousModuleTarget("`-m " + spec + "` selects " + dirs.size() + " modules (" + names
+                    + ") — jk run launches one program: name its module, e.g. `jk run -m "
+                    + root.relativize(dirs.get(0)).toString().replace('\\', '/') + "`");
+        }
+        return dirs.isEmpty() ? null : dirs.get(0);
+    }
+
+    /** The members {@code wsRoot}'s manifest lists; a member-list error names that manifest. */
+    private static List<String> memberDirs(Path wsRoot) {
+        try {
+            return WorkspaceModules.memberDirs(wsRoot).stream()
+                    .map(Path::toString)
+                    .toList();
+        } catch (JkBuildParseException e) {
+            throw new JkBuildParseException(ManifestPaths.manifestIn(wsRoot) + ": " + e.getMessage(), e);
+        }
     }
 
     /** {@code jk run <leaf>} matched more than one workspace module. */
@@ -399,6 +457,32 @@ public final class ToolRunCommand implements CliCommand {
                 .run(fetched, merged);
     }
 
+    /**
+     * The run of a workspace module the invocation names, or null when it names none and the other
+     * target rules apply: `jk run -m <module>` with no target names the project the way
+     * `jk run <module>` does (that module's cone builds and its own main launches, never the
+     * workspace root's), and a target such as `clients/cli` or `cli` resolves against the
+     * workspace's members before the other classifiers.
+     */
+    private @Nullable Integer runModuleTarget(Invocation in, boolean targetGiven)
+            throws IOException, InterruptedException {
+        if (!targetGiven) {
+            Integer ran = runSelectedModule(CommonOpts.modulesSpec(in));
+            if (ran != null) return ran;
+        }
+        Path moduleHit;
+        try {
+            moduleHit = resolveWorkspaceModule(global.workingDir(), target);
+        } catch (AmbiguousModuleTarget e) {
+            CommandWedge.printFail("Run", e.getMessage());
+            return Exit.USAGE;
+        } catch (JkBuildParseException e) {
+            CommandWedge.printFail("Run", e.getMessage());
+            return Exit.CONFIG;
+        }
+        return moduleHit == null ? null : runDirectory(moduleHit, toolArgs);
+    }
+
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.invocation = in;
@@ -425,18 +509,8 @@ public final class ToolRunCommand implements CliCommand {
         // the selection rides the ambient session into the delegate's build + deploy command.
         VariantSelection.install(in, global.workingDir());
 
-        // Workspace module selector: `jk run clients/cli` or `jk run cli` from the workspace root
-        // (or any cwd) resolves against workspace.modules before other target classifiers.
-        Path moduleHit;
-        try {
-            moduleHit = resolveWorkspaceModule(global.workingDir(), target);
-        } catch (AmbiguousModuleTarget e) {
-            CommandWedge.printFail("Run", e.getMessage());
-            return Exit.USAGE;
-        }
-        if (moduleHit != null) {
-            return runDirectory(moduleHit, toolArgs);
-        }
+        Integer moduleRun = runModuleTarget(in, targetGiven);
+        if (moduleRun != null) return moduleRun;
 
         // A local file target (by extension) is compiled/run by ScriptRunner; the
         // extension is the signal even when the file is missing, so the user gets

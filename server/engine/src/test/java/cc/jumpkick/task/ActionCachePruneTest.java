@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
@@ -13,7 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -428,6 +431,36 @@ class ActionCachePruneTest {
         assertThat(colder).doesNotExist();
         assertThat(warmer).exists();
         assertThat(report.incrementalFinalBytes()).isEqualTo(400_000);
+    }
+
+    @Test
+    void the_zinc_pass_stops_between_trees_and_takes_each_whole(@TempDir Path root) throws IOException {
+        Cas cas = new Cas(root);
+        List<Path> cold = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            cold.add(analysis(
+                    root,
+                    "compile-main@cold" + i,
+                    1_024,
+                    Duration.ofDays(10 + i).toMillis()));
+        }
+        int[] asked = {0};
+        PruneYield yield = new PruneYield(() -> {
+            asked[0]++;
+            return cold.stream().anyMatch(Files::notExists);
+        });
+
+        assertThatThrownBy(() -> ActionCachePrune.run(root, cas, windows(1024L * 1024 * 1024), Set.of(), false, yield))
+                .isInstanceOf(PruneYield.Yielded.class);
+
+        assertThat(asked[0])
+                .as("asked inside the measuring walk, not once for the tier")
+                .isGreaterThan(cold.size());
+        assertThat(cold.stream().filter(Files::notExists)).hasSize(1);
+        assertThat(cold.stream().filter(Files::exists)).allMatch(dir -> Files.exists(dir.resolve("zinc")));
+
+        ActionCachePrune.run(root, cas, windows(1024L * 1024 * 1024), Set.of(), false);
+        assertThat(cold).noneMatch(Files::exists);
     }
 
     /**

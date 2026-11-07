@@ -188,7 +188,9 @@ final class LockfileAssembler {
                 rootModules.add(d.packageKey());
             }
             if (includeJunitSeeds && scope == Scope.TEST) {
-                for (Dependency d : TestEngines.injectedRoots(project)) rootModules.add(d.packageKey());
+                // The rule the classpath reader applies to the rows, here applied to the solve.
+                rootModules.addAll(TestEngines.injectedKeys(
+                        project, TestEngines.declaredTestKeys(project), keys -> reachableFrom(keys, resolution)));
             }
             if (rootModules.isEmpty()) continue;
             for (String module : reachableFrom(rootModules, resolution)) {
@@ -365,7 +367,7 @@ final class LockfileAssembler {
     }
 
     /** BFS through the resolved graph starting from {@code roots}. */
-    private static Set<String> reachableFrom(Set<String> roots, Resolution resolution) {
+    static Set<String> reachableFrom(Set<String> roots, Resolution resolution) {
         Set<String> visited = new HashSet<>();
         Deque<String> queue = new ArrayDeque<>(roots);
         while (!queue.isEmpty()) {

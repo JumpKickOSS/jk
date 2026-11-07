@@ -199,13 +199,14 @@ public final class ZincJavaCompiler {
             throws IOException {
         if (prev.isEmpty()) {
             deleteClassFiles(classOutput);
+            GeneratedProvenance.of(classOutput).deletePrevious(sourceOutput, classOutput);
             return;
         }
         deleteClassFilesUnknownTo(
                 prev.get().getAnalysis(),
                 converter,
                 classOutput,
-                GeneratedProvenance.of(workdir).ownedClassFiles(sourceOutput, classOutput));
+                GeneratedProvenance.of(classOutput).ownedClassFiles(sourceOutput, classOutput));
     }
 
     /**
@@ -349,7 +350,7 @@ public final class ZincJavaCompiler {
             // Delete generated sources/classes whose origin no longer generates them — recompiled
             // without its @Gen annotation, or deleted. Zinc can't do this: generated files aren't in
             // its source set, so their class files are unattributed products it never prunes.
-            GeneratedProvenance.of(workdir)
+            GeneratedProvenance.of(classOutput)
                     .reconcile(sourceOutput, classOutput, sources, javac.compiledSources(), provenance.generated);
             zinced.markAggregating(provenance.aggregating());
             phases.mark("reconcile");

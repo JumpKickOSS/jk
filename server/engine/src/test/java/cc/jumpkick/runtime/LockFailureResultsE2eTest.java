@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JkResultsMarkdown;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -23,7 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * End-to-end: a workspace whose lock freshen the resolver refuses ends as a failed run in the
- * journal — a root {@code lock} step that failed, the solver's reason as its error, exit 6 — and
+ * journal — a root {@code lock} step that failed, the solver's reason as its error, {@link Exit#RESOLVE} — and
  * stays one when the client hangs up the instant it reads the terminal. The reason travels the
  * real path: the preflight phase, the listener, the accumulator; only the write to disk is left out.
  */
@@ -49,7 +50,7 @@ class LockFailureResultsE2eTest {
                 new WorkspaceRequest(ws, cache, null, 0, null, true, false, 1, null, false, true), listener);
 
         assertThat(result.success()).isFalse();
-        assertThat(result.exitCode()).as("the lock's exit").isEqualTo(6);
+        assertThat(result.exitCode()).as("the lock's exit").isEqualTo(Exit.RESOLVE);
         assertThat(result.modules()).as("no module ran").isEmpty();
         assertThat(result.errors()).hasSize(1);
         String reason = result.errors().getFirst();
@@ -65,7 +66,7 @@ class LockFailureResultsE2eTest {
         assertThat(record.cancelled())
                 .as("a failure the run recorded is never a cancel")
                 .isFalse();
-        assertThat(record.exitCode()).isEqualTo(6);
+        assertThat(record.exitCode()).isEqualTo(Exit.RESOLVE);
         assertThat(record.steps()).singleElement().satisfies(t -> {
             assertThat(t.name()).isEqualTo("lock");
             assertThat(t.status()).isEqualTo("FAIL");

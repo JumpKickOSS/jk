@@ -213,6 +213,9 @@ scratch build or a hermetic test home never becomes the jk every new shell runs.
 --rc`, `install.ps1 -Rc` (`JK_RC=1` for `irm | iex`) and `jk activate -R` ask for the block on a
 non-default home anyway. The root-specific variables win over `JK_HOME`, and they compose:
 `JK_HOME=/tmp/cold JK_STORE_DIR=$HOME/.jk/store` gives you a scratch everything with a warm store.
+Such a home builds against that store but never installs into it: its `jk install`, and the
+installer's shelf step for a local dist, refuse to write the default home's `repos/jk-local`,
+whose pins this home cannot record.
 
 Cold resolve without wiping your real store:
 

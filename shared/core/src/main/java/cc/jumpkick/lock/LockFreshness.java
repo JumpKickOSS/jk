@@ -13,9 +13,11 @@ import cc.jumpkick.plugin.manifest.PluginContributions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -194,7 +196,7 @@ public final class LockFreshness {
 
     /**
      * True when an active plugin of a module fetches a tool artifact by coordinate, a file at a URL
-     * or a runtime closure that {@code lock} has no {@code [[tool]]} row for — the module, version and type; a
+     * or a runtime closure (a contributed annotation processor's included) that {@code lock} has no {@code [[tool]]} row for — the module, version and type; a
      * floating version matches any row of its module — or resolves a closure for the lock that no
      * row answers for the module, or one another build of the plugin answered ({@link
      * LockClosureStamp}). What the closure was resolved from changes with the manifests, which the
@@ -221,8 +223,11 @@ public final class LockFreshness {
                     PluginContributions.lockedUrls(module.getValue(), dir, view.platformPins())) {
                 if (url.host() && ToolEntry.urlSha256In(lock.tools(), url.id()) == null) return true;
             }
-            for (PluginContributions.StepDep closure :
-                    PluginContributions.closureTools(module.getValue(), dir, view.platformPins())) {
+            List<PluginContributions.StepDep> closures =
+                    new ArrayList<>(PluginContributions.closureTools(module.getValue(), dir, view.platformPins()));
+            closures.addAll(PluginContributions.processorClosures(
+                    module.getValue(), dir, view.platformPins(), classpathModules(view)));
+            for (PluginContributions.StepDep closure : closures) {
                 String root = Objects.requireNonNull(closure.coordinateSpec());
                 if (ToolEntry.closureIn(lock.tools(), root, closure.with(), closure.managedBySpec()) == null)
                     return true;

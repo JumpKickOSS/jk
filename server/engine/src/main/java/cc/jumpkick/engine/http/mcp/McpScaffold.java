@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.engine.runtime.NewProjectAgents;
 import cc.jumpkick.engine.runtime.NewProjectForm;
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.form.Field;
@@ -83,14 +84,23 @@ public final class McpScaffold {
         return template == null || template.isBlank() ? NewProjectStep.DEFAULT_TEMPLATE : template.strip();
     }
 
+    /** What a call does: scaffold a request, or report the project the human created in the wizard. */
+    public sealed interface Plan {
+        record Scaffold(NewProjectOps.Request request) implements Plan {}
+
+        /** {@code project} holds the created project's {@code path} and {@code projectId}. */
+        record Created(Map<String, Object> project) implements Plan {}
+    }
+
     /**
-     * The scaffold request for a call. The template's form (the default template's when the call
-     * names none) is settled first: the call's arguments and {@code params} answer it, defaults fill
-     * the rest, and a required field still missing is asked through elicitation or named in the
-     * error ({@link McpNewForm}). A relative template path resolves against {@code cwd}, for the form
-     * and the scaffold alike.
+     * The plan for a call. The template's form (the default template's when the call names none) is
+     * settled first: the call's arguments and {@code params} answer it, defaults fill the rest, and a
+     * required field still missing is asked through elicitation, by form or, with {@code wizard}, by
+     * a link to the dashboard's wizard, or named in the error ({@link McpNewForm}). A relative
+     * template path resolves against {@code cwd}, for the form and the scaffold alike. The project
+     * is wired for the engine's agents setting and the calling client's agent ({@link McpClientAgent}).
      */
-    public static NewProjectOps.Request request(McpCall in, String parentDir, Path cwd) throws IOException {
+    public static Plan plan(McpCall in, String parentDir, Path cwd, boolean wizard) throws IOException {
         String name = in.str("name");
         String group = in.str("group");
         String lang = in.str("lang");
@@ -111,7 +121,13 @@ public final class McpScaffold {
         putIfSet(given, "group", group);
         putIfSet(given, "lang", lang);
         if (form.field("layout") != null) putIfSet(given, "layout", layout);
-        FormCheck settled = McpNewForm.settle(in, form, NewProjectForm.typed(form, given));
+        FormCheck settled;
+        switch (McpNewForm.settle(in, form, NewProjectForm.typed(form, given), wizard)) {
+            case McpNewForm.Settled.Created created -> {
+                return new Plan.Created(created.project());
+            }
+            case McpNewForm.Settled.Answers answers -> settled = answers.check();
+        }
         Map<String, Object> values = settled.values();
         name = (String) values.get("name");
         if (values.get("group") instanceof String g) group = g;
@@ -120,8 +136,9 @@ public final class McpScaffold {
         for (Field f : form.fields()) passthrough.remove(f.key());
         Map<String, String> answers = new LinkedHashMap<>(NewProjectForm.templateParams(values));
         answers.putAll(passthrough);
-        return new NewProjectOps.Request(
-                name, parentDir, group, lang, layout, t.id(), true, answers, false, null, cwd.toString());
+        return new Plan.Scaffold(new NewProjectOps.Request(
+                        name, parentDir, group, lang, layout, t.id(), true, answers, false, null, cwd.toString())
+                .withAgents(McpClientAgent.choice(in.connection(), NewProjectAgents.current())));
     }
 
     private static void putIfSet(Map<String, Object> out, String key, @Nullable String value) {
@@ -144,6 +161,7 @@ public final class McpScaffold {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("path", c.path().toString());
         if (c.projectId() != null) m.put("projectId", c.projectId());
+        m.put("agents", NewProjectAgents.json(c.agents(), c.path()));
         return m;
     }
 }

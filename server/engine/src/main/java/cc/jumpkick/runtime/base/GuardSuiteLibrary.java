@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
@@ -137,9 +138,8 @@ public final class GuardSuiteLibrary {
         } catch (IOException | RuntimeException e) {
             return null;
         }
-        if (build.workspace() == null) return null;
-        for (String m : build.workspace().modules()) {
-            Path dir = root.resolve(m);
+        // The build's expansion, outside the fallback: a glob that selects nothing is the build's error.
+        for (Path dir : WorkspaceModules.memberDirs(root, build)) {
             Path mm = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(mm)) continue;
             try {

@@ -13,6 +13,7 @@ import cc.jumpkick.resolver.DependencyTree;
 import cc.jumpkick.resolver.DependencyTreeStyle;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -176,6 +177,41 @@ class WorkspaceModuleClasspathTest {
         assertThat(classpath(application, ClasspathResolver.COMPILE_MAIN))
                 .as("the library's shared boot edge is inherited like a pinned one")
                 .contains(jar(boot), jar(core));
+    }
+
+    @Test
+    void the_jupiter_engine_rides_only_the_test_classpath_of_a_member_whose_tests_reach_a_jupiter_api()
+            throws Exception {
+        Path api = putJar("org/junit/jupiter/junit-jupiter-api/5.12.2/junit-jupiter-api-5.12.2.jar", "api");
+        Path engine = putJar("org/junit/jupiter/junit-jupiter-engine/5.12.2/junit-jupiter-engine-5.12.2.jar", "engine");
+        List<Lockfile.Artifact> rows = new ArrayList<>(lock.artifacts());
+        rows.removeIf(r -> r.name().equals("com.test:mockit:jar:"));
+        rows.add(
+                row("com.test:mockit", mockit, List.of(Scope.TEST), "org.junit.jupiter:junit-jupiter-api:jar:@5.12.2"));
+        rows.add(new Lockfile.Artifact(
+                "org.junit.jupiter:junit-jupiter-api:jar:",
+                "5.12.2",
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + Hashing.sha256Hex(api),
+                null,
+                List.of(Scope.TEST),
+                List.of()));
+        rows.add(new Lockfile.Artifact(
+                "org.junit.jupiter:junit-jupiter-engine:jar:",
+                "5.12.2",
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + Hashing.sha256Hex(engine),
+                null,
+                List.of(Scope.TEST),
+                List.of("org.junit.jupiter:junit-jupiter-api:jar:@5.12.2")));
+        lock = lock.withArtifacts(rows);
+
+        assertThat(classpath(application, ClasspathResolver.TEST))
+                .as("mockit brings the Jupiter API in, so the lock added its engine")
+                .contains(jar(mockit), jar(api), jar(engine), jar(launcher));
+        assertThat(classpath(library, ClasspathResolver.TEST))
+                .as("the library's tests reach no Jupiter: the engine the workspace locked is not theirs")
+                .containsExactly(jar(boot), jar(testkit), jar(launcher), jar(core));
     }
 
     @Test

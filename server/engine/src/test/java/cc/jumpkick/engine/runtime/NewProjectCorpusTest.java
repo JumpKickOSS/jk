@@ -3,6 +3,7 @@ package cc.jumpkick.engine.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Field;
@@ -13,6 +14,7 @@ import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.scaffold.testing.AnswerVectors;
@@ -228,16 +230,19 @@ class NewProjectCorpusTest {
     /**
      * Installs the jar this build produced of every plugin in {@code bundled}, as the engine installs
      * a first-party plugin, so its templates reach the catalogue. The jar is the {@code -D} property
-     * {@code test-plugin-jars} in this module's {@code jk.toml} hands the test JVM; a missing one is
-     * broken wiring, not a skip.
+     * {@code test-plugin-jars} in this module's {@code jk.toml} hands the test JVM, else the jar the
+     * workspace built when the running jk predates the worker; neither is broken wiring, not a skip.
      */
-    private static void installPlugins(List<PluginTemplate> bundled) {
+    private static void installPlugins(List<PluginTemplate> bundled) throws IOException {
         Set<String> plugins = new TreeSet<>();
         for (PluginTemplate t : bundled) plugins.add(t.plugin());
+        Path repo = RepoRoot.find(NewProjectCorpusTest.class);
         for (String plugin : plugins) {
             PluginJar worker = PluginJar.byArtifactId("jk-" + plugin)
                     .orElseThrow(() -> new AssertionError("plugins/" + plugin + " is no first-party worker"));
             String jar = System.getProperty(worker.jarProperty());
+            if (jar == null || jar.isBlank())
+                jar = builtByThisWorkspace(repo.resolve("plugins").resolve(plugin));
             assertThat(jar)
                     .as(
                             "-D%s: plugins/%s bundles templates, so test-plugin-jars in server/engine/jk.toml"
@@ -252,6 +257,17 @@ class NewProjectCorpusTest {
             DISPLACED.add(new Displaced(installed, previous, archive));
         }
         Giter8TemplateIndex.invalidate();
+    }
+
+    /**
+     * The jar this workspace built of the plugin at {@code dir}, when the jk running the tests
+     * predates the worker and so hands no {@code -D} property for it (the build that lands a new
+     * first-party plugin, run by the jk before it); null when it is not built.
+     */
+    private static @Nullable String builtByThisWorkspace(Path dir) throws IOException {
+        Path jar =
+                BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml"))).mainJar();
+        return Files.isRegularFile(jar) ? jar.toAbsolutePath().toString() : null;
     }
 
     /** The template directories under {@code root}: {@code <lang>/<framework>/<name>.g8}, sorted. */

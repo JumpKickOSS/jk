@@ -143,9 +143,10 @@ public final class LockFlow {
         return new Result(0, null, lock, scope.effective(), scope.moduleCount(), scope.workspace(), scope.lockDir());
     }
 
-    /** Exit 6: the resolve could not complete (unsatisfiable graph, unreachable repo, bad source). */
+    /** {@link Exit#RESOLVE}: the resolve could not complete (unsatisfiable graph, unreachable repo, bad source). */
     private static Result failed(String error, LockPlans.LockScope scope) {
-        return new Result(6, error, null, scope.effective(), scope.moduleCount(), scope.workspace(), scope.lockDir());
+        return new Result(
+                Exit.RESOLVE, error, null, scope.effective(), scope.moduleCount(), scope.workspace(), scope.lockDir());
     }
 
     /**

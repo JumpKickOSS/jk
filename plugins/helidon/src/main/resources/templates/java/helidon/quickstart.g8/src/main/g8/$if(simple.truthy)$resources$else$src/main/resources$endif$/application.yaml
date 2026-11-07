@@ -1,0 +1,11 @@
+app:
+  greeting: "Hello"
+
+server:
+  port: 8080
+  host: 0.0.0.0
+$if(tracing.truthy)$
+
+tracing:
+  service: $name$
+$endif$

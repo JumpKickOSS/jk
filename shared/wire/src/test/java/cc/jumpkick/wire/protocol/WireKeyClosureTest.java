@@ -68,8 +68,6 @@ class WireKeyClosureTest {
             "script-ref", "foreign format: jbang-catalog.json",
             // A POST /api/build body field an HTTP client sets; the engine only ever reads it.
             "deadlineMs", "written by HTTP clients, not by Java: the job's wall deadline on POST /api/build",
-            // A POST /api/projects body field the dashboard's wizard.js sets; false picks the library template.
-            "executable", "written by the dashboard (wizard.js), not by Java: app or library on POST /api/projects",
             // jk-import-model.init.gradle writes the xjc plugin's settings, in Groovy.
             "xsdDir", "written by jk-import-model.init.gradle, read by GradleModel",
             "defaultPackage", "written by jk-import-model.init.gradle, read by GradleModel",

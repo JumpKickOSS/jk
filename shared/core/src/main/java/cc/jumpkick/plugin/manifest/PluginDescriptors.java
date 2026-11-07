@@ -143,7 +143,8 @@ public final class PluginDescriptors {
                 gradleImports,
                 subSchemas,
                 subTables,
-                entrySchema);
+                entrySchema,
+                ManifestDefaults.minJava(plugin, displayPath));
     }
 
     /** Typed schema keys from one table of {@code key = { type = "…", … }} specs. */
@@ -163,6 +164,9 @@ public final class PluginDescriptors {
             var type = PluginDescriptor.SchemaKey.Type.parse(typeRaw, where + "." + key);
             boolean required = Boolean.TRUE.equals(spec.getBoolean("required"));
             Object defaultValue = defaultFor(spec, type, where + "." + key);
+            List<String> oneOf = stringList(spec, "one-of", where + "." + key);
+            String minVersion = spec.getString("min-version");
+            ManifestDefaults.checkStringConstraints(where + "." + key, type, defaultValue, oneOf, minVersion);
             schema.put(
                     key,
                     new PluginDescriptor.SchemaKey(
@@ -173,7 +177,9 @@ public final class PluginDescriptors {
                             spec.getString("example"),
                             spec.getString("hint"),
                             Boolean.TRUE.equals(spec.getBoolean("secret")),
-                            Boolean.TRUE.equals(spec.getBoolean("inherit"))));
+                            Boolean.TRUE.equals(spec.getBoolean("inherit")),
+                            oneOf,
+                            minVersion));
         }
         return schema;
     }
@@ -299,6 +305,8 @@ public final class PluginDescriptors {
         List<PluginDescriptor.NativeArgs> nativeArgs = parseNativeArgs(contribute, schemaKeys, displayPath);
         List<PluginDescriptor.SourceRoot> sourceRoots = parseSourceRoots(contribute, displayPath);
         List<PluginDescriptor.KotlinPlugin> kotlinPlugins = parseKotlinPlugins(contribute, schemaKeys, displayPath);
+        List<PluginDescriptor.ProcessorDependency> processorDeps =
+                parseProcessorDependencies(contribute, schemaKeys, displayPath);
         List<PluginDescriptor.PackagerDependency> packagerDeps =
                 parsePackagerDependencies(contribute, schemaKeys, displayPath);
         List<PluginDescriptor.StepDependency> stepDeps =
@@ -323,6 +331,7 @@ public final class PluginDescriptors {
                 compilerArgs,
                 nativeArgs,
                 kotlinPlugins,
+                processorDeps,
                 packagerDeps,
                 stepDeps,
                 commandDeps,
@@ -331,7 +340,9 @@ public final class PluginDescriptors {
                 jvmEnvironment,
                 jvmModules,
                 lockClosures,
-                conditionalDependencies);
+                conditionalDependencies,
+                ManifestDefaults.testSystemProperties(contribute, displayPath),
+                ManifestDefaults.libDir(contribute, displayPath));
     }
 
     /**
@@ -478,6 +489,36 @@ public final class PluginDescriptors {
             kotlinPlugins.add(new PluginDescriptor.KotlinPlugin(id, coordinate, options, parseCondition(t, where)));
         }
         return kotlinPlugins;
+    }
+
+    /**
+     * {@code [[contribute.processor-dependency]]}: a {@code coordinate} each, at most once per
+     * plugin, and the compiles it joins ({@code scope}: {@code main}, {@code test} or {@code both},
+     * the default).
+     */
+    private static List<PluginDescriptor.ProcessorDependency> parseProcessorDependencies(
+            TomlTable contribute, Set<String> schemaKeys, String displayPath) {
+        List<PluginDescriptor.ProcessorDependency> out = new ArrayList<>();
+        for (TomlTable t : tableArray(contribute, "processor-dependency", displayPath)) {
+            String where = displayPath + ".contribute.processor-dependency";
+            String coordinate = requireString(t, "coordinate", where);
+            Interpolation.validate(coordinate, schemaKeys, where);
+            if (coordinate.split(":").length != 3) {
+                throw new JkBuildParseException(
+                        where + ".coordinate must be \"group:artifact:version\" — got: " + coordinate);
+            }
+            if (out.stream().anyMatch(d -> d.coordinate().equals(coordinate))) {
+                throw new JkBuildParseException(where + ": `" + coordinate + "` is declared twice");
+            }
+            String scope = t.getString("scope");
+            if (scope == null) scope = "both";
+            if (!List.of("main", "test", "both").contains(scope)) {
+                throw new JkBuildParseException(where + ".scope must be `main`, `test` or `both` — got: " + scope);
+            }
+            out.add(new PluginDescriptor.ProcessorDependency(
+                    coordinate, !scope.equals("test"), !scope.equals("main"), parseCondition(t, where)));
+        }
+        return out;
     }
 
     private static List<PluginDescriptor.PackagerDependency> parsePackagerDependencies(
@@ -716,7 +757,7 @@ public final class PluginDescriptors {
      * PluginDescriptor.Condition} — the closed predicate set; two predicates in one {@code when}
      * (or an unknown one) is a load error, never a silently-false condition.
      */
-    private static PluginDescriptor.@Nullable Condition parseCondition(TomlTable entry, String where) {
+    static PluginDescriptor.@Nullable Condition parseCondition(TomlTable entry, String where) {
         if (!entry.contains("when")) return null;
         TomlTable when = entry.getTable("when");
         if (when == null) {

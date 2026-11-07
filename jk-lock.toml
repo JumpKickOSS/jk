@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.50.4-SNAPSHOT"
-generated-by-build = "84b943c10858"
-generated-by-build-time = "2026-11-06T22:43:57Z"
+generated-by-build = "b5eae7689f6d"
+generated-by-build-time = "2026-11-07T08:04:35Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "a75afc431df1a9fc348cebc8bfc70cd598cc7e71cf4a1d8743cef137ca9ac55a"
+manifests-sha256 = "7924811facfddea6d58614604ca5f4e671b7f01ad8a2416fd8d49c89c6e78095"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -405,7 +405,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b49c5c958316ed67a09c699dda9aa749caf434d51d863dea599ef36a49b9c855"
 scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
-members  = ["clients/maven-spy"]
+members  = ["clients/cli", "clients/maven-spy"]
 
 [[artifact]]
 name     = "com.google.errorprone:error_prone_annotations:jar:"
@@ -774,6 +774,37 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f412ecbb235c2460b45e63584109723dea8d94b819c78c9bfc38f50cba8546c0"
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "com.microsoft.playwright:driver-bundle:jar:"
+version  = "1.64.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c04dce9bd95e758c2c5784dfb9b508ba8f4b7601aa1a4f738ae269e5c0bd49a9"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "com.microsoft.playwright:driver:jar:"
+version  = "1.64.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:116badd0cfc74d85bc58fef74fe492e63da72035d4ec8569ad88188332b839c5"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "com.microsoft.playwright:playwright:jar:"
+version  = "1.64.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b4a40f4af4b8e0b8aec0b461c2f475aed6a5e6693bdbf65de2fee6d31cd17c7b"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+deps = [
+  "com.google.code.gson:gson:jar:@2.14.0",
+  "com.microsoft.playwright:driver-bundle:jar:@1.64.0",
+  "com.microsoft.playwright:driver:jar:@1.64.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.opentest4j:opentest4j:jar:@1.3.0",
+]
 
 [[artifact]]
 name     = "com.puppycrawl.tools:checkstyle:jar:"
@@ -1763,7 +1794,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d78396e3c5bce3f2865c9186647481e5589d34cacc632484715b686108d17c66"
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
-members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
+members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/helidon", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
 
 [[artifact]]
 name     = "net.jqwik:jqwik-api:jar:"
@@ -7082,6 +7113,15 @@ name    = "jk-groovy-compiler"
 version = "0.50.4"
 java    = 25
 description = "JumpKick's Groovy compiler plugin"
+install.destination = "jk"
+
+[[module]]
+path    = "plugins/helidon"
+group   = "cc.jumpkick"
+name    = "jk-helidon"
+version = "0.50.4"
+java    = 25
+description = "JumpKick's Helidon plugin: the Helidon platform BOM, its annotation processors, the test config profile and the libs/ deployable for Helidon 27+ applications"
 install.destination = "jk"
 
 [[module]]

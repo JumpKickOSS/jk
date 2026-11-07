@@ -171,6 +171,168 @@ service declares it the ordinary way — Testcontainers in the test, or a `[test
 what CI provides. The gap versus `mn:run` / `./gradlew run` with test-resources is exactly that
 one convenience: no service is started for you.
 
+## Helidon
+
+**Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).
+
+```bash
+jk new -t helidon/quickstart my-api      # helidon init's quickstart: /greet, health, metrics
+jk new -t helidon/declarative my-api     # the same service as a Helidon Declarative endpoint
+jk new -t helidon/quickstart -p media=json -p tracing=true -p jlink=true my-api
+```
+
+`helidon/quickstart` is the counterpart of `helidon init`'s quickstart application, and asks its
+questions with its preset answers as defaults:
+
+| `-p` | Default | What it writes |
+|---|---|---|
+| `media=jsonp\|json` | `jsonp` | `/greet`'s JSON library: Jakarta JSON-P (`helidon-http-media-jsonp`, the archetype's), or Helidon JSON (`helidon-http-media-json`, a preview API in 27) |
+| `metrics` | `true` | `/observe/metrics` with the built-in system meters |
+| `health` | `true` | `/observe/health` with the built-in checks |
+| `tracing` | `false` | OpenTelemetry tracing and a `/traced` endpoint that opens its own span |
+| `docker` | `true` | an [`[image]`](images.md) table: `jk image` in place of Helidon's `Dockerfile` |
+| `jlink` | `false` | a [`[jlink]`](packaging.md#runtime-image-jlink) table: `jk build` also links `target/<name>-jri/`, in place of the `jlink-image` profile. Off by default because Maven links it only in that profile, and a `[jlink]` build links and trains it every time |
+| `k8s` | `true` | `app.yaml`, a Kubernetes Service and Deployment of the image |
+
+`helidon/declarative` writes the same `/greet` service as an annotated `@RestServer.Endpoint`
+that the service registry wires (`[helidon] declarative = true`, `@Service.GenerateBinding` on
+`Main`), after Helidon's inject quickstart and Declarative examples: the same questions, and
+`generate_main` (advanced), which sets `[helidon] generate-main`. Both write `java = 27`,
+`[helidon] version` at the current Helidon release, versionless Helidon dependencies, and
+`junit-jupiter`; the scaffold builds, tests and serves `/greet` as written. Neither ships
+a `jk-guards.toml` yet: the Helidon rule pack is still to come. Helidon's `database` and
+`custom` application types have no template.
+
+jk's own tests diff these questions against the inputs of Helidon's archetypes
+(`archetypes/archetypes/src/main/archetype` at the pinned release), so an input a Helidon release
+adds is either asked by a template or recorded with the reason it is not.
+
+`[helidon]` builds Helidon 27 and later applications (Helidon SE; 27 has no MicroProfile and no
+GraalVM native image). The version is the only required key:
+
+```toml
+name    = "quickstart"
+group   = "com.example"
+version = "1.0.0"
+java    = 27                  # Helidon 27 is compiled for Java 27; jk installs the JDK
+
+[application]
+main = "com.example.Main"
+
+[helidon]
+version = "27.0.1"            # required: 27.0.1 (exact), ^27 (newest 27.x) or latest
+# layout        = "libs"      # libs (default): target/<name>.jar + target/libs/ | jar
+# declarative   = false       # true: Helidon Declarative's code generators run
+# binding       = true        # default: on when a class carries @Service.GenerateBinding
+# generate-main = false       # also generate ApplicationMain, the reflection-free entry point
+# validate      = true        # check the injection graph; a finding is a build warning
+# fail-on-warning = false     # true: a warning, a validator finding included, fails the build
+# test-binding  = false       # also generate TestApplicationBinding for the test scope
+
+[dependencies]
+helidon-webserver = "managed"
+helidon-config-yaml = "managed"
+
+[test-dependencies]
+helidon-webserver-testing-junit5 = "managed"
+junit-jupiter = "managed"
+```
+
+What the table does:
+
+- **Platform BOM.** `io.helidon:helidon-dependencies` at `version` joins
+  `[platform-dependencies]`, so Helidon modules and the third-party libraries Helidon was built with
+  are `"managed"` or bare short names. A BOM the module declares itself under the same coordinate
+  wins.
+- **Annotation processors.** `helidon-codegen-apt` with `helidon-service-codegen` join the main and
+  test processor paths (every Helidon application has the service registry): service descriptors
+  for `@Service` types and the binding `@Service.GenerateBinding` asks for. `declarative = true`
+  adds `helidon-bundles-apt`, every generator Helidon ships plus its API-stability check, which
+  fails a compile that uses an incubating API. They are appended to the module's own processors
+  ([Annotation processors](build.md#annotation-processors)), locked at the BOM's version; a
+  processor the module declares itself keeps its own pin.
+- **Test config profile.** The test JVM gets `-Dhelidon.config.profile=test`, as Helidon's
+  application parent passes Surefire, so tests read `application-test.yaml`. A
+  `helidon.config.profile` in `[test] system-properties` or `jvm-args` replaces it.
+- **Deployable.** `layout = "libs"` turns on the [lib-dir layout](packaging.md#lib-dir-layout):
+  `target/<name>.jar` with a `Class-Path` over `target/libs/`, what Helidon's Dockerfiles copy,
+  and `jk image` ships it as layers. `lib-versions` and `lib-exclude` under `[application]` shape
+  it; `[application] lib-dir` written by the module (`false` included) wins. A module without an
+  `[application]` gets no layout.
+- **Floors.** A Helidon version below 27 (`4.3.0`, `^4`) and a module below `java = 27` are
+  refused with the line that fixes them.
+
+### The application binding
+
+`@Service.GenerateBinding` on the main class makes the processor write an *empty*
+`ApplicationBinding`, which falls back to classpath discovery and logs a warning at startup. The
+`helidon-binding` step does what `helidon-service-maven-plugin`'s `create-application` goal does,
+with Helidon's own generators and no Maven: after the compile it scans the classes and the runtime
+classpath, starts the service registry over them, validates the injection graph and compiles the
+real binding (the full injection plan) over the empty one, at the module's `java` release. Its
+output is the module's classes from then on, so tests, `jk run`, `jk dev` and the jar all load the
+real binding, and the application starts without the warning. The step is cached on the classes,
+the runtime classpath and the table.
+
+- **`binding`.** Unset, the step generates the binding when a class carries
+  `@Service.GenerateBinding`, at the name and package the annotation gives (the class's own package
+  by default), and otherwise passes the classes through. `true` generates it regardless (Helidon's
+  `ApplicationBinding` in the module's top package); `false` drops the step.
+- **`generate-main`.** Also generates `ApplicationMain` beside the binding: the reflection-free
+  entry point, which starts the registry from the binding and the services' run levels. Point
+  `[application] main` at it (`com.example.ApplicationMain`). The inject quickstart starts in about
+  a third of the time.
+- **`validate`.** Runs Helidon's injection-graph validator, as the Maven goal does by default. A
+  finding (today: a request-scoped service injected into a singleton without a `Supplier`) is a
+  build warning in Helidon's words, and the build goes on, as under Maven. `validate = false` skips
+  the check.
+- **`fail-on-warning`.** The goal's `failOnWarning`: any warning while generating the binding, a
+  validator finding included, fails the build once every warning has been said.
+- **`test-binding`.** Also runs `create-test-application` after the test compile:
+  `TestApplicationBinding` for the test scope, on the test JVM's classpath after the test classes.
+- **`jk dev`.** Generating the binding costs about a second (1.3 s for the inject quickstart, most of
+  it the classpath scan), so the rebuild `jk dev` runs after a source change keeps the empty
+  binding, which works through discovery, and the restarted app logs Helidon's empty-binding
+  warning. An edit to resources alone recompiles nothing, so its pass keeps (or, after a source
+  change, regenerates) the real binding. The build `jk dev` starts from, like the one `jk build`
+  and `jk run` run, has the real one, even straight after a session whose last pass left the empty
+  binding behind: that build finds the step's output is not its own and restores it. With
+  `generate-main` the step always runs, since `ApplicationMain` has no fallback.
+
+The step replaces the module's classes, and a build allows one such step: a module that also turns
+on `[hibernate] enhance` sets `binding = false`.
+
+Tests run under `junit-jupiter`, or `junit-jupiter-api` alone (jk adds the engine as Surefire
+does), with no launcher pin. `jk dev` restarts the application on every change, as `helidon dev`
+does.
+
+`jk import` writes the table from a Maven build on Helidon 27 or later
+([Migration](migration.md#which-maven-plugins-import-and-how-well)):
+
+- The `io.helidon.applications:helidon-se` parent, or an imported `io.helidon:helidon-dependencies`
+  BOM, is `version`. Neither becomes a `[platform-dependencies]` row, since the table brings the BOM,
+  and the dependencies it versions stay `"managed"`.
+- `helidon-codegen-apt` and `helidon-service-codegen` leave the processor paths, since the table
+  adds them. `helidon-bundles-apt`, or one of the generators it bundles (Declarative, builder, data,
+  JSON), is `declarative = true`. Any other processor stays in `[processor-dependencies]`.
+- `helidon-service-maven-plugin`'s `create-application` (and its test goal) maps to the binding keys:
+  `<generateMain>true` is `generate-main = true`, `<validate>false` is `validate = false`,
+  `<failOnWarning>true` (or the `helidon.service.registry.fail-on-warning` property) is
+  `fail-on-warning = true`, and `<generateBinding>false` is `binding = false`. Options with no key, such as `<packageName>`, are
+  rows.
+- The parent's `copy-libs` execution is the default `layout = "libs"`, so no `[application] lib-dir`
+  and no row. An application that copies nothing gets `layout = "jar"`. A copy shaped differently
+  keeps its own `lib-dir`.
+- Surefire's `helidon.config.profile=test` is dropped, since the table sets it.
+- `helidon-maven-plugin`'s `jlink-image` goal is `[jlink]`, so `jk import -P jlink-image` writes it
+  from the parent's profile. `<additionalModules>` maps to `modules`, `<stripDebug>` to `strip-debug`
+  (Helidon's default keeps debug attributes, so `strip-debug = false`), `<aotCache>` /
+  `<addClassDataSharingArchive>` to `aot-cache`, `<defaultJvmOptions>` to `jvm-args`, `<defaultArgs>`
+  to `args`, and `<maxAppStartSeconds>` to `start-timeout`.
+
+A Helidon below 27 gets no table. Its parent or BOM is a `[platform-dependencies]` row as for any
+other parent, Helidon's Maven plugins are rows, and one row says why.
+
 ## Android
 
 **Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).
@@ -310,8 +472,9 @@ needs a display; on a headless CI host run it under `xvfb-run`.
 
 `jk import` writes the table from `javafx-maven-plugin` (its `mainClass`, `module/class` included,
 is `[application] main`) and from the Gradle plugin's `javafx { version; modules }` block, writing
-the OpenJFX dependency the Gradle plugin adds for each module. A jlink image and jpackage installers
-are not covered.
+the OpenJFX dependency the Gradle plugin adds for each module. The plugin's jlink settings become
+`[jlink]`, a runtime image `jk build` writes ([Packaging](packaging.md#runtime-image-jlink)); jpackage
+installers are not covered.
 
 ## Protobuf
 

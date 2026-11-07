@@ -32,7 +32,19 @@ class AppendDeclaredTailsTerminalTest {
         assertThat(names).contains(TaskNames.PACKAGE_JAR).doesNotContain(TaskNames.PACKAGE_ASSEMBLY);
     }
 
+    @Test
+    void the_lib_dir_tail_survives_terminal_prune() throws Exception {
+        assertThat(plannedSteps("lib-dir = true\n"))
+                .as("package-lib-dir must survive terminal prune after appendDeclaredTails")
+                .contains(TaskNames.PACKAGE_JAR, TaskNames.PACKAGE_LIB_DIR)
+                .doesNotContain(TaskNames.PACKAGE_ASSEMBLY);
+    }
+
     private Set<String> plannedSteps() throws Exception {
+        return plannedSteps("assembly = true\n");
+    }
+
+    private Set<String> plannedSteps(String applicationKeys) throws Exception {
         Path dir = tmp.resolve("app");
         Files.createDirectories(dir.resolve("src/main/java/ex"));
         Files.writeString(
@@ -46,8 +58,7 @@ class AppendDeclaredTailsTerminalTest {
 
                 [application]
                 main = "ex.Main"
-                assembly = true
-                """);
+                """ + applicationKeys);
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         Files.writeString(dir.resolve("jk-lock.toml"), "schema = 1\n");
         BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(dir, cache, 1, null, null, true, false);

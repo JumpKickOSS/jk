@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -150,6 +151,131 @@ class JavaApIncrementalCompileTest {
                 .isTrue();
     }
 
+    /**
+     * A processor that reads its own earlier output through {@code Filer.getResource} and writes it
+     * back merged — Helidon's {@code service-registry.json} is one — must not see a previous build's
+     * copy: deleting an annotated source drops its row, as a clean build of what is left would.
+     */
+    @Test
+    void merging_processor_drops_a_deleted_source_from_its_merged_file(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), mergingProcessor(dir));
+
+        p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha {}");
+        p.write("app/Beta.java", "package app; @reg.Reg public class Beta {}");
+        p.build();
+        assertThat(p.registry()).containsExactly("app.Alpha", "app.Beta");
+        assertThat(p.stateDir.resolve("aggregating"))
+                .as("a processor that reads back the file it writes keeps the module on full compiles")
+                .isRegularFile();
+
+        p.delete("app/Beta.java");
+        p.build();
+        assertThat(p.registry())
+                .as("the merged file must not keep the deleted source's row")
+                .containsExactly("app.Alpha");
+    }
+
+    /**
+     * One annotated source at a time still makes the merged file the product of every source: a
+     * second source added, then deleted, leaves the first's row — neither the deleted row nor an
+     * emptied file.
+     */
+    @Test
+    void merging_processor_keeps_the_rows_of_sources_it_did_not_see_this_run(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), mergingProcessor(dir));
+
+        p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha {}");
+        p.write("app/Plain.java", "package app; public class Plain {}");
+        p.build();
+        p.write("app/Beta.java", "package app; @reg.Reg public class Beta {}");
+        p.build();
+        assertThat(p.registry()).containsExactly("app.Alpha", "app.Beta");
+
+        p.delete("app/Beta.java");
+        p.build();
+        assertThat(p.registry()).containsExactly("app.Alpha");
+        p.write("app/Plain.java", "package app; public class Plain { int v; }");
+        p.build();
+        assertThat(p.registry()).containsExactly("app.Alpha");
+    }
+
+    /**
+     * The compile's cached result is a function of its inputs: after the incremental build that
+     * dropped a source, a build from an empty output and state — {@code rm -rf target} — restores
+     * the same merged file a clean compile writes, not the deleted source's row.
+     */
+    @Test
+    void merging_processor_result_restored_from_the_cache_matches_a_clean_compile(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), mergingProcessor(dir));
+
+        p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha {}");
+        p.write("app/Beta.java", "package app; @reg.Reg public class Beta {}");
+        p.build();
+        p.delete("app/Beta.java");
+        p.build();
+
+        p.wipeOutputs();
+        JavaCompile.Result restored = p.build();
+        assertThat(restored.outcome()).startsWith("cache-hit");
+        assertThat(p.registry()).containsExactly("app.Alpha");
+    }
+
+    /**
+     * A forced build ({@code -F}) drops the compile state but not the record of what processors
+     * generated, which lives beside the class output, so the full compile it runs still deletes the
+     * merged file before the processor reads it back.
+     */
+    @Test
+    void forced_build_after_a_deletion_does_not_merge_into_the_last_merged_file(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), mergingProcessor(dir));
+
+        p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha {}");
+        p.write("app/Beta.java", "package app; @reg.Reg public class Beta {}");
+        p.build();
+        p.delete("app/Beta.java");
+        p.build(false);
+        assertThat(p.registry()).containsExactly("app.Alpha");
+    }
+
+    /**
+     * An idle cache prune takes a module's compile state whole and leaves its class output as it
+     * was. The full compile that follows still deletes the merged file before the processor reads it
+     * back, so a source deleted in that window loses its row.
+     */
+    @Test
+    void merging_processor_drops_a_deleted_source_after_a_prune_took_the_compile_state(@TempDir Path dir)
+            throws Exception {
+        Project p = new Project(dir, workerJar(), mergingProcessor(dir));
+
+        p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha {}");
+        p.write("app/Beta.java", "package app; @reg.Reg public class Beta {}");
+        p.build();
+        PathUtil.deleteRecursively(p.stateDir);
+
+        p.delete("app/Beta.java");
+        p.build();
+        assertThat(p.registry())
+                .as("the merged file must not keep the deleted source's row")
+                .containsExactly("app.Alpha");
+    }
+
+    /**
+     * Reading a file from the class output that the processor does not write — a copied resource,
+     * as Hibernate's metamodel generator reads {@code persistence.xml} — is not merging, and the
+     * module stays incremental.
+     */
+    @Test
+    void reading_a_file_the_processor_does_not_write_stays_incremental(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), configReadingProcessor(dir));
+        Files.createDirectories(p.out.resolve("META-INF"));
+        Files.writeString(p.out.resolve("META-INF/config.txt"), "Gen\n");
+
+        p.write("app/Widget.java", widget("one"));
+        p.build();
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
+        assertThat(p.stateDir.resolve("aggregating")).doesNotExist();
+    }
+
     // ---- harness ----------------------------------------------------------
 
     private static Path workerJar() {
@@ -202,7 +328,24 @@ class JavaApIncrementalCompileTest {
             return out.resolve(rel);
         }
 
+        /** The merging processor's file, one class name per line. */
+        List<String> registry() throws IOException {
+            return Files.readAllLines(out.resolve("META-INF/registry.txt"));
+        }
+
+        /**
+         * What {@code rm -rf target} does: the class output, generated sources, the ledgers beside
+         * them in {@code incremental/} and the compile state go.
+         */
+        void wipeOutputs() throws IOException {
+            for (Path d : List.of(out, genSrc, root.resolve("incremental"), stateDir)) PathUtil.deleteRecursively(d);
+        }
+
         JavaCompile.Result build() throws IOException {
+            return build(true);
+        }
+
+        JavaCompile.Result build(boolean useCache) throws IOException {
             List<Path> sources = new ArrayList<>();
             try (var s = Files.walk(srcRoot)) {
                 for (Path p : (Iterable<Path>) s::iterator) {
@@ -225,7 +368,7 @@ class JavaApIncrementalCompileTest {
                     "test:module compile-main",
                     req,
                     "jk-test",
-                    true,
+                    useCache,
                     cas,
                     actionCache,
                     stateDir,
@@ -370,6 +513,109 @@ class JavaApIncrementalCompileTest {
                         }
                         """));
         registerProcessor(procDir, "reg.ZeroProc");
+        return procDir;
+    }
+
+    /**
+     * Merging: reads {@code META-INF/registry.txt} from the class output through the Filer, adds
+     * this round's annotated types and writes the sorted union back, originating from this round's
+     * types only — the read-merge-write Helidon's service registry does.
+     */
+    private static Path mergingProcessor(Path dir) throws IOException {
+        Path procDir = dir.resolve("proc-merge");
+        compile(
+                procDir,
+                Map.of(
+                        "reg.Reg", """
+                        package reg;
+                        import java.lang.annotation.*;
+                        @Retention(RetentionPolicy.SOURCE) @Target(ElementType.TYPE)
+                        public @interface Reg {}
+                        """,
+                        "reg.MergeProc", """
+                        package reg;
+                        import javax.annotation.processing.*;
+                        import javax.lang.model.SourceVersion;
+                        import javax.lang.model.element.*;
+                        import javax.tools.*;
+                        import java.io.*;
+                        import java.util.*;
+                        @SupportedAnnotationTypes("reg.Reg")
+                        public class MergeProc extends AbstractProcessor {
+                            public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                            public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
+                                List<Element> found = new ArrayList<>(r.getElementsAnnotatedWith(Reg.class));
+                                if (found.isEmpty()) return true;
+                                TreeSet<String> rows = new TreeSet<>();
+                                try {
+                                    FileObject old = processingEnv.getFiler().getResource(
+                                            StandardLocation.CLASS_OUTPUT, "", "META-INF/registry.txt");
+                                    try (BufferedReader in = new BufferedReader(old.openReader(true))) {
+                                        for (String line; (line = in.readLine()) != null; ) if (!line.isBlank()) rows.add(line);
+                                    }
+                                } catch (IOException none) {
+                                    // first write
+                                }
+                                for (Element e : found) rows.add(((TypeElement) e).getQualifiedName().toString());
+                                try {
+                                    FileObject f = processingEnv.getFiler().createResource(
+                                            StandardLocation.CLASS_OUTPUT, "", "META-INF/registry.txt",
+                                            found.toArray(new Element[0]));
+                                    try (Writer w = f.openWriter()) { for (String row : rows) w.write(row + "\\n"); }
+                                } catch (IOException ex) { throw new UncheckedIOException(ex); }
+                                return true;
+                            }
+                        }
+                        """));
+        registerProcessor(procDir, "reg.MergeProc");
+        return procDir;
+    }
+
+    /**
+     * Isolating, but reads {@code META-INF/config.txt} from the class output first for the suffix
+     * of the type it generates — a read of a file it never writes.
+     */
+    private static Path configReadingProcessor(Path dir) throws IOException {
+        Path procDir = dir.resolve("proc-config");
+        compile(
+                procDir,
+                Map.of(
+                        "gen.Gen", """
+                        package gen;
+                        import java.lang.annotation.*;
+                        @Retention(RetentionPolicy.SOURCE) @Target(ElementType.TYPE)
+                        public @interface Gen {}
+                        """,
+                        "gen.ConfigProc", """
+                        package gen;
+                        import javax.annotation.processing.*;
+                        import javax.lang.model.SourceVersion;
+                        import javax.lang.model.element.*;
+                        import javax.tools.*;
+                        import java.io.*;
+                        import java.util.Set;
+                        @SupportedAnnotationTypes("gen.Gen")
+                        public class ConfigProc extends AbstractProcessor {
+                            public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                            public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
+                                for (Element e : r.getElementsAnnotatedWith(Gen.class)) {
+                                    TypeElement t = (TypeElement) e;
+                                    try {
+                                        String suffix = processingEnv.getFiler().getResource(
+                                                StandardLocation.CLASS_OUTPUT, "", "META-INF/config.txt")
+                                                .getCharContent(true).toString().strip();
+                                        String name = "app." + t.getSimpleName() + suffix;
+                                        JavaFileObject f = processingEnv.getFiler().createSourceFile(name, t);
+                                        try (Writer w = f.openWriter()) {
+                                            w.write("package app; public class " + t.getSimpleName() + suffix + " {}\\n");
+                                        }
+                                    } catch (IOException ex) { throw new UncheckedIOException(ex); }
+                                }
+                                return true;
+                            }
+                        }
+                        """));
+        registerProcessor(procDir, "gen.ConfigProc");
         return procDir;
     }
 

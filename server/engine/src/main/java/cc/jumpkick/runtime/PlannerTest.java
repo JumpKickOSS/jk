@@ -12,6 +12,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.TierTags;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -19,7 +20,6 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ClassSuite;
@@ -32,7 +32,6 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.runtime.base.TestFailureSource;
@@ -42,7 +41,6 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.LangCompile;
-import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
@@ -191,7 +189,7 @@ public final class PlannerTest {
                             outs.mixedGroovy() && javaTests);
                     restored &= compileJavaTests(ctx, in, cas, src, outs.javacClasspath(baseCp), testClasses);
                     mergeLanguageOutputs(src, outs, ctx.require(LAYOUT).buildDir());
-                    copySuiteResources(
+                    SuiteResources.mirror(
                             ctx,
                             in,
                             actionCache,
@@ -407,6 +405,7 @@ public final class PlannerTest {
                         src.javacSources(),
                         javaCp,
                         processorCp,
+                        ctx.require(CONTRIBUTED_TEST_PROCESSOR_CP),
                         javaTestOut,
                         ctx.require(PROJECT).javac().testRelease(ctx.require(RELEASE)),
                         javacArgs,
@@ -439,49 +438,6 @@ public final class PlannerTest {
             Files.createDirectories(testClasses);
             PlannerSupport.mergeLanguageOutput(outs.groovyOut(), testClasses, buildDir, "groovy-test");
         }
-    }
-
-    /**
-     * Test resources ride the test classpath next to compiled tests, so getResourceAsStream
-     * fixtures resolve. Every
-     * suite in this run's selection is copied (default test/resources/ + e.g.
-     * integration/resources/). Fixtures affect test outcomes but target/test-classes is not on the
-     * runtime cp — run-tests folds these dirs into its TestStamp key.
-     */
-    private static void copySuiteResources(
-            TaskContext ctx,
-            BuildPlanner.Inputs in,
-            ActionCache actionCache,
-            boolean compact,
-            List<String> suiteNames,
-            Path testClasses,
-            Map<String, String> beforeNonClass,
-            boolean mixedTest,
-            boolean mixedTestGv)
-            throws IOException {
-        List<Path> suiteResDirs = PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(ctx.require(LAYOUT)));
-        suiteResDirs.addAll(ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames));
-        if (suiteNames.contains(TestSuites.DEFAULT)) {
-            Set<String> unresolved = new TreeSet<>();
-            suiteResDirs.addAll(
-                    FilteredResources.testRoots(in.dir(), ctx.require(PROJECT), ctx.require(LAYOUT), unresolved));
-            PlannerResources.warnUnresolved(ctx, unresolved);
-        }
-        Files.createDirectories(testClasses);
-        // adoptUnowned: a test-resource copy that predates the ledger left files this mirror
-        // must still remove. A file the compile just wrote is protected; main classes already
-        // carry a ledger, so they do not adopt.
-        Path ledger = ctx.require(LAYOUT).buildDir().resolve("incremental").resolve(ResourceMirror.TEST_LEDGER);
-        Set<String> mirrored = ResourceMirror.sync(
-                suiteResDirs, testClasses, ledger, true, ResourceMirror.changedNonClass(testClasses, beforeNonClass));
-        // The compile stored whatever was in the tree, including a resource it did not produce.
-        // Drop those paths so a later restore cannot put a deleted one back.
-        List<String> keys = new ArrayList<>();
-        ctx.get(COMPILE_TEST_ACTION_KEY).ifPresent(keys::add);
-        if (!mixedTest) ctx.get(COMPILE_TEST_KOTLIN_ACTION_KEY).ifPresent(keys::add);
-        if (!mixedTestGv) ctx.get(COMPILE_TEST_GROOVY_ACTION_KEY).ifPresent(keys::add);
-        for (String key : keys) MirroredOutputs.release(actionCache, key, testClasses, mirrored);
-        ctx.put(TEST_RESOURCE_DIRS, suiteResDirs);
     }
 
     /**
@@ -568,10 +524,9 @@ public final class PlannerTest {
                 + projectUnderTest.project().name();
         String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClasses);
         TestFailureSource.Cache snippets = new TestFailureSource.Cache();
-        // [test] exclude-tags for jk build / BSP: CLI resolves tags for `jk test`;
-        // when the session selection carries no tags at all, apply this module's
-        // own config here. The effective selection feeds BOTH the stamp and the runner.
-        var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
+        // jk build / BSP / MCP: when the session selection carries no tags, resolve the
+        // workspace's here as the CLI does for `jk test`. It feeds BOTH the stamp and the runner.
+        var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir(), in.profileName());
         SuiteClassFilter suites = suiteFilter(in, cx.compact(), projectUnderTest);
         AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
         if (affected != null && affected.classNames().isEmpty()) {
@@ -648,14 +603,25 @@ public final class PlannerTest {
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
-            JUnitLauncher launcher = TestLaunch.launcher(
+            Supplier<JUnitLauncher> launcher = () -> TestLaunch.launcher(
                             in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec)
-                    .withSuites(suites)
                     .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
                     .withAutoShare(auto)
                     .withReadRecording(reads.flag());
+            TagExcludedCapture listener = tagExcluded;
             try {
-                result = TestLaunch.launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, tagExcluded);
+                result = ctx.get(SUITE_RESOURCES)
+                        .orElse(SuiteResources.NONE)
+                        .launch(
+                                testClasses,
+                                suites,
+                                effectiveSel.classes(),
+                                projectUnderTest.build().testExcludeClasses(),
+                                affected,
+                                launcher,
+                                runtimeCp,
+                                (one, cp) -> TestLaunch.launch(
+                                        ctx, in, one, cp, testWorkers, workerJars, testEnv, listener));
             } catch (TestLauncherFailure e) {
                 TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
                 throw e;
@@ -880,7 +846,11 @@ public final class PlannerTest {
         if (tagExcluded != null) {
             JkBuild project = ctx.require(PROJECT);
             tagExcluded = TestClassMatch.explainTagExcluded(
-                    tagExcluded, project.profiles(), in.profileName(), defaultTier(project, in.dir()));
+                    tagExcluded,
+                    project.profiles().byName().keySet(),
+                    name -> TierTags.profile(TierTags.rootOf(in.dir()), name),
+                    in.profileName(),
+                    defaultTier(in.dir()));
         }
         String suiteHint = exactClassList ? null : suites.classHint(ctx.require(TEST_CLASSES), sel.classes());
         boolean nothing = TestClassMatch.nothingMatched(sel, exactClassList, result);
@@ -902,18 +872,10 @@ public final class PlannerTest {
         return new Judged(null, TestClassMatch.noMatchMessage(sel, in.profileName(), tagExcluded, suiteHint));
     }
 
-    /** The tags the run uses without {@code -p}: the module's own {@code [test]} lists, else its workspace root's. */
-    static TestClassMatch.Tier defaultTier(JkBuild module, Path moduleDir) throws IOException {
-        var own = module.build();
-        if (!own.testIncludeTags().isEmpty() || !own.testExcludeTags().isEmpty()) {
-            return new TestClassMatch.Tier(own.testIncludeTags(), own.testExcludeTags());
-        }
-        Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
-        if (root == null || root.normalize().equals(moduleDir.normalize())) {
-            return new TestClassMatch.Tier(own.testIncludeTags(), own.testExcludeTags());
-        }
-        var rootBuild = JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build();
-        return new TestClassMatch.Tier(rootBuild.testIncludeTags(), rootBuild.testExcludeTags());
+    /** The tags the run uses without {@code -p}: the workspace root's, as {@link TierTags} resolves them. */
+    static TestClassMatch.Tier defaultTier(Path moduleDir) {
+        TierTags tiers = TierTags.of(moduleDir, null);
+        return new TestClassMatch.Tier(tiers.includeTags(), tiers.excludeTags());
     }
 
     /** Which compiled test classes the run's suites own, and which suite each runs in. */

@@ -33,6 +33,14 @@ public interface TaskExec {
     /** The module's compiled classes dir (resources copied in) — {@link In#classes()}. */
     Path classesDir();
 
+    /**
+     * The module's compiled test classes dir (test resources copied in) — {@link In#testClasses()}.
+     * A step that did not declare the input has none to read.
+     */
+    default Path testClassesDir() {
+        throw new IllegalStateException("no test classes were handed to this step — declare In.testClasses()");
+    }
+
     /** The resolved production RUNTIME classpath — {@link In#runtimeClasspath()}. */
     List<Path> runtimeClasspath();
 
@@ -45,6 +53,17 @@ public interface TaskExec {
      * In#testRuntimeEntries()}. Empty unless one of them is declared.
      */
     List<PackageIo.RuntimeEntry> runtimeEntries();
+
+    /**
+     * Whether this build is a recompile — {@link In#recompile()}: the compile goal alone, as {@code
+     * jk compile} and the rebuild {@code jk dev} runs on every change are, with a compile that wrote
+     * classes (an edit to resources alone is not one). A step may take a cheaper
+     * path then, as long as what it writes still runs (the Helidon binding step leaves the empty
+     * binding, which falls back to discovery). False unless the step declared the input.
+     */
+    default boolean recompile() {
+        return false;
+    }
 
     /** The plugin's validated config table. */
     PluginConfig config();

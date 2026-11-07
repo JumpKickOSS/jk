@@ -9,6 +9,7 @@ jk new -P my-plugin          # a build plugin: the plugin template
 jk new -t cli my-app
 jk new -t spring-boot/hello my-api
 jk new -t quarkus/hello my-api
+jk new -t helidon/quickstart my-api
 jk new -t grails/hello my-svc
 jk new -t spring-boot/webmvc -L simple my-api
 jk new -t app -p native=true my-app   # -p answers a template question; repeatable
@@ -177,6 +178,8 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 | `mcp` | spring-boot | java | Boot MCP server | `spring` |
 | `hello` | quarkus | java, kotlin | Plugin REST app | `quarkus` |
 | `hello` | micronaut | java, kotlin | Plugin HTTP service | — |
+| `quickstart` | helidon | java | Helidon SE quickstart (`helidon init`'s): `/greet`, health, metrics; asks for JSON-P or Helidon JSON, tracing, an image, a jlink runtime image and a Kubernetes manifest | — |
+| `declarative` | helidon | java | The quickstart's service as a Helidon Declarative endpoint wired by the service registry | — |
 | `hello` | grails | groovy | Grails 8 REST | — |
 | `compose` | android | kotlin | Jetpack Compose app (debug APK, `jk run` deploy) | `android` |
 
@@ -322,8 +325,8 @@ table, so the jar records the commit it was built from (`git.properties`, and Bo
 `META-INF/build-info.properties` for `/actuator/info`). None ships an `AGENTS.md`: `jk new`
 writes jk's current section into every project it scaffolds.
 
-MCP `new` asks the same questions — [MCP](mcp.md#new). The web dashboard has a New project
-modal — [Web](web.md).
+MCP `new` asks the same questions — [MCP](mcp.md#new). The web dashboard asks them in its
+new-project wizard — [Web](web.md#new-project).
 
 ## Related
 

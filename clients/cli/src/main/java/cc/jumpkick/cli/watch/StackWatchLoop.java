@@ -170,10 +170,8 @@ final class StackWatchLoop {
                 Optional<SourceWatch.Changes> maybe = m.watch().pollChange(slice, TimeUnit.MILLISECONDS);
                 if (maybe.isEmpty()) continue;
                 SourceWatch.Changes changes = maybe.get();
-                boolean ok = changes.manifest() || changes.resources()
-                        ? loop.build(m.dir, cache)
-                        : loop.compile(m.dir, cache);
-                if (!ok) {
+                AppWatchLoop.Pass pass = AppWatchLoop.Pass.of(changes);
+                if (!loop.pass(pass, m.dir, cache)) {
                     CliOutput.err(
                             loop.logPrefix() + ": " + m.name + ": build failed; it keeps running the last good code");
                     continue;
@@ -187,7 +185,7 @@ final class StackWatchLoop {
                     m.plan = plan;
                 }
                 if (m.plan.hotReload() && !changes.manifest()) {
-                    CliOutput.err(loop.logPrefix() + ": " + m.name + ": recompiled; DevTools restarts the context");
+                    CliOutput.err(loop.logPrefix() + ": " + m.name + ": " + pass.done + "; DevTools restarts the context");
                     continue;
                 }
                 ProcessTrees.stop(List.of(process.toHandle()), Clock.SYSTEM);

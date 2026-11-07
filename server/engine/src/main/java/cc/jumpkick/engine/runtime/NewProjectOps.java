@@ -7,6 +7,8 @@ import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.docs.AgentChoice;
+import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.giter8.Giter8Apply;
 import cc.jumpkick.giter8.Giter8Maven;
@@ -77,6 +79,8 @@ public final class NewProjectOps {
      * template path resolves against (as it does when the form is built); {@code null} means
      * {@code parentDir}. A {@code standalone} project with no {@code java} answer targets the
      * machine's default JDK ({@link NewProjectJava}); a module keeps whatever its caller sent.
+     * {@code agents} is the agents setting a standalone project is wired for ({@link
+     * NewProjectAgents}); null wires nothing, and a module is never wired, its workspace root is.
      */
     public record Request(
             @Nullable String name,
@@ -89,7 +93,36 @@ public final class NewProjectOps {
             Map<String, String> templateParams,
             boolean relaxParent,
             @Nullable String targetDir,
-            @Nullable String cwd) {
+            @Nullable String cwd,
+            @Nullable AgentChoice agents) {
+        /** As the canonical shape, wiring no agent files. */
+        public Request(
+                @Nullable String name,
+                @Nullable String parentDir,
+                @Nullable String group,
+                @Nullable String lang,
+                @Nullable String layout,
+                @Nullable String template,
+                boolean standalone,
+                Map<String, String> templateParams,
+                boolean relaxParent,
+                @Nullable String targetDir,
+                @Nullable String cwd) {
+            this(
+                    name,
+                    parentDir,
+                    group,
+                    lang,
+                    layout,
+                    template,
+                    standalone,
+                    templateParams,
+                    relaxParent,
+                    targetDir,
+                    cwd,
+                    null);
+        }
+
         /** HTTP compact shape: a standalone project, relative template paths against {@code parentDir}. */
         public Request(
                 @Nullable String name,
@@ -100,19 +133,49 @@ public final class NewProjectOps {
                 @Nullable String template) {
             this(name, parentDir, group, lang, layout, template, true, Map.of(), false, null, null);
         }
+
+        /** This request, wiring the project for {@code choice}. */
+        public Request withAgents(@Nullable AgentChoice choice) {
+            return new Request(
+                    name,
+                    parentDir,
+                    group,
+                    lang,
+                    layout,
+                    template,
+                    standalone,
+                    templateParams,
+                    relaxParent,
+                    targetDir,
+                    cwd,
+                    choice);
+        }
+
+        private boolean wired() {
+            return standalone && agents != null;
+        }
     }
 
     public record Result(Path path) {}
 
-    /** Creation plus the durable project id (identity.toml materialized under the project home). */
-    public record Created(Path path, @Nullable String projectId, int filesWritten) {
+    /**
+     * Creation plus the durable project id (identity.toml materialized under the project home).
+     * {@code filesWritten} counts the template's files; {@code agents} is what the agent wiring
+     * wrote and left to the user, empty when the request wired nothing.
+     */
+    public record Created(Path path, @Nullable String projectId, int filesWritten, AgentSetup.Report agents) {
         public Created(Path path, @Nullable String projectId) {
-            this(path, projectId, 0);
+            this(path, projectId, 0, NO_AGENTS);
         }
     }
 
-    /** What a create would write: target path and template-or-scaffold file list. Writes nothing. */
-    public record Preview(String path, @Nullable String template, List<String> files) {}
+    private static final AgentSetup.Report NO_AGENTS = new AgentSetup.Report(List.of(), List.of());
+
+    /**
+     * What a create would write: the target path, the template, every file's path under the target,
+     * and the {@code jk.toml} it would hold. Writes nothing.
+     */
+    public record Preview(String path, @Nullable String template, List<String> files, String manifest) {}
 
     /** Validated inputs shared by {@link #create} and {@link #preview}. */
     private record Prepared(
@@ -160,7 +223,8 @@ public final class NewProjectOps {
      * As {@link #create}, then resolve and persist the durable project identity so id-routed
      * surfaces ({@code GET /api/project?project=<id>}, MCP cards) can map the id back to the
      * checkout immediately — the scaffolder writes no lock. Identity persistence is best-effort:
-     * creation already succeeded; a null id just means id-routing waits for the first build.
+     * creation already succeeded; a null id just means id-routing waits for the first build. Then
+     * the agent wiring the request asks for, so every surface's project gets the same files.
      */
     public static Created createWithIdentity(Request req) throws IOException {
         Result result = create(req);
@@ -180,13 +244,16 @@ public final class NewProjectOps {
         } catch (IOException ignored) {
             // count is advisory
         }
-        return new Created(result.path(), projectId, files);
+        AgentSetup.Report agents =
+                req.wired() ? NewProjectAgents.wire(result.path(), Objects.requireNonNull(req.agents())) : NO_AGENTS;
+        return new Created(result.path(), projectId, files, agents);
     }
 
     /**
      * The exact file set a create would produce, discovered by scaffolding into a scratch
      * directory and deleting it — never a guessed list, and the real target is untouched. Runs
-     * the same validation as {@link #create}, so an occupied target refuses here too.
+     * the same validation as {@link #create}, so an occupied target refuses here too. The agent
+     * files a create would wire are listed with the template's.
      */
     public static Preview preview(Request req) throws IOException {
         Prepared prep = prepare(req);
@@ -196,6 +263,7 @@ public final class NewProjectOps {
         Path probe = scratch.resolve(prep.name());
         try {
             scaffoldInto(prep, probe);
+            if (req.wired()) NewProjectAgents.wire(probe, Objects.requireNonNull(req.agents()));
             List<String> files = new ArrayList<>();
             try (var walk = Files.walk(probe)) {
                 walk.filter(Files::isRegularFile)
@@ -203,7 +271,8 @@ public final class NewProjectOps {
                         .sorted()
                         .forEach(files::add);
             }
-            return new Preview(prep.target().toString(), prep.template(), List.copyOf(files));
+            String manifest = Files.readString(probe.resolve(ManifestPaths.MANIFEST));
+            return new Preview(prep.target().toString(), prep.template(), List.copyOf(files), manifest);
         } finally {
             PathUtil.deleteRecursivelyOrThrow(scratch);
         }

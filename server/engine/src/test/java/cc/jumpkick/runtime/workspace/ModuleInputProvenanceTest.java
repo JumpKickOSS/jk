@@ -11,6 +11,7 @@ import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
@@ -114,5 +115,41 @@ class ModuleInputProvenanceTest {
                         .dirty())
                 .as("an added class")
                 .contains(module);
+    }
+
+    /**
+     * A classes transform's output is what the module runs from, and the compile goal rewrites it
+     * (a cheaper recompile path): bytes there that are not the recorded ones schedule the module,
+     * whose step restores its own output. A record taken before the tree was covered schedules it
+     * once too.
+     */
+    @Test
+    void a_rewritten_classes_transform_output_schedules_the_module(@TempDir Path tmp) throws Exception {
+        BuildGraph.Result graph = project(tmp);
+        BuildGraph.BuildUnit unit = graph.topoOrder().getFirst();
+        Path module = tmp.toAbsolutePath().normalize();
+        Path transformed = BuildLayout.of(tmp, unit.manifest())
+                .pluginStepScratch("binding")
+                .resolve("classes");
+        Path binding = Files.createDirectories(transformed).resolve("Binding.class");
+        Files.write(binding, new byte[] {1, 2, 3});
+        ModuleInputProvenance.RunTrees runTrees = (build, layout) -> List.of(transformed);
+        var fps = PreflightMemo.snapshotFingerprints(graph, false);
+        String fp = fps.fingerprints().get(module);
+
+        ModuleInputProvenance.record(tmp, graph, fps.fingerprints());
+        assertThat(ModuleInputProvenance.outputsFromOtherInputs(tmp, module, unit.manifest(), fp, runTrees))
+                .as("a record that never covered the tree vouches for none of it")
+                .isTrue();
+
+        ModuleInputProvenance.record(tmp, graph, fps.fingerprints(), runTrees);
+        assertThat(ModuleInputProvenance.outputsFromOtherInputs(tmp, module, unit.manifest(), fp, runTrees))
+                .isFalse();
+
+        Thread.sleep(20);
+        Files.write(binding, new byte[] {7});
+        assertThat(ModuleInputProvenance.outputsFromOtherInputs(tmp, module, unit.manifest(), fp, runTrees))
+                .as("the recompile's output in place of the build's")
+                .isTrue();
     }
 }

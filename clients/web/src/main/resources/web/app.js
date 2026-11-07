@@ -42,7 +42,7 @@ import { sessionComputed, sessionMethods } from './sessions.js';
 import { statusMethods } from './status.js';
 import { installTips } from './tip.js';
 import { EVENT, SSE } from './wire.js';
-import { wizardComputed, wizardMethods } from './wizard.js';
+import { emptyWizard, wizardComputed, wizardMethods } from './wizard.js';
 
 // Guarded so the module can be imported headlessly under `node --test`.
 if (typeof document !== 'undefined') bootstrapToken();
@@ -50,7 +50,7 @@ if (typeof document !== 'undefined') bootstrapToken();
 // Exported for the headless harness; the browser block below mounts it.
 export const appOptions = {
   data: () => ({
-    view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status'
+    view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status' | 'new'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
     codePath: routeFromHash().path,
@@ -68,7 +68,6 @@ export const appOptions = {
     // Dependencies panel on the Project page — closed by default; graph fetch + echarts
     // only when opened (ModuleDepGraph mounts lazily).
     projectGraphOpen: false,
-    templatesUnavailable: false, // /api/templates failed — picker shows a notice, manual refs still work
     connection: 'connecting', // 'connecting' | 'live' | 'offline' | 'unauthorized'
     status: null, // the /api/status payload
     metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
@@ -81,30 +80,17 @@ export const appOptions = {
     buildDir: '',
     buildError: null,
     browser: null, // the /api/fs payload while the workspace picker is open, else null
-    browserMode: 'workspace', // 'workspace' | 'parent' (new-project parent dir)
+    browserMode: 'workspace', // 'workspace' | 'parent' (a path field of the new-project wizard)
+    browserKey: null, // the wizard field a 'parent' browse answers
     help: false, // the header Help/About modal
     // Blocking gate when a required token is missing/invalid — no partial dashboard (docs/webclient.md).
     authModal: false,
     authCopied: false, // brief "Copied" feedback on the Access Denied console copy button
     _authCopiedTimer: null,
-    newProjectOpen: false,
-    newProjectBusy: false,
-    newProjectError: null,
-    newProject: {
-      name: '',
-      group: '',
-      lang: 'java',
-      layout: 'traditional',
-      framework: '',
-      frameworkQuery: '',
-      template: '',
-      templateQuery: '',
-      parentDir: '',
-      executable: true,
-    },
-    frameworkOpen: false,
-    templateOpen: false,
-    templates: [],
+    wizard: emptyWizard(), // the #new page's form, answers and preview
+    // What the wizard's create wired for coding agents, {projectId, files, notes}: shown on that
+    // project's page until dismissed, as jk new prints it.
+    createdAgents: null,
     now: Date.now(), // 1s tick driving elapsed counters and "ago" stamps
     // single-flight keys → in-flight Promise; offline status poll backoff (ms).
     _inflight: Object.create(null),
@@ -124,6 +110,7 @@ export const appOptions = {
       this.loadHistory(); // backfill past builds so a reload/restart doesn't start from an empty feed
       this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
       if (this.view === 'project' && this.selectedProjectId) this.loadProjectMeta(this.selectedProjectId);
+      if (this.view === 'new') this.enterWizard();
     }
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', () => this.applyRoute());
@@ -177,7 +164,7 @@ export const appOptions = {
       this.projectHistory = [];
       this.browser = null;
       this.help = false;
-      this.newProjectOpen = false;
+      this.wizard = emptyWizard();
     },
     /** True when {@code e} is a 401 — marks unauthorized and returns true so callers can stop. */
     handleHttpError(e) {
@@ -379,6 +366,7 @@ export const appOptions = {
         this.refreshMetrics();
       }
       if (r.view === 'status') this.refresh();
+      if (r.view === 'new') this.enterWizard();
     },
     browseCodebase() {
       this.openCode({ projectId: this.selectedProjectId });

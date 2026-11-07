@@ -1,0 +1,31 @@
+# The inputs of Helidon's project archetypes (helidon init): every <boolean>, <enum>, <list> and
+# <text> with an id under archetypes/archetypes/src/main/archetype at the tag below, one per line
+# as <path> <kind> [<options>]. HelidonArchetypeOptionsTest diffs the helidon/* templates'
+# questions against it. HelidonArchetypeUpstreamTest (network tier) re-derives it from GitHub, and
+# with HELIDON_ARCHETYPE_CAPTURE=<file> writes what it read there.
+tag = 27.0.1
+app-type enum quickstart|database|custom
+artifactId text
+build-system enum maven
+db boolean
+db.server enum h2|mysql|oracledb|mongodb
+docker boolean
+docker.jlink-image boolean
+extra list webclient|fault-tolerance|cors|coherence
+flavor enum se
+groupId text
+health boolean
+health.builtin boolean
+jpms boolean
+k8s boolean
+media list json|multipart
+media.json-lib enum jsonp|jackson|jsonb
+metrics boolean
+metrics.builtin boolean
+package text
+security boolean
+security.atn list oidc|jwt|http-signature
+security.atz list abac
+tracing boolean
+tracing.provider enum opentelemetry
+version text

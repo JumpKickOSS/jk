@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.api.GraalResolver;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -170,6 +171,56 @@ class AlwaysNativeGraalTest {
     void without_an_engine_answer_the_manifest_values_stand() {
         var modules = List.of(new AlwaysNativeGraal.Module(Path.of("/w/app"), "graalvm", 0));
         assertThat(AlwaysNativeGraal.withEffectiveReleases(modules, null)).isEqualTo(modules);
+    }
+
+    /**
+     * {@code jk native} gathers its native-eligible modules from the engine's summaries: a module
+     * that pins no {@code graal} asks for the default, and one the engine could not summarize targets
+     * no release.
+     */
+    @Test
+    void native_modules_are_gathered_from_the_engine_summaries() {
+        Path app = Path.of("/w/app");
+        Path tool = Path.of("/w/tool");
+        Path lost = Path.of("/w/lost");
+        Map<Path, ProjectInfo> summaries = Map.of(
+                app, summary("{\"nativeMode\":\"ALWAYS\",\"graal\":\"graalvm-25\",\"javaRelease\":25}"),
+                tool, summary("{\"nativeMode\":\"ENABLED\",\"javaRelease\":21}"));
+        Map<Path, String> seen = new LinkedHashMap<>();
+        Path home = Path.of("/jdks/graalvm");
+
+        assertThat(AlwaysNativeGraal.reached(List.of(app, tool, lost), summaries::get, (dir, spec, release) -> {
+                    seen.put(dir, spec + "@" + release);
+                    return Optional.of(GraalResolver.Choice.found(home));
+                }))
+                .contains(new AlwaysNativeGraal.Graal(Map.of(app, home, tool, home, lost, home), Map.of()));
+        assertThat(seen)
+                .containsExactly(
+                        Map.entry(app, "graalvm-25@25"), Map.entry(tool, "graalvm@21"), Map.entry(lost, "graalvm@0"));
+        assertThat(AlwaysNativeGraal.reached(List.of(app), summaries::get, (dir, spec, release) -> Optional.empty()))
+                .as("an undecided GraalVM stops the run up front")
+                .isEmpty();
+    }
+
+    /**
+     * {@code jk install} asks only about the modules whose summary says they always link a native
+     * image; a summary that carries an error is not one.
+     */
+    @Test
+    void install_gathers_only_the_always_native_summaries() {
+        assertThat(AlwaysNativeGraal.alwaysNative(summary("{\"nativeMode\":\"ALWAYS\",\"graal\":\"graalvm\"}")))
+                .isTrue();
+        assertThat(AlwaysNativeGraal.alwaysNative(summary("{\"nativeMode\":\"ENABLED\",\"graal\":\"graalvm\"}")))
+                .isFalse();
+        assertThat(AlwaysNativeGraal.alwaysNative(summary("{\"nativeMode\":\"DISABLED\"}")))
+                .isFalse();
+        assertThat(AlwaysNativeGraal.alwaysNative(summary("{\"error\":\"broken\",\"nativeMode\":\"ALWAYS\"}")))
+                .isFalse();
+        assertThat(AlwaysNativeGraal.alwaysNative(null)).isFalse();
+    }
+
+    private static ProjectInfo summary(String line) {
+        return ProjectInfo.decode(line);
     }
 
     private static void write(Path file, String text) throws IOException {

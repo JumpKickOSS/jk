@@ -36,9 +36,9 @@ guard, G100, under `jk guard`; skipped on Windows) and `actionlint .github/workf
 `.jk/ci/ci-bootstrap-version` pins the way a user installs it
 (`curl -fsSL https://jumpkick.build/install.sh | JK_VERSION=<pin> bash`) into an isolated
 `JK_HOME`, builds the checkout with it, then hands the home to the checkout's own jk
-(`jk install`) and lets that jk run the house-rule gate, the fast test tier and the curated
+(`jk install`) and lets that jk run the house-rule gate, the fast test tier, the curated
 integration lane (`scripts/curated-integration.sh` over `curated-integration.txt`, budgeted at
-eight minutes). A guard failure is annotated with the rule that owns it.
+eight minutes) and the release tier (`jk test -p release`). A guard failure is annotated with the rule that owns it.
 
 | Question | Answer |
 |---|---|
@@ -50,8 +50,8 @@ eight minutes). A guard failure is annotated with the rule that owns it.
 | What runs nightly | `jk test -p integration`, `-p slow`, `-p network`, `-p bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational), the macOS product smoke and the JVM client smoke on a runner with a plain JDK and no GraalVM (`ci-nightly.yml`) |
 | Wall-clock series | `bench/scoreboard --tier night` on the reference host, banked in `scoreboard.toml` ([perf](../perf/README.md)) |
 
-Guard **G57** (`ci-cadence`) keeps the self-host job, its isolated `JK_HOME`, the four verbs it
-runs (`jk install`, `jk guard`, `jk test`; the install is the build), its bootstrap through `install.sh` at the
+Guard **G57** (`ci-cadence`) keeps the self-host job, its isolated `JK_HOME`, the verbs it
+runs (`jk install`, `jk guard`, `jk test`, `jk test -p release`; the install is the build), its bootstrap through `install.sh` at the
 pinned version, the nightly tiers, the JVM client smoke and the scoreboard in place. It fails on a
 `gradlew` in the self-host job, on a `JK_VERSION=<digits>` literal in any workflow, and on
 `continue-on-error` on any job of `ci.yml`: that flag is how a merge requirement becomes a
@@ -289,6 +289,7 @@ jk test                          # fast tier, untagged only
 jk test -p integration           # the push gate
 jk test -p slow                  # framework / language e2e (nightly)
 jk test -p network               # talks to a real remote (nightly)
+jk test -p release               # a real browser (CI on the release tag)
 jk test -p live                  # this machine's OS keychain (on demand, desktop only)
 jk test -p bench                 # microbenchmarks (nightly)
 jk test -A                    # everything, no tag filter
@@ -434,6 +435,12 @@ its own version, so the shelf is what makes a dist install run the workers built
 rather than the published ones of the same version. A dist with no `repos/` installs and says so;
 a binary with no engine jar beside it is refused.
 
+A `jk build` dist carries the release version `jk.toml` names, not the `-SNAPSHOT` line `jk snapshot`
+installs. Into a home that already runs this checkout it would shelve that release over the snapshot
+line, and a release hides its snapshot, so every later `jk snapshot` there would refuse. `install.sh`
+refuses that install before writing anything and names the module: install the tree into your own home
+with `jk snapshot`, and a dist into a private home.
+
 The release workflow assembles `target/dist` per platform (`scripts/assemble-release-dir.sh`);
 G75 (`ship-layout-installer-jk`) holds the installer and the dist script to the same `lib/` and
 `repos/` names.
@@ -464,7 +471,7 @@ stops the private engine, swaps the binary, the engine jar and the shelf, and st
 |---|---|
 | `bin/jk` — the binary `jk build` linked | the managed JDK root, `~/.jdks` (`JK_JDKS_DIR`): the private engine and its compilers run on JDKs the default home already installed |
 | `lib/jk-engine/` — the engine jar from `target/dist/lib/`, its pointer and the shelf manifest pinning the workers to it | `~/.m2`, read for third-party jars when `[m2] integration` is on |
-| `store/repos/jk-local/` — every module jar from `target/dist/repos/`: the workers the engine launches, the rule packs, the libraries | nothing else: `JK_STORE_DIR=$HOME/.jk/store` shares the artifact store on purpose when a cold store is the wrong cost |
+| `store/repos/jk-local/` — every module jar from `target/dist/repos/`: the workers the engine launches, the rule packs, the libraries | nothing else. A private home never shelves into `~/.jk/store`: `repos/jk-local` lives in the store while its pins live in this home, so a dist shelved there would shadow the default home's installs with no pin naming it. `jk self shelve` (the installer's shelf step) and `jk install` refuse when `JK_STORE_DIR` or a `store` link points this home at the default store |
 | `store/` (artifacts, templates, the library catalog), `cache/` (action cache), `state/` (the engine's socket, log and build history), `config.toml`, `creds/` | |
 
 The engine a private client starts is the one under its own `lib/jk-engine/`, paired with the

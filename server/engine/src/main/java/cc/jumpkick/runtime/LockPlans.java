@@ -392,7 +392,7 @@ public final class LockPlans {
                 totalRefreshed += updateGitOnlyForScope(
                         scope.getKey(), scope.getValue(), cache, repoUrl, features, withDefaultFeatures, targeted);
             } catch (Exception e) {
-                return new GitUpdateOutcome(6, 0, e.getMessage());
+                return new GitUpdateOutcome(Exit.RESOLVE, 0, e.getMessage());
             }
         }
 
@@ -509,14 +509,15 @@ public final class LockPlans {
 
     /**
      * Map a failed lock/update plan to its exit code: a failed {@code resolve} step (unsatisfiable
-     * deps, unreachable repos) exits 6; anything else is a config problem ({@link Exit#CONFIG}).
+     * deps, unreachable repos) exits {@link Exit#RESOLVE}; anything else is a config problem
+     * ({@link Exit#CONFIG}).
      */
     public static int failureExitCode(BuildPlanResult result) {
         boolean resolveFailed = result.steps().stream()
                 .filter(p -> p.status() == TaskStatus.FAIL)
                 .map(BuildPlanResult.StepReport::name)
                 .anyMatch(TaskNames.RESOLVE_DEPS::equals);
-        return resolveFailed ? 6 : Exit.CONFIG;
+        return resolveFailed ? Exit.RESOLVE : Exit.CONFIG;
     }
 
     /**

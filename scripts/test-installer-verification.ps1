@@ -337,6 +337,61 @@ try {
     if (Resolve-WriteRc (Join-Path $work "scratch-jk") $defaultHome $false) { throw "a private JK_HOME claimed the profile block unasked" }
     if (-not (Resolve-WriteRc (Join-Path $work "scratch-jk") $defaultHome $true)) { throw "-Rc did not ask for the profile block on a private home" }
 
+    # ---- a release dist over the home's snapshot line is refused before anything is written ----
+    # The shelved release would hide the snapshot, and every later `jk snapshot` in that home would
+    # refuse; another version's snapshot line is no conflict.
+    $dist = Join-Path $work "dist"
+    $distModule = [IO.Path]::Combine($dist, "repos", "jk-local", "cc", "jumpkick", "jk-test-runner")
+    New-Item -ItemType Directory -Force -Path (Join-Path $distModule "1.0.0") | Out-Null
+    [IO.File]::WriteAllText((Join-Path (Join-Path $distModule "1.0.0") "jk-test-runner-1.0.0.pom"), "<project/>")
+    [IO.File]::WriteAllText((Join-Path (Join-Path $distModule "1.0.0") "jk-test-runner-1.0.0.jar.pom"), "<project/>")
+    New-Item -ItemType Directory -Force -Path (Join-Path $distModule "1.0.1-SNAPSHOT") | Out-Null
+    [IO.File]::WriteAllText((Join-Path (Join-Path $distModule "1.0.1-SNAPSHOT") "jk-test-runner-1.0.1-SNAPSHOT.pom"), "<project/>")
+    $distClient = Join-Path $dist "jk.exe"
+    [IO.File]::WriteAllText($distClient, "fixture client")
+    $snapshotHome = Join-Path $work "home-snapshot-line"
+    $store = Join-Path $work "store-snapshot-line"
+    $shelf = [IO.Path]::Combine($store, "repos", "jk-local")
+    $shelfModule = [IO.Path]::Combine($shelf, "cc", "jumpkick", "jk-test-runner")
+
+    Import-InstallerFunction "Find-ShadowedSnapshotLine"
+    if ($null -ne (Find-ShadowedSnapshotLine -SrcRepos (Join-Path $dist "repos") -HomeShelf $shelf)) { throw "a home with no shelf was reported shadowed" }
+    New-Item -ItemType Directory -Force -Path (Join-Path $shelfModule "1.0.2-SNAPSHOT") | Out-Null
+    if ($null -ne (Find-ShadowedSnapshotLine -SrcRepos (Join-Path $dist "repos") -HomeShelf $shelf)) { throw "another version's snapshot line was reported shadowed" }
+    New-Item -ItemType Directory -Force -Path (Join-Path $shelfModule "1.0.1-SNAPSHOT") | Out-Null
+    if ($null -ne (Find-ShadowedSnapshotLine -SrcRepos (Join-Path $dist "repos") -HomeShelf $shelf)) { throw "the dist's own snapshot was reported as a release over the shelf" }
+    New-Item -ItemType Directory -Force -Path (Join-Path $shelfModule "1.0.0-SNAPSHOT") | Out-Null
+    $shadowed = Find-ShadowedSnapshotLine -SrcRepos (Join-Path $dist "repos") -HomeShelf $shelf
+    if ($null -eq $shadowed) { throw "a release over the shelf's snapshot line was not reported" }
+    if ($shadowed.Count -ne 1 -or $shadowed.Module -cne "cc/jumpkick/jk-test-runner" -or $shadowed.Version -cne "1.0.0") {
+        throw "the shadowed release was reported as $($shadowed.Count) x $($shadowed.Module) $($shadowed.Version)"
+    }
+
+    # The installer itself, with JK_STORE_DIR naming the shelf: refused, the prior client kept, and
+    # nothing new in the home.
+    New-Item -ItemType Directory -Force -Path (Join-Path $snapshotHome "bin") | Out-Null
+    $priorClient = Join-Path (Join-Path $snapshotHome "bin") "jk.exe"
+    [IO.File]::WriteAllText($priorClient, "prior-install")
+    $savedEnv = @{}
+    foreach ($name in @("JK_HOME", "JK_STORE_DIR", "CI", "JK_LOCAL_PATH", "JK_CLIENT")) { $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name) }
+    try {
+        $env:JK_HOME = $snapshotHome
+        $env:JK_STORE_DIR = $store
+        $env:CI = "1"
+        $env:JK_LOCAL_PATH = $null
+        $env:JK_CLIENT = $null
+        $refusal = (& $powershell -NoProfile -ExecutionPolicy Bypass -File $installer $distClient 2>&1 | Out-String)
+        $code = $LASTEXITCODE
+    } finally {
+        foreach ($name in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnv[$name]) }
+    }
+    if ($code -eq 0) { throw "a release dist over the home's snapshot line was installed: $refusal" }
+    if (-not $refusal.Contains("holds release 1.0.0 of 1 module(s) (first: cc/jumpkick/jk-test-runner)")) { throw "the snapshot-line refusal did not name the module and version: $refusal" }
+    if (-not $refusal.Contains("'jk snapshot'")) { throw "the snapshot-line refusal did not name jk snapshot: $refusal" }
+    if ([IO.File]::ReadAllText($priorClient) -cne "prior-install") { throw "the snapshot-line refusal replaced the client" }
+    $homeEntries = @(Get-ChildItem -LiteralPath $snapshotHome -Recurse -Force | ForEach-Object { $_.FullName.Substring($snapshotHome.Length + 1) })
+    if (($homeEntries -join ",") -cne (@("bin", (Join-Path "bin" "jk.exe")) -join ",")) { throw "the snapshot-line refusal wrote into the home: $($homeEntries -join ', ')" }
+
     Write-Host "PowerShell installer verification fixtures passed."
 } finally {
     $rsa.Dispose()

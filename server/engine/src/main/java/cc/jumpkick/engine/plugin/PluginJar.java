@@ -62,6 +62,7 @@ public enum PluginJar {
     HIBERNATE("jk-hibernate", "jk.hibernate.plugin.jar"),
     INTELLIJ("jk-intellij", "jk.intellij.plugin.jar"),
     JAVAFX("jk-javafx", "jk.javafx.plugin.jar"),
+    HELIDON("jk-helidon", "jk.helidon.plugin.jar"),
     GRAPH("jk-graph", "jk.graph.plugin.jar");
 
     private final String artifactId;

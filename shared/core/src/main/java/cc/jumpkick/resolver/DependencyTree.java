@@ -229,8 +229,7 @@ public final class DependencyTree {
         Set<Scope> selected = new HashSet<>(DependencyTreeStyle.sectionOrder(scopeOrder));
         List<Scope> elsewhere = new ArrayList<>();
         List<LoadedModule> modules = project.isWorkspaceRoot()
-                ? WorkspaceGraph.withRoot(
-                        project, null, WorkspaceGraph.loadModules(project.workspaceModules(), projectDir, selection))
+                ? WorkspaceGraph.withRoot(project, null, WorkspaceGraph.loadModules(project, projectDir, selection))
                 : List.of();
         for (Scope s : DependencyTreeStyle.allScopeOrder()) {
             if (selected.contains(s)) continue;
@@ -271,10 +270,9 @@ public final class DependencyTree {
             Set<String> seenModules,
             StringBuilder out) {
 
-        List<String> moduleRels = root.workspaceModules();
-        WorkspaceGraph ws = WorkspaceGraph.collapse(WorkspaceGraph.modulesByName(moduleRels, rootDir));
+        WorkspaceGraph ws = WorkspaceGraph.collapse(WorkspaceGraph.modulesByName(root, rootDir));
         List<LoadedModule> modules =
-                WorkspaceGraph.withRoot(root, lock, WorkspaceGraph.loadModules(moduleRels, rootDir, selection));
+                WorkspaceGraph.withRoot(root, lock, WorkspaceGraph.loadModules(root, rootDir, selection));
 
         // Scope sections present anywhere in the workspace, in display order.
         List<Scope> sections = new ArrayList<>();
@@ -689,7 +687,7 @@ public final class DependencyTree {
             return collectRoots(project);
         }
         Set<String> roots = new LinkedHashSet<>(collectRoots(project));
-        for (LoadedModule m : WorkspaceGraph.loadModules(project.workspaceModules(), projectDir, selection)) {
+        for (LoadedModule m : WorkspaceGraph.loadModules(project, projectDir, selection)) {
             roots.addAll(collectRoots(m.build()));
         }
         return new ArrayList<>(roots);
@@ -712,7 +710,7 @@ public final class DependencyTree {
             return out;
         }
         putRootDeclarations(project, true, out);
-        for (LoadedModule m : WorkspaceGraph.loadModules(project.workspaceModules(), projectDir, selection)) {
+        for (LoadedModule m : WorkspaceGraph.loadModules(project, projectDir, selection)) {
             putRootDeclarations(m.build(), true, out);
         }
         return out;
