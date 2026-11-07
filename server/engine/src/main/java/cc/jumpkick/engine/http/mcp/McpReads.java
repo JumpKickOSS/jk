@@ -224,12 +224,16 @@ public final class McpReads {
         Path root = PathUtil.resolveUserPath(dir);
         Map<String, Object> m = new LinkedHashMap<>();
         try {
+            List<String> include = includeTags == null ? List.of() : includeTags;
+            List<String> exclude = excludeTags == null ? List.of() : excludeTags;
+            // Tags the caller names are final; none leaves each module to the workspace root's
+            // tiers under the active profile, as jk test -f resolves them.
             TestSelection sel = TestSelection.of(
                     suites == null ? List.of() : suites,
                     false,
-                    includeTags == null ? List.of() : includeTags,
-                    excludeTags == null ? List.of() : excludeTags,
-                    true);
+                    include,
+                    exclude,
+                    !include.isEmpty() || !exclude.isEmpty());
             Set<Path> only = null;
             if (modules != null && !modules.isEmpty()) {
                 // Same intersection semantics as jk test -f -m ….

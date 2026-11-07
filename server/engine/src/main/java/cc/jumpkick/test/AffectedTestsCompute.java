@@ -5,6 +5,7 @@ import cc.jumpkick.config.AffectedChanged;
 import cc.jumpkick.config.AffectedSelection;
 import cc.jumpkick.config.DirtyPaths;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.PathUtil;
@@ -14,6 +15,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.PlannerSupport;
 import cc.jumpkick.task.ClassAbi;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -139,7 +141,10 @@ public final class AffectedTestsCompute {
             production.addAll(foreign.keySet());
             Map<String, ClassAbi.Fingerprint> pre =
                     u.dirtyHere() ? AbiIndex.load(AbiIndex.path(u.layout().buildDir())) : Map.of();
-            var tests = testsFor(u.dir(), u.build(), u.layout().testClassesDir(), production, sel);
+            // A selection with no resolved tags takes this module's tiers, as its test step would.
+            TestSelection modSel = PlannerSupport.effectiveSelection(
+                    sel, u.dir(), SessionContext.current().profile());
+            var tests = testsFor(u.dir(), u.build(), u.layout().testClassesDir(), production, modSel);
             String coord =
                     u.build().project().group() + ":" + u.build().project().name();
             String rel = root.relativize(u.dir()).toString();
@@ -149,7 +154,7 @@ public final class AffectedTestsCompute {
                     u.dir(),
                     coord,
                     root,
-                    sel,
+                    modSel,
                     u.dirtyHere() ? dirty : List.of(),
                     pre,
                     current,

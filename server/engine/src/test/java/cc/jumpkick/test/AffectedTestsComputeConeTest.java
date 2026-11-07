@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.engine.http.mcp.McpReads;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.ClassAbi;
@@ -15,8 +16,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
@@ -30,52 +33,8 @@ class AffectedTestsComputeConeTest {
 
     @Test
     void dependent_module_ranks_importers_of_a_dirty_modules_abi_change(@TempDir Path ws) throws Exception {
-        git(ws, "init");
-        git(ws, "config", "user.email", "t@t");
-        git(ws, "config", "user.name", "t");
-
-        Files.writeString(ws.resolve(ManifestPaths.MANIFEST), """
-                group = "com.acme"
-                name = "ws"
-                version = "0.1.0"
-
-                [workspace]
-                modules = ["lib", "app"]
-                """);
-        Path lib = Files.createDirectories(ws.resolve("lib"));
-        Path app = Files.createDirectories(ws.resolve("app"));
-        Files.writeString(lib.resolve(ManifestPaths.MANIFEST), """
-                group = "com.acme"
-                name = "lib"
-                version = "0.1.0"
-                """);
-        Files.writeString(app.resolve(ManifestPaths.MANIFEST), """
-                group = "com.acme"
-                name = "app"
-                version = "0.1.0"
-
-                [dependencies]
-                lib = { group = "com.acme", name = "lib", version = "0.1.0" }
-                """);
-        Path fooSrc = lib.resolve("src/main/java/com/acme/lib/Foo.java");
-        Files.createDirectories(fooSrc.getParent());
-        Files.writeString(fooSrc, "package com.acme.lib;\npublic class Foo { public int n() { return 1; } }\n");
-        git(ws, "add", ".");
-        git(ws, "commit", "-q", "-m", "base");
-
-        // The edit: Foo grows a method (ABI). On disk: the *pre* fingerprint in lib's abi idx, the
-        // *current* class file with the new method — exactly what a post-edit compile leaves.
-        Files.writeString(
-                fooSrc,
-                "package com.acme.lib;\npublic class Foo { public int n() { return 1; } public int m() { return 2; } }\n");
+        Path app = workspace(ws, "", null);
         var rootBuild = JkBuildParser.parse(ws.resolve(ManifestPaths.MANIFEST));
-        var libLayout = BuildLayout.of(ws, lib, JkBuildParser.parse(lib.resolve(ManifestPaths.MANIFEST)));
-        var appLayout = BuildLayout.of(ws, app, JkBuildParser.parse(app.resolve(ManifestPaths.MANIFEST)));
-        byte[] fooPre = fooClass(false);
-        byte[] fooNow = fooClass(true);
-        AbiIndex.write(AbiIndex.path(libLayout.buildDir()), Map.of("com.acme.lib.Foo", ClassAbi.of(fooPre)));
-        writeClass(libLayout.classesDir(), "com/acme/lib/Foo.class", fooNow);
-        writeClass(appLayout.testClassesDir(), "com/acme/app/BarTest.class", barTestClass());
 
         AffectedTests r = AffectedTestsCompute.fromDisk(ws, TestSelection.DEFAULT, null, null);
 
@@ -107,6 +66,90 @@ class AffectedTestsComputeConeTest {
         assertThat(onlyApp.modules()).allSatisfy(m -> assertThat(m.path()).isEqualTo("app"));
     }
 
+    /**
+     * A selection that names no tags (MCP {@code affected_tests} without {@code include_tags} or
+     * {@code exclude_tags}) ranks within the workspace root's tiers, as the test step would run them:
+     * the root's {@code [test] exclude-tags} keeps a {@code slow} test out of the ranking.
+     */
+    @Test
+    void a_selection_naming_no_tags_ranks_within_the_roots_tiers(@TempDir Path ws) throws Exception {
+        workspace(ws, """
+
+                [test]
+                exclude-tags = ["slow"]
+                """, "slow");
+
+        assertThat(AffectedTestsCompute.fromDisk(ws, TestSelection.DEFAULT, null, null)
+                        .classNames())
+                .doesNotContain("com.acme.app.BarTest");
+        var cleared = TestSelection.of(List.of(), false, List.of(), List.of(), true);
+        assertThat(AffectedTestsCompute.fromDisk(ws, cleared, null, null).classNames())
+                .as("tags the caller resolved are final, an empty list included")
+                .contains("com.acme.app.BarTest");
+
+        assertThat(McpReads.affectedTests(ws.toString(), List.of(), List.of(), List.of(), List.of())
+                        .toString())
+                .doesNotContain("com.acme.app.BarTest");
+        assertThat(McpReads.affectedTests(ws.toString(), List.of("slow"), List.of(), List.of(), List.of())
+                        .toString())
+                .as("tags the caller names are final")
+                .contains("com.acme.app.BarTest");
+    }
+
+    /**
+     * A git workspace of {@code lib} and {@code app} whose working tree grows {@code lib}'s {@code
+     * Foo} by a method, with {@code app}'s {@code BarTest} importing it, tagged {@code barTag} when
+     * given. {@code rootExtra} is appended to the root manifest. Returns {@code app}.
+     */
+    private static Path workspace(Path ws, String rootExtra, @Nullable String barTag) throws Exception {
+        git(ws, "init");
+        git(ws, "config", "user.email", "t@t");
+        git(ws, "config", "user.name", "t");
+
+        Files.writeString(ws.resolve(ManifestPaths.MANIFEST), """
+                group = "com.acme"
+                name = "ws"
+                version = "0.1.0"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """ + rootExtra);
+        Path lib = Files.createDirectories(ws.resolve("lib"));
+        Path app = Files.createDirectories(ws.resolve("app"));
+        Files.writeString(lib.resolve(ManifestPaths.MANIFEST), """
+                group = "com.acme"
+                name = "lib"
+                version = "0.1.0"
+                """);
+        Files.writeString(app.resolve(ManifestPaths.MANIFEST), """
+                group = "com.acme"
+                name = "app"
+                version = "0.1.0"
+
+                [dependencies]
+                lib = { group = "com.acme", name = "lib", version = "0.1.0" }
+                """);
+        Path fooSrc = lib.resolve("src/main/java/com/acme/lib/Foo.java");
+        Files.createDirectories(fooSrc.getParent());
+        Files.writeString(fooSrc, "package com.acme.lib;\npublic class Foo { public int n() { return 1; } }\n");
+        git(ws, "add", ".");
+        git(ws, "commit", "-q", "-m", "base");
+
+        // The edit: Foo grows a method (ABI). On disk: the *pre* fingerprint in lib's abi idx, the
+        // *current* class file with the new method — exactly what a post-edit compile leaves.
+        Files.writeString(
+                fooSrc,
+                "package com.acme.lib;\npublic class Foo { public int n() { return 1; } public int m() { return 2; } }\n");
+        var libLayout = BuildLayout.of(ws, lib, JkBuildParser.parse(lib.resolve(ManifestPaths.MANIFEST)));
+        var appLayout = BuildLayout.of(ws, app, JkBuildParser.parse(app.resolve(ManifestPaths.MANIFEST)));
+        byte[] fooPre = fooClass(false);
+        byte[] fooNow = fooClass(true);
+        AbiIndex.write(AbiIndex.path(libLayout.buildDir()), Map.of("com.acme.lib.Foo", ClassAbi.of(fooPre)));
+        writeClass(libLayout.classesDir(), "com/acme/lib/Foo.class", fooNow);
+        writeClass(appLayout.testClassesDir(), "com/acme/app/BarTest.class", barTestClass(barTag));
+        return app;
+    }
+
     private static void writeClass(Path dir, String rel, byte[] bytes) throws Exception {
         Path f = dir.resolve(rel);
         Files.createDirectories(f.getParent());
@@ -133,9 +176,14 @@ class AffectedTestsComputeConeTest {
     }
 
     /** {@code com.acme.app.BarTest} holding a {@code Foo} field — an importer of the changed type. */
-    private static byte[] barTestClass() {
+    private static byte[] barTestClass(@Nullable String tag) {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, "com/acme/app/BarTest", null, "java/lang/Object", null);
+        if (tag != null) {
+            AnnotationVisitor av = cw.visitAnnotation("Lorg/junit/jupiter/api/Tag;", true);
+            av.visit("value", tag);
+            av.visitEnd();
+        }
         FieldVisitor fv = cw.visitField(Opcodes.ACC_PUBLIC, "foo", "Lcom/acme/lib/Foo;", null, null);
         fv.visitEnd();
         cw.visitEnd();
