@@ -5,16 +5,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.extract.FactsExtractor;
+import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.extract.fixture.FixtureBytes;
 import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.extract.fixture.Tier;
 import cc.jumpkick.guard.facts.ClassFacts;
+import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,6 +26,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -173,5 +178,60 @@ class ClassesEvaluatorTest {
         assertThat(rule(dir, "that = { are = \"enum\" }\nshould = { be = \"final\" }\n")
                         .instead())
                 .isEqualTo("make the class satisfy: be = final");
+    }
+
+    @Test
+    void a_workspace_lane_rule_scoped_to_one_module_judges_only_its_classes(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "p"
+                name = "ws"
+                version = "1"
+
+                [workspace]
+                modules = ["a", "b"]
+                """);
+        Map<String, ClassFacts> all = new LinkedHashMap<>();
+        for (String m : List.of("a", "b")) {
+            Files.createDirectories(dir.resolve(m));
+            Files.writeString(dir.resolve(m + "/jk.toml"), "group = \"p\"\nname = \"" + m + "\"\nversion = \"1\"\n");
+            ClassFacts secret = cls("p/" + m + "/Secret", Set.of());
+            // each module's user reaches into both modules' secrets
+            ClassFacts user = cls("p/" + m + "/user/User", Set.of("p/a/Secret", "p/b/Secret"));
+            Map<String, ClassFacts> own = new LinkedHashMap<>();
+            own.put(secret.name(), secret);
+            own.put(user.name(), user);
+            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(dir.resolve(m)), "main");
+            Files.createDirectories(idx.getParent());
+            FactsFormat.write(idx, new FactsIndex(own, Map.of(), ""));
+            all.putAll(own);
+        }
+        FactsIndex workspace = new FactsIndex(all, Map.of(), "");
+        String should = "that = { named = \"Secret\" }\nshould = { only-be-accessed-by = \"p.none.*\" }\n";
+        EvalContext ctx = new EvalContext(
+                Lane.WORKSPACE,
+                dir,
+                "",
+                null,
+                List.of(dir.resolve("a"), dir.resolve("b")),
+                () -> workspace,
+                () -> null,
+                List::of);
+
+        Evaluation every = Evaluators.forKind(Kind.CLASSES).evaluate(rule(dir, should), ctx);
+        assertThat(every.observations()).hasSize(2);
+        Evaluation scoped = Evaluators.forKind(Kind.CLASSES).evaluate(rule(dir, "scope = [\"b\"]\n" + should), ctx);
+        assertThat(scoped.population()).containsEntry("classes", 1L);
+        assertThat(scoped.observations())
+                .as("a's Secret is a's; b's is judged, and a's accessor still counts against it")
+                .singleElement()
+                .satisfies(o -> assertThat(o.detail())
+                        .startsWith("p.b.Secret should")
+                        .contains("p.a.user.User")
+                        .contains("p.b.user.User"));
+    }
+
+    private static ClassFacts cls(String internal, Set<String> refs) {
+        return new ClassFacts(
+                internal, 1, "java/lang/Object", List.of(), "X.java", List.of(), List.of(), List.of(), refs);
     }
 }

@@ -298,4 +298,59 @@ class ToolchainEvaluatorTest {
                 .containsExactlyInAnyOrder("java root", "java app", "java ../sib");
         assertThat(e.observations()).extracting(Observation::file).contains("../sib/jk.toml");
     }
+
+    @Test
+    void a_scoped_rule_judges_the_java_a_member_inherits_and_jk_add_agrees(@TempDir Path root) throws Exception {
+        String rules = """
+                [guards.floor]
+                kind  = "toolchain"
+                java  = ">=21"
+                scope = ["lib"]
+                why   = "w"
+                """;
+        workspace(root);
+        Path lib = root.resolve("lib/" + ManifestPaths.MANIFEST);
+        String inherits = "name = \"lib\"\ngroup = \"acme\"\nversion = \"1.0.0\"\n";
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), rules);
+
+        String refusal = MutationCheck.check(lib, inherits);
+        assertThat(refusal)
+                .as("the edit drops lib's own java, so lib builds for the root's 17")
+                .isNotNull()
+                .contains("lib builds for Java 17, outside >=21");
+
+        Files.writeString(lib, inherits);
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        EvalContext ctx = new EvalContext(
+                Lane.MODEL,
+                root,
+                "",
+                null,
+                List.of(root.resolve("app"), root.resolve("lib")),
+                () -> FactsIndex.EMPTY,
+                () -> null,
+                List::of);
+        Evaluation e = ev(LaneRun.evaluate(LaneRun.rulesFor(Lane.MODEL, load.rules(), ""), ctx), "floor");
+        assertThat(e.observations())
+                .as("jk guard judges the written file as jk add judged the edit")
+                .singleElement()
+                .satisfies(o -> {
+                    assertThat(o.key()).isEqualTo("java lib");
+                    assertThat(refusal).contains(o.detail());
+                });
+
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), rules.replace("scope = [\"lib\"]", ""));
+        Evaluation unscoped = ev(
+                LaneRun.evaluate(
+                        LaneRun.rulesFor(
+                                Lane.MODEL,
+                                GuardRules.load(root, GuardsConfig.ABSENT).rules(),
+                                ""),
+                        ctx),
+                "floor");
+        assertThat(unscoped.observations())
+                .as("a rule that judges the root judges the inherited value there, once")
+                .extracting(Observation::key)
+                .containsExactlyInAnyOrder("java root", "java app");
+    }
 }

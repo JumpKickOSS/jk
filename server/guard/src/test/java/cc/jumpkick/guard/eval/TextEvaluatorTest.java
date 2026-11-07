@@ -260,4 +260,51 @@ class TextEvaluatorTest {
                 .isEqualTo(Outcome.CLEAN);
         assertThat(Squashed.of("int  x =\n  y;").text).isEqualTo("int x=y;");
     }
+
+    @Test
+    void a_member_file_text_rule_reads_its_member_and_not_a_sibling(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+                [workspace]
+                modules = ["core", "core/plugin", "app"]
+                """);
+        for (String m : List.of("core", "core/plugin", "app")) {
+            Path src = Files.createDirectories(root.resolve(m + "/src/main/java/p"));
+            Files.writeString(
+                    root.resolve(m + "/jk.toml"),
+                    "group = \"t\"\nname = \"" + m.replace('/', '-') + "\"\nversion = \"0.0.1\"\njdk = 25\n");
+            Files.writeString(src.resolve("X.java"), "package p;\nclass X { String s = \"bananas\"; }\n");
+        }
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), "");
+        Files.writeString(root.resolve("core/" + GuardsPresence.RULES_FILE), """
+                [guards.no-bananas]
+                kind = "text"
+                pattern = "bananas"
+                blank = "none"
+                instead = "i"
+                why = "w"
+                """);
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        List<Path> modules = WorkspaceModules.of(root);
+        EvalContext ctx =
+                new EvalContext(Lane.TREE, root, "", null, modules, () -> FactsIndex.EMPTY, () -> null, List::of);
+        Evaluation e = ev(LaneRun.evaluate(LaneRun.rulesFor(Lane.TREE, load.rules(), ""), ctx), "no-bananas");
+
+        assertThat(e.observations())
+                .as("the member's own file only: not the sibling's, nor the member nested in its directory")
+                .extracting(Observation::file)
+                .containsExactly("core/src/main/java/p/X.java");
+        assertThat(e.population()).containsEntry("files", 1L);
+        FileModules files = FileModules.of(root, modules);
+        assertThat(files.moduleOf("core/plugin/src/main/java/p/X.java")).isEqualTo("core/plugin");
+        assertThat(files.moduleOf("core/jk.toml")).isEqualTo("core");
+        assertThat(files.moduleOf("corex/README.md"))
+                .as("a prefix is not a directory")
+                .isEmpty();
+        assertThat(files.moduleOf("README.md")).isEmpty();
+    }
 }

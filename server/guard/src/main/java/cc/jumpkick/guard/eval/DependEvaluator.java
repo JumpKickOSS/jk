@@ -78,11 +78,12 @@ final class DependEvaluator implements Evaluator {
 
     /**
      * The mutation-time entry: {@code proposed} is the manifest text about to be written for {@code
-     * module}. It reads what {@code jk guard} reads, through {@link #judge}: a test-scope add is
-     * judged in its own table, and a scoped rule never reads the workspace lock's rows.
+     * module}, whose {@code jk.toml} is {@code file}. It is read as {@code jk guard} reads that file,
+     * with what it inherits, and judged through {@link #judge}: a test-scope add is judged in its
+     * own table, and a scoped rule never reads the workspace lock's rows.
      */
-    static Evaluation evaluateProposed(Rule rule, String module, String proposed, @Nullable Lockfile lock) {
-        return judge(rule, List.of(manifest(module, JkBuildParser.parse(proposed), proposed)), lock);
+    static Evaluation evaluateProposed(Rule rule, String module, Path file, String proposed, @Nullable Lockfile lock) {
+        return judge(rule, List.of(manifest(module, JkBuildParser.parse(proposed, file), proposed)), lock);
     }
 
     /**

@@ -17,7 +17,8 @@ import org.tomlj.TomlTable;
  * {@code generated}: the block between two markers in a file is rendered from a source of truth by a
  * closed template, and the file must carry exactly that rendering. One violation per rule — the
  * block — whose detail is the diff; the sanctioned fix is to paste the rendering, never to edit the
- * source of truth to match the file.
+ * source of truth to match the file. A scoped rule judges an {@code into} file of a module in its
+ * scope ({@link FileModules}); one elsewhere is not evaluated.
  */
 final class GeneratedEvaluator implements Evaluator {
 
@@ -31,6 +32,10 @@ final class GeneratedEvaluator implements Evaluator {
         Templates.Spec template = Templates.parse(templateTable);
         String into = String.valueOf(t.getString("into"));
         String marker = markerName(rule);
+        FileModules modules = FileModules.of(ctx);
+        if (!modules.judges(rule, into))
+            return Evaluation.notEvaluated(
+                    into + " belongs to " + where(modules.moduleOf(into)) + ", outside the rule's scope");
         Path file = ctx.root().resolve(into);
         if (!Files.isRegularFile(file)) return Evaluation.failed(into + " does not exist");
         List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
@@ -52,6 +57,11 @@ final class GeneratedEvaluator implements Evaluator {
                 + x.rows().size() + " rows); replace it with the rendering:\n" + diff(block.body(), rendered);
         return Evaluation.of(
                 population, List.of(Observation.site("block:" + marker, into, block.startLine() + 1, detail)));
+    }
+
+    /** A module as a message names it: the root, or its path. */
+    static String where(String module) {
+        return module.isEmpty() ? "the workspace root" : module;
     }
 
     static String markerName(Rule rule) {
