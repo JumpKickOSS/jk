@@ -24,7 +24,8 @@ class AgentsCommandTest {
         assertThat(created)
                 .as(created)
                 .contains("Wrote AGENTS.md")
-                .contains("Agent notes: 1 note")
+                // One note per step left to the user; agents found on this machine (Codex) add theirs.
+                .containsPattern("Agent notes: \\d+ notes?")
                 .contains(" 1) " + AgentSetup.TRUST_NOTE)
                 .contains("Wired " + dir.getFileName() + " for coding agents");
         assertThat(Files.readString(file)).isEqualTo(AgentsGuide.newFile());
