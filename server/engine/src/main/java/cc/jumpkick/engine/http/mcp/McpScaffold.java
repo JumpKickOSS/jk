@@ -97,7 +97,8 @@ public final class McpScaffold {
      * settled first: the call's arguments and {@code params} answer it, defaults fill the rest, and a
      * required field still missing is asked through elicitation, by form or, with {@code wizard}, by
      * a link to the dashboard's wizard, or named in the error ({@link McpNewForm}). A relative
-     * template path resolves against {@code cwd}, for the form and the scaffold alike.
+     * template path resolves against {@code cwd}, for the form and the scaffold alike. The project
+     * is wired for the engine's agents setting and the calling client's agent ({@link McpClientAgent}).
      */
     public static Plan plan(McpCall in, String parentDir, Path cwd, boolean wizard) throws IOException {
         String name = in.str("name");
@@ -137,7 +138,7 @@ public final class McpScaffold {
         answers.putAll(passthrough);
         return new Plan.Scaffold(new NewProjectOps.Request(
                         name, parentDir, group, lang, layout, t.id(), true, answers, false, null, cwd.toString())
-                .withAgents(NewProjectAgents.current()));
+                .withAgents(McpClientAgent.choice(in.connection(), NewProjectAgents.current())));
     }
 
     private static void putIfSet(Map<String, Object> out, String key, @Nullable String value) {

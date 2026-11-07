@@ -44,6 +44,27 @@ public record AgentChoice(AgentSetup.Mode mode, Set<AgentSetup.Host> hosts) {
         return new AgentChoice(AgentSetup.Mode.parse(mode), found);
     }
 
+    /**
+     * This choice with {@code host} present too: the agent that asked for the project is wired
+     * whatever else the machine shows. {@link AgentSetup.Mode#NONE} still wires none.
+     */
+    public AgentChoice with(AgentSetup.Host host) {
+        if (hosts.contains(host)) return this;
+        Set<AgentSetup.Host> more = EnumSet.noneOf(AgentSetup.Host.class);
+        more.addAll(hosts);
+        more.add(host);
+        return new AgentChoice(mode, more);
+    }
+
+    /** The agents this choice wires files or notes for: every one under {@code all}, none under {@code none}. */
+    public Set<AgentSetup.Host> wired() {
+        return switch (mode) {
+            case ALL -> EnumSet.allOf(AgentSetup.Host.class);
+            case NONE -> Set.of();
+            case DETECT -> hosts;
+        };
+    }
+
     /** {@link #mode} as {@link #parse} reads it. */
     public String modeName() {
         return mode.name().toLowerCase(Locale.ROOT);
