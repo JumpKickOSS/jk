@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.command.toolchain.ToolRunCommand;
+import cc.jumpkick.config.JkBuildParseException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -85,5 +86,26 @@ class ToolRunModuleResolutionTest {
         // The exact declared path still selects the module.
         assertThat(ToolRunCommand.resolveWorkspaceModule(ws, "clients/web"))
                 .isEqualTo(ws.resolve("clients/web").toAbsolutePath().normalize());
+    }
+
+    @Test
+    void a_glob_that_selects_nothing_is_reported_not_swallowed(@TempDir Path ws) throws Exception {
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "root"
+                version = "1.0.0"
+                jdk = 25
+                java = 25
+
+                [workspace]
+                modules = ["libs/*"]
+                """);
+        Files.createDirectories(ws.resolve("libs/empty"));
+
+        assertThatThrownBy(() -> ToolRunCommand.resolveWorkspaceModule(ws, "empty"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("jk.toml")
+                .hasMessageContaining("libs/*")
+                .hasMessageContaining("matches no directory with a jk.toml");
     }
 }

@@ -181,14 +181,15 @@ public final class LibraryCatalog {
     /**
      * True when {@code projectDir} is the workspace root or a module its {@code [workspace] modules}
      * lists — literally or through a glob entry such as {@code libs/*}. Membership is {@link
-     * WorkspaceModules#lists} so a glob-selected member sees the same catalog root as a literal one.
+     * WorkspaceModules#lists(Path, List, String)} so a glob-selected member sees the same catalog root
+     * as a literal one, and a directory the glob matches but the build never loads does not.
      */
     static boolean isWorkspaceOrDeclaredModule(Path workspaceRoot, Path projectDir, Path workspaceJkToml) {
         if (workspaceRoot.equals(projectDir)) return true;
         Path rel = workspaceRoot.relativize(projectDir);
         if (rel.getNameCount() == 0 || rel.startsWith("..")) return false;
         String relPath = rel.toString().replace('\\', '/');
-        return WorkspaceModules.lists(workspaceModulePaths(workspaceJkToml), relPath);
+        return WorkspaceModules.lists(workspaceRoot, workspaceModulePaths(workspaceJkToml), relPath);
     }
 
     /**
