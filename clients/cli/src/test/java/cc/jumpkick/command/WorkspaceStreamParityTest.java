@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.model.command.Exit;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -39,10 +40,13 @@ class WorkspaceStreamParityTest {
             throws Exception {
         Path cache = workspace(tmp);
         // The fixture compiles and carries no suite; every verb succeeds, `jk test` with no tests to run.
-        String out = Capture.stdout(
-                () -> assertThat(run(verb, "-C", tmp.toString(), "--cache-dir", cache.toString(), "--output", "jsonl"))
-                        .as("%s on a workspace that compiles and has no suite", verb)
-                        .isEqualTo(0));
+        int[] exit = {-1};
+        Capture.Streams streams = Capture.both(
+                () -> exit[0] = run(verb, "-C", tmp.toString(), "--cache-dir", cache.toString(), "--output", "jsonl"));
+        String out = streams.out();
+        assertThat(exit[0])
+                .as("%s on a workspace that compiles and has no suite\n%s", verb, console(streams))
+                .isEqualTo(Exit.SUCCESS);
 
         assertThat(countType(out, "workspace-start"))
                 .as("%s -O jsonl must open the stream exactly once", verb)
@@ -78,6 +82,10 @@ class WorkspaceStreamParityTest {
         assertThat(exit[0])
                 .as("%s must fail on source that does not compile", verb)
                 .isNotZero();
+        // A lock that could not resolve also fails, before any module runs: that is not this case.
+        assertThat(exit[0])
+                .as("%s must fail in the module, not in the lock\n%s", verb, out)
+                .isNotEqualTo(Exit.RESOLVE);
         assertThat(countType(out, "workspace-finish")).isEqualTo(1);
         assertThat(out).contains("\"success\":false");
     }
@@ -134,10 +142,13 @@ class WorkspaceStreamParityTest {
                 """);
 
         int[] exit = {-1};
-        String out = Capture.stdout(
+        Capture.Streams streams = Capture.both(
                 () -> exit[0] = run("run", "-C", lib.toString(), "--cache-dir", cache.toString(), "--output", "jsonl"));
+        String out = streams.out();
 
-        assertThat(exit[0]).as("the program ran and exited cleanly").isEqualTo(0);
+        assertThat(exit[0])
+                .as("the program ran and exited cleanly\n%s", console(streams))
+                .isEqualTo(Exit.SUCCESS);
         assertThat(countType(out, "workspace-start")).isEqualTo(1);
         assertThat(countType(out, "workspace-finish"))
                 .as("the pre-build's terminal is what tells a parser jk is done writing")
@@ -145,6 +156,15 @@ class WorkspaceStreamParityTest {
         assertThat(lastLine(out))
                 .as("jk writes no stdout of its own after the terminal — the exec owns the stream")
                 .contains("\"type\":\"workspace-finish\"");
+    }
+
+    /**
+     * Both streams of a run, for an exit assertion's description. Under {@code -O jsonl} the reason
+     * a run failed is in its stream, the {@code workspace-finish} terminal's {@code errors}, so an
+     * assertion that drops the stream reports a bare exit code and nothing a reader can act on.
+     */
+    private static String console(Capture.Streams streams) {
+        return "stdout:\n" + streams.out() + "stderr:\n" + streams.err();
     }
 
     private static String lastLine(String stream) {

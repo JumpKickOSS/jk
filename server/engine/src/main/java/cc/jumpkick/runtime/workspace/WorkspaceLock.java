@@ -12,6 +12,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -59,7 +60,7 @@ public final class WorkspaceLock {
             }
             return r.status() != 0 ? new BuildService.LockGuard(r.status(), r.error()) : BuildService.LockGuard.OK;
         } catch (UnsatisfiableException e) {
-            return new BuildService.LockGuard(6, e.getMessage());
+            return new BuildService.LockGuard(Exit.RESOLVE, e.getMessage());
         } catch (Exception e) {
             return BuildService.LockGuard.OK; // soft failure — let the per-module path surface real errors
         }
