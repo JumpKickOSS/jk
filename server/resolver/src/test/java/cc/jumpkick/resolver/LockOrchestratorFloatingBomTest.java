@@ -31,7 +31,7 @@ class LockOrchestratorFloatingBomTest {
         assertThatThrownBy(() -> orchestrator.lock(project, "test"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("platform dependency")
-                .hasMessageContaining("exact, caret/tilde, latest, or snapshot");
+                .hasMessageContaining("ranges are not allowed; use an exact, ^, ~, latest or snapshot version");
     }
 
     private static JkBuild jkBuild(Map<Scope, List<Dependency>> byScope) {

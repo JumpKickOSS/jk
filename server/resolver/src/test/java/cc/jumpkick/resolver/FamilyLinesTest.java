@@ -44,12 +44,12 @@ class FamilyLinesTest {
         assertThat(warnings).hasSize(1);
         assertThat(warnings.get(0))
                 .startsWith("plugins/tool")
-                .contains("no [platform-dependencies] table")
+                .contains(" mixes ")
                 .contains(RESOLVER + ":maven-resolver-*")
                 .contains("maven-resolver-api 2.0.22")
                 .contains("maven-resolver-impl 2.0.22")
                 .contains("maven-resolver-transport-http 1.9.27")
-                .contains("one line");
+                .contains("align them or add a platform BOM");
     }
 
     @Test

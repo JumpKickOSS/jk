@@ -61,9 +61,8 @@ class JkResultsCauseTest {
                 .contains("root cause: java.lang.IllegalStateException: Input resource must exist"
                         + " (reader is in 'strict' mode): class path resource [sample-data.csv]");
         assertThat(md)
-                .contains(
-                        "→ the test loads `sample-data.csv` and nothing on its classpath ships it:"
-                                + " add the file under `src/test/resources/` (or `src/main/resources/`), or fix the path it loads.");
+                .contains("→ `sample-data.csv` is not on the test classpath: add it under `src/test/resources/`,"
+                        + " or fix the path\n");
     }
 
     @Test
@@ -90,7 +89,7 @@ class JkResultsCauseTest {
         String md = JkResultsMarkdown.render(record(List.of(diag)));
         assertThat(md).contains("### Tests");
         assertThat(md).contains("root cause: java.lang.IllegalStateException: Input resource must exist");
-        assertThat(md).contains("→ the test loads `sample-data.csv`");
+        assertThat(md).contains("→ `sample-data.csv` is not on the test classpath");
     }
 
     @Test
@@ -143,15 +142,13 @@ class JkResultsCauseTest {
     void an_absolute_path_gets_the_file_advice_and_a_script_statement_names_its_script() {
         assertThat(JkResultsCause.hint(
                         "java.io.FileNotFoundException: /tmp/in/orders.csv (No such file or directory)\n\tat x"))
-                .isEqualTo(
-                        "the test opens `/tmp/in/orders.csv` and the file does not exist: create it, or fix the path.");
+                .isEqualTo("`/tmp/in/orders.csv` does not exist: create it, or fix the path");
         assertThat(
                         JkResultsCause.hint(
                                 "java.lang.IllegalStateException: Failed to load ApplicationContext\n"
                                         + "Caused by: org.springframework.jdbc.datasource.init.ScriptStatementFailedException: Failed to"
                                         + " execute SQL script statement #2 of class path resource [schema.sql]: CREATE TABLE customer"))
-                .isEqualTo("statement #2 of `schema.sql` failed — the script the test runs: fix the SQL, or the"
-                        + " schema it assumes.");
+                .isEqualTo("statement #2 of `schema.sql` failed: fix the SQL or the schema it expects");
         assertThat(JkResultsCause.hint("java.lang.AssertionError: expected 1")).isNull();
     }
 

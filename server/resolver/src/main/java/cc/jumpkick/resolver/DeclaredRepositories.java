@@ -142,18 +142,15 @@ final class DeclaredRepositories {
         try {
             url = new URI(repository.url());
         } catch (URISyntaxException e) {
-            refuse(repository, "its URL does not parse (" + e.getMessage() + ")");
+            refuse(repository, "invalid URL: " + e.getMessage());
             return null;
         }
         if ("http".equalsIgnoreCase(url.getScheme()) && !RepositorySpec.loopback(url.getHost())) {
-            refuse(
-                    repository,
-                    "it is plaintext http, and a repository a POM declares has no table to say allow-insecure in;"
-                            + " declare it under [repositories] to use it");
+            refuse(repository, "plain http; add it to [repositories] with allow-insecure = true to use it");
             return null;
         }
         if (url.getScheme() == null || url.getHost() == null && !"file".equalsIgnoreCase(url.getScheme())) {
-            refuse(repository, "its URL names no host");
+            refuse(repository, "its URL has no host");
             return null;
         }
         MavenRepo repo = RepoMirrors.apply(base.repos()
@@ -165,19 +162,17 @@ final class DeclaredRepositories {
 
     private void refuse(Pom.Repository repository, String why) {
         refusedUrls.add(repository.url());
-        notes.add("repository `" + repository.id() + "` at " + repository.url() + ", declared by the POM of "
-                + repository.declaredBy() + ", was not used: " + why);
+        notes.add("repository `" + repository.id() + "` (" + repository.url() + ") from the POM of "
+                + repository.declaredBy() + " not used: " + why);
     }
 
     /** The note a repository earns once a row came from it, however many packages inherit it. */
     private static String consulted(Pom.Repository repository) {
         String policy = repository.releases() && repository.snapshots()
                 ? ""
-                : repository.snapshots() ? " for snapshots only" : " for releases only";
-        return "repository `" + repository.id() + "` at " + repository.url() + ", declared by the POM of "
-                + repository.declaredBy() + ", is consulted" + policy + " for that POM's dependencies and theirs"
-                + " after the project's repositories; a row it serves records it as `source`, and it is held to"
-                + " the same trust rule as a declared repository (https, published checksums)";
+                : repository.snapshots() ? ", snapshots only" : ", releases only";
+        return "repository `" + repository.id() + "` (" + repository.url() + ") from the POM of "
+                + repository.declaredBy() + " is used for its dependencies after [repositories]" + policy;
     }
 
     private static String ga(String pkg) {

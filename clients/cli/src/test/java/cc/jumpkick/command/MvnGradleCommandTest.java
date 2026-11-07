@@ -221,8 +221,7 @@ class MvnGradleCommandTest {
         String refused = Capture.stderr(() -> exit[0] = run(with(common, "-v")));
         assertThat(exit[0]).isNotEqualTo(0);
         assertThat(refused)
-                .contains("cannot be verified")
-                .contains("no .sha512 or .sha1 checksum")
+                .contains("has no published .sha512 or .sha1 checksum")
                 .contains("--accept-unverified-tool");
         assertThat(tempDir.resolve("tools/maven/3.6.3")).doesNotExist();
 

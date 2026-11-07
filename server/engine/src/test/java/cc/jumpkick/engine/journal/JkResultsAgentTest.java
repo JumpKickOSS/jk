@@ -64,8 +64,7 @@ class JkResultsAgentTest {
 
         assertThat(JkResultsAgent.render(r)).isEqualTo("""
                 OK test rest-service · 1 test · 500ms
-                W guard baseline not tightened: 51 modules unseen by this run (not built yet); \
-                a build of every module tightens it and judges its scope
+                W guard baseline not tightened: 51 modules not built by this run; build every module to tighten it
                 """);
     }
 
@@ -511,7 +510,7 @@ class JkResultsAgentTest {
         BuildRecord base = a.toRecord(1_000, false, 400, "0.14.0", null);
         BuildRecord.Diag err = new BuildRecord.Diag("error", "/ws/rest-service", "lock", "verbatim", """
                 Cannot resolve dependencies:
-                repository `nexus` was passed over (HTTP 401: it asks for credentials)
+                repository `nexus` skipped (HTTP 401: it asks for credentials)
                 """, null, null);
         List<BuildRecord.Diag> diags = new ArrayList<>(base.diagnostics());
         diags.add(err);
@@ -523,7 +522,7 @@ class JkResultsAgentTest {
                         FAIL lock rest-service · 1 error · 400ms
                         W the `jk repo login nexus` secret is in the Secret Service, which did not give it up \
                         (the default keyring is locked); the repository is tried without it.
-                        E lock: repository `nexus` was passed over (HTTP 401: it asks for credentials)
+                        E lock: repository `nexus` skipped (HTTP 401: it asks for credentials)
                         """);
     }
 

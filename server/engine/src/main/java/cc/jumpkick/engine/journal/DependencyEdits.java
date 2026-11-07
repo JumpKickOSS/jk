@@ -74,9 +74,9 @@ final class DependencyEdits {
         }
         if (edits.isEmpty()) return null;
         String prose = pin
-                ? "the exact pin " + named.get(0) + " is outside what the rest of the graph allows"
-                : "the exact pin " + named.get(0) + " conflicts with the rest of the graph";
-        return new JkResultsHints.Hint(CODE, prose + ": `" + String.join("` and `", edits) + "`.");
+                ? "pin " + named.get(0) + " is outside the range a dependency requires"
+                : "pin " + named.get(0) + " conflicts with other dependencies";
+        return new JkResultsHints.Hint(CODE, prose + ": `" + String.join("` and `", edits) + "`");
     }
 
     /** The odd version of one JUnit line, pinned forward to the version the rest of the line resolved. */
@@ -122,9 +122,8 @@ final class DependencyEdits {
         String ga = first.substring("deps(pin, ".length(), first.lastIndexOf(':'));
         return new JkResultsHints.Hint(
                 CODE,
-                "`" + ga + "` is behind the rest of its line, which resolved `" + lineVersion + "`: `"
-                        + String.join("` and `", edits)
-                        + "`.");
+                "`" + ga + "` is older than the rest of its family at `" + lineVersion + "`: `"
+                        + String.join("` and `", edits) + "`");
     }
 
     /** True when {@code version} is inside {@code constraint} (an exact version or a Maven range). */

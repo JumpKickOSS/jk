@@ -78,8 +78,7 @@ class JkResultsGuardsTest {
 
     private static final String THRASHING = SITE.replace(
             "  Exempt:   ask the user to add [guards.one-digest-surface].allow with a reason",
-            "  Thrash:   this site has failed on 2 consecutive builds — stop and ask the user whether an `allow` with a"
-                    + " reason is right here, or whether the rule needs changing");
+            "  Thrash:   failed 2 builds in a row: stop and ask the user for an `allow` entry or a rule change");
 
     @Test
     void a_thrashing_site_says_so_in_the_group_header_and_under_the_site() {
@@ -89,15 +88,15 @@ class JkResultsGuardsTest {
                 record(false, List.of(d), List.of(new BuildRecord.Task(TaskNames.GUARD, "compile", "FAIL", 1, 0))));
         assertThat(md)
                 .contains(
-                        "### one-digest-surface — one algorithm table, one place to swap the provider  (1 site, seen 2 builds running)")
+                        "### one-digest-surface — one algorithm table, one place to swap the provider  (1 site, failing 2 builds in a row)")
                 .contains(
-                        "  → Hashing.sha256Hex\n  This site has failed on 2 consecutive builds. Stop and ask the user whether an `allow` with a reason is right here.\n");
+                        "  → Hashing.sha256Hex\n  Failed 2 builds in a row: ask the user whether an `allow` entry fits\n");
         String fresh = JkResultsMarkdown.render(record(
                 false,
                 List.of(site(
                         "one-digest-surface", "server/engine/src/main/java/cc/jumpkick/engine/Cas.java", 88, SITE)),
                 List.of(new BuildRecord.Task(TaskNames.GUARD, "compile", "FAIL", 1, 0))));
-        assertThat(fresh).doesNotContain("builds running").doesNotContain("consecutive builds");
+        assertThat(fresh).doesNotContain("builds in a row");
     }
 
     @Test
@@ -106,7 +105,7 @@ class JkResultsGuardsTest {
                 new BuildRecord.Task(TaskNames.GUARD, "compile", "SKIPPED", 1, 0),
                 new BuildRecord.Task(TaskNames.GUARD_MODEL, "resolve", "SUCCESS", 1, 0));
         String md = JkResultsMarkdown.render(record(true, List.of(), lanes));
-        assertThat(md).contains("## Guards\n\nGuards: clean · 2 lanes (1 cached)\n");
+        assertThat(md).contains("## Guards\n\nGuards: clean · 2 checks (1 cached)\n");
         String none = JkResultsMarkdown.render(
                 record(true, List.of(), List.of(new BuildRecord.Task("compile-java", "compile", "SUCCESS", 1, 0))));
         assertThat(none).doesNotContain("## Guards");
@@ -135,7 +134,7 @@ class JkResultsGuardsTest {
                                 new BuildRecord.Task(TaskNames.GUARD, "compile", "SKIPPED", 1, 0),
                                 new BuildRecord.Task(TaskNames.GUARD_MODEL, "resolve", "SUCCESS", 1, 0))));
         String md = JkResultsMarkdown.render(workspaceRecord(modules));
-        assertThat(md).contains("## Guards\n\nGuards: clean · 3 lanes (1 cached)\n");
+        assertThat(md).contains("## Guards\n\nGuards: clean · 3 checks (1 cached)\n");
     }
 
     private static BuildRecord workspaceRecord(List<BuildRecord.Module> modules) {
@@ -183,7 +182,7 @@ class JkResultsGuardsTest {
         assertThat(md)
                 .contains(
                         "- `server/engine/src/main/java/cc/jumpkick/engine/Cas.java:88`  MessageDigest.getInstance(\"SHA-256\") called outside cc.jumpkick.host.Hashing\n  → Hashing.sha256Hex\n");
-        assertThat(md).contains("Never edit jk-guards-baseline.toml by hand");
+        assertThat(md).contains("Do not edit jk-guards-baseline.toml");
         // The guard row is not repeated under ## Failures; the javac row still is.
         int failures = md.indexOf("## Failures");
         assertThat(failures).isGreaterThan(0);

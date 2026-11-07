@@ -94,7 +94,7 @@ class LockOrchestratorSiblingPinsTest {
                 .extracting(Lockfile.Artifact::version)
                 .containsExactly("1.0");
         assertThat(rows(lock, "com.foo:middle:jar:")).hasSize(1).allMatch(r -> !r.isPartition());
-        assertThat(notes).contains("lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)");
+        assertThat(notes).contains("lib locks its own versions of 1 dependency: com.foo:leaf 1.0 (workspace 2.0)");
     }
 
     /**

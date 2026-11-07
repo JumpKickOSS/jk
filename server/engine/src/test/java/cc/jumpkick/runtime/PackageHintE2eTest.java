@@ -58,9 +58,9 @@ class PackageHintE2eTest {
 
         String md = JkResultsMarkdown.render(record);
         assertThat(md)
-                .contains("→ package `org.jspecify.annotations` is provided by `org.jspecify:jspecify` "
-                        + "(in the lock, not on this module's compile classpath): `jk add org.jspecify:jspecify` "
-                        + "in this module, or fix the import.");
+                .contains("→ package `org.jspecify.annotations` is in `org.jspecify:jspecify` "
+                        + "(in the lock, not on this module's compile classpath): `jk add org.jspecify:jspecify`, "
+                        + "or fix the import\n");
     }
 
     private static Path write(Path project) throws Exception {

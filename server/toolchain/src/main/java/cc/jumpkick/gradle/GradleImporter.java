@@ -258,7 +258,7 @@ public final class GradleImporter {
                 }
                 default -> {
                     if (!importRules.containsKey(pluginId)) {
-                        report.warning("Gradle plugin " + pluginId + " not mapped");
+                        report.warning("Gradle plugin " + pluginId + ": not imported");
                     }
                 }
             }
@@ -481,7 +481,7 @@ public final class GradleImporter {
             }
         }
         if (body.contains("mavenLocal()")) {
-            report.warning("mavenLocal() not mapped; jk reads ~/.m2 already");
+            report.warning("mavenLocal() ignored; jk reads ~/.m2 already");
         }
         return new ArrayList<>(deduped.values());
     }

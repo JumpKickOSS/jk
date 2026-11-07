@@ -227,7 +227,7 @@ class GuardLayersTest {
         assertThat(messages(r))
                 .anySatisfy(m -> assertThat(m)
                         .contains("pack com.acme:house-rules:2.0.0 is not unpacked")
-                        .contains("run `jk lock`"))
+                        .contains("run jk lock"))
                 .anySatisfy(m -> assertThat(m).contains("pack floating:pack:2 is not unpacked"))
                 .hasSize(2); // one message per pack, none silently skipped
         // pack

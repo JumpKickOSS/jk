@@ -39,8 +39,8 @@ class ProjectImportTest {
         assertThat(outcome.exit()).isEqualTo(Exit.CANT_CREATE);
         assertThat(outcome.wrote()).isEmpty();
         assertThat(outcome.error())
-                .contains("refusing to overwrite 2 existing manifests: core/jk.toml, app/jk.toml")
-                .contains("nothing was written")
+                .contains("2 manifests: core/jk.toml, app/jk.toml already exist")
+                .contains("nothing written")
                 .contains("--overwrite");
         assertThat(root.resolve("jk.toml"))
                 .as("the root manifest is not written either")

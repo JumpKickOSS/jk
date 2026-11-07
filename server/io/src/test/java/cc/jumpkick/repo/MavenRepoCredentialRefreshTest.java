@@ -115,7 +115,7 @@ class MavenRepoCredentialRefreshTest {
         assertThatThrownBy(() -> repo.fetchPom(Coordinate.of("com.acme", "lib", "1.0")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("corp refused its credential (HTTP 401")
-                .hasMessageContaining("the value its credential helper printed when it ran again was refused too");
+                .hasMessageContaining("the credential helper's new value was refused too");
         assertThatThrownBy(() -> repo.fetchPom(Coordinate.of("com.acme", "lib", "1.0")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("was refused too");

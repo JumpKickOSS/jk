@@ -54,8 +54,8 @@ class LockCommandLiveHandlerTest {
         JkManager view = JkManager.plan(
                 new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8), "Lock", false);
         LockCommand.LiveLockHandler handler = new LockCommand.LiveLockHandler(view);
-        String note = "lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)";
-        String override = "com.foo:leaf 2.0 is the main graph's version; com.foo:middle 1.0 asked for 1.0";
+        String note = "lib locks its own versions of 1 dependency: com.foo:leaf 1.0 (workspace 2.0)";
+        String override = "com.foo:leaf 2.0: tests use the main version; com.foo:middle 1.0 asked for 1.0";
 
         BuildPlanListener plan = handler.onModuleStart("/w", "com.acme:ws", List.of());
         plan.warn("resolve-deps", "lock-note", note);
@@ -74,7 +74,7 @@ class LockCommandLiveHandlerTest {
     void a_failed_locks_notes_print_above_its_errors() {
         String keychain = "jk: warning: the `jk repo login nexus` secret is in the Secret Service, which did not"
                 + " give it up (locked)";
-        String error = "repository `nexus` was passed over (HTTP 401: it asks for credentials)";
+        String error = "repository `nexus` skipped (HTTP 401: it asks for credentials)";
 
         List<String> lines = LockCommand.failureLines(List.of(keychain), List.of(error)).stream()
                 .map(l -> l.replaceAll("\u001b\\[[\\d;]*m", ""))

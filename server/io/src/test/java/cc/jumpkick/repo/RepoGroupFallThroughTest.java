@@ -106,7 +106,7 @@ class RepoGroupFallThroughTest {
         }
         assertThat(versions).containsExactlyInAnyOrder("1.0", "2.0");
         String out = err.toString(StandardCharsets.UTF_8);
-        assertThat(out).contains("repository dead is unreachable").contains("trying the remaining repositories");
+        assertThat(out).contains("repository dead is unreachable").contains("trying the others");
         assertThat(out.indexOf("dead is unreachable"))
                 .as("said once per run, not per coordinate")
                 .isEqualTo(out.lastIndexOf("dead is unreachable"));
@@ -182,7 +182,7 @@ class RepoGroupFallThroughTest {
             Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
         String out = err.toString(StandardCharsets.UTF_8);
-        assertThat(out).contains("repository dead is unreachable").contains("good holds the POM");
+        assertThat(out).contains("repository dead is unreachable").contains(" from good");
         assertThat(out.indexOf("dead is unreachable")).isEqualTo(out.lastIndexOf("dead is unreachable"));
     }
 

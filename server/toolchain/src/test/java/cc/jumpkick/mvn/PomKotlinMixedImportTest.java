@@ -120,7 +120,7 @@ class PomKotlinMixedImportTest {
         assertThat(JkBuildRenderer.render(result.jkBuild()))
                 .contains("kotlin   = \"" + KotlinResolver.FLOOR_VERSION + "\"\n");
         assertThat(TestImporters.messages(result))
-                .anySatisfy(m -> assertThat(m).contains("Kotlin 2.2.21 is below jk's floor"));
+                .anySatisfy(m -> assertThat(m).contains("Kotlin 2.2.21 is below jk's minimum"));
     }
 
     /** An archive's POM has no tree behind it: a Kotlin plugin that never binds {@code compile} leaves main to javac. */

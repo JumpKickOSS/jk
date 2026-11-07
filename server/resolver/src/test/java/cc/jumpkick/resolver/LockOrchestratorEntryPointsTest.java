@@ -242,9 +242,8 @@ class LockOrchestratorEntryPointsTest {
             assertThat(row(lock, "com.foo:widget:jar:").pinnedBy()).as(label).isEqualTo("org.example:bom-b:1.0");
             assertThat(overrides)
                     .as(label)
-                    .containsExactly("com.foo:widget 2.0 is org.example:bom-b:1.0's, the highest a"
-                            + " [platform-dependencies] entry manages; org.example:bom-a:1.0 constrains to 1.0"
-                            + " — the highest version wins");
+                    .containsExactly("com.foo:widget 2.0 from org.example:bom-b:1.0 wins over 1.0 from"
+                            + " org.example:bom-a:1.0; the highest version wins");
         }
     }
 
@@ -304,9 +303,9 @@ class LockOrchestratorEntryPointsTest {
                         observer);
 
         assertThat(overrides)
-                .containsExactly("org.example:bom-b:1.0 wins over org.example:bom-a:1.0 on 2 modules it manages higher:"
+                .containsExactly("org.example:bom-b:1.0 wins over org.example:bom-a:1.0 on 2 modules:"
                         + " com.foo:gadget 3.0 over 1.0, com.foo:widget 2.0 over 1.0"
-                        + " — the highest version wins");
+                        + "; the highest version wins");
     }
 
     /**
@@ -323,10 +322,9 @@ class LockOrchestratorEntryPointsTest {
                 project(Map.of(Scope.MAIN, List.of(new Dependency("com.foo:ghost", VersionSelector.parse("=1.0")))));
         assertThatThrownBy(() -> new LockOrchestrator(repos(dir.resolve("plain"))).lock(plain, "test"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("could not fetch artifact com.foo:ghost:1.0 at com/foo/ghost/1.0/ghost-1.0.jar (tried: "
+                .hasMessage("artifact com.foo:ghost:1.0 not found at com/foo/ghost/1.0/ghost-1.0.jar (tried: "
                         + repo
-                        + "com/foo/ghost/1.0/ghost-1.0.jar) — the POM resolved but the artifact is missing;"
-                        + " check the coordinate and repositories");
+                        + "com/foo/ghost/1.0/ghost-1.0.jar); its POM exists, so check the coordinate and repositories");
 
         JkBuild tests = project(Map.of(
                 Scope.MAIN,
@@ -334,11 +332,11 @@ class LockOrchestratorEntryPointsTest {
                         .withKind(DependencyKind.TESTS))));
         assertThatThrownBy(() -> new LockOrchestrator(repos(dir.resolve("tests"))).lock(tests, "test"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("could not fetch artifact com.foo:ghost:1.0 classifier=tests"
-                        + " at com/foo/ghost/1.0/ghost-1.0-tests.jar (tried: "
-                        + repo
-                        + "com/foo/ghost/1.0/ghost-1.0-tests.jar) — the POM resolved but the artifact is missing;"
-                        + " check the coordinate and repositories");
+                .hasMessage(
+                        "artifact com.foo:ghost:1.0 classifier=tests"
+                                + " not found at com/foo/ghost/1.0/ghost-1.0-tests.jar (tried: "
+                                + repo
+                                + "com/foo/ghost/1.0/ghost-1.0-tests.jar); its POM exists, so check the coordinate and repositories");
     }
 
     /**
@@ -395,7 +393,7 @@ class LockOrchestratorEntryPointsTest {
         assertThat(thrown.get())
                 .as("the real cause, not the abort noise a settled sibling reports")
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageStartingWith("could not fetch artifact com.foo:ghost:1.0 ");
+                .hasMessageStartingWith("artifact com.foo:ghost:1.0 not found");
     }
 
     private static void await(CountDownLatch latch) {

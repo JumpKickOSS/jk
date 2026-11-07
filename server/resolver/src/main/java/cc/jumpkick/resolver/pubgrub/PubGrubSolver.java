@@ -299,14 +299,10 @@ public class PubGrubSolver {
         // Count every entry: unit-prop rounds and conflict-resolution steps, not only decides.
         stepCount++;
         if (stepCount > maxSteps) {
-            throwBudget("exceeded solver step budget ("
-                    + stepCount
-                    + " steps, limit "
-                    + maxSteps
-                    + "); set JK_RESOLVE_MAX_DECISIONS to raise");
+            throwBudget("solver step limit " + maxSteps + " reached; raise it with JK_RESOLVE_MAX_DECISIONS");
         }
         if (decisionCount > maxDecisions) {
-            throwBudget("exceeded max decisions (" + maxDecisions + "); set JK_RESOLVE_MAX_DECISIONS to raise");
+            throwBudget("decision limit " + maxDecisions + " reached; raise it with JK_RESOLVE_MAX_DECISIONS");
         }
         StallWatch stalls = watch;
         if (stalls != null && stalls.tripped()) throwBudget(stalls.stall());

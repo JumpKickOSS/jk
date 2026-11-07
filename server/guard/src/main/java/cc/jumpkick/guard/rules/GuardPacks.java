@@ -225,7 +225,7 @@ public final class GuardPacks {
             Path dir = unpackedDir(root, c);
             if (pin == null) {
                 if (Files.isRegularFile(fragment(dir))) continue; // an earlier unpack still stands
-                problems.add("pack " + c.gav() + " is not pinned in jk-lock.toml — run `jk lock`");
+                problems.add("pack " + c.gav() + " is not in jk-lock.toml; run jk lock");
                 continue;
             }
             String hex = pin.sha256Hex();
@@ -235,8 +235,7 @@ public final class GuardPacks {
                 Path jar = locateJar(c, pin, store);
                 if (jar == null) {
                     if (Files.isRegularFile(fragment(dir))) continue; // an earlier unpack still stands
-                    problems.add("pack " + c.gav()
-                            + " is pinned by version but its jar is neither unpacked nor in the store — run `jk lock`");
+                    problems.add("pack " + c.gav() + " is pinned by version but its jar is missing; run jk lock");
                     continue;
                 }
                 hex = Hashing.sha256Hex(jar);
@@ -246,7 +245,7 @@ public final class GuardPacks {
             if (unpackedAs(dir, hex)) continue; // `jk lock` already unpacked these bytes
             Path jar = locateJar(c, pin, store);
             if (jar == null) {
-                problems.add("pack " + c.gav() + " is pinned but neither unpacked nor in the store — run `jk lock`");
+                problems.add("pack " + c.gav() + " is pinned but its jar is missing; run jk lock");
                 continue;
             }
             String actual = Hashing.sha256Hex(jar);
@@ -265,6 +264,6 @@ public final class GuardPacks {
     static String digestMismatch(Coordinate c, String pinned, String actual) {
         return "pack " + c.gav() + ": the jar in the store is sha256 " + actual.substring(0, 12)
                 + "… but jk-lock.toml pins sha256 " + pinned.substring(0, 12)
-                + "… — run `jk lock` to pin the jar you have, or put the pinned jar back in the store";
+                + "…; run jk lock to pin the jar you have, or restore the pinned jar";
     }
 }

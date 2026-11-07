@@ -256,10 +256,8 @@ final class ScopeSolves {
                 out.add(root);
                 continue;
             }
-            overrides.add(root.module() + " is pinned to " + exact.version()
-                    + " in a test scope, but the main graph resolves " + decided.version()
-                    + " and the test classpath carries main's version: the lock writes " + decided.version()
-                    + " for both scopes; move the pin to a main scope or drop it");
+            overrides.add(root.module() + ": test pin " + exact.version() + " ignored, tests use the main version "
+                    + decided.version() + "; move the pin to [dependencies] or drop it");
             out.add(root.withVersion(VersionSelector.parse("=" + decided.version())));
         }
         return out;
@@ -286,11 +284,10 @@ final class ScopeSolves {
                         ga(holder.module()) + "@" + holder.version() + (declared == null ? "" : " (" + declared + ")"));
             }
             String module = ga(decided.module());
-            overrides.add(module + " resolves " + mains.version() + " in the main graph and " + decided.version()
-                    + " in the test graph" + (holders.isEmpty() ? "" : ", held there by " + String.join(", ", holders))
-                    + "; the test classpath carries main's " + mains.version() + ", so the test row at "
-                    + decided.version() + " is content nothing reads: declare " + module + " at " + decided.version()
-                    + " in a main scope, or use a test dependency that accepts " + mains.version());
+            overrides.add(module + ": tests use the main version " + mains.version() + ", not " + decided.version()
+                    + (holders.isEmpty() ? "" : " (asked by " + String.join(", ", holders) + ")") + "; declare "
+                    + module + " " + decided.version() + " in [dependencies], or use a test dependency that accepts "
+                    + mains.version());
         }
     }
 

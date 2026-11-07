@@ -240,7 +240,7 @@ needs is raised to the version the graph resolves, as `jk import` raises it, and
 POM changed says so once; `jk mvn` runs Maven itself. A frontend-maven-plugin build is built in
 place too, without moving or rewriting a file
 ([Node § Building a pom.xml in place](node.md#building-a-pomxml-in-place)). The results file's header says which mode ran — `manifest: pom.xml,
-no jk.toml (effective POM, built in place)` — so an agent reading `target/jk-results.md` knows the
+no jk.toml` — so an agent reading `target/jk-results.md` knows the
 manifest it should edit is the POM.
 
 A reactor — a POM with `<modules>`, at the top level or in a profile — builds as a workspace.

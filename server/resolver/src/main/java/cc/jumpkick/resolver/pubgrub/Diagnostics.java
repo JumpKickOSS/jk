@@ -155,11 +155,7 @@ public final class Diagnostics {
                 // Highest-first sample from the solver — first entry is the best advertised pin.
                 lines.add("Pin " + display + " to " + candidate + " (e.g. `" + pinExample(display, candidate) + "`)");
                 int n = Math.min(3, nv.available().size());
-                lines.add("Or relax the version constraint on "
-                        + display
-                        + " so one of ["
-                        + String.join(", ", nv.available().subList(0, n))
-                        + "] is allowed");
+                lines.add("Or allow one of [" + String.join(", ", nv.available().subList(0, n)) + "] for " + display);
             }
             case Incompatibility.Cause.Dependency dep -> {
                 if (ROOT_PKG.equals(dep.from().pkg())
@@ -330,8 +326,8 @@ public final class Diagnostics {
                         .append(colorVersion(u.version(), palette))
                         .append(
                                 u.declaredOnly()
-                                        ? " is named by a POM but no declared repository has it — skipped\n"
-                                        : " is advertised but not fetchable (half-published release?) — skipped\n");
+                                        ? " is in no declared repository; skipped\n"
+                                        : " is listed but cannot be downloaded; skipped\n");
             case Incompatibility.Cause.BudgetExceeded b ->
                 out.append(prefix)
                         .append(label)

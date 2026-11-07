@@ -86,7 +86,7 @@ final class JkResultsHints {
                         ? probFoundReq(m.group(1), m.group(2))
                         : new Hint(
                                 PROB_FOUND_REQ,
-                                "the value's type is not the one the declaration requires: change the declared type, convert the value, or cast when the narrowing is intended.");
+                                "type mismatch: change the declared type, convert the value, or cast it");
             }
             case UNREPORTED_EXCEPTION -> unreported(group(UNREPORTED, first, "the checked exception"));
             case MISSING_RETURN -> missingReturn();
@@ -120,10 +120,7 @@ final class JkResultsHints {
         String location = field(message, "location:");
         String what = symbol.isEmpty() ? "the name" : "`" + symbol + "`";
         String where = location.isEmpty() ? "here" : "in `" + location + "`";
-        return new Hint(
-                key,
-                what + " is not declared " + where + " and not imported: fix the name, add the import, or " + ADD
-                        + ".");
+        return new Hint(key, what + " is not declared " + where + ": fix the name, add the import, or " + ADD);
     }
 
     /**
@@ -150,18 +147,15 @@ final class JkResultsHints {
             if (!withoutFile.isEmpty()) {
                 return new Hint(
                         DOESNT_EXIST,
-                        "nothing on this module's compile classpath provides package `" + pkg
-                                + "`, and the lock carries " + withoutFile
-                                + " without a file — each stands for its POM alone: `packaging=pom` with no jar"
-                                + " found beside it when the lock was written, or a relocation stub. If the"
-                                + " package is one of theirs, add the repository that publishes the jar to"
-                                + " `[repositories]` and re-run `jk lock`; otherwise `jk add <group:artifact>` the"
-                                + " library that ships it.");
+                        "no dependency provides package `" + pkg + "`; " + withoutFile
+                                + " is locked as a POM with no jar: add the repository that publishes the jar to"
+                                + " `[repositories]` and run `jk lock`, or `jk add <group:artifact>` the library"
+                                + " that ships it");
             }
             return new Hint(
                     DOESNT_EXIST,
-                    "nothing on this module's compile classpath provides package `" + pkg
-                            + "`: `jk add <group:artifact>` the library that ships it, or fix the import.");
+                    "no dependency provides package `" + pkg
+                            + "`: `jk add <group:artifact>` the library that ships it, or fix the import");
         }
         return providedBy(DOESNT_EXIST, "package `" + pkg + "`", provider);
     }
@@ -183,48 +177,39 @@ final class JkResultsHints {
         if (coords.length >= 2) {
             return new Hint(
                     code,
-                    subject + " is provided by `" + coords[0] + "` or `" + coords[1] + "`" + where + ": `jk add "
-                            + coords[0] + "` or `jk add " + coords[1] + "` in this module, or fix the import.");
+                    subject + " is in `" + coords[0] + "` or `" + coords[1] + "`" + where + ": `jk add " + coords[0]
+                            + "` or `jk add " + coords[1] + "`, or fix the import");
         }
         String coordinate = coords[0];
         return new Hint(
                 code,
-                subject + " is provided by `" + coordinate + "`" + where + ": `jk add " + coordinate
-                        + "` in this module, or fix the import.");
+                subject + " is in `" + coordinate + "`" + where + ": `jk add " + coordinate + "`, or fix the import");
     }
 
     private static Hint probFoundReq(String found, String required) {
         return new Hint(
                 PROB_FOUND_REQ,
-                "the value is `" + found + "` where `" + required
-                        + "` is required: change the declared type, convert the value, or cast when the narrowing is intended.");
+                "`" + found + "` found where `" + required
+                        + "` is required: change the declared type, convert the value, or cast it");
     }
 
     private static Hint unreported(String exception) {
         return new Hint(
-                UNREPORTED_EXCEPTION,
-                "catch `" + exception + "` around the call, or add `throws " + exception
-                        + "` to the enclosing method.");
+                UNREPORTED_EXCEPTION, "catch `" + exception + "`, or add `throws " + exception + "` to the method");
     }
 
     private static Hint missingReturn() {
-        return new Hint(
-                MISSING_RETURN,
-                "every path out of the method must return a value: add a return after the last branch.");
+        return new Hint(MISSING_RETURN, "every path must return a value: add a return after the last branch");
     }
 
     private static Hint uninitialized(String variable) {
         return new Hint(
                 UNINITIALIZED_VAR,
-                "`" + variable
-                        + "` is read on a path that never assigned it: initialize it at the declaration or on every branch.");
+                "`" + variable + "` may be unassigned here: initialize it where it is declared or on every branch");
     }
 
     private static Hint nonStatic(String member) {
-        return new Hint(
-                NON_STATIC,
-                "`" + member
-                        + "` belongs to an instance: call it on one, or make it static when it uses no instance state.");
+        return new Hint(NON_STATIC, "`" + member + "` needs an instance: call it on one, or make it static");
     }
 
     /** The pattern's first group in {@code text}, or {@code fallback} when the message has another shape. */
@@ -239,29 +224,26 @@ final class JkResultsHints {
         if (m.find()) {
             String provider = field(message, "provided by:");
             if (!provider.isEmpty()) {
-                return providedBy("UNRESOLVED_REFERENCE", "the import of `" + m.group(1) + "`", provider);
+                return providedBy("UNRESOLVED_REFERENCE", "`" + m.group(1) + "`", provider);
             }
             return new Hint(
                     "UNRESOLVED_REFERENCE",
-                    "`" + m.group(1)
-                            + "` is not declared, imported or on this module's compile classpath: fix the name, add the import, or "
-                            + ADD + ".");
+                    "`" + m.group(1) + "` is not declared or imported: fix the name, add the import, or " + ADD);
         }
         if (lower.contains("type mismatch")) {
             return new Hint(
-                    "TYPE_MISMATCH",
-                    "the value's type is not the one the declaration wants: change the declared type, convert the value, or cast with `as` when the narrowing is intended.");
+                    "TYPE_MISMATCH", "type mismatch: change the declared type, convert the value, or cast with `as`");
         }
         if (lower.contains("only safe (?.) or non-null asserted (!!.) calls are allowed")) {
             return new Hint(
                     "UNSAFE_CALL",
-                    "the receiver may be null: call through `?.`, check for null first, or make the type non-null where the value is produced.");
+                    "the receiver may be null: use `?.`, check for null first, or make the type non-null");
         }
         m = KT_NO_VALUE.matcher(first);
         if (m.find()) {
             return new Hint(
                     "NO_VALUE_FOR_PARAMETER",
-                    "pass an argument for `" + m.group(1) + "`, or give the parameter a default value.");
+                    "pass an argument for `" + m.group(1) + "`, or give the parameter a default value");
         }
         return null;
     }

@@ -141,10 +141,9 @@ class LockOrchestratorScopeTest {
         assertThat(overrides)
                 .singleElement()
                 .asString()
-                .contains("com.foo:shared resolves 2.0 in the main graph and 3.0 in the test graph")
-                .contains("held there by com.foo:lib-test@1.0 ([3.0,3.0])")
-                .contains("the test classpath carries main's 2.0")
-                .contains("declare com.foo:shared at 3.0 in a main scope");
+                .contains("com.foo:shared: tests use the main version 2.0, not 3.0")
+                .contains("(asked by com.foo:lib-test@1.0 ([3.0,3.0]))")
+                .contains("declare com.foo:shared 3.0 in [dependencies]");
     }
 
     private static ResolveObserver recording(List<String> overrides) {

@@ -86,8 +86,8 @@ class LockDeclaredRepositoryTest {
         assertThat(everit.source()).isEqualTo("jitpack.io+" + jitpack.baseUrl());
         assertThat(everit.checksum()).startsWith("sha256:");
         assertThat(notes).singleElement().satisfies(note -> assertThat(note)
-                .startsWith("repository `jitpack.io` at " + jitpack.baseUrl())
-                .contains("declared by the POM of io.apicurio:schema-util-json:2.6.13"));
+                .startsWith("repository `jitpack.io` (" + jitpack.baseUrl() + ")")
+                .contains("from the POM of io.apicurio:schema-util-json:2.6.13"));
     }
 
     @Test
@@ -141,8 +141,8 @@ class LockDeclaredRepositoryTest {
 
         assertThat(lock.artifacts()).anyMatch(a -> a.name().startsWith("com.foo:leaf:"));
         assertThat(notes).singleElement().satisfies(note -> assertThat(note)
-                .startsWith("repository `apache.snapshots` at http://repository.apache.org/snapshots")
-                .contains("was not used: it is plaintext http"));
+                .startsWith("repository `apache.snapshots` (http://repository.apache.org/snapshots")
+                .contains("not used: plain http"));
     }
 
     /** A POM that declares a repository no row of the lock came from earns no note. */

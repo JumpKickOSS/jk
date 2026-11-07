@@ -97,8 +97,7 @@ Version syntax: [Projects](projects.md#version-strings). Scopes:
 the catalog counterpart of the versionless `group:artifact` string, so a BOM-managed starter needs
 no inline table, and it is a word rather than `""` or `"*"` because an empty string says nothing
 and `*` would promise "any version" where the platform allows exactly one. `jk lock` refuses a `managed` entry no BOM or managed entry of the manifest
-covers — `` `group:artifact` is declared without a version, but no [platform-dependencies] BOM
-manages it `` — and `jk update` leaves the entry alone: moving the BOM moves the version. A
+covers — `` `group:artifact` has no version and no platform BOM manages it `` — and `jk update` leaves the entry alone: moving the BOM moves the version. A
 written version on the same coordinate in another table of the manifest — or, in a workspace, in
 another member — is a user root, and a user root beats the BOM for that coordinate wherever it is
 declared: the `managed` entry takes the pin's version and the lock writes one row. The
@@ -328,7 +327,7 @@ refusal says so, naming each repository asked and its policy:
 ‼ Cannot resolve dependencies:
   │ No versions of org.questdb:questdb-client match 1.3.10-SNAPSHOT
   │   available: 1.3.9, 1.3.8, …
-  │   1.3.10-SNAPSHOT is a snapshot, and no repository org.questdb:questdb-client may resolve from serves snapshots: central (releases only). Declare one under [repositories] …
+  │   1.3.10-SNAPSHOT is a snapshot and no repository for org.questdb:questdb-client serves snapshots: central (releases only); add one to [repositories]
 ```
 
 ### An exact version the first catalog does not list
@@ -348,7 +347,7 @@ workspace lock resolves every member against the root's list.
 
 One remote's reset, timeout or 5xx is that remote's problem, not an answer about the coordinate.
 While catalogs are read, the failing repository is skipped with one warning per run
-(`repository jboss is unreachable (…); trying the remaining repositories`) and the others are
+(`repository jboss is unreachable (…); trying the others`) and the others are
 asked; the lock fails on it only when every repository failed. On the artifact leg the repository
 that served a coordinate's POM is the one whose answer counts — a GAV's POM and its files are
 published together — so when that repository says there is no jar (a relocation stub, a BOM), another

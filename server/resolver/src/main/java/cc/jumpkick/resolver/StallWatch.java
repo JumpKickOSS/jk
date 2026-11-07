@@ -133,7 +133,7 @@ public final class StallWatch {
                         + now
                         + " completed)"
                         + (parked.isEmpty() ? "" : "; " + parked)
-                        + "; set JK_RESOLVE_TIMEOUT_MS to change the stall window (0 = never)";
+                        + "; JK_RESOLVE_TIMEOUT_MS sets this limit (0 = none)";
                 if (solver != null) solver.interrupt();
                 return;
             }

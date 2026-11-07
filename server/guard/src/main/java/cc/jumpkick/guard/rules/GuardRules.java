@@ -102,8 +102,7 @@ public final class GuardRules {
                         file,
                         extendsLine,
                         null,
-                        "[guards] extends: `" + declared
-                                + "` is not group:artifact:version — a pack is pinned exactly"));
+                        "[guards] extends: `" + declared + "` is not group:artifact:version; pin a pack exactly"));
                 continue;
             }
             Path fragment = GuardPacks.fragment(GuardPacks.unpackedDir(root, c));
@@ -115,7 +114,7 @@ public final class GuardRules {
                             extendsLine,
                             null,
                             "pack " + c.gav() + " is not unpacked under " + root.relativize(fragment.getParent())
-                                    + " — run `jk lock`, then `jk build`"));
+                                    + "; run jk lock, then jk build"));
                 }
                 continue;
             }
@@ -289,7 +288,7 @@ public final class GuardRules {
                         file,
                         lineOf(toml, List.of(top)),
                         null,
-                        "unknown top-level table `" + top + "` — every rule is a [guards.<id>] table"));
+                        "unknown top-level table `" + top + "`; every rule is a [guards.<id>] table"));
             }
         }
         TomlTable guards = toml.getTable("guards");
@@ -316,7 +315,7 @@ public final class GuardRules {
                         file,
                         line,
                         null,
-                        "[guards] unknown key `" + key + "` — the only keys here are [guards.<id>] tables"));
+                        "[guards] unknown key `" + key + "`; only [guards.<id>] tables go here"));
                 continue;
             }
             if (!ID.matcher(key).matches()) {
@@ -366,7 +365,7 @@ public final class GuardRules {
                             line,
                             key,
                             "`" + key + "` is locked by " + above.source().render()
-                                    + "; a consumer cannot allow against it — the pack's own allow entries apply"));
+                                    + "; a consumer cannot allow against it; only the pack's own allow entries apply"));
                     continue;
                 }
                 List<Allow> more = readAllow(key, table, toml, file, problems);
@@ -411,7 +410,7 @@ public final class GuardRules {
                 null,
                 worst.size() + (worst.size() == 1 ? " rule is" : " rules are") + " over the " + TOKEN_BUDGET
                         + "-token budget (" + named + more
-                        + ") — a rule this long is a program, consider a guard test"));
+                        + "); consider a guard test instead"));
     }
 
     /** A rule above {@link #TOKEN_BUDGET}: its id, its size, and where it starts. */
@@ -606,12 +605,7 @@ public final class GuardRules {
             if (in == null || in.isBlank())
                 problems.add(err(file, line, id, "allow entry " + (i + 1) + " has no `in`"));
             if (reason == null || reason.isBlank()) {
-                problems.add(err(
-                        file,
-                        line,
-                        id,
-                        "allow entry " + (i + 1)
-                                + " has no `reason` — an exemption without a reason is a suppression"));
+                problems.add(err(file, line, id, "allow entry " + (i + 1) + " has no `reason`; add one"));
             }
             for (String k : e.keySet()) {
                 if (!"in".equals(k) && !"reason".equals(k))

@@ -28,7 +28,7 @@ jk results -d    # print that run's details.jsonl
 ```
 
 Every hosted verb that journals a run — `jk build`, `jk test`, `jk lock`, `jk sync`, `jk update`, …
-— writes the transcript its report's `Step-by-step transcript` line names.
+— writes the transcript its report's `Step log` line names.
 
 On disk (the command reads the journal copy; `target/` is a latest-copy fallback):
 

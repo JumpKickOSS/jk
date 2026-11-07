@@ -37,7 +37,7 @@ import org.junit.jupiter.api.io.TempDir;
 class WorkspaceMemberRowsCliTest {
 
     /** The one-sentence form: every row of app's own is what its BOM manages. */
-    private static final String APP_NOTE = "app reads its own rows for 1 coordinate org.example:the-bom:1.0 manages";
+    private static final String APP_NOTE = "app locks its own versions of 1 dependency org.example:the-bom:1.0 manages";
 
     @RegisterExtension
     final MockMavenServer maven = new MockMavenServer();
@@ -94,14 +94,14 @@ class WorkspaceMemberRowsCliTest {
 
         String results = Files.readString(root.resolve("target/jk-results.md"));
         assertThat(results).contains("## Lock notes").contains(APP_NOTE);
-        Matcher details =
-                Pattern.compile("transcript: `([^`]+details\\.jsonl)`").matcher(results);
+        Matcher details = Pattern.compile("Step log [^`]*`-O jsonl`\\): `([^`]+details\\.jsonl)`")
+                .matcher(results);
         assertThat(details.find())
                 .as("the results file names its details.jsonl:\n" + results)
                 .isTrue();
         Path transcript = Path.of(details.group(1));
         assertThat(transcript).as("the lock's run record has a transcript").exists();
-        assertThat(Files.readString(transcript)).contains("lock-note").contains("app reads its own rows");
+        assertThat(Files.readString(transcript)).contains("lock-note").contains("app locks its own versions");
     }
 
     @Test

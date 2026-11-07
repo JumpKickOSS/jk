@@ -402,8 +402,8 @@ public final class ProjectImport {
                             : absolute.toString());
         }
         if (existing.isEmpty()) return null;
-        return "refusing to overwrite " + (existing.size() == 1 ? "" : existing.size() + " existing manifests: ")
-                + String.join(", ", existing) + " — nothing was written; pass " + OVERWRITE_FLAG
-                + " to replace " + (existing.size() == 1 ? "it" : "them") + ".";
+        return (existing.size() == 1 ? "" : existing.size() + " manifests: ") + String.join(", ", existing)
+                + " already " + (existing.size() == 1 ? "exists" : "exist") + "; nothing written, pass "
+                + OVERWRITE_FLAG + " to replace " + (existing.size() == 1 ? "it" : "them");
     }
 }

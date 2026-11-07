@@ -27,11 +27,11 @@ class JkResultsSlowestSectionTest {
         JkResultsSlowestSection.append(sb, slowest.ranking());
         assertThat(sb.toString())
                 .isEqualTo("## Slowest tests\n\n"
-                        + "Classes and methods of this run that took 1.0s or more; a suite served from cache is not"
-                        + " timed. To speed one up: share the fixture, seam the wait, or move it to a tier.\n\n"
-                        + "| Class | Module | Tier | Took |\n|---|---|---|---|\n"
+                        + "Tests that took 1.0s or more. Cached suites are not timed.\n"
+                        + "To speed one up, share fixtures, avoid real waits, or move it to a slower suite.\n\n"
+                        + "| Class | Module | Suite | Took |\n|---|---|---|---|\n"
                         + "| `cc.demo.EngineE2eTest` | g:engine | fast | 12.3s |\n\n"
-                        + "| Method | Module | Tier | Took |\n|---|---|---|---|\n"
+                        + "| Method | Module | Suite | Took |\n|---|---|---|---|\n"
                         + "| `cc.demo.EngineE2eTest#boots` | g:engine | fast | 4.2s |\n\n");
     }
 

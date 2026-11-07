@@ -125,20 +125,15 @@ public final class LanguageRuntimeInject {
             e.setValue(d.withVersion(new VersionSelector.Exact("=" + compiler, compiler)));
         }
         if (moved.isEmpty()) return;
-        StringBuilder note = new StringBuilder("the module compiles with Kotlin ")
+        StringBuilder note = new StringBuilder("Kotlin stdlib set to the compiler's ")
                 .append(compiler)
-                .append(", so its stdlib family follows the compiler: ");
+                .append(": ");
         boolean first = true;
         for (Map.Entry<String, String> e : moved.entrySet()) {
             if (!first) note.append(", ");
             first = false;
-            note.append(e.getKey())
-                    .append(" at ")
-                    .append(compiler)
-                    .append(" instead of ")
-                    .append(e.getValue());
+            note.append(e.getKey()).append(" (was ").append(e.getValue()).append(')');
         }
-        note.append(" — one stdlib on the compile classpath, the one the compiled classes were written against");
         notes.add(note.toString());
     }
 

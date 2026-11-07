@@ -19,7 +19,7 @@ public final class ImportedKotlin {
         if (!(declared instanceof VersionSelector.Exact exact) || !KotlinResolver.belowFloor(exact.version())) {
             return declared;
         }
-        report.warning("Kotlin " + exact.version() + " is below jk's floor; wrote kotlin = \""
+        report.warning("Kotlin " + exact.version() + " is below jk's minimum; wrote kotlin = \""
                 + KotlinResolver.FLOOR_VERSION + "\". Check for new compiler warnings");
         return VersionSelector.parse(KotlinResolver.FLOOR_VERSION);
     }

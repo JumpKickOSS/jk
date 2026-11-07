@@ -80,7 +80,7 @@ class GradleJvmCompatibilityTest {
         assertThatThrownBy(() -> GradleJvmCompatibility.pick(
                         "8.3", Path.of("/jdks/25"), 25, () -> List.of(hit("/jdks/25", "25.0.4.1")), install))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("Gradle 8.3 runs on JDK 8 to 20")
+                .hasMessageContaining("Gradle 8.3 needs JDK 8 to 20 and none is installed")
                 .hasMessageContaining("installing JDK 17 failed: no JDK matches 17 on linux/riscv64")
                 .hasMessageContaining("jk jdk install 17");
     }

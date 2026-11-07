@@ -23,8 +23,8 @@ class JkResultsHintsTest {
                   symbol:   method missing()
                   location: class Main"""));
         assertThat(md)
-                .contains("→ `method missing()` is not declared in `class Main` and not imported: "
-                        + "fix the name, add the import, or `jk add` the dependency that provides it.");
+                .contains("→ `method missing()` is not declared in `class Main`: "
+                        + "fix the name, add the import, or `jk add` the dependency that provides it\n");
         assertThat(code(javac("cannot find symbol"))).isEqualTo("compiler.err.cant.resolve.location");
     }
 
@@ -33,16 +33,16 @@ class JkResultsHintsTest {
         String md = render(
                 javac("/ws/app/src/com/acme/Main.java:3:29: error: package com.google.common.collect does not exist"));
         assertThat(md)
-                .contains("→ nothing on this module's compile classpath provides package `com.google.common.collect`: "
-                        + "`jk add <group:artifact>` the library that ships it, or fix the import.");
+                .contains("→ no dependency provides package `com.google.common.collect`: "
+                        + "`jk add <group:artifact>` the library that ships it, or fix the import\n");
         assertThat(code(javac("package a.b does not exist"))).isEqualTo("compiler.err.doesnt.exist");
 
         String provided = render(javac("""
                 /ws/app/src/com/acme/Main.java:3:29: error: package com.google.common.collect does not exist
                   provided by: com.google.guava:guava (library catalog)"""));
         assertThat(provided)
-                .contains("→ package `com.google.common.collect` is provided by `com.google.guava:guava` "
-                        + "(library catalog): `jk add com.google.guava:guava` in this module, or fix the import.");
+                .contains("→ package `com.google.common.collect` is in `com.google.guava:guava` "
+                        + "(library catalog): `jk add com.google.guava:guava`, or fix the import\n");
     }
 
     /**
@@ -57,10 +57,9 @@ class JkResultsHintsTest {
                 /ws/adapter/src/Main.java:3:22: error: package org.jboss.security does not exist
                   locked without a file: org.picketbox:picketbox:5.0.3.Final (central+https://repo.maven.apache.org/maven2/)"""));
         assertThat(md)
-                .contains("the lock carries org.picketbox:picketbox:5.0.3.Final"
-                        + " (central+https://repo.maven.apache.org/maven2/) without a file")
-                .contains("`packaging=pom`")
-                .contains("add the repository that publishes the jar to `[repositories]` and re-run `jk lock`");
+                .contains("org.picketbox:picketbox:5.0.3.Final"
+                        + " (central+https://repo.maven.apache.org/maven2/) is locked as a POM with no jar")
+                .contains("add the repository that publishes the jar to `[repositories]` and run `jk lock`");
     }
 
     @Test
@@ -70,9 +69,7 @@ class JkResultsHintsTest {
                   class file for java.security.acl.Group not found"""));
         assertThat(md)
                 .contains(
-                        "→ `java.security.acl.Group` left the JDK in 14 and this module compiles for a newer release: "
-                                + "a class it compiles against still needs it — write `java = 11` in this module, the last LTS "
-                                + "that carries it (the toolchain JDK cross-compiles with `--release 11`), or move off the API.");
+                        "→ `java.security.acl.Group` was removed in JDK 14: set `java = 11` in this module, or stop using it\n");
         assertThat(code(javac("""
                         cannot access java.util.jar.Pack200
                           class file for java.util.jar.Pack200 not found"""))).isEqualTo("compiler.err.cant.access");
@@ -84,17 +81,15 @@ class JkResultsHintsTest {
                 render(javac("/ws/app/src/com/acme/Main.java:3:29: error: package java.security.acl does not exist"));
         assertThat(md)
                 .contains(
-                        "→ `java.security.acl` left the JDK in 14 and this module compiles for a newer release: "
-                                + "a class it compiles against still needs it — write `java = 11` in this module, the last LTS "
-                                + "that carries it (the toolchain JDK cross-compiles with `--release 11`), or move off the API.")
+                        "→ `java.security.acl` was removed in JDK 14: set `java = 11` in this module, or stop using it\n")
                 .doesNotContain("jk add");
         String rmi = render(javac("/ws/app/src/Main.java:3:1: error: package java.rmi.activation does not exist"));
-        assertThat(rmi).contains("`java.rmi.activation` left the JDK in 17").contains("write `java = 11`");
+        assertThat(rmi).contains("`java.rmi.activation` was removed in JDK 17").contains("set `java = 11`");
         String compiler = render(keyed("compiler.err.cant.resolve.location", """
                 /ws/app/src/Main.java:9:5: error: cannot find symbol
                   symbol:   class Compiler
                   location: package java.lang"""));
-        assertThat(compiler).doesNotContain("left the JDK");
+        assertThat(compiler).doesNotContain("was removed in JDK");
     }
 
     @Test
@@ -102,8 +97,8 @@ class JkResultsHintsTest {
         String md = render(
                 javac("/ws/app/src/Main.java:9:17: error: incompatible types: String cannot be converted to int"));
         assertThat(md)
-                .contains("→ the value is `String` where `int` is required: change the declared type, "
-                        + "convert the value, or cast when the narrowing is intended.");
+                .contains("→ `String` found where `int` is required: change the declared type, "
+                        + "convert the value, or cast it\n");
         assertThat(code(javac("incompatible types: String cannot be converted to int")))
                 .isEqualTo("compiler.err.prob.found.req");
     }
@@ -113,9 +108,7 @@ class JkResultsHintsTest {
         String md = render(
                 javac(
                         "/ws/app/src/Main.java:12:31: error: unreported exception java.io.IOException; must be caught or declared to be thrown"));
-        assertThat(md)
-                .contains("→ catch `java.io.IOException` around the call, or add `throws java.io.IOException` "
-                        + "to the enclosing method.");
+        assertThat(md).contains("→ catch `java.io.IOException`, or add `throws java.io.IOException` to the method\n");
         assertThat(code(javac("unreported exception java.io.IOException; must be caught or declared to be thrown")))
                 .isEqualTo("compiler.err.unreported.exception.need.to.catch.or.throw");
     }
@@ -123,12 +116,12 @@ class JkResultsHintsTest {
     @Test
     void javac_missing_return_uninitialized_variable_and_static_context_have_rows() {
         assertThat(render(javac("/ws/app/src/Main.java:20:5: error: missing return statement")))
-                .contains("→ every path out of the method must return a value: add a return after the last branch.");
+                .contains("→ every path must return a value: add a return after the last branch\n");
         assertThat(code(javac("missing return statement"))).isEqualTo("compiler.err.missing.ret.stmt");
 
         assertThat(render(javac("/ws/app/src/Main.java:22:16: error: variable total might not have been initialized")))
-                .contains("→ `total` is read on a path that never assigned it: initialize it at the declaration "
-                        + "or on every branch.");
+                .contains("→ `total` may be unassigned here: initialize it where it is declared "
+                        + "or on every branch\n");
         assertThat(code(javac("variable total might not have been initialized")))
                 .isEqualTo("compiler.err.var.might.not.have.been.initialized");
 
@@ -136,8 +129,7 @@ class JkResultsHintsTest {
                         render(
                                 javac(
                                         "/ws/app/src/Main.java:30:9: error: non-static method run() cannot be referenced from a static context")))
-                .contains("→ `run()` belongs to an instance: call it on one, or make it static when it uses "
-                        + "no instance state.");
+                .contains("→ `run()` needs an instance: call it on one, or make it static\n");
         assertThat(code(javac("non-static variable count cannot be referenced from a static context")))
                 .isEqualTo("compiler.err.non-static.cant.be.ref");
     }
@@ -146,8 +138,8 @@ class JkResultsHintsTest {
     void kotlinc_unresolved_reference_in_either_dialect_names_the_reference() {
         String k1 = render(kotlinc("/ws/app/src/Main.kt:4:5: error: unresolved reference: missing"));
         String k2 = render(kotlinc("e: file:///ws/app/src/Main.kt:4:5 Unresolved reference 'missing'."));
-        String hint = "→ `missing` is not declared, imported or on this module's compile classpath: "
-                + "fix the name, add the import, or `jk add` the dependency that provides it.";
+        String hint = "→ `missing` is not declared or imported: "
+                + "fix the name, add the import, or `jk add` the dependency that provides it\n";
         assertThat(k1).contains(hint);
         assertThat(k2).contains(hint);
         assertThat(code(kotlinc("unresolved reference: missing"))).isEqualTo("UNRESOLVED_REFERENCE");
@@ -159,14 +151,13 @@ class JkResultsHintsTest {
                 e: file:///ws/app/src/Main.kt:3:12 Unresolved reference 'ninjasquad'.
                   provided by: com.ninja-squad:springmockk (in the local artifact store)"""));
         assertThat(hint)
-                .contains("→ the import of `ninjasquad` is provided by `com.ninja-squad:springmockk` (in the local"
-                        + " artifact store): `jk add com.ninja-squad:springmockk` in this module, or fix the import.");
+                .contains("→ `ninjasquad` is in `com.ninja-squad:springmockk` (in the local"
+                        + " artifact store): `jk add com.ninja-squad:springmockk`, or fix the import\n");
     }
 
     @Test
     void kotlinc_type_mismatch_in_either_dialect_has_one_row() {
-        String hint = "→ the value's type is not the one the declaration wants: change the declared type, "
-                + "convert the value, or cast with `as` when the narrowing is intended.";
+        String hint = "→ type mismatch: change the declared type, convert the value, or cast with `as`\n";
         assertThat(
                         render(
                                 kotlinc(
@@ -192,8 +183,7 @@ class JkResultsHintsTest {
                         render(
                                 kotlinc(
                                         "/ws/app/src/Main.kt:8:10: error: Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?")))
-                .contains("→ the receiver may be null: call through `?.`, check for null first, or make the type "
-                        + "non-null where the value is produced.");
+                .contains("→ the receiver may be null: use `?.`, check for null first, or make the type non-null\n");
         assertThat(
                         code(
                                 kotlinc(
@@ -201,7 +191,7 @@ class JkResultsHintsTest {
                 .isEqualTo("UNSAFE_CALL");
 
         assertThat(render(kotlinc("/ws/app/src/Main.kt:9:5: error: No value passed for parameter 'name'.")))
-                .contains("→ pass an argument for `name`, or give the parameter a default value.");
+                .contains("→ pass an argument for `name`, or give the parameter a default value\n");
         assertThat(code(kotlinc("no value passed for parameter name"))).isEqualTo("NO_VALUE_FOR_PARAMETER");
     }
 
@@ -247,13 +237,13 @@ class JkResultsHintsTest {
                   Symbol:   Methode missing()
                   Ort: Klasse Main""");
         assertThat(code(localized)).isEqualTo("compiler.err.cant.resolve.location");
-        assertThat(render(localized)).contains("→ the name is not declared here and not imported:");
+        assertThat(render(localized)).contains("→ the name is not declared here:");
 
         BuildRecord.Diag lossy = keyed(
                 "compiler.err.prob.found.req",
                 "/ws/app/src/Main.java:9:17: error: incompatible types: possible lossy conversion from double to int");
         assertThat(code(lossy)).isEqualTo("compiler.err.prob.found.req");
-        assertThat(render(lossy)).contains("→ the value's type is not the one the declaration requires:");
+        assertThat(render(lossy)).contains("→ type mismatch: change the declared type");
 
         BuildRecord.Diag pkg = keyed(
                 "compiler.err.doesnt.exist",
@@ -282,8 +272,8 @@ class JkResultsHintsTest {
                   • Relax or remove the project constraint on org.springframework:spring-core
                 """));
         assertThat(md)
-                .contains("→ the exact pin `org.springframework:spring-core` `6.0.0` is outside what the rest of"
-                        + " the graph allows: `deps(pin, org.springframework:spring-core:7.0.9)`.")
+                .contains("→ pin `org.springframework:spring-core` `6.0.0` is outside the range a dependency"
+                        + " requires: `deps(pin, org.springframework:spring-core:7.0.9)`\n")
                 .doesNotContain("spring-boot-starter-webmvc` `4.0.8`");
     }
 
@@ -303,8 +293,8 @@ class JkResultsHintsTest {
                 null,
                 "org.junit.platform.commons.JUnitException");
         assertThat(render(launcher))
-                .contains("`org.junit.jupiter:junit-jupiter-api` is behind the rest of its line, which resolved"
-                        + " `6.1.3`: `deps(pin, org.junit.jupiter:junit-jupiter-api:6.1.3)`.");
+                .contains("`org.junit.jupiter:junit-jupiter-api` is older than the rest of its family at"
+                        + " `6.1.3`: `deps(pin, org.junit.jupiter:junit-jupiter-api:6.1.3)`\n");
     }
 
     @Test
@@ -313,7 +303,7 @@ class JkResultsHintsTest {
                 /ws/app/src/Main.java:3:8: error: package com.acme.util does not exist
                   provided by: org.acme:acme-a, org.acme:acme-b (in the local artifact store)"""));
         assertThat(md)
-                .contains("provided by `org.acme:acme-a` or `org.acme:acme-b` (in the local artifact store)")
+                .contains("is in `org.acme:acme-a` or `org.acme:acme-b` (in the local artifact store)")
                 .contains("`jk add org.acme:acme-a` or `jk add org.acme:acme-b`");
     }
 

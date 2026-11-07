@@ -115,7 +115,7 @@ class BaselineTest {
     void a_hand_edited_broken_file_is_refused_with_the_sanctioned_path() {
         assertThatThrownBy(() -> BaselineFile.parse("[x]\nentries = [\n", null))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("never edit the baseline by hand");
+                .hasMessageContaining("do not edit the baseline by hand");
     }
 
     @Test

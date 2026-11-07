@@ -80,7 +80,7 @@ class LockTrustTest {
 
         assertThatThrownBy(() -> new LockOrchestrator(repos).lock(project("com.foo:lib", "=1.0"), "test"))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("no upstream checksum for ")
+                .hasMessageContaining("no checksum for ")
                 .hasMessageContaining(" from maven-stub (")
                 .hasMessageContaining("allow-unverified = true on [repositories.maven-stub]");
         assertThat(repos.trust().unverifiedAllowed()).isZero();

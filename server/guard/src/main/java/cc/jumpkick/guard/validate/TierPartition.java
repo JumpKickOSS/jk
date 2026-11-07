@@ -142,12 +142,11 @@ public final class TierPartition {
             }
         }
         if (!bad.isEmpty()) {
-            faults.add(
-                    new Fault(
-                            CODE,
-                            "the tier table in jk.toml does not partition its own vocabulary " + vocab + ":\n    "
-                                    + String.join("\n    ", bad),
-                            "every tag combination run by exactly one tier — a tag in [test] exclude-tags needs a profile that includes it, or the exclusion is a hole; two tiers running one combination charges a test to two budgets"));
+            faults.add(new Fault(
+                    CODE,
+                    "jk.toml's test profiles do not run each tag combination exactly once " + vocab + ":\n    "
+                            + String.join("\n    ", bad),
+                    "each tag combination runs in exactly one tier; an excluded tag needs a profile that includes it"));
         }
         return faults;
     }
@@ -176,15 +175,14 @@ public final class TierPartition {
                             CODE,
                             "these @Tag elements are not run by exactly one tier:\n    "
                                     + String.join("\n    ", orphans),
-                            "a tag excluded from the fast tier and included by no profile is a test that never executes and never goes red — give the tag a profile in the root jk.toml, or stop excluding it"));
+                            "an excluded tag no profile includes never runs; give it a profile in the root jk.toml, or stop excluding it"));
         }
         if (!unowned.isEmpty()) {
-            faults.add(
-                    new Fault(
-                            CODE,
-                            "these @Tag values are in neither the tier vocabulary " + table.vocabulary()
-                                    + " nor the fixture allowlist: " + unowned,
-                            "a tag no tier owns runs in the fast tier by default, which is how a typo becomes a slow `jk test` — spell it as a vocabulary tag or give it a profile of its own"));
+            faults.add(new Fault(
+                    CODE,
+                    "these @Tag values are in neither the tier vocabulary " + table.vocabulary()
+                            + " nor the fixture allowlist: " + unowned,
+                    "an unknown tag runs with the default tests; fix its spelling or give it a profile"));
         }
         return faults;
     }

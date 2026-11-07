@@ -93,9 +93,9 @@ class LanguageRuntimeInjectTest {
         assertThat(injected.notes())
                 .singleElement()
                 .asString()
-                .startsWith("the module compiles with Kotlin 2.4.10, so its stdlib family follows the compiler")
-                .contains(KOTLIN_STDLIB + " at 2.4.10 instead of 2.2.21")
-                .contains("org.jetbrains.kotlin:kotlin-reflect at 2.4.10 instead of 2.2.21")
+                .startsWith("Kotlin stdlib set to the compiler's 2.4.10: ")
+                .contains(KOTLIN_STDLIB + " (was 2.2.21)")
+                .contains("org.jetbrains.kotlin:kotlin-reflect (was 2.2.21)")
                 .doesNotContain("jackson");
         assertThat(bom)
                 .containsEntry(KOTLIN_STDLIB, "2.4.10")

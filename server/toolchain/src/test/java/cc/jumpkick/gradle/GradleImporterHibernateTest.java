@@ -33,7 +33,7 @@ class GradleImporterHibernateTest {
                 .isEqualTo(Map.of("enhance", true, "dirty-tracking", false, "association-management", true));
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .noneMatch(m -> m.contains("org.hibernate.orm") && m.contains("not mapped"));
+                .noneMatch(m -> m.contains("org.hibernate.orm") && m.contains("not imported"));
     }
 
     @Test

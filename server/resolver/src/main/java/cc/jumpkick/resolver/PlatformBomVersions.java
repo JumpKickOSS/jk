@@ -75,19 +75,17 @@ public final class PlatformBomVersions {
         if (bestAny != null) {
             // `latest` promises the highest STABLE; silently serving a milestone/RC when a line
             // ships none (grails 8.x) breaks that promise. Pin the pre-release deliberately.
-            throw new IllegalStateException("platform dependency `"
-                    + group + ":" + artifact + "` selector `" + selector.raw()
-                    + "` matches no stable version — newest is the pre-release " + bestAny
-                    + "; pin it explicitly (e.g. `" + bestAny + "`) or use a snapshot selector");
+            throw new IllegalStateException("platform dependency `" + group + ":" + artifact + "` `" + selector.raw()
+                    + "`: no stable version; pin the pre-release `" + bestAny + "` or use a snapshot");
         }
         throw new IllegalStateException("platform dependency `"
                 + group
                 + ":"
                 + artifact
-                + "` selector `"
+                + "` `"
                 + selector.raw()
-                + "` matches no version in configured repositories"
-                + (available.isEmpty() ? " (no versions advertised)" : ""));
+                + "`: no matching version in the configured repositories"
+                + (available.isEmpty() ? " (none listed)" : ""));
     }
 
     private static IllegalStateException reject(String group, String artifact, String raw) {
@@ -95,9 +93,8 @@ public final class PlatformBomVersions {
                 + group
                 + ":"
                 + artifact
-                + "` must use an exact, caret/tilde, latest, or snapshot version (got `"
+                + "` `"
                 + raw
-                + "`). Open ranges are not supported for [platform-dependencies] BOMs — pin e.g."
-                + " `=3.4.0`, `3.4.0`, or `latest`.");
+                + "`: ranges are not allowed; use an exact, ^, ~, latest or snapshot version");
     }
 }

@@ -72,7 +72,7 @@ public record Signature(
         }
         if (TYPE.matcher(s).matches()) return new Signature(s, Kind.TYPE, Descriptors.internalName(s), null, null);
         throw new IllegalArgumentException("not a signature: `" + raw
-                + "` — expected pkg.Class, pkg.Class#member(args), pkg.Class#FIELD or pkg.**");
+                + "`; expected pkg.Class, pkg.Class#member(args), pkg.Class#FIELD or pkg.**");
     }
 
     /** Whether the owner side matches {@code ownerInternal}, given its ancestors (itself first). */

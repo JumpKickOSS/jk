@@ -361,12 +361,12 @@ though the root has no `[features]` table.
 `jk why <coord>` lists every version the lock carries for the coordinate, each with the members it
 belongs to. `jk lock` prints one note per member solved on its own, after the summary line, naming
 the coordinates it reads its own rows for with the member's version and the workspace's
-(`lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)`; a row at the
-workspace's version that lacks edges its exclusions pruned reads `com.foo:leaf 1.0 (the
-workspace's without com.foo:deep)`). A member whose own rows are every one pinned by a BOM or
+(`lib locks its own versions of 1 dependency: com.foo:leaf 1.0 (workspace 2.0)`; a row at the
+workspace's version that lacks edges its exclusions pruned reads `com.foo:leaf 1.0 (as the
+workspace, without com.foo:deep)`). A member whose own rows are every one pinned by a BOM or
 entry of its own table — the shape a member-held BOM documents, its versions and its exclusions
-alike — gets one sentence naming the count and the table instead (`plugins/quarkus reads its own
-rows for 37 coordinates io.quarkus:quarkus-bootstrap-bom:3.38.0 manages`): the rows say what the
+alike — gets one sentence naming the count and the table instead (`plugins/quarkus locks its own
+versions of 37 dependencies io.quarkus:quarkus-bootstrap-bom:3.38.0 manages`): the rows say what the
 BOM says and name nothing to act on. The same notes land
 in the run record — the `Lock notes` section of `jk-results.md` and its `details.jsonl` — and the
 web view. While the pass runs, the progress label names the member being solved and how many
@@ -382,8 +382,8 @@ nothing aligns them for it. When two artifacts of one library family land there 
 lines for that member — `maven-resolver-api 2.0.22` beside `maven-resolver-transport-http 1.9.27`,
 the shape the converge-versions guard holds per artifact and a member's own BOM would hold per
 family — `jk lock` warns, member by member, naming the family and every artifact's version:
-`plugins/tool has no [platform-dependencies] table and its rows mix
-org.apache.maven.resolver:maven-resolver-* lines: maven-resolver-api 2.0.22, …`. A family is a
+`plugins/tool mixes
+org.apache.maven.resolver:maven-resolver-* versions: maven-resolver-api 2.0.22, …`. A family is a
 group and the first two hyphen-separated segments of the artifact name, so `maven-resolver-api`,
 `maven-resolver-transport-http` and `maven-resolver-named-locks` are one and `commons-io` and
 `commons-lang3` are not. Pin the family to one line in the member, or hold it under a platform BOM

@@ -79,7 +79,7 @@ class GuardPacksVersionPinTest {
         assertThat(GuardPacks.ensure(root, store))
                 .singleElement()
                 .asString()
-                .contains(c.gav(), "pinned by version", "run `jk lock`");
+                .contains(c.gav(), "pinned by version", "run jk lock");
 
         Path dir = GuardPacks.unpackedDir(root, c);
         Files.createDirectories(dir);

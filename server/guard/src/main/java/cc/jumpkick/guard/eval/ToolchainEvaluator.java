@@ -169,7 +169,7 @@ final class ToolchainEvaluator implements Evaluator {
                                 ManifestPaths.LOCK,
                                 0,
                                 "the lock resolved " + sample + " through repository `" + e.getKey()
-                                        + "`, which no manifest declares and `only` does not allow — a ~/.jk/config.toml [repositories] entry leaking into the lock, or a stale lock; re-lock without it"));
+                                        + "`, which no manifest declares and `only` does not allow; check ~/.jk/config.toml and run jk lock"));
             }
         }
         Map<String, Long> population = new LinkedHashMap<>();

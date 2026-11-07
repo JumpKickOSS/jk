@@ -107,7 +107,7 @@ public final class ToolResolver {
         if (mainClass == null || mainClass.isBlank()) {
             Optional<String> fromManifest = JarManifest.mainClass(primaryJar);
             mainClass = fromManifest.orElseThrow(
-                    () -> new IOException(primary + " has no Main-Class in its manifest — pass --main <class>."));
+                    () -> new IOException(primary + " has no Main-Class in its manifest; pass --main <class>"));
         }
         return new ToolEnv(binName, primary, mainClass, classpath);
     }

@@ -71,8 +71,8 @@ class StoreCopyConfirmationTest {
                 .singleElement()
                 .asString()
                 .contains("com.example:widget:1.0 from test")
-                .contains("the store's copy")
-                .contains("discarded");
+                .contains("stored ")
+                .contains("downloaded it again");
     }
 
     @Test

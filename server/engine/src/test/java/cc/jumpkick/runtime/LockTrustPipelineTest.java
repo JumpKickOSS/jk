@@ -85,7 +85,7 @@ class LockTrustPipelineTest {
         BuildPlanResult refused = plan(tmp).run();
         assertThat(refused.success()).isFalse();
         assertThat(refused.errors()).anySatisfy(d -> assertThat(d.message())
-                .contains("no upstream checksum for ")
+                .contains("no checksum for ")
                 .contains(" from mirror (")
                 .contains("allow-unverified = true on [repositories.mirror]"));
 
@@ -118,9 +118,8 @@ class LockTrustPipelineTest {
         assertThat(refused.success()).isFalse();
         assertThat(refused.errors()).anySatisfy(d -> assertThat(d.message())
                 .contains("com.foo:lib")
-                .contains("repository `nm-repo` at " + remote + " is blocked and was not asked")
-                .contains("repositories.nm-repo: " + remote + " is plain http")
-                .contains("set allow-insecure = true"));
+                .contains("repository `nm-repo` at " + remote + " is blocked: plain http")
+                .contains("use https or set allow-insecure = true"));
 
         upstream.leaf("com.foo", "lib", "1.0");
         RepoGroup.clearProcessFetchCache();
@@ -163,7 +162,7 @@ class LockTrustPipelineTest {
             assertThat(refused.success()).isFalse();
             assertThat(refused.errors()).anySatisfy(d -> assertThat(d.message())
                     .contains("com.foo:lib")
-                    .contains("repository `nexus` at " + nexus + " was passed over ("));
+                    .contains("repository `nexus` at " + nexus + " skipped ("));
 
             upstream.leaf("com.foo", "lib", "1.0");
             RepoGroup.clearProcessFetchCache();

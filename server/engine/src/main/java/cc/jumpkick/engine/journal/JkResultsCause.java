@@ -91,16 +91,16 @@ final class JkResultsCause {
         String missing = missingResource(stack);
         if (missing != null) {
             if (isAbsolute(missing)) {
-                return "the test opens `" + missing + "` and the file does not exist: create it, or fix the path.";
+                return "`" + missing + "` does not exist: create it, or fix the path";
             }
-            return "the test loads `" + missing + "` and nothing on its classpath ships it: add the file under"
-                    + " `src/test/resources/` (or `src/main/resources/`), or fix the path it loads.";
+            return "`" + missing
+                    + "` is not on the test classpath: add it under `src/test/resources/`, or fix the path";
         }
         for (String header : headers(stack)) {
             Matcher m = SCRIPT_STATEMENT.matcher(header);
             if (m.find()) {
                 return "statement #" + m.group(1) + " of `" + m.group(2)
-                        + "` failed — the script the test runs: fix the SQL, or the schema it assumes.";
+                        + "` failed: fix the SQL or the schema it expects";
             }
         }
         return null;

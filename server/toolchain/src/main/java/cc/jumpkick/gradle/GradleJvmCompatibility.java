@@ -105,11 +105,11 @@ final class GradleJvmCompatibility {
             return new Pick(install.install(major), major);
         } catch (IOException e) {
             throw new IOException(
-                    "Gradle " + gradleVersion + " runs on JDK " + min + " to " + max
-                            + " and none is installed (the engine runs on JDK " + runningMajor + "); installing JDK "
+                    "Gradle " + gradleVersion + " needs JDK " + min + " to " + max
+                            + " and none is installed; installing JDK "
                             + major
-                            + " failed: " + e.getMessage() + ". `jk jdk install " + major
-                            + "` and import again, or move the wrapper to a newer Gradle.",
+                            + " failed: " + e.getMessage() + "; run jk jdk install " + major
+                            + " and import again, or upgrade the Gradle wrapper",
                     e);
         }
     }

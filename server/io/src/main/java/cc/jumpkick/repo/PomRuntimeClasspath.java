@@ -203,7 +203,7 @@ public final class PomRuntimeClasspath {
     private static List<Path> resolve(Path worker, @Nullable Path pom, RepoGroup repos) {
         if (pom == null) {
             throw new IllegalStateException(
-                    "worker " + worker + " has no Maven POM; run `jk install` to publish jar+pom to repos/jk-local");
+                    "worker " + worker + " has no POM; run jk install to publish it to repos/jk-local");
         }
         List<Path> out = new ArrayList<>();
         out.add(worker);
@@ -220,8 +220,8 @@ public final class PomRuntimeClasspath {
         } catch (IOException e) {
             // A remote leg that could not be reached: the walk needed something the store lacks.
             throw new IllegalStateException(
-                    "failed resolving the launch classpath of worker " + worker + " from " + pom + ": " + e.getMessage()
-                            + " — " + STAGING_REMEDY,
+                    "worker " + worker + ": cannot resolve its classpath from " + pom + ": " + e.getMessage() + "; "
+                            + STAGING_REMEDY,
                     e);
         } catch (RuntimeException e) {
             throw new IllegalStateException("failed reading worker POM " + pom + ": " + e.getMessage(), e);
@@ -230,9 +230,8 @@ public final class PomRuntimeClasspath {
     }
 
     /** What to do when a launch finds the store short of a POM the install should have staged. */
-    static final String STAGING_REMEDY = "`jk install` stages a worker's whole POM graph into the store;"
-            + " run it again with the network reachable (from the jk checkout for a jk-local worker), or"
-            + " `jk storage clean -w` so the next build fetches the published worker afresh";
+    static final String STAGING_REMEDY =
+            "run jk install again with the network up, or jk storage clean -w to fetch the worker again";
 
     /**
      * Fetch the runtime closure of {@code root} (jar + POM per compile/runtime dependency, parents
@@ -703,8 +702,8 @@ public final class PomRuntimeClasspath {
             if (claim.optional()) return null;
             String names =
                     repos.repos().stream().map(MavenRepo::name).distinct().collect(Collectors.joining(", "));
-            throw new IllegalStateException("worker runtime dependency " + key + " was not found in the " + names
-                    + " repos — " + STAGING_REMEDY);
+            throw new IllegalStateException(
+                    "worker dependency " + key + " not found in " + names + "; " + STAGING_REMEDY);
         }
         out.add(art.get().fetched().cachePath().toAbsolutePath().normalize());
         EffectivePom child = fetched.pom();
@@ -717,12 +716,12 @@ public final class PomRuntimeClasspath {
             // did not finish, and the launch says so.
             if (coord.equals(e.coordinate())) {
                 throw new IllegalStateException(
-                        "worker runtime dependency " + key + " has its jar in the store but no POM (" + e.getMessage()
-                                + ") — " + STAGING_REMEDY,
+                        "worker dependency " + key + " has a jar but no POM (" + e.getMessage() + "); "
+                                + STAGING_REMEDY,
                         e);
             }
             throw new IllegalStateException(
-                    "worker dependency " + key + " has an incomplete POM chain: " + e.getMessage() + " — "
+                    "worker dependency " + key + " is missing a parent or BOM POM: " + e.getMessage() + "; "
                             + STAGING_REMEDY,
                     e);
         }

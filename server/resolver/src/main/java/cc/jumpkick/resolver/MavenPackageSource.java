@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
-import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.host.Interned;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
@@ -442,13 +441,11 @@ public final class MavenPackageSource implements PackageSource {
             }
             String display = PackageId.parse(pkg).display();
             if (serving.isEmpty()) {
-                out.add(wanted + " is a snapshot, and no repository " + display + " may resolve from serves"
-                        + " snapshots: " + String.join(", ", refusing) + ". Declare one under [repositories]"
-                        + " (snapshots are on there unless it says snapshots = false), or let the POM that names"
-                        + " it declare a <repository> with <snapshots><enabled>true</enabled>");
+                out.add(wanted + " is a snapshot and no repository for " + display + " serves snapshots: "
+                        + String.join(", ", refusing) + "; add one to [repositories]");
             } else {
-                out.add(wanted + " is a snapshot; the repositories serving snapshots for " + display + " do not"
-                        + " list it: " + String.join(", ", serving));
+                out.add(wanted + " is a snapshot; the snapshot repositories for " + display + " do not list it: "
+                        + String.join(", ", serving));
             }
         }
         return List.copyOf(out);
@@ -456,18 +453,16 @@ public final class MavenPackageSource implements PackageSource {
 
     /**
      * The line a blocked repository earns when a package resolves nowhere: it was known and not
-     * asked, and — a plaintext {@code http://} one — the same refusal the manifest parse gives an
-     * unblocked one, with the two ways out.
+     * asked, with the way out — for a plaintext {@code http://} one, https or allow-insecure.
      */
     static String blockedNote(RepositorySpec spec) {
         String where = "repositories." + spec.name();
-        String url = spec.url().toString();
         boolean plaintext = "http".equalsIgnoreCase(spec.url().getScheme())
                 && !RepositorySpec.loopback(spec.url().getHost());
-        return "repository `" + spec.name() + "` at " + url + " is blocked and was not asked"
+        return "repository `" + spec.name() + "` at " + spec.url() + " is blocked"
                 + (plaintext
-                        ? ": " + RepositoryToml.plaintextRefusal(where, url)
-                        : "; drop blocked = true on [" + where + "] to ask it");
+                        ? ": plain http; use https or set allow-insecure = true"
+                        : "; remove blocked = true from [" + where + "] to use it");
     }
 
     /**
@@ -476,9 +471,8 @@ public final class MavenPackageSource implements PackageSource {
      * ways out.
      */
     static String passedOverNote(MavenRepo repo) {
-        return "repository `" + repo.name() + "` at " + SafeUri.forMessage(repo.baseUrl()) + " was passed over ("
-                + repo.unreachableFault() + "); if it serves this package, start it, fix its url or give it"
-                + " credentials, or remove it from [repositories]";
+        return "repository `" + repo.name() + "` at " + SafeUri.forMessage(repo.baseUrl()) + " skipped ("
+                + repo.unreachableFault() + "); fix its url or credentials, or remove it from [repositories]";
     }
 
     /** Every transitive constraint a governing version overrode so far, one rendered line each, sorted. */
@@ -832,8 +826,7 @@ public final class MavenPackageSource implements PackageSource {
                 workspaceSubstitutionNotes.putIfAbsent(
                         dep.module(),
                         PackageId.parse(pkg).ga() + " " + version + " depends on " + dep.module()
-                                + ", which this workspace builds: the member stands in for the published artifact"
-                                + " on every classpath, so no row is locked for it");
+                                + ", which this workspace builds; the module is used and not locked");
                 // Unconstrained on purpose. The member answers the edge whatever version it named,
                 // so two POMs asking for different versions are not a conflict to report about a
                 // coordinate that never reaches the lock.
@@ -844,8 +837,8 @@ public final class MavenPackageSource implements PackageSource {
             String hostExpression = pom.hostClassified().get(dep.module());
             if (hostExpression != null) {
                 hostClassifierNotes.add(PackageId.parse(pkg).ga() + " " + version + " depends on " + dep.module()
-                        + " with classifier `" + dep.classifier() + "`: the POM spells it " + hostExpression
-                        + ", which follows the host, so a lock made on another platform pins that platform's artifact");
+                        + " with OS-specific classifier `" + dep.classifier() + "` from " + hostExpression
+                        + "; a lock made on another OS picks a different artifact");
             }
             Set<String> edgeExcl = modulesOf(dep.exclusions());
             String edgeVersion = dep.version().trim();

@@ -81,7 +81,7 @@ class MavenResolverTest {
         wrapper(project, "distributionUrl=http://mirror.example.com/maven/apache-maven-3.9.6-bin.zip\n");
         assertThatThrownBy(() -> new MavenResolver().resolve(project))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("plaintext http")
+                .hasMessageContaining("uses plain http")
                 .hasMessageContaining("maven-wrapper.properties")
                 .hasMessageContaining("https://");
     }

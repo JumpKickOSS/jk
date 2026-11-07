@@ -19,11 +19,8 @@ final class RemovedJdkApis {
 
         /** The repair row for {@code api}, a package or type under {@link #prefix}. */
         String hint(String api) {
-            return "`" + api + "` left the JDK in " + removedIn
-                    + " and this module compiles for a newer release: a class it compiles against still needs it — write `java = "
-                    + lastLts
-                    + "` in this module, the last LTS that carries it (the toolchain JDK cross-compiles with `--release "
-                    + lastLts + "`), or move off the API.";
+            return "`" + api + "` was removed in JDK " + removedIn + ": set `java = " + lastLts
+                    + "` in this module, or stop using it";
         }
     }
 

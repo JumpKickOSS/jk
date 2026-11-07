@@ -111,8 +111,8 @@ class LockOrchestratorMemberBomTablesTest {
                 .containsExactlyInAnyOrder(
                         tuple("1.0", null, List.of()), tuple("2.0", "org.example:the-bom:1.0", List.of("app")));
         assertThat(notes)
-                .filteredOn(n -> n.contains("reads its own rows"))
-                .containsExactly("app reads its own rows for 1 coordinate org.example:the-bom:1.0 manages");
+                .filteredOn(n -> n.contains("locks its own versions"))
+                .containsExactly("app locks its own versions of 1 dependency org.example:the-bom:1.0 manages");
     }
 
     /** The workspace locked as the pipeline locks it under exact pins, recording the lock's notes into {@code notes}. */

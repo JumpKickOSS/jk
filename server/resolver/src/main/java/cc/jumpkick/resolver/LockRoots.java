@@ -131,8 +131,7 @@ final class LockRoots {
             if (opt == null) {
                 throw new IllegalArgumentException("feature dependency '"
                         + depName
-                        + "' is not a declared optional dependency"
-                        + " — declare it under [dependencies.*] with `optional = true`");
+                        + "' is not optional; add `optional = true` to it in [dependencies]");
             }
             Scope optScope = optionalScopeByLib.getOrDefault(depName, Scope.MAIN);
             switch (graphGroup(optScope)) {

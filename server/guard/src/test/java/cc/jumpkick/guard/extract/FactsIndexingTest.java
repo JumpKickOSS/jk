@@ -209,7 +209,7 @@ class FactsIndexingTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("Late.class")
                 .hasMessageContaining("0 bytes")
-                .hasMessageContaining("still writing it");
+                .hasMessageContaining("may still be writing it");
         assertThat(Files.exists(idx))
                 .as("nothing is written for a tree that did not read")
                 .isFalse();

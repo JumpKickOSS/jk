@@ -113,14 +113,13 @@ class PartialClassesViewTest {
                 .as("the source file the view has no class for, and not the package-info that compiles to nothing")
                 .containsExactly("m/src/main/java/p/c/C.java");
         assertThat(GuardMessages.withheld(Lane.MODULE, result.unseen()))
-                .isEqualTo("baseline not tightened: 1 source file has no class in this lane's view"
-                        + " (m/src/main/java/p/c/C.java); a build that compiles them tightens it and judges its scope");
+                .isEqualTo("baseline not tightened: 1 source file not compiled yet (m/src/main/java/p/c/C.java)");
         assertThat(result.unseenModules()).isEqualTo(1);
         String notice = GuardMessages.withheldNotice(Lane.MODULE, result.unseen(), result.unseenModules());
         assertThat(notice)
                 .startsWith(
-                        "guard baseline not tightened: 1 module unseen by this run (not built yet);"
-                                + " a build of every module tightens it and judges its scope\n  baseline not tightened: 1 source file");
+                        "guard baseline not tightened: 1 module not built by this run; build every module to tighten it"
+                                + "\n  baseline not tightened: 1 source file");
         assertThat(GuardMessages.withheldModules(notice)).isEqualTo(1);
     }
 

@@ -108,7 +108,7 @@ class LockOrchestratorWorkspaceSubstitutionTest {
                 .doesNotContain("com.example:lib:jar:", "com.foo:published-only:jar:");
         assertThat(notes).anySatisfy(line -> assertThat(line)
                 .startsWith("com.foo:middle 1.0 depends on com.example:lib, which this workspace builds")
-                .contains("no row is locked for it"));
+                .contains("the module is used and not locked"));
     }
 
     /**

@@ -263,10 +263,10 @@ final class GradleDependencies {
             }
             case "project" ->
                 report.warning("project(" + literal(inner) + ") on " + configuration
-                        + ": not mapped; reference the module once it is imported");
+                        + ": not imported; reference the module once it is imported");
             case "kotlin" -> {
                 String token = literal(inner);
-                report.warning("kotlin(\"" + token + "\"): not mapped; add org.jetbrains.kotlin:kotlin-" + token
+                report.warning("kotlin(\"" + token + "\"): not imported; add org.jetbrains.kotlin:kotlin-" + token
                         + ":<version> to jk.toml");
             }
             case "files", "fileTree", "testFixtures" ->

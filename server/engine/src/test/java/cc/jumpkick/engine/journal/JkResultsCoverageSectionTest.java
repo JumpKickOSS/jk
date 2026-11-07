@@ -81,7 +81,7 @@ class JkResultsCoverageSectionTest {
                 .contains("| g:lib | 80.0% (120/150) | 50.0% (20/40) |\n")
                 .contains("| g:app | 0.0% (0/50) | 100.0% (0/0) |\n")
                 .contains("| **all** | 60.0% (120/200) | 50.0% (20/40) |\n")
-                .contains("floor: a `coverage.line` guard")
+                .contains("set a minimum with a `coverage.line` guard")
                 .doesNotContain("| Δ |");
     }
 

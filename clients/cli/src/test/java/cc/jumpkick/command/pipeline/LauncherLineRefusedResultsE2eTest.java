@@ -46,9 +46,8 @@ class LauncherLineRefusedResultsE2eTest {
         assertThat(project.resolve("jk-lock.toml")).doesNotExist();
         assertThat(md)
                 .contains("# jk results — FAIL")
-                .contains("junit-jupiter 6.1.3 runs on JUnit Platform 6.1.3")
-                .contains("junit-platform-launcher resolved to 1.13.4")
-                .contains("pin junit-platform-launcher to 6.1.3")
+                .contains("junit-platform-launcher 1.13.4 does not run junit-jupiter 6.1.3")
+                .contains("pin the launcher to 6.1.3")
                 .doesNotContain("Tests:");
     }
 }

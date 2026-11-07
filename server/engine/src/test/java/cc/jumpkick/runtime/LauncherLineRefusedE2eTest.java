@@ -53,9 +53,8 @@ class LauncherLineRefusedE2eTest {
                 .as("the lines disagree, so the lock is refused")
                 .isFalse();
         assertThat(result.errors()).anySatisfy(d -> assertThat(d.message())
-                .contains("junit-jupiter 6.1.3 runs on JUnit Platform 6.1.3")
-                .contains("junit-platform-launcher resolved to 1.13.4")
-                .contains("pin junit-platform-launcher to 6.1.3"));
+                .contains("junit-platform-launcher 1.13.4 does not run junit-jupiter 6.1.3")
+                .contains("pin the launcher to 6.1.3"));
         assertThat(project.resolve("jk-lock.toml")).doesNotExist();
     }
 }

@@ -16,8 +16,8 @@ public final class TranscriptOf {
 
     public static Path results(Path projectDir) throws IOException {
         String results = Files.readString(projectDir.resolve("target/jk-results.md"));
-        Matcher details =
-                Pattern.compile("transcript: `([^`]+details\\.jsonl)`").matcher(results);
+        Matcher details = Pattern.compile("Step log [^`]*`-O jsonl`\\): `([^`]+details\\.jsonl)`")
+                .matcher(results);
         assertThat(details.find())
                 .as("the results file names its details.jsonl:\n" + results)
                 .isTrue();

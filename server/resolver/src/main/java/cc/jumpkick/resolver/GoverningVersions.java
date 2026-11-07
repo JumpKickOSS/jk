@@ -44,15 +44,15 @@ final class GoverningVersions {
 
     /** One line per governed module: its version, then every dependency it overrode and what each asked for. */
     static String render(String module, String pin, List<Override> overrides) {
-        StringBuilder out = new StringBuilder(module).append(' ').append(pin).append(" is the main graph's version; ");
+        StringBuilder out = new StringBuilder(module).append(' ').append(pin).append(": tests use the main version; ");
         if (overrides.size() == 1) {
             out.append(overrides.getFirst().asking());
         } else {
             out.append(overrides.size())
-                    .append(" dependencies asked for other versions: ")
+                    .append(" dependencies asked for others: ")
                     .append(overrides.stream().map(Override::asking).collect(Collectors.joining(", ")));
         }
-        return out.append(" — the test classpath carries main's version").toString();
+        return out.toString();
     }
 
     /** The governing versions of the graph about to be solved; empty for the main graph. */
