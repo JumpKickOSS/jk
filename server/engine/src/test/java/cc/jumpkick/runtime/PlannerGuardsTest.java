@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.RuleSet;
@@ -67,5 +69,28 @@ class PlannerGuardsTest {
                 .as("the second load read the file as it is, so it is memoized")
                 .isSameAs(loads.get(1));
         assertThat(loads).hasSize(2);
+    }
+
+    @Test
+    void the_model_output_and_tree_lanes_expand_a_glob_member_list_as_the_build_does(@TempDir Path dir)
+            throws Exception {
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "p"
+                name = "ws"
+                version = "1"
+
+                [workspace]
+                modules = ["services/*"]
+                """);
+        for (String m : List.of("a", "b")) {
+            Path d = Files.createDirectories(root.resolve("services").resolve(m));
+            Files.writeString(d.resolve("jk.toml"), "group = \"p\"\nname = \"" + m + "\"\nversion = \"1\"\n");
+        }
+        assertThat(PlannerGuards.workspaceModuleDirs(root, null))
+                .hasSize(2)
+                .containsExactlyElementsOf(
+                        WorkspaceLoader.loadModules(root, JkBuildParser.parseLocal(root.resolve("jk.toml")))
+                                .keySet());
     }
 }
