@@ -34,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * Fat/uber (assembly) jar: project classes first (win on conflict), custom manifest, drop
  * signatures and {@code module-info.class}, concat {@code META-INF/services/*} and Boot's
  * {@code AutoConfiguration.imports}, union Spring's Properties-shaped META-INF files per key,
- * packages moved under {@code [application] relocate}, sorted fixed-timestamp entries for
+ * merge Helidon's {@code META-INF/helidon} registries (manifest, JSON arrays, service loader list,
+ * serialization filter), packages moved under {@code [application] relocate}, sorted fixed-timestamp entries for
  * reproducibility.
  *
  * <p>Enable with {@code [application] assembly = true} (or {@code jk assemble}). See
@@ -163,7 +164,69 @@ public final class AssemblyPackager {
         byte[] render();
 
         static MergedFile of(String name) {
-            return isPropertiesMergeFile(name) ? new PropertiesUnion() : new Concatenation();
+            if (isPropertiesMergeFile(name)) return new PropertiesUnion(",", false);
+            if (name.equals(HELIDON_SERIAL_CONFIG)) return new PropertiesUnion(";", true);
+            if (name.equals(HELIDON_MANIFEST)) return new LineUnion(HELIDON_MANIFEST_HEADER);
+            if (name.equals(HELIDON_SERVICE_LOADER)) return new LineUnion(null);
+            if (HELIDON_JSON_ARRAYS.contains(name)) return new JsonArrayConcatenation();
+            return new Concatenation();
+        }
+    }
+
+    /**
+     * Line lists where a repeated line means nothing more (Helidon's {@code manifest} and {@code
+     * service.loader}): every input's non-blank lines, deduplicated, first seen first, each newline
+     * terminated. A {@code header} line every input opens with is written once, first, and dropped
+     * from the inputs.
+     */
+    private static final class LineUnion implements MergedFile {
+        private final @Nullable String header;
+        private final Set<String> lines = new LinkedHashSet<>();
+
+        LineUnion(@Nullable String header) {
+            this.header = header;
+        }
+
+        @Override
+        public void add(byte[] data) {
+            for (String line : new String(data, StandardCharsets.UTF_8).split("\\R")) {
+                String trimmed = line.strip();
+                if (!trimmed.isEmpty() && !trimmed.equals(header)) lines.add(trimmed);
+            }
+        }
+
+        @Override
+        public byte[] render() {
+            StringBuilder out = new StringBuilder();
+            if (header != null) out.append(header).append('\n');
+            for (String line : lines) out.append(line).append('\n');
+            return out.toString().getBytes(StandardCharsets.UTF_8);
+        }
+    }
+
+    /**
+     * Files that are one JSON array (Helidon's {@code config-metadata.json} and registries): every
+     * input's elements in one array, first input first. Each input's brackets are peeled off and the
+     * element lists joined by a comma, so valid arrays in give a valid array out without parsing the
+     * elements; an input that is not an array is kept as one element.
+     */
+    private static final class JsonArrayConcatenation implements MergedFile {
+        private final List<String> elements = new ArrayList<>();
+
+        @Override
+        public void add(byte[] data) {
+            String json = new String(data, StandardCharsets.UTF_8)
+                    .replace("\uFEFF", "")
+                    .strip();
+            if (json.startsWith("[") && json.endsWith("]")) {
+                json = json.substring(1, json.length() - 1).strip();
+            }
+            if (!json.isEmpty()) elements.add(json);
+        }
+
+        @Override
+        public byte[] render() {
+            return ("[" + String.join(",", elements) + "]").getBytes(StandardCharsets.UTF_8);
         }
     }
 
@@ -186,11 +249,23 @@ public final class AssemblyPackager {
     /**
      * {@code spring.factories}-shaped files, which Spring reads with {@link Properties}: a key
      * repeated across jars would keep only the last jar's value, so each input is parsed and the
-     * comma-separated values are unioned per key, first seen first. Rendered as sorted
+     * {@code separator}-separated values are unioned per key, first seen first. Rendered as sorted
      * {@code key=value} lines with Properties escaping, ASCII only.
+     *
+     * <p>Helidon's {@code serial-config.properties} is the same shape with {@code ;} between
+     * {@link java.io.ObjectInputFilter} patterns; with {@code rejectAllLast} its catch-all
+     * {@code !*} moves to the end of the union, where it rejects only what no jar allowed.
      */
     private static final class PropertiesUnion implements MergedFile {
+        private static final String REJECT_ALL = "!*";
+        private final String separator;
+        private final boolean rejectAllLast;
         private final Map<String, Set<String>> values = new TreeMap<>();
+
+        PropertiesUnion(String separator, boolean rejectAllLast) {
+            this.separator = separator;
+            this.rejectAllLast = rejectAllLast;
+        }
 
         @Override
         public void add(byte[] data) throws IOException {
@@ -198,7 +273,7 @@ public final class AssemblyPackager {
             props.load(new StringReader(new String(data, StandardCharsets.ISO_8859_1)));
             for (String key : props.stringPropertyNames()) {
                 Set<String> union = values.computeIfAbsent(key, k -> new LinkedHashSet<>());
-                for (String value : props.getProperty(key).split(",")) {
+                for (String value : props.getProperty(key).split(separator)) {
                     String trimmed = value.strip();
                     if (!trimmed.isEmpty()) union.add(trimmed);
                 }
@@ -210,9 +285,11 @@ public final class AssemblyPackager {
             StringBuilder out = new StringBuilder();
             for (Map.Entry<String, Set<String>> e : values.entrySet()) {
                 out.append(escape(e.getKey(), true)).append('=');
+                List<String> ordered = new ArrayList<>(e.getValue());
+                if (rejectAllLast && ordered.remove(REJECT_ALL)) ordered.add(REJECT_ALL);
                 boolean first = true;
-                for (String value : e.getValue()) {
-                    if (!first) out.append(',');
+                for (String value : ordered) {
+                    if (!first) out.append(separator);
                     out.append(escape(value, false));
                     first = false;
                 }
@@ -243,14 +320,39 @@ public final class AssemblyPackager {
         }
     }
 
+    /** Helidon's index of its {@code META-INF/helidon} resources: a header line, then one path per line. */
+    static final String HELIDON_MANIFEST = "META-INF/helidon/manifest";
+
+    static final String HELIDON_MANIFEST_HEADER = "#HELIDON MANIFEST#";
+
+    /** Contracts Helidon also looks up through {@link java.util.ServiceLoader}, one per line. */
+    static final String HELIDON_SERVICE_LOADER = "META-INF/helidon/service.loader";
+
+    /** Helidon's deserialization filter, a {@code pattern} property of {@code ;}-separated patterns. */
+    static final String HELIDON_SERIAL_CONFIG = "META-INF/helidon/serial-config.properties";
+
+    /**
+     * Helidon's JSON-array files at a path every jar shares: the config metadata, and the registries
+     * a jar keeps at the top level rather than under a per-module directory.
+     */
+    static final Set<String> HELIDON_JSON_ARRAYS = Set.of(
+            "META-INF/helidon/config-metadata.json",
+            "META-INF/helidon/feature-registry.json",
+            "META-INF/helidon/service-registry.json");
+
     /**
      * Paths merged across project + dependency jars rather than first-wins: SPI files, Boot's
-     * auto-configuration imports and Spring's Properties-shaped META-INF registries.
+     * auto-configuration imports, Spring's Properties-shaped META-INF registries and Helidon's
+     * shared-path {@code META-INF/helidon} files.
      */
     static boolean isMergeFile(String name) {
         if (name.startsWith("META-INF/services/") && !name.endsWith("/")) return true;
         return isPropertiesMergeFile(name)
-                || name.equals("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports");
+                || name.equals("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports")
+                || name.equals(HELIDON_MANIFEST)
+                || name.equals(HELIDON_SERVICE_LOADER)
+                || name.equals(HELIDON_SERIAL_CONFIG)
+                || HELIDON_JSON_ARRAYS.contains(name);
     }
 
     /** The merge files Spring loads as {@link Properties}, where a duplicate key would be last-wins. */

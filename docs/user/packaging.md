@@ -231,6 +231,16 @@ Fat and minified never share an action-cache key.
 - Merge `META-INF/spring.factories`, `spring.handlers` and `spring.schemas` as the `Properties`
   files Spring reads them as: every jar's values for a key are kept (comma-joined, first seen
   first), where concatenation would have let the last jar's line win
+- Merge Helidon's `META-INF/helidon` files that every jar carries at the same path, with or without
+  a Helidon table:
+  - `manifest`: one `#HELIDON MANIFEST#` header, then every jar's paths, repeats dropped, first seen first
+  - `config-metadata.json`, and the top-level `feature-registry.json` / `service-registry.json`
+    (Helidon 4's layout): one JSON array holding every jar's elements
+  - `service.loader`: every jar's lines, repeats dropped
+  - `serial-config.properties`: every jar's `;`-separated patterns per key, first seen first,
+    with the catch-all `!*` moved last
+
+  The per-module files under `META-INF/helidon/<module>/` have a path of their own and are kept whole.
 - Project classes win on path conflict; dependency jars earlier in the graph win among themselves
 
 **Dropped:** signature files (`META-INF/*.SF` / `*.RSA` / `*.DSA` / `*.EC` / `SIG-*`) and
