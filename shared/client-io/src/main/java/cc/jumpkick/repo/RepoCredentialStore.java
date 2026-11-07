@@ -110,10 +110,8 @@ public final class RepoCredentialStore {
         String reason = why;
         RunNotices.warnOnce(
                 "repo-credential-keychain:" + repoId,
-                () -> "jk: warning: the `jk repo login " + repoId + "` secret is in the "
-                        + SecretVault.displayName(pointer.backend()) + ", which did not give it up (" + reason
-                        + "); the repository is tried without it."
-                        + " Run `jk repo login " + repoId + "` again to store it anew.");
+                () -> "jk: warning: " + repoId + ": could not read the secret from the "
+                        + SecretVault.displayName(pointer.backend()) + ": " + reason + "; run jk repo login " + repoId);
         return null;
     }
 

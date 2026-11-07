@@ -83,8 +83,7 @@ public final class Classpaths {
             if (archive && !Files.isRegularFile(entry)) missing.add(entry.toString());
         }
         if (missing.isEmpty()) return;
-        throw new IllegalStateException(
-                what + " names " + missing.size() + " jar(s) that are not on disk: " + String.join(", ", missing)
-                        + " — run `jk sync` to fetch the lock's artifacts, or `jk lock` if the lock is stale");
+        throw new IllegalStateException(what + " names " + missing.size() + " jar(s) that are not on disk: "
+                + String.join(", ", missing) + "; run jk sync");
     }
 }

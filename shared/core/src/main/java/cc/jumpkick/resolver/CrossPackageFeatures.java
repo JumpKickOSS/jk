@@ -38,10 +38,8 @@ public final class CrossPackageFeatures {
         if (projectDir == null) {
             for (Dependency d : declared) {
                 if (d.hasFeatureSelection()) {
-                    throw new IllegalArgumentException("dependency `"
-                            + d.library()
-                            + "` selects features, but the project directory is unknown — cannot load the library"
-                            + " jk.toml");
+                    throw new IllegalArgumentException(
+                            "dependency `" + d.library() + "` selects features, but the project directory is unknown");
                 }
             }
             return new Result(extras, activatedByLibraryModule);
@@ -49,19 +47,14 @@ public final class CrossPackageFeatures {
         for (Dependency d : declared) {
             if (!d.hasFeatureSelection()) continue;
             if (!d.isPath()) {
-                throw new IllegalArgumentException("dependency `"
-                        + d.library()
-                        + "` selects features, but only path= dependencies support cross-package features yet"
-                        + " (workspace/git/Maven sidecar come later)");
+                throw new IllegalArgumentException(
+                        "dependency `" + d.library() + "` selects features; only path dependencies support features");
             }
             Path libToml = ManifestPaths.manifestIn(
                     Objects.requireNonNull(d.pathSource()).dir(projectDir));
             if (!Files.isRegularFile(libToml)) {
-                throw new IllegalArgumentException("dependency `"
-                        + d.library()
-                        + "` selects features, but "
-                        + libToml
-                        + " is missing — path target must be a jk project");
+                throw new IllegalArgumentException(
+                        "dependency `" + d.library() + "` selects features, but " + libToml + " is missing");
             }
             JkBuild lib;
             try {

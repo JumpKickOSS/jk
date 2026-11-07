@@ -64,24 +64,20 @@ final class SecretFileAccess {
         if (real != null && underMountRoot(real)) {
             String why = mountRefusal(perms, attrs.owner().getName(), real);
             if (why == null) return;
-            throw new JkBuildParseException(where + " reads " + file + ", which is under the secret mount "
-                    + rootOf(real) + " but " + why + "; a mounted secret must be writable by its owner alone,"
-                    + " and owned by root or by you.");
+            throw new JkBuildParseException(
+                    where + ": secret " + file + " " + why + "; only root or you may own and write it");
         }
-        throw new JkBuildParseException(where + " reads " + file
-                + ", which its group or other users can read; a secret must be readable by you alone."
-                + " Run `chmod 600 " + file + "`. For a Kubernetes secret volume, mount it under"
-                + " /var/run/secrets (its default mode is accepted there) or set `defaultMode: 0400`;"
-                + " for a Docker or Compose secret, mount it under /run/secrets or set `mode: 0400`.");
+        throw new JkBuildParseException(
+                where + ": secret " + file + " is readable by other users; run chmod 600 " + file);
     }
 
     /** Why a readable file under a mount root is still refused, or null when it is accepted. */
     private static @Nullable String mountRefusal(Set<PosixFilePermission> perms, String owner, Path real) {
         if (perms.contains(PosixFilePermission.GROUP_WRITE) || perms.contains(PosixFilePermission.OTHERS_WRITE)) {
-            return "its group or other users can write it";
+            return "is writable by other users";
         }
         if (!owner.equals("root") && !owner.equals(System.getProperty("user.name")) && !rootUid(real)) {
-            return "it is owned by " + owner;
+            return "is owned by " + owner;
         }
         return null;
     }

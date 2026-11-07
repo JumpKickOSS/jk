@@ -158,8 +158,7 @@ final class MvnencPasswords {
             case LOOKUP -> source(payload, request);
             case LEGACY -> MavenPasswords.decrypt(payload, request.legacyMaster());
             default ->
-                throw new MavenPasswords.Undecryptable("it names the dispatcher `" + dispatcher
-                        + "`, which only a Maven extension provides; jk reads master, masterSourceLookup and legacy");
+                throw new MavenPasswords.Undecryptable("dispatcher `" + dispatcher + "` needs a Maven extension");
         };
     }
 
@@ -256,16 +255,14 @@ final class MvnencPasswords {
             case "file" -> masterFile(rest, request);
             case "gpg-agent" -> gpgAgent(rest, request);
             case "console-prompt", "pinentry-prompt", "onepassword" ->
-                throw new MavenPasswords.Undecryptable("its master password source is `" + kind
-                        + "`, which asks for the password interactively, and jk never prompts; name the master"
-                        + " password with env:, file: or gpg-agent: in " + SECURITY_FILE);
+                throw new MavenPasswords.Undecryptable("master password source `" + kind
+                        + "` prompts; use env:, file: or gpg-agent: in " + SECURITY_FILE);
             case "system-property" ->
-                throw new MavenPasswords.Undecryptable("its master password source is a system property of Maven's"
-                        + " own JVM, which jk does not have; name the master password with env: or file: in "
-                        + SECURITY_FILE);
+                throw new MavenPasswords.Undecryptable(
+                        "master password source is a Maven system property; use env: or file: in " + SECURITY_FILE);
             default ->
                 throw new MavenPasswords.Undecryptable(
-                        "its master password source `" + kind + "` is not one jk reads (env:, file:, gpg-agent:)");
+                        "master password source `" + kind + "` is not supported; use env:, file: or gpg-agent:");
         };
     }
 
@@ -279,7 +276,7 @@ final class MvnencPasswords {
         }
         if (!file.isAbsolute()) {
             throw new MavenPasswords.Undecryptable(
-                    "its master password source file:" + written + " is not an absolute path, which Maven requires");
+                    "master password source file:" + written + " must be an absolute path");
         }
         request.read(file);
         try {
@@ -316,9 +313,8 @@ final class MvnencPasswords {
                     "gpg-agent did not answer on " + socket + " (" + e.getMessage() + ")");
         }
         if (answer == null) {
-            throw new MavenPasswords.Undecryptable("gpg-agent on " + socket + " holds no cached master password ("
-                    + GPG_CACHE_ID + "), and jk never asks the agent to prompt; unlock it once with mvnenc, or"
-                    + " preset it with gpg-preset-passphrase");
+            throw new MavenPasswords.Undecryptable(
+                    "gpg-agent on " + socket + " has no cached master password; unlock it once with mvnenc");
         }
         return answer;
     }

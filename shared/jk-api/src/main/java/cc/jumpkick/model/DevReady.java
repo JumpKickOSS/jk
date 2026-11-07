@@ -22,7 +22,7 @@ public record DevReady(@Nullable String url, @Nullable String pattern, long time
         if (url != null && url.isBlank()) url = null;
         if (pattern != null && pattern.isBlank()) pattern = null;
         if (url != null && pattern != null) {
-            throw new IllegalArgumentException("sets both ready and ready-pattern — one probe per process");
+            throw new IllegalArgumentException("sets both ready and ready-pattern; use one");
         }
         if (timeoutMillis <= 0) timeoutMillis = DEFAULT_TIMEOUT_MILLIS;
     }

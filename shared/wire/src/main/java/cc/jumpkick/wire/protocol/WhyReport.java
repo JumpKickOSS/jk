@@ -66,8 +66,8 @@ public record WhyReport(
 
     /** What a query that names workspace member {@code dir} gets in place of a lock row. */
     public static String siblingLine(String query, String dir) {
-        return query + " is the workspace sibling " + dir + "/: it builds from source, so jk-lock.toml has no row"
-                + " for it (jk tree " + dir + " shows its dependencies)";
+        return query + " is workspace module " + dir + "/, built from source; jk tree " + dir
+                + " shows its dependencies";
     }
 
     /** The three fields of pruned edge {@code index}: child, origin, and the row that dropped it. */

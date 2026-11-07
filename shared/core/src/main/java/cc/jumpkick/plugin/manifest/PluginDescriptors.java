@@ -45,8 +45,8 @@ public final class PluginDescriptors {
         if (enforceJkCompat) requireJkCompat(id, jkCompat);
         String sdk = plugin.getString("sdk");
         if (sdk != null && sdk.isBlank()) {
-            throw new JkBuildParseException(displayPath + ".plugin.sdk must name the jk-plugin-sdk release the plugin"
-                    + " compiled against (a version such as \"" + JkVersion.VERSION + "\"), or be absent");
+            throw new JkBuildParseException(
+                    displayPath + ".plugin.sdk must be a jk-plugin-sdk version, e.g. \"" + JkVersion.VERSION + "\"");
         }
 
         Map<String, PluginDescriptor.SchemaKey> schema =
@@ -87,8 +87,7 @@ public final class PluginDescriptors {
                     throw new JkBuildParseException(where + " collides with a non-string [schema] key");
                 }
                 if (spec.contains("variant-axis") || spec.contains("dimensioned")) {
-                    throw new JkBuildParseException(where + ": variant axes are core's [variants]"
-                            + " section now — sub-tables are named definition groups only");
+                    throw new JkBuildParseException(where + ": declare variant axes in [variants]");
                 }
                 subTables.put(name, new PluginDescriptor.SubTable(name, schemaRef));
             }
@@ -222,9 +221,8 @@ public final class PluginDescriptors {
                 if (v == null) continue;
                 TomlTable when = v.getTable("when");
                 if (when == null || when.getString("config") == null || when.getString("equals") == null) {
-                    throw new JkBuildParseException(displayPath
-                            + ".packaging.variant requires when = { config = ..., equals = ... } — packaging"
-                            + " resolves before any classpath exists, so only config predicates apply");
+                    throw new JkBuildParseException(
+                            displayPath + ".packaging.variant needs when = { config = ..., equals = ... }");
                 }
                 variants.add(new PluginDescriptor.Packaging.Variant(
                         new PluginDescriptor.Condition.ConfigEquals(when.getString("config"), when.getString("equals")),
@@ -310,8 +308,7 @@ public final class PluginDescriptors {
         for (PluginDescriptor.StepDependency cd : commandDeps) {
             if (stepDeps.stream().anyMatch(sd -> sd.artifact().equals(cd.artifact()))) {
                 throw new JkBuildParseException(displayPath + ".contribute.command-dependency: `" + cd.artifact()
-                        + "` is already a [[contribute.step-dependency]] — commands read step tools too;"
-                        + " declare it once, in the step lane");
+                        + "` is already a [[contribute.step-dependency]]; declare it once");
             }
         }
         List<PluginDescriptor.ProvidedClasspath> provided =
@@ -536,10 +533,9 @@ public final class PluginDescriptors {
             }
             if (tool == null) {
                 if (commandDeps.stream().anyMatch(cd -> cd.artifact().equals(dependency))) {
-                    throw new JkBuildParseException(where + ": `" + dependency
-                            + "` is a [[contribute.command-dependency]] — a command-only tool is provisioned"
-                            + " when its command runs and never joins a compile classpath; declare it as a"
-                            + " [[contribute.step-dependency]] if a step needs it");
+                    throw new JkBuildParseException(
+                            where + ": `" + dependency
+                                    + "` is a [[contribute.command-dependency]]; use [[contribute.step-dependency]] for a step");
                 }
                 throw new JkBuildParseException(where + ": `" + dependency
                         + "` does not name a declared [[contribute.step-dependency]] artifact");
@@ -614,8 +610,7 @@ public final class PluginDescriptors {
             String url = t.getString("url");
             int kinds = (coordinate == null ? 0 : 1) + (sdkComponent == null ? 0 : 1) + (url == null ? 0 : 1);
             if (kinds != 1) {
-                throw new JkBuildParseException(where + " needs exactly one of `coordinate` (a Maven artifact),"
-                        + " `sdk-component` (a provisioned SDK component) or `url` (a file at an http(s) URL)");
+                throw new JkBuildParseException(where + " needs exactly one of `coordinate`, `sdk-component` or `url`");
             }
             if (coordinate != null) Interpolation.validate(coordinate, schemaKeys, entryKeys, where);
             if (sdkComponent != null) Interpolation.validate(sdkComponent, schemaKeys, where);
@@ -693,9 +688,8 @@ public final class PluginDescriptors {
     private static List<String> parseForStep(TomlTable t, String key, String where) {
         if (!t.contains("for-step")) return List.of();
         if (!key.equals("step-dependency") && !key.equals("lock-closure")) {
-            throw new JkBuildParseException(where
-                    + ": for-step applies to a [[contribute.step-dependency]] or [[contribute.lock-closure]] only"
-                    + " — a command tool reaches every command and no step");
+            throw new JkBuildParseException(
+                    where + ": for-step applies only to [[contribute.step-dependency]] or [[contribute.lock-closure]]");
         }
         if (!t.isString("for-step") && !t.isArray("for-step")) {
             throw new JkBuildParseException(where + ".for-step must be a step name or an array of step names");
@@ -729,8 +723,7 @@ public final class PluginDescriptors {
             throw new JkBuildParseException(where + ".when must be a table of exactly one predicate");
         }
         if (when.keySet().size() > (when.contains("config") ? 2 : 1)) {
-            throw new JkBuildParseException(where + ".when carries more than one predicate — the"
-                    + " condition set is closed; anything richer belongs in a code hook");
+            throw new JkBuildParseException(where + ".when has more than one condition; use one");
         }
         if (when.contains("classpath-has")) {
             String module = when.getString("classpath-has");

@@ -149,7 +149,7 @@ class JkBuildParserJavacTest {
                         plugins = ["ErrorProne"]
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageStartingWith("[javac].plugins must be a table keyed by plugin name");
+                .hasMessageStartingWith("[javac].plugins must be a table");
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
                         [javac]

@@ -94,9 +94,8 @@ public interface TaskExec {
     /** As {@link #extra}, throwing with the missing artifact id (for required tools). */
     default Path requireExtra(String name) {
         return extra(name)
-                .orElseThrow(() -> new IllegalStateException("step-dependency `" + name
-                        + "` was not supplied — declare it under [[contribute.step-dependency]]; one that"
-                        + " carries for-step reaches only the steps and packagers it names"));
+                .orElseThrow(() -> new IllegalStateException(
+                        "step-dependency `" + name + "` not provided; declare it in [[contribute.step-dependency]]"));
     }
 
     /** Resolve (and create) a declared output dir under {@link #scratch()}. */

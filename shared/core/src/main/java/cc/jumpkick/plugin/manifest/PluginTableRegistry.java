@@ -406,9 +406,8 @@ public final class PluginTableRegistry {
         for (String raw : table.keySet()) {
             // Group DEFINITIONS don't belong in overlays; the string REFERENCE spelling does.
             if (manifest.subTables().containsKey(raw) && readTable(table, raw) != null) {
-                throw new JkBuildParseException("[" + where + "." + raw + "] — define ["
-                        + manifest.table() + "." + raw + ".<name>] groups on the plugin table and reference"
-                        + " them from the overlay by name (" + raw + " = \"<name>\")");
+                throw new JkBuildParseException("[" + where + "." + raw + "]: define [" + manifest.table() + "." + raw
+                        + ".<name>] and write " + raw + " = \"<name>\" here");
             }
             PluginDescriptor.SchemaKey key = manifest.schema().get(raw);
             if (key == null) {

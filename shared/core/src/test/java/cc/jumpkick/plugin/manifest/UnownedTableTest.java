@@ -22,8 +22,8 @@ class UnownedTableTest {
                         version = "4.0.0"
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[not-a-real-plugin] is not owned by any installed plugin")
-                .hasMessageContaining("add it under [plugins]");
+                .hasMessageContaining("[not-a-real-plugin]: no installed plugin reads this table")
+                .hasMessageContaining("add the plugin under [plugins]");
     }
 
     @Test
@@ -44,7 +44,7 @@ class UnownedTableTest {
                         version = "4.0.0"
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("(plugin tables installed here: " + String.join(", ", expected) + ")");
+                .hasMessageContaining("plugin tables: " + String.join(", ", expected));
     }
 
     @Test

@@ -153,21 +153,20 @@ public final class NodeShape {
                 && table.dir() == null
                 && hasPackageJson(moduleDir)
                 && !hasPackageJson(moduleDir.resolve(NodeTable.SIDE_BY_SIDE_DIR))) {
-            throw new JkBuildParseException(where + ": package.json sits beside the JVM sources — move the node"
-                    + " build into " + NodeTable.SIDE_BY_SIDE_DIR + ", or set [node] dir");
+            throw new JkBuildParseException(where + ": package.json is beside the JVM sources; move it to "
+                    + NodeTable.SIDE_BY_SIDE_DIR + " or set [node] dir");
         }
         if (!jvm && hasPackageJson(moduleDir) && build.project().nodeSpec().isEmpty() && !build.declaresNodeTable()) {
             Proposal p = propose(moduleDir);
-            throw new JkBuildParseException(
-                    where + ": package.json found but no node toolchain is declared — add node = " + p.spec()
-                            + (p.source() == null ? "" : " (from " + p.source() + ")"));
+            throw new JkBuildParseException(where + ": package.json found but no node version; add node = " + p.spec()
+                    + (p.source() == null ? "" : " (from " + p.source() + ")"));
         }
         Kind kind = kind(build, moduleDir);
         if (kind == Kind.NONE) {
             if (build.declaresNodeTable()) {
                 String dir = jvm ? sideBySideDir(table) : table.dir() == null ? "." : table.dir();
-                throw new JkBuildParseException(where + ": [node] is set but " + dir + "/package.json does not exist"
-                        + " — add the node build there, or remove [node]");
+                throw new JkBuildParseException(
+                        where + ": [node] is set but " + dir + "/package.json is missing; add it or remove [node]");
             }
             return;
         }
@@ -175,8 +174,8 @@ public final class NodeShape {
         if (nodeDir == null) return;
         Path module = moduleDir.toAbsolutePath().normalize();
         if (!nodeDir.startsWith(module) && !(module.startsWith(nodeDir) && ManifestPaths.describesProject(nodeDir))) {
-            throw new JkBuildParseException(where + ": [node] dir " + table.dir() + " leaves the module; it may"
-                    + " only name a directory inside it, or a project directory above it (a workspace root)");
+            throw new JkBuildParseException(
+                    where + ": [node] dir " + table.dir() + " must be inside the module or the workspace root");
         }
         if (table.out() != null) {
             Path out = nodeDir.resolve(table.out()).normalize();
@@ -187,9 +186,8 @@ public final class NodeShape {
         }
         if (build.project().nodeSpec().isEmpty()) {
             Proposal p = propose(nodeDir);
-            throw new JkBuildParseException(
-                    where + ": package.json found but no node toolchain is declared — add node = " + p.spec()
-                            + (p.source() == null ? "" : " (from " + p.source() + ")"));
+            throw new JkBuildParseException(where + ": package.json found but no node version; add node = " + p.spec()
+                    + (p.source() == null ? "" : " (from " + p.source() + ")"));
         }
         NodeProject.infer(nodeDir, table);
     }

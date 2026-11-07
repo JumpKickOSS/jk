@@ -46,9 +46,8 @@ class SecretFileAccessTest {
         assertThatThrownBy(() -> new SecretFileAccess(List.of(tmp.resolve("run/secrets"))).check(token, WHERE))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageStartingWith(WHERE)
-                .hasMessageContaining("chmod 600 " + token)
-                .hasMessageContaining("defaultMode: 0400")
-                .hasMessageContaining("mode: 0400");
+                .hasMessageContaining("is readable by other users")
+                .hasMessageContaining("chmod 600 " + token);
     }
 
     @Test
@@ -69,8 +68,8 @@ class SecretFileAccessTest {
 
         assertThatThrownBy(() -> new SecretFileAccess(List.of(root)).check(token, WHERE))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("under the secret mount")
-                .hasMessageContaining("can write it");
+                .hasMessageContaining("secret " + token)
+                .hasMessageContaining("is writable by other users");
     }
 
     @Test

@@ -75,7 +75,7 @@ public final class M2Dirs {
             RunNotices.warnOnce(
                     "m2-settings-localrepo-unexpanded:" + settings + " " + names,
                     () -> "jk: warning: " + settings + " <localRepository> names " + names
-                            + ", which does not expand in the shell that ran jk; using " + defaultRepository());
+                            + ", which is not set; using " + defaultRepository());
             return null;
         }
         try {
@@ -113,8 +113,7 @@ public final class M2Dirs {
                 RunNotices.warnOnce(
                         "m2-settings-localrepo-not-plain",
                         () -> "jk: warning: ~/.m2/settings.xml <localRepository> is not a plain path; using "
-                                + defaultRepository()
-                                + " (or JK_STORE_DIR repos on fetch fallback)");
+                                + defaultRepository());
                 return null;
             }
             return trimmed;

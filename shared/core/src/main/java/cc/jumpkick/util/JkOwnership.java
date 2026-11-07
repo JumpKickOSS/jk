@@ -92,9 +92,7 @@ public final class JkOwnership {
             // The only case that needs an answer.
         }
         if (!isOwned(path)) {
-            throw new IOException("refusing to remove " + path + " — jk did not create it (no " + MARKER
-                    + " marker), and this directory is shared. Remove it yourself if you meant to,"
-                    + " or point jk somewhere else.");
+            throw new IOException("refusing to remove " + path + ": jk did not create it (no " + MARKER + ")");
         }
         PathUtil.deleteRecursively(path);
     }

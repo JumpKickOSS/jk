@@ -68,9 +68,7 @@ public final class RepositoryToml {
             if (RepositorySpec.JK_LOCAL.equals(name)) {
                 // The first-party install store (repos/jk-local) is not a user's to redeclare.
                 if (onBad == OnBad.REJECT) {
-                    throw new JkBuildParseException(
-                            "repositories.jk-local is reserved for JumpKick's first-party install store"
-                                    + " (repos/jk-local); pick another repository name");
+                    throw new JkBuildParseException("repositories.jk-local: name reserved for jk; pick another name");
                 }
                 continue;
             }
@@ -144,10 +142,7 @@ public final class RepositoryToml {
 
     /** Why a project manifest may not declare a mirror, naming the table and where it belongs. */
     static String mirrorInProject(String name) {
-        return "repositories." + name + "." + MIRROR_OF + " is not accepted in jk.toml: a mirror describes this"
-                + " machine's network, and a cloned project must not be able to redirect your whole resolve."
-                + " Declare [repositories." + name + "] with mirror-of in ~/.jk/config.toml, or drop mirror-of"
-                + " to declare a repository the project resolves from";
+        return "repositories." + name + "." + MIRROR_OF + ": mirrors go in ~/.jk/config.toml, not jk.toml";
     }
 
     /**
@@ -172,8 +167,8 @@ public final class RepositoryToml {
         String where = "repositories." + name + " in " + file;
         for (String key : t.keySet()) {
             if (!MIRROR_KEYS.contains(key)) {
-                throw new JkBuildParseException(where + " is a mirror (it sets mirror-of), which takes only "
-                        + String.join(", ", MIRROR_KEYS) + "; `" + key + "` belongs on a repository");
+                throw new JkBuildParseException(
+                        where + ": a mirror takes only " + String.join(", ", MIRROR_KEYS) + ", not `" + key + "`");
             }
         }
         String url = t.getString("url");
@@ -283,9 +278,8 @@ public final class RepositoryToml {
         }
         if (RepositorySpec.CENTRAL.equals(name) && (allowInsecure || allowUnverified)) {
             if (onBad == OnBad.SKIP) return null;
-            throw new JkBuildParseException(where
-                    + " is Maven Central, which serves https and publishes a checksum for every artifact:"
-                    + " allow-insecure and allow-unverified are not accepted on it");
+            throw new JkBuildParseException(
+                    where + ": allow-insecure and allow-unverified are not allowed on Maven Central");
         }
         URI uri;
         try {
@@ -296,8 +290,7 @@ public final class RepositoryToml {
         }
         if (blocked && allowInsecure) {
             if (onBad == OnBad.SKIP) return null;
-            throw new JkBuildParseException(where + " is blocked and says allow-insecure = true: a blocked repository"
-                    + " is never asked, so drop one key or the other");
+            throw new JkBuildParseException(where + " sets both blocked and allow-insecure; drop one");
         }
         if ("http".equalsIgnoreCase(uri.getScheme()) && !allowInsecure && !blocked && !loopback(uri.getHost())) {
             if (onBad == OnBad.SKIP) return null;
@@ -328,9 +321,7 @@ public final class RepositoryToml {
      * throws it; a blocked repository's lock failure carries it once nothing else serves a package.
      */
     public static String plaintextRefusal(String where, String url) {
-        return where + " uses plaintext http:// (" + url
-                + "): anyone on the network path can replace the bytes jk pins into jk-lock.toml."
-                + " Use https, or set allow-insecure = true on [" + where + "] to accept that.";
+        return where + ": " + url + " is plain http; use https or set allow-insecure = true";
     }
 
     /** The boolean at {@code key}, {@code false} when absent; any other type is an error naming the position. */

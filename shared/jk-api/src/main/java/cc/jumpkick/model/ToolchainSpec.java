@@ -124,9 +124,8 @@ public record ToolchainSpec(
         // major stays a floor and the = binds the vendor — but with no vendor either, = says nothing.
         boolean exactVersion = whole.required && version.indexOf('.') >= 0;
         if (whole.required && !exactVersion && vendor.isEmpty()) {
-            throw new IllegalArgumentException(label
-                    + " = \"=" + whole.text + "\" pins nothing — an = version needs a point release"
-                    + " (e.g. \"=25.0.4\"), or name a vendor to pin (e.g. \"=temurin-25\")");
+            throw new IllegalArgumentException(label + " = \"=" + whole.text
+                    + "\": an exact pin needs a full version or a vendor, e.g. \"=25.0.4\"");
         }
         return new ToolchainSpec(
                 whole.required ? "" : vendor,

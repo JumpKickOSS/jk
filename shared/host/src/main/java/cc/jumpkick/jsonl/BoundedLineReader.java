@@ -174,18 +174,13 @@ public final class BoundedLineReader extends BufferedReader {
                 }
                 line.append(c);
                 if (line.length() > maxLine) {
-                    throw new IOException("protocol line exceeds " + maxLine + " chars without a terminator"
-                            + " — refusing to buffer further (malformed or hostile peer)");
+                    throw new IOException("protocol line longer than " + maxLine + " chars; stopped reading");
                 }
             }
         } catch (IOException e) {
             if (timedOut) {
                 throw new IOException(
-                        "no protocol traffic for "
-                                + formatIdle(idle)
-                                + " — the engine looks dead (set JK_STREAM_IDLE_MS to tune;"
-                                + " try `jk engine stop -n`)",
-                        e);
+                        "no answer from the engine for " + formatIdle(idle) + "; try jk engine stop -n", e);
             }
             throw e;
         } finally {

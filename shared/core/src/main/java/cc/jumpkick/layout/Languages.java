@@ -68,25 +68,19 @@ public record Languages(boolean java, boolean kotlin, boolean groovy, boolean sc
         Languages declared = resolve(project, projectDir);
         boolean anyDeclared = project.java() > 0 || project.isKotlin() || project.isGroovy() || project.isScala();
         if (!anyDeclared) return List.of();
-        List<String> declaredKeys = new ArrayList<>();
-        if (project.java() > 0) declaredKeys.add("java");
-        if (declared.kotlin()) declaredKeys.add("kotlin");
-        if (declared.groovy()) declaredKeys.add("groovy");
-        if (declared.scala()) declaredKeys.add("scala");
         List<String> rows = new ArrayList<>();
         // The level the compile would use: the declared one, else the JDK the engine runs on.
         int release = project.javaRelease() > 0
                 ? project.javaRelease()
                 : Runtime.version().feature();
-        if (!declared.java()) dropped(rows, projectDir, "java", ".java", "java = " + release, declaredKeys);
-        if (!declared.kotlin()) dropped(rows, projectDir, "kotlin", ".kt", "kotlin = \"<version>\"", declaredKeys);
-        if (!declared.groovy()) dropped(rows, projectDir, "groovy", ".groovy", "groovy = \"<version>\"", declaredKeys);
-        if (!declared.scala()) dropped(rows, projectDir, "scala", ".scala", "scala = \"<version>\"", declaredKeys);
+        if (!declared.java()) dropped(rows, projectDir, "java", ".java", "java = " + release);
+        if (!declared.kotlin()) dropped(rows, projectDir, "kotlin", ".kt", "kotlin = \"<version>\"");
+        if (!declared.groovy()) dropped(rows, projectDir, "groovy", ".groovy", "groovy = \"<version>\"");
+        if (!declared.scala()) dropped(rows, projectDir, "scala", ".scala", "scala = \"<version>\"");
         return rows;
     }
 
-    private static void dropped(
-            List<String> rows, Path projectDir, String key, String ext, String addition, List<String> declaredKeys) {
+    private static void dropped(List<String> rows, Path projectDir, String key, String ext, String addition) {
         Path traditional = projectDir.resolve("src/main/" + key);
         String root;
         String what;
@@ -99,8 +93,7 @@ public record Languages(boolean java, boolean kotlin, boolean groovy, boolean sc
         } else {
             return;
         }
-        rows.add(root + " holds " + what + " this module does not compile: jk.toml declares "
-                + String.join(", ", declaredKeys) + " and not " + key + " — add " + addition + " to compile them");
+        rows.add(root + " has " + what + " that are not compiled; add " + addition + " to jk.toml");
     }
 
     /**

@@ -75,11 +75,10 @@ final class MavenPasswords {
         if (payload.startsWith("[") && payload.indexOf(']') > 0) {
             String attributes = payload.substring(1, payload.indexOf(']'));
             if (attributes.contains("type=")) {
-                throw new Undecryptable("it names a decryptor (" + attributes + ") that only a Maven plugin provides");
+                throw new Undecryptable("decryptor " + attributes + " needs a Maven plugin");
             }
             if (attributes.contains("name=") || attributes.contains("cipher=")) {
-                throw new Undecryptable("it is in Maven 4's mvnenc format with text outside the braces, which"
-                        + " Maven 4 does not decrypt either; keep only the {...} mvnenc wrote");
+                throw new Undecryptable("text outside the {...} braces; keep only what mvnenc wrote");
             }
         }
         byte[] all;

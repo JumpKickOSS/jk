@@ -76,10 +76,8 @@ public final class TokenStore {
         String reason = why;
         RunNotices.warnOnce(
                 "forge-token-keychain:" + host,
-                () -> "jk: warning: the `jk auth login` token for " + host + " is in the "
-                        + SecretVault.displayName(pointer.get().backend()) + ", which did not give it up (" + reason
-                        + "). Run `jk auth login` again to"
-                        + " store it anew.");
+                () -> "jk: warning: could not read the token for " + host + " from the "
+                        + SecretVault.displayName(pointer.get().backend()) + ": " + reason + "; run jk auth login");
         return Optional.empty();
     }
 

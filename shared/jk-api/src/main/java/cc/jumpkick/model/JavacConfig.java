@@ -64,7 +64,7 @@ public record JavacConfig(
         if (declared == null) return moduleRelease;
         if (declared < moduleRelease) {
             throw new IllegalArgumentException("[javac.test] release = " + declared + " is below the module's java = "
-                    + moduleRelease + " — a test-only release can only raise the level");
+                    + moduleRelease + "; it can only be higher");
         }
         return declared;
     }

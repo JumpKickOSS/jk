@@ -57,8 +57,7 @@ class LanguagesTest {
                 .build();
         assertThat(Languages.resolve(project, tmp).java()).isFalse();
         assertThat(Languages.undeclaredWithSources(project, tmp))
-                .containsExactly("src/main/java holds Java sources this module does not compile: jk.toml declares"
-                        + " kotlin and not java — add java = 25 to compile them");
+                .containsExactly("src/main/java has Java sources that are not compiled; add java = 25 to jk.toml");
     }
 
     @Test
@@ -92,8 +91,8 @@ class LanguagesTest {
                 .kotlin(VersionSelector.parse("2.2.0"))
                 .build();
         assertThat(Languages.undeclaredWithSources(project, tmp))
-                .containsExactly("src holds .groovy sources this module does not compile: jk.toml declares java,"
-                        + " kotlin and not groovy — add groovy = \"<version>\" to compile them");
+                .containsExactly(
+                        "src has .groovy sources that are not compiled; add groovy = \"<version>\" to jk.toml");
     }
 
     @Test
@@ -138,8 +137,7 @@ class LanguagesTest {
         Project project =
                 Project.builder("com.example", "hello", "1.0.0").java(25).build();
         assertThat(Languages.undeclaredWithSources(project, tmp))
-                .containsExactly("src holds .kt sources this module does not compile: jk.toml declares java and not"
-                        + " kotlin — add kotlin = \"<version>\" to compile them");
+                .containsExactly("src has .kt sources that are not compiled; add kotlin = \"<version>\" to jk.toml");
     }
 
     @Test
@@ -169,7 +167,7 @@ class LanguagesTest {
         Project project =
                 Project.builder("com.example", "hello", "1.0.0").java(25).build();
         assertThat(Languages.undeclaredWithSources(project, tmp))
-                .containsExactly("src/main/kotlin holds Kotlin sources this module does not compile: jk.toml declares"
-                        + " java and not kotlin — add kotlin = \"<version>\" to compile them");
+                .containsExactly(
+                        "src/main/kotlin has Kotlin sources that are not compiled; add kotlin = \"<version>\" to jk.toml");
     }
 }

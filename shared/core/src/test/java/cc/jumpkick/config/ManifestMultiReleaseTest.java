@@ -48,7 +48,7 @@ class ManifestMultiReleaseTest {
                 .hasMessageContaining("`java21` is not a Java release");
         assertThatThrownBy(() -> parse("[multi-release]\n8 = \"src/main/java8\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("at least 9");
+                .hasMessageContaining("release must be 9 or later");
         assertThatThrownBy(() -> parse("[multi-release]\n21 = 3\n"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[multi-release] 21 must be a source root");

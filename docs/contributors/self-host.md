@@ -137,9 +137,9 @@ failure bisects the first-parent history after the installed jk's source (its en
 checkout again. Scratch locks are forced and thrown away; the checkout is never edited.
 
 The failure mode names itself: a jk older than the lock's writer refuses the lock with
-`written by jk <newer> and this is jk <older>; a newer lock format needs a newer reader, not a
-re-lock` and points here, instead of suggesting `jk lock` — which would restate the branch's lock
-in the old format and hand a newer tree an older lock. A manifest key the pinned release does not
+`written by jk <newer> and this is jk <older>; upgrade jk, do not re-lock` instead of suggesting
+`jk lock`, which would restate the branch's lock in the old format and hand a newer tree an older
+lock. A manifest key the pinned release does not
 know fails its parse with the key's name and the keys that table accepts; the remedy is the same
 chain. The self-host job's bootstrap step is where either shows up first, which is why the pin
 moves only after step 1's release is hosted.

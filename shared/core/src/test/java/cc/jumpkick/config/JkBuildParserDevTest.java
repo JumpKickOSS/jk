@@ -105,7 +105,7 @@ class JkBuildParserDevTest {
                         [dev]
                         ready-timeout = "2m"
                         """))
-                .hasMessageContaining("[dev] ready-timeout needs a probe");
+                .hasMessageContaining("[dev] ready-timeout needs ready or ready-pattern");
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
                         [dev]
@@ -198,7 +198,7 @@ class JkBuildParserDevTest {
                         [dev.sidecars]
                         web = { command = "npm run dev", ready = "http://localhost:5173", ready-pattern = "ready" }
                         """))
-                .hasMessageContaining("one probe");
+                .hasMessageContaining("sets both ready and ready-pattern; use one");
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
                         [dev.sidecars]

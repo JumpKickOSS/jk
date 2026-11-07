@@ -203,7 +203,7 @@ public final class RepoCredentialResolver {
             Optional<RepoCredential> fromEnv = fromEnv(repoId);
             if (fromEnv.isPresent()) {
                 if (binding.bound()) return fromEnv.get();
-                refuse(repoId, url, envVarPrefix(repoId) + "TOKEN / " + envVarPrefix(repoId) + "USERNAME", binding);
+                refuse(repoId, url, envVarPrefix(repoId) + "TOKEN", binding);
             }
 
             // 3. jk repo credential store — bound by the origin the login recorded when it has one
@@ -216,14 +216,13 @@ public final class RepoCredentialResolver {
                     refuse(
                             repoId,
                             url,
-                            "the `jk repo login " + repoId + "` store",
-                            Binding.mismatch("`jk repo login " + repoId + "` stored it for " + origin + ", not "
-                                    + originText(url) + "; run `jk repo login " + repoId + " -U "
-                                    + SafeUri.forMessage(url) + "` if the repository has moved there"));
+                            "jk repo login",
+                            Binding.mismatch("it was stored for " + origin + "; if the repository moved, run"
+                                    + " jk repo login " + repoId + " -U " + SafeUri.forMessage(url)));
                 } else if (binding.bound()) {
                     return entry.credential();
                 } else {
-                    refuse(repoId, url, "the `jk repo login " + repoId + "` store", binding);
+                    refuse(repoId, url, "jk repo login", binding);
                 }
             }
 
@@ -233,7 +232,7 @@ public final class RepoCredentialResolver {
                             s.username() == null ? "" : s.username(), s.password() == null ? "" : s.password()));
             if (fromSettings.isPresent()) {
                 if (binding.bound()) return fromSettings.get();
-                refuse(repoId, url, "the ~/.m2/settings.xml <server> `" + repoId + "`", binding);
+                refuse(repoId, url, "~/.m2/settings.xml", binding);
             }
         }
 
@@ -279,8 +278,7 @@ public final class RepoCredentialResolver {
         for (ConfigReference r : references) {
             if (r.scheme() == ConfigReference.Scheme.CMD) {
                 throw new JkBuildParseException("repositories." + repoId + " uses " + r.spelling()
-                        + " in a project manifest: a ${cmd:} reference runs a command on this machine, so it is"
-                        + " honoured only in ~/.jk/config.toml");
+                        + "; ${cmd:} works only in ~/.jk/config.toml");
             }
         }
         if (repoId == null || repoId.isBlank()) return false;
@@ -294,11 +292,7 @@ public final class RepoCredentialResolver {
         }
         Binding binding = bindingOf(repoId, url);
         if (binding.bound()) return true;
-        refuse(
-                repoId,
-                url,
-                "the " + spelled(references) + " reference of its [repositories." + repoId + "] table",
-                binding);
+        refuse(repoId, url, spelled(references), binding);
         return false;
     }
 
@@ -344,21 +338,12 @@ public final class RepoCredentialResolver {
     private static void refuseProjectReference(String repoId, @Nullable URI url, List<ConfigReference> references) {
         String origin = originText(url);
         String refs = spelled(references);
-        boolean readsFiles = references.stream().anyMatch(r -> !r.isEnv());
-        String what = readsFiles ? "a variable of your shell or a file of this machine" : "a variable of your shell";
         RunNotices.warnOnce("repo-credential-refused:" + repoId + " " + origin + " inline " + refs, () -> {
             String prefix = envVarPrefix(repoId);
-            return "jk: warning: repository `" + repoId + "` at " + origin
-                    + " is accessed anonymously: its [repositories." + repoId + "] table interpolates " + refs
-                    + ", and a project manifest may not read " + what + " into a repository's "
-                    + "credential or object-store keys — a cloned project could name any of them"
-                    + (readsFiles ? " (a ${file:} reference is honoured only in ~/.jk/config.toml)" : "")
-                    + ". To send one, "
-                    + "declare [repositories." + repoId
-                    + "] with this URL and the ${VAR} reference in ~/.jk/config.toml, export " + prefix + "TOKEN (or "
-                    + prefix + "USERNAME + " + prefix + "PASSWORD) with " + prefix + "HOST="
-                    + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + ", or run `jk repo login "
-                    + repoId + " -U " + SafeUri.forMessage(url) + "`. See repositories.md § Credentials.";
+            return "jk: warning: " + repoId + " at " + origin + ": no credential sent; jk.toml cannot use " + refs
+                    + "\n  move the reference to ~/.jk/config.toml, set " + prefix + "TOKEN with " + prefix + "HOST="
+                    + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + ", or run jk repo login "
+                    + repoId + " -U " + SafeUri.forMessage(url);
         });
     }
 
@@ -375,8 +360,7 @@ public final class RepoCredentialResolver {
         if (!CredentialHelpers.produced(stale)) return null;
         return () -> {
             if (!CredentialHelpers.forget(stale)) {
-                throw new JkBuildParseException("its helper already ran again in this command, and the value"
-                        + " it printed then was refused too");
+                throw new JkBuildParseException("the credential helper's new value was refused too");
             }
             return resolve(repoId, url, inline);
         };
@@ -480,15 +464,13 @@ public final class RepoCredentialResolver {
     private static void refuse(String repoId, @Nullable URI url, String source, Binding binding) {
         String origin = originText(url);
         RunNotices.warnOnce("repo-credential-refused:" + repoId + " " + origin + " " + source, () -> {
-            String head = "jk: warning: repository `" + repoId + "` at " + origin
-                    + " is accessed anonymously: a credential for that name exists in " + source + ", but ";
-            if (binding.mismatch() != null) return head + binding.mismatch() + ".";
+            String head = "jk: warning: " + repoId + " at " + origin + ": credential from " + source + " not sent; ";
+            if (binding.mismatch() != null) return head + binding.mismatch();
             String prefix = envVarPrefix(repoId);
-            return head + "nothing binds the name `" + repoId + "` to that host — the repository is declared by the "
-                    + "project, not by ~/.jk/config.toml. To send it, declare [repositories." + repoId
-                    + "] with this URL in ~/.jk/config.toml, set " + prefix + "HOST="
-                    + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + " in your shell, or run "
-                    + "`jk repo login " + repoId + " -U " + SafeUri.forMessage(url) + "`.";
+            return head + "the project, not ~/.jk/config.toml, declares this repository"
+                    + "\n  declare it in ~/.jk/config.toml, set " + prefix + "HOST="
+                    + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + ", or run jk repo login "
+                    + repoId + " -U " + SafeUri.forMessage(url);
         });
     }
 

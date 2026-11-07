@@ -300,8 +300,7 @@ public final class JkBuildParser {
         Interpolation.guard(result);
         if (result.contains("guard-dependencies")) {
             throw new JkBuildParseException(
-                    "[guard-dependencies] is not a scope: a guard suite (src/guard) compiles against"
-                            + " [test-dependencies] plus the jk-guards-junit jk provisions — declare ArchUnit or Konsist there");
+                    "[guard-dependencies] is not a scope; declare guard libraries in [test-dependencies]");
         }
         return result;
     }
@@ -415,10 +414,7 @@ public final class JkBuildParser {
         JkBuild.Library library = ManifestTables.parseLibrary(result).orElse(null);
         if (application != null && PluginModule.isWorker(moduleDir)) {
             throw new JkBuildParseException(
-                    "[application] is for apps — a plugin worker (jk-plugin.toml or Plugin service)"
-                            + " already implies main "
-                            + PluginModule.WORKER_MAIN
-                            + "; drop the [application] table");
+                    "[application] does not apply to a plugin worker; drop the [application] table");
         }
         JkBuild.NativeConfig nativeConfig =
                 ManifestBuild.parseNativeConfig(result).orElse(null);
@@ -488,8 +484,7 @@ public final class JkBuildParser {
         Variants variants = ManifestTables.parseVariants(result, workspace, effective, installedManifests);
         // *.workspace = true is for members only — the root is the inheritance source.
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
-            throw new JkBuildParseException("workspace root must set concrete project values"
-                    + " (`*.workspace = true` is only valid on workspace modules)");
+            throw new JkBuildParseException("workspace root cannot use `workspace = true`; set the values");
         }
         return new JkBuild(
                 project,
@@ -559,23 +554,19 @@ public final class JkBuildParser {
      */
     static void rejectRemovedCatalogConfig(TomlTable root) {
         if (root.contains("catalog")) {
-            throw new JkBuildParseException("catalog = … was removed — short names always resolve through the system "
-                    + "catalog (global + bundled) plus optional workspace-root "
-                    + ManifestPaths.LIBRARIES);
+            throw new JkBuildParseException(
+                    "`catalog` is not supported; put short names in " + ManifestPaths.LIBRARIES);
         }
         if (root.getTable("libraries") != null) {
             throw new JkBuildParseException(
-                    "[libraries] in jk.toml was removed — put short-name → group:artifact entries in "
-                            + ManifestPaths.LIBRARIES
-                            + " at the workspace root (standalone: project root)");
+                    "[libraries] does not belong in jk.toml; put it in " + ManifestPaths.LIBRARIES + " at the root");
         }
     }
 
     /** {@code [project]} is gone — identity keys are bare top-level fields. */
     static void rejectRemovedProjectTable(TomlTable root) {
         if (root.getTable("project") != null) {
-            throw new JkBuildParseException("[project] was removed — move its keys to the top level of jk.toml"
-                    + " (e.g. name = \"…\", group = \"…\", version = \"…\")");
+            throw new JkBuildParseException("[project] is not supported; move its keys to the top of jk.toml");
         }
     }
 

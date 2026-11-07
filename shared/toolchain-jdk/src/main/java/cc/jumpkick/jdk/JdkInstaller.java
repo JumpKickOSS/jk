@@ -503,9 +503,7 @@ public final class JdkInstaller {
      */
     private static String requireDigest(@Nullable String sha256, String displayName, URI uri) throws IOException {
         if (sha256 == null || sha256.isBlank()) {
-            throw new IOException("JDK " + displayName + " (" + uri
-                    + ") carries no sha256 in its catalog entry; refusing to install an archive that cannot be"
-                    + " verified");
+            throw new IOException("JDK " + displayName + ": no sha256 in the catalog for " + uri + "; not installing");
         }
         return sha256.trim();
     }

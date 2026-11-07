@@ -221,7 +221,7 @@ class MvnencPasswordsTest {
         MavenSettings settings = read(settings(dir, FILE_SECRET, "plain"), home, Map.of());
 
         assertThat(settings.server("nexus")).isEmpty();
-        assertThat(settings.warnings()).singleElement().asString().contains("not an absolute path");
+        assertThat(settings.warnings()).singleElement().asString().contains("must be an absolute path");
     }
 
     @Test
@@ -244,13 +244,13 @@ class MvnencPasswordsTest {
                     .as(source)
                     .singleElement()
                     .asString()
-                    .contains("asks for the password interactively, and jk never prompts");
+                    .contains("prompts; use env:, file: or gpg-agent:");
         }
         Path home = home(dir.resolve("sysprop"), security4("system-property:maven.master"));
         assertThat(read(settings(dir, SERVER, "plain"), home, Map.of()).warnings())
                 .singleElement()
                 .asString()
-                .contains("system property of Maven's own JVM");
+                .contains("master password source is a Maven system property");
     }
 
     @Test
@@ -325,8 +325,8 @@ class MvnencPasswordsTest {
             assertThat(settings.warnings())
                     .singleElement()
                     .asString()
-                    .contains("holds no cached master password")
-                    .contains("jk never asks the agent to prompt");
+                    .contains("has no cached master password")
+                    .contains("unlock it once with mvnenc");
         }
     }
 

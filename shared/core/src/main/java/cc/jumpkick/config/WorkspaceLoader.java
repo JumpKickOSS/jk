@@ -59,8 +59,7 @@ public final class WorkspaceLoader {
         Objects.requireNonNull(root, "root");
         if (!root.isWorkspaceRoot()) return Map.of();
         if (root.project().inheritsFromWorkspace()) {
-            throw new JkBuildParseException("workspace root must set concrete project values"
-                    + " (`*.workspace = true` is only valid on workspace modules)");
+            throw new JkBuildParseException("workspace root cannot use `workspace = true`; set the values");
         }
         MemoKey key = MemoKey.of(workspaceRoot, root);
         if (key == null) return Collections.unmodifiableMap(load(workspaceRoot, root));
@@ -121,12 +120,8 @@ public final class WorkspaceLoader {
             JkBuild moduleBuild = JkBuildParser.parseLocal(moduleJkToml);
             // Nested workspaces are forbidden (ambiguous shared target/).
             if (moduleBuild.isWorkspaceRoot()) {
-                throw new JkBuildParseException("workspaces cannot be nested — `"
-                        + module
-                        + "` declares its own `[workspace]` block "
-                        + "while being a module of `"
-                        + workspaceRoot
-                        + "`.");
+                throw new JkBuildParseException(
+                        "nested workspace: module `" + module + "` has its own [workspace]; remove it");
             }
             JkBuild member = inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root, moduleDir);
             NodeShape.check(member, moduleDir);
@@ -228,10 +223,9 @@ public final class WorkspaceLoader {
                     + e.build.project().version();
             Entry previous = byCoord.putIfAbsent(coord, e);
             if (previous != null) {
-                throw new JkBuildParseException("workspace module collision: `" + coord + "` is declared by both `"
+                throw new JkBuildParseException("`" + coord + "` is declared by both `"
                         + moduleLabel(workspaceRoot, previous.dir) + "` and `" + moduleLabel(workspaceRoot, e.dir)
-                        + "`. A workspace publishes one artifact per coordinate, so give one of them a different"
-                        + " `name` or `group`.");
+                        + "`; change the name or group of one");
             }
             byName.computeIfAbsent(e.build.project().name(), k -> new ArrayList<>())
                     .add(e);
@@ -249,11 +243,8 @@ public final class WorkspaceLoader {
                 String groups = carriers.stream()
                         .map(c -> "`" + c.build.project().group() + "`")
                         .collect(Collectors.joining(" or "));
-                throw new JkBuildParseException("workspace edge `" + name + "` is ambiguous: `"
-                        + moduleLabel(workspaceRoot, from.dir) + "` depends on it, and " + paths
-                        + " both carry that name. Name the member's group on the edge — `" + name
-                        + " = { workspace = true, group = \"…\" }` with " + groups
-                        + " — or rename one of them.");
+                throw new JkBuildParseException("`" + moduleLabel(workspaceRoot, from.dir) + "` depends on `" + name
+                        + "`, which matches " + paths + "; add group = " + groups + " to the dependency");
             }
         }
     }
@@ -274,10 +265,9 @@ public final class WorkspaceLoader {
                 if (found) continue;
                 String groups =
                         carriers.stream().map(c -> "`" + c.group() + "`").collect(Collectors.joining(", "));
-                throw new JkBuildParseException("workspace edge `" + name + "` names group `" + group
-                        + "`, which no member carrying that name has: `" + moduleLabel(workspaceRoot, fromDir)
-                        + "` depends on it, and the name is carried under "
-                        + (groups.isEmpty() ? "no member" : groups) + ".");
+                throw new JkBuildParseException("`" + moduleLabel(workspaceRoot, fromDir) + "` depends on `" + group
+                        + ":" + name + "`, but no module has that group"
+                        + (groups.isEmpty() ? "" : "; " + name + " has group " + groups));
             }
         }
     }

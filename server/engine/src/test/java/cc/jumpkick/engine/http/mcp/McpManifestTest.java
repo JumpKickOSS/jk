@@ -55,9 +55,8 @@ class McpManifestTest {
                 McpUpdate.run(dir.toString(), List.of(), false, false))) {
             assertThat(out.get("applied")).isEqualTo(false);
             assertThat(String.valueOf(out.get("error")))
-                    .contains("built in place from pom.xml")
-                    .contains("jk import pom.xml")
-                    .contains("edit the POM");
+                    .contains("no jk.toml in")
+                    .contains("edit pom.xml or run jk import pom.xml");
         }
         try (var files = Files.list(dir)) {
             assertThat(files.map(p -> p.getFileName().toString())).containsExactly("pom.xml");

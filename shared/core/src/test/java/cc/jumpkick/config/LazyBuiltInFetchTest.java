@@ -76,7 +76,7 @@ class LazyBuiltInFetchTest {
 
         assertThatThrownBy(() -> JkBuildParser.parse(toml))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[zz-never-installed] is not owned by any installed plugin")
+                .hasMessageContaining("[zz-never-installed]: could not fetch the built-in plugin")
                 .hasMessageContaining("official repo unreachable (test)");
     }
 }

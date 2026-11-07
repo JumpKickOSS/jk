@@ -71,7 +71,7 @@ class ManifestBuildInfoTest {
     void the_file_stays_inside_the_jar() {
         assertThatThrownBy(() -> parse("[build-info]\nfile = \"../git.properties\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("relative resource path");
+                .hasMessageContaining("relative path in the jar");
         assertThatThrownBy(() -> parse("build-info = true\n"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("must be a table");

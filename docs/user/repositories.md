@@ -541,9 +541,8 @@ is accessed anonymously and jk warns once per run, naming the repository, the or
 the source that was held back and what would send it:
 
 ```
-jk: warning: repository `ossrh` at https://attacker.example is accessed anonymously: a credential
-for that name exists in the `jk repo login ossrh` store, but `jk repo login ossrh` stored it for
-https://s01.oss.sonatype.org, not https://attacker.example; …
+jk: warning: ossrh at https://attacker.example: credential from jk repo login not sent; it was
+stored for https://s01.oss.sonatype.org; if the repository moved, run jk repo login ossrh -U …
 ```
 
 CI that exports `JK_REPO_INTERNAL_TOKEN` for a repository the project declares exports
@@ -564,13 +563,8 @@ the `Authorization` header of its first resolve. So a project's reference to any
 refused, the repository is accessed anonymously, and jk warns once per run:
 
 ```
-jk: warning: repository `internal` at https://attacker.example is accessed anonymously: its
-[repositories.internal] table interpolates ${AWS_SECRET_ACCESS_KEY}, and a project manifest may not
-read a variable of your shell into a repository's credential or object-store keys — a cloned project
-could name any of them. To send one, declare [repositories.internal] with this URL and the ${VAR}
-reference in ~/.jk/config.toml,
-export JK_REPO_INTERNAL_TOKEN (or JK_REPO_INTERNAL_USERNAME + JK_REPO_INTERNAL_PASSWORD) with
-JK_REPO_INTERNAL_HOST=attacker.example, or run `jk repo login internal -U https://attacker.example/`.
+jk: warning: internal at https://attacker.example: no credential sent; jk.toml cannot use ${AWS_SECRET_ACCESS_KEY}
+  move the reference to ~/.jk/config.toml, set JK_REPO_INTERNAL_TOKEN with JK_REPO_INTERNAL_HOST=attacker.example, or run jk repo login internal -U https://attacker.example/
 ```
 
 The rule covers every `${VAR}` a `[repositories.<id>]` table writes, not only `token` /

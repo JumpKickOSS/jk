@@ -16,8 +16,8 @@ public record PackageManagerSpec(PackageManager manager, String version) {
         Objects.requireNonNull(manager, "manager");
         Objects.requireNonNull(version, "version");
         if (manager == PackageManager.YARN && NodeRelease.majorOf(version) == 1) {
-            throw new IllegalArgumentException("Yarn " + version + " is Yarn 1, which jk does not run — run"
-                    + " `yarn set version stable && yarn install`, then commit package.json and yarn.lock");
+            throw new IllegalArgumentException(
+                    "Yarn " + version + " is not supported; run yarn set version stable && yarn install");
         }
     }
 

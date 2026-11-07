@@ -199,7 +199,7 @@ class JkBuildParserDependencyTest {
                 picocli = { path = "../picocli", group = "info.picocli" }
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("with `path` must not set `group`");
+                .hasMessageContaining("with `path` cannot set `group`");
     }
 
     @Test
@@ -289,7 +289,7 @@ class JkBuildParserDependencyTest {
                 bad = { git = "https://github.com/acme/widgets" }
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("must set `tag`, `branch`, or `rev`");
+                .hasMessageContaining("needs `tag`, `branch` or `rev`");
     }
 
     @Test
@@ -344,7 +344,7 @@ class JkBuildParserDependencyTest {
                 bad = { git = "https://github.com/acme/widgets@main", branch = "main" }
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("URL-embedded ref");
+                .hasMessageContaining("sets a ref in both the URL and `tag`, `branch` or `rev`");
     }
 
     @Test
@@ -395,7 +395,7 @@ class JkBuildParserDependencyTest {
                 auth = { git = "https://github.com/user/repo!components/auth", branch = "main", path = "components/auth" }
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("sub-directory");
+                .hasMessageContaining("subdirectory in both the URL and `path`");
     }
 
     @Test
@@ -438,7 +438,7 @@ class JkBuildParserDependencyTest {
                 "org.foo:bar" = "1.0"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name")
+                .hasMessageContaining("unknown library")
                 .hasMessageContaining("group:artifact:1.2.3");
     }
 
@@ -591,9 +591,8 @@ class JkBuildParserDependencyTest {
                         deps = ["postgress"]
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("features.db.deps names `postgress`")
-                .hasMessageContaining("(line 10)")
-                .hasMessageContaining("no dependency table declares");
+                .hasMessageContaining("line 10: features.db.deps: no dependency named `postgress`")
+                .hasMessageContaining("`optional = true`");
     }
 
     @Test
@@ -748,7 +747,8 @@ class JkBuildParserDependencyTest {
 
                 [dependencies]
                 mystery = { optional = false }
-                """)).hasMessageContaining("must set exactly one of");
+                """))
+                .hasMessageContaining("needs one of `version`, `git`, `path`, `sha256` or `workspace = true`");
     }
 
     @Test

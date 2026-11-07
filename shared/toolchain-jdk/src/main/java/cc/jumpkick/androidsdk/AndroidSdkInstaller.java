@@ -92,14 +92,13 @@ public final class AndroidSdkInstaller {
         String licenseId = component.licenseId();
         String licenseText = licenseId.isEmpty() ? null : feed().licenseText(licenseId);
         if (licenseText != null && !sdk.licenseAccepted(licenseId, AndroidRepoFeed.licenseHash(licenseText))) {
-            throw new IOException("Android SDK component " + componentPath + " requires accepting the '" + licenseId
-                    + "' license — run `jk android licenses -y` first");
+            throw new IOException("Android SDK component " + componentPath + " needs the '" + licenseId
+                    + "' license; run jk android licenses -y");
         }
 
         if (pinnedRevision != null && !pinnedRevision.equals(component.revision())) {
-            Log.warn("jk: Android SDK component " + componentPath + " is pinned to revision "
-                    + pinnedRevision + " in jk-lock.toml but Google's feed now offers " + component.revision()
-                    + " — installing the offered revision; run `jk lock` to refresh the pin");
+            Log.warn("jk: " + componentPath + ": jk-lock.toml pins revision " + pinnedRevision + ", installing "
+                    + component.revision() + "; run jk lock");
         }
 
         Path archiveFile = download(archive, componentPath);
@@ -115,9 +114,8 @@ public final class AndroidSdkInstaller {
         if (pinnedRevision == null) return;
         String installed = sdk.installedRevision(componentPath);
         if (installed != null && !installed.equals(pinnedRevision)) {
-            Log.warn("jk: Android SDK component " + componentPath + " is installed at revision "
-                    + installed + " but jk-lock.toml pins " + pinnedRevision
-                    + " — building with the installed one; run `jk lock` to refresh the pin");
+            Log.warn("jk: " + componentPath + ": jk-lock.toml pins revision " + pinnedRevision + ", using installed "
+                    + installed + "; run jk lock");
         }
     }
 

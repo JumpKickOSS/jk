@@ -22,9 +22,7 @@ class PluginDependenciesTableTest {
                         extra = "com.acme:extra:1.0.0"
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[plugin-dependencies] is not a table you write")
-                .hasMessageContaining("jk lock")
-                .hasMessageContaining("SDK floor")
+                .hasMessageContaining("[plugin-dependencies] is written by jk lock, not by hand")
                 .hasMessageContaining("[plugins]");
     }
 
@@ -32,7 +30,7 @@ class PluginDependenciesTableTest {
     void an_empty_table_is_refused_too() {
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "[plugin-dependencies]\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[plugin-dependencies] is not a table you write");
+                .hasMessageContaining("[plugin-dependencies] is written by jk lock, not by hand");
     }
 
     @Test
@@ -40,10 +38,10 @@ class PluginDependenciesTableTest {
         assertThatThrownBy(
                         () -> JkBuildEditor.addDependency(PROJECT, Scope.PLUGIN, "extra", "com.acme", "extra", "1.0.0"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("[plugin-dependencies] is not a table you write");
+                .hasMessageContaining("[plugin-dependencies] is written by jk lock, not by hand");
         assertThatThrownBy(() -> JkBuildEditor.removeDependency(PROJECT, Scope.PLUGIN, "extra"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("[plugin-dependencies] is not a table you write");
+                .hasMessageContaining("[plugin-dependencies] is written by jk lock, not by hand");
         assertThat(JkBuildParser.parse(PROJECT).dependencies().of(Scope.PLUGIN)).isEmpty();
     }
 }

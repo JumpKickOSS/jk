@@ -52,7 +52,7 @@ public final class WorkspaceModules {
             }
             if (normalized.contains("**")) {
                 throw new JkBuildParseException("[workspace] modules entry `" + entry
-                        + "`: `**` is not supported — a wildcard matches one path segment; list the segments");
+                        + "`: `**` is not supported; use `*` once per directory level");
             }
             Set<String> matches = new TreeSet<>();
             collect(root, root, normalized.split("/"), 0, matches);

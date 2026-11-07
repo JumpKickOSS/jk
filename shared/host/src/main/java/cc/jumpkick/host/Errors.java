@@ -33,7 +33,6 @@ public final class Errors {
      * :host}. A refusal should read identically whichever of them produced it.
      */
     public static String offlineRefusal(String target) {
-        return "offline: refusing outbound request to " + target
-                + " (drop --offline / unset JK_OFFLINE to allow network)";
+        return "offline: refusing outbound request to " + target + "; drop --offline or unset JK_OFFLINE";
     }
 }

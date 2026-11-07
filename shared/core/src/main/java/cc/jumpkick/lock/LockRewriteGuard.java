@@ -157,13 +157,10 @@ public final class LockRewriteGuard {
             @Nullable WriterBuild running,
             String relation,
             Set<String> dropped) {
-        return "jk-lock.toml was written by jk " + writerVersion + describe(writer) + " and this engine is jk "
-                + runningVersion + describe(running) + ", " + relation + " that does not know its key(s) "
-                + String.join(", ", dropped)
-                + " — a relock with it would drop them, and the tree that carries the lock may not build"
-                + " from the result. Install the jk that wrote it (`jk self update`, or"
-                + " `jk install -S` from its checkout) and run `jk engine stop`, or pass"
-                + " `jk lock -F` to rewrite the lock with this engine anyway";
+        return "jk-lock.toml was written by jk " + writerVersion + describe(writer) + "; this engine is jk "
+                + runningVersion + describe(running) + ", " + relation
+                + "\na relock would drop " + String.join(", ", dropped)
+                + "; install that jk and run jk engine stop, or use jk lock -F";
     }
 
     /** {@code " (build 4ee07400a592 of 2026-09-17T15:57:16Z)"}, or {@code ""} for no build. */

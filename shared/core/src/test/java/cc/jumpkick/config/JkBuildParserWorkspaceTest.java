@@ -281,7 +281,7 @@ class JkBuildParserWorkspaceTest {
                 some-unknown-thing = "1.0.0"
                 """, TEST_CATALOG))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name");
+                .hasMessageContaining("unknown library");
     }
 
     @Test
@@ -294,7 +294,7 @@ class JkBuildParserWorkspaceTest {
                 shared = "https://github.com/acme/shared"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("version spec");
+                .hasMessageContaining("write a git source as `{ git = \"...\" }`");
     }
 
     @Test
@@ -404,7 +404,7 @@ class JkBuildParserWorkspaceTest {
                 bad = { workspace = false }
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("must be `true`");
+                .hasMessageContaining("can only be `true`");
     }
 
     @Test

@@ -175,7 +175,7 @@ class NodeProjectTest {
 
     @Test
     void yarn_1_is_refused_with_the_migration_command() throws IOException {
-        String fix = "Yarn 1 is not supported — run yarn set version stable && yarn install, then commit";
+        String fix = "Yarn 1 is not supported; run yarn set version stable && yarn install";
         assertThatThrownBy(() -> infer("{}", "yarn.lock"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining(fix);

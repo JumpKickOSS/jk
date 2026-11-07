@@ -57,7 +57,7 @@ class JkBuildParserLibraryTest {
         assertThatThrownBy(() -> JkBuildParser.parse(
                         PROJECT + "\n[application]\nmain = \"com.ex.App\"\n\n[library]\nassembly = true\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[library] and [application] are exclusive");
+                .hasMessageContaining("[library] and [application] cannot both be set");
     }
 
     @Test
@@ -80,6 +80,6 @@ class JkBuildParserLibraryTest {
     void a_top_level_assembly_key_names_both_tables_it_could_belong_to() {
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\nassembly = true\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("belongs in [application] (or in [library]");
+                .hasMessageContaining("belongs under [application] or [library]");
     }
 }

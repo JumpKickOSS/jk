@@ -116,8 +116,7 @@ class SettingsDecryptionTest {
                 .startsWith("jk: warning: <server> `nexus` in " + xml + " has an encrypted <password> jk"
                         + " cannot decrypt: there is no "
                         + dir.resolve("home").resolve(".m2").resolve("settings-security.xml"))
-                .contains("the repository is accessed anonymously")
-                .contains("`jk repo login`")
+                .endsWith("; the repository is accessed anonymously")
                 .doesNotContain(SERVER_PASSWORD));
     }
 

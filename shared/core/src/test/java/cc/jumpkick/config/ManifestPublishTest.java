@@ -112,7 +112,7 @@ class ManifestPublishTest {
                 [publish]
                 password = "hunter2"
                 """))
-                .hasMessageContaining("takes no secrets")
+                .hasMessageContaining("no secrets in jk.toml")
                 .hasMessageContaining("jk repo login");
     }
 

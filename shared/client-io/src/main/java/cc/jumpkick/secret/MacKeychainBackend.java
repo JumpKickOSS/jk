@@ -95,8 +95,7 @@ public final class MacKeychainBackend implements SecretBackend {
             SecretCommand.Result r = command.run(List.of(TOOL, "show-keychain-info"), null, PROBE_CAP);
             if (r.exit() == 0) return Probe.AVAILABLE;
             if (noWindowServer(r)) {
-                return Probe.unavailable(
-                        "the login keychain is locked, and this session has no window server to" + " unlock it");
+                return Probe.unavailable("the login keychain is locked and this session cannot unlock it");
             }
             return Probe.refused(complaint(r));
         } catch (IOException e) {

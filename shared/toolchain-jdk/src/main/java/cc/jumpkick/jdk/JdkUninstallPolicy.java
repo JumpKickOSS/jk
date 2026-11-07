@@ -17,17 +17,17 @@ public final class JdkUninstallPolicy {
 
     private static final Map<String, String> REFUSED = Map.of(
             "system",
-            "it is managed by the OS package manager (remove it with apt, dnf, brew, or the OS installer)",
+            "the OS package manager owns it",
             "intellij",
-            "it is registered in your IDE (remove it in IntelliJ under Project Structure ▸ SDKs)",
+            "IntelliJ owns it; remove it under Project Structure > SDKs",
             "maven-toolchains",
-            "it is listed in Maven's toolchains.xml, which jk only reads",
+            "it comes from Maven's toolchains.xml",
             "coursier",
-            "it is in Coursier's JVM cache, which Coursier and Mill own and Coursier has no uninstall for",
+            "it is in Coursier's JVM cache",
             "gradle-properties",
-            "it is named by org.gradle.java.installations in a gradle.properties file, which jk only reads",
+            "it comes from org.gradle.java.installations in gradle.properties",
             "jdk-paths",
-            "it is named by JK_JDK_PATHS or JK_JDK_FROM_ENV, which jk only reads");
+            "it comes from JK_JDK_PATHS or JK_JDK_FROM_ENV");
 
     private JdkUninstallPolicy() {}
 
@@ -46,7 +46,7 @@ public final class JdkUninstallPolicy {
         String reason = REFUSED.get(source);
         return reason == null
                 ? Optional.empty()
-                : Optional.of("jk jdk uninstall: refusing to remove a `" + source + "` JDK: " + reason + ".");
+                : Optional.of("jk jdk uninstall: not removing a `" + source + "` JDK; " + reason);
     }
 
     /**
@@ -54,8 +54,11 @@ public final class JdkUninstallPolicy {
      * {@code managedRoot} that no owning-tool uninstall covers. Empty when the uninstall may proceed.
      */
     public static Optional<String> refusal(JdkHit hit, Path managedRoot) {
-        Optional<String> bySource =
-                refusal(hit.source()).map(message -> message + " Nothing was deleted at " + hit.home() + ".");
+        String reason = REFUSED.get(hit.source());
+        Optional<String> bySource = reason == null
+                ? Optional.empty()
+                : Optional.of("jk jdk uninstall: not removing the `" + hit.source() + "` JDK at " + hit.home() + "; "
+                        + reason);
         if (bySource.isPresent() || JdkToolUninstaller.hasRecipe(hit) || deletable(hit.home(), managedRoot)) {
             return bySource;
         }
@@ -74,9 +77,8 @@ public final class JdkUninstallPolicy {
 
     /** Why jk leaves {@code hit}'s directory in place: it is outside {@code managedRoot}. */
     public static String outsideRoot(JdkHit hit, Path managedRoot) {
-        return "jk jdk uninstall: refusing to delete a `" + hit.source() + "` JDK at " + hit.home()
-                + ": it is outside jk's JDK root (" + managedRoot + "), and jk deletes only JDKs under that root."
-                + " Remove it with the tool that installed it. Nothing was deleted.";
+        return "jk jdk uninstall: not removing " + hit.home() + "; it is outside " + managedRoot
+                + ", remove it with the tool that installed it";
     }
 
     private static Path real(Path path) {

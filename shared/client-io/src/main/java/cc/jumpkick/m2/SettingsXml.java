@@ -105,10 +105,8 @@ final class SettingsXml {
     private void undecryptable(String where, String element, MavenPasswords.Undecryptable e, String instead) {
         values.report(new SettingsValues.Notice(
                 "m2-settings-undecryptable:" + file + " " + where + " " + element,
-                "jk: warning: " + where + " in " + file + " has an encrypted " + element
-                        + " jk cannot decrypt: " + e.getMessage() + "; " + instead
-                        + ". jk reads Maven's encrypted passwords for compatibility only — `jk repo login`,"
-                        + " ${file:…} or ${cmd:…} keep a credential out of plain text"));
+                "jk: warning: " + where + " in " + file + " has an encrypted " + element + " jk cannot decrypt: "
+                        + e.getMessage() + "; " + instead));
     }
 
     private List<MavenSettings.Mirror> mirrors(MinimalXml.Element doc) {

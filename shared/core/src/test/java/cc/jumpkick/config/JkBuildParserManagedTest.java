@@ -44,12 +44,12 @@ class JkBuildParserManagedTest {
                         commons-io = "commons-io:commons-io"
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("managed-dependencies.commons-io must name a version");
+                .hasMessageContaining("managed-dependencies.commons-io must be `group:artifact:version`");
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                         [managed-dependencies]
                         core = { path = "../core" }
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("managed-dependencies.core must name a version");
+                .hasMessageContaining("managed-dependencies.core must be `group:artifact:version`");
     }
 }

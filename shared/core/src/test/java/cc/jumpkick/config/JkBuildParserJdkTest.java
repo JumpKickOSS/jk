@@ -157,7 +157,7 @@ class JkBuildParserJdkTest {
                 jdk      = "=25"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("pins nothing");
+                .hasMessageContaining("an exact pin needs a full version or a vendor");
     }
 
     @Test

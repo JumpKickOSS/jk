@@ -93,11 +93,9 @@ public final class ReleaseVersion {
         Matcher m = PLAIN.matcher(version);
         if (m.matches()) return m;
         if (version.endsWith("-SNAPSHOT")) {
-            throw new IllegalArgumentException("version `" + version + "` is a snapshot. jk.toml declares the next"
-                    + " release (never -SNAPSHOT): write `" + version.substring(0, version.length() - 9)
-                    + "` and let `jk snapshot` add the suffix.");
+            throw new IllegalArgumentException("version `" + version + "` is a snapshot; write `"
+                    + version.substring(0, version.length() - 9) + "` and jk snapshot adds the suffix");
         }
-        throw new IllegalArgumentException("version `" + version + "` is not a release version of the form"
-                + " MAJOR.MINOR.PATCH (for example 1.4.0); a release cannot be cut from it.");
+        throw new IllegalArgumentException("version `" + version + "` is not MAJOR.MINOR.PATCH, e.g. 1.4.0");
     }
 }

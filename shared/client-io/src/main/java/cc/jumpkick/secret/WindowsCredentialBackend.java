@@ -148,9 +148,8 @@ public final class WindowsCredentialBackend implements SecretBackend {
         try {
             int parts = (whole.length + MAX_BLOB_BYTES - 1) / MAX_BLOB_BYTES;
             if (parts > MAX_PARTS) {
-                throw new SecretBackendException("the Windows Credential Manager holds at most " + MAX_PARTS
-                        + " credentials of " + MAX_BLOB_BYTES + " bytes for one secret, and the secret for " + item
-                        + " is " + whole.length + " bytes in UTF-8");
+                throw new SecretBackendException("the secret for " + item + " is too large for the Windows"
+                        + " Credential Manager: " + whole.length + " bytes");
             }
             Calls calls = calls();
             int stale = partsNamed(calls, item);

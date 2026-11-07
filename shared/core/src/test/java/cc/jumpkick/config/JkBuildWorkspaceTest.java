@@ -369,7 +369,7 @@ class JkBuildWorkspaceTest {
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("workspace module collision")
+                .hasMessageContaining("is declared by both")
                 .hasMessageContaining("com.example:dup")
                 .hasMessageContaining("`a`")
                 .hasMessageContaining("`b`");
@@ -427,9 +427,8 @@ class JkBuildWorkspaceTest {
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("workspace edge `edqs` is ambiguous")
-                .hasMessageContaining("`application` depends on it")
-                .hasMessageContaining("`common/edqs` and `edqs` both carry that name");
+                .hasMessageContaining("`application` depends on `edqs`, which matches `common/edqs` and `edqs`")
+                .hasMessageContaining("add group = ");
     }
 
     /** The group on the edge picks one member, so the same three-member workspace loads. */
@@ -484,8 +483,7 @@ class JkBuildWorkspaceTest {
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("workspace edge `edqs` names group `org.tb.msa`")
-                .hasMessageContaining("`application` depends on it")
+                .hasMessageContaining("`application` depends on `org.tb.msa:edqs`, but no module has that group")
                 .hasMessageContaining("`org.tb.common`, `org.tb`");
     }
 
@@ -596,7 +594,7 @@ class JkBuildWorkspaceTest {
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("workspace module collision")
+                .hasMessageContaining("is declared by both")
                 .hasMessageContaining("com.example:widget")
                 .hasMessageContaining("libs/a")
                 .hasMessageContaining("libs/b");
@@ -622,7 +620,7 @@ class JkBuildWorkspaceTest {
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("workspace module collision")
+                .hasMessageContaining("is declared by both")
                 .hasMessageContaining("<workspace root>")
                 .hasMessageContaining("libs/a");
     }
@@ -651,7 +649,7 @@ class JkBuildWorkspaceTest {
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("workspaces cannot be nested")
+                .hasMessageContaining("nested workspace")
                 .hasMessageContaining("libs/a");
     }
 

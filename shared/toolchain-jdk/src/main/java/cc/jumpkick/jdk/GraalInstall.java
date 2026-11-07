@@ -58,8 +58,7 @@ public final class GraalInstall {
      */
     static void requireNativeImage(Path home) throws IOException {
         if (GraalLauncher.in(home).isPresent()) return;
-        throw new IOException("the GraalVM at " + home + " holds no " + GraalLauncher.NAME + " launcher ("
-                + GraalLauncher.searchedDirs() + "); reinstall it with `jk jdk install -F " + home.getFileName()
-                + "`, or set $GRAALVM_HOME to a GraalVM that has one");
+        throw new IOException("the GraalVM at " + home + " has no " + GraalLauncher.NAME + "; run jk jdk install -F "
+                + home.getFileName() + " or set $GRAALVM_HOME");
     }
 }

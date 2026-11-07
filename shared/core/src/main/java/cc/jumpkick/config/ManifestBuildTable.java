@@ -83,10 +83,7 @@ final class ManifestBuildTable {
 
     private static void readBuildTable(TomlTable build, Settings s) {
         if (build.contains("extra-resources")) {
-            throw new JkBuildParseException("[build].extra-resources is not a setting — a plugin"
-                    + " worker ships its own jk-plugin.toml at the jar root (module-root"
-                    + " jk-plugin.toml is copied there automatically; src/main/resources/"
-                    + "jk-plugin.toml already is). Modules cannot pull files from other modules.");
+            throw new JkBuildParseException("[build].extra-resources is not a setting; use src/main/resources");
         }
         for (String key : build.keySet()) {
             if (!BUILD_KEYS.contains(key)) {
@@ -147,8 +144,7 @@ final class ManifestBuildTable {
                 throw new JkBuildParseException("[build].ksp-version must be a version string, e.g. \"2.3.12\"");
             }
             if (!(VersionSelector.parse(text) instanceof VersionSelector.Exact exact)) {
-                throw new JkBuildParseException("[build].ksp-version must be an exact version, not `" + text
-                        + "`: the KSP2 tool is pinned, and jk update moves the pin");
+                throw new JkBuildParseException("[build].ksp-version must be an exact version, not `" + text + "`");
             }
             s.kspVersion = exact.version();
         }
@@ -350,8 +346,8 @@ final class ManifestBuildTable {
         List<String> patterns = new ArrayList<>();
         for (int i = 0; i < values.size(); i++) {
             if (!(values.get(i) instanceof String str) || str.isBlank() || str.contains("#")) {
-                throw new JkBuildParseException(where + " " + key
-                        + " must be an array of class patterns: [\"*IT\"] (a class pattern names no method)");
+                throw new JkBuildParseException(
+                        where + " " + key + " must be an array of class patterns without methods, e.g. [\"*IT\"]");
             }
             if (!patterns.contains(str.trim())) patterns.add(str.trim());
         }
@@ -402,9 +398,8 @@ final class ManifestBuildTable {
             for (String key : props.keySet()) {
                 Object val = props.get(List.of(key));
                 if (val == null || val instanceof TomlTable || val instanceof TomlArray) {
-                    throw new JkBuildParseException("[test].system-properties." + key
-                            + " must be a string, number or boolean — the value the test JVM gets as -D"
-                            + key + "=…");
+                    throw new JkBuildParseException(
+                            "[test].system-properties." + key + " must be a string, number or boolean");
                 }
                 s.testSystemProperties.put(key, String.valueOf(val));
             }

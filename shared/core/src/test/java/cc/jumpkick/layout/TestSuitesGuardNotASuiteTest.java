@@ -50,8 +50,8 @@ class TestSuitesGuardNotASuiteTest {
                 .resolve(TestSuites.discover(module, false));
         assertThat(r.ok()).isFalse();
         assertThat(r.missingMessage())
-                .contains("guard lanes")
-                .contains("jk guard")
+                .contains("guard tests do not run under jk test")
+                .contains("use jk guard")
                 .doesNotContain("unknown test suite");
         TestSelection.Resolved all =
                 TestSelection.of(List.of(), true, List.of(), List.of()).resolve(TestSuites.discover(module, false));

@@ -90,8 +90,8 @@ public interface GitProxy {
             return;
         }
         if (!value.isEmpty()) {
-            throw new IOException("git " + git + " cannot be handed the proxy jk chose for " + hostOf(remote)
-                    + ": that needs git 2.31 or later. Upgrade git.");
+            throw new IOException(
+                    "git " + git + " cannot use the proxy for " + hostOf(remote) + "; upgrade to git 2.31 or later");
         }
         env.put("no_proxy", "*");
         env.put("NO_PROXY", "*");

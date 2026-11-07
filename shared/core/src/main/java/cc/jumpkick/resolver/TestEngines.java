@@ -100,9 +100,9 @@ public final class TestEngines {
                     + trigger
                     + " "
                     + exact.version()
-                    + " cannot run under jk: "
-                    + why()
-                    + " — raise the pin to "
+                    + " is too old for "
+                    + engine.module()
+                    + "; raise it to "
                     + suggested);
         }
 
@@ -117,19 +117,14 @@ public final class TestEngines {
             if (version == null || Versions.compare(version, floor) >= 0) return;
             throw new IllegalArgumentException("[test-dependencies] "
                     + trigger
-                    + " is platform-managed at "
+                    + " "
                     + version
-                    + ", which cannot run under jk: "
-                    + why()
-                    + " — declare "
+                    + " from the BOM is too old for "
+                    + engine.module()
+                    + "; declare "
                     + trigger
                     + " "
-                    + suggested
-                    + " in [test-dependencies]");
-        }
-
-        private String why() {
-            return "its suites run through " + engine.module() + ", which needs " + trigger + " " + floor + " or later";
+                    + suggested);
         }
     }
 

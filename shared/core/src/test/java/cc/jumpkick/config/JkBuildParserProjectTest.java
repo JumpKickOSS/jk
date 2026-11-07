@@ -307,8 +307,8 @@ class JkBuildParserProjectTest {
                 extra-resources = [ { from = "jk-plugin.toml", into = "" } ]
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[build].extra-resources")
-                .hasMessageContaining("jk-plugin.toml");
+                .hasMessageContaining("[build].extra-resources is not a setting")
+                .hasMessageContaining("src/main/resources");
     }
 
     @Test
@@ -609,7 +609,7 @@ class JkBuildParserProjectTest {
                 version  = "1.0.0"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[project] was removed");
+                .hasMessageContaining("[project] is not supported");
     }
 
     /**

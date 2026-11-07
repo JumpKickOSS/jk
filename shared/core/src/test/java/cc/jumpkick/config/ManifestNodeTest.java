@@ -56,7 +56,7 @@ class ManifestNodeTest {
                 .hasMessageContaining("node takes a version, not a vendor");
         assertThatThrownBy(() -> parse("node = \"=24\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("pins nothing");
+                .hasMessageContaining("an exact pin needs a full version");
         assertThatThrownBy(() -> parse("node = \"latest\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("node must be a version or lts");

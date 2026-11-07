@@ -60,7 +60,6 @@ class JkBuildParserEnvTest {
                         """))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[env] unknown key `TZ`")
-                .hasMessageContaining("inherit, vars")
                 .hasMessageContaining("vars = [{ TZ = \"…\" }]");
     }
 
@@ -75,6 +74,6 @@ class JkBuildParserEnvTest {
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\nvars = [\"TZ=UTC\"]\n"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[env].vars[0]")
-                .hasMessageContaining("looks like NAME=value");
+                .hasMessageContaining("is not a name; to set a value write { TZ = \"UTC\" }");
     }
 }

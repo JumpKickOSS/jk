@@ -393,8 +393,8 @@ public final class ClasspathResolver {
                     unpinned.add(pkg.displayCoord());
                     continue;
                 }
-                Log.warn("jk: warning: lock row " + pkg.name() + "@" + pkg.version()
-                        + " pins no checksum and names no POM-only file — skipped from classpath; re-run `jk lock`");
+                Log.warn("jk: warning: " + pkg.name() + "@" + pkg.version()
+                        + " has no file in jk-lock.toml, left off the classpath; run jk lock");
                 continue;
             }
             Path jar = locate(locator, pkg);
@@ -408,7 +408,7 @@ public final class ClasspathResolver {
                         + pkg.name()
                         + "@"
                         + pkg.version()
-                        + " is not on disk — skipped from classpath (run `jk sync`)");
+                        + " is not on disk, left off the classpath; run jk sync");
                 continue;
             }
             if (pkg.isAar()) {
@@ -435,13 +435,9 @@ public final class ClasspathResolver {
      */
     private static String noFile(List<String> coords) {
         return (coords.size() == 1
-                        ? "dependency " + coords.get(0)
-                                + " has no file: its lock row pins no checksum and names no POM-only file"
-                        : "dependencies " + String.join(", ", coords)
-                                + " have no file: their lock rows pin no checksum and name no POM-only file")
-                + " — run `jk lock`: a lock written before rows named the POM or module file they stand for"
-                + " is rewritten with them, and a jar the lock still cannot find fails the lock naming the"
-                + " repositories asked";
+                        ? "dependency " + coords.get(0) + " has no file in jk-lock.toml"
+                        : "dependencies " + String.join(", ", coords) + " have no file in jk-lock.toml")
+                + "; run jk lock";
     }
 
     /**
@@ -465,7 +461,7 @@ public final class ClasspathResolver {
         return (coords.size() == 1
                         ? "dependency " + coords.get(0) + " is"
                         : "dependencies " + String.join(", ", coords) + " are")
-                + " not on disk after sync — run `jk sync -F`";
+                + " not on disk after sync; run jk sync -F";
     }
 
     /** {@link #resolved}-backed {@code locate}; see that field for why this is worth caching. */

@@ -68,7 +68,7 @@ public final class ManifestProject {
     static final Set<String> IDENTITY_KEYS = Set.of("name", "group", "version");
 
     static String strandedSuffix(String key, String table) {
-        return " — found `" + key + "` under [" + table + "]; identity keys must appear above the first table";
+        return "; found it under [" + table + "], move it above the first table";
     }
 
     /** The whole error for an identity key found as a member of {@code table}. */
@@ -86,8 +86,7 @@ public final class ManifestProject {
     static Project parseProject(TomlTable root, boolean workspaceRoot) {
         // name is the module identity — never workspace-inherited (Cargo package.name rule).
         if (root.isTable("name")) {
-            throw new JkBuildParseException(
-                    "name cannot use workspace inheritance — every module must declare its own name");
+            throw new JkBuildParseException("name cannot use workspace = true; each module needs its own name");
         }
         if (!root.contains("name")) {
             throw new JkBuildParseException("jk.toml is missing required key `name`" + strandedHint(root, "name"));
@@ -255,8 +254,7 @@ public final class ManifestProject {
         }
         if (m2 != null && m2.contains("workspace") && isWorkspaceInherit(root, "m2")) {
             if (m2.contains("integration")) {
-                throw new JkBuildParseException(
-                        "[m2] workspace = true cannot be combined with an explicit integration — drop one");
+                throw new JkBuildParseException("[m2] sets both workspace = true and integration; drop one");
             }
             inherits.add(ProjectInherit.M2INTEGRATION);
             return true;
@@ -293,8 +291,8 @@ public final class ManifestProject {
         if (install == null || !present) return null;
         String word = install.getString(InstallDestination.KEY);
         return InstallDestination.parse(word)
-                .orElseThrow(() -> new JkBuildParseException("[install] destination must be \"m2\" (the Maven local"
-                        + " repository) or \"jk\" (jk's private repository), not `" + word + "`"));
+                .orElseThrow(() -> new JkBuildParseException(
+                        "[install] destination must be \"m2\" or \"jk\", not `" + word + "`"));
     }
 
     /**
@@ -310,8 +308,8 @@ public final class ManifestProject {
         String path = key;
         if (isWorkspaceInherit(root, key)) {
             if (workspaceRoot) {
-                throw new JkBuildParseException("workspace root must set a concrete " + path + " (`" + key
-                        + ".workspace = true` is only valid" + " on workspace modules)");
+                throw new JkBuildParseException(
+                        "workspace root cannot use " + key + ".workspace = true; set " + path + " directly");
             }
             inherits.add(inherit);
             return Project.VERSION_FROM_WORKSPACE;
@@ -343,15 +341,11 @@ public final class ManifestProject {
         TomlTable t = root.getTable(key);
         Boolean ws = t == null ? null : t.getBoolean("workspace");
         if (t == null || !Boolean.TRUE.equals(ws)) {
-            throw new JkBuildParseException(
-                    key + ".workspace must be `true` (the only legal value), or set " + key + " to a concrete value");
+            throw new JkBuildParseException(key + ".workspace can only be `true`; or set " + key + " directly");
         }
         for (String k : t.keySet()) {
             if (!"workspace".equals(k)) {
-                throw new JkBuildParseException(key
-                        + " with workspace inheritance must only set `workspace = true` (unexpected key `"
-                        + k
-                        + "`)");
+                throw new JkBuildParseException(key + " = { workspace = true } takes no other keys, not `" + k + "`");
             }
         }
         return true;
@@ -393,8 +387,8 @@ public final class ManifestProject {
         }
         if (raw == null) return null;
         if (raw.startsWith("=") && raw.indexOf('.') < 0) {
-            throw new JkBuildParseException("node = \"" + raw + "\" pins nothing — an = version needs a point"
-                    + " release, e.g. \"=24.21.0\"; a bare major (node = 24) is already a floor");
+            throw new JkBuildParseException(
+                    "node = \"" + raw + "\": an exact pin needs a full version, e.g. \"=24.21.0\"");
         }
         ToolchainSpec spec;
         try {
@@ -531,11 +525,8 @@ public final class ManifestProject {
     static void requireSupportedMajor(String path, int value) {
         if (value == 0) return;
         if (value < JavaRelease.FLOOR) {
-            throw new JkBuildParseException(path
-                    + " = "
-                    + value
-                    + " is not supported — jk targets JDK 17 and above "
-                    + "(LTS: 17, 21, 25, … plus the latest release).");
+            throw new JkBuildParseException(
+                    path + " = " + value + " is not supported; jk needs JDK " + JavaRelease.FLOOR + " or later");
         }
     }
 
@@ -547,8 +538,8 @@ public final class ManifestProject {
     static void requireCompilableRelease(int value) {
         if (value == 0) return;
         if (value < JavaRelease.OLDEST) {
-            throw new JkBuildParseException("java = " + value + " is not a release javac compiles for — the oldest is "
-                    + JavaRelease.OLDEST + "; jk's floor is " + JavaRelease.FLOOR + ".");
+            throw new JkBuildParseException(
+                    "java = " + value + " is too old for javac; the oldest is " + JavaRelease.OLDEST);
         }
     }
 }

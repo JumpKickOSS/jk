@@ -110,9 +110,7 @@ public final class ManifestPaths {
      * two ways to change what the build reads, and this names both.
      */
     public static String noManifestToEdit(String dir) {
-        return "no " + MANIFEST + " in " + dir + ": the project is built in place from " + POM
-                + " (effective POM), and this command edits " + MANIFEST + " only — run `jk import " + POM
-                + "` to own a " + MANIFEST + ", or edit the POM";
+        return "no " + MANIFEST + " in " + dir + "; edit " + POM + " or run jk import " + POM;
     }
 
     /** The build manifest that defines a project or a workspace member. */

@@ -156,7 +156,7 @@ class HostCooldownTest {
                         () -> http.get(URI.create("https://nonexistent.invalid/a/b.jar"), Map.of()))
                 .isInstanceOf(RateLimitedException.class)
                 .hasMessageContaining("rate-limiting")
-                .hasMessageContaining("Re-running now makes it worse");
+                .hasMessageContaining("retrying now makes the limit last longer");
     }
 
     @Test

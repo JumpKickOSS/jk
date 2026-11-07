@@ -151,9 +151,7 @@ public final class ProxyEnvironment extends ProxySelector {
             }
             if (!"http".equalsIgnoreCase(uri.getScheme())) {
                 return unusable(
-                        source,
-                        "names the scheme `" + uri.getScheme()
-                                + "`; only an http proxy is supported (https targets tunnel through it)");
+                        source, "names the scheme `" + uri.getScheme() + "`; only an http:// proxy is supported");
             }
             if (uri.getHost() == null) return unusable(source, "names no host");
             PasswordAuthentication credential = null;
@@ -178,8 +176,7 @@ public final class ProxyEnvironment extends ProxySelector {
             // credential to sit unparsed.
             RunNotices.warnOnce(
                     "proxy-unusable:" + source.name(),
-                    () -> "jk: warning: ignoring " + source.name() + ": its value " + why
-                            + "; requests go direct. Expected http://[user:password@]host[:port].");
+                    () -> "jk: warning: ignoring " + source.name() + ": its value " + why + "; connecting directly");
             return Optional.empty();
         }
 
