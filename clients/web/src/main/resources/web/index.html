@@ -474,6 +474,9 @@
       </template>
     </main>
 
+    <!-- One decision an operation waits on (decisions.js). -->
+    <decision-page v-if="view === 'decision'" :id="decisionId" :event="decisionEvent"></decision-page>
+
     <!-- New project: the engine's form as a stepper (jk's step, the template's, review) with a live
          preview beside it. Every field is rendered by kind from the form; nothing is per template. -->
     <main v-if="view === 'new'" class="wizard-page">

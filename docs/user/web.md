@@ -233,6 +233,30 @@ MCP `new` hands out such a link when its client supports only URL elicitation
 project you create. A create after the call stopped waiting (five minutes) is still wired for that
 agent, and the new project's page says the agent was not told.
 
+## Decisions
+
+An operation that waits for a person (an update across a minor, a dependency the deny policy
+refuses, a destructive clean) is a decision ([MCP](mcp.md#decisions)). `#decision/<id>` shows one:
+the question, who asked and where, the lines that explain it (the moves, the policy hits), and the
+answers this page may give. The agent's host sends you there by URL elicitation, a desktop
+notification carries the link under `[ui] ask = notify`, and a `NEEDS-YOU` result names it.
+
+- A decision that does not change what the project trusts is answered here: pick an answer and
+  **Answer**, or **Decline**.
+- A **trust-changing** one shows the command that accepts it, `jk decide <id>`, and only
+  **Decline**: an agent can read the dashboard token and drive a browser, so a click here is no
+  proof a person decided. The page the agent's host opened is the exception: its link carries a
+  one-time key (`k=`, scrubbed from the address bar like the token), and with it the page accepts.
+
+The first answer wins, wherever it came from; the page then says how and where it was settled.
+`GET /api/decisions` lists open decisions first, then recently settled ones; `GET
+/api/decisions/<id>` returns one; `POST /api/decisions/<id>` answers it; every change is an SSE
+`decision` event ([contributor HTTP](../contributors/http.md#decisions)).
+
+```text
+#decision/<id>
+```
+
 Live events: `GET /api/events` (SSE). Cancel: `POST /api/cancel`. Implementation of the
 SPA and HTTP contract: [contributor web client](../contributors/webclient.md),
 [contributor HTTP](../contributors/http.md).

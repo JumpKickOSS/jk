@@ -373,6 +373,26 @@ inference needs under `inference`) and its timeline's sequence. An adopted sessi
 same expiry as any other; one whose connection or label acts again on the new engine is the same
 session as before.
 
+### Decisions
+
+`GET /api/decisions`: `{ decisions: [...] }`, open decisions first, then settled ones, newest first
+within each (the queue keeps 200). `GET /api/decisions/<id>` is one, or a **404**. A decision is
+`{ id, kind, question, detail, command, trust, form, session?, label?, episode?, project?,
+createdAt, deadline, state, answers?, answeredBy?, answeredAt?, route }`: `kind` names the
+operation (`update`, `deps-add`, `disk-clean`, …), `command` is `jk decide <id>`, `form` the shared
+form model ([forms](forms.md)), `state` one of `open`, `accepted`, `declined`, `expired`, and
+`answeredBy` one of `host-form`, `host-url`, `dashboard`, `cli`. `route` is `#decision/<id>`.
+
+`POST /api/decisions/<id>` with `{ action: "accept" | "decline", answers?, key? }` answers it as the
+dashboard: **200** with the settled decision, **409** when it was already settled, **400** for
+answers that do not fit its form, **404** for no such decision, and **403** for an accept of a
+trust-changing decision without its host key. `key` is the one-time key the URL elicitation link
+carries (`#decision/<id>?k=<key>`); with it the answer counts as the host's (`host-url`). The key
+appears in no response, event, notification or tool result. The queue is `DecisionQueue`; the MCP
+rungs are `McpDecisions` ([MCP](../user/mcp.md#decisions)); `jk decide` reaches the same queue over
+the engine socket (`decisions-request`), and only an answer marked as typed at a terminal may
+accept a trust-changing decision.
+
 ### `GET /report/<token>/<id>/<path>`
 
 A run's coverage HTML report, served from the checkout the run measured. The bearer token is a
@@ -543,6 +563,9 @@ record gains reaches the dashboard and MCP as it reaches the CLI.
 The sampled `status`/`cache` frames are **dashboard-stream chrome**: MCP SSE subscriptions
 (`GET /mcp`) never receive them, and an MCP stream alone neither starts nor sustains the samplers
 — "while subscribed" above means dashboard (`/api/events`) subscribers.
+
+The decision queue's `decision` frame is dashboard-only as well: the decision as `GET
+/api/decisions` lists it, on every open and settle (expiry included).
 
 The session log's frames are dashboard-only too (`EventCatalog.DASHBOARD_ONLY`): an agent reads
 its own session through the tools it calls, not as a stream. Neither the engine wire nor console

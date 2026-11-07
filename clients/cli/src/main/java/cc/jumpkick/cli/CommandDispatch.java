@@ -61,6 +61,7 @@ import cc.jumpkick.command.system.CacheCommand;
 import cc.jumpkick.command.system.CancelCommand;
 import cc.jumpkick.command.system.CleanCommand;
 import cc.jumpkick.command.system.CompletionCommand;
+import cc.jumpkick.command.system.DecideCommand;
 import cc.jumpkick.command.system.DoctorCommand;
 import cc.jumpkick.command.system.EngineCommand;
 import cc.jumpkick.command.system.EnvCommand;
@@ -143,6 +144,7 @@ public final class CommandDispatch {
             new ResultsCommand(),
             new SkillCommand(),
             new CancelCommand(),
+            new DecideCommand(),
             new StatusCommand(),
             new TreeCommand(),
             new WhyCommand(),

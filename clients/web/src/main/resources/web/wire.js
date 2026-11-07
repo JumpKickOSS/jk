@@ -33,6 +33,7 @@ export const SSE = Object.freeze({
   runSnapshot: 'run-snapshot',
   plan: 'plan',
   cache: 'cache',
+  decision: 'decision',
 });
 
 /**
@@ -46,10 +47,3 @@ export const LOG = Object.freeze({
   action: 'action',
 });
 
-/**
- * The decision queue's frame: a decision opened or resolved. The console's Needs-you banner folds
- * it; an engine that has no queue never sends it.
- */
-export const QUEUE = Object.freeze({
-  decision: 'decision',
-});

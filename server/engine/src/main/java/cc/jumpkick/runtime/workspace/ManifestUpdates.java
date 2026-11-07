@@ -114,7 +114,13 @@ public final class ManifestUpdates {
             String handle,
             String module,
             String from,
-            String to) {}
+            String to) {
+
+        /** True when this move changes the pin's major or minor. */
+        public boolean crossesMinor() {
+            return Versions.crossesMinor(from, to);
+        }
+    }
 
     /**
      * The rewrites and the manifest text they produce, keyed by manifest path. Nothing is on disk

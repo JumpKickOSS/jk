@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.api.HttpLive;
+import cc.jumpkick.engine.decisions.DecisionQueue;
+import cc.jumpkick.engine.decisions.Decisions;
 import cc.jumpkick.engine.http.AdmissionYield;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.http.EngineHttpJobs;
@@ -14,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.function.LongFunction;
@@ -121,6 +124,18 @@ public final class McpContext {
      */
     @Setter
     private volatile @Nullable NewProjectWizard wizard;
+
+    /**
+     * The engine's decision queue and the dashboard links into it. Unwired, a queue of the
+     * context's own with no dashboard: decisions still climb the host's rungs and fall back to
+     * {@code jk decide}.
+     */
+    @Setter
+    private volatile Decisions decisions = new Decisions(new DecisionQueue(), (id, key) -> null);
+
+    /** The call each open decision continues, by decision id, for {@code run(decision=<id>)}. */
+    @Getter(AccessLevel.PACKAGE)
+    private final Map<String, McpDecisions.Continuation> continuations = new ConcurrentHashMap<>();
 
     /** How long one second of a wait's {@code timeout_s} lasts. Tests shrink it to expire a wait quickly. */
     @Setter

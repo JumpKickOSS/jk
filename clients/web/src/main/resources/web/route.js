@@ -51,6 +51,7 @@ export function parseTruthy(raw) {
  *  #console                                   (the landing page: no hash, or one no route claims)
  *  #console/<sessionId>                       (the console with one session selected)
  *  #new?<key>=<value>&…                       (the new-project wizard, pre-filled)
+ *  #decision/<id>                             (one decision; decisions.js)
  *  #project/<id>
  *  #project/<id>/run/<buildNumber>            (pin one run; without it the page follows the newest)
  *  #project/<id>/sessions                     (the project's Sessions tab)
@@ -98,6 +99,10 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
   // The new-project wizard; its query is the answers it opens with (wizard-model.js#linkFromHash).
   if (pathPart === '#new') {
     return routeFields({ view: 'new' });
+  }
+  if (pathPart.startsWith('#decision/')) {
+    const id = decodeComp(pathPart.slice('#decision/'.length));
+    return id ? routeFields({ view: 'decision', decisionId: id }) : empty;
   }
   if (pathPart.startsWith('#project/')) {
     const segs = pathPart.slice('#project/'.length).split('/');

@@ -20,6 +20,7 @@ import { cardMethods } from './cards.js';
 import { BuildBars, ModuleDepGraph } from './chart.js';
 import { CodeView } from './code.js';
 import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
+import { DecisionPage } from './decisions.js';
 import { foldEvent, seedFromHistory } from './fold.js';
 import {
   ago as agoOf,
@@ -62,6 +63,8 @@ export const appOptions = {
     codeMsg: routeFromHash().msg || '',
     pinnedRun: routeFromHash().run || 0, // #project/<id>/run/<n>: 0 follows the newest run
     projectTab: routeFromHash().tab, // the project page's tab: 'runs' | 'sessions'
+    decisionId: routeFromHash().decisionId || null, // #decision/<id>
+    decisionEvent: null, // the newest SSE decision payload, for the open decision page
     // The checkout the route names (#project/<id>?dir=…) — picked on the page, or carried by an
     // MCP / CLI link. Null while the id implies its one checkout; projectDir() folds in the
     // engine's answer.
@@ -370,6 +373,7 @@ export const appOptions = {
       this.pinnedRun = r.run || 0;
       this.projectTab = r.tab;
       this.consoleSession = r.session || null;
+      this.decisionId = r.decisionId || null;
       // Collapse the expensive graph panel when leaving project view or switching projects.
       if (r.view !== 'project' || idChanged || r.files) this.projectGraphOpen = false;
       // Project identity cannot change between two clicks on the same #project/<id> route, and
@@ -639,6 +643,7 @@ if (typeof Vue !== 'undefined' && typeof document !== 'undefined') {
     .component('build-bars', BuildBars)
     .component('module-dep-graph', ModuleDepGraph)
     .component('code-view', CodeView)
+    .component('decision-page', DecisionPage)
     .mount('#app');
 
   // Themed tooltips for data-tip / title (native title= is unstyleable OS chrome).

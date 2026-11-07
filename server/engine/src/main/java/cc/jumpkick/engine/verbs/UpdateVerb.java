@@ -80,6 +80,7 @@ public final class UpdateVerb implements HostedVerb {
                         "",
                         List.of(),
                         false,
+                        false,
                         false)
                 .encode();
     }
@@ -109,6 +110,7 @@ public final class UpdateVerb implements HostedVerb {
                             new LockMode.Update(platformFinal),
                             false,
                             selection,
+                            body.accept(),
                             writer);
                 }
                 Files.createDirectories(cache);

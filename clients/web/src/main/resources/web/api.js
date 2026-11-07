@@ -2,7 +2,7 @@
 // The only file that talks HTTP: token bootstrap, fetch wrappers, and the SSE client.
 // See docs/webclient.md and docs/http.md (auth tiers, #t= fragment bootstrap).
 
-import { EVENT, LOG, QUEUE, SSE } from './wire.js';
+import { EVENT, LOG, SSE } from './wire.js';
 
 const TOKEN_KEY = 'jk-http-token';
 const EPOCH_KEY = 'jk-engine-epoch';
@@ -315,7 +315,7 @@ export async function del(path) {
  * Build activity is folded by fold.js; `status` / `cache` update the vitals; the session log and
  * decision frames feed the console.
  */
-const EVENT_TYPES = [...Object.values(SSE), ...Object.values(EVENT), ...Object.values(LOG), ...Object.values(QUEUE)];
+const EVENT_TYPES = [...Object.values(SSE), ...Object.values(EVENT), ...Object.values(LOG)];
 
 /**
  * Event types that are safe to coalesce to the latest pending frame per request (or globally for

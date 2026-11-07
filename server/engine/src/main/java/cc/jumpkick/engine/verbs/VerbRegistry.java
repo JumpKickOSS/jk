@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.engine.decisions.DecisionQueue;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,8 @@ public final class VerbRegistry {
         this.byJobKind = Map.copyOf(jobs);
     }
 
-    public static VerbRegistry standard(VerbHost host) {
+    /** Every hosted verb; {@code decisions} is the queue {@code jk decide} reads and answers. */
+    public static VerbRegistry standard(VerbHost host, DecisionQueue decisions) {
         return new VerbRegistry(List.of(
                 new WorkspaceBuildVerb(host),
                 new LockVerb(host),
@@ -56,6 +58,7 @@ public final class VerbRegistry {
                 new GenerateVerb(host),
                 new NewProjectVerb(host),
                 new NewProjectFormVerb(host),
+                new DecideVerb(host, decisions),
                 new TemplateLintVerb(host),
                 new IdeModelVerb(host),
                 new DenyCheckVerb(host),

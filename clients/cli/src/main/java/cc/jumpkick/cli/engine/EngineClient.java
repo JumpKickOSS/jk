@@ -10,6 +10,8 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AffectedTestsReport;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import cc.jumpkick.wire.protocol.CatalogReadAck;
+import cc.jumpkick.wire.protocol.DecisionsAck;
+import cc.jumpkick.wire.protocol.DecisionsRequest;
 import cc.jumpkick.wire.protocol.DenyReport;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
@@ -148,6 +150,11 @@ public final class EngineClient {
     public static NewProjectFormAck newProjectForm(EnginePaths.Paths paths, NewProjectFormRequest req)
             throws IOException {
         return EngineReads.newProjectForm(paths, req);
+    }
+
+    /** {@code jk decide}: list the engine's decisions, or answer one; one sync round trip. */
+    public static DecisionsAck decisions(EnginePaths.Paths paths, DecisionsRequest req) throws IOException {
+        return EngineReads.decisions(paths, req);
     }
 
     /** {@code jk template lint}: the catalogue lint over template directories; one sync round trip. */

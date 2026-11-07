@@ -52,7 +52,7 @@ function askedBy(d, sessions) {
   const id = d.session && typeof d.session === 'object' ? d.session.id : d.session;
   const s = (sessions || []).find((x) => x.id === id || (x.label && x.label === id));
   if (s) return s.label || s.client || (s.origin === 'cli' ? 'shell' : s.origin);
-  return id || 'an agent';
+  return d.label || id || 'an agent';
 }
 
 /**

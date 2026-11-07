@@ -35,6 +35,7 @@ stopped providing.
 | `delta.js` | `<run-delta>`: the iteration strip — a record's `delta` as chips with the rows behind them |
 | `sessions.js` | Who asked: origin labels, the followed-or-pinned run, the pin route |
 | `wizard.js` | New Project and the directory browser its path fields open |
+| `decisions.js` | `<decision-page>`: the `#decision/<id>` page, and `openDecisions`, the Needs-you rows from `GET /api/decisions` |
 | `icons.js` | `<jk-icon>`: the inline-SVG glyph set |
 | `phase.js` | `<phase-chain>`: the coarse plan-phase strip on a card |
 | `report.js` | `<fail-report>`: one failure body for the compact card and the module branch |

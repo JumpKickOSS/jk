@@ -37,11 +37,15 @@ class WireTokenParityTest {
 
     private static final Pattern TOKEN = Pattern.compile("(\\w+): '([^']+)',");
 
-    /** The engine sources that write the SSE-layer names ({@code request-start}, {@code cache}, …). */
+    /**
+     * The engine sources that write the SSE-layer names ({@code request-start}, {@code cache}, …),
+     * and the catalog that names the dashboard-only ones ({@code decision}).
+     */
     private static final List<String> SSE_WRITERS = List.of(
             "server/engine/src/main/java/cc/jumpkick/engine/SsePublisher.java",
             "server/engine/src/main/java/cc/jumpkick/engine/LiveRuns.java",
-            "server/engine/src/main/java/cc/jumpkick/engine/http/LiveVitals.java");
+            "server/engine/src/main/java/cc/jumpkick/engine/http/LiveVitals.java",
+            "shared/wire/src/main/java/cc/jumpkick/wire/protocol/EventCatalog.java");
 
     @Test
     void every_EVENT_token_is_an_EngineProtocol_value() throws Exception {
@@ -62,7 +66,7 @@ class WireTokenParityTest {
         Map<String, String> sse = tokens("SSE");
         assertThat(sse)
                 .as("SSE tokens parsed out of wire.js — zero means the parse broke")
-                .hasSize(6);
+                .hasSize(7);
 
         Set<String> protocol = engineProtocolValues();
         StringBuilder writers = new StringBuilder();

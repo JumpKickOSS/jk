@@ -25,7 +25,7 @@ import {
 import { bannerRows, fetchDecisions, foldDecision, waitingSessions } from './needs.js';
 import { buildConsoleHash, buildProjectHash } from './route.js';
 import { doingLine, moduleCells } from './strip.js';
-import { LOG, QUEUE } from './wire.js';
+import { LOG, SSE } from './wire.js';
 
 /** Sessions the rail asks for; the Sessions tab of a project asks for more. */
 const RAIL_LIMIT = 50;
@@ -170,8 +170,9 @@ export const consoleMethods = {
    */
   applyConsoleEvent(event) {
     const { type, data } = event;
-    if (type === QUEUE.decision) {
+    if (type === SSE.decision) {
       this.decisions = foldDecision(this.decisions, data);
+      this.decisionEvent = data; // the open #decision/<id> page follows it too
       return true;
     }
     if (type !== LOG.session && type !== LOG.episode && type !== LOG.action) return false;

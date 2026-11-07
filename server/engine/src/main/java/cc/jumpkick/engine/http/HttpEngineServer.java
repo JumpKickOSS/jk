@@ -4,6 +4,8 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.decisions.DecisionQueue;
+import cc.jumpkick.engine.decisions.Decisions;
 import cc.jumpkick.engine.http.mcp.McpConnections;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.http.mcp.NewProjectWizard;
@@ -11,6 +13,7 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.wire.protocol.EventCatalog;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -123,6 +126,23 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/sessions", sessionsApi::handleSessions);
         api.registerPrefix("GET", HttpSessionsApi.PREFIX, sessionsApi::handleSession);
         if (mcp != null) mcp.sessions(sessions);
+    }
+
+    /**
+     * Engine hook: serve {@code queue} on {@code /api/decisions}, publish each change as the SSE
+     * {@code decision} event, and hand MCP the queue with this dashboard's links into it. Before
+     * {@link #start}.
+     */
+    public void setDecisions(DecisionQueue queue) {
+        HttpDecisionsApi decisionsApi = new HttpDecisionsApi(queue);
+        api.register("GET", "/api/decisions", decisionsApi::handleList);
+        api.registerPrefix("GET", HttpDecisionsApi.PREFIX, decisionsApi::handleOne);
+        api.registerPrefix("POST", HttpDecisionsApi.PREFIX, decisionsApi::handleAnswer);
+        queue.onChange(d -> events.publishDashboard(EventCatalog.SSE_DECISION, JsonOut.rawObject(d.toMap())));
+        if (mcp != null) {
+            mcp.decisions(
+                    new Decisions(queue, (id, key) -> DashboardLinks.decision(url(), tokens.tokenText(), id, key)));
+        }
     }
 
     public void setOnSseAdmitted(Runnable onSseAdmitted) {

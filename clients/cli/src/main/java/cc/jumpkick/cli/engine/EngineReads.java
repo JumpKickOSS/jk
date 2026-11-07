@@ -12,6 +12,8 @@ import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import cc.jumpkick.wire.protocol.CacheInventoryRequest;
 import cc.jumpkick.wire.protocol.CatalogReadAck;
 import cc.jumpkick.wire.protocol.CatalogReadRequest;
+import cc.jumpkick.wire.protocol.DecisionsAck;
+import cc.jumpkick.wire.protocol.DecisionsRequest;
 import cc.jumpkick.wire.protocol.DenyCheckRequest;
 import cc.jumpkick.wire.protocol.DenyReport;
 import cc.jumpkick.wire.protocol.EditAck;
@@ -417,6 +419,10 @@ final class EngineReads {
                 EngineProtocol.NEW_PROJECT_FORM_ACK,
                 "new-project-form request",
                 NewProjectFormAck::decode);
+    }
+
+    static DecisionsAck decisions(EnginePaths.Paths paths, DecisionsRequest req) throws IOException {
+        return request(paths, req.encode(), EngineProtocol.DECISIONS_ACK, "decisions request", DecisionsAck::decode);
     }
 
     static TemplateLintAck templateLint(EnginePaths.Paths paths, TemplateLintRequest req) throws IOException {

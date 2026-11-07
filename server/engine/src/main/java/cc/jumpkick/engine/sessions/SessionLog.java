@@ -417,6 +417,18 @@ public final class SessionLog {
         return p.episode();
     }
 
+    /** The open session of an origin and label, and its current episode, when one is open. */
+    public record Place(String session, @Nullable String episode) {}
+
+    /** Where {@code origin} and {@code label} stand: their open session and its current episode. */
+    public synchronized Optional<Place> where(String origin, @Nullable String label) {
+        adopt();
+        Live live = byKey.get(key(origin, label));
+        if (live == null) return Optional.empty();
+        Episode current = live.episodes.current();
+        return Optional.of(new Place(live.record.id(), current == null ? null : current.id()));
+    }
+
     // ---- reads ---------------------------------------------------------------------------------
 
     /** Live and recent sessions, most recently active first, each with its current episode. */
