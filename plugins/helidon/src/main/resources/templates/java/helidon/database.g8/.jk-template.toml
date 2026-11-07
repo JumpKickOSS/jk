@@ -1,0 +1,60 @@
+language = "java"
+framework = "helidon"
+name = "database"
+description = "Helidon SE with a database: helidon init's database application, a Pokemon REST service on Helidon DB Client (H2, MySQL, Oracle or MongoDB), on Helidon 27 and JDK 27"
+layouts = ["traditional", "simple"]
+
+# The questions of `helidon init`'s database application type (archetypes/archetypes/src/main/archetype
+# at the Helidon release [helidon] version names): the database server, then the quickstart's
+# observability and packaging questions with the archetype's preset answers as defaults, except jlink
+# (see helidon/quickstart). The database client maps rows to JSON-P, so there is no JSON library to
+# choose, and no tracing question: the archetype's database application has none wired.
+# HelidonArchetypeOptionsTest diffs these against the archetype's inputs.
+
+[[ask]]
+key = "db"
+label = "Database"
+help = "The database Helidon DB Client talks to; the tests run on an in-memory H2 whichever it is"
+kind = "choice"
+options = [
+  { id = "h2", label = "H2", help = "An in-memory H2 database in the application: nothing to install" },
+  { id = "mysql", label = "MySQL", help = "MySQL at 127.0.0.1:3306 over JDBC (mysql-connector-j)" },
+  { id = "oracledb", label = "Oracle Database", help = "Oracle at localhost:1521 over JDBC (ojdbc17)" },
+  { id = "mongodb", label = "MongoDB", help = "MongoDB at 127.0.0.1:27017 (helidon-dbclient-mongodb)" },
+]
+default = "h2"
+
+[[ask]]
+key = "metrics"
+label = "Metrics"
+help = "Serve /observe/metrics with the built-in system meters and the database client's"
+kind = "bool"
+default = true
+
+[[ask]]
+key = "health"
+label = "Health checks"
+help = "Serve /observe/health with the built-in checks and one that queries the database"
+kind = "bool"
+default = true
+
+[[ask]]
+key = "docker"
+label = "Container image"
+help = "jk image builds an OCI image of target/<name>.jar and target/libs/, in place of Helidon's Dockerfile"
+kind = "bool"
+default = true
+
+[[ask]]
+key = "jlink"
+label = "Runtime image (jlink)"
+help = "jk build also links target/<name>-jri/ with an AOT cache, in place of Helidon's jlink-image profile"
+kind = "bool"
+default = false
+
+[[ask]]
+key = "k8s"
+label = "Kubernetes manifest"
+help = "app.yaml: a Service and a Deployment of the application's image"
+kind = "bool"
+default = true

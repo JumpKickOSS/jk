@@ -4,7 +4,7 @@
 # create-application and create-test-application goals without Maven: helidon-binding (the real
 # application binding, and ApplicationMain with generate-main, over the module's classes) and
 # helidon-test-binding (TestApplicationBinding on the test classpath, with test-binding).
-# Giter8 trees: src/main/resources/templates/java/helidon/{quickstart,declarative}.g8/ (jk new -t
+# Giter8 trees: src/main/resources/templates/java/helidon/{quickstart,declarative,database}.g8/ (jk new -t
 # helidon/quickstart); their questions are diffed against Helidon's archetypes by
 # HelidonArchetypeOptionsTest.
 

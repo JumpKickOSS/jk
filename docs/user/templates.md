@@ -180,6 +180,7 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 | `hello` | micronaut | java, kotlin | Plugin HTTP service | — |
 | `quickstart` | helidon | java | Helidon SE quickstart (`helidon init`'s): `/greet`, health, metrics; asks for JSON-P or Helidon JSON, tracing, an image, a jlink runtime image and a Kubernetes manifest | — |
 | `declarative` | helidon | java | The quickstart's service as a Helidon Declarative endpoint wired by the service registry | — |
+| `database` | helidon | java | Helidon SE with a database (`helidon init`'s): a REST service on Helidon DB Client; asks for H2, MySQL, Oracle or MongoDB, then the quickstart's metrics, health, image, jlink and Kubernetes questions | — |
 | `hello` | grails | groovy | Grails 8 REST | — |
 | `compose` | android | kotlin | Jetpack Compose app (debug APK, `jk run` deploy) | `android` |
 

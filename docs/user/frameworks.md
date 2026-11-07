@@ -178,6 +178,8 @@ one convenience: no service is started for you.
 ```bash
 jk new -t helidon/quickstart my-api      # helidon init's quickstart: /greet, health, metrics
 jk new -t helidon/declarative my-api     # the same service as a Helidon Declarative endpoint
+jk new -t helidon/database my-api        # helidon init's database application: Helidon DB Client on H2
+jk new -t helidon/database -p db=mysql my-api
 jk new -t helidon/quickstart -p media=json -p tracing=true -p jlink=true my-api
 ```
 
@@ -199,9 +201,29 @@ that the service registry wires (`[helidon] declarative = true`, `@Service.Gener
 `Main`), after Helidon's inject quickstart and Declarative examples: the same questions, and
 `generate_main` (advanced), which sets `[helidon] generate-main`. Both write `java = 27`,
 `[helidon] version` at the current Helidon release, versionless Helidon dependencies, and
-`junit-jupiter`; the scaffold builds, tests and serves `/greet` as written. Neither ships
-a `jk-guards.toml` yet: the Helidon rule pack is still to come. Helidon's `database` and
-`custom` application types have no template.
+`junit-jupiter`; the scaffold builds, tests and serves `/greet` as written.
+
+`helidon/database` is the counterpart of `helidon init`'s database application: a Pokemon REST
+service under `/db` on Helidon DB Client, every SQL statement named in `application.yaml`, the
+tables created and seeded at startup, beside the quickstart's `/greet`. It asks the database, then
+the quickstart's `metrics`, `health`, `docker`, `jlink` and `k8s` (no `media`: the database client
+maps rows to JSON-P; no `tracing`: the archetype's database application wires none):
+
+| `-p db=` | What it writes |
+|---|---|
+| `h2` (default) | an in-memory H2 inside the application: nothing to install |
+| `mysql` | MySQL at `127.0.0.1:3306` over JDBC (`mysql-connector-j`, HikariCP) |
+| `oracledb` | Oracle Database at `localhost:1521/XE` over JDBC (`ojdbc17-production`, HikariCP) |
+| `mongodb` | MongoDB at `127.0.0.1:27017` (`helidon-dbclient-mongodb`) |
+
+Whichever it is, the tests run on an in-memory H2 (`application-test.yaml`, the test config
+profile), so `jk test` needs no database. With a database server, `jlink` and `docker` turn off
+the build's training starts of the image (`aot-cache = false`, `test-start = false`): they start
+the application, which needs its database up. `health` adds a check that queries the database.
+
+None of the templates ships a `jk-guards.toml` yet: the Helidon rule pack is still to come.
+Helidon's `custom` application type has no template: it is the quickstart's questions, with
+`jk add` for the rest.
 
 jk's own tests diff these questions against the inputs of Helidon's archetypes
 (`archetypes/archetypes/src/main/archetype` at the pinned release), so an input a Helidon release

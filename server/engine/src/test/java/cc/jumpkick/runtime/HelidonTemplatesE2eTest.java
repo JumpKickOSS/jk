@@ -44,8 +44,8 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * The {@code helidon/quickstart} and {@code helidon/declarative} templates as {@code jk new} writes
- * them, with no edit and no pin: the scaffold locks against the Helidon BOM, compiles on JDK 27
+ * The {@code helidon/quickstart}, {@code helidon/declarative} and {@code helidon/database} templates
+ * as {@code jk new} writes them, with no edit and no pin: the scaffold locks against the Helidon BOM, compiles on JDK 27
  * (Declarative's generators included), passes its own tests under the test config profile, and the
  * {@code <name>.jar} of its libs layout serves {@code /greet}. The defaults and the answers that
  * change the sources (Helidon JSON, tracing, the simple layout, a jlink image) are each built once;
@@ -70,7 +70,11 @@ class HelidonTemplatesE2eTest {
                 Arguments.of(
                         "declarative",
                         "simple",
-                        Map.of("media", "json", "tracing", "true", "health", "false", "generate_main", "true")));
+                        Map.of("media", "json", "tracing", "true", "health", "false", "generate_main", "true")),
+                Arguments.of("database", null, Map.of()),
+                // Built and tested on the in-memory H2 the tests use; served only where the
+                // application's database is in the jar.
+                Arguments.of("database", "simple", Map.of("db", "mongodb", "health", "false", "jlink", "true")));
     }
 
     @ParameterizedTest(name = "{0} {1} {2}")
@@ -132,7 +136,11 @@ class HelidonTemplatesE2eTest {
         if ("true".equals(params.get("jlink"))) {
             assertThat(target.resolve("demo-jri/bin/start")).isRegularFile();
         }
+        if (!"h2".equals(params.getOrDefault("db", "h2"))) return; // a database server the host lacks
         assertThat(serve(project, cache, target, "/greet")).contains("\"message\":\"Hello World!\"");
+        if ("database".equals(template)) {
+            assertThat(serve(project, cache, target, "/db/type")).contains("\"name\":\"Normal\"");
+        }
     }
 
     /**

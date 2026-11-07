@@ -1,0 +1,138 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "$package$.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/$name$.jar with target/libs/.
+[helidon]
+version = "27.0.1"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+$if(db_mongodb.truthy)$
+helidon-dbclient-mongodb = { group = "io.helidon.dbclient", name = "helidon-dbclient-mongodb" }
+$else$
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+$endif$
+$if(metrics.truthy)$
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+helidon-dbclient-metrics = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics" }
+$if(db_mongodb.truthy)$
+$else$
+helidon-dbclient-metrics-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics-hikari" }
+$endif$
+$endif$
+$if(health.truthy)$
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+helidon-dbclient-health = { group = "io.helidon.dbclient", name = "helidon-dbclient-health" }
+$endif$
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+$if(db_h2.truthy)$
+h2 = { group = "com.h2database", name = "h2" }
+$endif$
+$if(db_mysql.truthy)$
+mysql-connector-j = { group = "com.mysql", name = "mysql-connector-j" }
+$endif$
+$if(db_oracledb.truthy)$
+# Oracle's production set: the driver with UCP, ONS and the security jars.
+ojdbc17-production = { group = "com.oracle.database.jdbc", name = "ojdbc17-production" }
+$endif$
+$if(metrics.truthy)$
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+$endif$
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+$if(db_h2.truthy)$
+$else$
+# The tests run on an in-memory H2 (application-test.yaml).
+h2 = { group = "com.h2database", name = "h2" }
+$endif$
+$if(db_mongodb.truthy)$
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+$endif$
+
+$if(docker.truthy)$
+# `jk image`: target/$name$.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "$name$"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+$if(db_h2.truthy)$
+aot-cache = true
+$else$
+# The AOT cache is trained by starting the application, which needs its database up.
+aot-cache = false
+$endif$
+
+$endif$
+$if(jlink.truthy)$
+# jk build also writes target/$name$-jri/: a runtime linked from the project JDK with the modules
+# jdeps finds, the application under app/, bin/start, and an AOT cache trained by starting it.
+[jlink]
+# HikariCP and the database drivers load through ServiceLoader, where jdeps does not look, and use JNDI.
+modules = ["java.naming"]
+$if(db_h2.truthy)$
+
+# The training starts bind a free port, so a build beside a running copy does not collide.
+[jlink.training-env]
+SERVER_PORT = "0"
+$else$
+# The build's starts of the image (the AOT training and the start test) start the application,
+# which needs its database up; jk build would fail without it.
+aot-cache  = false
+test-start = false
+$endif$
+
+$endif$
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
