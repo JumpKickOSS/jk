@@ -244,7 +244,8 @@ final class PlannerNode {
                                     .toList(),
                             jar.getParent(),
                             List.of(jar),
-                            !unit.in().ephemeralActions());
+                            !unit.in().ephemeralActions(),
+                            List.of());
                     PlannerPackage.writeSidecarPom(project, layout, jar);
                     ctx.put(BUILD_OUTCOME, "built");
                     ctx.progress(1);

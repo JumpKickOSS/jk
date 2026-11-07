@@ -544,7 +544,14 @@ final class LockClosures {
             }
             spec = writer.writeTempSpec();
             Map<Coordinate, @Nullable Path> files = new LinkedHashMap<>();
-            for (String line : PluginBuild.runWorker(active, cache, spec, WorkerEnv.strict(), progress::label)) {
+            String module = build.project().name();
+            for (String line : PluginBuild.runWorker(
+                    active,
+                    cache,
+                    spec,
+                    WorkerEnv.strict(),
+                    progress::label,
+                    reply -> forwardDiagnostic(progress, dir, module, closure.resolvedBy(), reply))) {
                 if (PluginProtocol.PIN.equals(Jsonl.str(line, PluginProtocol.T))) {
                     String held = Jsonl.str(line, "path");
                     files.put(
@@ -566,6 +573,20 @@ final class LockClosures {
                 Log.debug("lock closure: scratch cleanup", cleanup);
             }
         }
+    }
+
+    /**
+     * One {@code diagnostic} reply from the worker asked for the closure {@code resolvedBy} names
+     * ({@code <plugin>/<closure>}), said as a step's is: a
+     * {@linkplain PlannerPlugin#sayNotice notice} is a run notice naming the module and {@code lock
+     * <plugin>/<closure>}; any other severity is the lock's warning under that name. The closure
+     * resolved, so even an {@code error} the plugin reported fails nothing here.
+     */
+    static void forwardDiagnostic(
+            LockPipeline.Progress progress, Path dir, String module, String resolvedBy, String line) {
+        String step = "lock " + resolvedBy;
+        if (PlannerPlugin.sayNotice(dir, module, step, line)) return;
+        progress.warn(step, PlannerPlugin.diagnosticText(line));
     }
 
     /** {@code lock} as the module at {@code dir} reads it: a member's partition, the root's own. */

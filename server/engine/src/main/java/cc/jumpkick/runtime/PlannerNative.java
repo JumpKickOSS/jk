@@ -178,7 +178,16 @@ public final class PlannerNative {
                 throw new IOException("native-image reported success but produced no binary at " + out);
             }
             storePackaged(
-                    ctx, guard, cache, key.task(), key.key(), key.tokens(), out.getParent(), List.of(out), persist);
+                    ctx,
+                    guard,
+                    cache,
+                    key.task(),
+                    key.key(),
+                    key.tokens(),
+                    out.getParent(),
+                    List.of(out),
+                    persist,
+                    List.of());
         }
     }
 

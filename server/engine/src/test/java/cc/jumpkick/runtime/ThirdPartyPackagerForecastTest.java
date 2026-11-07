@@ -231,7 +231,8 @@ class ThirdPartyPackagerForecastTest {
                 keyed.tokens(),
                 requireNonNull(artifact.getParent()),
                 List.of(artifact),
-                true);
+                true,
+                List.of());
 
         // Warm: the forecast reproduces that key and prices the step against it.
         TaskForecast.Task warm = packageStep(ForecastWalk.of(graph, cas, actionCache, cache, true));

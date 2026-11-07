@@ -166,7 +166,8 @@ public final class PlannerPackage {
                             keyed.tokens(),
                             jarPath.getParent(),
                             List.of(jarPath),
-                            !in.ephemeralActions());
+                            !in.ephemeralActions(),
+                            List.of());
                     writeSidecarPom(project, layout, jarPath);
                     if (Perf.enabled()) {
                         long ms = 1_000_000;

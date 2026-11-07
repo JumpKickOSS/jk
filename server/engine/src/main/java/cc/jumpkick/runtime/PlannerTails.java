@@ -319,7 +319,8 @@ public final class PlannerTails {
                             keyed.tokens(),
                             assemblyJar.getParent(),
                             List.of(assemblyJar),
-                            persist);
+                            persist,
+                            List.of());
                     ctx.progress(1);
                 })
                 .build();
@@ -389,7 +390,16 @@ public final class PlannerTails {
                     Files.createDirectories(sourcesJar.getParent());
                     Files.write(sourcesJar, bytes);
                     storePackaged(
-                            ctx, guard, cache, task, key, tokens, sourcesJar.getParent(), List.of(sourcesJar), persist);
+                            ctx,
+                            guard,
+                            cache,
+                            task,
+                            key,
+                            tokens,
+                            sourcesJar.getParent(),
+                            List.of(sourcesJar),
+                            persist,
+                            List.of());
                     ctx.progress(1);
                 })
                 .build();

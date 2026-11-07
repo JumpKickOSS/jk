@@ -121,7 +121,7 @@ final class PlannerWar {
                     ctx.put(BUILD_OUTCOME, "built");
                     List<Path> outputs = new ArrayList<>(files(exploded));
                     outputs.add(warFile);
-                    storePackaged(ctx, guard, cache, task, key, tokens, base, outputs, persist);
+                    storePackaged(ctx, guard, cache, task, key, tokens, base, outputs, persist, List.of());
                     ctx.progress(1);
                 })
                 .build();

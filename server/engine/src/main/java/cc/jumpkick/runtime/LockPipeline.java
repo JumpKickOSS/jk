@@ -69,6 +69,7 @@ import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.runtime.base.SdkComponents;
 import cc.jumpkick.scala.ScalaResolver;
+import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;
@@ -115,7 +116,10 @@ public final class LockPipeline {
      */
     public interface Progress {
 
-        /** Discards everything — for the direct (non-plan) callers. */
+        /**
+         * Discards labels, ticks and notes — for the direct (non-plan) callers. A {@linkplain #warn
+         * warning} is still said, as a run notice.
+         */
         Progress SILENT = new Progress() {};
 
         /** Current sub-task label. */
@@ -126,6 +130,15 @@ public final class LockPipeline {
 
         /** Durable free-form line for the view. */
         default void note(String line) {}
+
+        /**
+         * A warning the pass has for the user — what a plugin said while the lock asked it for a
+         * closure. Outside a plan step there is no report to carry it, so it is a run notice: said
+         * once, on the client's stream and the run's verdict.
+         */
+        default void warn(String code, String message) {
+            RunNotices.warnOnce("lock-warning:" + code + "\0" + message, () -> code + ": " + message);
+        }
     }
 
     /** Route labels, ticks and notes to a running plan step. */
@@ -144,6 +157,11 @@ public final class LockPipeline {
             @Override
             public void note(String line) {
                 ctx.output(line);
+            }
+
+            @Override
+            public void warn(String code, String message) {
+                ctx.warn(code, message);
             }
         };
     }

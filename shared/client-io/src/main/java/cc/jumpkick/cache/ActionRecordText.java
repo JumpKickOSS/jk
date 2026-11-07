@@ -7,8 +7,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -19,9 +21,14 @@ import org.jspecify.annotations.Nullable;
 /**
  * The text of one action-cache key record, {@code actions/keys/<actionKey>}: {@code TASK} and {@code
  * KEY} lines, then {@code INPUT <value> <name>}, {@code OUTPUT <sha256> <path>} and {@code EXEC
- * <path>} lines in name order. The engine's action cache and the workers that store their own
- * entries (the code graph's fragments) write and read it here, so the prune and the sweep see one
- * format.
+ * <path>} lines in name order, then {@code SAID <line>} lines in the order the action said them.
+ * The engine's action cache and the workers that store their own entries (the code graph's
+ * fragments) write and read it here, so the prune and the sweep see one format.
+ *
+ * <p>A reader skips a line it does not know, so a kind of line added later leaves an older reader
+ * reading the rest, and a record written before it reads as having none: {@code SAID} came after
+ * the others, and a record without it is an action that said nothing. A change of what a record
+ * holds is therefore no change of what any key hashes.
  */
 public final class ActionRecordText {
 
@@ -51,13 +58,17 @@ public final class ActionRecordText {
         }
     }
 
-    /** One record as read: inputs and outputs by name, the outputs restored executable. */
+    /**
+     * One record as read: inputs and outputs by name, the outputs restored executable, and what the
+     * action said as it ran ({@link #render(String, String, Map, Map, Set, List) said}).
+     */
     public record Parsed(
             String taskId,
             String actionKey,
             Map<String, String> inputs,
             Map<String, String> outputs,
-            Set<String> executables) {}
+            Set<String> executables,
+            List<String> said) {}
 
     public static String render(
             String taskId,
@@ -65,6 +76,21 @@ public final class ActionRecordText {
             Map<String, String> inputs,
             Map<String, String> outputs,
             Set<String> executables) {
+        return render(taskId, actionKey, inputs, outputs, executables, List.of());
+    }
+
+    /**
+     * As {@link #render(String, String, Map, Map, Set)}, with {@code said}: what the action told the
+     * user as it ran, one line each, in order, for a hit to say again. A line carries no line break;
+     * one that does is folded to a space, since the record is read a line at a time.
+     */
+    public static String render(
+            String taskId,
+            String actionKey,
+            Map<String, String> inputs,
+            Map<String, String> outputs,
+            Set<String> executables,
+            List<String> said) {
         StringBuilder sb = new StringBuilder();
         sb.append("TASK ").append(taskId).append('\n');
         sb.append("KEY ").append(actionKey).append('\n');
@@ -85,6 +111,11 @@ public final class ActionRecordText {
         for (String rel : new TreeSet<>(executables)) {
             sb.append("EXEC ").append(rel).append('\n');
         }
+        for (String line : said) {
+            sb.append("SAID ")
+                    .append(line.replace('\r', ' ').replace('\n', ' '))
+                    .append('\n');
+        }
         return sb.toString();
     }
 
@@ -100,6 +131,7 @@ public final class ActionRecordText {
         Map<String, String> inputs = new LinkedHashMap<>();
         Map<String, String> outputs = new LinkedHashMap<>();
         Set<String> executables = new LinkedHashSet<>();
+        List<String> said = new ArrayList<>();
         for (String line : content.split("\n")) {
             if (line.isBlank()) continue;
             if (line.startsWith("TASK ")) {
@@ -116,6 +148,8 @@ public final class ActionRecordText {
                 outputs.put(body.substring(sp + 1), decodeValue(body.substring(0, sp)));
             } else if (line.startsWith("EXEC ")) {
                 executables.add(line.substring("EXEC ".length()).trim());
+            } else if (line.startsWith("SAID ")) {
+                said.add(line.substring("SAID ".length()));
             }
         }
         return new Parsed(
@@ -123,7 +157,8 @@ public final class ActionRecordText {
                 Objects.requireNonNull(actionKey, "actionKey in record"),
                 inputs,
                 outputs,
-                executables);
+                executables,
+                List.copyOf(said));
     }
 
     /**

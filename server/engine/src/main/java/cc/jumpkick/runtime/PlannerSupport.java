@@ -341,13 +341,22 @@ public final class PlannerSupport {
      * {@code jk explain} / incremental build must see a CACHE_HIT, not a phantom repackage.
      */
     static boolean restorePackaged(Path cacheRoot, String key, @Nullable Path baseDir) throws IOException {
+        return restorePackaged(cacheRoot, key, baseDir, null);
+    }
+
+    /**
+     * As {@link #restorePackaged(Path, String, Path)}, and on a restore {@code said}, when given,
+     * says again what the run that stored the record said.
+     */
+    static boolean restorePackaged(Path cacheRoot, String key, @Nullable Path baseDir, @Nullable StepDiagnostics said)
+            throws IOException {
         // rebuildOr already subsumes force (JkConfig: force implies rebuild).
-        if (SessionContext.current().config().rebuildOr(false)) {
-            return false;
-        }
+        if (SessionContext.current().config().rebuildOr(false)) return false;
         ActionCache ac = packagingActionCache(cacheRoot);
         var hit = ac.lookup(key);
-        return baseDir != null && hit.isPresent() && ac.restoreArtifacts(hit.get(), baseDir);
+        if (baseDir == null || hit.isEmpty() || !ac.restoreArtifacts(hit.get(), baseDir)) return false;
+        if (said != null) said.replay(hit.get());
+        return true;
     }
 
     /**
@@ -356,7 +365,8 @@ public final class PlannerSupport {
      * teach the cache" (parity with compile). {@code persist=false} is {@code jk verify}'s scratch
      * rebuild: packaging DOES run there (the artifact is what verify diffs), its keys embed the
      * unique scratch path so they can never recur, and a store would be a permanent orphan record
-     * plus CAS copies on every verify run.
+     * plus CAS copies on every verify run. {@code said} is what the packaging told the user as it
+     * ran ({@link StepDiagnostics}), kept for a restore to say again.
      */
     static void storePackaged(
             TaskContext ctx,
@@ -367,7 +377,8 @@ public final class PlannerSupport {
             List<String> tokens,
             @Nullable Path baseDir,
             List<Path> artifacts,
-            boolean persist)
+            boolean persist,
+            List<String> said)
             throws IOException {
         if (!persist) return;
         // An input that moved while the artifact was written may be in it, and is not what the
@@ -377,7 +388,7 @@ public final class PlannerSupport {
             ctx.warn("inputs-moved", InputGuard.describe(taskId.split("@", 2)[0], moved));
             return;
         }
-        storeRecord(cacheRoot, taskId, key, tokens, baseDir, artifacts);
+        storeRecord(cacheRoot, taskId, key, tokens, baseDir, artifacts, said);
     }
 
     private static void storeRecord(
@@ -386,10 +397,11 @@ public final class PlannerSupport {
             String key,
             List<String> tokens,
             @Nullable Path baseDir,
-            List<Path> artifacts)
+            List<Path> artifacts,
+            List<String> said)
             throws IOException {
         packagingActionCache(cacheRoot)
-                .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts);
+                .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts, said);
     }
 
     /** Action cache with store-CAS fallback for Class-C blobs promoted by release. */
@@ -397,7 +409,7 @@ public final class PlannerSupport {
         return new ActionCache(JkStores.cacheCas(cacheRoot), CacheTree.ACTIONS.under(cacheRoot), JkStores.storeCas());
     }
 
-    /** Test hook: {@link #storePackaged} under a rebuild session must still persist. */
+    /** Test hook: {@link #storePackaged} under a rebuild session must still persist; {@code said} as there. */
     static void storePackagedForTest(
             Path cacheRoot,
             String taskId,
@@ -405,9 +417,10 @@ public final class PlannerSupport {
             List<String> tokens,
             Path baseDir,
             List<Path> artifacts,
-            boolean persist)
+            boolean persist,
+            List<String> said)
             throws IOException {
-        if (persist) storeRecord(cacheRoot, taskId, key, tokens, baseDir, artifacts);
+        if (persist) storeRecord(cacheRoot, taskId, key, tokens, baseDir, artifacts, said);
     }
 
     static Map<String, String> workerJarProps(Path moduleDir, List<String> modules) throws IOException {
