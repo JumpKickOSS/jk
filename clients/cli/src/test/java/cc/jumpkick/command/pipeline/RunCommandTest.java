@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.testing.BlankProject;
 import cc.jumpkick.testing.TestCaches;
 import java.io.ByteArrayOutputStream;
@@ -263,6 +264,38 @@ class RunCommandTest {
 
         assertThat(output).contains("app").contains("other").contains("launches one program");
         assertThat(ws.resolve("app/target")).doesNotExist();
+    }
+
+    /**
+     * With the engine answering, a {@code [workspace] modules} glob that selects nothing is the
+     * workspace's error, as the build would report it — not "no such module", which would send the
+     * target on to the file classifiers. The engine's project-info view describes the workspace
+     * anyway, so the run cannot take its member list from there.
+     */
+    @Test
+    void run_of_a_member_name_in_a_workspace_whose_glob_matches_nothing_reports_the_glob(@TempDir Path ws)
+            throws Exception {
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "root"
+                version = "0.1.0"
+                java    = 25
+
+                [workspace]
+                modules = ["app", "libs/*"]
+                """);
+        member(ws, "app", "[application]\nmain = \"com.example.app.Main\"\n", "Main", "");
+        Files.createDirectories(ws.resolve("libs/empty"));
+        ProjectInfos.forget();
+        var info = ProjectInfos.orNull(ws);
+        assertThat(info != null && info.workspaceRoot())
+                .as("the engine answers for the workspace")
+                .isTrue();
+
+        String output =
+                TestAnsi.strip(runCapturingOutput(ws, exit -> assertThat(exit).isEqualTo(2), "empty"));
+
+        assertThat(output).contains("jk.toml").contains("libs/*").contains("matches no directory with a jk.toml");
     }
 
     /** A workspace member at {@code ws/name} with one class {@code cls} whose {@code main} runs {@code body}. */
