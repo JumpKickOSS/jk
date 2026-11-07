@@ -88,10 +88,7 @@ class ClasspathResolverTest {
         assertThatThrownBy(
                         () -> new ClasspathResolver(tempDir).classpathFor(lock, ClasspathResolver.COMPILE_MAIN, true))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining(
-                        "dependency org.picketbox:picketbox:5.0.3.Final has no file: its lock row pins no checksum and"
-                                + " names no POM-only file")
-                .hasMessageContaining("run `jk lock`");
+                .hasMessage("dependency org.picketbox:picketbox:5.0.3.Final has no file in jk-lock.toml; run jk lock");
     }
 
     private static Lockfile.Artifact unmarkedPicketbox() {

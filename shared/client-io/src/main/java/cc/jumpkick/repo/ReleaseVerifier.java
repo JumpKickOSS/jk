@@ -67,8 +67,7 @@ public final class ReleaseVerifier {
      */
     public void verify(byte[] sumsBytes, String signatureBase64) throws IOException {
         if (trusted.isEmpty()) {
-            throw new IOException("no trusted release keys are configured — cannot verify this release"
-                    + " (set [release] trusted-keys in config.toml, or upgrade to a client with a baked-in key)");
+            throw new IOException("cannot verify this release: no trusted keys; set [release] trusted-keys");
         }
         byte[] sig;
         try {
@@ -86,8 +85,7 @@ public final class ReleaseVerifier {
                 // try the next trusted key
             }
         }
-        throw new IOException("release signature does not verify against any trusted key —"
-                + " REFUSING this release (a mirror, proxy, or the release site may be compromised)");
+        throw new IOException("refusing this release: its signature matches no trusted key");
     }
 
     private static Optional<PublicKey> parse(String base64Spki) {
@@ -138,9 +136,7 @@ public final class ReleaseVerifier {
         }
         var match = POINTER_OBJECT.matcher(text);
         if (!match.matches()) {
-            throw new IOException("latest-release pointer is malformed — expected exactly"
-                    + " 'version <x.y.z>', 'issued <unix-seconds>' and 'signature <base64>',"
-                    + " LF-terminated");
+            throw new IOException("latest-release pointer is malformed");
         }
         int signatureLine = text.lastIndexOf("\nsignature ");
         return new SignedPointer(

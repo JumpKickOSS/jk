@@ -121,9 +121,8 @@ class RepoCredentialFileSourcesTest {
 
         assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
         assertThat(warnings)
-                .contains("interpolates ${file:" + token + "}")
-                .contains("a file of this machine")
-                .contains("honoured only in ~/.jk/config.toml")
+                .contains("jk.toml cannot use ${file:" + token + "}")
+                .contains("move the reference to ~/.jk/config.toml")
                 .doesNotContain("must-not-leak");
     }
 

@@ -162,9 +162,9 @@ class RepoCredentialResolverTest {
 
         assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
         assertThat(warnings)
-                .contains("repository `ossrh` at https://attacker.example is accessed anonymously")
-                .contains(
-                        "`jk repo login ossrh` stored it for https://s01.oss.sonatype.org, not https://attacker.example")
+                .contains("ossrh at https://attacker.example: credential from jk repo login not sent")
+                .contains("it was stored for https://s01.oss.sonatype.org")
+                .contains("jk repo login ossrh -U https://attacker.example")
                 .doesNotContain("sonatype-pass");
     }
 
@@ -183,10 +183,10 @@ class RepoCredentialResolverTest {
 
         assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
         assertThat(warnings)
-                .contains("a credential for that name exists in JK_REPO_OSSRH_TOKEN")
-                .contains("declared by the project, not by ~/.jk/config.toml")
+                .contains("credential from JK_REPO_OSSRH_TOKEN not sent")
+                .contains("the project, not ~/.jk/config.toml, declares this repository")
                 .contains("JK_REPO_OSSRH_HOST=attacker.example")
-                .contains("`jk repo login ossrh -U https://attacker.example/m2/`")
+                .contains("jk repo login ossrh -U https://attacker.example/m2/")
                 .doesNotContain("victim-token");
     }
 
@@ -301,7 +301,7 @@ class RepoCredentialResolverTest {
         var resolved = new AtomicReference<RepoCredential>();
         String warnings = warningsFrom(() -> resolved.set(unbound.resolve("nexus", NEXUS, Optional.empty())));
         assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
-        assertThat(warnings).contains("~/.m2/settings.xml <server> `nexus`");
+        assertThat(warnings).contains("nexus at ").contains("credential from ~/.m2/settings.xml not sent");
         assertThat(bound.resolve("nexus", NEXUS, Optional.empty())).isEqualTo(new RepoCredential.Basic("u", "p"));
     }
 
@@ -482,12 +482,12 @@ class RepoCredentialResolverTest {
 
         assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
         assertThat(warnings)
-                .contains("repository `internal` at https://repo.example is accessed anonymously")
-                .contains("interpolates ${HOME}")
-                .contains("[repositories.internal] with this URL and the ${VAR} reference in ~/.jk/config.toml")
+                .contains("internal at https://repo.example: no credential sent")
+                .contains("cannot use ${HOME}")
+                .contains("move the reference to ~/.jk/config.toml")
                 .contains("JK_REPO_INTERNAL_TOKEN")
                 .contains("JK_REPO_INTERNAL_HOST=repo.example")
-                .contains("`jk repo login internal -U https://repo.example/maven`")
+                .contains("jk repo login internal -U https://repo.example/maven")
                 .doesNotContain("/home/victim");
     }
 
@@ -547,7 +547,7 @@ class RepoCredentialResolverTest {
                 () -> resolved.set(r.resolve("internal", INTERNAL, Optional.of(new RepoCredential.Bearer("${HOME}")))));
 
         assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
-        assertThat(warnings).contains("interpolates ${HOME}").doesNotContain("/home/victim");
+        assertThat(warnings).contains("cannot use ${HOME}").doesNotContain("/home/victim");
     }
 
     /**
@@ -575,8 +575,7 @@ class RepoCredentialResolverTest {
                 warningsFrom(() -> resolved.set(unbound.resolve("internal", INTERNAL, Optional.of(declared))));
         assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
         assertThat(warnings)
-                .contains("a credential for that name exists in the ${JK_REPO_INTERNAL_USERNAME}, "
-                        + "${JK_REPO_INTERNAL_KEY} reference of its [repositories.internal] table")
+                .contains("credential from ${JK_REPO_INTERNAL_USERNAME}, ${JK_REPO_INTERNAL_KEY} not sent")
                 .contains("JK_REPO_INTERNAL_HOST=repo.example")
                 .doesNotContain("k3y");
     }
@@ -597,7 +596,7 @@ class RepoCredentialResolverTest {
                 r.resolve("internal", INTERNAL, Optional.of(new RepoCredential.Bearer("${JK_REPO_NEXUS_TOKEN}")))));
 
         assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
-        assertThat(warnings).contains("interpolates ${JK_REPO_NEXUS_TOKEN}").doesNotContain("nexus-secret");
+        assertThat(warnings).contains("cannot use ${JK_REPO_NEXUS_TOKEN}").doesNotContain("nexus-secret");
     }
 
     /** A lock resolves through the group once per module; the refusal is said once per run. */
@@ -620,7 +619,7 @@ class RepoCredentialResolverTest {
         });
 
         assertThat(resolved.get()).isEqualTo(new RepoCredential.Bearer("env-tok"));
-        assertThat(warnings.split("interpolates \\$\\{HOME}", -1)).hasSize(2);
+        assertThat(warnings.split("cannot use \\$\\{HOME}", -1)).hasSize(2);
     }
 
     /**

@@ -91,11 +91,11 @@ class RepoLoginKeychainRefusedTest {
         assertThat(exit[0]).as(out).isNotZero();
         List<String> lines = out.lines().toList();
         assertThat(lines.getFirst()).startsWith("FAIL lock");
-        int warning = indexOf(lines, l -> l.contains("`jk repo login private` secret is in the no-such-keychain"));
+        int warning = indexOf(lines, l -> l.contains("private: could not read the secret from the no-such-keychain"));
         int error = indexOf(lines, l -> l.startsWith("E "));
         assertThat(warning).as(out).isPositive().isLessThan(error);
-        assertThat(lines.get(warning)).startsWith("W the `jk repo login private` secret");
-        assertThat(lines.stream().filter(l -> l.contains("did not give it up")))
+        assertThat(lines.get(warning)).startsWith("W private: could not read the secret");
+        assertThat(lines.stream().filter(l -> l.contains("could not read the secret")))
                 .as(out)
                 .hasSize(1);
         assertThat(String.join("\n", lines.subList(error, lines.size()))).contains("HTTP 401");

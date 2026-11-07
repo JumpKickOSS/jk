@@ -341,11 +341,12 @@ class KeychainBackendsTest {
         SecretBackend.Probe probe = backend.probe();
         assertThat(probe.available()).isFalse();
         assertThat(probe.refused()).isFalse();
-        assertThat(probe.reason()).contains("no window server");
+        assertThat(probe.reason()).contains("this session cannot unlock it");
         assertThatThrownBy(() -> backend.read("repo/nexus"))
                 .isInstanceOf(SecretBackendException.class)
-                .hasMessageContaining("no window server");
-        assertThatThrownBy(() -> backend.write("repo/nexus", "l", "s")).hasMessageContaining("no window server");
+                .hasMessageContaining("this session cannot unlock it");
+        assertThatThrownBy(() -> backend.write("repo/nexus", "l", "s"))
+                .hasMessageContaining("this session cannot unlock it");
         assertThat(cmd.argv)
                 .allSatisfy(argv -> assertThat(argv).containsExactly("/usr/bin/security", "show-keychain-info"));
     }

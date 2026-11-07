@@ -74,7 +74,7 @@ class MvnencGpgAgentLiveTest {
                     .as("--no-ask: the agent answered at once instead of starting a pinentry")
                     .isLessThan(Duration.ofSeconds(5));
             assertThat(cleared.server("nexus")).isEmpty();
-            assertThat(cleared.warnings()).singleElement().asString().contains("holds no cached master password");
+            assertThat(cleared.warnings()).singleElement().asString().contains("has no cached master password");
         } finally {
             run(gnupg, List.of("gpgconf", "--homedir", gnupg.toString(), "--kill", "gpg-agent"));
         }

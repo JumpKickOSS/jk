@@ -86,7 +86,7 @@ class MavenPasswordsTest {
         assertThatThrownBy(() -> MavenPasswords.decrypt(
                         "[name=master,cipher=AES/GCM/NoPadding,version=4.0]AAAAAAAAAAAAAAAAAAAAAAAA", "testtest"))
                 .isInstanceOf(MavenPasswords.Undecryptable.class)
-                .hasMessageContaining("Maven 4's mvnenc format");
+                .hasMessageContaining("text outside the {...} braces");
     }
 
     @Test

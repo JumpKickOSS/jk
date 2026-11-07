@@ -85,8 +85,7 @@ public final class SecretServiceBackend implements SecretBackend {
         if (!session.onPath(TOOL)) return Probe.unavailable(TOOL + " is not installed");
         @Nullable List<String> ask = session.onPath("busctl") ? BUSCTL : session.onPath("gdbus") ? GDBUS : null;
         if (ask == null) {
-            return Probe.refused("neither busctl nor gdbus is installed, so jk cannot tell whether the keyring is"
-                    + " locked without risking an unlock prompt");
+            return Probe.refused("neither busctl nor gdbus is installed");
         }
         try {
             return lockAnswer(command.run(ask, null, PROBE_CAP));

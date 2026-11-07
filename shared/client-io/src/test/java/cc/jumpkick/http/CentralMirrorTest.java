@@ -447,7 +447,7 @@ class CentralMirrorTest {
                     .isInstanceOf(IOException.class)
                     .hasMessageContaining("Maven Central is blocking this host (Cloudflare)")
                     .hasMessageContaining("HTTP 403 fetching " + uri)
-                    .hasMessageContaining(CentralMirror.ENV_DISABLE + "=off");
+                    .hasMessageContaining("unset " + CentralMirror.ENV_DISABLE + " to use the mirror");
             assertThat(hits).as("a block is not retried").hasSize(1);
             assertThat(off.active()).isFalse();
         } finally {

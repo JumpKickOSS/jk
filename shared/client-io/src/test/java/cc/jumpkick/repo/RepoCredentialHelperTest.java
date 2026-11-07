@@ -95,7 +95,7 @@ class RepoCredentialHelperTest {
 
         assertThatThrownBy(() -> r.resolve("gar", GAR, Optional.of(declared)))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("honoured only in ~/.jk/config.toml");
+                .hasMessageContaining("${cmd:} works only in ~/.jk/config.toml");
         assertThat(dir.resolve("count")).doesNotExist();
     }
 }

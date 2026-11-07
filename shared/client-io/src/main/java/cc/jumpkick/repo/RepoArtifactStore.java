@@ -433,8 +433,8 @@ public final class RepoArtifactStore {
                         .map(memo -> memo.fetched())
                         .orElse(false);
                 if (!same && !ours) {
-                    Log.warn("jk: warning: " + artifact + " holds other bytes than " + sha256
-                            + "; it is not jk's file, so it is left as it is");
+                    Log.warn(
+                            "jk: warning: " + artifact + " holds other bytes than " + sha256 + "; leaving it in place");
                     return;
                 }
             }

@@ -291,8 +291,8 @@ class WindowsCredentialBackendTest {
 
         assertThatThrownBy(() -> backend.write("repo/other", "l", token(most + 1)))
                 .isInstanceOf(SecretBackendException.class)
-                .hasMessageContaining("at most 32 credentials of 2560 bytes")
-                .hasMessageContaining((most + 1) + " bytes in UTF-8");
+                .hasMessageContaining("too large for the Windows Credential Manager")
+                .hasMessageContaining((most + 1) + " bytes");
         assertThat(calls.targets).isEmpty();
     }
 

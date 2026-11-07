@@ -60,17 +60,17 @@ class ReleaseVerifierTest {
         byte[] tampered = "evil000  jk-engine-1.0.0.jar\n".getBytes(StandardCharsets.UTF_8);
         assertThatThrownBy(() -> verifier.verify(tampered, sig))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("REFUSING");
+                .hasMessageContaining("refusing this release");
 
         // Wrong key only: fatal.
         assertThatThrownBy(() -> ReleaseVerifier.of(List.of(otherPub)).verify(sums, sig))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("REFUSING");
+                .hasMessageContaining("refusing this release");
 
         // No keys at all: verification unavailable is itself fatal.
         assertThatThrownBy(() -> ReleaseVerifier.of(List.of()).verify(sums, sig))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("no trusted release keys");
+                .hasMessageContaining("no trusted keys");
     }
 
     @Test

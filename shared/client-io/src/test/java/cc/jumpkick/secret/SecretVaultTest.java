@@ -98,9 +98,7 @@ class SecretVaultTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Fake Keychain: no D-Bus session bus")
                 .hasMessageContaining("a CI server (GITLAB_CI is set)")
-                .hasMessageContaining("JK_REPO_<ID>_TOKEN_FILE")
-                .hasMessageContaining("${file:}")
-                .hasMessageContaining("${cmd:}")
+                .hasMessageContaining("JK_REPO_<ID>_TOKEN")
                 .hasMessageContaining(SecretVault.ENV + "=file");
         assertThat(absent.calls).isEmpty();
     }

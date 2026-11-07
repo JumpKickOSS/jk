@@ -261,24 +261,18 @@ public final class SecretVault {
             List<String> why = new ArrayList<>(refusals);
             why.addAll(placement.absences());
             if (placement.headless() != null) why.add("this is " + placement.headless());
-            throw new IllegalStateException("[credentials] store is \"keychain\", and no OS keychain took the secret ("
-                    + String.join("; ", why) + "). " + HEADLESS_RECIPE + " On a desktop, unlock the keychain and"
-                    + " log in again.");
+            throw new IllegalStateException(
+                    "no OS keychain took the secret: " + String.join(", ", why) + "\n  " + HEADLESS_RECIPE);
         }
         if (refusals.isEmpty() || session.remote()) return new Stored(null, null);
         return new Stored(
                 null,
-                "jk: notice: the OS keychain refused (" + String.join("; ", refusals)
-                        + "), so the secret is in the owner-only file " + fileShown
-                        + ". Set [credentials] store = \"file\" in ~/.jk/config.toml to keep it there without this"
-                        + " notice.");
+                "jk: notice: keychain refused, secret saved to " + fileShown + ": " + String.join(", ", refusals)
+                        + "\n  set [credentials] store = \"file\" in ~/.jk/config.toml to skip the keychain");
     }
 
     /** What a machine with no keychain does instead, for the error that insists on one. */
-    static final String HEADLESS_RECIPE = "A CI server or container has no keychain: give the secret from its"
-            + " secret store as JK_REPO_<ID>_TOKEN or JK_REPO_<ID>_TOKEN_FILE (JK_<FORGE>_TOKEN for a forge),"
-            + " or as a ${file:} or ${cmd:} reference in ~/.jk/config.toml, or set " + ENV + "=file to keep"
-            + " a login's secret in its owner-only record.";
+    static final String HEADLESS_RECIPE = "unlock the keychain, or on CI set JK_REPO_<ID>_TOKEN or " + ENV + "=file";
 
     /**
      * The secret {@code pointer} names: the one the client sent with this request, else the
@@ -334,8 +328,7 @@ public final class SecretVault {
     }
 
     private static String noSuchKeychain(Pointer pointer) {
-        return "this machine has no " + pointer.backend() + " keychain (the record names one; run the login again"
-                + " here)";
+        return "this machine has no " + pointer.backend() + " keychain; log in again here";
     }
 
     /**

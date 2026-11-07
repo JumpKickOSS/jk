@@ -179,9 +179,8 @@ public final class CentralMirror {
      */
     public static final class BlockedException extends IOException {
         public BlockedException(URI uri) {
-            super(Cause.BLOCKED.text + ": HTTP 403 fetching " + SafeUri.forMessage(uri) + ". The mirror that routes"
-                    + " around a block is off (" + ENV_DISABLE + "=off); unset it to send Central-bound requests to "
-                    + MIRROR_BASE + " for " + DEFAULT_WINDOW.toHours() + " h");
+            super(Cause.BLOCKED.text + ": HTTP 403 fetching " + SafeUri.forMessage(uri) + "; unset " + ENV_DISABLE
+                    + " to use the mirror " + MIRROR_BASE);
         }
     }
 

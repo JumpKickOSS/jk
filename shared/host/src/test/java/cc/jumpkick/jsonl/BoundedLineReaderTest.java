@@ -51,7 +51,7 @@ class BoundedLineReaderTest {
                 reader.idleTimeout(100);
                 assertThatThrownBy(reader::readLine)
                         .isInstanceOf(IOException.class)
-                        .hasMessageContaining("no protocol traffic");
+                        .hasMessageContaining("no answer from the engine");
                 assertThat(reader.timedOut()).isTrue();
                 assertThat(accepted.isOpen()).as("the timer closed the peer").isFalse();
             }
@@ -102,6 +102,8 @@ class BoundedLineReaderTest {
 
         BoundedLineReader reader = new BoundedLineReader(new StringReader("x".repeat(5_000)), null, 0, 4_096);
         assertThat(reader.maxLine()).isEqualTo(4_096);
-        assertThatThrownBy(reader::readLine).isInstanceOf(IOException.class).hasMessageContaining("exceeds 4096 chars");
+        assertThatThrownBy(reader::readLine)
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("longer than 4096 chars");
     }
 }

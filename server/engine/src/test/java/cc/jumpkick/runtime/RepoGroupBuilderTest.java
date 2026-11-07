@@ -440,10 +440,10 @@ class RepoGroupBuilderTest {
 
         assertThat(expanded.get()).isEqualTo(new ObjectStoreConfig("us-east-1", null, "AKIAEXAMPLE", null, null));
         assertThat(expanded.get().hasExplicitCredentials()).isFalse();
-        assertThat(occurrencesOf(out, "interpolates ${HOME}")).isEqualTo(1);
+        assertThat(occurrencesOf(out, "cannot use ${HOME}")).isEqualTo(1);
         assertThat(out)
-                .contains("repository `corp`")
-                .contains("object-store keys")
+                .contains("corp at ")
+                .contains("no credential sent")
                 .contains("JK_REPO_CORP_TOKEN")
                 .doesNotContain(VICTIM_HOME);
     }
@@ -510,7 +510,7 @@ class RepoGroupBuilderTest {
                 RepoGroupBuilder.expandObjectStore(spec, resolver(dir, shell, Map.of(), List.of()), shell::get)));
         assertThat(unbound.get()).isEqualTo(ObjectStoreConfig.EMPTY);
         assertThat(out)
-                .contains("nothing binds the name `corp`")
+                .contains("the project, not ~/.jk/config.toml, declares this repository")
                 .contains("JK_REPO_CORP_HOST=corp-bucket")
                 .doesNotContain("s3cr3t");
     }
@@ -555,10 +555,7 @@ class RepoGroupBuilderTest {
         } finally {
             System.clearProperty("jk.env.JK_HOME");
         }
-        assertThat(out)
-                .contains("repository `corp`")
-                .contains("interpolates ${HOME}")
-                .doesNotContain(VICTIM_HOME);
+        assertThat(out).contains("corp at ").contains("cannot use ${HOME}").doesNotContain(VICTIM_HOME);
     }
 
     /**
