@@ -65,7 +65,13 @@ public final class AppWatchLoop {
     private final String logPrefix;
     private final boolean noSidecars;
     private final Compiler compiler;
-    /** The full rebuild a manifest or resource change triggers; same shape, different plan. */
+    /**
+     * The same compile after a change to resources alone, told as a resource copy: the compile goal
+     * runs the build's resource copy and whatever its step graph keeps beside it, and the compile it
+     * holds finds nothing to do.
+     */
+    private final Compiler resourceCopier;
+    /** The full rebuild a manifest change triggers; same shape, different plan. */
     private final Compiler builder;
 
     /** {@code -m}: the members of a workspace root's stack to run; empty runs every one. */
@@ -244,13 +250,13 @@ public final class AppWatchLoop {
                     }
                     continue;
                 }
-                boolean ok = changes.resources() ? build(projectDir, cache) : compile(projectDir, cache);
-                if (!ok) {
+                Pass pass = Pass.of(changes);
+                if (!pass(pass, projectDir, cache)) {
                     CliOutput.err(logPrefix + ": build failed — app keeps running the last good code.");
                     continue;
                 }
                 if (devtools) {
-                    CliOutput.err(logPrefix + ": recompiled — DevTools restarts the context.");
+                    CliOutput.err(logPrefix + ": " + pass.done + " — DevTools restarts the context.");
                 } else {
                     app = restartApp(app, plan, appArgs);
                     running.set(app.process());
@@ -366,8 +372,35 @@ public final class AppWatchLoop {
         return builder.compile(projectDir, cache);
     }
 
-    boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
-        return compiler.compile(projectDir, cache);
+    /**
+     * What a change runs before the app restarts. A manifest change rebuilds and re-plans; any
+     * other change runs the compile goal, which copies resources into the classes the app runs from
+     * and writes no jar: a dev session never reads one.
+     */
+    enum Pass {
+        REBUILD("rebuilt"),
+        RECOMPILE("recompiled"),
+        COPY_RESOURCES("resources copied");
+
+        /** How the loop's line tells the pass once it has run. */
+        final String done;
+
+        Pass(String done) {
+            this.done = done;
+        }
+
+        static Pass of(SourceWatch.Changes changes) {
+            if (changes.manifest()) return REBUILD;
+            return changes.sources() ? RECOMPILE : COPY_RESOURCES;
+        }
+    }
+
+    boolean pass(Pass pass, Path projectDir, Path cache) throws IOException, InterruptedException {
+        return switch (pass) {
+            case REBUILD -> builder.compile(projectDir, cache);
+            case RECOMPILE -> compiler.compile(projectDir, cache);
+            case COPY_RESOURCES -> resourceCopier.compile(projectDir, cache);
+        };
     }
 
     ExecPlan devPlan(Path projectDir, Path cache) throws IOException {

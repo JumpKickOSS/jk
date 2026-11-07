@@ -147,6 +147,23 @@ class LifecycleParityTest {
         }
     }
 
+    /**
+     * {@code jk dev} answers a resource edit with the compile goal: it holds the build's own
+     * resource copy and writes no jar, runs no test and compiles none.
+     */
+    @Test
+    void the_compile_goal_copies_resources_and_packages_nothing() throws Exception {
+        BuildGraph.BuildUnit app = units.getLast();
+        Set<String> compile = steps(app, WorkspaceTarget.COMPILE, false);
+        assertThat(compile).contains(TaskNames.COPY_RESOURCES);
+        assertThat(compile)
+                .doesNotContain(
+                        TaskNames.PACKAGE_JAR, TaskNames.BUILD_INFO, TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS);
+        assertThat(steps(app, WorkspaceTarget.PACKAGE, true))
+                .as("the copy is the build's own step")
+                .contains(TaskNames.COPY_RESOURCES);
+    }
+
     @Test
     void a_tail_runs_after_every_phase_it_shares() throws Exception {
         BuildGraph.BuildUnit app = units.getLast();

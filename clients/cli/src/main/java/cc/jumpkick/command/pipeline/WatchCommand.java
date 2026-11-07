@@ -122,7 +122,8 @@ public final class WatchCommand implements CliCommand {
                                 jdksDir,
                                 "jk watch run",
                                 in.flag("no-sidecars").orElse(false),
-                                recompiler(in),
+                                recompiler(in, "Recompiled"),
+                                recompiler(in, "Resources copied"),
                                 rebuilder(in, jdksDir),
                                 members(in))
                         .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
@@ -145,17 +146,20 @@ public final class WatchCommand implements CliCommand {
         return List.copyOf(out);
     }
 
-    /** The dev loop's recompile: {@code jk compile}, told as the loop's own. */
-    private static AppWatchLoop.Compiler recompiler(Invocation in) {
+    /**
+     * The dev loop's recompile: {@code jk compile}, told as the loop's own. It also serves a change
+     * to resources alone, whose copy the compile goal runs, so that pass writes no jar.
+     */
+    private static AppWatchLoop.Compiler recompiler(Invocation in, String done) {
         return (projectDir, cache) -> BuildVerbCommand.run(
-                        new CompileVerb("Watch", "Recompiled"),
+                        new CompileVerb("Watch", done),
                         BuildVerbCommand.embedded(in, projectDir, cache, b -> {}),
                         false)
                 == 0;
     }
 
     /**
-     * The dev loop's full rebuild after a manifest or resource change: the same choice, so a
+     * The dev loop's full rebuild after a manifest change: the same choice, so a
      * workspace member is packaged with the siblings it runs on rather than as a lone plan.
      */
     private static AppWatchLoop.Compiler rebuilder(Invocation in, @Nullable Path jdksDir) {

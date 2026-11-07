@@ -84,6 +84,12 @@ jk watch test -U 300
 `watch run` / `dev` use classes-dir execution, Spring Boot DevTools when present,
 otherwise process restart. Android projects redeploy via the packaging plugin.
 
+What a change runs before the restart: a `jk.toml` edit rebuilds the project and re-plans the
+app; a source edit runs `jk compile`; an edit to resources alone (`src/main/resources`, or any
+other non-source file under a watched tree) runs the same compile goal, which copies resources
+into the classes the app runs from, runs any generator that reads the edited file, and writes no
+jar (`Resources copied` in the loop's output).
+
 ## Sidecars (`[dev.sidecars]`)
 
 A service with a frontend has two live loops: the JVM, and the frontend's own dev server
