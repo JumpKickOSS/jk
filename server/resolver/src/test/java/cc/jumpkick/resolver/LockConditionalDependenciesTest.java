@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
@@ -166,6 +167,76 @@ class LockConditionalDependenciesTest {
         assertThat(row(lock, "junit-ext").orElseThrow().deps()).contains("com.acme:junit-kotlin:jar:@1.0");
     }
 
+    /**
+     * rest is a main dependency and kotlin a test one: rest-kotlin is on the test classpath alone,
+     * reached from main's rest row, whose edge the main classpath walk passes over.
+     */
+    @Test
+    void a_main_extension_whose_condition_only_test_dependencies_meet_joins_the_test_classpath(@TempDir Path tempDir)
+            throws Exception {
+        EnumMap<Scope, List<Dependency>> deps = new EnumMap<>(Scope.class);
+        deps.put(Scope.MAIN, List.of(dep("rest")));
+        deps.put(Scope.TEST, List.of(dep("kotlin")));
+        JkBuild project = build(deps);
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withConditionalDependencies(List.of(RULE))
+                .lock(project, "test");
+
+        assertThat(row(lock, "rest-kotlin")).hasValueSatisfying(r -> {
+            assertThat(r.scopes()).containsExactly(Scope.TEST);
+            assertThat(r.addedBy()).containsExactly("com.acme:rest when com.acme:kotlin");
+        });
+        assertThat(row(lock, "rest").orElseThrow().scopes()).contains(Scope.MAIN);
+        assertThat(row(lock, "rest").orElseThrow().deps()).contains("com.acme:rest-kotlin:jar:@1.0");
+
+        assertThat(names(ClasspathResolver.moduleRows(lock, ClasspathResolver.TEST, project, tempDir)))
+                .contains("com.acme:rest-kotlin:jar:", "com.acme:chain:jar:");
+        assertThat(names(ClasspathResolver.moduleRows(lock, ClasspathResolver.RUNTIME, project, tempDir)))
+                .contains("com.acme:rest:jar:")
+                .doesNotContain("com.acme:rest-kotlin:jar:", "com.acme:chain:jar:");
+    }
+
+    /**
+     * Two members depend on rest and only kt has kotlin: the workspace's condition holds across both
+     * graphs, yet plain's own graph does not meet it, so plain reads a rest row of its own without
+     * the edge and no kotlin conditional is on its classpath.
+     */
+    @Test
+    void a_workspace_member_gets_a_conditional_dependency_only_when_its_own_graph_meets_the_condition(
+            @TempDir Path tempDir) throws Exception {
+        JkBuild kt = build("kt", Map.of(Scope.MAIN, List.of(dep("rest"), dep("kotlin"))));
+        JkBuild plain = build("plain", Map.of(Scope.MAIN, List.of(dep("rest"))));
+        JkBuild merged = build("root", Map.of(Scope.MAIN, List.of(dep("rest"), dep("kotlin"))));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withConditionalDependencies(List.of(RULE))
+                .withMembers(
+                        List.of(new LockOrchestrator.Member("kt", kt), new LockOrchestrator.Member("plain", plain)))
+                .lock(merged, "test");
+
+        List<String> kotlinConditionals =
+                List.of("com.acme:rest-kotlin:jar:", "com.acme:chain:jar:", "com.acme:vertx-kotlin:jar:");
+        assertThat(names(ClasspathResolver.moduleRows(
+                        lock.forMember("kt"), ClasspathResolver.RUNTIME, kt, tempDir.resolve("kt"))))
+                .containsAll(kotlinConditionals);
+        assertThat(names(ClasspathResolver.moduleRows(
+                        lock.forMember("plain"), ClasspathResolver.RUNTIME, plain, tempDir.resolve("plain"))))
+                .contains("com.acme:rest:jar:")
+                .doesNotContainAnyElementsOf(kotlinConditionals);
+
+        Lockfile.Artifact plainRest = row(lock.forMember("plain"), "rest").orElseThrow();
+        assertThat(plainRest.members()).containsExactly("plain");
+        assertThat(plainRest.deps()).isEmpty();
+        assertThat(row(lock.forMember("kt"), "rest").orElseThrow().deps()).contains("com.acme:rest-kotlin:jar:@1.0");
+        // Every row a kotlin conditional brought in is one only kt reaches.
+        for (String key : kotlinConditionals) {
+            assertThat(lock.artifacts())
+                    .filteredOn(a -> a.packageKey().equals(key))
+                    .allSatisfy(a -> assertThat(a.members()).isEmpty());
+        }
+    }
+
     @Test
     void descriptor_coordinates_parse_as_quarkus_writes_them() {
         assertThat(ConditionalDependencies.dependency("io.quarkus:quarkus-rest-kotlin::jar:3.40.1"))
@@ -222,15 +293,23 @@ class LockConditionalDependenciesTest {
     }
 
     private static JkBuild build(Map<Scope, List<Dependency>> byScope) {
+        return build("app", byScope);
+    }
+
+    private static JkBuild build(String name, Map<Scope, List<Dependency>> byScope) {
         EnumMap<Scope, List<Dependency>> copy = new EnumMap<>(Scope.class);
         copy.putAll(byScope);
-        return new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(copy));
+        return new JkBuild(new Project("com.example", name, "1.0", 25), new JkBuild.Dependencies(copy));
     }
 
     private static Optional<Lockfile.Artifact> row(Lockfile lock, String artifact) {
         return lock.artifacts().stream()
                 .filter(a -> a.packageKey().equals("com.acme:" + artifact + ":jar:"))
                 .findFirst();
+    }
+
+    private static List<String> names(List<Lockfile.Artifact> rows) {
+        return rows.stream().map(Lockfile.Artifact::packageKey).toList();
     }
 
     private RepoGroup repoGroup(Path tempDir) {

@@ -684,6 +684,13 @@ row declaring it lists it under `deps`, so it ships and is on every classpath it
 and the added row says why under `added-by`: the artifact declaring it, then `when` and the
 artifacts its condition named.
 
+A condition is judged per graph. The test graph meets it with the main graph and its own
+dependencies together: a main dependency's conditional dependency whose condition only a test
+dependency meets is a test row, and the main row declaring it carries the edge, which only the test
+classpath follows. In a workspace each member is judged on its own graph: a member that holds the
+declaring artifact but not what the condition names reads a row of its own for the declarer,
+without the edge (`members = [...]`), so a sibling's dependency never brings it a conditional one.
+
 ```toml
 [[artifact]]
 name = "io.quarkus:quarkus-rest-kotlin:jar:"

@@ -116,15 +116,17 @@ public final class ConditionalDependencies {
     }
 
     /**
-     * Every conditional dependency of {@code closure}'s modules whose condition the closure meets,
-     * in module order. A dependency that joins counts as present for the conditions read after it,
-     * as it will be once the graph is solved with it; what it declares itself is read on the next
-     * round, from the solved graph. {@code context} is more of the classpath the conditions are
-     * judged against: the main graph, for the test graph's.
+     * Every conditional dependency of {@code closure}'s and {@code context}'s modules whose
+     * condition the closure meets, in module order. A dependency that joins counts as present for
+     * the conditions read after it, as it will be once the graph is solved with it; what it declares
+     * itself is read on the next round, from the solved graph. {@code context} is more of the
+     * classpath: the main graph, for the test graph's, whose modules' conditions the test graph can
+     * meet.
      */
     List<Active> active(Collection<Resolution.ResolvedModule> closure, Collection<Resolution.ResolvedModule> context)
             throws IOException, InterruptedException {
         Map<String, Resolution.ResolvedModule> byKey = new TreeMap<>();
+        for (Resolution.ResolvedModule m : context) byKey.put(m.module(), m);
         for (Resolution.ResolvedModule m : closure) byKey.put(m.module(), m);
         Set<String> present = new LinkedHashSet<>();
         for (Resolution.ResolvedModule m : context) present.addAll(identities(m.module()));
@@ -166,7 +168,7 @@ public final class ConditionalDependencies {
     }
 
     /** The names a condition can call module {@code key} by: its {@code group:artifact}, and its package key. */
-    private static List<String> identities(String key) {
+    static List<String> identities(String key) {
         if (!PackageId.isMavenPackageKey(key)) return List.of(key);
         PackageId id = PackageId.parse(key);
         return id.classifier().isEmpty() ? List.of(id.ga()) : List.of(id.ga() + ":" + id.classifier());

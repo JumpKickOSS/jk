@@ -86,7 +86,10 @@ jk new -t quarkus/hello my-api
   and `quarkus-kotlin` beside `quarkus-vertx` locks `quarkus-vertx-kotlin`, with nothing declared.
   Such a row lists why under `added-by`
   ([Lockfile](lockfile.md#rows-a-conditional-dependency-adds)), and `jk why` names the extension
-  and the condition.
+  and the condition. An extension's `conditional-dev-dependencies` are not followed: they are
+  for Quarkus's dev mode (`quarkus:dev`), which jk does not run. `jk run` starts the augmented
+  production application (`quarkus-run.jar`) and `jk dev` re-runs it on change, so a dev-mode
+  dependency would sit on no classpath the application reads.
 - **Native:** `[native] enabled = "always"` (or a bare `[native]` / `enabled = true` for
   `jk native` only) builds through **Quarkus’s own** native-image command. JumpKick
   supplies the GraalVM toolchain. Nothing jk composes is added on top; `[native] args`

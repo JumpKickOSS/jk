@@ -98,12 +98,14 @@ final class LockfileAssembler {
         mergeGraph(solved.main(), mainTags, Scope.MAIN, tagsByKey, modByKey);
         mergeGraph(solved.test(), testTags, Scope.TEST, tagsByKey, modByKey);
         mergeGraph(solved.processor(), processorTags, Scope.PROCESSOR, tagsByKey, modByKey);
+        withConditionalEdges(solved.joined(), modByKey);
         modByKey.keySet().removeIf(this::builtByWorkspace);
 
         ArtifactMaterializer materializer =
                 new ArtifactMaterializer((mod, tags, abort) -> toArtifact(mod, tags, fallbackSource, abort), progress);
+        Map<String, List<String>> addedByKey = solved.addedBy();
         for (Lockfile.Artifact row : materializer.materialize(new ArrayList<>(modByKey.entrySet()), tagsByKey)) {
-            List<String> addedBy = solved.addedBy().get(row.name());
+            List<String> addedBy = addedByKey.get(row.name());
             packages.add(addedBy == null ? row : row.withAddedBy(addedBy));
         }
 
@@ -153,6 +155,25 @@ final class LockfileAssembler {
                 tagsByKey.put(key, EnumSet.copyOf(tags));
                 modByKey.put(key, mod);
             }
+        }
+    }
+
+    /**
+     * Each declaring row with an edge onto the conditional dependency it brought in. A row holds the
+     * first graph's module at its version, so a test-graph join whose declarer is main's row is added
+     * here: the joined row is test's alone, so only a test classpath walk follows the edge.
+     */
+    private static void withConditionalEdges(
+            List<ScopeSolves.Joined> joined, Map<String, Resolution.ResolvedModule> modByKey) {
+        for (ScopeSolves.Joined j : joined) {
+            Resolution.ResolvedModule declarer = modByKey.get(j.declarer());
+            if (declarer == null || declarer.deps().contains(j.dependency())) continue;
+            List<String> deps = new ArrayList<>(declarer.deps());
+            deps.add(j.dependency());
+            modByKey.put(
+                    j.declarer(),
+                    new Resolution.ResolvedModule(
+                            declarer.module(), declarer.version(), deps, declarer.declared(), declarer.excluded()));
         }
     }
 

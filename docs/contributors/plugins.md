@@ -330,6 +330,9 @@ the *dependency's own* descriptor names is in the closure (none named: always), 
 solved again until no more join. A joined dependency follows the platform table's version, else
 the declared one, read as a floor like a POM edge's; it becomes an edge of the row declaring it, and
 its own row says why under `added-by` ([Lockfile](../user/lockfile.md#rows-a-conditional-dependency-adds)).
+The test graph reads the main graph's jars too, so a main artifact's dependency whose condition
+only the test graph meets joins it; and a workspace member whose own graph holds the declarer but
+not the condition is solved on its own, so its declaring row lacks the edge.
 This happens inside the lock's solve, with no worker forked, so the runtime closure — what ships
 and what the lock-closure rows are resolved from — already holds it. `[quarkus]` names Quarkus's
 extension descriptor this way.

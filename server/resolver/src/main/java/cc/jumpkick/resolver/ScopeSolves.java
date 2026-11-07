@@ -41,12 +41,42 @@ final class ScopeSolves {
             List.of(LockRoots.GraphGroup.MAIN, LockRoots.GraphGroup.TEST, LockRoots.GraphGroup.PROCESSOR);
 
     /**
-     * The three resolutions, one per graph, and the {@code added-by} lines of every module a
-     * {@linkplain ConditionalDependencies conditional dependency} brought in, by package key.
+     * The three resolutions, one per graph, and every {@linkplain ConditionalDependencies conditional
+     * dependency} that joined the main or test graph.
      */
-    record Solved(Resolution main, Resolution test, Resolution processor, Map<String, List<String>> addedBy) {
+    record Solved(Resolution main, Resolution test, Resolution processor, List<Joined> joined) {
         Solved {
-            addedBy = Map.copyOf(addedBy);
+            joined = List.copyOf(joined);
+        }
+
+        /** The {@code added-by} lines of every module a conditional dependency brought in, by package key. */
+        Map<String, List<String>> addedBy() {
+            Map<String, List<String>> out = new LinkedHashMap<>();
+            for (Joined j : joined) {
+                List<String> reasons = out.computeIfAbsent(j.dependencyKey(), k -> new ArrayList<>());
+                if (!reasons.contains(j.active().reason()))
+                    reasons.add(j.active().reason());
+            }
+            return out;
+        }
+    }
+
+    /**
+     * A conditional dependency in {@code graph}: the declaring module as solved ({@code
+     * module@version}), the joined module's package key and its solved {@code module@version}, and
+     * the declaration. The declarer of a test-graph join may be a main-graph module: its row then
+     * carries the edge, which only a test classpath walk follows, since the joined row is test's.
+     */
+    record Joined(
+            LockRoots.GraphGroup graph,
+            String declarer,
+            String dependencyKey,
+            String dependency,
+            ConditionalDependencies.Active active) {
+
+        /** The declaring module's package key. */
+        String declarerKey() {
+            return active.declarer();
         }
     }
 
@@ -60,8 +90,8 @@ final class ScopeSolves {
     /** The {@code group:artifact}s a conditional dependency rooted: their pins are floors. */
     private final Set<String> conditionalRoots = new LinkedHashSet<>();
 
-    /** Package key → the {@code added-by} lines of the conditional dependencies that brought it in. */
-    private final Map<String, List<String>> addedBy = new LinkedHashMap<>();
+    /** Every conditional dependency that joined a graph, in the order they joined. */
+    private final Set<Joined> joined = new LinkedHashSet<>();
 
     /** One sentence per test-scope exact pin that gave way to main's version. */
     private final List<String> overrides = new ArrayList<>();
@@ -105,7 +135,14 @@ final class ScopeSolves {
             if (conditionals != null && graph != LockRoots.GraphGroup.PROCESSOR) {
                 Resolution context = test ? solved.get(LockRoots.GraphGroup.MAIN) : null;
                 resolution = followConditionals(
-                        conditionals, graphRoots, resolution, context, inherited, new HashMap<>(prefs), progress);
+                        conditionals,
+                        graph,
+                        graphRoots,
+                        resolution,
+                        context,
+                        inherited,
+                        new HashMap<>(prefs),
+                        progress);
             }
             if (test) noteDeadDuals(resolution, Objects.requireNonNull(solved.get(LockRoots.GraphGroup.MAIN)));
             progress.noteGraph(resolution);
@@ -120,18 +157,21 @@ final class ScopeSolves {
                 Objects.requireNonNull(solved.get(LockRoots.GraphGroup.MAIN)),
                 Objects.requireNonNull(solved.get(LockRoots.GraphGroup.TEST)),
                 Objects.requireNonNull(solved.get(LockRoots.GraphGroup.PROCESSOR)),
-                addedBy);
+                new ArrayList<>(joined));
     }
 
     /**
      * {@code resolution} solved again with every conditional dependency whose condition its closure
      * (with {@code context}'s, the main graph under the test graph) meets as a root, until a solve
      * brings in no more; each such dependency is then an edge of the module declaring it, so the
-     * lock's graph reaches it from there, and its {@code added-by} says why. A dependency {@code
-     * context} already holds is on this graph's classpath through it and is not rooted again.
+     * lock's graph reaches it from there, and its {@code added-by} says why. A module of {@code
+     * context} declares too: a main-graph extension whose condition only the test graph meets joins
+     * the test graph. A dependency {@code context} already holds is on this graph's classpath
+     * through it and is not rooted again.
      */
     private Resolution followConditionals(
             ConditionalDependencies conditionals,
+            LockRoots.GraphGroup graph,
             List<Dependency> roots,
             Resolution resolution,
             @Nullable Resolution context,
@@ -157,24 +197,32 @@ final class ScopeSolves {
                 grown.add(root);
                 added = true;
             }
-            if (!added) return withConditionalEdges(resolution, active);
+            if (!added) return withConditionalEdges(graph, resolution, context, active);
             resolution = resolve(grown, inheritedPins, new HashMap<>(prefs), progress);
         }
     }
 
     /**
      * {@code resolution} with each active conditional dependency it holds an edge of its declarer,
-     * when the declarer is in it too, and its reason recorded for {@link Solved#addedBy}.
+     * when the declarer is in it too, and each recorded as {@link Joined}; a declarer only {@code
+     * context} holds gets its edge on its lock row ({@link LockfileAssembler}).
      */
-    private Resolution withConditionalEdges(Resolution resolution, List<ConditionalDependencies.Active> active) {
+    private Resolution withConditionalEdges(
+            LockRoots.GraphGroup graph,
+            Resolution resolution,
+            @Nullable Resolution context,
+            List<ConditionalDependencies.Active> active) {
         if (active.isEmpty()) return resolution;
         Map<String, Resolution.ResolvedModule> modules = new LinkedHashMap<>(resolution.modules());
         for (ConditionalDependencies.Active a : active) {
             Resolution.ResolvedModule dependency = modules.get(a.module());
             if (dependency == null) continue;
-            List<String> reasons = addedBy.computeIfAbsent(a.module(), k -> new ArrayList<>());
-            if (!reasons.contains(a.reason())) reasons.add(a.reason());
             Resolution.ResolvedModule declarer = modules.get(a.declarer());
+            Resolution.ResolvedModule declaring = declarer != null || context == null
+                    ? declarer
+                    : context.modules().get(a.declarer());
+            if (declaring == null) continue;
+            joined.add(new Joined(graph, declaring.coord(), dependency.module(), dependency.coord(), a));
             if (declarer == null || declarer.deps().contains(dependency.coord())) continue;
             List<String> deps = new ArrayList<>(declarer.deps());
             deps.add(dependency.coord());
