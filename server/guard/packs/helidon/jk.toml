@@ -1,0 +1,29 @@
+group = "cc.jumpkick.guards"
+javadoc = false   # a rule pack has no API to document
+name = "helidon"
+description = "Helidon 27 house rules: SE only (no MicroProfile), Jakarta EE, Helidon test types and test libraries in the test scope."
+
+[provided-dependencies]
+jspecify = "1.0.1"
+
+[processor-dependencies]
+error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
+nullaway = { group = "com.uber.nullaway", version = "0.14.2" }
+
+# Nullness is enforced here: every production package is @NullMarked (JSpecify) and NullAway
+# checks it at error severity, with the same flags in every enforced module so the block is one
+# block. The pins are exact; `jk update` moves them and the lock follows.
+[javac]
+args = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW", "-Xmaxerrs", "10000"]
+
+[javac.plugins.ErrorProne]
+options = [
+  "-XepDisableAllChecks",
+  "-Xep:RequireExplicitNullMarking:ERROR",
+  "-Xep:NullAway:ERROR",
+  "-XepOpt:NullAway:OnlyNullMarked=true",
+  "-XepOpt:NullAway:JSpecifyMode=true",
+  # A CLI command's fields are its parsed invocation: run(Invocation) assigns them and nothing
+  # reads them before it. Identical across the enforced modules so the block is one block.
+  "-XepOpt:NullAway:KnownInitializers=cc.jumpkick.model.command.CliCommand.run",
+]

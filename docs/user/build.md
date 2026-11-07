@@ -183,6 +183,12 @@ compile with NullAway's diagnostic in `target/jk-results.md`, like any compile e
 Widget.java:7: error: [NullAway] dereferenced expression 'label' is @Nullable
 ```
 
+What an annotation processor writes is not the module's to fix, so a class marked generated is
+left unchecked even inside a checked package, and so are calls into it: the JDK's `@Generated`, and
+`io.helidon.common.Generated` on everything Helidon's code generators write (JSON converters,
+service descriptors, the application binding). Another generator's marker goes in `options`
+(`-XepOpt:NullAway:CustomGeneratedCodeAnnotations=…`).
+
 Checking is on for the module's own code, and you opt packages out. List them in `exclude`, or
 mark one in its `package-info.java`; the JSpecify markings always apply:
 

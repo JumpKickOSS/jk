@@ -29,6 +29,8 @@ class JkBuildParserNullnessTest {
                                 "-XepDisableAllChecks",
                                 "-Xep:NullAway:ERROR",
                                 "-XepOpt:NullAway:JSpecifyMode=true",
+                                "-XepOpt:NullAway:TreatGeneratedAsUnannotated=true",
+                                "-XepOpt:NullAway:CustomGeneratedCodeAnnotations=io.helidon.common.Generated",
                                 "-XepOpt:NullAway:AnnotatedPackages=com.example")));
         assertThat(javac.args()).containsExactly("-XDcompilePolicy=simple", "--should-stop=ifError=FLOW");
         assertThat(javac.forTests().plugins())
@@ -78,6 +80,8 @@ class JkBuildParserNullnessTest {
                 "-XepDisableAllChecks",
                 "-Xep:NullAway:WARN",
                 "-XepOpt:NullAway:JSpecifyMode=true",
+                "-XepOpt:NullAway:TreatGeneratedAsUnannotated=true",
+                "-XepOpt:NullAway:CustomGeneratedCodeAnnotations=io.helidon.common.Generated",
                 "-XepOpt:NullAway:OnlyNullMarked=true",
                 "-XepOpt:NullAway:KnownInitializers=com.example.Cli.run");
         assertThat(b.javac().plugins().get("ErrorProne")).isEqualTo(checks);
@@ -109,6 +113,8 @@ class JkBuildParserNullnessTest {
                         "-XepDisableAllChecks",
                         "-Xep:NullAway:WARN",
                         "-XepOpt:NullAway:JSpecifyMode=true",
+                        "-XepOpt:NullAway:TreatGeneratedAsUnannotated=true",
+                        "-XepOpt:NullAway:CustomGeneratedCodeAnnotations=io.helidon.common.Generated",
                         "-XepOpt:NullAway:AnnotatedPackages=com.example",
                         "-XepOpt:NullAway:UnannotatedSubPackages=com.example.generated,com.example.legacy",
                         "-Xep:RequireExplicitNullMarking:WARN");

@@ -34,7 +34,8 @@ import org.junit.jupiter.api.Test;
 class HelidonArchetypeOptionsTest {
 
     /** The templates the archetype's inputs are diffed against, by catalogue id. */
-    private static final List<String> TEMPLATES = List.of("helidon/quickstart", "helidon/declarative");
+    private static final List<String> TEMPLATES =
+            List.of("helidon/quickstart", "helidon/declarative", "helidon/database");
 
     /** Marks an archetype input jk answers option by option, in {@link #OPTIONS}. */
     private static final String BY_OPTION = "by option";
@@ -68,8 +69,8 @@ class HelidonArchetypeOptionsTest {
             entry("security", "the custom application type's; jk add the security provider"),
             entry("security.atn", "the custom application type's; jk add the security provider"),
             entry("security.atz", "the custom application type's; jk add the security provider"),
-            entry("db", "the database application type's: helidon/database, a template still to come"),
-            entry("db.server", "the database application type's: helidon/database, a template still to come"));
+            entry("db", "on in helidon/database, which is the database application type"),
+            entry("db.server", BY_OPTION));
 
     /**
      * What jk does with each option of a {@link #BY_OPTION} input, keyed {@code <path>=<option>}:
@@ -78,14 +79,30 @@ class HelidonArchetypeOptionsTest {
      */
     private static final Map<String, String> OPTIONS = Map.ofEntries(
             entry("app-type=quickstart", "template:helidon/quickstart"),
-            entry("app-type=database", "helidon/database, a template still to come"),
+            entry("app-type=database", "template:helidon/database"),
             entry("app-type=custom", "the quickstart's questions, with jk add for the rest"),
             entry("media=json", "ask:media"),
             entry("media=multipart", "a dependency away: jk add helidon-http-media-multipart"),
             entry("media.json-lib=jsonp", "ask:media=jsonp"),
             entry("media.json-lib=jackson", "a dependency away: jk add helidon-http-media-jackson"),
             entry("media.json-lib=jsonb", "a dependency away: jk add helidon-http-media-jsonb"),
-            entry("tracing.provider=opentelemetry", "ask:tracing"));
+            entry("tracing.provider=opentelemetry", "ask:tracing"),
+            entry("db.server=h2", "ask:db=h2"),
+            entry("db.server=mysql", "ask:db=mysql"),
+            entry("db.server=oracledb", "ask:db=oracledb"),
+            entry("db.server=mongodb", "ask:db=mongodb"));
+
+    /**
+     * Questions a template does not ask though another does, keyed {@code <template> <key>}, each with
+     * why: the database application fixes what the quickstart lets you choose.
+     */
+    private static final Map<String, String> NOT_ASKED = Map.ofEntries(
+            entry("helidon/quickstart db", "the database application type's question: helidon/database"),
+            entry("helidon/declarative db", "the database application type's question: helidon/database"),
+            entry("helidon/database media", "Helidon DB Client maps rows to JSON-P (helidon-dbclient-jsonp)"),
+            entry(
+                    "helidon/database tracing",
+                    "the archetype's database application wires no tracing; jk add the tracing provider"));
 
     /**
      * Template questions, and answers, that are jk's own rather than an archetype input's, keyed
@@ -156,6 +173,12 @@ class HelidonArchetypeOptionsTest {
                 }
                 String ask = target.substring("ask:".length());
                 String key = ask.contains("=") ? ask.substring(0, ask.indexOf('=')) : ask;
+                if (NOT_ASKED.containsKey(template + " " + key)) {
+                    assertThat(asks)
+                            .as("%s does not ask %s (NOT_ASKED says why); remove that entry", template, key)
+                            .doesNotContainKey(key);
+                    continue;
+                }
                 assertThat(asks).as("%s asks %s", template, key).containsKey(key);
                 if (ask.contains("=")) {
                     assertThat(asks.get(key))

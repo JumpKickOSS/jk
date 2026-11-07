@@ -1,0 +1,92 @@
+app:
+  greeting: "Hello"
+
+server:
+  port: 8080
+  host: 0.0.0.0
+
+# Helidon DB Client: the connection, the health check's statement, and every statement by name.
+db:
+$if(db_mongodb.truthy)$
+  source: "mongoDb"
+  connection:
+    url: "mongodb://127.0.0.1:27017/pokemon"
+  init-schema: false
+  health-check:
+    type: "query"
+    statementName: "health-check"
+  statements:
+    health-check: '{
+            "operation": "command",
+            "query": { ping: 1 }
+        }'
+    insert2: '{
+            "collection": "pokemons",
+            "value": {
+                "_id": \$name,
+                "type": \$type
+            }
+        }'
+    select-all: '{
+            "collection": "pokemons",
+            "query": {}
+        }'
+    select-one: '{
+            "collection": "pokemons",
+            "query": {
+              "_id": ?
+            }
+        }'
+    update: '{
+            "collection": "pokemons",
+            "query": {
+                "_id": \$name
+            },
+            "value": {
+                \$set: { "type": \$type }
+            }
+        }'
+    delete: '{
+            "collection": "pokemons",
+            "query": {
+                "_id": ?
+            }
+        }'
+$else$
+  source: jdbc
+  connection:
+$if(db_h2.truthy)$
+    url: "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE"
+    username: sa
+    password:
+$endif$
+$if(db_mysql.truthy)$
+    url: jdbc:mysql://127.0.0.1:3306/pokemon?useSSL=false
+    username: user
+    password: changeit
+$endif$
+$if(db_oracledb.truthy)$
+    url: jdbc:oracle:thin:@localhost:1521/XE
+    username: system
+    password: oracle
+$endif$
+    initializationFailTimeout: -1
+    connectionTimeout: 2000
+  health-check:
+    type: "query"
+    statementName: "health-check"
+  statements:
+    health-check: "$if(db_oracledb.truthy)$SELECT 1 FROM DUAL$else$SELECT 0$endif$"
+    create-types: "CREATE TABLE PokeTypes (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(64) NOT NULL)"
+    create-pokemons: "CREATE TABLE Pokemons (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(64) NOT NULL, id_type INTEGER NOT NULL REFERENCES PokeTypes(id))"
+    select-all-types: "SELECT id, name FROM PokeTypes"
+    select-all-pokemons: "SELECT id, name, id_type FROM Pokemons"
+    select-pokemon-by-id: "SELECT id, name, id_type FROM Pokemons WHERE id = :id"
+    select-pokemon-by-name: "SELECT id, name, id_type FROM Pokemons WHERE name = ?"
+    insert-type: "INSERT INTO PokeTypes(id, name) VALUES(?, ?)"
+    insert-pokemon: "INSERT INTO Pokemons(id, name, id_type) VALUES(?, ?, ?)"
+    update-pokemon-by-id: "UPDATE Pokemons SET name = :name, id_type = :idType WHERE id = :id"
+    delete-pokemon-by-id: "DELETE FROM Pokemons WHERE id = :id"
+    delete-all-types: "DELETE FROM PokeTypes"
+    delete-all-pokemons: "DELETE FROM Pokemons"
+$endif$
