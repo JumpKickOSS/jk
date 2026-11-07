@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import static cc.jumpkick.config.WorkspaceModules.expand;
+
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -14,7 +16,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** The module directories a workspace root declares — the root itself when it is a standalone project. */
+/**
+ * The module directories a workspace root declares — the root itself when it is a standalone
+ * project. The member list is the build's one expansion of {@code [workspace] modules}, globs
+ * included, so every guard lane sees the modules the build builds.
+ */
 public final class WorkspaceModules {
 
     private WorkspaceModules() {}
@@ -35,14 +41,20 @@ public final class WorkspaceModules {
         return modules;
     }
 
-    private static List<Path> parse(Path root, Path manifest) throws IOException {
+    /**
+     * The member directories {@code build}, the manifest at {@code root}, lists: its {@code
+     * [workspace] modules} expanded as the build expands them, each resolved against {@code root};
+     * empty when it lists none.
+     */
+    public static List<Path> members(Path root, JkBuild build) {
         List<Path> out = new ArrayList<>();
-        JkBuild build = JkBuildParser.parse(manifest);
-        if (build.workspace() != null && !build.workspace().modules().isEmpty()) {
-            for (String m : build.workspace().modules()) out.add(root.resolve(m));
-        } else {
-            out.add(root);
-        }
+        for (String m : expand(root, build.workspaceModules()))
+            out.add(root.resolve(m).normalize());
         return out;
+    }
+
+    private static List<Path> parse(Path root, Path manifest) throws IOException {
+        List<Path> members = members(root, JkBuildParser.parse(manifest));
+        return members.isEmpty() ? List.of(root) : members;
     }
 }

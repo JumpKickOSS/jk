@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import static cc.jumpkick.config.WorkspaceModules.expand;
+
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.extract.WorkspaceFacts;
@@ -109,9 +111,12 @@ final class Extractors {
 
     private static Extraction workspaceModules(Spec s, EvalContext ctx) throws IOException, ExtractorException {
         String file = s.arg("file", ManifestPaths.MANIFEST);
-        JkBuild build = JkBuildParser.parse(existing(ctx, file));
+        Path manifest = existing(ctx, file);
+        JkBuild build = JkBuildParser.parse(manifest);
+        Path dir = manifest.toAbsolutePath().normalize().getParent();
         List<Extraction.Row> rows = new ArrayList<>();
-        if (build.workspace() != null) for (String m : build.workspace().modules()) rows.add(row(m, "module", m));
+        // The build's one expansion: a glob entry yields the modules it selects, not the pattern.
+        if (dir != null) for (String m : expand(dir, build.workspaceModules())) rows.add(row(m, "module", m));
         return new Extraction(s.label(), file, rows);
     }
 

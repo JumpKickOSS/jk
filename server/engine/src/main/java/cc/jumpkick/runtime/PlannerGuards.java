@@ -1090,11 +1090,7 @@ final class PlannerGuards {
     }
 
     private static List<Path> moduleDirs(Path root, @Nullable JkBuild rootBuild) {
-        List<Path> out = new ArrayList<>();
-        if (rootBuild != null && rootBuild.workspace() != null) {
-            for (String m : rootBuild.workspace().modules()) out.add(root.resolve(m));
-        }
-        return out;
+        return rootBuild == null ? new ArrayList<>() : new ArrayList<>(WorkspaceModules.members(root, rootBuild));
     }
 
     private static Supplier<@Nullable FactsIndex> testFacts(FactsIndexing.@Nullable Ensured test) {
