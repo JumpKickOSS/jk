@@ -9,6 +9,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.base.EditOps;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -56,6 +57,91 @@ class EditOpsGuardTest {
                 manifest, "add-dependency", List.of("main", "guava", "com.google.guava", "guava", "=33.4.0-jre"));
         assertThat(ok.changed()).isTrue();
         assertThat(ok.error()).isNull();
+    }
+
+    /**
+     * A workspace whose {@code kit} declares junit in main scope, so the lock's junit row carries
+     * {@code main}, and a rule scoped to {@code cli} that bans test libraries from its runtime tables.
+     */
+    private static Path scopedWorkspace(Path dir) throws Exception {
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Files.writeString(root.resolve(ManifestPaths.MANIFEST), """
+                group = "g"
+                name = "ws"
+                version = "1"
+
+                [workspace]
+                modules = ["cli", "kit"]
+                """);
+        Files.createDirectories(root.resolve("cli"));
+        Files.writeString(root.resolve("cli/" + ManifestPaths.MANIFEST), """
+                name = "cli"
+                group = "g"
+                version = "1"
+
+                [test-dependencies]
+                junit = { group = "org.junit.jupiter", name = "junit-jupiter-api", version = "=6.1.3" }
+                """);
+        Files.createDirectories(root.resolve("kit"));
+        Files.writeString(root.resolve("kit/" + ManifestPaths.MANIFEST), """
+                name = "kit"
+                group = "g"
+                version = "1"
+
+                [dependencies]
+                junit = { group = "org.junit.jupiter", name = "junit-jupiter-api", version = "=6.1.3" }
+                """);
+        Files.writeString(root.resolve(ManifestPaths.LOCK), """
+                version = 1
+                generated-by = "jk test"
+                resolution-algorithm = "pubgrub-v1"
+                jk-min = "0.12.0"
+
+                [[artifact]]
+                name     = "org.junit.jupiter:junit-jupiter-api:jar:"
+                version  = "6.1.3"
+                source   = "central+https://repo.example/"
+                scopes   = ["main", "test"]
+                """);
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.cli-runtime-classpath]
+                kind    = "depend"
+                scope   = ["cli"]
+                scopes  = ["dependencies", "runtime-dependencies", "provided-dependencies"]
+                ban     = ["org.junit.jupiter:*", "com.microsoft.playwright:*"]
+                instead = "test-dependencies"
+                why     = "the cli runtime carries no test library"
+                """);
+        return root.resolve("cli/" + ManifestPaths.MANIFEST);
+    }
+
+    @Test
+    void a_test_scope_add_passes_the_runtime_rule_a_main_scope_add_of_the_same_library_is_refused_by(@TempDir Path dir)
+            throws Exception {
+        Path manifest = scopedWorkspace(dir);
+        String before = Files.readString(manifest);
+        List<String> playwright = List.of("playwright", "com.microsoft.playwright", "playwright", "=1.57.0");
+
+        EditOps.Result main = EditOps.apply(manifest, "add-dependency", with("main", playwright));
+        assertThat(main.changed()).isFalse();
+        assertThat(main.error())
+                .startsWith("GUARD cli-runtime-classpath  refused this edit")
+                .contains("com.microsoft.playwright:playwright")
+                .as("the lock's junit row is another module's; a rule scoped to cli reads cli's manifest")
+                .doesNotContain("junit");
+        assertThat(Files.readString(manifest)).isEqualTo(before);
+
+        EditOps.Result test = EditOps.apply(manifest, "add-dependency", with("test", playwright));
+        assertThat(test.error()).isNull();
+        assertThat(test.changed()).isTrue();
+        assertThat(Files.readString(manifest)).contains("com.microsoft.playwright");
+    }
+
+    private static List<String> with(String scope, List<String> rest) {
+        List<String> out = new ArrayList<>();
+        out.add(scope);
+        out.addAll(rest);
+        return out;
     }
 
     @Test
