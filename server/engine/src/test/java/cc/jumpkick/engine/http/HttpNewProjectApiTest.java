@@ -136,7 +136,8 @@ class HttpNewProjectApiTest extends HttpEngineServerHarness {
         assertThat(resp.statusCode()).as(resp.body()).isEqualTo(201);
         Map<String, Object> agents = object(parseObject(resp.body()), "agents");
         assertThat(MiniJson.write(agents.get("files"))).contains("\"CLAUDE.md\"", "\".mcp.json\"");
-        assertThat(MiniJson.write(agents.get("notes"))).contains(AgentSetup.TRUST_NOTE);
+        assertThat(MiniJson.write(agents.get("notes")))
+                .contains(AgentSetup.TRUST_NOTE, "Agents wired: claude, cursor, gemini, opencode, agy, codex");
         Path made = parent.resolve("widget");
         assertThat(made.resolve("AGENTS.md")).isRegularFile();
         assertThat(made.resolve(".claude/settings.json")).isRegularFile();
@@ -152,6 +153,8 @@ class HttpNewProjectApiTest extends HttpEngineServerHarness {
         assertThat(made.resolve("AGENTS.md")).isRegularFile();
         assertThat(made.resolve("CLAUDE.md")).doesNotExist();
         assertThat(made.resolve(".mcp.json")).doesNotExist();
+        assertThat(MiniJson.write(object(parseObject(resp.body()), "agents").get("notes")))
+                .contains("Agents wired: none (JK_AGENTS=none)");
     }
 
     @Test

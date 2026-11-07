@@ -40,7 +40,9 @@ import org.junit.jupiter.api.io.TempDir;
  * MCP {@code new} with a template that asks every kind a template may ask, none of them defaulted,
  * through a fake client: one that answers form elicitation (on both revisions that have it), one
  * that declines, one that declared URL elicitation alone, which is sent to the dashboard's wizard,
- * and one that declared none, which gets the missing keys and their values instead.
+ * and one that declared none, which gets the missing keys and their values instead. A created
+ * project is wired for the agent the client's {@code clientInfo.name} names, and for the engine's
+ * agents setting.
  */
 class McpNewFormTest {
 
@@ -170,6 +172,51 @@ class McpNewFormTest {
         assertThat(parent.resolve("widget/AGENTS.md")).isRegularFile();
         assertThat(parent.resolve("widget/.mcp.json")).isRegularFile();
         assertThat(parent.resolve("widget/.claude/settings.json")).isRegularFile();
+    }
+
+    @Test
+    void a_known_client_gets_its_own_agent_s_files_with_no_agents_setting_in_the_engine() {
+        NewProjectAgents.env(key -> null);
+        String session = initialize("2025-11-25", "{}", "claude-code");
+
+        McpHandler.Reply reply = mcp.handle(call(Map.of("name", "widget", "params", answered())), session);
+
+        assertThat(reply.body()).contains("\"created\"", "CLAUDE.md", "Agents wired: claude");
+        assertThat(parent.resolve("widget/AGENTS.md")).isRegularFile();
+        assertThat(parent.resolve("widget/CLAUDE.md")).isRegularFile();
+        assertThat(parent.resolve("widget/.claude/settings.json")).isRegularFile();
+        assertThat(parent.resolve("widget/.gemini")).doesNotExist();
+    }
+
+    @Test
+    void an_unknown_client_is_wired_for_the_engine_s_agents_setting_alone() {
+        NewProjectAgents.env(key -> null);
+        String session = initialize("2025-11-25", "{}", "some-editor");
+
+        McpHandler.Reply reply = mcp.handle(call(Map.of("name", "widget", "params", answered())), session);
+
+        assertThat(reply.body()).contains("\"created\"", "Agents wired: none detected");
+        assertThat(parent.resolve("widget/AGENTS.md")).isRegularFile();
+        assertThat(parent.resolve("widget/CLAUDE.md")).doesNotExist();
+        assertThat(parent.resolve("widget/.claude")).doesNotExist();
+    }
+
+    @Test
+    void agents_off_in_the_engine_wire_none_even_for_a_known_client() {
+        NewProjectAgents.env(key -> "JK_AGENTS".equals(key) ? "none" : null);
+        String session = initialize("2025-11-25", "{}", "claude-code");
+
+        McpHandler.Reply reply = mcp.handle(call(Map.of("name", "widget", "params", answered())), session);
+
+        assertThat(reply.body()).contains("\"created\"", "Agents wired: none (JK_AGENTS=none)");
+        assertThat(parent.resolve("widget/AGENTS.md")).isRegularFile();
+        assertThat(parent.resolve("widget/CLAUDE.md")).doesNotExist();
+        assertThat(parent.resolve("widget/.mcp.json")).doesNotExist();
+        assertThat(parent.resolve("widget/.claude")).doesNotExist();
+    }
+
+    private static Map<String, Object> answered() {
+        return Map.of("motto", "hi", "native", false, "database", "none", "libs", List.of("guava"));
     }
 
     @Test
@@ -415,10 +462,14 @@ class McpNewFormTest {
     }
 
     private String initialize(String version, String capabilities) {
+        return initialize(version, capabilities, "fake");
+    }
+
+    private String initialize(String version, String capabilities, String client) {
         return requireNonNull(mcp.handle(
                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\""
                                 + version + "\",\"capabilities\":" + capabilities
-                                + ",\"clientInfo\":{\"name\":\"fake\",\"version\":\"1\"}}}",
+                                + ",\"clientInfo\":{\"name\":" + Jsonl.quote(client) + ",\"version\":\"1\"}}}",
                         null)
                 .openedSessionId());
     }
