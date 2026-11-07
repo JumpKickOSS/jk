@@ -36,6 +36,15 @@ public final class Jk {
     static final String HELP_TAGLINE = "JumpKick - the JVM build system built for coding agents";
 
     /**
+     * What {@code --engine-server} on the slim client says. A dev client gets its engine from {@code
+     * jk snapshot}: a {@code jk build} dist installed into the default home is release-versioned, and
+     * its shelved release would hide every later snapshot of the same version.
+     */
+    static final String WIRE_ONLY_CLIENT = "jk: this binary does not include the engine (wire-only client)."
+            + " In jk's checkout, `jk snapshot` installs the client with its engine; otherwise materialize"
+            + " the engine (`jk self materialize`), download a release (`jk self update`), or set JK_ENGINE_EXE.";
+
+    /**
      * Hidden command aliases for ergonomic migration from other build tools. Documented in {@code
      * docs/user/aliases.md}. Keys are alias names; values are the canonical command path (one or more
      * positionals). These are not registered commands (they stay out of {@code --help} and
@@ -69,9 +78,7 @@ public final class Jk {
         // : the slim client never hosts the engine. Spawning uses
         // lib/jk-engine/<jar> / JK_ENGINE_EXE only — no --engine-server monolyth path.
         if (args.length > 0 && "--engine-server".equals(args[0])) {
-            System.err.println("jk: this binary does not include the engine (wire-only client)."
-                    + " Materialize the engine (`./install.sh`, `jk self materialize`,"
-                    + " or `jk self update`), or set JK_ENGINE_EXE.");
+            System.err.println(WIRE_ONLY_CLIENT);
             System.exit(Exit.SOFTWARE);
             return;
         }

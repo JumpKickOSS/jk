@@ -435,6 +435,12 @@ its own version, so the shelf is what makes a dist install run the workers built
 rather than the published ones of the same version. A dist with no `repos/` installs and says so;
 a binary with no engine jar beside it is refused.
 
+A `jk build` dist carries the release version `jk.toml` names, not the `-SNAPSHOT` line `jk snapshot`
+installs. Into a home that already runs this checkout it would shelve that release over the snapshot
+line, and a release hides its snapshot, so every later `jk snapshot` there would refuse. `install.sh`
+refuses that install before writing anything and names the module: install the tree into your own home
+with `jk snapshot`, and a dist into a private home.
+
 The release workflow assembles `target/dist` per platform (`scripts/assemble-release-dir.sh`);
 G75 (`ship-layout-installer-jk`) holds the installer and the dist script to the same `lib/` and
 `repos/` names.

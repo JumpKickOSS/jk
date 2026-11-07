@@ -368,6 +368,56 @@ main() {
   fi
   [ "$CLIENT" = "jvm" ] && find_java
 
+  # A local dist is the ship layout `jk build` writes: <dist>/jk, <dist>/lib/ and <dist>/repos/
+  # (the tree's module jars in Maven layout, shelved below).
+  if [ -n "$LOCAL_FILE" ]; then
+    SRC_DIST="$(cd "$(dirname "$LOCAL_FILE")" && pwd)"
+    # The JVM client jar sits inside lib/ itself, beside the engine jar.
+    [ "$CLIENT" = "jvm" ] && SRC_DIST="$(dirname "$SRC_DIST")"
+    SRC_LIB="$SRC_DIST/lib"
+    SRC_REPOS="$SRC_DIST/repos"
+  fi
+
+  # ---- a release over the home's snapshot line -------------------------------
+  #
+  # A plain `jk build` of jk's own tree writes a dist at the release version jk.toml names, while
+  # `jk snapshot` installs that version's -SNAPSHOT line. Shelving the release into a home whose
+  # shelf holds <version>-SNAPSHOT of the same module is refused, not warned about: a release
+  # slot is written once and never replaced, and a snapshot sorts below its release, so from then
+  # on every `jk snapshot` in that home refuses ("would be hidden by the release") until someone
+  # deletes the release from the shelf by hand. A warning scrolls past in the install output; the
+  # broken home outlives it. Nothing has been written yet.
+  if [ -n "$LOCAL_FILE" ] && [ -d "$SRC_REPOS/jk-local" ]; then
+    HOME_SHELF="${JK_STORE_DIR:-${JK_HOME_DIR}/store}/repos/jk-local"
+    SHADOWED_MODULE=""
+    SHADOWED_VERSION=""
+    SHADOWED_COUNT=0
+    if [ -d "$HOME_SHELF" ]; then
+      while IFS= read -r pom; do
+        rel="${pom#"$SRC_REPOS/jk-local/"}"
+        version_dir="$(dirname "$rel")"
+        version="$(basename "$version_dir")"
+        case "$version" in *-SNAPSHOT) continue ;; esac
+        module_dir="$(dirname "$version_dir")"
+        if [ -d "$HOME_SHELF/$module_dir/$version-SNAPSHOT" ]; then
+          SHADOWED_COUNT=$((SHADOWED_COUNT + 1))
+          if [ -z "$SHADOWED_MODULE" ]; then
+            SHADOWED_MODULE="$module_dir"
+            SHADOWED_VERSION="$version"
+          fi
+        fi
+      done < <(find "$SRC_REPOS/jk-local" -name '*.pom' -type f 2>/dev/null)
+    fi
+    if [ "$SHADOWED_COUNT" -gt 0 ]; then
+      die "refusing to install $SRC_DIST into $JK_HOME_DIR: it holds release $SHADOWED_VERSION of" \
+          "$SHADOWED_COUNT module(s) (first: $SHADOWED_MODULE) whose $SHADOWED_VERSION-SNAPSHOT line this home's" \
+          "shelf already has. A release is shelved once and" \
+          "hides its snapshot, so every later 'jk snapshot' here would refuse. In jk's checkout run" \
+          "'jk snapshot' to install the tree into this home, or install the dist into a private home" \
+          "(JK_HOME=/some/scratch/home bash install.sh $LOCAL_FILE)."
+    fi
+  fi
+
   if [ -z "$LOCAL_FILE" ]; then
     case "$VERSION" in
       ""|*[!A-Za-z0-9._-]*) die "invalid release version: $VERSION" ;;
@@ -507,15 +557,7 @@ main() {
   # docs/contributors/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
   # not a second native binary). The live copy is <home>/lib/jk-engine/ — materialized below for
   # local dists and JVM installs; native download installs self-fetch it on first engine spawn.
-  # A local dist is the ship layout `jk build` writes: <dist>/jk, <dist>/lib/ and <dist>/repos/
-  # (the tree's module jars in Maven layout, shelved below).
-  if [ -n "$LOCAL_FILE" ]; then
-    SRC_DIST="$(cd "$(dirname "$LOCAL_FILE")" && pwd)"
-    # The JVM client jar sits inside lib/ itself, beside the engine jar.
-    [ "$CLIENT" = "jvm" ] && SRC_DIST="$(dirname "$SRC_DIST")"
-    SRC_LIB="$SRC_DIST/lib"
-    SRC_REPOS="$SRC_DIST/repos"
-  fi
+  # SRC_DIST, SRC_LIB and SRC_REPOS name the local dist, resolved before anything was installed.
 
   # ---- product-lib engine (docs/contributors/architecture.md "Versioning") ----------------
   #
