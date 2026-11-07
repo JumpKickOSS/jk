@@ -280,7 +280,7 @@ public final class PlannerCompile {
 
     /**
      * Every fact compile-test's {@link CompileRequest} is derived from. {@code sources} is {@link
-     * PlannerTest.TestSources#javacSources}; {@code classpath} is the base test compile classpath,
+     * TestSources#javacSources}; {@code classpath} is the base test compile classpath,
      * to which {@link #testCompileRequest} adds the Scala toolchain's library jars; {@code
      * mainClasses} is the module's own main classes tree, whose module descriptor (when it has one)
      * the test sources patch.

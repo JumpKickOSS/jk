@@ -28,7 +28,7 @@ class PlannerTestSourcesTest {
         Path scala = write(module, "src/test/scala/app/WidgetSpec.scala");
         JkBuild project = manifest(module, "[test]\nextra-src = [\"shared\", \"shared/Helper.java\"]\n");
 
-        var sources = PlannerTest.TestSources.collect(
+        var sources = TestSources.collect(
                 project, module, false, List.of("test", "integration"), BuildLayout.of(module, project), null);
 
         assertThat(sources.javaTestSrc()).isEqualTo(module.resolve("src/test/java"));
@@ -45,7 +45,7 @@ class PlannerTestSourcesTest {
         Path it = write(module, "src/integration/java/app/WidgetIT.java");
 
         JkBuild project = manifest(module, "");
-        var sources = PlannerTest.TestSources.collect(
+        var sources = TestSources.collect(
                 project, module, false, List.of("integration"), BuildLayout.of(module, project), null);
 
         assertThat(sources.javaTestSrc()).isEqualTo(module.resolve("src/integration/java"));

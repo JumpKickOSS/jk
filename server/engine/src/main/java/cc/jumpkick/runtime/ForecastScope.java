@@ -121,7 +121,7 @@ public final class ForecastScope implements StepForecast.Scope {
     int testCount;
 
     private @Nullable Prepared prepared;
-    private PlannerTest.@Nullable TestSources testSources;
+    private @Nullable TestSources testSources;
     private List<Path> testCompileCp = List.of();
     private boolean ownOutputsProjected;
     private final Map<String, TaskForecast.Task> verdicts = new LinkedHashMap<>();
@@ -309,13 +309,13 @@ public final class ForecastScope implements StepForecast.Scope {
     }
 
     /** The suites this session selected, as the build's source lists see them (empty when unreadable). */
-    PlannerTest.TestSources testSources() throws Exception {
-        PlannerTest.TestSources t = testSources;
+    TestSources testSources() throws Exception {
+        TestSources t = testSources;
         if (t != null) return t;
         Prepared p = prepared();
         var selection = SessionContext.current().testSelection();
         try {
-            t = PlannerTest.TestSources.collect(
+            t = TestSources.collect(
                     project,
                     dir,
                     p.compact(),
@@ -323,7 +323,7 @@ public final class ForecastScope implements StepForecast.Scope {
                     p.layout(),
                     p.pkgDecls());
         } catch (IOException e) {
-            t = new PlannerTest.TestSources(Path.of(""), List.of(), List.of(), List.of(), List.of());
+            t = new TestSources(Path.of(""), List.of(), List.of(), List.of(), List.of());
         }
         List<Path> testCp = new ArrayList<>(PlannerSupport.testCompileClasspath(dir, project, p.lock(), resolver));
         testCp.addAll(p.provided().compile());

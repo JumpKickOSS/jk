@@ -218,7 +218,7 @@ public final class TestSupport {
 
     /**
      * The suites a SELECTION will actually run in {@code moduleDir} — the set compile-test's key is
-     * derived from, via {@link PlannerTest.TestSources#collect}.
+     * derived from, via {@link TestSources#collect}.
      *
      * <p>{@link #collectAllSuiteTestSources} is the estimate-side answer, every suite on disk, which
      * is right for a count and wrong for a key: the build compiles the selection and nothing else,

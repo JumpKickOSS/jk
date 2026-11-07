@@ -904,7 +904,7 @@ public final class PlannerSupport {
         // the files the run stamps: every selected suite's sources in every language, plus the
         // `[test] extra-src` files that belong to the tier and to no suite.
         BuildLayout layout = BuildLayout.of(dir, project);
-        List<Path> stampSrcs = PlannerTest.TestSources.collect(project, dir, compact, suites, layout, pluginDecls)
+        List<Path> stampSrcs = TestSources.collect(project, dir, compact, suites, layout, pluginDecls)
                 .all();
         List<Path> stampRt = PlannerVersions.withOwnVersions(
                 project, layout, PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp));
