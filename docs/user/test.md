@@ -135,7 +135,7 @@ drops one of those classes, the module fails with the class, its tags and the pr
 it, whatever else ran:
 
 ```
---class named 1 class the tag filter excluded: com.example.OrdersIT [integration]; pass --include-tags integration (or a -p profile that includes it) to run it; -p integration runs it
+--class named 1 class the tag filter excluded: com.example.OrdersIT [integration]; pass --include-tags integration to run it; -p integration runs it
 ```
 
 Under `-p` the line names the profile, and when the class runs in the default tier (the

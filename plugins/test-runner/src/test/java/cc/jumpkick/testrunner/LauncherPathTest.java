@@ -142,7 +142,7 @@ class LauncherPathTest {
     @Test
     void the_message_names_an_untagged_class_an_include_filter_dropped() {
         String msg = LauncherPath.tagExcludedMessage(Map.of("a.Plain", Set.of()), List.of("integration"), List.of());
-        assertThat(msg).contains("a.Plain (untagged)").contains("--include-tags integration admits only");
+        assertThat(msg).contains("a.Plain (untagged)").contains("drop --include-tags integration or pass --no-profile");
     }
 
     /** What {@code --class} names: a fresh request for exactly {@code c} on every call. */
@@ -191,7 +191,7 @@ class LauncherPathTest {
             assertThat(w.get("code")).isEqualTo("no-test-classes");
             assertThat(String.valueOf(w.get("message")))
                     .startsWith("no test classes: none of the 2 classes under " + root)
-                    .contains("so nothing ran — " + Exit.class.getName() + ", " + EventType.class.getName());
+                    .contains("declare a test framework: " + Exit.class.getName() + ", " + EventType.class.getName());
         });
         assertThat(events.finishedTests()).isEmpty();
     }

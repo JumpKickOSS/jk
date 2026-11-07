@@ -102,7 +102,7 @@ class JupiterLineE2eTest {
                 .singleElement()
                 .satisfies(d -> assertThat(d.message())
                         .startsWith("no test classes: the one class under ")
-                        .contains("so nothing ran — com.example.HelperOnly"));
+                        .contains("declares a test framework: com.example.HelperOnly"));
     }
 
     @Test
