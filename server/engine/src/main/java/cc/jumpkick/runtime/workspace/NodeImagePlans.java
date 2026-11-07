@@ -98,15 +98,15 @@ final class NodeImagePlans {
                     BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
                     ImageTable data = ManifestImage.merge(project.image(), GlobalConfig.image());
                     if (Boolean.TRUE.equals(data.aotCache())) {
-                        String refusal = "[image] aot-cache trains a JVM; "
-                                + project.project().name() + " is a node module — remove aot-cache";
+                        String refusal = "[image] aot-cache: "
+                                + project.project().name() + " is a node module, not a JVM one; remove aot-cache";
                         ctx.error("image", refusal);
                         throw new IllegalStateException(refusal);
                     }
                     boolean staticSite = ImageTable.KIND_STATIC.equals(data.kind());
                     if (!staticSite && NodeImageContent.start(project, projectDir) == null) {
-                        ctx.label("no image · " + project.project().name() + " builds static files the JVM module"
-                                + " that depends on it serves; set [image] kind = \"static\" for an nginx image");
+                        ctx.label("no image · " + project.project().name()
+                                + " builds static files; set [image] kind = \"static\" for an nginx image");
                         ctx.progress(1);
                         return;
                     }
@@ -144,7 +144,7 @@ final class NodeImagePlans {
                 Path lock = LockPaths.lockFile(projectDir);
                 NodePin pin =
                         Files.isRegularFile(lock) ? LockfileReader.read(lock).node() : null;
-                if (pin == null) throw new IOException("Node.js is not locked yet — run `jk lock`");
+                if (pin == null) throw new IOException("Node.js is not locked yet; run jk lock");
                 base = NodeImageContent.defaultBase(pin);
             }
         }

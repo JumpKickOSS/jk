@@ -295,10 +295,8 @@ public final class PlannerNative {
             // sources. Falling through to the generic classpath build is exactly the
             // "main entry point not found" failure  fixed; fail with the cure
             // instead.
-            String msg = "this framework builds its own native image, but no native-image"
-                    + " sources were produced. Add a `[native]` table (it can be empty) to"
-                    + " jk.toml so the framework's augment runs in native mode, then re-run"
-                    + " `jk native`.";
+            String msg =
+                    "no native-image sources produced; add an empty [native] table to jk.toml and" + " rerun jk native";
             ctx.error("native-sources-missing", msg);
             throw new RuntimeException(msg);
         }

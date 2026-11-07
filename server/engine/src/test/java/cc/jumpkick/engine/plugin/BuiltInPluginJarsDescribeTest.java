@@ -58,7 +58,7 @@ class BuiltInPluginJarsDescribeTest {
         assertThat(detail)
                 .contains("jk-openapi (" + jar + ") does not own [openapi]")
                 .contains("newer jk-openapi")
-                .contains("`jk install`")
+                .contains("run jk install")
                 .contains("-Djk.openapi.plugin.jar=");
     }
 

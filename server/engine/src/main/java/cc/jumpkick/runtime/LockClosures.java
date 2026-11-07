@@ -279,8 +279,7 @@ final class LockClosures {
                 missing.add(() -> Map.entry(
                         coord,
                         repos.tryFetchArtifact(coord, file.getValue())
-                                .orElseThrow(() -> new IOException(
-                                        "cannot fetch " + coord + " — no declared repository serves it"))
+                                .orElseThrow(() -> new IOException("cannot fetch " + coord + " from any repository"))
                                 .fetched()
                                 .cachePath()));
             }
@@ -392,7 +391,7 @@ final class LockClosures {
                 ToolEntry.resolvedIn(lock.tools(), closure.resolvedBy(), LockClosureInputs.module(lockDir, moduleDir));
         if (row == null) {
             throw new IOException(
-                    "jk-lock.toml answers no " + closure.resolvedBy() + " closure for this module — run `jk lock`");
+                    "jk-lock.toml has no " + closure.resolvedBy() + " entries for this module; run jk lock");
         }
         return row;
     }
@@ -511,8 +510,8 @@ final class LockClosures {
         ActivePlugin active = ActivePlugins.of(build, dir).stream()
                 .filter(a -> a.manifest().id().equals(plugin))
                 .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "lock closure " + closure.resolvedBy() + " — plugin " + plugin + " is not active"));
+                .orElseThrow(() ->
+                        new IllegalStateException(closure.resolvedBy() + ": plugin " + plugin + " is not active"));
         Path scratch = null;
         Path spec = null;
         Path seed = null;
@@ -563,7 +562,7 @@ final class LockClosures {
             return digests(files, asking.known(), repos, cas, List.of(scratch, seed));
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw new IllegalStateException("lock closure " + closure.resolvedBy() + " — " + e.getMessage(), e);
+            throw new IllegalStateException(closure.resolvedBy() + ": " + e.getMessage(), e);
         } finally {
             try {
                 if (spec != null) Files.deleteIfExists(spec);

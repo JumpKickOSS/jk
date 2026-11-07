@@ -226,8 +226,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     private static Map<String, String> nativeHomes(Path entryDir, @Nullable Set<Path> selected) {
         Path graal = SessionContext.current().graalHome();
         if (graal == null || !Files.isDirectory(graal)) {
-            throw new IllegalArgumentException(
-                    "native job: no GraalVM home available (install one with `jk jdk graal`)");
+            throw new IllegalArgumentException("native job: no GraalVM found; install one with jk jdk graal");
         }
         Map<Path, JkBuild> allModules;
         try {
@@ -237,8 +236,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
         }
         Set<Path> targets = nativeEligibleTargets(allModules, selected);
         if (targets.isEmpty()) {
-            throw new IllegalArgumentException("native job: no native-eligible module in the selection "
-                    + "(needs a [native] table or a unique main class)");
+            throw new IllegalArgumentException(
+                    "native job: no selected module has a [native] table or a single main class");
         }
         Map<String, String> homes = new LinkedHashMap<>();
         for (Path d : targets) homes.put(d.toString(), graal.toString());

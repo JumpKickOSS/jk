@@ -568,9 +568,8 @@ public final class PlannerCompile {
         }
         ctx.warn(
                 "sources-moved",
-                (moved.size() == 1 ? "a source" : moved.size() + " sources")
-                        + " changed while the compile ran (" + names
-                        + "); the compile is not cached and the next build recompiles the module");
+                (moved.size() == 1 ? "a source" : moved.size() + " sources") + " changed while the compile ran: "
+                        + names + "; the next build recompiles the module");
     }
 
     /**

@@ -56,24 +56,20 @@ final class TestLauncherReport {
             sb.append("\n\n").append(conflict.text());
             sb.append("\n\nFix: `jk why ")
                     .append(conflict.coordinate())
-                    .append("` names who asked for each version; align the pin with the platform line"
-                            + " (one version for every artifact of the line), then `jk lock`.");
+                    .append("` names who asked for each version; put the line on one version, then `jk lock`");
         } else if (!dropped.isEmpty()) {
             sb.append("\n\nFix: the test JVM could not load ")
-                    .append(dropped.size() == 1 ? "the class " : "the classes ")
                     .append(String.join(", ", dropped))
-                    .append(" — `")
+                    .append(": `")
                     .append(e.rootCause())
-                    .append("`; the frames above name where. Loading a test class needs its supertypes on the test"
-                            + " classpath (`jk why <artifact>` names who brings one) and, for a framework that boots"
-                            + " the application while loading it (`@QuarkusTest`), an application that builds."
-                            + " Rerun with -v for the runner's own output.");
+                    .append(
+                            "`\nits supertypes must be on the test classpath; @QuarkusTest also needs the app to build");
         } else if (engine != null) {
             sb.append("\n\nFix: the ")
                     .append(engine)
-                    .append(" engine could not start on this test classpath — `jk why ")
+                    .append(" engine could not start; every JUnit artifact needs one version\n`jk why ")
                     .append(engineCoordinate(engine))
-                    .append("` shows the line it came from; every JUnit artifact must sit on one version.");
+                    .append("` shows where each comes from");
         } else if (e.signal() != null) {
             sb.append("\n\nFix: the ")
                     .append(e.phase())
@@ -81,40 +77,33 @@ final class TestLauncherReport {
                     .append(e.signal())
                     .append(" before it ran a test")
                     .append(e.lastLines().isEmpty() ? " and printed nothing" : "")
-                    .append(". SIGKILL with no output is the kernel's out-of-memory killer under load or an outside"
-                            + " kill: fewer test JVMs at once (`[test] workers`, `-w`) or a smaller heap each"
-                            + " (`[test] jvm-args` `-Xmx…`) keeps the fork inside the machine; SIGSEGV or SIGABRT is"
-                            + " the JVM's own crash, and its hs_err file names where.");
+                    .append(
+                            "SIGKILL".equals(e.signal())
+                                    ? "\nlikely the out-of-memory killer; lower `[test] workers` or the -Xmx in"
+                                            + " `[test] jvm-args`"
+                                    : "\nthe JVM crashed; its hs_err file names where");
         } else if (e.jvmRefused()) {
             sb.append("\n\nFix: the ")
                     .append(e.phase())
-                    .append(" JVM refused to start (")
+                    .append(" JVM refused to start: ")
                     .append(e.headline())
-                    .append(
-                            ") before it loaded a test class: a heap or stack it could not reserve, or a flag it did not"
-                                    + " accept. The flags come from `[test] jvm-args`, the profile's `jvm-args` and jk's own"
-                                    + " heap cap (`--ram-percent`); a reservation refused under load fits with fewer test JVMs"
-                                    + " at once (`[test] workers`, `-w`) or a smaller `-Xmx`.");
+                    .append("\ncheck the flags in `[test] jvm-args`, or lower `[test] workers` or -Xmx");
         } else if (e.outOfMemory()) {
             sb.append("\n\nFix: the ")
                     .append(e.phase())
                     .append(" JVM ran out of memory (")
                     .append(e.headline())
-                    .append(") before it ran a test; the frames above name the framework that filled it — a test"
-                            + " framework that starts the application while classes are still being listed. jk caps"
-                            + " no test JVM's metaspace: the limit is the JVM's own unless `[test] jvm-args` or the"
-                            + " profile's `jvm-args` sets `-XX:MaxMetaspaceSize=…`, and the heap is what `-Xmx…` there"
-                            + " says; the discovery JVM runs under the same flags, so raise or drop the cap there.");
+                    .append(") before it ran a test\nraise -Xmx, or raise or drop -XX:MaxMetaspaceSize, in"
+                            + " `[test] jvm-args`");
         } else if (!e.rootCause().isEmpty()) {
-            sb.append("\n\nFix: the runner did not get to report; the failure is the framework's own — `")
+            sb.append("\n\nFix: the test framework failed before reporting: `")
                     .append(e.rootCause())
-                    .append("` — and the frames above name where. Rerun with -v for the live stream.");
+                    .append("`\nthe frames above show where; rerun with -v for the full output");
         } else if (e.lastLines().isEmpty()) {
-            sb.append("\n\nFix: the fork printed nothing and named no reason; rerun with -v for the live"
-                    + " stream. The exit is the fork's own, so a launcher that exits before the runner speaks is"
-                    + " the place to look: `[test] jvm-args`, the agents the flags load, the test JDK.");
+            sb.append("\n\nFix: the test JVM printed nothing; check `[test] jvm-args`, its agents and the test JDK"
+                    + "\nrerun with -v for the full output");
         } else {
-            sb.append("\n\nFix: the runner's full output is above; rerun with -v for the live stream.");
+            sb.append("\n\nFix: see the runner output above; rerun with -v for the full output");
         }
         return sb.toString();
     }

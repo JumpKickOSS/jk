@@ -81,9 +81,9 @@ public final class JkTestsAffectedMarkdown {
                 if (report.ranked().size() < report.candidateCount()) {
                     sb.append("\n_Dropped ")
                             .append(report.candidateCount() - report.ranked().size())
-                            .append(" candidates past cap ")
+                            .append(" candidates past the cap of ")
                             .append(report.cap())
-                            .append(". This is not the full default suite — `jk test`._\n");
+                            .append(". For the full suite, run `jk test`._\n");
                 }
             }
         }

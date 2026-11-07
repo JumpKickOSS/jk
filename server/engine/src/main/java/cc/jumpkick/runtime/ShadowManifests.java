@@ -116,17 +116,13 @@ public final class ShadowManifests {
         Path pom = root.resolve(ManifestPaths.POM);
         Set<String> profiles = PomReactorScan.profilesListing(root, module);
         if (profiles.isEmpty()) {
-            return new NotBuiltHere(module + " is listed by " + pom
-                    + " as an aggregator, not as a module Maven builds; build from " + root
-                    + ", or run `jk import " + ManifestPaths.POM + "` there to own a " + ManifestPaths.MANIFEST);
+            return new NotBuiltHere(module + " is an aggregator in " + pom + ", not a module Maven builds;"
+                    + " build from " + root + ", or run jk import " + ManifestPaths.POM + " there");
         }
         String named = profiles.stream().map(id -> "`" + id + "`").collect(Collectors.joining(", "));
-        return new NotBuiltHere(module + " is listed by " + pom + " only in "
-                + (profiles.size() == 1 ? "profile " : "profiles ") + named
-                + ", which Maven does not activate on this machine, so the in-place build skips it;"
-                + " activate the profile in Maven terms (<activeByDefault>true</activeByDefault>, or an <activation>"
-                + " that holds here), or run `jk import " + ManifestPaths.POM + "` at " + root
-                + " and list the module under [workspace] modules");
+        return new NotBuiltHere(module + " is only in inactive " + (profiles.size() == 1 ? "profile " : "profiles ")
+                + named + " of " + pom + "; activate it in Maven, or run jk import " + ManifestPaths.POM + " at "
+                + root + " and add the module to [workspace] modules");
     }
 
     /**
@@ -189,8 +185,8 @@ public final class ShadowManifests {
         rows.addAll(Objects.requireNonNullElse(PENDING_TIER3.remove(module), List.of()));
         List<String> out = new ArrayList<>();
         for (String row : rows) {
-            out.add(row + " — not carried by the in-place build of " + ManifestPaths.POM + "; `jk import "
-                    + ManifestPaths.POM + "` writes a jk.toml to edit");
+            out.add(row + ": ignored when building from " + ManifestPaths.POM + "; jk import " + ManifestPaths.POM
+                    + " writes a jk.toml to edit");
         }
         if (root != null) out.addAll(Objects.requireNonNullElse(PENDING_NOTES.remove(root), List.of()));
         out.addAll(Objects.requireNonNullElse(PENDING_NOTES.remove(module), List.of()));

@@ -83,8 +83,8 @@ paths: Failsafe's `**/*IT.java` is `*IT` here, and `jk import` writes the mappin
   owns says so: `no test classes matched --class FooIT — FooIT is in the integration suite (jk test
   --suite integration --class FooIT)`, or a `class-in-other-suite` warning when other classes
   matched. `--affected` ranks only the selected suites' classes.
-- The run-tests output names the suites it ran, for instance `test suites: test — left out:
-  integration (IT*, *IT, *ITCase), run with jk test -s <name>`, and the patterns are part of the
+- The run-tests output names the suites it ran, for instance `test suites: test; not run:
+  integration (IT*, *IT, *ITCase), use jk test -s <name>`, and the patterns are part of the
   run's stamp. Each test failure carries the suite it ran in (`suite` in `-O jsonl`,
   `details.jsonl` and MCP diagnostics; `(integration suite)` beside the test in
   `target/jk-results.md` for any suite but `test`).
@@ -160,7 +160,7 @@ class; `--class OrdersTest#` names no method and is refused.
 
 The patterns are judged against the **run**, not each module. In a workspace a module whose
 suites contain no matching class is skipped — its `run-tests` step reads
-`no classes matched --class OrdersTest — skipped`, the same shape as a module that lacks the
+`skipped: no classes match --class OrdersTest`, the same shape as a module that lacks the
 selected suite. The run **fails** with `no test classes matched --class OrdersTest` (`no test
 methods matched` for a `Class#method`) only when no module matched anything: a typo must not pass green. A standalone project is its own run, so
 there the empty match fails on the spot. A selection that ran nothing is a **usage error**, exit

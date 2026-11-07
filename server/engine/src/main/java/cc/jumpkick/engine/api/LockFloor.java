@@ -44,8 +44,7 @@ public final class LockFloor {
 
     /** The upgrade error, phrased the same on every surface. */
     public static String message(String floor, String running) {
-        return "this lock requires jk " + floor + " or newer but this engine is " + running
-                + " — upgrade with `jk self update` (or reinstall); jk never runs an older engine to satisfy a lock";
+        return "jk-lock.toml needs jk " + floor + " or newer, this engine is " + running + "; run jk self update";
     }
 
     /** Throw the typed refusal when {@code wireType} is guarded and the floor exceeds {@code running}. */

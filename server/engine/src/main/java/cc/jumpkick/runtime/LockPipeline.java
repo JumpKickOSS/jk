@@ -583,7 +583,7 @@ public final class LockPipeline {
                 } catch (IOException | InterruptedException e) {
                     if (e instanceof InterruptedException)
                         Thread.currentThread().interrupt();
-                    throw new IllegalStateException(pd.coordinate() + " — " + e.getMessage(), e);
+                    throw new IllegalStateException(pd.coordinate() + ": " + e.getMessage(), e);
                 }
             }
             progress.tick(1);
@@ -636,8 +636,8 @@ public final class LockPipeline {
         for (String declared : packs) {
             GuardPacks.Coordinate c = GuardPacks.Coordinate.parse(declared);
             if (c == null) {
-                throw new IllegalStateException("[guards] extends: `" + declared
-                        + "` is not group:artifact:version — a rule pack is pinned exactly");
+                throw new IllegalStateException(
+                        "[guards] extends: `" + declared + "` must be an exact group:artifact:version");
             }
             if (!seen.add(c.ga() + ":" + c.version())) continue;
             progress.label("lock pack " + c.gav());
@@ -678,7 +678,7 @@ public final class LockPipeline {
                 GuardPacks.unpack(jarPath, GuardPacks.unpackedDir(lockDir, c), sha);
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-                throw new IllegalStateException("rule pack " + c.gav() + " — " + e.getMessage(), e);
+                throw new IllegalStateException("rule pack " + c.gav() + ": " + e.getMessage(), e);
             }
         }
         pinKotlinPlugins(lock, repos, seen, entries, progress);
@@ -716,7 +716,7 @@ public final class LockPipeline {
                     if (e instanceof InterruptedException)
                         Thread.currentThread().interrupt();
                     throw new IllegalStateException(
-                            "Kotlin compiler plugin " + coord.toGav() + " — " + e.getMessage(), e);
+                            "Kotlin compiler plugin " + coord.toGav() + ": " + e.getMessage(), e);
                 }
             }
         }
@@ -765,14 +765,13 @@ public final class LockPipeline {
                 repos.tryFetchArtifact(new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "pom"));
             }
         } catch (Exception e) {
-            throw new IllegalStateException(pd.coordinate() + " — " + e.getMessage(), e);
+            throw new IllegalStateException(pd.coordinate() + ": " + e.getMessage(), e);
         }
         PluginDescriptor descriptor = null;
         try {
             descriptor = PluginDescriptorOps.materialize(lockDir, hex, jarPath, pd.coordinate());
         } catch (IOException noDescriptor) {
-            progress.note("note: " + pd.coordinate()
-                    + " has no jk-plugin.toml — locked, but it will not own a jk.toml table");
+            progress.note("note: " + pd.coordinate() + " has no jk-plugin.toml, so it owns no jk.toml table");
         }
         return new Pinned(new Lockfile.PluginEntry(pd.coordinate(), pd.version(), "sha256:" + hex), descriptor);
     }
@@ -939,8 +938,8 @@ public final class LockPipeline {
             if (entry.getKey() == Scope.PLATFORM || entry.getKey() == Scope.MANAGED) continue;
             for (var dep : entry.getValue()) {
                 if (!locked.contains(dep.module())) {
-                    throw new IllegalStateException("offline: " + dep.module()
-                            + " is declared in jk.toml but not in jk-lock.toml; run `jk lock` online first");
+                    throw new IllegalStateException(
+                            "offline: " + dep.module() + " is not in jk-lock.toml; run jk lock online first");
                 }
             }
         }
@@ -961,9 +960,8 @@ public final class LockPipeline {
             String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
             if (locator.locate(pkg).isEmpty() && !local.serve(pkg, hex)) {
                 throw new IllegalStateException("offline: " + pkg.name() + ":" + pkg.version()
-                        + " is locked but its artifact isn't cached"
-                        + mirrorMismatchHint(cas, pkg, hex)
-                        + "; run `jk sync` online first");
+                        + " is not downloaded; run jk sync online first"
+                        + mirrorMismatchHint(cas, pkg, hex));
             }
         }
     }
@@ -1033,9 +1031,8 @@ public final class LockPipeline {
                     .storedSha256(m2Path)
                     .orElse(null);
             if (stored == null || stored.equalsIgnoreCase(lockedHex)) return "";
-            return " (the " + repoName + " mirror holds different bytes for it — sha256 " + shortSha(stored)
-                    + " vs the locked " + shortSha(lockedHex)
-                    + "; `jk repo refresh " + pkg.coordinate() + "` once online drops the stale entry)";
+            return "\n  the " + repoName + " copy is sha256 " + shortSha(stored) + ", the lock pins "
+                    + shortSha(lockedHex) + "; online, jk repo refresh " + pkg.coordinate() + " drops it";
         } catch (RuntimeException e) {
             return ""; // diagnosis is a nicety — never let it replace the real error
         }

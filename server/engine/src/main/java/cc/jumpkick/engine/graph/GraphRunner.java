@@ -525,8 +525,7 @@ public final class GraphRunner {
             ranOut.add(heap);
             Long bigger = HeapLadder.next(ranOut);
             if (bigger == null) {
-                return GraphAck.error(
-                        "graph worker " + HeapLadder.ranOut(ranOut) + "; raise it with [jvm] args = [\"-Xmx...\"]");
+                return GraphAck.error("graph worker " + HeapLadder.ranOut(ranOut) + "; raise -Xmx in [jvm] args");
             }
             HeapNotes.note(HeapNotes.line(bigger, heap, false));
             command = HeapFlags.rewriteHeap(attemptCommand, bigger);

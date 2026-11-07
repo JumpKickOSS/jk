@@ -143,7 +143,7 @@ final class ToolPins {
             return ToolEntry.closureOf(closure.root(), closure.with(), closure.managedBy(), closure.jars());
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw new IllegalStateException("tool " + spec + " — " + e.getMessage(), e);
+            throw new IllegalStateException("tool " + spec + ": " + e.getMessage(), e);
         }
     }
 
@@ -163,7 +163,7 @@ final class ToolPins {
                 Log.debug("urlDigest: " + url + " not pinned", e);
                 return null;
             }
-            throw new IllegalStateException("tool " + url + " — " + e.getMessage(), e);
+            throw new IllegalStateException("tool " + url + ": " + e.getMessage(), e);
         }
     }
 
@@ -192,7 +192,7 @@ final class ToolPins {
             return PluginBuild.resolveCoordinate(repos, spec);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw new IllegalStateException("tool " + spec + " — " + e.getMessage(), e);
+            throw new IllegalStateException("tool " + spec + ": " + e.getMessage(), e);
         }
     }
 
@@ -217,7 +217,7 @@ final class ToolPins {
                 Log.debug("toolDigest: " + coord + " not pinned", e);
                 return null;
             }
-            throw new IllegalStateException("tool " + coord + " — " + e.getMessage(), e);
+            throw new IllegalStateException("tool " + coord + ": " + e.getMessage(), e);
         }
     }
 }

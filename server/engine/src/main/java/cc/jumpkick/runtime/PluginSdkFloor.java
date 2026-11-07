@@ -57,8 +57,7 @@ public final class PluginSdkFloor {
             throws IOException, InterruptedException {
         String version = version(manifest);
         if (manifest == null || manifest.sdk() == null) {
-            note.accept("note: " + decl.coordinate() + " declares no SDK version; its SDK floor ("
-                    + String.join(", ", ARTIFACTS) + ") is pinned at the running jk, " + version);
+            note.accept("note: " + decl.coordinate() + " declares no SDK version; using this jk's, " + version);
         }
         List<Lockfile.Artifact> out = new ArrayList<>();
         for (String artifact : ARTIFACTS) {
@@ -85,9 +84,8 @@ public final class PluginSdkFloor {
 
     /** The one sentence for a plugin whose SDK floor no declared repository serves. */
     public static String missing(String coordinate, String version) {
-        return coordinate + " forks with the jk plugin SDK, and no declared repository serves " + PluginJar.GROUP
-                + ":jk-plugin-sdk:" + version + " — add the repository that publishes it to [repositories] and run"
-                + " `jk lock`";
+        return coordinate + " needs " + PluginJar.GROUP + ":jk-plugin-sdk:" + version
+                + ", which no repository serves; add one to [repositories] and run jk lock";
     }
 
     /** {@code rows} merged over {@code lock}'s artifacts: a row with the same name and version is replaced. */

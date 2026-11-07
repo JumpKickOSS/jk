@@ -92,11 +92,9 @@ public final class ScalaToolResolver {
             // A module in the resolved closure failed to fetch — refuse to bless a partial closure
             // (scalac would later die with NoClassDefFoundError). No marker is written, so the next
             // build retries from scratch.
-            throw new IOException("Scala compiler closure for "
-                    + scalaVersion
-                    + " is incomplete: fetched " + jars.size() + " of " + expected
-                    + " modules — check that " + ScalaResolver.COMPILER_MODULE + ":" + scalaVersion
-                    + " and its transitives are available in the configured repositories.");
+            throw new IOException("Scala compiler " + scalaVersion + ": fetched " + jars.size() + " of " + expected
+                    + " jars; check that a repository has " + ScalaResolver.COMPILER_MODULE + ":" + scalaVersion
+                    + " and its dependencies");
         }
         pruneOrphanJars(libDir, jars);
         // Write the completion marker LAST — its presence + jar-count match is the read-path gate.

@@ -37,6 +37,9 @@ class JupiterParallelDetectTest {
 
     @Test
     void stack_warning_mentions_workers() {
-        assertThat(JupiterParallelDetect.stackWarning(4)).contains("workers=4").contains("jupiter");
+        assertThat(JupiterParallelDetect.stackWarning(4))
+                .contains("workers=4")
+                .contains("jupiter")
+                .contains("use -w1");
     }
 }

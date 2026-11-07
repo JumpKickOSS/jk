@@ -54,8 +54,7 @@ final class PlannerBuildInfo {
     /** Where Boot's {@code BuildProperties} reads its keys from. */
     static final String BOOT_ENTRY = "META-INF/build-info.properties";
 
-    static final String NOT_A_REPOSITORY = "[build-info] is declared but the module is not inside a git checkout"
-            + " with a commit; no git.properties was written";
+    static final String NOT_A_REPOSITORY = "[build-info]: no git commit here, so no git.properties was written";
 
     private static final DateTimeFormatter TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ", Locale.ROOT).withZone(ZoneOffset.UTC);

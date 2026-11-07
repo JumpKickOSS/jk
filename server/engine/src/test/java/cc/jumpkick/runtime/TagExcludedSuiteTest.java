@@ -19,9 +19,8 @@ class TagExcludedSuiteTest {
         TestSelection sel = TestSelection.of(List.of(), true, List.of("integration"), List.of("integration", "slow"));
 
         assertThat(TagExcludedSuite.line(sel, "integration", false, NOTHING))
-                .isEqualTo("0 tests (all excluded by profile integration — it includes integration, which its"
-                        + " exclude-tags still drop, so a @Tag(\"integration\") method inside an untagged class is"
-                        + " not selected; [profiles.integration] exclude-tags = [] clears them)");
+                .isEqualTo("0 tests: profile integration also excludes integration;"
+                        + " set [profiles.integration] exclude-tags = []");
     }
 
     @Test

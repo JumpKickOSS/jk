@@ -269,7 +269,7 @@ class JkTemplateTomlTest {
         Files.writeString(g8.resolve("src/main/g8/application.properties"), "db = $db_name$\n");
         assertThatThrownBy(() -> JkTemplateToml.load(g8))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("[[ask]] 'db_name' can be left unset (its when can hide it) and has no default")
+                .hasMessageContaining("[[ask]] 'db_name' has no default and its when can hide it")
                 .hasMessageContaining("src/main/g8/application.properties uses $db_name$ outside $if(db_name)$");
         assertThat(JkTemplateToml.loadOrRefuse(g8)).isEmpty();
 
@@ -299,7 +299,7 @@ class JkTemplateTomlTest {
                 """);
         Files.writeString(g8.resolve("src/main/g8/README.md"), "# $name$\n\n$motto$\n");
         assertThatThrownBy(() -> JkTemplateToml.load(g8))
-                .hasMessageContaining("[[ask]] 'motto' can be left unset (it is not required)")
+                .hasMessageContaining("[[ask]] 'motto' has no default and is not required")
                 .hasMessageContaining("src/main/g8/README.md uses $motto$");
     }
 

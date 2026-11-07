@@ -41,7 +41,7 @@ public final class PlannerNodeSetup {
                     ctx.label("resolve Node.js");
                     NodePin pin = ctx.require(LOCKFILE).node();
                     if (pin == null) {
-                        throw new IllegalStateException("jk-lock.toml pins no Node.js — run `jk lock`");
+                        throw new IllegalStateException("jk-lock.toml pins no Node.js; run jk lock");
                     }
                     NodeProvisioning from = provisioning.get();
                     boolean onDisk = from.managed(pin.version()).isPresent();
@@ -78,8 +78,8 @@ public final class PlannerNodeSetup {
     private static IOException notInstalled(String what, String toolSpec, IOException cause) {
         boolean offline = SessionContext.current().config().offlineOr(false);
         return new IOException(
-                what + " is not installed — run `jk tool install " + toolSpec + "`"
-                        + (offline ? " without --offline" : "") + " (" + cause.getMessage() + ")",
+                what + " is not installed: " + cause.getMessage() + "; run jk tool install " + toolSpec
+                        + (offline ? " without --offline" : ""),
                 cause);
     }
 

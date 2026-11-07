@@ -92,7 +92,8 @@ public final class PluginDescriptorOps {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             ZipEntry entry = zip.getEntry(ManifestPaths.PLUGIN_MANIFEST);
             if (entry == null) {
-                throw new IOException(jar + " has no root " + ManifestPaths.PLUGIN_MANIFEST + " — not a build plugin");
+                throw new IOException(
+                        jar + " is not a build plugin: no " + ManifestPaths.PLUGIN_MANIFEST + " at its root");
             }
             String text;
             try (InputStream in = zip.getInputStream(entry)) {
@@ -132,11 +133,11 @@ public final class PluginDescriptorOps {
             claimed = code == null ? null : code.worker();
         }
         if (claimed == null || claimed.isBlank() || claimed.equals(artifact)) return;
-        throw new IllegalStateException("plugin pin " + pinnedCoordinate + " (" + jar + ") is refused: its root "
+        throw new IllegalStateException("plugin pin " + pinnedCoordinate + " (" + jar + "): its "
                 + ManifestPaths.PLUGIN_MANIFEST + " describes plugin `" + descriptor.id() + "` (table ["
-                + descriptor.table() + "], worker " + claimed + "), not the pinned artifact " + artifact
-                + " — the jar carries another plugin's descriptor. Publish " + artifact + " with its own "
-                + ManifestPaths.PLUGIN_MANIFEST + " at the jar root, or pin the artifact the descriptor names.");
+                + descriptor.table() + "], worker " + claimed + "), not " + artifact
+                + "\npin the artifact it names, or publish " + artifact + " with its own "
+                + ManifestPaths.PLUGIN_MANIFEST);
     }
 
     /** The locked + synced jar for {@code decl}, or empty (remediation: {@code jk sync}). */

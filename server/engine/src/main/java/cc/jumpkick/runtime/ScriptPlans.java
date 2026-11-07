@@ -479,11 +479,7 @@ public final class ScriptPlans {
                         }
                     }
                     if (JarManifest.hasModuleInfo(jar)) {
-                        ctx.warn(
-                                "jpms",
-                                jar.getFileName()
-                                        + " ships a module-info.class (JPMS module); "
-                                        + "running it from the classpath.");
+                        ctx.warn("jpms", jar.getFileName() + " is a JPMS module; running it from the classpath");
                     }
                     ctx.put(JAR_DECLARED_DEPS, declaredDeps);
                     ctx.progress(1);

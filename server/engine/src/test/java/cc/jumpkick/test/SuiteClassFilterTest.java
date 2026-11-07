@@ -33,8 +33,7 @@ class SuiteClassFilterTest {
                 .as("a nested class goes with its outer class")
                 .isFalse();
         assertThat(suites.describe())
-                .isEqualTo("test suites: test — left out: integration (IT*, *IT, *ITCase),"
-                        + " run with jk test -s <name>");
+                .isEqualTo("test suites: test; not run: integration (IT*, *IT, *ITCase)," + " use jk test -s <name>");
     }
 
     @Test
@@ -46,8 +45,7 @@ class SuiteClassFilterTest {
         assertThat(runs.matcher("com.acme.ITFoo$Nested").matches()).isTrue();
         assertThat(runs.matcher("com.acme.FooTest").matches()).isFalse();
         assertThat(suites.describe())
-                .isEqualTo("test suites: integration — integration runs the test suite's classes matching"
-                        + " IT*, *IT, *ITCase");
+                .isEqualTo("test suites: integration; integration runs test classes matching" + " IT*, *IT, *ITCase");
         assertThat(suites.ownersLeftOut("com.acme.FooTest")).containsExactly("test");
         assertThat(suites.ownersLeftOut("com.acme.FooIT")).isEmpty();
     }

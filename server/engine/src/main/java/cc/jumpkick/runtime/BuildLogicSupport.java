@@ -145,7 +145,7 @@ public final class BuildLogicSupport {
                 + s.file().getFileName()
                 + " is not a valid stem for "
                 + where
-                + ". Use "
+                + "; use "
                 + use);
     }
 
@@ -415,7 +415,7 @@ public final class BuildLogicSupport {
                     .sorted()
                     .toList();
             if (!banned.isEmpty()) {
-                throw new IllegalStateException("[build] logic is stem scripts only (.groovy / .kts) — found "
+                throw new IllegalStateException("[build] logic takes only .groovy and .kts stem scripts, not "
                         + logicDir.relativize(banned.getFirst())
                         + " under "
                         + BuildLogicToml.shown(logicDir)

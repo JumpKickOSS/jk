@@ -70,7 +70,7 @@ public final class KspResolver {
         }
         if (jars.isEmpty()) {
             throw new IOException(
-                    "KSP closure for " + kspVersion + " resolved to no jars — is " + KSP_AA_MODULE + " reachable?");
+                    "KSP " + kspVersion + " resolved to no jars; check that a repository has " + KSP_AA_MODULE);
         }
         Files.createDirectories(cacheFile.getParent());
         Files.writeString(cacheFile, String.join("\n", shas), StandardCharsets.UTF_8);

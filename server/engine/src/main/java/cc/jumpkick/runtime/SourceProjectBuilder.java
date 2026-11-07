@@ -76,9 +76,7 @@ final class SourceProjectBuilder {
         if (Files.isRegularFile(projectDir.resolve("pom.xml"))) {
             return buildMaven(projectDir, javaHome);
         }
-        throw new IOException(projectDir
-                + ": no jk.toml, build.gradle(.kts), or pom.xml — cannot build this dependency target"
-                + " (only jk, Gradle, and Maven projects are supported)");
+        throw new IOException(projectDir + ": no jk.toml, build.gradle, build.gradle.kts or pom.xml to build");
     }
 
     private static boolean isGradleProject(Path dir) {
@@ -185,8 +183,8 @@ final class SourceProjectBuilder {
         String version = childText(project, "version");
         if (version == null && parent != null) version = childText(parent, "version");
         if (version != null && version.contains("${")) {
-            throw new IOException(pomXml + ": version `" + version + "` uses an unresolved property"
-                    + " — path/git Maven deps must declare a literal version");
+            throw new IOException(pomXml + ": version `" + version + "` uses an unresolved property;"
+                    + " a path or git dependency needs a literal version");
         }
         return new Gav(group, artifact, version);
     }
@@ -250,8 +248,8 @@ final class SourceProjectBuilder {
                     .map(p -> p.getFileName().toString())
                     .sorted()
                     .toList();
-            throw new IOException(projectDir + ": ambiguous build output in " + libsDir + " " + names
-                    + " — multi-artifact / multi-module projects are not supported as a source dependency");
+            throw new IOException(projectDir + ": more than one jar in " + libsDir + " " + names
+                    + "; a source dependency must build exactly one");
         }
         return candidates.get(0);
     }
@@ -269,8 +267,8 @@ final class SourceProjectBuilder {
         }
         if (Files.isRegularFile(wrapperPath)) {
             if (!PathUtil.isRunnable(wrapperPath)) {
-                throw new IOException(wrapperPath + " is not executable — `chmod +x` it, or remove it to"
-                        + " fall back to the tool on PATH");
+                throw new IOException(
+                        wrapperPath + " is not executable; chmod +x it, or delete it to use " + bin + " from PATH");
             }
             return wrapperPath.toAbsolutePath().toString();
         }
@@ -278,8 +276,7 @@ final class SourceProjectBuilder {
         if (onPath != null) {
             return onPath.toAbsolutePath().toString();
         }
-        throw new IOException("no " + wrapper + " wrapper in " + projectDir + " and no `" + bin
-                + "` on PATH — cannot build this dependency target");
+        throw new IOException("cannot build " + projectDir + ": no " + wrapper + " wrapper and no " + bin + " on PATH");
     }
 
     private static @Nullable Path findOnPath(String bin) {

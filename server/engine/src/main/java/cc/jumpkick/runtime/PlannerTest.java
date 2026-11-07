@@ -221,7 +221,7 @@ public final class PlannerTest {
         var resolved = resolveSuites(in, compact, ctx.require(PROJECT));
         if (resolved.ok()) return resolved.suites();
         if (in.projectModules().size() > 1) {
-            ctx.label("suite not present — skipped");
+            ctx.label("skipped: suite not in this module");
             ctx.put(NO_TEST_SOURCES, true);
             ctx.cached(); // SKIPPED — suite absent in this workspace module
             ctx.progress(1);

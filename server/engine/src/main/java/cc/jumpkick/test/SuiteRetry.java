@@ -157,15 +157,12 @@ final class SuiteRetry {
 
     /** {@code who} ran out of every heap in {@code ranOut}, oldest first. */
     static String exhausted(String who, List<Long> ranOut) {
-        return who + " " + HeapLadder.ranOut(ranOut)
-                + "; raise it with [test] jvm-args = [\"-Xmx...\"] or [jvm] args = [\"-Xmx...\"]";
+        return who + " " + HeapLadder.ranOut(ranOut) + "; raise -Xmx in [test] jvm-args or [jvm] args";
     }
 
     static String pinned(String who, String pin) {
         String named = pin == null || pin.isBlank() ? "heap" : pin;
-        return who + " ran out of the pinned heap " + named
-                + "; that setting is the worker's heap — raise it with [test] jvm-args = [\"-Xmx...\"]"
-                + " or [jvm] args = [\"-Xmx...\"]";
+        return who + " ran out of the pinned heap " + named + "; raise -Xmx in [test] jvm-args or [jvm] args";
     }
 
     /**

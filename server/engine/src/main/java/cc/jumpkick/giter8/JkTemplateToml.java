@@ -229,10 +229,7 @@ public final class JkTemplateToml {
         for (String key : properties.keySet()) {
             if (RESERVED.contains(key) || asked.contains(key) || internal.contains(key)) continue;
             throw fault(
-                    displayPath,
-                    "default.properties sets '" + key
-                            + "', which is neither reserved nor asked: declare it with an [[ask]], or list it under"
-                            + " internal = [...] when it is not a question");
+                    displayPath, "default.properties sets '" + key + "', but no [[ask]] or internal = [...] lists it");
         }
         Set<String> taken = new LinkedHashSet<>(RESERVED);
         taken.addAll(properties.keySet());
@@ -252,8 +249,8 @@ public final class JkTemplateToml {
             if (given != null && f.defaultValue() == null) {
                 throw fault(
                         displayPath,
-                        "[[ask]] '" + f.key() + "' has no default, but default.properties sets it; move the value to"
-                                + " the [[ask]]'s default");
+                        "[[ask]] '" + f.key() + "' has no default, but default.properties sets it;"
+                                + " move the value to the ask's default");
             }
             Object literal = TemplateAnswers.literalDefault(f);
             if (given != null

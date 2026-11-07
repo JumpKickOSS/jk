@@ -134,7 +134,7 @@ final class WorkerHeap {
         StringBuilder msg = new StringBuilder(what)
                 .append(' ')
                 .append(HeapLadder.ranOut(ranOut))
-                .append("; raise it with [jvm] args = [\"-Xmx...\"] or [test] jvm-args = [\"-Xmx...\"]");
+                .append("; raise -Xmx in [jvm] args or [test] jvm-args");
         if (!output.isBlank()) msg.append("\n--- zinc worker output ---\n").append(output);
         return new IOException(msg.toString());
     }
@@ -157,9 +157,7 @@ final class WorkerHeap {
     static IOException pinned(String label, String pin, String output) {
         String what = label.isBlank() ? "the compiler worker" : "the compiler worker for " + label;
         String named = pin == null || pin.isBlank() ? "heap" : pin;
-        String msg = what + " ran out of the pinned heap " + named
-                + "; that setting is the worker's heap — raise it with [jvm] args = [\"-Xmx...\"]"
-                + " or [test] jvm-args = [\"-Xmx...\"]";
+        String msg = what + " ran out of the pinned heap " + named + "; raise -Xmx in [jvm] args or [test] jvm-args";
         if (output != null && !output.isBlank()) msg = msg + "\n--- zinc worker output ---\n" + output;
         return new IOException(msg);
     }

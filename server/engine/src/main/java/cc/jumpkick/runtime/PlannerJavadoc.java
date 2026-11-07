@@ -59,14 +59,12 @@ final class PlannerJavadoc {
     /** Diagnostic code for every javadoc warning and error in the results. */
     static final String CODE = "javadoc";
 
-    static final String NO_JAVA_SOURCES = "The module has no Java, Kotlin or Scala sources to document; javadoc"
-            + " reads Java, Dokka reads Kotlin and scaladoc reads Scala, and jk does not run a Groovy documentation tool.";
+    static final String NO_JAVA_SOURCES = "This module has no Java, Kotlin or Scala sources to document.";
 
-    static final String NO_PUBLIC_API =
-            "The module declares no public or protected types; javadoc has nothing to document.";
+    static final String NO_PUBLIC_API = "This module declares no public or protected types to document.";
 
-    static final String LENIENT_ERRORS = "javadoc reported errors over these sources and wrote no documentation;"
-            + " the errors are warnings in the build's results, and javadoc = \"strict\" makes them fail the step.";
+    static final String LENIENT_ERRORS =
+            "javadoc failed on these sources; the build lists its errors, and javadoc = \"strict\" fails on them.";
 
     /** javadoc's own words for a source set without a documentable type. */
     private static final String NO_PUBLIC_API_MARKER = "No public or protected classes found to document";

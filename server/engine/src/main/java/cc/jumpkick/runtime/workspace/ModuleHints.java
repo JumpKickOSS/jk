@@ -29,7 +29,7 @@ public final class ModuleHints {
         try {
             graph = BuildGraph.resolve(entryDir, entry);
         } catch (IOException e) {
-            throw new IllegalArgumentException("module selection: cannot resolve the build graph — " + e.getMessage());
+            throw new IllegalArgumentException("module selection: cannot read the workspace: " + e.getMessage());
         }
         if (graph.hasErrors()) {
             throw new IllegalArgumentException(String.join("; ", graph.errors()));

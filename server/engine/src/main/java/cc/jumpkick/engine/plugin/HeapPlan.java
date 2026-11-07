@@ -59,8 +59,7 @@ public final class HeapPlan {
         if (jvms == 1 && usable < MIN_PARALLEL_HEAP) {
             warning = "only "
                     + mib(usable)
-                    + " MiB of usable memory (< 512 MiB) — "
-                    + "building serially with -Xmx"
+                    + " MiB of usable memory; building serially with -Xmx"
                     + mib(perJvm)
                     + "m as a best effort";
         }

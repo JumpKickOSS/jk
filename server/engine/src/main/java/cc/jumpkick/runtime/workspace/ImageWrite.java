@@ -168,8 +168,8 @@ final class ImageWrite {
             // The worker (Jib revalidates its base whatever the local cache holds) would refuse
             // anyway — but only after the whole upstream pipeline was paid for. Refuse at the
             // engine, before the fork, with the pin that makes offline image builds cacheable.
-            String refusal = Errors.offlineRefusal(base) + "; pin the base by digest in jk.toml — [image] base ="
-                    + " \"…@sha256:…\" — to build offline from the packaging cache";
+            String refusal = Errors.offlineRefusal(base) + "; to build offline, pin the base by digest:"
+                    + " [image] base = \"…@sha256:…\"";
             ctx.error("image", refusal);
             throw new IllegalStateException(refusal);
         }

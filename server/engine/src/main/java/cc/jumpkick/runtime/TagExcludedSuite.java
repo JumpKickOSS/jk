@@ -46,10 +46,8 @@ final class TagExcludedSuite {
                 .filter(selection.excludeTags()::contains)
                 .toList();
         if (dropped.isEmpty()) return "0 tests (all excluded by profile " + profile + ")";
-        return "0 tests (all excluded by profile " + profile + " — it includes " + String.join(", ", dropped)
-                + ", which its exclude-tags still drop, so a @Tag(\"" + dropped.getFirst()
-                + "\") method inside an untagged class is not selected; [profiles." + profile
-                + "] exclude-tags = [] clears them)";
+        return "0 tests: profile " + profile + " also excludes " + String.join(", ", dropped) + "; set [profiles."
+                + profile + "] exclude-tags = []";
     }
 
     private static String tagFilter(TestSelection selection) {

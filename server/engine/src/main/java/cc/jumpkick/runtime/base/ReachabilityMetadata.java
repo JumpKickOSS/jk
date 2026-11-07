@@ -77,15 +77,15 @@ public final class ReachabilityMetadata {
             List<Lockfile.Artifact> artifacts,
             Consumer<String> log) {
         if (pin == null) {
-            log.accept("no [native] metadata-repository in jk-lock.toml — run `jk lock`;"
-                    + " building without reachability metadata");
+            log.accept("building without reachability metadata: jk-lock.toml has no [native] metadata-repository;"
+                    + " run jk lock");
             return List.of();
         }
         Path repoRoot;
         try {
             repoRoot = ensureExtracted(storeRoot, repos, pin);
         } catch (IOException e) {
-            log.accept("reachability metadata unavailable (" + e.getMessage() + ") — building without it");
+            log.accept("building without reachability metadata: " + e.getMessage());
             return List.of();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

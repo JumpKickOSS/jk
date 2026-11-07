@@ -533,7 +533,7 @@ public final class WorkspaceScheduler {
      */
     static <U> IllegalStateException unsatisfiable(
             List<U> stuck, Function<U, Path> dirOf, Map<Path, Set<Path>> edges, Set<Path> unitDirs, Set<Path> done) {
-        StringBuilder msg = new StringBuilder("workspace schedule unsatisfiable: stuck units");
+        StringBuilder msg = new StringBuilder("cannot order the workspace build; these modules are stuck:");
         for (U u : stuck) {
             Path dir = dirOf.apply(u);
             List<String> unmet = edges.getOrDefault(dir, Set.of()).stream()
@@ -546,7 +546,7 @@ public final class WorkspaceScheduler {
             if (!unmet.isEmpty()) {
                 msg.append(" waits on ").append(unmet);
             } else {
-                msg.append(" (no ready deps among remaining units — likely a cycle)");
+                msg.append(", likely a dependency cycle");
             }
         }
         return new IllegalStateException(msg.toString());

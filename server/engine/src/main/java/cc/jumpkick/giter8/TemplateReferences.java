@@ -53,10 +53,10 @@ final class TemplateReferences {
                 .filter(f -> f.key().equals(use.key()))
                 .findFirst()
                 .orElseThrow();
-        String why = ask.when() != null ? "its when can hide it" : "it is not required";
-        throw new IllegalArgumentException(displayPath + ": [[ask]] '" + use.key() + "' can be left unset (" + why
-                + ") and has no default, but " + use.where() + " uses $" + use.key() + "$ outside $if("
-                + use.key() + ")$: give the ask a default, or guard the use");
+        String why = ask.when() != null ? "its when can hide it" : "is not required";
+        throw new IllegalArgumentException(displayPath + ": [[ask]] '" + use.key() + "' has no default and " + why
+                + ", but " + use.where() + " uses $" + use.key() + "$ outside $if(" + use.key()
+                + ")$; add a default or guard the use");
     }
 
     static @Nullable Use firstUse(Path templateRoot, Map<String, String> properties, Set<String> unset)

@@ -55,9 +55,7 @@ public final class WorkerContainment {
     public static final String KILLED_AT_CAP = KILLED_FOR_MEMORY + " at its worker cap";
 
     /** Why {@link #KILLED_AT_CAP} is not a heap problem, appended to it. */
-    public static final String OUTSIDE_HEAP =
-            "; the memory was outside the heap (metaspace, thread stacks, direct buffers), so a larger -Xmx"
-                    + " does not help";
+    public static final String OUTSIDE_HEAP = "; the memory was outside the heap, so a larger -Xmx does not help";
 
     /** Name prefix of a worker's own group under {@code workers}. */
     static final String CHILD_PREFIX = "w";

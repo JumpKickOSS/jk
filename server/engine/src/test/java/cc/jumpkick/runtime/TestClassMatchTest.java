@@ -52,7 +52,7 @@ class TestClassMatchTest {
     @Test
     void the_skip_label_and_the_failure_name_the_patterns() {
         assertThat(TestClassMatch.skipLabel(List.of("OrdersTest", "*IT"), null))
-                .isEqualTo("no classes matched --class OrdersTest, *IT — skipped");
+                .isEqualTo("skipped: no classes match --class OrdersTest, *IT");
         assertThat(TestClassMatch.noMatchMessage(ORDERS, null, null, null))
                 .isEqualTo("no test classes matched --class OrdersTest");
         assertThat(TestClassMatch.noMatchMessage(ORDERS, "integration", null, null))
@@ -78,11 +78,11 @@ class TestClassMatchTest {
         TestSelection fooIt = TestSelection.DEFAULT.withClasses(List.of("FooIT"));
         String hint = "FooIT is in the integration suite (jk test -s integration -S FooIT)";
         assertThat(TestClassMatch.skipLabel(List.of("FooIT"), hint))
-                .isEqualTo("no classes matched --class FooIT — skipped; " + hint);
+                .isEqualTo("skipped: no classes match --class FooIT; " + hint);
         assertThat(TestClassMatch.noMatchMessage(fooIt, null, null, hint))
-                .isEqualTo("no test classes matched --class FooIT — " + hint);
+                .isEqualTo("no test classes matched --class FooIT: " + hint);
         assertThat(TestClassMatch.noMatchMessage(fooIt, null, TAG_EXCLUDED, hint))
-                .isEqualTo("no test classes matched --class FooIT — " + hint + "; " + TAG_EXCLUDED);
+                .isEqualTo("no test classes matched --class FooIT: " + hint + "; " + TAG_EXCLUDED);
 
         Session session = Session.defaults().withTestSelection(fooIt);
         BuildPlan hinted = BuildPlan.builder("module")
@@ -94,7 +94,7 @@ class TestClassMatchTest {
                 .build();
         hinted.run();
         assertThat(TestClassMatch.runWideVerdict(session, false, List.of(plan(null), hinted)))
-                .isEqualTo("no test classes matched --class FooIT — " + hint);
+                .isEqualTo("no test classes matched --class FooIT: " + hint);
     }
 
     @Test

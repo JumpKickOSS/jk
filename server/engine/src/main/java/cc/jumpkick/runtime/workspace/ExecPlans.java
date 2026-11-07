@@ -133,16 +133,15 @@ public final class ExecPlans {
     /** Compile-main classpath for {@code jk jshell}: classes dir first, then lock artifacts. */
     private static ExecPlan jshellPlan(Path dir, Path cache, JkBuild project, BuildLayout layout) throws IOException {
         if (project.isWorkspaceRoot()) {
-            return ExecPlan.error(
-                    "jshell", "run from a module directory (workspace roots have no single compile classpath)");
+            return ExecPlan.error("jshell", "workspace root has no classpath; run from a module directory");
         }
         Path classes = layout.classesDir();
         if (!Files.isDirectory(classes)) {
-            return ExecPlan.error("jshell", "no classes at " + classes + " — run `jk build -S` or drop `--no-build`");
+            return ExecPlan.error("jshell", "no classes at " + classes + "; run jk build -S or drop --no-build");
         }
         Path lockFile = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockFile)) {
-            return ExecPlan.error("jshell", "no jk-lock.toml — lock refresh did not produce one");
+            return ExecPlan.error("jshell", "no jk-lock.toml; run jk lock");
         }
         Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, dir);
         Cas cas = JkStores.storeCas();
@@ -158,7 +157,9 @@ public final class ExecPlans {
             else missing++;
         }
         for (Path p : jarAliased(cache, present)) paths.add(p.toString());
-        String display = missing > 0 ? missing + " lock classpath entry(ies) missing on disk — run `jk sync`" : "";
+        String display = missing > 0
+                ? missing + (missing == 1 ? " dependency" : " dependencies") + " not downloaded; run jk sync"
+                : "";
         return new ExecPlan(
                 null,
                 "",
@@ -266,9 +267,7 @@ public final class ExecPlans {
         var hostShape = PluginBuild.shape(project, dir);
         if (hostShape.map(sh -> "none".equals(sh.execMode())).orElse(false)) {
             return ExecPlan.error(
-                    dev ? "dev" : "run",
-                    "this project packages a non-executable artifact (exec-mode=none, e.g. a library)"
-                            + " — there is nothing to run");
+                    dev ? "dev" : "run", "nothing to run: this project packages a library, not an application");
         }
         var deviceShape = hostShape.filter(sh -> "device".equals(sh.execMode()));
         if (deviceShape.isPresent()) {
@@ -276,8 +275,7 @@ public final class ExecPlans {
             if (deployCommand.isEmpty()) {
                 return ExecPlan.error(
                         dev ? "dev" : "run",
-                        "this project packages a device artifact (exec-mode=device) — it cannot run on the"
-                                + " host JVM; deploy it with the owning plugin's command instead");
+                        "this project builds for a device, not this JVM; deploy it with its plugin's command");
             }
             return devicePlan(dir, dev, deployCommand, dev ? DevSidecars.resolve(dir, project, clientEnv) : List.of());
         }
@@ -418,10 +416,7 @@ public final class ExecPlans {
                         List.of(),
                         ExecPlan.Probe.NONE);
             }
-            return ExecPlan.error(
-                    "run",
-                    "self-contained jar not found at " + layout.mainJar() + " — run `jk build` first",
-                    "missing");
+            return ExecPlan.error("run", "jar not found at " + layout.mainJar() + "; run jk build first", "missing");
         }
         return null;
     }
@@ -557,7 +552,7 @@ public final class ExecPlans {
         String kind = dev ? "dev" : "run";
         Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, rootBuild);
         if (modules.isEmpty()) {
-            return ExecPlan.error(kind, "workspace has no modules — nothing to run", "missing");
+            return ExecPlan.error(kind, "nothing to run: the workspace has no modules", "missing");
         }
         if (dev) {
             ExecPlan stack = DevStack.plan(root, rootBuild, modules, clientEnv);
@@ -589,8 +584,7 @@ public final class ExecPlans {
                     .collect(Collectors.joining(", "));
             return ExecPlan.error(
                     kind,
-                    "multiple modules declare [application] main (" + names + ") — run one explicitly: jk " + kind
-                            + " <module>",
+                    "several modules declare [application] main: " + names + "; run one with jk " + kind + " <module>",
                     "ambiguous");
         }
 
@@ -623,10 +617,7 @@ public final class ExecPlans {
         }
         if (mainToModule.isEmpty()) {
             return ExecPlan.error(
-                    kind,
-                    "no launchable main found in workspace modules — set `[application] main = \"...\"` "
-                            + "on the app module (or run from that module directory)",
-                    "missing");
+                    kind, "no module has a main class; set [application] main in the app module's jk.toml", "missing");
         }
         // Same rule as declared apps: scanned mains across SEVERAL modules are ambiguous.
         Set<Path> scannedModules = new LinkedHashSet<>(mainToModule.values());
@@ -636,8 +627,7 @@ public final class ExecPlans {
                     .collect(Collectors.joining(", "));
             return ExecPlan.error(
                     kind,
-                    "multiple modules contain a runnable main (" + names + ") — run one explicitly: jk " + kind
-                            + " <module>",
+                    "several modules have a main class: " + names + "; run one with jk " + kind + " <module>",
                     "ambiguous");
         }
         Path modDir = scannedModules.iterator().next();
@@ -708,8 +698,7 @@ public final class ExecPlans {
             return installAck(List.of(), List.of(), "", "", "");
         }
         if (!project.isApplication()) {
-            return ExecPlan.error(
-                    "install", "not an application — declare [application] in jk.toml to make it installable");
+            return ExecPlan.error("install", "not an application; add [application] to jk.toml to install it");
         }
 
         var p = project.project();
@@ -915,7 +904,7 @@ public final class ExecPlans {
     private static ExecPlan aotCachePlan(Path dir, Path cache, JkBuild project, BuildLayout layout) throws IOException {
         Path mainJar = layout.mainJar();
         if (!Files.isRegularFile(mainJar)) {
-            return ExecPlan.error("aot-cache", "jar not found at " + mainJar + " — build before --aot-cache");
+            return ExecPlan.error("aot-cache", "jar not found at " + mainJar + "; build before --aot-cache");
         }
         // The tier follows the JDK the app will actually run under, not a `jdk` pin the manifest
         // may not carry: `java = 25` with no pin resolves to the host JDK 25 and trains a JEP 514

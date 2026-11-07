@@ -22,10 +22,10 @@ class TestLauncherReportTest {
                         + "caused by: java.lang.IllegalStateException: A synthetic bean is already registered");
         assertThat(message).contains("Fix: the test discovery JVM ran out of memory (Metaspace)");
         assertThat(message)
-                .contains("jk caps no test JVM's metaspace")
+                .contains("raise -Xmx, or raise or drop -XX:MaxMetaspaceSize")
                 .contains("`[test] jvm-args`")
                 .contains("-XX:MaxMetaspaceSize");
-        assertThat(message).doesNotContain("the runner's full output is above");
+        assertThat(message).doesNotContain("see the runner output above");
     }
 
     @Test
@@ -35,7 +35,7 @@ class TestLauncherReportTest {
 
         assertThat(message).startsWith("test runner exited 1 before any test ran — com.acme.Boot: could not start");
         assertThat(message)
-                .contains("Fix: the runner did not get to report; the failure is the framework's own — "
+                .contains("Fix: the test framework failed before reporting: "
                         + "`java.io.IOException: port 8080 in use`");
     }
 
@@ -60,17 +60,17 @@ class TestLauncherReportTest {
                         + "    at java.base/java.lang.ClassLoader.defineClass1(Native Method)\n"
                         + "    at java.base/java.lang.ClassLoader.defineClass(ClassLoader.java:1027)");
         assertThat(message)
-                .contains("Fix: the test JVM could not load the class com.acme.OrdersIT"
-                        + " — `java.lang.ClassNotFoundException: com.acme.Base`")
+                .contains("Fix: the test JVM could not load com.acme.OrdersIT"
+                        + ": `java.lang.ClassNotFoundException: com.acme.Base`")
                 .contains("@QuarkusTest")
-                .doesNotContain("the failure is the framework's own");
+                .doesNotContain("the test framework failed before reporting");
     }
 
     @Test
     void a_jvm_that_printed_nothing_usable_keeps_the_generic_fix() {
         String message = TestLauncherReport.message(
                 TestLauncherFailure.runner("g:app", 1, "Error: could not create the Java Virtual Machine"), null);
-        assertThat(message).contains("Fix: the runner's full output is above; rerun with -v for the live stream.");
+        assertThat(message).contains("Fix: see the runner output above; rerun with -v for the full output");
     }
 
     @Test
@@ -85,7 +85,7 @@ class TestLauncherReportTest {
         assertThat(message)
                 .contains("Fix: the test runner JVM refused to start")
                 .contains("`[test] jvm-args`")
-                .doesNotContain("the runner's full output is above");
+                .doesNotContain("see the runner output above");
     }
 
     /** A fork that printed nothing is diagnosed from how it was started; one with last words is not repeated its argv. */
@@ -98,7 +98,7 @@ class TestLauncherReportTest {
         assertThat(silent)
                 .startsWith("test discovery exited 1 before any test ran — the fork printed nothing\n"
                         + "command: /jdk/bin/java -Xmx256m -cp <1 entry> cc.jumpkick.plugin.Worker --list-only")
-                .contains("Fix: the fork printed nothing and named no reason");
+                .contains("Fix: the test JVM printed nothing");
 
         String killed = TestLauncherReport.message(TestLauncherFailure.runner("g:app", 137, "", command), null);
         assertThat(killed)
@@ -121,6 +121,6 @@ class TestLauncherReportTest {
         assertThat(message)
                 .contains("Fix: the test runner JVM was killed by SIGKILL before it ran a test")
                 .contains("out-of-memory killer")
-                .doesNotContain("the runner's full output is above");
+                .doesNotContain("see the runner output above");
     }
 }

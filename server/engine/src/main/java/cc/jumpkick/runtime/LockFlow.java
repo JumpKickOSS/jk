@@ -169,10 +169,8 @@ public final class LockFlow {
             Log.debug("variantUnionHint: hint construction must never mask the real resolve error", e);
         }
         if (lines.isEmpty()) return "";
-        StringBuilder b =
-                new StringBuilder("\nnote: jk-lock.toml resolves the UNION of every variant value's dependencies,"
-                        + "\nso this conflict may be between values that never build together — align their"
-                        + "\nversions across values (docs/variants.md → Locking). Overlays in play:");
+        StringBuilder b = new StringBuilder("\nnote: jk-lock.toml locks every variant value together;"
+                + " align versions across values. Overlays:");
         for (String line : lines) b.append("\n  ").append(line);
         return b.toString();
     }

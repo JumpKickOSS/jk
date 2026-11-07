@@ -81,10 +81,10 @@ class RepoGroupBuilderWireNoticeTest {
         } finally {
             System.setErr(originalErr);
         }
-        assertThat(out.toString()).contains("\"code\":\"notice\"").contains("dependency-confusion risk");
+        assertThat(out.toString()).contains("\"code\":\"notice\"").contains("risk dependency confusion");
         assertThat(err.toString(StandardCharsets.UTF_8))
                 .as("with a sink open, the note rides the wire instead of stderr")
-                .doesNotContain("dependency-confusion risk");
+                .doesNotContain("risk dependency confusion");
     }
 
     /** Just the seams this flow touches; everything else is inert. */

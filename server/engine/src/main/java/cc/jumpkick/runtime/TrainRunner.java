@@ -74,7 +74,7 @@ public final class TrainRunner {
         Path target = layout.moduleTargetDir();
         Path mainJar = layout.mainJar();
         if (!Files.isRegularFile(mainJar)) {
-            throw new IOException("train needs a packaged main jar at " + mainJar + " — build first");
+            throw new IOException("no jar at " + mainJar + "; build the module first");
         }
         List<String> launch = launchArgs(moduleDir, project, layout, cache, lockFile, mainJar, log);
 
@@ -85,7 +85,7 @@ public final class TrainRunner {
                 && fingerprint.equals(
                         Files.readString(fpFile, StandardCharsets.UTF_8).trim())
                 && Files.isRegularFile(TrainLayout.surfaceJson(target))) {
-            log.accept("train outputs up-to-date (fingerprint match)");
+            log.accept("train outputs up to date");
             return new Result(
                     DynamicSurfaceIo.readJson(TrainLayout.surfaceJson(target)),
                     TrainLayout.root(target),
@@ -95,9 +95,7 @@ public final class TrainRunner {
 
         Path agentJavaHome = resolveAgentJavaHome(graalHome, javaHome);
         if (agentJavaHome == null) {
-            throw new IOException("train needs a GraalVM JDK with the tracing agent (native-image-agent).\n"
-                    + "  Install GraalVM (jk native will prompt) and re-run, or point train\n"
-                    + "  at a Graal home that provides the agent.");
+            throw new IOException("train needs a GraalVM JDK with native-image-agent; install one with jk jdk graal");
         }
 
         DynamicSurface merged = DynamicSurface.empty();
@@ -147,10 +145,8 @@ public final class TrainRunner {
             String childTail = lastRunOutput == null || lastRunOutput.text().isBlank()
                     ? ""
                     : "\n  Last run output:\n" + tail(lastRunOutput.text());
-            throw new IOException("train produced an empty dynamic surface.\n"
-                    + "  The suite did not exercise reflective / resource / proxy usage the\n"
-                    + "  agent can see. Add a full-app exercise ([train] command or a main\n"
-                    + "  that loads by name) — unit tests in isolation are not enough."
+            throw new IOException("train recorded no reflection, resource or proxy use\n"
+                    + "  exercise the whole app: set [train] command, or use a main that loads classes by name"
                     + childTail);
         }
 
@@ -196,13 +192,13 @@ public final class TrainRunner {
         Path target = layout.moduleTargetDir();
         Path fpFile = TrainLayout.fingerprint(target);
         if (!Files.isRegularFile(fpFile) || !Files.isRegularFile(TrainLayout.surfaceJson(target))) {
-            return "train outputs are missing and [train] require-fresh = true — run `jk train`";
+            return "train outputs missing and [train] require-fresh = true; run jk train";
         }
         List<TrainConfig.Profile> profiles = config.effectiveProfiles();
         String expected = fingerprint(project, lockFile, layout.mainJar(), javaHome, config, profiles);
         String actual = Files.readString(fpFile, StandardCharsets.UTF_8).trim();
         if (!expected.equals(actual)) {
-            return "train outputs are stale and [train] require-fresh = true — re-run `jk train`";
+            return "train outputs out of date and [train] require-fresh = true; run jk train";
         }
         return null;
     }
@@ -381,7 +377,7 @@ public final class TrainRunner {
         pb.environment().put("JAVA_HOME", home.toAbsolutePath().toString());
         runUntilSettled(pb, log);
         if (!Files.isRegularFile(conf) || Files.size(conf) == 0) {
-            log.accept("AOT record produced no configuration — skipping AOT cache");
+            log.accept("AOT recording wrote no configuration; skipping the AOT cache");
             return false;
         }
         List<String> create = new ArrayList<>(List.of(
@@ -440,7 +436,7 @@ public final class TrainRunner {
             long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
             long quietMs = (System.nanoTime() - lastOutput.get()) / 1_000_000L;
             if (elapsedMs > TRAIN_TIMEOUT_SECONDS * 1000) {
-                log.accept("train run did not settle within " + TRAIN_TIMEOUT_SECONDS + "s — stopping");
+                log.accept("train run still busy after " + TRAIN_TIMEOUT_SECONDS + "s; stopping it");
                 asked = true;
             } else if (!asked && elapsedMs >= MIN_RUN_MILLIS && quietMs >= QUIET_MILLIS) {
                 asked = true;

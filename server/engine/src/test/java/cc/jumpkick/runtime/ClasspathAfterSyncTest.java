@@ -243,7 +243,8 @@ class ClasspathAfterSyncTest {
         assertThatThrownBy(() -> PlannerSetup.publishClasspaths(
                         ctx, ws.inputs(store, false), new Cas(store), new PluginBuild.StepTools()))
                 .hasMessageContaining("missing workspace siblings");
-        assertThat(ctx.errors).anyMatch(e -> e.contains("sibling not compiled") && e.contains("expected classes at"));
+        assertThat(ctx.errors)
+                .anyMatch(e -> e.contains("dependency module not compiled") && e.contains("expected classes at"));
     }
 
     /**
@@ -278,7 +279,7 @@ class ClasspathAfterSyncTest {
                 .hasMessageContaining("missing workspace siblings");
         assertThat(ctx.errors)
                 .as("the written diagnostic reaches the failure report")
-                .anyMatch(e -> e.contains("test sibling not built")
+                .anyMatch(e -> e.contains("test dependency module not built")
                         && e.contains("tests kind")
                         && e.contains("expected test classes at"));
     }
@@ -314,7 +315,7 @@ class ClasspathAfterSyncTest {
 
         assertThatThrownBy(() -> PlannerSetup.awaitSiblingTestCompile(ctx, in))
                 .hasMessageContaining("missing workspace siblings");
-        assertThat(ctx.errors).anyMatch(e -> e.contains("test sibling not compiled") && e.contains("lib"));
+        assertThat(ctx.errors).anyMatch(e -> e.contains("test dependency module not compiled") && e.contains("lib"));
     }
 
     @Test
@@ -354,7 +355,7 @@ class ClasspathAfterSyncTest {
         PlannerSetup.publishClasspaths(ctx, withTests, new Cas(store), new PluginBuild.StepTools());
         assertThatThrownBy(() -> PlannerSetup.awaitSiblingTestRuntime(ctx, withTests))
                 .hasMessageContaining("missing workspace siblings");
-        assertThat(ctx.errors).anyMatch(e -> e.contains("test sibling not built") && e.contains("fixtures"));
+        assertThat(ctx.errors).anyMatch(e -> e.contains("test dependency module not built") && e.contains("fixtures"));
     }
 
     /**

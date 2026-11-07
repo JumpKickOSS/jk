@@ -186,7 +186,7 @@ class JUnitLauncherAggregatorTest {
         assertThat(result.failures()).singleElement().satisfies(row -> {
             assertThat(row.method()).isEqualTo("(test run)");
             assertThat(row.message())
-                    .startsWith("worker exited 0 before finishing its plan (2 of 3 discovered tests reported)")
+                    .startsWith("worker exited 0 early: 2 of 3 discovered tests reported")
                     .contains("System.exit");
         });
     }
@@ -214,7 +214,7 @@ class JUnitLauncherAggregatorTest {
         assertThat(result.allPassed()).isFalse();
         assertThat(result.failures()).singleElement().satisfies(row -> {
             assertThat(row.method()).isEqualTo("(test run)");
-            assertThat(row.message()).isEqualTo("worker finished its plan having reported 2 of 3 discovered tests");
+            assertThat(row.message()).isEqualTo("worker finished with 2 of 3 discovered tests reported");
         });
     }
 
@@ -376,7 +376,7 @@ class JUnitLauncherAggregatorTest {
 
         TestFailureInfo died = WorkerFailureRow.of("m", 2, 137, "com.acme.BTest", "killed", null);
         assertThat(died.method()).isEqualTo("(worker 2)");
-        assertThat(died.message()).isEqualTo("test worker exited 137 mid-run (last class dispatched: com.acme.BTest)");
+        assertThat(died.message()).isEqualTo("test worker exited 137 mid-run (last class: com.acme.BTest)");
         assertThat(died.stack()).isEqualTo("killed");
     }
 
@@ -414,7 +414,7 @@ class JUnitLauncherAggregatorTest {
         assertThat(quit.method()).isEqualTo("(worker 2)");
         assertThat(quit.className()).isEqualTo("com.acme.ATest");
         assertThat(quit.message())
-                .startsWith("test worker exited 0 before it was told DONE (last class dispatched: com.acme.ATest)")
+                .startsWith("test worker exited 0 mid-run (last class: com.acme.ATest)")
                 .contains("System.exit");
     }
 

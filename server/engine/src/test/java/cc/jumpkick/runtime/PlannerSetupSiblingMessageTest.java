@@ -27,14 +27,15 @@ class PlannerSetupSiblingMessageTest {
                 new SiblingArtifacts(Map.of(HOST, Set.of(), GUARD, Set.of(HOST)), List.of(HOST, GUARD));
         siblings.failed("cc.jumpkick:jk-host", "compile-test-fixtures");
 
-        assertThat(PlannerSetup.missingSiblingMessage("test sibling not built — ", LABEL, siblings.gateFor(GUARD)))
-                .isEqualTo("test sibling cc.jumpkick:jk-host failed at compile-test-fixtures"
-                        + " — fixtures (expected at /ws/target/shared/host/test-fixtures/classes)");
         assertThat(PlannerSetup.missingSiblingMessage(
-                        "sibling not built — ",
+                        "test dependency module not built: ", LABEL, siblings.gateFor(GUARD)))
+                .isEqualTo("test dependency module cc.jumpkick:jk-host failed at compile-test-fixtures"
+                        + ": fixtures (expected at /ws/target/shared/host/test-fixtures/classes)");
+        assertThat(PlannerSetup.missingSiblingMessage(
+                        "dependency module not built: ",
                         "cc.jumpkick:jk-host (expected at /ws/target/shared/host/lib/jk-host.jar)",
                         siblings.gateFor(GUARD)))
-                .startsWith("sibling cc.jumpkick:jk-host failed at compile-test-fixtures — ");
+                .startsWith("dependency module cc.jumpkick:jk-host failed at compile-test-fixtures: (");
     }
 
     @Test
@@ -42,10 +43,12 @@ class PlannerSetupSiblingMessageTest {
         SiblingArtifacts siblings =
                 new SiblingArtifacts(Map.of(HOST, Set.of(), GUARD, Set.of(HOST)), List.of(HOST, GUARD));
 
-        assertThat(PlannerSetup.missingSiblingMessage("test sibling not built — ", LABEL, siblings.gateFor(GUARD)))
-                .isEqualTo("test sibling not built — " + LABEL);
-        assertThat(PlannerSetup.missingSiblingMessage("test sibling not built — ", LABEL, SiblingArtifacts.NONE))
+        assertThat(PlannerSetup.missingSiblingMessage(
+                        "test dependency module not built: ", LABEL, siblings.gateFor(GUARD)))
+                .isEqualTo("test dependency module not built: " + LABEL);
+        assertThat(PlannerSetup.missingSiblingMessage(
+                        "test dependency module not built: ", LABEL, SiblingArtifacts.NONE))
                 .as("outside a schedule nothing failed")
-                .isEqualTo("test sibling not built — " + LABEL);
+                .isEqualTo("test dependency module not built: " + LABEL);
     }
 }

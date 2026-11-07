@@ -92,7 +92,7 @@ class TestClassSelectionE2eTest {
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertThat(steps.status.get(ws.resolve("lib"))).isEqualTo(TaskStatus.SKIPPED);
-        assertThat(steps.label.get(ws.resolve("lib"))).isEqualTo("no classes matched --class AppTest — skipped");
+        assertThat(steps.label.get(ws.resolve("lib"))).isEqualTo("skipped: no classes match --class AppTest");
         assertThat(steps.status.get(ws.resolve("app"))).isEqualTo(TaskStatus.SUCCESS);
         assertThat(steps.tests(ws.resolve("app")))
                 .as("app ran exactly the one class")
@@ -133,7 +133,7 @@ class TestClassSelectionE2eTest {
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertThat(steps.status.get(ws.resolve("lib"))).isEqualTo(TaskStatus.SKIPPED);
-        assertThat(steps.label.get(ws.resolve("lib"))).isEqualTo("no classes matched --class AppTest — skipped");
+        assertThat(steps.label.get(ws.resolve("lib"))).isEqualTo("skipped: no classes match --class AppTest");
         assertThat(steps.tests(ws.resolve("app")))
                 .extracting(TestSummary::total)
                 .isEqualTo(1L);

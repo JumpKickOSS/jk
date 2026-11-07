@@ -225,7 +225,7 @@ class NodeBuildStepsTest {
         BuildPlanResult noLock = run(plan(session), session);
         assertThat(noLock.errors())
                 .anyMatch(d -> d.message() != null
-                        && d.message().contains("no package-lock.json — run npm install once and commit it"));
+                        && d.message().contains("no package-lock.json; run npm install once and commit it"));
 
         Files.writeString(lockfile, lock);
         BuildPlanResult noScript = run(plan(session), session);

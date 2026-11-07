@@ -151,7 +151,7 @@ public final class PlannerSetup {
                     ctx.put(LAYOUT, layout);
 
                     if (!Files.exists(in.lockFile())) {
-                        ctx.label("resolve deps (first run)");
+                        ctx.label("resolving dependencies: no jk-lock.toml yet");
                         LockFlow.Result result;
                         try {
                             // noDefaultFeatures=false — same feature selection as `jk lock`.
@@ -168,7 +168,7 @@ public final class PlannerSetup {
                         }
                         ctx.put(LOCKFILE, memberView(in, Objects.requireNonNull(result.lockfile(), "lockfile")));
                     } else if (AutoLock.isStale(in.dir(), in.lockFile())) {
-                        ctx.label("jk.toml changed — updating lock");
+                        ctx.label("jk.toml changed: updating jk-lock.toml");
                         Lockfile existing = LockfileReader.read(in.lockFile());
                         Lockfile updated;
                         try {
@@ -311,7 +311,7 @@ public final class PlannerSetup {
 
         WorkspaceClasspath.Result mainSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.COMPILE_SCOPES);
-        requireSiblingsCompiled(ctx, mainSiblings, "sibling not compiled — ");
+        requireSiblingsCompiled(ctx, mainSiblings, "dependency module not compiled: ");
         // The module's lock rows (its own and those its siblings pass on) + sibling classes
         // trees — the exact classpath `jk explain` re-derives, so the action keys match.
         List<Path> mainCp = PlannerSupport.mainCompileClasspath(in.dir(), project, lock, resolver, mainSiblings, true);
@@ -340,14 +340,11 @@ public final class PlannerSetup {
         // that silently skips code generation is worse than one that fails. A sibling
         // processor is loaded from its classes tree, which holds its service registration
         // once the sibling's resources are copied — the point its tree is published at.
-        requireSiblingsCompiled(ctx, processorSiblings, "processor sibling not compiled — ");
+        requireSiblingsCompiled(ctx, processorSiblings, "processor module not compiled: ");
         List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock, testProcessorSiblings);
         if (!unresolvedProcessors.isEmpty()) {
             for (String unresolved : unresolvedProcessors)
-                ctx.error(
-                        "processor",
-                        "processor dependency " + unresolved + " is declared but is not in jk-lock.toml —"
-                                + " run `jk lock`");
+                ctx.error("processor", "processor " + unresolved + " is not in jk-lock.toml; run jk lock");
             throw new RuntimeException("unresolved processor dependencies");
         }
         ctx.put(
@@ -430,14 +427,14 @@ public final class PlannerSetup {
         if (!PlannerResources.skipJUnit(in)) {
             WorkspaceClasspath.Result testSiblings =
                     WorkspaceClasspath.resolve(in.dir(), ctx.require(PROJECT), WorkspaceClasspath.TEST_SCOPES);
-            requireSiblingsBuilt(ctx, testSiblings, "test sibling not built — ", in.siblings());
+            requireSiblingsBuilt(ctx, testSiblings, "test dependency module not built: ", in.siblings());
         }
     }
 
     private static void requireRuntimeSiblings(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
         WorkspaceClasspath.Result mainSiblings =
                 WorkspaceClasspath.resolve(in.dir(), ctx.require(PROJECT), WorkspaceClasspath.RUNTIME_SCOPES);
-        requireSiblingsBuilt(ctx, mainSiblings, "sibling not built — ", in.siblings());
+        requireSiblingsBuilt(ctx, mainSiblings, "dependency module not built: ", in.siblings());
     }
 
     /**
@@ -479,13 +476,13 @@ public final class PlannerSetup {
         JkBuild project = ctx.require(PROJECT);
         WorkspaceClasspath.Result testSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
-        requireSiblingsCompiled(ctx, testSiblings, "test sibling not compiled — ");
+        requireSiblingsCompiled(ctx, testSiblings, "test dependency module not compiled: ");
         WorkspaceClasspath.Result testProcessorSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, ClasspathResolver.PROCESSOR_PATH);
-        requireSiblingsCompiled(ctx, testProcessorSiblings, "test processor sibling not compiled — ");
+        requireSiblingsCompiled(ctx, testProcessorSiblings, "test processor module not compiled: ");
         if (testSiblings.missingSiblingTestOutputs().isEmpty()) return;
         for (String missing : testSiblings.missingSiblingTestOutputs()) {
-            ctx.error("workspace", missingSiblingMessage("test sibling not built — ", missing, in.siblings()));
+            ctx.error("workspace", missingSiblingMessage("test dependency module not built: ", missing, in.siblings()));
         }
         throw new RuntimeException("missing workspace siblings");
     }
@@ -511,8 +508,8 @@ public final class PlannerSetup {
         String coord = space < 0 ? missing : missing.substring(0, space);
         Optional<String> step = gate.failedStep(coord);
         if (step.isEmpty()) return prefix + missing;
-        String subject = prefix.startsWith("test ") ? "test sibling " : "sibling ";
-        return subject + coord + " failed at " + step.get() + " — "
+        String subject = prefix.startsWith("test ") ? "test dependency module " : "dependency module ";
+        return subject + coord + " failed at " + step.get() + ": "
                 + missing.substring(coord.length()).trim();
     }
 

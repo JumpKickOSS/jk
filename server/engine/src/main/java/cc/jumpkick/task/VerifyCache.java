@@ -46,8 +46,8 @@ public final class VerifyCache {
             String now = outputs.get(name);
             if (Objects.equals(was, now)) continue;
             throw new IOException("--verify-cache: " + taskId.split("@", 2)[0] + " under key " + key.substring(0, 8)
-                    + " produced " + name + " " + describe(now) + ", but the cache's record for that key holds "
-                    + describe(was) + ": the record is poisoned or the step is not reproducible");
+                    + " produced " + name + " " + describe(now) + ", the cache holds " + describe(was)
+                    + "; the cache entry is bad or the step is not reproducible");
         }
     }
 

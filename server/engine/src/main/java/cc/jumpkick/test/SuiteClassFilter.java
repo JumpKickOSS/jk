@@ -128,13 +128,13 @@ public final class SuiteClassFilter {
         for (Map.Entry<String, ClassSuite> suite : patternSuites.entrySet()) {
             String name = suite.getKey();
             String patterns = String.join(", ", suite.getValue().classes());
-            if (selected.contains(name)) ran.add(name + " runs the test suite's classes matching " + patterns);
+            if (selected.contains(name)) ran.add(name + " runs test classes matching " + patterns);
             else left.add(name + " (" + patterns + ")");
         }
         StringBuilder out = new StringBuilder("test suites: ").append(String.join(", ", selected));
-        if (!ran.isEmpty()) out.append(" — ").append(String.join("; ", ran));
+        if (!ran.isEmpty()) out.append("; ").append(String.join("; ", ran));
         if (!left.isEmpty() && selected.contains(TestSuites.DEFAULT)) {
-            out.append(" — left out: ").append(String.join("; ", left)).append(", run with jk test -s <name>");
+            out.append("; not run: ").append(String.join(", ", left)).append(", use jk test -s <name>");
         }
         return out.toString();
     }

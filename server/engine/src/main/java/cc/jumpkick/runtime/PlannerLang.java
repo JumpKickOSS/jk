@@ -81,7 +81,7 @@ public final class PlannerLang {
         String requiredSha256() {
             if (sha256 != null) return sha256;
             throw new IllegalStateException("Kotlin compiler plugin " + group + ":" + artifact + ":" + version
-                    + " has no [[plugin]] row in jk-lock.toml — run `jk lock`");
+                    + " has no [[plugin]] row in jk-lock.toml; run jk lock");
         }
     }
 
@@ -277,7 +277,7 @@ public final class PlannerLang {
                             .map(hit -> hit.fetched().cachePath())
                             .orElseThrow(() -> new RuntimeException("cannot fetch the " + use.id()
                                     + " Kotlin compiler plugin (" + use.group() + ":" + use.artifact() + ":"
-                                    + use.version() + ") — the module compiles with it"));
+                                    + use.version() + ") from any repository"));
                     ktPlugins.add(new KotlincRequest.Plugin(use.id(), jar, use.options()));
                 }
             } catch (InterruptedException e) {

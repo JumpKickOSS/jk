@@ -46,8 +46,7 @@ public final class ActivePlugins {
                 if (packager != null) {
                     throw new IllegalStateException(
                             "[" + m.table() + "] and [" + packager.manifest().table()
-                                    + "] both package this module's main artifact: a module has one packager."
-                                    + " Keep one of the two tables, or split the module");
+                                    + "] both package this module's main artifact; keep one, or split the module");
                 }
                 packager = active;
             }
@@ -152,8 +151,7 @@ public final class ActivePlugins {
 
     private static IllegalStateException sameName(String kind, String name, ActivePlugin a, ActivePlugin b) {
         return new IllegalStateException(
-                "[" + a.manifest().table() + "] and [" + b.manifest().table()
-                        + "] both register a " + kind + " named `" + name + "`; a module's plugin " + kind
-                        + " names are one namespace. Keep one of the two tables, or split the module");
+                "[" + a.manifest().table() + "] and [" + b.manifest().table() + "] both register a " + kind + " named `"
+                        + name + "`; keep one, or split the module");
     }
 }

@@ -563,10 +563,10 @@ public final class ForecastScope implements StepForecast.Scope {
     /** Why the module runs before any step is priced (no lock, or a lock jk.toml moved past), or null. */
     @Nullable
     String unlocked() {
-        if (!Files.isRegularFile(lockFile)) return "not locked yet (run `jk build`)";
+        if (!Files.isRegularFile(lockFile)) return "no jk-lock.toml yet";
         // Digest-only staleness — the same predicate the build's freshen uses, so the forecast
         // and the live build agree on whether a lock update runs.
-        if (AutoLock.isStale(dir, lockFile)) return "jk.toml changed — lock update needed";
+        if (AutoLock.isStale(dir, lockFile)) return "jk.toml changed: jk-lock.toml needs an update";
         return null;
     }
 
@@ -713,8 +713,8 @@ public final class ForecastScope implements StepForecast.Scope {
         boolean testViewAbsent = !skipTests && ModuleOutputs.testViewMissing(layout, project, dir, () -> haveTests);
         if (outputsAbsent || testViewAbsent) {
             String why = incomplete
-                    ? "restore from cache · classes tree incomplete"
-                    : outputsAbsent ? "restore from cache" : "restore from cache · test view absent";
+                    ? "restore from cache · classes incomplete"
+                    : outputsAbsent ? "restore from cache" : "restore from cache · test classes missing";
             moduleVerdicts.add(new TaskForecast.Task(TaskNames.RESTORE_OUTPUTS, TaskForecast.Status.RUN, why, null));
         }
     }

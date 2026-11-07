@@ -497,7 +497,7 @@ class BuildLogicSupportTest {
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
                 () -> BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
-        assertThat(ex.getMessage()).contains("stem scripts only");
+        assertThat(ex.getMessage()).contains("only .groovy and .kts stem scripts");
         assertThat(ex.getMessage()).contains("X.java");
     }
 
@@ -849,7 +849,7 @@ class BuildLogicSupportTest {
                 () -> BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.GUARD, s -> {}));
         assertThat(ex.getMessage())
                 .startsWith(
-                        "[build] .jk/scripts/after-resources.groovy is not a valid stem for a workspace root. Use after-build or gate");
+                        "[build] .jk/scripts/after-resources.groovy is not a valid stem for a workspace root; use after-build or gate");
     }
 
     /**

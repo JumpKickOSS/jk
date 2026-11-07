@@ -150,7 +150,7 @@ final class CorePlan {
         // unresolved reference: refuse it by name instead.
         if (useScala && (useKotlin || useGroovy)) {
             throw new IllegalStateException("scala+" + (useKotlin ? "kotlin" : "groovy")
-                    + " in one module is not supported — split the languages into separate modules");
+                    + " in one module is not supported; put the languages in separate modules");
         }
     }
 

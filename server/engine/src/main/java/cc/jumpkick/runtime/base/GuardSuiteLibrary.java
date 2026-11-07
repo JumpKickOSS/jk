@@ -89,8 +89,7 @@ public final class GuardSuiteLibrary {
         Path staged = stageFromM2(cas);
         if (staged != null) return new Located(staged, staged);
         throw new IOException(COORDINATE + ":" + JkVersion.VERSION
-                + " is not in the store (repos/jk-local) or ~/.m2, so the guard suite cannot compile."
-                + " Reinstall jk (the installer stages it), or in jk's own tree run `jk install`.");
+                + " not found in the store or ~/.m2; reinstall jk to compile the guard suite");
     }
 
     /** Store-only: the jar in any repo store, or {@code null}. */

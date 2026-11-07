@@ -207,6 +207,6 @@ class GitSourceResolutionTest {
         assertThatThrownBy(
                         () -> GitSourceResolution.prepare(consumer(lib), baseRepos, cas, javaHome, "test", lockedShas))
                 .isInstanceOf(GitFetcher.TagRewriteException.class)
-                .hasMessageContaining("rewrite detected");
+                .hasMessageContaining("was rewritten");
     }
 }

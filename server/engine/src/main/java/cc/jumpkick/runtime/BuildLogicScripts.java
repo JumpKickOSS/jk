@@ -202,12 +202,11 @@ public final class BuildLogicScripts {
     private static void warnUnknownStem(Path logicDir, Path file, String stem) {
         RunNotices.warnOnce("build-logic-unknown-stem:" + file.toAbsolutePath().normalize(), () -> {
             String suggest = BuildLogicStems.closest(stem)
-                    .map(s -> " Did you mean " + s + "?")
+                    .map(s -> "; did you mean " + s + "?")
                     .orElse("");
-            return "[build] " + moduleRelative(logicDir, file)
-                    + " is not a recognized build-logic stem, so it will not run." + suggest
-                    + " Module stems: " + String.join(" / ", BuildLogicStems.MODULE)
-                    + "; invocation-root stems: " + String.join(" / ", BuildLogicStems.ROOT) + ".";
+            return "[build] " + moduleRelative(logicDir, file) + " will not run: unknown stem" + suggest
+                    + "\n  module stems: " + String.join(" / ", BuildLogicStems.MODULE)
+                    + "; root stems: " + String.join(" / ", BuildLogicStems.ROOT);
         });
     }
 
@@ -225,8 +224,8 @@ public final class BuildLogicScripts {
                         "build-logic-nested-stem:" + p.toAbsolutePath().normalize(),
                         () -> "[build] "
                                 + moduleRelative(logicDir, p)
-                                + " will not run: build-logic scripts are discovered at the top level of "
-                                + BuildLogicToml.shown(logicDir) + "/ only — move it up a level.");
+                                + " will not run; move it up to the top level of "
+                                + BuildLogicToml.shown(logicDir) + "/");
                 return true;
             });
         } catch (IOException ignored) {

@@ -32,12 +32,10 @@ final class UploadTail {
         String repository = info.publishRepository();
         if (repository.isEmpty()) {
             throw new IllegalArgumentException(
-                    "upload publishes to the repository [publish] names: add `repository = \"<name>\"` to [publish]"
-                            + " in jk.toml (a [repositories.<name>] entry). Without upload, publish is a dry run.");
+                    "upload needs a target: set [publish] repository = \"<name>\" in jk.toml");
         }
         if (RepositorySpec.CENTRAL.equals(repository)) {
-            throw new IllegalArgumentException(
-                    "a Central Portal upload needs a signing key and stays on the CLI: run `jk publish`.");
+            throw new IllegalArgumentException("a Central Portal upload needs a signing key; run jk publish");
         }
         if (!repository.contains("://")) {
             throw new IllegalArgumentException(

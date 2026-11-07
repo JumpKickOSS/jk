@@ -116,8 +116,7 @@ public final class AutoLock {
             // is a server — route the warning through the caller's sink (the view layer
             // owns the terminal streams) instead of touching System.err.
             if (warn != null) {
-                warn.accept("‼ jk: auto-lock warning — could not update jk-lock.toml: " + e.getMessage());
-                warn.accept("    Run `jk lock` to resolve manually.");
+                warn.accept("‼ jk: could not update jk-lock.toml: " + e.getMessage() + "; run jk lock");
             }
             return null;
         }

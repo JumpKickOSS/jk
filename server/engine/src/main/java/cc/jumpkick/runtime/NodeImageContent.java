@@ -152,7 +152,7 @@ public final class NodeImageContent {
         Path out = nodeDir.resolve(node.out());
         if (!Files.isDirectory(out)) {
             throw new IOException(
-                    project.project().name() + ": no " + node.out() + "/ to serve — build the module first");
+                    project.project().name() + ": no " + node.out() + "/ to serve; build the module first");
         }
         Path conf = BuildLayout.moduleTargetDir(moduleDir).resolve("image-node/default.conf");
         Files.createDirectories(conf.getParent());
@@ -197,8 +197,8 @@ public final class NodeImageContent {
         }
         String script = binScript(nodeModules, argv.get(0));
         if (script == null) {
-            throw new IOException("the start command `" + String.join(" ", argv) + "` is not a node program jk can"
-                    + " run in an image — set [node] start = \"node <file>\"");
+            throw new IOException("start command `" + String.join(" ", argv) + "` is not a node program;"
+                    + " set [node] start = \"node <file>\"");
         }
         out.add(script);
         out.addAll(argv.subList(1, argv.size()));

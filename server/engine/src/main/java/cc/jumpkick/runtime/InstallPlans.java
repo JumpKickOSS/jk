@@ -174,9 +174,7 @@ public final class InstallPlans {
                     BuildLayout layout = BuildLayout.of(projectDir, project);
                     Path jar = layout.mainJar();
                     if (!Files.isRegularFile(jar)) {
-                        ctx.error(
-                                "missing-jar",
-                                "jar not found at " + jar + " — the install's first pass must leave it on disk");
+                        ctx.error("missing-jar", "jar not found at " + jar);
                         throw new RuntimeException("missing jar for re-shelve");
                     }
                     ctx.put(BuildPlanner.PROJECT, project);
@@ -510,13 +508,13 @@ public final class InstallPlans {
     }
 
     private static String releaseSlot(Coordinate coord, Path dir) {
-        return coord.toGav() + " is already installed in " + dir + " with different contents. A release version is"
-                + " installed once: raise the version in jk.toml, or run `jk snapshot` while you iterate.";
+        return coord.toGav() + " is already installed in " + dir + " with other contents;"
+                + " raise the version in jk.toml, or use jk snapshot while you iterate";
     }
 
     private static String foreignSlot(Coordinate coord, Path dir) {
-        return coord.toGav() + " is already in " + dir + ", but jk did not install it (Maven, or a download put it"
-                + " there), so jk will not replace it. Delete that directory to let `jk install` write it.";
+        return coord.toGav() + " is already in " + dir + ", but jk did not install it;"
+                + " delete that directory to let jk install replace it";
     }
 
     /**
@@ -551,8 +549,7 @@ public final class InstallPlans {
         }
         if (!installed) return null;
         return snapshot.toGav() + " would be hidden by the release " + release.toGav()
-                + ", which is already installed: a snapshot sorts below its release, so nothing would choose it."
-                + " Raise the version in jk.toml.";
+                + " already installed; raise the version in jk.toml";
     }
 
     /**

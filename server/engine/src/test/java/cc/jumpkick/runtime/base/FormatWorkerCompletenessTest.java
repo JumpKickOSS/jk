@@ -133,7 +133,7 @@ class FormatWorkerCompletenessTest {
         assertThat(d.step()).isEqualTo("format");
         assertThat(d.message())
                 .contains("3 of 8")
-                .contains("5 were never visited")
+                .contains("retries the other 5")
                 .contains("139");
         // The partial counts are still published — honest partial numbers, on a failed run.
         assertThat(r.plan().get(FormatWorker.CHANGED)).contains(0);
@@ -254,7 +254,7 @@ class FormatWorkerCompletenessTest {
         Run r = run(0, 8, false, null, 139, repeat("clean", 8), files);
 
         assertThat(r.result().success()).isFalse();
-        assertThat(r.result().errors().get(0).message()).contains("exited 139").contains("exit law is 0 or 1");
+        assertThat(r.result().errors().get(0).message()).contains("crashed with exit 139");
     }
 
     /**

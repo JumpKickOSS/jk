@@ -45,8 +45,7 @@ public final class JavacRunner {
         Path javaHome = request.javaHome() != null ? request.javaHome() : Path.of(System.getProperty("java.home"));
         Path javac = JdkFingerprint.javac(javaHome);
         if (!Files.exists(javac)) {
-            throw new IOException(
-                    "javac not found at " + javac + " — project.jdk needs to point at a JDK (not a JRE).");
+            throw new IOException("javac not found at " + javac + "; project.jdk must point at a JDK, not a JRE");
         }
 
         try {

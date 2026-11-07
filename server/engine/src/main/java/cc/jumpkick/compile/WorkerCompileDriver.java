@@ -291,8 +291,7 @@ public final class WorkerCompileDriver {
         CompileResult pinnedOr(CompileResult plain) {
             if (planned || cause != WorkerFate.Cause.HEAP_EXHAUSTED) return plain;
             String pin = JvmOptions.userPinLabel(List.of());
-            String msg = tool + " ran out of the pinned heap " + pin
-                    + "; that setting is the worker's heap — raise it with [jvm] args = [\"-Xmx...\"]";
+            String msg = tool + " ran out of the pinned heap " + pin + "; raise -Xmx in [jvm] args";
             return new CompileResult(
                     false, List.of(new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, msg)));
         }

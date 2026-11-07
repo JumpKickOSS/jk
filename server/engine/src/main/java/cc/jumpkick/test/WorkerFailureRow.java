@@ -33,11 +33,10 @@ final class WorkerFailureRow {
             String lastClass,
             String output,
             @Nullable RuntimeException handler) {
-        String dispatched = lastClass.isBlank() ? "" : " (last class dispatched: " + lastClass + ")";
+        String dispatched = lastClass.isBlank() ? "" : " (last class: " + lastClass + ")";
         if (handler != null) return handlerRow(moduleLabel, "test protocol handler", dispatched, workerId, handler);
         String why = exit == 0
-                ? "test worker exited 0 before it was told DONE" + dispatched
-                        + " — a test, or the code under test, called System.exit or Runtime.halt"
+                ? "test worker exited 0 mid-run" + dispatched + "; something called System.exit or Runtime.halt"
                 : "test worker " + WorkerContainment.failure(exit, "exited " + exit + " mid-run") + dispatched;
         return new TestFailureInfo(moduleLabel, "", lastClass, "(worker " + workerId + ")", "", why, output, workerId);
     }

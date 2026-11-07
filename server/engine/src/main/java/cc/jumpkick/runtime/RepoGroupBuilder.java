@@ -332,11 +332,8 @@ public final class RepoGroupBuilder {
         RunNotices.warnOnce(
                 "repo-groups-unbound:"
                         + effective.stream().map(RepositorySpec::name).toList(),
-                () -> "jk: warning: multiple repositories configured without exclusive `groups` bindings "
-                        + "(dependency-confusion risk). Bind internal namespaces, e.g. "
-                        + "[repositories.internal] groups = [\"com.acme\", \"com.acme.*\"]. "
-                        + "Google Android groups are bound by default when the Google Maven remote is present. "
-                        + "See the guide § Auth and repositories.");
+                () -> "jk: warning: multiple repositories without `groups` bindings risk dependency confusion\n"
+                        + "  bind internal namespaces, e.g. [repositories.internal] groups = [\"com.acme.*\"]");
     }
 
     /**
@@ -370,25 +367,23 @@ public final class RepoGroupBuilder {
      */
     static String urlUserInfoWarning(String repoId, URI url, RepoCredential resolved) {
         String safeUrl = SafeUri.forMessage(url);
-        String head = "jk: warning: repository `" + repoId + "` declares a credential in its URL (" + safeUrl
-                + "), which jk ignores: it authenticates nothing, and the base URL is written into "
-                + "jk-lock.toml's `source` field. ";
+        String head =
+                "jk: warning: repository `" + repoId + "` has a credential in its URL " + safeUrl + "; jk ignores it\n";
         if (resolved != null && !resolved.isAnonymous()) {
-            return head + "A credential resolved for `" + repoId
-                    + "` from another source is being used instead, so the one in the URL is redundant — "
-                    + "remove it.";
+            return head + "  another credential is in use, so this one is redundant; remove it from the URL";
         }
         String prefix = RepoCredentialResolver.envVarPrefix(repoId);
         String host =
                 url.getHost() == null ? "<host>" : url.getHost() + (url.getPort() == -1 ? "" : ":" + url.getPort());
-        return head + "No other credential resolved for `" + repoId
-                + "`, so it will be accessed anonymously and a private repository will answer 401. A credential "
-                + "travels only to the origin its name is bound to, so supply it through one of the bindings: "
-                + "`jk repo login " + repoId + " -U " + safeUrl + "`; a [repositories." + repoId
-                + "] table with this URL and a ${VAR} credential in ~/.jk/config.toml; or " + prefix + "TOKEN (or "
-                + prefix + "USERNAME + " + prefix + "PASSWORD) with " + prefix + "HOST=" + host
-                + " in your shell. A <server> in ~/.m2/settings.xml needs one of those bindings too. "
-                + "See repositories.md § Credentials.";
+        return head + "  no other credential found: it is accessed anonymously, and a private one answers 401\n"
+                + "  set a credential with one of:\n"
+                + "    jk repo login " + repoId + " -U " + safeUrl + "\n"
+                + "    a [repositories." + repoId
+                + "] table with this URL and a ${VAR} credential in ~/.jk/config.toml\n"
+                + "    " + prefix + "TOKEN, or " + prefix + "USERNAME + " + prefix + "PASSWORD, with " + prefix
+                + "HOST="
+                + host + "\n"
+                + "  a <server> in ~/.m2/settings.xml needs one of these too; see repositories.md § Credentials";
     }
 
     /**

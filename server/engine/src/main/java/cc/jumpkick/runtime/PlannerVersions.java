@@ -327,7 +327,7 @@ public final class PlannerVersions {
             ctx.warn(
                     "multi-release",
                     "[multi-release] " + entry.release() + " names " + String.join(", ", entry.src())
-                            + ", which holds no .java sources; the jar has no META-INF/versions/" + entry.release());
+                            + " but finds no .java sources; the jar gets no META-INF/versions/" + entry.release());
             return true;
         }
         Path mainClasses = ctx.require(MAIN_CLASSES);

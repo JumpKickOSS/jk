@@ -32,8 +32,8 @@ final class UnresolvedPins {
                     continue;
                 }
                 throw new JkBuildParseException(where(manifest, scope.getKey(), dep.library()) + ": " + dep.module()
-                        + " is pinned at `" + LITERAL + "`, the version jk import writes when no POM in the chain"
-                        + " supplies one, and no repository has it. Write the version there and relock.");
+                        + " has placeholder version `" + LITERAL + "` from jk import; write the real version and"
+                        + " run jk lock");
             }
         }
     }
