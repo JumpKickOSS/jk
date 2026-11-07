@@ -31,6 +31,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.PortablePath;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -587,6 +588,11 @@ public final class PackagingKeys {
             }
             return ClasspathFingerprint.entry(classesDir);
         }
+        if (PlannerKsp.runsMainRound(project, dir)) {
+            // The KSP round's files come from its own record, which only the walk's projection
+            // reads ({@code ForecastScope.projectOwnOutputs}): without it the tree is unknown.
+            return "missing:" + PortablePath.of(classesDir);
+        }
         Map<String, String> compileOut = new LinkedHashMap<>(recordOutputs(actionCache, compileMainKey));
         for (String stamp : List.of(BuildStamps.KOTLIN, BuildStamps.GROOVY)) {
             compileOut.putAll(recordOutputs(
@@ -625,15 +631,19 @@ public final class PackagingKeys {
      */
     static String classesTokenProjectedAfterResourceCopy(Path dir, boolean compact, BuildLayout layout, JkBuild project)
             throws IOException {
-        List<Path> roots = packageResourceRoots(dir, compact);
+        List<Path> roots = new ArrayList<>(PlannerKsp.liveOutputRoots(project, dir));
+        roots.addAll(packageResourceRoots(dir, compact));
         roots.addAll(FilteredResources.extraMainDirs(dir, project));
         return ClasspathFingerprint.entryProjectedAfterResourceCopy(layout.classesDir(), roots);
     }
 
-    /** Resource roots that {@code copy-resources} merges into {@code classes/} (KSP output, main, plugin). */
+    /**
+     * Resource roots that {@code copy-resources} merges into {@code classes/} (main, plugin). The
+     * KSP round's output roots it mirrors first are not among them: a tree on disk reads them as
+     * {@link PlannerKsp#liveOutputRoots}, a wiped one from the round's record.
+     */
     static List<Path> packageResourceRoots(Path dir, boolean compact) {
-        List<Path> resDirs =
-                new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspOutBase(BuildLayout.moduleTargetDir(dir))));
+        List<Path> resDirs = new ArrayList<>();
         Path resMain = ModuleLayout.mainResourcesDir(dir, compact);
         if (Files.isDirectory(resMain)) resDirs.add(resMain);
         for (var root : ModuleLayoutPlugins.pluginContributedRoots(dir)) {

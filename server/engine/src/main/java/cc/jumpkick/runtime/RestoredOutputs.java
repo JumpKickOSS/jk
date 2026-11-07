@@ -95,12 +95,18 @@ final class RestoredOutputs {
 
     /**
      * Publish {@code tree} as the merge of the outputs the records {@code keys} name — each
-     * compiler's outputs copied over the one before, the resource roots and {@code copiedFiles}
-     * over them all — when every key has a record. A null key or a record that is gone publishes
-     * nothing: the tree cannot be described, so its consumers key on what is there.
+     * compiler's outputs copied over the one before, then {@code mirrored} (tree-relative path to
+     * content sha: what a KSP round's record mirrors in ahead of the resource roots), the resource
+     * roots and {@code copiedFiles} over them all — when every key has a record. A null key or a
+     * record that is gone publishes nothing: the tree cannot be described, so its consumers key on
+     * what is there.
      */
     void projectFromRecords(
-            Path tree, List<@Nullable String> keys, List<Path> resourceRoots, Map<String, String> copiedFiles)
+            Path tree,
+            List<@Nullable String> keys,
+            Map<String, String> mirrored,
+            List<Path> resourceRoots,
+            Map<String, String> copiedFiles)
             throws IOException {
         Map<String, String> merged = new LinkedHashMap<>();
         for (String key : keys) {
@@ -109,6 +115,7 @@ final class RestoredOutputs {
             if (record.isEmpty()) return;
             merged.putAll(record.get().outputs());
         }
+        merged.putAll(mirrored);
         if (merged.isEmpty() && resourceRoots.isEmpty() && copiedFiles.isEmpty()) return;
         projectTree(tree, merged, resourceRoots, copiedFiles);
     }

@@ -278,6 +278,8 @@ public final class PlannerSetup {
                     ctx.label("resolve classpath");
                     try {
                         publishClasspaths(ctx, in, cas, cx.tools());
+                        // Ahead of the KSP round and every compile that reads its output.
+                        PlannerKsp.dropRetiredRounds(cx, ctx.require(LAYOUT), ctx.require(PROJECT));
                     } catch (RuntimeException e) {
                         ctx.error("classpath", Errors.text(e));
                         throw e;

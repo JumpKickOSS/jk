@@ -86,7 +86,7 @@ final class ForecastLangArms {
     KotlinArm kotlinArm(ForecastScope.Prepared prepared) throws Exception {
         var langs = CompileSupport.resolveLanguages(project.project(), dir);
         List<Path> javaRoots = PlannerKsp.kotlinJavaSourceRoots(
-                langs.java(), prepared.compact(), dir, prepared.layout(), prepared.pkgDecls());
+                langs.java(), prepared.compact(), dir, prepared.layout(), prepared.pkgDecls(), prepared.ksp());
         PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(
                 project, prepared.lock(), dir, prepared.release(), prepared.javaHome(), javaRoots);
         WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
@@ -190,7 +190,8 @@ final class ForecastLangArms {
             List<Path> cp = prepared.withProvided(
                     PlannerSupport.mainCompileClasspath(dir, project, prepared.lock(), resolver, sib, false));
             List<Path> javaRoots = mixed
-                    ? PlannerKsp.kotlinJavaSourceRoots(true, prepared.compact(), dir, layout, prepared.pkgDecls())
+                    ? PlannerKsp.kotlinJavaSourceRoots(
+                            true, prepared.compact(), dir, layout, prepared.pkgDecls(), prepared.ksp())
                     : null;
             req = PlannerLang.groovyRequest(
                     project,

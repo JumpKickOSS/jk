@@ -121,13 +121,15 @@ public final class PlannerCompile {
 
     /**
      * {@link #javaAndScalaSources} plus the generated roots compile-main folds in at execute time:
-     * plugin {@code contributesSources}, KSP output, and build-logic output. The build re-publishes
-     * this union as {@code JAVA_SOURCES} so write-stamp records the set the compile checked.
+     * plugin {@code contributesSources}, KSP output when {@code ksp} (the module runs a main round),
+     * and build-logic output. The build re-publishes this union as {@code JAVA_SOURCES} so
+     * write-stamp records the set the compile checked.
      */
     public static List<Path> mainJavaSources(
-            List<Path> javaAndScala, BuildLayout layout, @Nullable PluginDeclarations decls) throws IOException {
+            List<Path> javaAndScala, BuildLayout layout, @Nullable PluginDeclarations decls, boolean ksp)
+            throws IOException {
         List<Path> generated = pluginContributedSources(layout, decls, ".java");
-        List<Path> kspGenerated = kspGeneratedSources(layout, ".java");
+        List<Path> kspGenerated = ksp ? kspGeneratedSources(layout, ".java") : List.of();
         List<Path> logicGenerated = BuildLogicSupport.generatedSources(layout, ".java");
         if (generated.isEmpty() && kspGenerated.isEmpty() && logicGenerated.isEmpty()) return javaAndScala;
         List<Path> all = new ArrayList<>(javaAndScala);
@@ -155,15 +157,16 @@ public final class PlannerCompile {
 
     /**
      * {@link #mainKotlinSources} plus the generated Kotlin compile-kotlin folds in at execute time:
-     * plugin {@code contributesSources}, KSP output and build-logic output — the same union the
-     * Java side takes in {@link #mainJavaSources}. The build re-publishes it as {@code
+     * plugin {@code contributesSources}, KSP output when {@code ksp} and build-logic output — the
+     * same union the Java side takes in {@link #mainJavaSources}. The build re-publishes it as {@code
      * KOTLIN_SOURCES} so write-stamp-kotlin records the set the compile checked, and the forecast
      * derives its stamp inputs from the same body.
      */
     public static List<Path> mainKotlinSourcesWithGenerated(
-            List<Path> kotlin, BuildLayout layout, @Nullable PluginDeclarations decls) throws IOException {
+            List<Path> kotlin, BuildLayout layout, @Nullable PluginDeclarations decls, boolean kspRound)
+            throws IOException {
         List<Path> generated = pluginContributedSources(layout, decls, ".kt");
-        List<Path> ksp = kspGeneratedSources(layout, ".kt");
+        List<Path> ksp = kspRound ? kspGeneratedSources(layout, ".kt") : List.of();
         List<Path> logic = BuildLogicSupport.generatedSources(layout, ".kt");
         if (generated.isEmpty() && ksp.isEmpty() && logic.isEmpty()) return kotlin;
         List<Path> all = new ArrayList<>(kotlin);
@@ -411,7 +414,7 @@ public final class PlannerCompile {
         // .scala) that PlannerSetup published — no need to re-walk the tree for .scala here
         // . hasScala below reads it directly.
         List<Path> declared = javaSources(ctx);
-        List<Path> sources = mainJavaSources(declared, ctx.require(LAYOUT), pluginDecls);
+        List<Path> sources = mainJavaSources(declared, ctx.require(LAYOUT), pluginDecls, cx.ksp());
         if (sources != declared) {
             // Re-publish the union so write-stamp records the same input set
             // this compile checked (else the fast freshness path never holds).
@@ -784,7 +787,8 @@ public final class PlannerCompile {
                     // Plugin-contributed generated Kotlin (a KSP round, a codegen step) joins the
                     // source list exactly like the Java side — the freshness stamp and the plugin
                     // see generated files as ordinary sources.
-                    List<Path> ktSources = mainKotlinSourcesWithGenerated(declaredKt, ctx.require(LAYOUT), pluginDecls);
+                    List<Path> ktSources =
+                            mainKotlinSourcesWithGenerated(declaredKt, ctx.require(LAYOUT), pluginDecls, cx.ksp());
                     if (ktSources != declaredKt) {
                         // Re-publish so write-stamp-kotlin records what this compile checked.
                         ctx.put(KOTLIN_SOURCES, ktSources);
@@ -817,8 +821,8 @@ public final class PlannerCompile {
                     boolean rerun = in.session().config().rebuildOr(false);
                     // Mixed module: Kotlin reads the Java declarations from source
                     // (analysis only — it emits no Java bytecode; javac does next).
-                    List<Path> javaRoots =
-                            kotlinJavaSourceRoots(mixedWithJava, compact, in.dir(), ctx.require(LAYOUT), pluginDecls);
+                    List<Path> javaRoots = kotlinJavaSourceRoots(
+                            mixedWithJava, compact, in.dir(), ctx.require(LAYOUT), pluginDecls, cx.ksp());
                     // The kotlinc config is resolved ahead of the stamp check, without fetching:
                     // its digest is a stamp input, so a kotlinc arg, a [[kotlin-plugins]] entry or
                     // a JDK switch is stale here even though no source moved.
@@ -986,7 +990,8 @@ public final class PlannerCompile {
                             classpath,
                             gvOut,
                             mixedGroovy
-                                    ? kotlinJavaSourceRoots(true, compact, in.dir(), ctx.require(LAYOUT), pluginDecls)
+                                    ? kotlinJavaSourceRoots(
+                                            true, compact, in.dir(), ctx.require(LAYOUT), pluginDecls, cx.ksp())
                                     : null,
                             mixedGroovy ? ctx.require(LAYOUT).groovyStubsDir() : null);
                     // The groovyc args and toolchain are stamp inputs too (see compile-kotlin), and
