@@ -92,7 +92,7 @@ class GraphModuleEdgesTest {
                 .isEmpty();
     }
 
-    /** Every row is a unit of the build graph and its prereqs, and nothing else. */
+    /** Every row is a unit of the build graph and the members it reads, test edges included, and nothing else. */
     @Test
     void theRowsAreTheBuildGraphsEdges(@TempDir Path root) throws IOException {
         workspace(root, "core", "app", "lib", "other");
@@ -113,7 +113,7 @@ class GraphModuleEdgesTest {
         List<String> expected = graph.topoOrder().stream()
                 .map(unit -> {
                     StringBuilder row = new StringBuilder(base.relativize(unit.dir()) + "/");
-                    graph.edges().getOrDefault(unit.dir(), Set.of()).stream()
+                    graph.reads().getOrDefault(unit.dir(), Set.of()).stream()
                             .map(dir -> base.relativize(dir) + "/")
                             .sorted()
                             .forEach(p -> row.append('\t').append(p));
