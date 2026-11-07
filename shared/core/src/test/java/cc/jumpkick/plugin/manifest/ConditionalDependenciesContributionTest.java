@@ -47,8 +47,18 @@ class ConditionalDependenciesContributionTest {
                         dependencies = "conditional"
                         """, "hello.toml"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("conditional-dependencies")
-                .hasMessageContaining("condition");
+                .hasMessage("hello.toml.contribute.resolution.conditional-dependencies.condition is required");
+    }
+
+    @Test
+    void a_missing_plugin_key_names_the_plugin_table() {
+        assertThatThrownBy(() -> PluginDescriptors.parse("""
+                        [plugin]
+                        id = "hello"
+                        version = "0.1.0"
+                        """, "hello.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessage("hello.toml.plugin.table is required");
     }
 
     /** The built-in [quarkus] plugin names Quarkus's extension descriptor; a module without its table names none. */
