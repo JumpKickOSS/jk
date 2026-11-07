@@ -27,10 +27,6 @@ version = "…"
 quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }
 quarkus-arc = { group = "io.quarkus", name = "quarkus-arc" }
 quarkus-kotlin = { group = "io.quarkus", name = "quarkus-kotlin" }
-# quarkus-rest and quarkus-kotlin each bring a Kotlin extension as a Quarkus conditional
-# dependency, which only Quarkus's own resolver follows: declared here so the lock ships them.
-quarkus-rest-kotlin = { group = "io.quarkus", name = "quarkus-rest-kotlin" }
-quarkus-vertx-kotlin = { group = "io.quarkus", name = "quarkus-vertx-kotlin" }
 
 [test-dependencies]
 quarkus-junit5 = { group = "io.quarkus", name = "quarkus-junit5" }
@@ -63,10 +59,6 @@ version = "…"
 quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }
 quarkus-arc = { group = "io.quarkus", name = "quarkus-arc" }
 quarkus-kotlin = { group = "io.quarkus", name = "quarkus-kotlin" }
-# quarkus-rest and quarkus-kotlin each bring a Kotlin extension as a Quarkus conditional
-# dependency, which only Quarkus's own resolver follows: declared here so the lock ships them.
-quarkus-rest-kotlin = { group = "io.quarkus", name = "quarkus-rest-kotlin" }
-quarkus-vertx-kotlin = { group = "io.quarkus", name = "quarkus-vertx-kotlin" }
 
 [test-dependencies]
 quarkus-junit5 = { group = "io.quarkus", name = "quarkus-junit5" }

@@ -319,6 +319,8 @@ public final class PluginDescriptors {
         String jvmEnvironment = parseJvmEnvironment(contribute, displayPath);
         PluginDescriptor.JvmModules jvmModules = parseJvmModules(contribute, schemaKeys, displayPath);
         List<PluginDescriptor.LockClosure> lockClosures = parseLockClosures(contribute, displayPath);
+        PluginDescriptor.ConditionalDependencies conditionalDependencies =
+                parseConditionalDependencies(contribute, displayPath);
         return new PluginDescriptor.Contributions(
                 platformDeps,
                 compilerArgs,
@@ -331,7 +333,25 @@ public final class PluginDescriptors {
                 sourceRoots,
                 jvmEnvironment,
                 jvmModules,
-                lockClosures);
+                lockClosures,
+                conditionalDependencies);
+    }
+
+    /**
+     * {@code [contribute.resolution.conditional-dependencies]}: the descriptor's path inside a jar
+     * and the two keys it is read by, every one required.
+     */
+    private static PluginDescriptor.@Nullable ConditionalDependencies parseConditionalDependencies(
+            TomlTable contribute, String displayPath) {
+        TomlTable resolution = contribute.getTable("resolution");
+        if (resolution == null) return null;
+        TomlTable t = resolution.getTable("conditional-dependencies");
+        if (t == null) return null;
+        String where = displayPath + ".contribute.resolution.conditional-dependencies";
+        return new PluginDescriptor.ConditionalDependencies(
+                requireString(t, "descriptor", where),
+                requireString(t, "dependencies", where),
+                requireString(t, "condition", where));
     }
 
     /**

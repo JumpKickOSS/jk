@@ -166,11 +166,13 @@ public record PluginDescriptor(
             /** {@code [contribute.jvm-modules]}: the module path the test JVM and {@code jk run} need, or null. */
             @Nullable JvmModules jvmModules,
             /** {@code [[contribute.lock-closure]]}: the closures the plugin resolves for {@code jk lock} to pin. */
-            List<LockClosure> lockClosures) {
+            List<LockClosure> lockClosures,
+            /** {@code [contribute.resolution.conditional-dependencies]}: what {@code jk lock} follows, or null. */
+            @Nullable ConditionalDependencies conditionalDependencies) {
 
         public static final Contributions NONE = new Contributions(
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null,
-                null, List.of());
+                null, List.of(), null);
 
         public Contributions {
             platformDependencies = platformDependencies == null ? List.of() : List.copyOf(platformDependencies);
@@ -195,7 +197,24 @@ public record PluginDescriptor(
                     && providedClasspath.isEmpty()
                     && sourceRoots.isEmpty()
                     && jvmModules == null
-                    && lockClosures.isEmpty();
+                    && lockClosures.isEmpty()
+                    && conditionalDependencies == null;
+        }
+    }
+
+    /**
+     * {@code [contribute.resolution.conditional-dependencies]}: dependencies an artifact declares in
+     * the properties file {@code descriptor} inside its jar rather than in its POM. Its {@code
+     * dependencies} key lists them ({@code group:artifact[:classifier[:type]]:version}); each joins
+     * the lock's graph when every artifact the {@code condition} key of its own jar's descriptor
+     * names ({@code group:artifact[:classifier[:type]]}) is in the closure. Quarkus extensions
+     * declare theirs this way.
+     */
+    public record ConditionalDependencies(String descriptor, String dependencies, String condition) {
+        public ConditionalDependencies {
+            Objects.requireNonNull(descriptor, "descriptor");
+            Objects.requireNonNull(dependencies, "dependencies");
+            Objects.requireNonNull(condition, "condition");
         }
     }
 

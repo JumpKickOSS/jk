@@ -688,7 +688,15 @@ public record Lockfile(
              * declares none, {@code null} when not recorded (a row with no POM, or a lock written
              * before licences were recorded).
              */
-            @Nullable List<String> licenses) {
+            @Nullable List<String> licenses,
+            /**
+             * Why a row no POM edge asks for is in the lock: one line per conditional dependency that
+             * brought it in, {@code group:artifact} of the artifact declaring it, then {@code when}
+             * and the artifacts whose presence the dependency's own descriptor requires ({@code
+             * io.quarkus:quarkus-rest when io.quarkus:quarkus-kotlin}). The declaring row lists it
+             * under {@code deps}.
+             */
+            List<String> addedBy) {
 
         public Artifact {
             Objects.requireNonNull(name, "name");
@@ -706,9 +714,10 @@ public record Lockfile(
                     ? List.of()
                     : members.stream().sorted().distinct().toList();
             licenses = licenses == null ? null : List.copyOf(licenses);
+            addedBy = addedBy == null || addedBy.isEmpty() ? List.of() : List.copyOf(addedBy);
         }
 
-        /** As the canonical constructor, with no licences recorded. */
+        /** As the canonical constructor, with no licences recorded and brought in by no conditional dependency. */
         public Artifact(
                 String name,
                 String version,
@@ -735,7 +744,8 @@ public record Lockfile(
                     sourcesChecksum,
                     excludedBy,
                     members,
-                    null);
+                    null,
+                    List.of());
         }
 
         /** This row with the fields a {@code with…} method changes; name, version, source, file, deps and exclusions kept. */
@@ -745,7 +755,8 @@ public record Lockfile(
                 @Nullable GitInfo git,
                 @Nullable String sourcesChecksum,
                 List<String> members,
-                @Nullable List<String> licenses) {
+                @Nullable List<String> licenses,
+                List<String> addedBy) {
             return new Artifact(
                     name,
                     version,
@@ -759,12 +770,13 @@ public record Lockfile(
                     sourcesChecksum,
                     excludedBy,
                     members,
-                    licenses);
+                    licenses,
+                    addedBy);
         }
 
         /** This row with the licences its POM declares; every other field kept. */
         public Artifact withLicenses(@Nullable List<String> licenses) {
-            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses, addedBy);
         }
 
         /** The workspace's own row: no member partition. */
@@ -824,27 +836,32 @@ public record Lockfile(
 
         /** This row with {@code git} as its provenance; every other field kept. */
         public Artifact withGit(GitInfo git) {
-            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses, addedBy);
         }
 
         /** This row with the {@code -sources.jar} digest; every other field kept. */
         public Artifact withSourcesChecksum(@Nullable String sourcesChecksum) {
-            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses, addedBy);
         }
 
         /** This row with {@code pinnedBy} as what decided its version; every other field kept. */
         public Artifact withPinnedBy(@Nullable String pinnedBy) {
-            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses, addedBy);
         }
 
         /** This row as the partition the listed members read; every other field kept. */
         public Artifact withMembers(List<String> members) {
-            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses, addedBy);
+        }
+
+        /** This row with {@code addedBy} as the conditional dependencies that brought it in; every other field kept. */
+        public Artifact withAddedBy(List<String> addedBy) {
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses, addedBy);
         }
 
         /** This row with {@code scopes}; every other field kept. */
         public Artifact withScopes(List<Scope> scopes) {
-            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses);
+            return copy(scopes, pinnedBy, git, sourcesChecksum, members, licenses, addedBy);
         }
 
         /** True when this row is one member partition of its coordinate rather than the workspace's row. */

@@ -75,6 +75,17 @@ class TemplateCatalogE2eTest {
      */
     private static final Map<String, String> KNOWN_DEFECTS = Map.of();
 
+    /**
+     * Rows a template's lock holds though its manifest declares none of them, by id, each with the
+     * {@code added-by} line that says why: conditional dependencies jk follows the way the
+     * framework's own resolver does. {@code jk why} on the row must name the same line.
+     */
+    private static final Map<String, Map<String, String>> CONDITIONAL_ROWS = Map.of(
+            "kotlin/quarkus/hello",
+            Map.of(
+                    "io.quarkus:quarkus-rest-kotlin", "io.quarkus:quarkus-rest when io.quarkus:quarkus-kotlin",
+                    "io.quarkus:quarkus-vertx-kotlin", "io.quarkus:quarkus-kotlin when io.quarkus:quarkus-vertx"));
+
     @TempDir
     Path scratch;
 
@@ -244,6 +255,35 @@ class TemplateCatalogE2eTest {
         }
         if (Files.isRegularFile(project.resolve("src/main/resources/jk-plugin.toml"))) {
             assertPluginJar(project, name);
+        }
+        assertConditionalRows(id, name, project, manifest);
+    }
+
+    /** Each of the template's {@link #CONDITIONAL_ROWS} is locked with its reason, and {@code jk why} says it. */
+    private static void assertConditionalRows(String id, String name, Path project, String manifest)
+            throws IOException {
+        Map<String, String> rows = CONDITIONAL_ROWS.getOrDefault(id, Map.of());
+        if (rows.isEmpty()) return;
+        String lock = Files.readString(project.resolve("jk-lock.toml"));
+        String body = lock.substring(lock.indexOf("[[artifact]]"));
+        for (var row : rows.entrySet()) {
+            String artifact = row.getKey().substring(row.getKey().indexOf(':') + 1);
+            assertThat(manifest).as("%s declares %s", name, artifact).doesNotContain("\"" + artifact + "\"");
+            int at = body.indexOf("name     = \"" + row.getKey() + ":jar:\"");
+            assertThat(at).as("%s locks %s", name, row.getKey()).isNotNegative();
+            int next = body.indexOf("[[artifact]]", at);
+            assertThat(body.substring(at, next < 0 ? body.length() : next))
+                    .as("%s's row for %s says why", name, row.getKey())
+                    .contains("added-by = [\n  \"" + row.getValue() + "\",\n]");
+            String[] all = {"--no-ansi", "--no-progress", "-C", project.toString(), "why", row.getKey()};
+            int[] exit = {0};
+            Capture.Streams console = Capture.both(() -> exit[0] = Jk.execute(all));
+            assertThat(exit[0])
+                    .as("%s: jk why %s%n%s", name, row.getKey(), console.err())
+                    .isZero();
+            assertThat(console.out())
+                    .as("%s: jk why %s", name, row.getKey())
+                    .contains("conditional dependency of " + row.getValue());
         }
     }
 

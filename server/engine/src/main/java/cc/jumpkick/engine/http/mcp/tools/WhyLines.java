@@ -45,9 +45,16 @@ final class WhyLines {
         return finish(String.join("\n", lines));
     }
 
-    /** What selected the version: a pin when one exists, otherwise the selector on the path. */
+    /**
+     * What selected the row: the conditional dependency that brought it in when one did, a pin when
+     * one exists, otherwise the selector on the path.
+     */
     private static String rule(WhyReport report, int match) {
+        List<String> added = report.addedByOf(match);
         String pin = report.pinnedByOf(match);
+        if (!added.isEmpty()) {
+            return "conditional dependency of " + String.join("; ", added) + (pin == null ? "" : ", pinned by " + pin);
+        }
         if (pin != null) return "pinned by " + pin;
         String idx = Integer.toString(match);
         for (int p = 0; p < report.paths().size(); p++) {

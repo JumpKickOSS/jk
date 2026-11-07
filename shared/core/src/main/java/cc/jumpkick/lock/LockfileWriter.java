@@ -268,6 +268,15 @@ public final class LockfileWriter {
                 }
                 out.append("]\n");
             }
+            if (!pkg.addedBy().isEmpty()) {
+                List<String> added = new ArrayList<>(pkg.addedBy());
+                added.sort(Comparator.naturalOrder());
+                out.append("added-by = [\n");
+                for (String line : added) {
+                    out.append("  ").append(quote(line)).append(",\n");
+                }
+                out.append("]\n");
+            }
         }
     }
 

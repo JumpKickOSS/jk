@@ -105,6 +105,9 @@ public final class WhyCommand implements CliCommand {
                     + forMembers
                     + pinned
                     + " is pulled in by:");
+            for (String line : report.addedByOf(i)) {
+                CliOutput.out("  conditional dependency of " + line);
+            }
             boolean any = false;
             for (int j = 0; j < report.paths().size(); j++) {
                 if (!report.pathOwners().get(j).equals(Integer.toString(i))) continue;

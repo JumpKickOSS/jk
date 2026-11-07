@@ -673,6 +673,29 @@ path, and `jk why <child>` shows both — every path that brings it and every ed
 A pattern several paths declared lists each origin, comma-separated. A row with nothing pruned has
 no `excluded-by` key. See [Dependencies](dependencies.md#exclusions).
 
+## Rows a conditional dependency adds
+
+Some artifacts declare dependencies in a descriptor inside their jar rather than in their POM, each
+to join only when certain other artifacts are in the graph too: a Quarkus extension's conditional
+dependencies. A plugin names the descriptor (`[quarkus]` does), and `jk lock` reads it in every
+jar of the main and test graphs: a dependency whose condition the graph meets is added and the
+graph solved again, until no more join, since what one brings can meet another's condition. The
+row declaring it lists it under `deps`, so it ships and is on every classpath its declarer is on,
+and the added row says why under `added-by`: the artifact declaring it, then `when` and the
+artifacts its condition named.
+
+```toml
+[[artifact]]
+name = "io.quarkus:quarkus-rest-kotlin:jar:"
+version = "3.40.1.1"
+added-by = [
+  "io.quarkus:quarkus-rest when io.quarkus:quarkus-kotlin",
+]
+```
+
+`jk why io.quarkus:quarkus-rest-kotlin` prints the same line beside the path through
+`quarkus-rest`.
+
 ## What a row says about its licence
 
 A row from a Maven repository records the licences its POM declares — the POM's own `<licenses>`,

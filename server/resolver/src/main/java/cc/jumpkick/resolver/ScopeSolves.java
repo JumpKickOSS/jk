@@ -7,6 +7,7 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -39,14 +40,28 @@ final class ScopeSolves {
     static final List<LockRoots.GraphGroup> ORDER =
             List.of(LockRoots.GraphGroup.MAIN, LockRoots.GraphGroup.TEST, LockRoots.GraphGroup.PROCESSOR);
 
-    /** The three resolutions, one per graph. */
-    record Solved(Resolution main, Resolution test, Resolution processor) {}
+    /**
+     * The three resolutions, one per graph, and the {@code added-by} lines of every module a
+     * {@linkplain ConditionalDependencies conditional dependency} brought in, by package key.
+     */
+    record Solved(Resolution main, Resolution test, Resolution processor, Map<String, List<String>> addedBy) {
+        Solved {
+            addedBy = Map.copyOf(addedBy);
+        }
+    }
 
     private final @Nullable Resolver resolverOverride;
     private final @Nullable MavenPackageSource sharedSource;
     private final EffectivePomBuilder pomBuilder;
     private final KmpRedirects kmp;
     private final Predicate<String> floorPin;
+    private final @Nullable ConditionalDependencies conditionals;
+
+    /** The {@code group:artifact}s a conditional dependency rooted: their pins are floors. */
+    private final Set<String> conditionalRoots = new LinkedHashSet<>();
+
+    /** Package key → the {@code added-by} lines of the conditional dependencies that brought it in. */
+    private final Map<String, List<String>> addedBy = new LinkedHashMap<>();
 
     /** One sentence per test-scope exact pin that gave way to main's version. */
     private final List<String> overrides = new ArrayList<>();
@@ -56,18 +71,22 @@ final class ScopeSolves {
      * @param sharedSource the package source shared by all three graphs; {@code null} only with an override
      * @param floorPin which roots' exact pins, by {@code group:artifact}, read as a floor the graph
      *     may raise (steered to the pin where nothing asks higher) rather than as the version
+     * @param conditionals the conditional dependencies the main and test graphs follow; {@code null}
+     *     when no active plugin declares any
      */
     ScopeSolves(
             @Nullable Resolver resolverOverride,
             @Nullable MavenPackageSource sharedSource,
             EffectivePomBuilder pomBuilder,
             KmpRedirects kmp,
-            Predicate<String> floorPin) {
+            Predicate<String> floorPin,
+            @Nullable ConditionalDependencies conditionals) {
         this.resolverOverride = resolverOverride;
         this.sharedSource = sharedSource;
         this.pomBuilder = pomBuilder;
         this.kmp = kmp;
         this.floorPin = floorPin;
+        this.conditionals = conditionals;
     }
 
     /** Solve every graph in {@link #ORDER}, seeding each with {@code lockedVersionPrefs} plus every earlier decision. */
@@ -83,6 +102,11 @@ final class ScopeSolves {
                     ? mainGoverned(roots.of(graph), Objects.requireNonNull(solved.get(LockRoots.GraphGroup.MAIN)))
                     : roots.of(graph);
             Resolution resolution = resolve(graphRoots, inherited, new HashMap<>(prefs), progress);
+            if (conditionals != null && graph != LockRoots.GraphGroup.PROCESSOR) {
+                Resolution context = test ? solved.get(LockRoots.GraphGroup.MAIN) : null;
+                resolution = followConditionals(
+                        conditionals, graphRoots, resolution, context, inherited, new HashMap<>(prefs), progress);
+            }
             if (test) noteDeadDuals(resolution, Objects.requireNonNull(solved.get(LockRoots.GraphGroup.MAIN)));
             progress.noteGraph(resolution);
             // Locked pins and earlier graphs win over this graph's decisions: putIfAbsent, in ORDER.
@@ -95,7 +119,71 @@ final class ScopeSolves {
         return new Solved(
                 Objects.requireNonNull(solved.get(LockRoots.GraphGroup.MAIN)),
                 Objects.requireNonNull(solved.get(LockRoots.GraphGroup.TEST)),
-                Objects.requireNonNull(solved.get(LockRoots.GraphGroup.PROCESSOR)));
+                Objects.requireNonNull(solved.get(LockRoots.GraphGroup.PROCESSOR)),
+                addedBy);
+    }
+
+    /**
+     * {@code resolution} solved again with every conditional dependency whose condition its closure
+     * (with {@code context}'s, the main graph under the test graph) meets as a root, until a solve
+     * brings in no more; each such dependency is then an edge of the module declaring it, so the
+     * lock's graph reaches it from there, and its {@code added-by} says why. A dependency {@code
+     * context} already holds is on this graph's classpath through it and is not rooted again.
+     */
+    private Resolution followConditionals(
+            ConditionalDependencies conditionals,
+            List<Dependency> roots,
+            Resolution resolution,
+            @Nullable Resolution context,
+            Map<String, String> inheritedPins,
+            Map<String, String> prefs,
+            LockProgress progress)
+            throws IOException, InterruptedException {
+        Collection<Resolution.ResolvedModule> around =
+                context == null ? List.of() : context.modules().values();
+        List<Dependency> grown = new ArrayList<>(roots);
+        Set<String> rooted = new LinkedHashSet<>();
+        while (true) {
+            List<ConditionalDependencies.Active> active =
+                    conditionals.active(resolution.modules().values(), around);
+            boolean added = false;
+            for (ConditionalDependencies.Active a : active) {
+                String key = a.module();
+                if (resolution.modules().containsKey(key)) continue;
+                if (context != null && context.modules().containsKey(key)) continue;
+                if (!rooted.add(key)) continue;
+                Dependency root = conditionals.root(a);
+                conditionalRoots.add(root.module());
+                grown.add(root);
+                added = true;
+            }
+            if (!added) return withConditionalEdges(resolution, active);
+            resolution = resolve(grown, inheritedPins, new HashMap<>(prefs), progress);
+        }
+    }
+
+    /**
+     * {@code resolution} with each active conditional dependency it holds an edge of its declarer,
+     * when the declarer is in it too, and its reason recorded for {@link Solved#addedBy}.
+     */
+    private Resolution withConditionalEdges(Resolution resolution, List<ConditionalDependencies.Active> active) {
+        if (active.isEmpty()) return resolution;
+        Map<String, Resolution.ResolvedModule> modules = new LinkedHashMap<>(resolution.modules());
+        for (ConditionalDependencies.Active a : active) {
+            Resolution.ResolvedModule dependency = modules.get(a.module());
+            if (dependency == null) continue;
+            List<String> reasons = addedBy.computeIfAbsent(a.module(), k -> new ArrayList<>());
+            if (!reasons.contains(a.reason())) reasons.add(a.reason());
+            Resolution.ResolvedModule declarer = modules.get(a.declarer());
+            if (declarer == null || declarer.deps().contains(dependency.coord())) continue;
+            List<String> deps = new ArrayList<>(declarer.deps());
+            deps.add(dependency.coord());
+            modules.put(
+                    a.declarer(),
+                    new Resolution.ResolvedModule(
+                            declarer.module(), declarer.version(), deps, declarer.declared(), declarer.excluded()));
+        }
+        return new Resolution(modules);
     }
 
     /** The pins that gave way to main's version, one sentence each, in root order. */
@@ -185,7 +273,7 @@ final class ScopeSolves {
         sharedSource.setExactRoots(wanted);
         Map<String, String> floors = new LinkedHashMap<>();
         exact.forEach((ga, version) -> {
-            if (floorPin.test(ga)) floors.put(ga, version);
+            if (floorPin.test(ga) || conditionalRoots.contains(ga)) floors.put(ga, version);
         });
         if (!floors.isEmpty()) roots = asFloors(roots, floors.keySet());
         // Main's classpath already fixed these versions; a module this graph pins itself keeps its own.
