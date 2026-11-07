@@ -40,7 +40,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>So the facts live where the outputs are: one record under the module's target dir, written
  * after a build that succeeded, naming the input fingerprint, the compile keys each classes tree
- * was stamped with, and the digest of every file in the classes trees and of the module's jars.
+ * was stamped with, and the digest of every file in the classes trees (a classes transform's
+ * output among them, {@link RunTrees}) and of the module's jars.
  * Preflight calls a module clean only when the record exists, names the current inputs, and every
  * file still there matches it with no file added (a file that is gone is a restore, judged by
  * {@link ModuleOutputs}); the digests come through {@link FileHashMemo}, so an
@@ -50,6 +51,40 @@ import org.jspecify.annotations.Nullable;
 public final class ModuleInputProvenance {
 
     private ModuleInputProvenance() {}
+
+    /**
+     * The trees a module runs from besides the ones it compiles into: a classes transform's output
+     * ({@code transformsClasses}), which tests, {@code jk run}, {@code jk dev} and the jar read in
+     * place of {@code target/classes}. The compile goal rewrites it too, and a step may take a
+     * cheaper path there ({@code In.recompile()}), so a build whose every input matches its memo can
+     * still find it holding a recompile's output rather than its own.
+     */
+    @FunctionalInterface
+    public interface RunTrees {
+        /** No tree beyond the compiled ones. */
+        RunTrees NONE = (build, layout) -> List.of();
+
+        List<Path> of(JkBuild build, BuildLayout layout);
+
+        /** The classes transform each module's active plugins declare, found through {@code cache}. */
+        static RunTrees transforms(Path cache) {
+            return (build, layout) -> {
+                try {
+                    Path out = PluginBuild.transformOutput(build, layout, cache);
+                    return out == null ? List.of() : List.of(out);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return List.of();
+                } catch (IOException | RuntimeException unknown) {
+                    // A record without the tree's digests: the next preflight walks only the
+                    // compiled trees, as before a transform was declared.
+                    Log.debug(
+                            "provenance: classes transform not found", "module", layout.moduleRoot(), "cause", unknown);
+                    return List.of();
+                }
+            };
+        }
+    }
 
     /** The stamps a classes tree can carry, one per compile whose outputs it holds. */
     private static final List<String> STAMPS = List.of(BuildStamps.JAVA, BuildStamps.KOTLIN, BuildStamps.GROOVY);
@@ -112,6 +147,16 @@ public final class ModuleInputProvenance {
         return List.of(norm(layout.classesDir()), norm(layout.testClassesDir()), norm(layout.testFixturesClassesDir()));
     }
 
+    /** {@link #trees}, then the trees the module runs from beyond them. */
+    private static List<Path> trees(BuildLayout layout, JkBuild build, RunTrees runTrees) {
+        List<Path> out = new ArrayList<>(trees(layout));
+        for (Path tree : runTrees.of(build, layout)) {
+            Path abs = norm(tree);
+            if (!out.contains(abs)) out.add(abs);
+        }
+        return out;
+    }
+
     /** The trees {@link #classesFile} covers: the record's, and the guard suite's, which the graph reads too. */
     private static List<Path> graphTrees(BuildLayout layout) {
         List<Path> out = new ArrayList<>(trees(layout));
@@ -132,6 +177,15 @@ public final class ModuleInputProvenance {
      */
     public static boolean outputsFromOtherInputs(
             Path workspaceRoot, Path moduleDir, JkBuild build, @Nullable String fingerprint) {
+        return outputsFromOtherInputs(workspaceRoot, moduleDir, build, fingerprint, RunTrees.NONE);
+    }
+
+    /**
+     * As above, holding the trees {@code runTrees} names to the record as well: a classes
+     * transform's output a recompile rewrote is not the output of these inputs' full build.
+     */
+    public static boolean outputsFromOtherInputs(
+            Path workspaceRoot, Path moduleDir, JkBuild build, @Nullable String fingerprint, RunTrees runTrees) {
         if (fingerprint == null || fingerprint.isBlank()) return false;
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
         Path target = norm(layout.moduleTargetDir());
@@ -139,7 +193,7 @@ public final class ModuleInputProvenance {
         if (record == null || !record.inputs().equals(fingerprint)) return true;
         try {
             Set<String> seen = new LinkedHashSet<>();
-            for (Path tree : trees(layout)) {
+            for (Path tree : trees(layout, build, runTrees)) {
                 if (!tree.startsWith(target)) continue;
                 boolean[] foreign = {false};
                 PathUtil.forEachRegularFile(tree, (file, attrs) -> {
@@ -313,6 +367,12 @@ public final class ModuleInputProvenance {
 
     /** Record each built module's inputs and outputs. Best-effort: never fails a build. */
     public static void record(Path workspaceRoot, BuildGraph.Result graph, Map<Path, String> fingerprints) {
+        record(workspaceRoot, graph, fingerprints, RunTrees.NONE);
+    }
+
+    /** As above, with the digests of the trees {@code runTrees} names among the outputs. */
+    public static void record(
+            Path workspaceRoot, BuildGraph.Result graph, Map<Path, String> fingerprints, RunTrees runTrees) {
         if (graph == null || fingerprints == null || fingerprints.isEmpty()) return;
         // The guard salt is the workspace's, not the module's: one reading of it serves every module.
         Map<Path, String> saltByRoot = new LinkedHashMap<>();
@@ -327,17 +387,11 @@ public final class ModuleInputProvenance {
                 String sources = PreflightMemo.sourceFingerprint(dir, saltByRoot);
                 if (sources != null) sb.append("sources ").append(sources).append('\n');
                 Map<String, String> digests = new TreeMap<>();
-                for (Path tree : trees(layout)) {
+                List<Path> compiled = trees(layout);
+                for (Path tree : trees(layout, unit.manifest(), runTrees)) {
                     if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
-                    for (String stamp : STAMPS) {
-                        String key = FreshnessStamp.stampedKey(tree, stamp).orElse(null);
-                        if (key != null)
-                            sb.append("key ")
-                                    .append(rel(target, tree))
-                                    .append(' ')
-                                    .append(key)
-                                    .append('\n');
-                    }
+                    // A transform's copy carries the compiler's stamps, but no compile wrote it.
+                    if (compiled.contains(tree)) appendStampedKeys(sb, target, tree);
                     PathUtil.forEachRegularFile(tree, (file, attrs) -> {
                         if (BuildStamps.isStampFile(file.getFileName().toString())) return;
                         digests.put(
@@ -361,6 +415,19 @@ public final class ModuleInputProvenance {
                 // for outputs nothing vouched for.
                 Log.debug("provenance: not recorded", "module", dir, "cause", unwritable);
             }
+        }
+    }
+
+    /** A {@code key <tree> <compile key>} line per freshness stamp the tree carries. */
+    private static void appendStampedKeys(StringBuilder sb, Path target, Path tree) {
+        for (String stamp : STAMPS) {
+            String key = FreshnessStamp.stampedKey(tree, stamp).orElse(null);
+            if (key != null)
+                sb.append("key ")
+                        .append(rel(target, tree))
+                        .append(' ')
+                        .append(key)
+                        .append('\n');
         }
     }
 

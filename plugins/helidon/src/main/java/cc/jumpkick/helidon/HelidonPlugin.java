@@ -24,7 +24,8 @@ import java.util.List;
  *       one the processor wrote; its output replaces the module's classes, so tests, {@code jk
  *       run}, {@code jk dev} and the jar load it. Registered unless {@code binding = false} (and
  *       no {@code generate-main}); keyed by the classes, the runtime classpath, the table and
- *       whether the build is a recompile ({@code jk dev}'s rebuild keeps the empty binding).
+ *       whether the build is a recompile ({@code jk dev}'s rebuild after a source change keeps the
+ *       empty binding).
  *   <li>{@value #TEST_BINDING_STEP} ({@code create-test-application}): with {@code test-binding},
  *       {@code TestApplicationBinding} for the test scope, on the test JVM's classpath.
  * </ul>

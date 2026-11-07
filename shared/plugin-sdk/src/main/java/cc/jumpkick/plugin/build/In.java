@@ -70,7 +70,8 @@ public record In(Kind kind, @Nullable String step) {
         REPOSITORIES,
         /**
          * Whether the build is a recompile: the compile goal alone, as {@code jk compile} and the
-         * rebuild {@code jk dev} runs on every change are. A step that declares it reads {@code
+         * rebuild {@code jk dev} runs on every change are, with a compile that wrote classes (an
+         * edit to resources alone is not one). A step that declares it reads {@code
          * exec.recompile()} and may take a cheaper path then, as long as what it writes still runs;
          * its key carries the goal, so a full build never restores a recompile's output. A step
          * that does not declare it is keyed and run the same under either goal.

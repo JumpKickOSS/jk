@@ -12,10 +12,14 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.runtime.workspace.ExecPlans;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.protocol.ExecPlan;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -52,7 +56,8 @@ import org.junit.jupiter.api.io.TempDir;
  * driven without Maven, write the real binding (the app starts without the empty-binding
  * warning), {@code generate-main} writes an {@code ApplicationMain} that serves, the validator's
  * findings fail the build in Helidon's words, {@code test-binding} writes {@code
- * TestApplicationBinding} for the suites, and a recompile keeps the empty binding.
+ * TestApplicationBinding} for the suites, a recompile keeps the empty binding, and the next build
+ * restores the real one.
  *
  * <p>Maven Central and a JDK 27 (installed when the host has none); the CAS persists under the
  * test caches so repeat runs are warm.
@@ -141,6 +146,48 @@ class HelidonQuickstartE2eTest {
         BuildPlanResult recompiled = plan(project, cache, true).run();
         assertThat(recompiled.errors()).isEmpty();
         assertThat(binding(project, "classes", "ApplicationBinding")).contains(EMPTY_BINDING);
+    }
+
+    /**
+     * The compile goal {@code jk dev} runs on every change rewrites the step's output, which the
+     * dev loop, {@code jk run} and the jar read. An edit to resources alone compiles nothing, so it
+     * keeps the real binding; a source edit leaves the empty one. A build whose inputs all match
+     * its memo still finds that empty binding is not its own output and restores the real one, or
+     * the next {@code jk dev} or {@code jk run} starts on it with Helidon's warning.
+     */
+    @Test
+    void the_compile_goal_keeps_the_real_binding_on_a_resource_edit_and_the_next_build_restores_it(@TempDir Path tmp)
+            throws Exception {
+        Path project = fixture(tmp, "quickstart-inject");
+        Path cache = TestCaches.dir("helidon-quickstart-cache");
+        lock(project, cache);
+        assertThat(workspaceBuild(project, cache).success()).isTrue();
+        assertThat(binding(project, "classes", "ApplicationBinding")).doesNotContain(EMPTY_BINDING);
+
+        Path yaml = project.resolve("src/main/resources/application.yaml");
+        String config = Files.readString(yaml);
+        Files.writeString(yaml, config + "\n# edited\n");
+        assertThat(plan(project, cache, true).run().errors()).isEmpty();
+        assertThat(binding(project, "classes", "ApplicationBinding"))
+                .as("a resource edit compiles nothing: the binding stays the real one")
+                .doesNotContain(EMPTY_BINDING);
+        Files.writeString(yaml, config);
+        assertThat(plan(project, cache, true).run().errors()).isEmpty();
+
+        Path greet = project.resolve("src/main/java/io/helidon/examples/quickstart/inject/GreetService.java");
+        String source = Files.readString(greet);
+        Files.writeString(greet, source + "\n// edited\n");
+        assertThat(plan(project, cache, true).run().errors()).isEmpty();
+        Files.writeString(greet, source);
+        assertThat(plan(project, cache, true).run().errors()).isEmpty();
+        assertThat(binding(project, "classes", "ApplicationBinding"))
+                .as("the recompile of a source edit (and of its revert) leaves the empty binding")
+                .contains(EMPTY_BINDING);
+
+        assertThat(workspaceBuild(project, cache).success()).isTrue();
+        assertThat(binding(project, "classes", "ApplicationBinding"))
+                .as("inputs as the first build had them: the build restores its own binding")
+                .doesNotContain(EMPTY_BINDING);
     }
 
     @Test
@@ -286,6 +333,16 @@ class HelidonQuickstartE2eTest {
                 compileOnly,
                 Set.of(),
                 SessionContext.current()));
+    }
+
+    /**
+     * {@code jk build -S} as the engine runs it: the workspace build with its preflight memo, which
+     * leaves a module whose inputs match alone.
+     */
+    private static WorkspaceResult workspaceBuild(Path project, Path cache) {
+        WorkspaceRequest request =
+                new WorkspaceRequest(project, cache, null, 1, null, true, false, 1, null, false, true);
+        return BuildService.buildWorkspace(request, WorkspaceBuildListener.NOOP);
     }
 
     /** What the application answered on {@code path}, and what it logged up to then. */

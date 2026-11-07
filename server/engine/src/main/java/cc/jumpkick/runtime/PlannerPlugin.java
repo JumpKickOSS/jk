@@ -606,7 +606,7 @@ public final class PlannerPlugin {
                             in.dir(),
                             siblingFiles,
                             repositories,
-                            in.compileOnly());
+                            in.compileOnly() && recompiled(ctx));
                     List<String> tokens = new ArrayList<>(declaredInputTokens(step.inputs(), sources));
                     tokens.addAll(stepTools.tokens());
                     tokens.add("facts:" + facts.token());
@@ -690,6 +690,21 @@ public final class PlannerPlugin {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * Whether this build's compiles wrote classes: false when every compile that ran found its
+     * classes up to date (or had no sources), as on the compile goal {@code jk dev} runs for an edit
+     * to resources alone. A step's {@code recompile} input is told only then: its cheaper path is
+     * for classes just recompiled, and classes it already transformed in full keep that output.
+     * With no compile outcome to read the build counts as one that wrote classes.
+     */
+    static boolean recompiled(TaskContext ctx) {
+        List<String> outcomes = new ArrayList<>();
+        ctx.get(BUILD_OUTCOME).ifPresent(outcomes::add);
+        ctx.get(KOTLIN_OUTCOME).ifPresent(outcomes::add);
+        ctx.get(GROOVY_OUTCOME).ifPresent(outcomes::add);
+        return outcomes.isEmpty() || !outcomes.stream().allMatch(PlannerPackage::settledOutcome);
     }
 
     /** The key token of an input no file holds (a live schema), measured before the lookup; empty without a probe. */

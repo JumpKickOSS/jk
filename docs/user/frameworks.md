@@ -291,8 +291,12 @@ the runtime classpath and the table.
 - **`test-binding`.** Also runs `create-test-application` after the test compile:
   `TestApplicationBinding` for the test scope, on the test JVM's classpath after the test classes.
 - **`jk dev`.** Generating the binding costs about a second (1.3 s for the inject quickstart, most of
-  it the classpath scan), so the rebuild `jk dev` runs on every change keeps the empty binding,
-  which works through discovery; the build `jk dev` starts from has the real one. With
+  it the classpath scan), so the rebuild `jk dev` runs after a source change keeps the empty
+  binding, which works through discovery, and the restarted app logs Helidon's empty-binding
+  warning. An edit to resources alone recompiles nothing, so its pass keeps (or, after a source
+  change, regenerates) the real binding. The build `jk dev` starts from, like the one `jk build`
+  and `jk run` run, has the real one, even straight after a session whose last pass left the empty
+  binding behind: that build finds the step's output is not its own and restores it. With
   `generate-main` the step always runs, since `ApplicationMain` has no fallback.
 
 The step replaces the module's classes, and a build allows one such step: a module that also turns

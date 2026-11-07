@@ -231,7 +231,7 @@ public final class BuildForecasting {
                 // restoreNeeded alone → restore path (no full rebuild forecast).
                 // Non-empty dirty still needs a forecast for ETA step lists; caller walks once.
                 Set<Path> memoDirty = new HashSet<>(memo.get().dirty());
-                withStaleOutputs(graph, entryDir, memo.get().fingerprints(), memoDirty);
+                withStaleOutputs(graph, entryDir, cache, memo.get().fingerprints(), memoDirty);
                 return new Preflight(
                         memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of());
             }
@@ -265,7 +265,7 @@ public final class BuildForecasting {
             // company whenever content returns to a state the cache has seen: every step is
             // cached, nothing is missing so nothing restores, and the artifacts are the previous
             // run's. See ModuleInputProvenance.
-            withStaleOutputs(graph, entryDir, fps, dirty);
+            withStaleOutputs(graph, entryDir, cache, fps, dirty);
             // A module the preflight could not fingerprint is scheduled on that fact alone: no
             // memo can vouch for it, and the walk above may have priced it against inputs it
             // could not see either. Explain carries the reason; the build log says it once.
@@ -349,14 +349,19 @@ public final class BuildForecasting {
      * going to produce wrong bytes.
      */
     private static void withStaleOutputs(
-            BuildGraph.Result graph, @Nullable Path entryDir, Map<Path, String> fingerprints, Set<Path> dirty) {
+            BuildGraph.Result graph,
+            @Nullable Path entryDir,
+            Path cache,
+            Map<Path, String> fingerprints,
+            Set<Path> dirty) {
         if (graph == null || entryDir == null || fingerprints == null || fingerprints.isEmpty()) return;
         Path root = entryDir.toAbsolutePath().normalize();
+        ModuleInputProvenance.RunTrees runTrees = ModuleInputProvenance.RunTrees.transforms(cache);
         for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
             Path dir = unit.dir().toAbsolutePath().normalize();
             if (dirty.contains(dir)) continue;
             String fp = fingerprints.get(dir);
-            if (ModuleInputProvenance.outputsFromOtherInputs(root, dir, unit.manifest(), fp)) {
+            if (ModuleInputProvenance.outputsFromOtherInputs(root, dir, unit.manifest(), fp, runTrees)) {
                 dirty.add(dir);
             }
         }

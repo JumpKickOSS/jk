@@ -56,7 +56,8 @@ public interface TaskExec {
 
     /**
      * Whether this build is a recompile — {@link In#recompile()}: the compile goal alone, as {@code
-     * jk compile} and the rebuild {@code jk dev} runs on every change are. A step may take a cheaper
+     * jk compile} and the rebuild {@code jk dev} runs on every change are, with a compile that wrote
+     * classes (an edit to resources alone is not one). A step may take a cheaper
      * path then, as long as what it writes still runs (the Helidon binding step leaves the empty
      * binding, which falls back to discovery). False unless the step declared the input.
      */

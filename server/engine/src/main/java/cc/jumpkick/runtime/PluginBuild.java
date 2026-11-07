@@ -102,12 +102,22 @@ public final class PluginBuild {
      */
     public static Path runClassesDir(JkBuild project, BuildLayout layout, Path cache)
             throws IOException, InterruptedException {
+        Path out = transformOutput(project, layout, cache);
+        return out != null && Files.isDirectory(out) ? out : layout.classesDir();
+    }
+
+    /**
+     * Where the module's classes transform ({@code transformsClasses}) writes the classes it
+     * replaces the compiler's with, whether or not a build has written it yet; null when no active
+     * plugin declares one.
+     */
+    public static @Nullable Path transformOutput(JkBuild project, BuildLayout layout, Path cache)
+            throws IOException, InterruptedException {
         ActivePlugins.Declared declared =
                 ActivePlugins.declared(project, layout.moduleRoot(), cache, layout.moduleTargetDir());
         TaskDecl transform = declared == null ? null : PlannerPlugin.transformStep(declared.decls());
-        if (transform == null) return layout.classesDir();
-        Path out = taskScratch(layout, transform.name()).resolve(Objects.requireNonNull(transform.transformsClasses()));
-        return Files.isDirectory(out) ? out : layout.classesDir();
+        if (transform == null) return null;
+        return taskScratch(layout, transform.name()).resolve(Objects.requireNonNull(transform.transformsClasses()));
     }
 
     /** Every dir the declared steps contribute as classes/resources, in declaration order. */

@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
  * module's classes for tests, {@code jk run}, {@code jk dev} and the jar. With {@code binding}
  * unset it runs Helidon only when a class carries {@code @Service.GenerateBinding} (or {@code
  * generate-main} asks for a main class); otherwise the copy is the classes as compiled. A recompile
- * ({@code jk dev}'s rebuild on change) keeps the empty binding unless {@code generate-main} needs
+ * ({@code jk dev}'s rebuild after a source change) keeps the empty binding unless {@code generate-main} needs
  * the fork.
  */
 final class HelidonBinding {
@@ -58,7 +58,7 @@ final class HelidonBinding {
             exec.label("helidon-binding (no @Service.GenerateBinding)");
             return;
         }
-        // A recompile (jk dev's rebuild on change) keeps the empty binding, which falls back to
+        // A recompile (jk dev's rebuild after a source change) keeps the empty binding, which falls back to
         // classpath discovery: the fork scans the whole runtime classpath and costs about a second
         // on every edit. ApplicationMain has no such fallback, so generate-main always forks.
         if (exec.recompile() && !settings.generateMain()) {
