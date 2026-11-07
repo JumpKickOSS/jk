@@ -100,10 +100,11 @@ public final class EventCatalog {
     public static final String SSE_SESSION = "session";
     public static final String SSE_EPISODE = "episode";
     public static final String SSE_ACTION = "action";
+    public static final String SSE_DECISION = "decision";
 
     /** SSE frames published to dashboard subscribers alone ({@code publishDashboard}): not sent to MCP. */
     public static final Set<String> DASHBOARD_ONLY =
-            Set.of(SSE_STATUS, SSE_CACHE, SSE_SESSION, SSE_EPISODE, SSE_ACTION);
+            Set.of(SSE_STATUS, SSE_CACHE, SSE_SESSION, SSE_EPISODE, SSE_ACTION, SSE_DECISION);
 
     // Console JSONL record names that are not wire types.
     public static final String JSONL_WORKSPACE_START = "workspace-start";
@@ -340,6 +341,11 @@ public final class EventCatalog {
                     Carried.as(
                             SSE_ACTION,
                             "dashboard only: one non-run MCP action, in its compact display form" + " (SessionLog)")),
+            new Row(
+                    SSE_DECISION,
+                    new Omitted("the engine's decision queue; the CLI reads it with jk decide"),
+                    new Omitted("the engine's decision queue; -O jsonl prints one command's run"),
+                    Carried.as(SSE_DECISION, "dashboard only: a decision opened or settled (DecisionQueue)")),
             new Row(
                     EngineProtocol.GUARD_EVENT,
                     new Omitted("written by the CLI from the guard's result"),

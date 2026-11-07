@@ -6,6 +6,7 @@ import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.config.NodePinEdit;
 import cc.jumpkick.engine.http.mcp.McpCall;
+import cc.jumpkick.engine.http.mcp.McpDecisions;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
@@ -62,6 +63,11 @@ public final class NodeTool implements McpTool {
     @Override
     public Map<String, Object> call(McpCall in) {
         String action = in.action("list");
+        if ("uninstall".equals(action) && in.flag("confirm")) {
+            Map<String, Object> stop = McpDecisions.confirm(
+                    in, this, "node-uninstall", "Uninstall Node.js " + in.str("spec") + "?", "Yes, uninstall it");
+            if (stop != null) return stop;
+        }
         Map<String, Object> data;
         try {
             data = switch (action) {

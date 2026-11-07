@@ -3734,6 +3734,21 @@ commit = "811a2907d"
 host-id = "1a8c211a203d"
 
 [[row]]
+dim = "console"
+subject = "console.paint.p50"
+project = "generated"
+tool = "jk"
+kind = "absolute-wall"
+value = 232.0
+unit = "ms"
+band = 0.15
+target = 500
+runs = 15
+date = "2026-11-07"
+commit = "b26208738"
+host-id = "d7ad360c1bc7"
+
+[[row]]
 dim = "dogfood"
 subject = "dogfood.noop"
 project = "jk"

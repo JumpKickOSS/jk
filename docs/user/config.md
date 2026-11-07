@@ -165,6 +165,20 @@ They are not project-overridable.
 applies with `[http] enabled = false` or `[mcp] enabled = false` too. Details: [MCP](mcp.md),
 [Web](web.md).
 
+## Decisions
+
+```toml
+[ui]
+# ask = "notify"           # notify | open | quiet
+```
+
+`ask` (`JK_UI_ASK`) is what jk does when a [decision](mcp.md#decisions) waits for you and the
+agent's host can ask neither by form nor by link: `notify` (default) sends a desktop notification
+carrying the decision's dashboard link (`notify-send` on Linux, `osascript` on macOS; nothing on
+Windows), `open` opens the browser on it (`$BROWSER` when set), and `quiet` leaves the link in the
+agent's result alone. The engine reads it each time it asks, so an edit applies without a restart.
+It is machine-scoped: `~/.jk/config.toml` only.
+
 ## Network
 
 Corporate networks that only reach the internet through a proxy configure it once:

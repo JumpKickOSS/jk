@@ -12,6 +12,8 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Confirm;
+import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.SessionContext;
@@ -28,6 +30,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.net.URI;
@@ -36,13 +39,15 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk update} — move the exact pins {@code jk.toml} declares to the newest stable on the same
  * Maven major ({@code --major} to cross one; names or {@code --dep} to pick handles), then
  * re-resolve and overwrite {@code jk-lock.toml}. Workspace roots cascade over every member; {@code
- * --git [name]} re-resolves only git deps (pinned refs move only here). Engine-hosted.
+ * --git [name]} re-resolves only git deps (pinned refs move only here). A move across a minor or a
+ * major is the user's to accept: asked at a terminal, {@code --yes} elsewhere. Engine-hosted.
  */
 public final class UpdateCommand implements CliCommand {
 
@@ -153,7 +158,41 @@ public final class UpdateCommand implements CliCommand {
                 global.verbose,
                 platform,
                 deps,
-                major);
+                major,
+                global.yes,
+                false);
+    }
+
+    /**
+     * The request to send: accepting when {@code --yes} said so, or when a terminal user accepted
+     * the moves across a minor or a major the preview names (or there are none). Empty when they
+     * declined. Without a terminal the request goes unaccepted, and the engine refuses such moves
+     * naming {@code --yes}.
+     */
+    private Optional<EngineRequests.UpdateRequest> decided(EngineRequests.UpdateRequest req) throws IOException {
+        if (req.accept() || !Interactivity.canPrompt() || global.outputIsJson()) return Optional.of(req);
+        List<Moved> crossing = new ArrayList<>();
+        EngineRequests.LockHandler preview = new EngineRequests.LockHandler() {
+            @Override
+            public void onRewrite(
+                    String moduleDir, String table, String handle, String module, String from, String to) {
+                if (Versions.crossesMinor(from, to)) crossing.add(new Moved(handle, from, to, List.of()));
+            }
+
+            @Override
+            public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
+                return new BuildPlanListener() {};
+            }
+        };
+        EngineRequests.LockOutcome looked = EngineClient.runUpdate(EnginePaths.current(), req.previewing(), preview);
+        if (!looked.success() || crossing.isEmpty()) return Optional.of(req.accepting());
+        CliOutput.out(RichText.parse("[bold]" + crossing.size() + "[/] pin"
+                        + (crossing.size() == 1 ? " moves" : "s move") + " across a minor or a major:")
+                .render());
+        for (Moved m : crossing) printChange(m);
+        if (!Confirm.of("Apply " + (crossing.size() == 1 ? "it" : "them") + "?", false)
+                .ask()) return Optional.empty();
+        return Optional.of(req.accepting());
     }
 
     /** Hosted full re-resolve: one console listener per cascade module, summary line per lockfile. */
@@ -204,7 +243,12 @@ public final class UpdateCommand implements CliCommand {
 
         EngineRequests.LockOutcome outcome;
         try {
-            outcome = EngineClient.runUpdate(EnginePaths.current(), updateRequest(dir, cache), handler);
+            Optional<EngineRequests.UpdateRequest> req = decided(updateRequest(dir, cache));
+            if (req.isEmpty()) {
+                CommandWedge.printFail("Update", "declined; nothing changed");
+                return Exit.FAILURE;
+            }
+            outcome = EngineClient.runUpdate(EnginePaths.current(), req.get(), handler);
         } catch (IOException e) {
             CommandWedge.printFail("Update", e.getMessage());
             return Exit.SOFTWARE;

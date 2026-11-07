@@ -60,11 +60,14 @@ class EngineResolveAdapterEncodeTest {
                 false,
                 null,
                 List.of(),
+                false,
+                true,
                 false);
         String line = SessionContext.where(caller(), () -> EngineResolveAdapter.updateRequestLine(req, false, null));
 
         assertThat(ProtoSession.clientEnvOf(line)).isEqualTo(CALLER_ENV);
         assertThat(UpdateRequest.decode(line).dir()).isEqualTo(Path.of("/proj").toString());
+        assertThat(UpdateRequest.decode(line).accept()).isTrue();
     }
 
     @Test

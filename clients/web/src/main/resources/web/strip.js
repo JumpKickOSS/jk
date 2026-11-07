@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: Apache-2.0
+// A run reduced to what a timeline line and the run page need: what it is doing right now, one
+// cell per module coloured by state, and which modules deserve to open by default (the failed and
+// the slow). Pure functions over a folded card (fold.js), so the suite runs them headlessly.
+
+import { liveStepDetail } from './label.js';
+import { orderedModules, outcomeOf, phaseChainOf } from './outcome.js';
+
+/** The verb a running phase reads as on the one-line live build: `testing backend/service`. */
+const PHASE_VERB = Object.freeze({
+  resolve: 'resolving',
+  generate: 'generating',
+  compile: 'compiling',
+  test: 'testing',
+  package: 'packaging',
+  publish: 'publishing',
+  native: 'building native',
+  image: 'building image',
+});
+
+/** A module row's name: the artifact of its coord (`core`), else its directory's tail. */
+export function moduleName(m) {
+  if (!m) return '';
+  if (m.coord) {
+    const i = m.coord.lastIndexOf(':');
+    return i >= 0 ? m.coord.slice(i + 1) : m.coord;
+  }
+  const parts = String(m.dir || '').split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : 'project';
+}
+
+/** A module's state as a cell paints it: failed, running, cancelled, waiting or done. */
+export function cellState(m) {
+  if (!m) return 'waiting';
+  if (m.state === 'failed' || (m.diagnostics && m.diagnostics.length)) return 'failed';
+  if (m.state === 'running') return 'running';
+  if (m.state === 'cancelled') return 'cancelled';
+  return 'done';
+}
+
+/** The phase a module is in (the running one), else the last it reached; '' with no steps yet. */
+function currentPhase(m) {
+  const phases = phaseChainOf(m);
+  const running = phases.filter((p) => p.state === 'running').pop();
+  const p = running || phases[phases.length - 1];
+  return p ? p.label : '';
+}
+
+/**
+ * One cell per module, in plan order: `{ key, name, state, phase, tip }`. A record that knows the
+ * workspace's module count (`moduleCount`) pads the strip with waiting cells for the modules the
+ * run has not reached, so a 55-module workspace is 55 cells from its first frame.
+ */
+export function moduleCells(card) {
+  const mods = (card && card.modules) || [];
+  const cells = mods.map((m) => {
+    const name = moduleName(m);
+    const phase = currentPhase(m);
+    const state = cellState(m);
+    return { key: m.dir || '.', name, state, phase, tip: phase ? name + ' · ' + phase : name };
+  });
+  const total = card && typeof card.moduleCount === 'number' ? card.moduleCount : 0;
+  for (let i = cells.length; i < total; i++) {
+    cells.push({ key: 'waiting-' + i, name: '', state: 'waiting', phase: '', tip: 'not started' });
+  }
+  return cells;
+}
+
+/**
+ * What a running build is doing, as one line: the most recently active running module, its phase
+ * as a verb and the step's live detail (`testing service · QuoteServiceIT.weekendStay()`). With
+ * several modules running, the count of the others follows. '' before the first module starts.
+ */
+export function doingLine(card) {
+  if (!card || outcomeOf(card) !== 'running') return '';
+  const running = orderedModules((card.modules || []).filter((m) => m.state === 'running'));
+  const m = running[0];
+  if (!m) return card.modules && card.modules.length ? 'finishing' : 'starting';
+  const phases = phaseChainOf(m);
+  const p = phases.filter((x) => x.state === 'running').pop();
+  const verb = p ? PHASE_VERB[p.phase] || p.label.toLowerCase() : 'working on';
+  const detail = liveStepDetail(m.coord || '', m.steps);
+  let line = verb + ' ' + moduleName(m);
+  if (detail) line += ' · ' + detail;
+  if (running.length > 1) line += ' (+' + (running.length - 1) + ' more)';
+  return line;
+}
+
+/** A module is slow when its wall is at least this multiple of the run's median module wall… */
+export const SLOW_FACTOR = 2;
+/** …and at least this long, so a 40 ms module beside 10 ms ones is not called slow. */
+export const SLOW_MIN_MILLIS = 5_000;
+/** At most this many slow modules open by default; the rest stay in the strip. */
+export const SLOW_MAX = 3;
+
+function median(xs) {
+  if (!xs.length) return 0;
+  const s = xs.slice().sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+/**
+ * The run page's module split: `expanded` holds the failed modules, then the slow ones (the
+ * slowest first, at most {@link SLOW_MAX}), each `{ module, reason }`; `rest` holds every other
+ * module in display order. A one-module run that failed expands; one that passed does not.
+ */
+export function moduleFocus(card) {
+  const mods = (card && card.modules) || [];
+  const failed = mods.filter((m) => cellState(m) === 'failed');
+  const timed = mods.filter((m) => cellState(m) === 'done' && typeof m.millis === 'number');
+  const bar = Math.max(SLOW_MIN_MILLIS, SLOW_FACTOR * median(timed.map((m) => m.millis)));
+  const slow =
+    mods.length > 1
+      ? timed
+          .filter((m) => m.millis >= bar)
+          .sort((a, b) => b.millis - a.millis)
+          .slice(0, SLOW_MAX)
+      : [];
+  const open = new Set([...failed, ...slow]);
+  return {
+    expanded: [
+      ...orderedModules(failed).map((module) => ({ module, reason: 'failed' })),
+      ...slow.map((module) => ({ module, reason: 'slow' })),
+    ],
+    rest: orderedModules(mods.filter((m) => !open.has(m))),
+  };
+}

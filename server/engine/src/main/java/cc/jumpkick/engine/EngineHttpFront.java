@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.LockFloor;
+import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.HttpEngineServer;
@@ -59,6 +60,7 @@ public final class EngineHttpFront {
     private final ToIntFunction<String> cancelJobsForDir;
     private final @Nullable ReentrantReadWriteLock cacheGate;
     private final SessionLog sessions;
+    private final DecisionQueue decisions;
 
     private volatile @Nullable HttpEngineServer server;
     private volatile @Nullable String error;
@@ -107,6 +109,7 @@ public final class EngineHttpFront {
         candidate.setOnSseAdmitted(() -> peakActiveConnections.accumulateAndGet(liveConnections.getAsInt(), Math::max));
         if (cacheGate != null) candidate.setCacheGate(cacheGate);
         candidate.setSessions(sessions);
+        candidate.setDecisions(decisions);
         try {
             candidate.start(1);
             serve(candidate);

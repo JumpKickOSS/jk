@@ -182,7 +182,7 @@ test('manifest saves and build finishes refresh the open project header', async 
   // Build finish path calls refreshProjectMeta directly; outside project view it is a no-op.
   await v.refreshProjectMeta();
   assert.equal(fetches, 2);
-  v.view = 'activity';
+  v.view = 'console';
   await v.refreshProjectMeta();
   assert.equal(fetches, 2);
 });
@@ -209,21 +209,6 @@ test('fmtDateTime is yyyy-MM-dd hh:mm:ss in the local zone', () => {
   assert.equal(v.fmtDateTime('nope'), '');
 });
 
-test('cancelled cards hide success and failure details', () => {
-  const v = vm();
-  const card = {
-    state: 'finished',
-    cancelled: true,
-    success: false,
-    modules: [
-      { dir: '/w/a', state: 'success', diagnostics: [], steps: [{ name: 'compile', state: 'success' }] },
-      { dir: '/w/b', state: 'cancelled', diagnostics: [], steps: [] },
-    ],
-  };
-  assert.equal(v.outcome(card), 'cancelled');
-  assert.deepEqual(v.okModules(card), []);
-  assert.deepEqual(v.failedModules(card), []);
-});
 
 // --- the dashboard renders test counts from the journal's nested `tests` object ---
 

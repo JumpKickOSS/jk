@@ -163,7 +163,8 @@ final class EngineResolveAdapter {
                         Objects.requireNonNullElse(req.platform(), ""),
                         req.deps(),
                         req.major(),
-                        false)
+                        req.preview(),
+                        req.accept())
                 .encode());
     }
 

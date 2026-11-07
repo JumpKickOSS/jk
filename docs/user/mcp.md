@@ -209,7 +209,7 @@ The whole registry:
 | **`bind`** | Set or switch the connection's project dir; returns a project card. Not on the default list: the first call that carries `dir` binds |
 | **`status`** | Engine vitals (pid, version, heap, the MCP session counts `mcpMaxSessions`, `mcpLoadedConnections`, `mcpActiveConnections`) and the `jobs` array — every live and queued job as the same row `jk engine status -O jsonl` and `GET /api/status` carry (`jid`, `kind`, `dir`, `state`, `since`, `workers`, `lastEventAt`, `ahead`) |
 | **`project`** | Project card (coord, java, members, last run) |
-| **`run`** | Start a job and, by default, wait. The reply is the verdict (see above). `jid` waits on a job already started instead. `kind` is `test` (default) \| `build` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `snapshot` \| `import`. Publish is a dry-run unless `upload=true`, which sends the release to the repository `[publish]` names (see `publish`). `only` limits modules and `classes` test classes (comma-separated, as `jk test -S`). `run=<id>` with no `kind` reads an earlier verdict, or waits when `<id>` is a running job's `jid`. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s` (default 240). `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
+| **`run`** | Start a job and, by default, wait. The reply is the verdict (see above). `jid` waits on a job already started instead. `decision=<id>` continues the call a [`NEEDS-YOU`](#decisions) answered. `kind` is `test` (default) \| `build` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `snapshot` \| `import`. Publish is a dry-run unless `upload=true`, which sends the release to the repository `[publish]` names (see `publish`). `only` limits modules and `classes` test classes (comma-separated, as `jk test -S`). `run=<id>` with no `kind` reads an earlier verdict, or waits when `<id>` is a running job's `jid`. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s` (default 240). `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
 | **`build`** / **`test`** / **`lock`** | Async convenience aliases (return `jid` immediately) |
 | **`cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`history`** | Recent runs as **summaries** (filters: dir, projectId, success, kind, limit, next). Avoid `view=full` |
@@ -219,14 +219,14 @@ The whole registry:
 | **`explain`** | Forecast next build |
 | **`affected_tests`** | WIP module cone + advisory ranked test classes; writes `target/jk-tests-affected.md` |
 | **`outdated`** | Declared pins an update would move (read-only; Current / Compatible / Latest): dependencies, language and tool keys, rule packs; `all=true` lists every row, `checked` counts them, `file` is the `target/jk-outdated-dependencies.md` it wrote, and a row whose coordinate moved carries `relocated` |
-| **`update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock. Params: `dir`, `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). Preview returns the proposed `jk.toml` hunk without writing; `apply=true` writes, relocks, and lists every lock package the relock added, removed or moved under `lock.changes` (`coordinate`, `from`, `to`; `from`/`to` null when added/removed), with the count in `lock.updated`. Same renderer as `jk add` |
-| **`deps`** | Add, remove, or pin coordinates and relock. `preview=true` does not write; a version or coordinate the repositories do not serve is an error, preview or not |
+| **`update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock. Params: `dir`, `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). Preview returns the proposed `jk.toml` hunk without writing; `apply=true` writes, relocks, and lists every lock package the relock added, removed or moved under `lock.changes` (`coordinate`, `from`, `to`; `from`/`to` null when added/removed), with the count in `lock.updated`. Same renderer as `jk add`. A move across a minor or a major, or a relock that adds a package, is a [decision](#decisions) the user makes first |
+| **`deps`** | Add, remove, or pin coordinates and relock. `preview=true` does not write; a version or coordinate the repositories do not serve is an error, preview or not. An add whose lock trips the project's [deny policy](publish.md#deny-policy) is put back and becomes a [decision](#decisions) |
 | **`workspace`** | Preview/apply workspace member add/remove |
 | **`manifest`** | Set whitelisted `jk.toml` keys (`java=N` is language level, not `jdk=`) |
 | **`config`** | Machine config get/set, or `apply_preset=ci` |
-| **`disk`** | Cache/store usage; `clean`/`nuke` require `confirm=true` |
-| **`jdk`** | List / install / uninstall (`confirm=true` for uninstall) |
-| **`node`** | Node.js: `list` (installs, jk's and other managers'), `list-remote` (`lts`, `major`), `install` (`spec`), `uninstall` (`spec` = exact version, `confirm=true`), `which` (`dir`: the project's Node.js), `pin` (`dir`, optional `spec`: writes `jk.toml` and relocks) |
+| **`disk`** | Cache/store usage; `clean`/`nuke`/`m2-clean` require `confirm=true`, and a host that can ask the user [asks](#decisions) |
+| **`jdk`** | List / install / uninstall (`confirm=true` for uninstall, and a host that can ask [asks](#decisions)) |
+| **`node`** | Node.js: `list` (installs, jk's and other managers'), `list-remote` (`lts`, `major`), `install` (`spec`), `uninstall` (`spec` = exact version, `confirm=true`, and a host that can ask [asks](#decisions)), `which` (`dir`: the project's Node.js), `pin` (`dir`, optional `spec`: writes `jk.toml` and relocks) |
 | **`doctor`** | Host health snapshot |
 | **`new`** | Scaffold from a template, as `jk new` does (default `app`): `action=templates` lists templates, `action=form` one template's fields, `params` answers its questions, `preview=true` does not write ([below](#new)) |
 | **`publish`** | Validate the publish bundle (dry-run). `upload=true` uploads it to the repository `[publish] repository` names, with the credential `jk repo login` / `JK_REPO_<ID>_*` holds and signing from `[publish]` (`JK_GPG_PASSPHRASE`). An agent never names a URL; a project with no `[publish] repository`, or with `central`, is refused with the fix — Central uploads stay on `jk publish` |
@@ -287,6 +287,67 @@ A misfit answer (`database=oracle`) fails at once with the values the question t
 client declared.
 
 Token, loopback bind, and how to report a hole in that gate: [Security](security.md).
+
+## Decisions
+
+Some operations wait for a person instead of proceeding on the agent's word. Each is a
+**decision** in the engine's one queue, which the agent's host, the [dashboard](web.md#decisions)
+and `jk decide` all answer; the first answer wins.
+
+| Operation | Asks when | Changes trust |
+|---|---|---|
+| `update` with `apply=true` | a pin moves across a minor or a major, or the relock adds a package | yes |
+| `deps` add | the new lock trips the project's deny policy (license, source, yanked) | yes |
+| `disk` `clean` / `nuke` / `m2-clean`, `jdk` uninstall, `node` uninstall | always, when `confirm=true` and the host can ask | no |
+
+Nothing is written until the decision is accepted: `update` holds a move before writing and puts a
+relock that added a package back, and `deps` puts an add the deny policy refuses back. A host that
+can ask neither by form nor by link still runs a destructive operation on `confirm=true`, as
+before; for a trust-changing one, `confirm` is not an answer.
+
+jk asks by the first rung the session supports ([revisions](#protocol-revisions)), and stops there:
+
+1. **Form elicitation.** The host renders the question (`answer`: yes / no) and the call resumes
+   with the answer. A host that also takes links gets a third choice, *Show me the details*, which
+   moves the question to rung 2.
+2. **URL elicitation.** The host asks the user to open the decision's dashboard page,
+   `#decision/<id>`; the call resumes when the decision is settled and jk sends
+   `notifications/elicitation/complete`. That link carries a one-time key (`k=`) that lets the page
+   accept a trust-changing decision; no other link has it. A client that declared URL mode but has
+   no way back on this request gets the `-32042` error carrying the link instead, and calls again
+   once the user opened it.
+3. **`NEEDS-YOU`.** The call answers at once:
+
+   ```text
+   NEEDS-YOU Apply 1 dependency change that needs a person in /home/you/src/shop?
+     jackson 2.18.2 → 3.0.0
+   the user accepts it in a terminal: jk decide 3f9a0c1e…
+   see: http://127.0.0.1:8910/#decision/3f9a0c1e…
+   run(decision=3f9a0c1e…)
+   ```
+
+   A decision that does not change trust names the dashboard link as the answer instead. Then
+   `[ui] ask` ([Config](config.md#decisions)) applies once: `notify` (default) sends a desktop
+   notification carrying the link (`notify-send` on Linux, `osascript` on macOS), `open` opens the
+   browser on it, `quiet` leaves the link in the result.
+
+`run(decision=<id>)` makes the original call again with the decision: it proceeds once the
+decision is accepted (once only), answers `DECLINED` or `EXPIRED` when it was not, and while it is
+open waits as long as a call may, then answers `NEEDS-YOU` again. Calling the tool again with the
+same arguments while its decision is open asks nothing new.
+
+Every rung answers before the client's own tool timeout (55 s for Cursor, 240 s otherwise), so a
+question nobody has answered yet becomes a `NEEDS-YOU` with the decision still open, not a
+cancelled call. A decision expires as declined 30 minutes after it opened.
+
+**Who may accept.** A trust-changing decision is accepted only where a person is known to answer:
+the host's form, the page the host opened (its key), or `jk decide` at a terminal. The dashboard
+shows it, with the command that accepts it, and may decline it, but a bearer-token answer never
+accepts it: an agent can read the token and drive a browser. [Security](security.md#decisions).
+
+**`jk decide`** lists the open decisions; at a terminal it asks one (`jk decide <id>`, or a pick
+when there are several) with the same widgets `jk new` uses. `-d` (`--decline`) declines it. Away from a
+terminal it lists and refuses to answer.
 
 ## Resources
 

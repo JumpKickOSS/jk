@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -20,8 +21,8 @@ class VerbRegistryTest {
 
     @Test
     void standard_serves_every_build_like_goal_through_one_verb() {
-        VerbRegistry reg = VerbRegistry.standard(new FakeHost());
-        assertThat(reg.all()).hasSize(43);
+        VerbRegistry reg = VerbRegistry.standard(new FakeHost(), new DecisionQueue());
+        assertThat(reg.all()).hasSize(44);
         HostedVerb build = verb(reg, EngineProtocol.BUILD_REQUEST);
         assertThat(build).isInstanceOf(WorkspaceBuildVerb.class);
         assertThat(build.jobKinds())

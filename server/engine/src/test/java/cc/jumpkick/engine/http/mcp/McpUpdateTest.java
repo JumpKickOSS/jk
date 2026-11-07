@@ -55,7 +55,7 @@ class McpUpdateTest {
     void preview_reports_the_moves_without_writing_and_apply_writes_and_relocks(@TempDir Path dir) throws Exception {
         project(dir);
 
-        Map<String, Object> preview = McpUpdate.run(dir.toString(), List.of(), false, false);
+        Map<String, Object> preview = McpUpdate.run(dir.toString(), List.of(), false, false, false);
         assertThat(preview).doesNotContainKey("error");
         assertThat(preview.get("applied")).isEqualTo(false);
         assertThat(preview.get("changed")).isEqualTo(true);
@@ -69,7 +69,7 @@ class McpUpdateTest {
         assertThat(Files.readString(dir.resolve("jk.toml"))).contains("com.acme:jackson:2.18.0");
         assertThat(dir.resolve("jk-lock.toml")).doesNotExist();
 
-        Map<String, Object> applied = McpUpdate.run(dir.toString(), List.of("jackson"), false, true);
+        Map<String, Object> applied = McpUpdate.run(dir.toString(), List.of("jackson"), false, true, true);
         assertThat(applied).doesNotContainKey("error");
         assertThat(applied.get("applied")).isEqualTo(true);
         assertThat(rows(applied, "rewrites")).extracting(r -> r.get("handle")).containsExactly("jackson");
@@ -85,7 +85,14 @@ class McpUpdateTest {
                 .as("the first lock adds every package")
                 .allSatisfy(r -> assertThat(r.get("from")).isNull());
 
-        Map<String, Object> other = McpUpdate.run(dir.toString(), List.of("other"), false, true);
+        Map<String, Object> held = McpUpdate.run(dir.toString(), List.of("other"), false, true, false);
+        assertThat(held.get("applied"))
+                .as("1.0.0 → 1.1.0 crosses a minor: a person accepts it")
+                .isEqualTo(false);
+        assertThat(held.get("held")).isEqualTo(List.of("other 1.0.0 → 1.1.0"));
+        assertThat(locked(dir, "com.acme:other")).isEqualTo("1.0.0");
+
+        Map<String, Object> other = McpUpdate.run(dir.toString(), List.of("other"), false, true, true);
         @SuppressWarnings("unchecked")
         Map<String, Object> relock = (Map<String, Object>) requireNonNull(other.get("lock"));
         assertThat(relock.get("updated")).isEqualTo(1);
@@ -93,7 +100,7 @@ class McpUpdateTest {
                 .extracting(r -> r.get("coordinate"), r -> r.get("from"), r -> r.get("to"))
                 .containsExactly(tuple("com.acme:other", "1.0.0", "1.1.0"));
 
-        Map<String, Object> major = McpUpdate.run(dir.toString(), List.of("jackson"), true, false);
+        Map<String, Object> major = McpUpdate.run(dir.toString(), List.of("jackson"), true, false, false);
         assertThat(rows(major, "rewrites")).extracting(r -> r.get("to")).containsExactly("3.0.0");
     }
 

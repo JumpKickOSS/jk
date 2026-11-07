@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// The supervisor's view: origin labels, the feed grouped by session, the followed-or-pinned run on
-// the project page, the pin route, and a token that rides a project route's fragment query.
+// Who asked and which run the project page shows: origin labels, the followed-or-pinned run, the
+// pin route, and a token that rides a project route's fragment query.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -19,7 +19,7 @@ globalThis.localStorage = storage();
 globalThis.location = { hash: '', pathname: '/', search: '' };
 
 const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
-const { focusedRun, groupBySession, originLabel, sessionKey, triggerLabel } = await spa('sessions.js');
+const { focusedRun, originLabel, triggerLabel } = await spa('sessions.js');
 const { historyCard, seedFromHistory } = await spa('fold.js');
 const { buildProjectHash, routeFromHash } = await spa('route.js');
 const { adoptFragmentToken } = await spa('api.js');
@@ -46,8 +46,6 @@ test('origin label is trigger, then the session that asked', () => {
   assert.equal(originLabel({ trigger: 'mcp', session: 'claude-code 3f9a' }), 'MCP · claude-code 3f9a');
   assert.equal(originLabel({ trigger: 'cli' }), 'CLI');
   assert.equal(originLabel({}), '—');
-  assert.equal(sessionKey({ trigger: 'mcp', session: 'claude-code 3f9a' }), 'mcp:claude-code 3f9a');
-  assert.equal(sessionKey({ trigger: 'cli' }), 'cli');
 });
 
 test('history records fold their origin onto the card', () => {
@@ -59,32 +57,6 @@ test('history records fold their origin onto the card', () => {
   seedFromHistory(cards, [rec({ buildNumber: 5, trigger: 'bsp', session: 'IntelliJ-BSP 7b2c' })]);
   assert.equal(cards[0].trigger, 'bsp');
   assert.equal(cards[0].session, 'IntelliJ-BSP 7b2c');
-});
-
-test('two MCP sessions and the CLI are three groups, each a timeline in run order', () => {
-  const cards = [
-    rec({ buildNumber: 6, trigger: 'mcp', session: 'claude-code 3f9a', success: false }),
-    rec({ buildNumber: 5, trigger: 'mcp', session: 'codex 9c01' }),
-    rec({ buildNumber: 4, trigger: 'mcp', session: 'claude-code 3f9a' }),
-    rec({ buildNumber: 3 }),
-  ].map(historyCard);
-  const groups = groupBySession(cards);
-  assert.deepEqual(
-    groups.map((g) => g.key),
-    ['mcp:claude-code 3f9a', 'mcp:codex 9c01', 'cli'],
-  );
-  const claude = groups[0];
-  assert.equal(claude.label, 'MCP · claude-code 3f9a');
-  assert.deepEqual(
-    claude.runs.map((r) => [r.buildNumber, r.outcome, r.millis]),
-    [
-      [4, 'success', 500],
-      [6, 'failed', 500],
-    ],
-  );
-  assert.equal(claude.passed, 1);
-  assert.equal(claude.failed, 1);
-  assert.equal(claude.wallMillis, 1000);
 });
 
 test('the project page follows the newest run unless one is pinned', () => {
@@ -121,21 +93,4 @@ test('a token in a project route fragment is adopted and scrubbed, keeping the r
   assert.equal(adoptFragmentToken('#project/ab12/files/a.java?line=3&t=q1&col=2'), '#project/ab12/files/a.java?line=3&col=2');
   assert.equal(adoptFragmentToken('#project/ab12?line=3'), null);
   assert.equal(adoptFragmentToken(''), null);
-});
-
-test('a timeline row carries its one-chip delta beside the wall', () => {
-  const delta = {
-    previousBuildNumber: 6,
-    previousSuccess: false,
-    previousMillis: 900,
-    files: { count: 1, shown: ['src/main/java/Foo.java'] },
-    appeared: { count: 0, shown: [] },
-    gone: { count: 1, shown: ['error · compile-java · Foo.java:3 · x'] },
-  };
-  const cards = [historyCard(rec({ buildNumber: 6, success: false })), historyCard(rec({ buildNumber: 7, delta }))];
-  const [group] = groupBySession(cards);
-  assert.equal(group.runs[0].deltaChip, null);
-  assert.equal(group.runs[1].deltaChip.text, '−1 diagnostic');
-  assert.equal(group.runs[1].deltaChip.cls, 'good');
-  assert.equal(group.runs[1].deltaChip.tip.startsWith('since #6 · failed · '), true);
 });

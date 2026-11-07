@@ -274,8 +274,9 @@ final class GeneratedProvenance {
         if (!Files.isRegularFile(file)) return out;
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
             if (line.isBlank() || isPreEscaping(line)) continue;
+            // A row may name no origin: a file written with no originating elements, as Helidon writes
+            // service-registry.json. It is still a generated file, and the one deletePrevious exists for.
             String[] parts = line.split("\t");
-            if (parts.length < 2) continue;
             try {
                 Set<Path> origins = new HashSet<>();
                 for (int i = 1; i < parts.length; i++) origins.add(canon.canonical(Path.of(unescape(parts[i]))));

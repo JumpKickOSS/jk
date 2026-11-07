@@ -113,4 +113,28 @@ public final class Versions {
         while (core.endsWith(".")) core = core.substring(0, core.length() - 1);
         return core;
     }
+
+    /**
+     * True when a pin moving {@code from} → {@code to} changes its major or its minor (the first two
+     * numeric segments, a missing one read as 0): a move a person accepts, where a patch is routine.
+     */
+    public static boolean crossesMinor(String from, String to) {
+        long[] a = line(from);
+        long[] b = line(to);
+        return a[0] != b[0] || a[1] != b[1];
+    }
+
+    private static long[] line(String version) {
+        String[] parts = numericCore(version).split("\\.");
+        long[] out = new long[2];
+        for (int i = 0; i < 2; i++) {
+            if (i >= parts.length || parts[i].isEmpty()) continue;
+            try {
+                out[i] = Long.parseLong(parts[i]);
+            } catch (NumberFormatException e) {
+                out[i] = -1;
+            }
+        }
+        return out;
+    }
 }

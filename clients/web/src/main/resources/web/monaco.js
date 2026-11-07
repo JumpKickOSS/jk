@@ -118,7 +118,7 @@ export function columnSpan(text, col) {
 /**
  * `?line=` whole-line decoration — plain IRange objects, testable without a monaco global.
  * Empty for line 0. Neutral (cyan/soft) by default; {@code err: true} uses the fail-report red wash
- * ({@code ?line=N&err=true} from Activity / OSC-8).
+ * ({@code ?line=N&err=true} from a failure report / OSC-8).
  *
  * When {@code col} is set, a second inline decoration marks that column (identifier span when
  * {@code lineText} is supplied). {@code err} paints a red squiggle; otherwise a cyan underline.

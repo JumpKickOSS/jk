@@ -138,10 +138,18 @@ public final class McpJobRuns {
 
     /** {@code timeout_s}: how long one call parks before it answers {@code TIMEOUT}. */
     static int timeoutS(McpCall in) {
+        return in.count("timeout_s", clientWaitS(in), 1, MAX_WAIT_S);
+    }
+
+    /**
+     * How long one call may stay outstanding before it must answer, so the client's own tool-call
+     * timeout never cancels it: {@link #SHORT_CLIENT_WAIT_S} for a host known to give up at 60 s,
+     * else {@link #DEFAULT_WAIT_S}.
+     */
+    static int clientWaitS(McpCall in) {
         McpConnection connection = in.connection();
         String client = connection == null ? null : connection.client();
-        int fallback = client != null && SHORT_CLIENTS.contains(client) ? SHORT_CLIENT_WAIT_S : DEFAULT_WAIT_S;
-        return in.count("timeout_s", fallback, 1, MAX_WAIT_S);
+        return client != null && SHORT_CLIENTS.contains(client) ? SHORT_CLIENT_WAIT_S : DEFAULT_WAIT_S;
     }
 
     /**

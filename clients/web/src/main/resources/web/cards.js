@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-// The Activity feed's view of one folded card: how far along it is, what its ETA face reads, which
-// badge it wears, and which of its modules and diagnostics are worth rendering. Spread into the
-// root component's `methods`, so `this` is the root component and `this.now` is its 1s clock.
+// One folded card as the console's live builds and the run page show it: how far along it is, what
+// its ETA face reads, which badge it wears, and how its diagnostics render. Spread into the root
+// component's `methods`, so `this` is the root component and `this.now` is its 1s clock.
 
 import { compilerFailureReports, isCompilerDiag, isTestFailureDiag, testFailureReport } from './failure.js';
-import { etaTotalMillis, ioLines, weightDenominator, weightNumerator } from './fold.js';
+import { ioLines, weightDenominator, weightNumerator } from './fold.js';
 import { fmtBytes, fmtClockSeconds } from './format.js';
-import { detailSegments } from './label.js';
-import { moduleSummary, orderedModules, outcomeOf } from './outcome.js';
+import { moduleSummary, outcomeOf } from './outcome.js';
 
 /** Memoized test-failure report models, keyed by the (immutable) diagnostic object. */
 const TF_REPORT_CACHE = new WeakMap();
@@ -16,7 +15,7 @@ const CF_REPORT_CACHE = new WeakMap();
 
 export const cardMethods = {
   // The <jk-icon> name for a build/project state (badges + pills). Running gets a play triangle (the
-  // Activity feed shows a spinner instead); 'issue' (alert) is reserved for the audit/CVE signal —
+  // run page shows a spinner instead); 'issue' (alert) is reserved for the audit/CVE signal —
   // nothing drives it yet, but the state, colour, and chip are wired so a future signal only sets it.
   stateIcon(state) {
     return { queued: 'activity', running: 'play', success: 'check', failed: 'x', cancelled: 'ban', issue: 'alert', finished: 'dot' }[state] || 'dot';
@@ -127,14 +126,6 @@ export const cardMethods = {
     }
     return null;
   },
-  etaSeconds(card) {
-    const deadline = this.etaDeadlineSeconds(card);
-    if (deadline != null) {
-      return Math.max(0, deadline - this.elapsedSeconds(card));
-    }
-    const total = etaTotalMillis(card);
-    return total == null ? 0 : Math.max(0, Math.floor(total / 1000));
-  },
   /** Seconds past the residual/R0 deadline, or 0 while the countdown is still decaying. */
   etaOverrunSeconds(card) {
     const rem = this.etaFaceSeconds(card);
@@ -173,15 +164,6 @@ export const cardMethods = {
     const over = this.etaOverrunSeconds(card);
     return over > 0 ? '+' + fmtClockSeconds(over) : '0s';
   },
-  // Bare countdown string (no "ETA " label).
-  eta(card) {
-    return this.etaCountdown(card);
-  },
-  // mm:ss-style clock mirroring the CLI's CommandManager.fmtClock: "42s" / "1m 02s" / "1h 05m 09s".
-  // Whole seconds only (floor) so dual-clock faces share one boundary — not Math.round.
-  fmtClock(ms) {
-    return fmtClockSeconds(Math.max(0, Math.floor(ms / 1000)));
-  },
   outcome(card) {
     return outcomeOf(card);
   },
@@ -219,7 +201,7 @@ export const cardMethods = {
     return Math.max(0, dl.inflight - dl.rows.length);
   },
   /**
-   * Activity kind label. Wire kind stays {@code build}; finished runs use past tense so a
+   * A run's kind label. Wire kind stays {@code build}; finished runs use past tense so a
    * fully-cached monorepo (no / few module rows, ~100ms) reads "built" not "build". A run an
    * external tool did reads {@code tool: mvn}, as the results header spells it.
    */
@@ -280,42 +262,6 @@ export const cardMethods = {
       CF_REPORT_CACHE.set(d, hit);
     }
     return hit.reps || [];
-  },
-  /** Syntax segments for {@code SimpleClass.method()} labels. */
-  failLabelSegs(label) {
-    return detailSegments(label);
-  },
-  // A build is "compact" (one step chain under the header, no module-name rows) when it has at
-  // most one module — a single-project build, or a 1-module workspace. Multi-module builds render
-  // a bullet+name row per module, each with its own chain.
-  compact(card) {
-    return card.modules.length <= 1;
-  },
-  // The single chain shown under the header for a compact card (the one module's steps, if any).
-  singleChain(card) {
-    return card.modules[0] ? card.modules[0].steps : [];
-  },
-  // The lone module of a compact card — carries the steps and any failure output shown inline.
-  singleModule(card) {
-    return card.modules[0] || null;
-  },
-  // Multi-module cards split their module rows across two peer accordions: the failed modules
-  // (kept open) and everything else — succeeded, still-running, skipped — which rolls
-  // up under a "success details" accordion that is open while running and collapsed once done. A
-  // module carrying failure output counts as failed even if its state was never marked (covers
-  // request-level errors that land on a synthetic row). Cancelled runs hide both accordions.
-  // Order (CLI parity): active first (most recently updated), finished last.
-  failedModules(card) {
-    if (this.outcome(card) === 'cancelled') return [];
-    return orderedModules(
-      card.modules.filter((m) => m.state === 'failed' || m.diagnostics.length > 0),
-    );
-  },
-  okModules(card) {
-    if (this.outcome(card) === 'cancelled') return [];
-    return orderedModules(
-      card.modules.filter((m) => m.state !== 'failed' && m.diagnostics.length === 0),
-    );
   },
   // A module row's label: the artifact name from its coord (e.g. "core"), else the dir's tail.
   moduleLabel(m) {

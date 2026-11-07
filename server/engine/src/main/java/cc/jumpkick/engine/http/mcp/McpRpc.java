@@ -104,7 +104,7 @@ public final class McpRpc {
             return resultMap(id, result == null ? Map.of() : result);
         } catch (McpError e) {
             if (notification) return null;
-            return errorMap(id, e.code(), e.getMessage());
+            return errorMap(id, e.code(), e.getMessage(), e.data());
         } catch (RuntimeException e) {
             if (notification) return null;
             return errorMap(id, -32603, "internal error: " + e.getMessage());
@@ -157,9 +157,15 @@ public final class McpRpc {
     }
 
     static Map<String, Object> errorMap(@Nullable Object id, int code, @Nullable String message) {
+        return errorMap(id, code, message, null);
+    }
+
+    static Map<String, Object> errorMap(
+            @Nullable Object id, int code, @Nullable String message, @Nullable Object data) {
         Map<String, Object> err = new LinkedHashMap<>();
         err.put("code", code);
         err.put("message", message);
+        if (data != null) err.put("data", data);
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("jsonrpc", "2.0");
         m.put("id", id);

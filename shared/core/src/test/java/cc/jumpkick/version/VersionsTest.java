@@ -179,4 +179,15 @@ class VersionsTest {
         assertThat(Versions.isPreRelease("1.0.0")).isFalse();
         assertThat(Versions.isPreRelease("2.4.0.Final")).isFalse();
     }
+
+    @Test
+    void a_move_crosses_a_minor_when_the_major_or_the_minor_changes() {
+        assertThat(Versions.crossesMinor("2.18.0", "2.18.2")).isFalse();
+        assertThat(Versions.crossesMinor("33.4.8-jre", "33.4.9-jre")).isFalse();
+        assertThat(Versions.crossesMinor("1.0.0", "1.1.0")).isTrue();
+        assertThat(Versions.crossesMinor("2.18.2", "3.0.0")).isTrue();
+        assertThat(Versions.crossesMinor("5", "5.0.1"))
+                .as("a missing minor reads as 0")
+                .isFalse();
+    }
 }

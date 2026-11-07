@@ -146,7 +146,7 @@ export const statusMethods = {
   },
   /**
    * Hydrate REST surfaces for the current view. Status always pulls full cache + metrics + log;
-   * Projects pulls metrics; Activity only needs status/cache hydrate when offline or first paint.
+   * Projects pulls metrics; the console only needs status/cache hydrate when offline or first paint.
    */
   async refresh(opts) {
     if (this.authModal) return;
