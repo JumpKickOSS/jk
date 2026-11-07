@@ -156,7 +156,7 @@ class JkBuildParserNullnessTest {
     @Test
     void a_module_with_no_group_names_what_to_check() {
         assertThatThrownBy(() -> NullnessConfig.DEFAULT.fold(JavacConfig.EMPTY, ""))
-                .hasMessageContaining("[nullness] checks the module's group by default")
+                .hasMessageContaining("[nullness] needs a group or include = [\"com.example\"]")
                 .hasMessageContaining("include = []");
     }
 

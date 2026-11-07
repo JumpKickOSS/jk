@@ -36,9 +36,7 @@ public final class ManifestDeps {
      * {@code jk lock} into the lockfile, never by hand into the manifest.
      */
     static final String PLUGIN_TABLE_REFUSED = "[" + Scope.PLUGIN.tomlSection()
-            + "] is not a table you write: `jk lock` adds a pinned third-party plugin's SDK floor (jk-plugin-sdk,"
-            + " jk-host at the SDK version its manifest names) to jk-lock.toml as plugin-scoped rows itself."
-            + " Declare the plugin under [plugins]; a library its worker needs ships inside the plugin jar";
+            + "] is written by jk lock, not by hand; declare the plugin under [plugins]";
 
     static JkBuild.Dependencies parseDependencies(
             TomlTable root, @Nullable Workspace workspace, LibraryCatalog catalog) {
@@ -84,9 +82,7 @@ public final class ManifestDeps {
         for (Dependency d : managed) {
             if (d.isPlatformManaged() || d.isGit() || d.isPath() || d.isWorkspace() || d.isFile()) {
                 throw new JkBuildParseException(Scope.MANAGED.tomlSection() + "." + d.library()
-                        + " must name a version: the table pins the version a transitive dependency on"
-                        + " the module resolves to, the way a BOM's entry does, so `group:artifact` alone,"
-                        + " a git, path or workspace source has nothing to pin");
+                        + " must be `group:artifact:version`; a git, path or workspace source cannot be pinned");
             }
         }
     }
@@ -123,8 +119,7 @@ public final class ManifestDeps {
                 throw new JkBuildParseException(scope.tomlSection()
                         + "."
                         + name
-                        + " must be a string (a catalog version, a `group:artifact:version` coordinate, a path"
-                        + " or a git URL) or an inline table (e.g. { group = \"...\", version = \"...\" })");
+                        + " must be a version, a `group:artifact:version` string or an inline table");
             }
             result.add(parseDepEntry(name, entry, scope, workspace, catalog));
         }
@@ -231,25 +226,19 @@ public final class ManifestDeps {
         String artifact = parts.length > 1 ? parts[1].trim() : "";
         if (group.isEmpty() || artifact.isEmpty()) {
             throw new JkBuildParseException(
-                    displayPath + " — `" + value + "` is not a `group:artifact[:version]` coordinate");
+                    displayPath + ": `" + value + "` is not a `group:artifact[:version]` coordinate");
         }
         if (parts.length == 2) {
             return Dependency.platformManaged(name, group + ":" + artifact);
         }
         String selectorRaw = parts[2];
         if (selectorRaw.indexOf(':') >= 0 && !isRangeSelector(selectorRaw)) {
-            throw new JkBuildParseException(displayPath
-                    + " — `"
-                    + value
-                    + "` has more than three `:` fields. A classifier or packaging type needs the inline"
-                    + " table: { group = \""
-                    + group
-                    + "\", name = \""
-                    + artifact
-                    + "\", version = \"...\", classifier = \"...\" }");
+            throw new JkBuildParseException(
+                    displayPath + ": `" + value + "` has too many `:` fields; write { group = \"" + group
+                            + "\", name = \"" + artifact + "\", version = \"…\", classifier = \"…\" }");
         }
         if (selectorRaw.isBlank()) {
-            throw new JkBuildParseException(displayPath + " — `" + value + "` has an empty version after the last `:`");
+            throw new JkBuildParseException(displayPath + ": `" + value + "` has an empty version");
         }
         VersionSelector selector;
         try {
@@ -296,17 +285,11 @@ public final class ManifestDeps {
 
     /** Unknown short-name error, with catalog "did you mean" suggestions when available. */
     static String unknownLibraryMessage(String displayPath, String name, LibraryCatalog catalog) {
-        StringBuilder msg = new StringBuilder(displayPath)
-                .append(" — unknown short name `")
-                .append(name)
-                .append("`. ");
+        String head = displayPath + ": unknown library `" + name + "`";
         List<String> suggestions = catalog.suggestionsFor(name, 5);
-        if (!suggestions.isEmpty()) {
-            msg.append("Did you mean: ").append(String.join(", ", suggestions)).append("? ");
-        }
-        msg.append("Write the Maven coordinate as `\"group:artifact:1.2.3\"`, spell out ")
-                .append("`{ group = \"...\", version = \"...\" }`, or pick a curated name from the catalog.");
-        return msg.toString();
+        return suggestions.isEmpty()
+                ? head + "; write it as \"group:artifact:1.2.3\""
+                : head + "; did you mean " + String.join(", ", suggestions) + "?";
     }
 
     static Dependency parseDepEntry(
@@ -349,13 +332,10 @@ public final class ManifestDeps {
             throw new JkBuildParseException(displayPath + ".classifier must be a non-blank word without `:`");
         }
         if (dep.isWorkspace() || dep.isGit() || dep.isPath()) {
-            throw new JkBuildParseException(
-                    displayPath + ".classifier applies to a Maven coordinate (got a workspace/git/path source)");
+            throw new JkBuildParseException(displayPath + ".classifier applies only to a Maven coordinate");
         }
         if (dep.isTestsKind()) {
-            throw new JkBuildParseException(displayPath
-                    + ".classifier cannot be combined with kind = \"tests\" — the test-jar is the `tests`"
-                    + " classifier already");
+            throw new JkBuildParseException(displayPath + ".classifier cannot be set with kind = \"tests\"");
         }
         return dep.withClassifier(classifier);
     }
@@ -379,23 +359,19 @@ public final class ManifestDeps {
         // kind = "tests"
         if (scope != Scope.TEST && scope != Scope.TEST_DEV) {
             throw new JkBuildParseException(displayPath
-                    + ".kind = \"tests\" is only legal under [test-dependencies] or"
-                    + " [test-dev-dependencies] (got ["
+                    + ".kind = \"tests\" belongs under [test-dependencies], not ["
                     + scope.tomlSection()
-                    + "])");
+                    + "]");
         }
         if (!dep.isWorkspace()) {
             if (dep.isGit() || dep.isPath() || dep.isFile()) {
-                throw new JkBuildParseException(displayPath
-                        + ".kind = \"tests\" requires `workspace = true` or a Maven"
-                        + " coordinate (got git/path/file source)");
+                throw new JkBuildParseException(
+                        displayPath + ".kind = \"tests\" needs `workspace = true` or a Maven coordinate");
             }
             // Maven GA only (group:artifact). packageKey maps this to g:a:jar:tests.
             String mod = dep.module();
             if (mod == null || mod.indexOf(':') <= 0 || mod.indexOf(':') != mod.lastIndexOf(':')) {
-                throw new JkBuildParseException(displayPath
-                        + ".kind = \"tests\" on an external dep requires a Maven"
-                        + " group:artifact module");
+                throw new JkBuildParseException(displayPath + ".kind = \"tests\" needs a `group:artifact` coordinate");
             }
         }
         return dep.withKind(kind);
@@ -410,14 +386,13 @@ public final class ManifestDeps {
         String displayPath = scope.tomlSection() + "." + name;
         Boolean flag = entry.getBoolean("fixtures");
         if (!Boolean.TRUE.equals(flag)) {
-            throw new JkBuildParseException(displayPath + ".fixtures must be `true` (the only legal value)");
+            throw new JkBuildParseException(displayPath + ".fixtures can only be `true`");
         }
         if (scope != Scope.TEST && scope != Scope.TEST_DEV) {
             throw new JkBuildParseException(displayPath
-                    + ".fixtures = true is only legal under [test-dependencies] or"
-                    + " [test-dev-dependencies] (got ["
+                    + ".fixtures = true belongs under [test-dependencies], not ["
                     + scope.tomlSection()
-                    + "])");
+                    + "]");
         }
         if (!dep.isWorkspace()) {
             throw new JkBuildParseException(displayPath + ".fixtures = true requires `workspace = true`");
@@ -447,20 +422,17 @@ public final class ManifestDeps {
         boolean platformManaged = sourceCount == 0 && (entry.contains("group") || entry.contains("name"));
         if (sourceCount == 0 && !platformManaged) {
             throw new JkBuildParseException(
-                    displayPath + " must set exactly one of `version`, `git`, `path`, `sha256`, or"
-                            + " `workspace = true` — or `group`/`name` alone for a version managed by a"
-                            + " [platform-dependencies] BOM");
+                    displayPath + " needs one of `version`, `git`, `path`, `sha256` or `workspace = true`");
         }
         if (sourceCount > 1 && !sha256WithVersion) {
-            throw new JkBuildParseException(displayPath
-                    + " sets more than one of `version` / `git` / `path` / `sha256` / `workspace`; "
-                    + "pick exactly one");
+            throw new JkBuildParseException(
+                    displayPath + " sets more than one of `version`, `git`, `path`, `sha256`, `workspace`; pick one");
         }
 
         if (hasWorkspace) {
             Boolean ws = entry.getBoolean("workspace");
             if (!Boolean.TRUE.equals(ws)) {
-                throw new JkBuildParseException(displayPath + ".workspace must be `true` (the only legal value)");
+                throw new JkBuildParseException(displayPath + ".workspace can only be `true`");
             }
             // The key is the handle and, absent `name`, the sibling's name; `name` names the
             // sibling under another handle (a jar and its test classes as two rows), and `group`
@@ -503,9 +475,7 @@ public final class ManifestDeps {
 
         if (hasSha256) {
             if (groupExplicit == null || groupExplicit.isBlank()) {
-                throw new JkBuildParseException(displayPath
-                        + " with `sha256 = ...` must set a `group` explicitly "
-                        + "(catalog shorthand applies only to version-based deps)");
+                throw new JkBuildParseException(displayPath + " with `sha256` needs an explicit `group`");
             }
             String sha256 = entry.getString("sha256");
             if (sha256 == null || sha256.isBlank()) {
@@ -524,9 +494,8 @@ public final class ManifestDeps {
             // `name`, or `version` in the dep entry is an error.
             for (String forbidden : new String[] {"group", "name", "version"}) {
                 if (entry.contains(forbidden)) {
-                    throw new JkBuildParseException(displayPath
-                            + " with `git` must not set `" + forbidden + "` — the coordinate"
-                            + " and version are always read from the cloned repo's jk.toml");
+                    throw new JkBuildParseException(displayPath + " with `git` cannot set `" + forbidden
+                            + "`; it comes from the repo's jk.toml");
                 }
             }
             return Dependency.gitByName(name, parseGitSource(entry, displayPath));
@@ -538,9 +507,8 @@ public final class ManifestDeps {
             // Gradle/Maven project). Specifying `group`/`name`/`version` here is an error.
             for (String forbidden : new String[] {"group", "name", "version"}) {
                 if (entry.contains(forbidden)) {
-                    throw new JkBuildParseException(displayPath
-                            + " with `path` must not set `" + forbidden + "` — the coordinate"
-                            + " and version are always read from the target project");
+                    throw new JkBuildParseException(
+                            displayPath + " with `path` cannot set `" + forbidden + "`; it comes from that project");
                 }
             }
             String pathValue = entry.getString("path");
@@ -552,16 +520,15 @@ public final class ManifestDeps {
 
         if (platformManaged) {
             if (group == null || group.isBlank()) {
-                throw new JkBuildParseException(displayPath
-                        + " has no `version` and no resolvable `group` — a platform-managed dep needs"
-                        + " an explicit `group` (or a catalog short name)");
+                throw new JkBuildParseException(
+                        displayPath + " has no `version`; a BOM-managed dependency needs a `group`");
             }
             return Dependency.platformManaged(name, group + ":" + artifact);
         }
 
         // version-only.
         if (group == null || group.isBlank()) {
-            throw new JkBuildParseException(displayPath + " must set a `group` (or use a catalog-known short name)");
+            throw new JkBuildParseException(displayPath + " needs a `group` or a catalog short name");
         }
         String versionRaw = entry.getString("version");
         if (versionRaw == null || versionRaw.isBlank()) {
@@ -618,16 +585,13 @@ public final class ManifestDeps {
         boolean hasExplicitRef = tag != null || branch != null || rev != null;
 
         if (parts.refSpec() != null && hasExplicitRef) {
-            throw new JkBuildParseException(displayPath
-                    + " sets both a URL-embedded ref (`@` or `#` suffix) and an explicit ref"
-                    + " key (`tag`, `branch`, or `rev`); use one or the other");
+            throw new JkBuildParseException(
+                    displayPath + " sets a ref in both the URL and `tag`, `branch` or `rev`; use one");
         }
 
         String explicitPath = obj.getString("path");
         if (parts.subdir() != null && explicitPath != null) {
-            throw new JkBuildParseException(displayPath
-                    + " sets both a URL-embedded sub-directory (`!` suffix) and an explicit"
-                    + " `path` key; use one or the other");
+            throw new JkBuildParseException(displayPath + " sets a subdirectory in both the URL and `path`; use one");
         }
         String path = parts.subdir() != null ? parts.subdir() : explicitPath;
 
@@ -656,8 +620,7 @@ public final class ManifestDeps {
                 ref = new GitRefSpec.Rev(rev);
                 shallow = false;
             } else {
-                throw new JkBuildParseException(
-                        displayPath + " must set `tag`, `branch`, or `rev` (or embed the ref in the URL)");
+                throw new JkBuildParseException(displayPath + " needs `tag`, `branch` or `rev`");
             }
         }
 

@@ -72,7 +72,7 @@ class RepositoryMirrorTomlTest {
                         mirror-of = ["*"]
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.corp.mirror-of is not accepted in jk.toml")
+                .hasMessageContaining("repositories.corp.mirror-of: mirrors go in ~/.jk/config.toml, not jk.toml")
                 .hasMessageContaining("~/.jk/config.toml");
     }
 
@@ -88,7 +88,7 @@ class RepositoryMirrorTomlTest {
         assertThatThrownBy(() -> GlobalConfig.repositoryMirrors(file))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("repositories.corp in " + file)
-                .hasMessageContaining("`groups` belongs on a repository");
+                .hasMessageContaining("not `groups`");
     }
 
     @Test
@@ -101,7 +101,7 @@ class RepositoryMirrorTomlTest {
 
         assertThatThrownBy(() -> GlobalConfig.repositoryMirrors(file))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("plaintext http://")
+                .hasMessageContaining("is plain http")
                 .hasMessageContaining("allow-insecure = true");
     }
 

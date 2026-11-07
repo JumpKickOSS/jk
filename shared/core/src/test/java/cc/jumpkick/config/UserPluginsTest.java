@@ -55,7 +55,7 @@ class UserPluginsTest {
                 .isInstanceOfSatisfying(UserConfigParseException.class, e -> {
                     assertThat(e.file()).isEqualTo(file);
                     assertThat(e.line()).isEqualTo(1);
-                    assertThat(e.getMessage()).contains("plugin pins");
+                    assertThat(e.getMessage()).contains("fix it to fetch or build");
                 });
     }
 

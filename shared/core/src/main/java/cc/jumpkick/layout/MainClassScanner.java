@@ -60,13 +60,12 @@ public final class MainClassScanner {
     public static String scanUnique(Path classesDirOrJar) throws IOException {
         List<String> found = scan(classesDirOrJar);
         if (found.isEmpty()) {
-            throw new NoMainFoundException("no launchable `main` method found in " + classesDirOrJar
-                    + " — set `[application] main = \"...\"` in jk.toml");
+            throw new NoMainFoundException(
+                    "no main method in " + classesDirOrJar + "; set [application] main in jk.toml");
         }
         if (found.size() > 1) {
             throw new AmbiguousMainException(
-                    "multiple main classes found (" + String.join(", ", found)
-                            + ") — pick one with `[application] main = \"...\"` in jk.toml",
+                    "multiple main classes: " + String.join(", ", found) + "; set [application] main in jk.toml",
                     found);
         }
         return found.get(0);

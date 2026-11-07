@@ -280,7 +280,7 @@ class TestEnvTest {
         // The neighbouring formats (.env, `docker run -e`) spell it this way, so someone will try it.
         // Accepting it silently would create a variable literally named "TZ=UTC".
         assertThatThrownBy(() -> project(tmp, "[test]\nenv = [\"TZ=UTC\"]\n"))
-                .hasMessageContaining("looks like NAME=value")
+                .hasMessageContaining("is not a name")
                 .hasMessageContaining("{ TZ = \"UTC\" }");
     }
 

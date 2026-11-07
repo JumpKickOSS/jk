@@ -298,7 +298,7 @@ class PluginContributionsTest {
                         """, "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("already a [[contribute.step-dependency]]")
-                .hasMessageContaining("declare it once, in the step lane");
+                .hasMessageContaining("declare it once");
     }
 
     @Test
@@ -316,7 +316,7 @@ class PluginContributionsTest {
                         dependency = "adb"
                         """, "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("never joins a compile classpath");
+                .hasMessageContaining("use [[contribute.step-dependency]] for a step");
     }
 
     @Test
@@ -493,7 +493,7 @@ class PluginContributionsTest {
         assertThatThrownBy(() -> PluginDescriptors.parse(
                         base.formatted("native-declared = true, kotlin-project = true"), "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("more than one predicate");
+                .hasMessageContaining("has more than one condition");
     }
 
     @Test
@@ -569,7 +569,7 @@ class PluginContributionsTest {
                         """, "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining(
-                        "for-step applies to a [[contribute.step-dependency]] or [[contribute.lock-closure]] only");
+                        "for-step applies only to [[contribute.step-dependency]] or [[contribute.lock-closure]]");
     }
 
     @Test

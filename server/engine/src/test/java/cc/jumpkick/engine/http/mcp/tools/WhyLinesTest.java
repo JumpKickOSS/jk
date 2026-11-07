@@ -96,7 +96,7 @@ class WhyLinesTest {
                 List.of(),
                 "libs/core");
         assertThat(WhyLines.of(report, "core"))
-                .startsWith("core is the workspace sibling libs/core/")
+                .startsWith("core is workspace module libs/core/")
                 .doesNotContain("is not in jk-lock.toml");
     }
 }

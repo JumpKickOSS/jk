@@ -163,7 +163,7 @@ class LibraryCatalogTest {
                 """))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("goova")
-                .hasMessageContaining("[packages]");
+                .hasMessageContaining("is not in [libraries]");
     }
 
     @Test

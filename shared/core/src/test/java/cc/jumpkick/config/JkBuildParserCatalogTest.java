@@ -25,7 +25,7 @@ class JkBuildParserCatalogTest {
     void catalog_key_is_rejected() {
         assertThatThrownBy(() -> JkBuildParser.parse("catalog = \"bundled\"\n" + PROJECT))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("catalog = … was removed");
+                .hasMessageContaining("`catalog` is not supported");
     }
 
     @Test
@@ -141,7 +141,7 @@ class JkBuildParserCatalogTest {
                 my-dep = "some-dir"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name");
+                .hasMessageContaining("unknown library");
     }
 
     @Test
@@ -151,7 +151,7 @@ class JkBuildParserCatalogTest {
                 auth = "components/auth"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name");
+                .hasMessageContaining("unknown library");
     }
 
     @Test
@@ -162,7 +162,7 @@ class JkBuildParserCatalogTest {
                 unknown-lib = "latest"
                 """, TEST_CATALOG))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name");
+                .hasMessageContaining("unknown library");
     }
 
     @Test
@@ -172,7 +172,7 @@ class JkBuildParserCatalogTest {
                 unknown-lib = "stable"
                 """, TEST_CATALOG))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name");
+                .hasMessageContaining("unknown library");
     }
 
     @Test
@@ -183,7 +183,7 @@ class JkBuildParserCatalogTest {
                 unknown-lib = "1.2.3"
                 """, TEST_CATALOG))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name");
+                .hasMessageContaining("unknown library");
     }
 
     @Test
@@ -217,7 +217,7 @@ class JkBuildParserCatalogTest {
                 unknown-lib = "managed"
                 """, TEST_CATALOG))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name");
+                .hasMessageContaining("unknown library");
     }
 
     @Test
@@ -281,7 +281,7 @@ class JkBuildParserCatalogTest {
                 some-unknown-thing = "1.0.0"
                 """, TEST_CATALOG))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name");
+                .hasMessageContaining("unknown library");
     }
 
     @Test
@@ -298,8 +298,8 @@ class JkBuildParserCatalogTest {
                 jackson-databind = "2.18.2"
                 """, splitFamily))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name `jackson-databind`")
-                .hasMessageContaining("Did you mean:")
+                .hasMessageContaining("unknown library `jackson-databind`")
+                .hasMessageContaining("did you mean")
                 .hasMessageContaining("jackson2-databind")
                 .hasMessageContaining("jackson3-databind");
     }
@@ -311,7 +311,7 @@ class JkBuildParserCatalogTest {
                 also-unknown = { version = "1.0.0" }
                 """, TEST_CATALOG))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("must set a `group`");
+                .hasMessageContaining("needs a `group` or a catalog short name");
     }
 
     @Test

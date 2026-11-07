@@ -702,14 +702,14 @@ class JkBuildEditorTest {
                 """;
         assertThatThrownBy(() -> JkBuildEditor.setDependencyVersion(manifest, Scope.MAIN, "picocli", "4.7.7"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("platform-managed");
+                .hasMessageContaining("comes from a BOM");
     }
 
     @Test
     void set_version_refuses_entries_without_a_version() {
         assertThatThrownBy(() -> JkBuildEditor.setDependencyVersion(PINNED, Scope.MAIN, "web", "1.0"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("platform-managed");
+                .hasMessageContaining("comes from a BOM");
         assertThatThrownBy(() -> JkBuildEditor.setDependencyVersion(PINNED, Scope.MAIN, "util", "1.0"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("path or git");

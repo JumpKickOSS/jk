@@ -57,7 +57,7 @@ class LockTrustPipelineTest {
         project(tmp, remote, "");
         assertThatThrownBy(() -> LockPlans.lockScope(tmp))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.mirror uses plaintext http:// (" + remote + ")")
+                .hasMessageContaining("repositories.mirror: " + remote + " is plain http")
                 .hasMessageContaining("allow-insecure = true");
     }
 
@@ -119,8 +119,8 @@ class LockTrustPipelineTest {
         assertThat(refused.errors()).anySatisfy(d -> assertThat(d.message())
                 .contains("com.foo:lib")
                 .contains("repository `nm-repo` at " + remote + " is blocked and was not asked")
-                .contains("repositories.nm-repo uses plaintext http:// (" + remote + ")")
-                .contains("allow-insecure = true on [repositories.nm-repo]"));
+                .contains("repositories.nm-repo: " + remote + " is plain http")
+                .contains("set allow-insecure = true"));
 
         upstream.leaf("com.foo", "lib", "1.0");
         RepoGroup.clearProcessFetchCache();

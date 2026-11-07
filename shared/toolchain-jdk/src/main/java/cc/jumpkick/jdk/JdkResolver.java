@@ -46,9 +46,8 @@ public final class JdkResolver {
         if (q.majorOpt().isEmpty()
                 || q.exactVersionOpt().isPresent()
                 || q.hints().isEmpty()) {
-            throw new IllegalArgumentException(".jdk-version must be <vendor>-<major> (e.g. \"temurin-25\"), not \""
-                    + pin
-                    + "\". Pin a vendor and major release — jk keeps the patch version current.");
+            throw new IllegalArgumentException(
+                    ".jdk-version must be <vendor>-<major>, e.g. \"temurin-25\", not \"" + pin + "\"");
         }
         return pin;
     }

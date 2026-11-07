@@ -49,7 +49,7 @@ public final class ScalaResolver {
      * and what to check. The lock and the build both say it.
      */
     public static String floorNote(String declared) {
-        return "scala " + declared + " is below jk's floor; compiled with " + DEFAULT_VERSION + ". Write scala = \""
+        return "scala " + declared + " is below jk's minimum, so " + DEFAULT_VERSION + " compiles it; set scala = \""
                 + DEFAULT_VERSION + "\"";
     }
 }

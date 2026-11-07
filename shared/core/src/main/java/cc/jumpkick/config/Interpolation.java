@@ -108,32 +108,23 @@ public final class Interpolation {
         Offenders found = new Offenders(new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
         walk(root, List.of(), found);
         if (!found.commands().isEmpty()) {
-            throw new JkBuildParseException("command references are not allowed in a project manifest: "
-                    + String.join("; ", found.commands())
-                    + ". A ${cmd:} reference runs a command on this machine, so it is honoured only in"
-                    + " ~/.jk/config.toml: declare the repository there, with the reference, at the same URL.");
+            throw new JkBuildParseException("${cmd:} is not allowed in jk.toml: " + String.join(", ", found.commands())
+                    + "; declare the repository in ~/.jk/config.toml");
         }
         List<String> machine = found.machine();
         if (!machine.isEmpty()) {
-            throw new JkBuildParseException("file references are not allowed here: " + String.join("; ", machine)
-                    + ". A ${file:} reference reads a file of this machine, so it is honoured only in"
-                    + " ~/.jk/config.toml; in a project manifest it may stand only in a repository's credential or"
-                    + " object-store keys, where it is refused with a warning rather than read.");
+            throw new JkBuildParseException("${file:} is not allowed here: " + String.join(", ", machine)
+                    + "; use it only in ~/.jk/config.toml");
         }
         List<String> offenders = found.env();
         if (offenders.isEmpty()) return;
         // A [test] env written as one table is a shape error first: the reference would be
         // honoured in the array it should have been.
         if (root.get(List.of("test", "env")) instanceof TomlTable) {
-            throw new JkBuildParseException("[test] env must be an array — a bare name to forward the caller's value,"
-                    + " or a table to set one: env = [\"CI\", { TZ = \"UTC\" }]");
+            throw new JkBuildParseException("[test] env must be an array, e.g. env = [\"CI\", { TZ = \"UTC\" }]");
         }
-        throw new JkBuildParseException("environment references are not allowed here: "
-                + String.join("; ", offenders)
-                + ". ${VAR} is honoured only in repository credentials, repository object-store keys, a"
-                + " [generate.<name>] entry's args,"
-                + " and a value set in [test] env — anything that feeds a compile or package cache key must stay"
-                + " a literal, or the same commit would build differently on different machines.");
+        throw new JkBuildParseException("${VAR} is not allowed here: " + String.join(", ", offenders)
+                + "; use it only in credentials, [generate] args or [test] env");
     }
 
     /** Positions holding a reference they may not: environment ones, file ones, and every command. */
@@ -284,12 +275,7 @@ public final class Interpolation {
      * the caller never set it or because nothing declared it and so nothing carried it across.
      */
     static String unsetMessage(String describe, String var) {
-        return describe + " references unset environment variable ${" + var + "}."
-                + " Set it in the shell that runs jk, or in a .env beside the manifest."
-                + " If it IS set there, jk did not carry it: the engine is a long-lived process with"
-                + " its own environment, so only declared names travel with the request. Declare it"
-                + " by naming it in [test] env — env = [\"" + var + "\", …] forwards the caller's"
-                + " value when set, and does not fail when it is not. `jk env` shows what resolved.";
+        return describe + " references unset ${" + var + "}; set it and list it in [test] env = [\"" + var + "\"]";
     }
 
     private static boolean indexedMatch(String pattern, String actual) {

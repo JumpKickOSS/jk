@@ -100,7 +100,7 @@ class JkBuildParserAuditTest {
                         ignore = [{ reason = "r" }]
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageStartingWith("[audit].ignore[0] needs id = ");
+                .hasMessageStartingWith("[audit].ignore[0] needs the advisory id");
     }
 
     @Test

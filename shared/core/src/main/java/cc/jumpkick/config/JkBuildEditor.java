@@ -594,16 +594,15 @@ public final class JkBuildEditor {
         if (ManifestDeps.isPathShorthand(value) || ManifestDeps.isGitUrlShorthand(value)) {
             throw new IllegalStateException(displayPath + " is a path or git dependency; it has no version to rewrite");
         } else if (Dependency.MANAGED_KEYWORD.equals(value)) {
-            throw new IllegalStateException(displayPath
-                    + " is platform-managed (`managed`); the BOM under [platform-dependencies] or the"
-                    + " [managed-dependencies] entry owns its version");
+            throw new IllegalStateException(
+                    displayPath + " is managed; its version comes from a BOM or [managed-dependencies]");
         } else if (value.indexOf(':') >= 0) {
             String[] parts = value.split(":", 3);
             if (parts.length < 3) {
                 throw new IllegalStateException(displayPath
-                        + " is platform-managed (`"
+                        + ": `"
                         + value
-                        + "` has no version); the BOM under [platform-dependencies] owns it");
+                        + "` has no version; it comes from a BOM in [platform-dependencies]");
             }
             replacement = parts[0] + ":" + parts[1] + ":" + versionLiteral;
         } else {

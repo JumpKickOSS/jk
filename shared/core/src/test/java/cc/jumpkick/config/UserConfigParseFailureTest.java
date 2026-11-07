@@ -57,7 +57,7 @@ class UserConfigParseFailureTest {
                     assertThat(e.reason()).isNotBlank();
                     assertThat(e.getMessage())
                             .startsWith(file + ":5:" + e.column() + ": ")
-                            .contains("reads no repositories, mirrors, proxies, credentials or plugin pins");
+                            .endsWith("; fix it to fetch or build");
                 });
         assertThat(GlobalConfig.userConfigProblem(file))
                 .hasValueSatisfying(e -> assertThat(e.line()).isEqualTo(5));
@@ -69,9 +69,8 @@ class UserConfigParseFailureTest {
         Path file = Files.writeString(dir.resolve("config.toml"), BROKEN);
 
         assertThat(GlobalConfig.userConfigProblem(file)).hasValueSatisfying(e -> assertThat(e.unreadWarning())
-                .startsWith(file + ":5:" + e.column() + " does not parse; ")
-                .contains("this command read nothing from it", "loads a user plugin")
-                .endsWith("(" + e.reason() + ")"));
+                .startsWith(file + ":5:" + e.column() + ": " + e.reason())
+                .endsWith("; commands that resolve or fetch fail until fixed"));
     }
 
     @Test

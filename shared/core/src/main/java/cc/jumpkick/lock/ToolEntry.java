@@ -110,8 +110,8 @@ public record ToolEntry(
             Objects.requireNonNull(version, "version");
             if (!closure.isEmpty()) {
                 if (checksum != null || !sha256.isEmpty()) {
-                    throw new IllegalArgumentException("[[tool]] " + coordinate + ":" + version
-                            + " names a `closure` beside a digest: each jar of a closure is a row of its own");
+                    throw new IllegalArgumentException(
+                            "[[tool]] " + coordinate + ":" + version + " sets both `closure` and a digest; keep one");
                 }
             } else if (!with.isEmpty() || managedBy != null) {
                 throw new IllegalArgumentException(

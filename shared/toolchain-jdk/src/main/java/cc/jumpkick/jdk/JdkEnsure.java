@@ -158,9 +158,8 @@ public final class JdkEnsure {
             // Engine-hosted sync: the client should have pre-flighted this install before sending
             // the request — reaching here means it didn't (or the lock was created engine-side with
             // a pin the client couldn't see). Fail structured rather than downloading silently.
-            throw new IOException("JDK " + r.installSpec()
-                    + " is not installed — run `jk jdk install " + r.installSpec()
-                    + "` (or re-run `jk sync`; JDK installs stay client-side)");
+            throw new IOException(
+                    "JDK " + r.installSpec() + " is not installed; run jk jdk install " + r.installSpec());
         }
 
         // A named pin (or the bootstrap latest-LTS) isn't on disk — install it.

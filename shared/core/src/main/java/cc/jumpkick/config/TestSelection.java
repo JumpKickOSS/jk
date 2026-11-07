@@ -271,8 +271,7 @@ public record TestSelection(
         public String missingMessage() {
             if (ok()) return "";
             if (missing.contains(TestSuites.GUARD)) {
-                return "the guard suite is not a test suite: guard tests run in the guard lanes, not under jk test"
-                        + " (use `jk guard`)";
+                return "guard tests do not run under jk test; use jk guard";
             }
             String known =
                     discovered == null || discovered.isEmpty() ? TestSuites.DEFAULT : String.join(", ", discovered);

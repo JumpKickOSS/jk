@@ -467,8 +467,7 @@ public final class LibraryCatalog {
         for (Map.Entry<String, String> row : packages.entrySet()) {
             if (!out.containsKey(row.getValue())) {
                 throw new IllegalStateException(displayPath + ".packages.\"" + row.getKey() + "\" names `"
-                        + row.getValue() + "`, which is not a library of this catalog file; [packages] rows point at"
-                        + " [libraries] names");
+                        + row.getValue() + "`, which is not in [libraries]");
             }
         }
         return new Parsed(Collections.unmodifiableMap(out), Collections.unmodifiableMap(packages));

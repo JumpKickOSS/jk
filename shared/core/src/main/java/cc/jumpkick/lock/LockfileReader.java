@@ -158,13 +158,13 @@ public final class LockfileReader {
                     + lockVersion
                     + " is not supported (this jk reads v"
                     + Lockfile.CURRENT_VERSION
-                    + ") — " + remedy(writer, origin));
+                    + "); " + remedy(writer));
         }
         Set<String> unknown = new TreeSet<>(result.keySet());
         unknown.removeAll(TOP_LEVEL_KEYS);
         if (!unknown.isEmpty()) {
-            throw new IllegalArgumentException("jk-lock.toml in " + origin + " has unknown top-level key(s) " + unknown
-                    + " — " + remedy(writer, origin));
+            throw new IllegalArgumentException(
+                    "jk-lock.toml in " + origin + " has unknown top-level key(s) " + unknown + "; " + remedy(writer));
         }
         String generatedBy = requireString(result, "generated-by");
         String resolutionAlgorithm = requireString(result, "resolution-algorithm");
@@ -308,10 +308,7 @@ public final class LockfileReader {
     private static <T> @Nullable T toPin(@Nullable LockToml table, String section, Pins<T> factory) {
         if (table == null) return null;
         if (table.contains("vendor") || table.contains("version")) {
-            throw new IllegalArgumentException("["
-                    + section
-                    + "] uses the old vendor/version shape, which does not say whether it is a"
-                    + " suggestion or a pin — re-run `jk lock` to restate it as suggested-*/required-*");
+            throw new IllegalArgumentException("[" + section + "] uses an old format; re-run `jk lock`");
         }
         T pin = factory.of(
                 ToolchainPin.blankToEmpty(table.getString("suggested-vendor")),
@@ -472,12 +469,9 @@ public final class LockfileReader {
      * newer tree an older lock. Written by anything else, the lock is malformed and a re-lock
      * restates it.
      */
-    static String remedy(@Nullable String newerWriter, String origin) {
+    static String remedy(@Nullable String newerWriter) {
         if (newerWriter == null) return "re-run `jk lock` to restate it";
-        return "it was written by jk " + newerWriter + " and this is jk " + JkVersion.VERSION
-                + "; a newer lock format needs a newer reader, not a re-lock. Bootstrap " + origin
-                + " with a jk built from the last commit this one can read"
-                + " (docs/contributors/self-host.md, \"The bootstrap chain\")";
+        return "written by jk " + newerWriter + " and this is jk " + JkVersion.VERSION + "; upgrade jk, do not re-lock";
     }
 
     private static String requireString(LockToml result, String key) {
@@ -503,8 +497,8 @@ public final class LockfileReader {
             String chk = t.getString("checksum");
             String path = t.getString("path");
             if (chk != null && path != null) {
-                throw new IllegalArgumentException("[[plugin]] " + coord + " names both `checksum` and `path`"
-                        + " — a row is verified by one of them, not both");
+                throw new IllegalArgumentException(
+                        "[[plugin]] " + coord + " sets both `checksum` and `path`; keep one");
             }
             plugins.add(new Lockfile.PluginEntry(coord, ver, chk, path));
         }

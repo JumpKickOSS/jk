@@ -148,9 +148,11 @@ public final class ManifestBuild {
                     .map(table -> "[" + table + "]")
                     .collect(Collectors.joining(", "));
             String fetchDetail = builtInFetchFailures.get(key);
-            throw new JkBuildParseException("[" + key + "] is not owned by any installed plugin — add it under"
-                    + " [plugins] (plugin tables installed here: " + (known.isEmpty() ? "none" : known) + ")"
-                    + (fetchDetail == null ? "" : "; fetching the built-in plugin failed: " + fetchDetail));
+            throw new JkBuildParseException(
+                    fetchDetail != null
+                            ? "[" + key + "]: could not fetch the built-in plugin: " + fetchDetail
+                            : "[" + key + "]: no installed plugin reads this table; add the plugin under [plugins]"
+                                    + (known.isEmpty() ? "" : "\n  plugin tables: " + known));
         }
     }
 
@@ -463,7 +465,7 @@ public final class ManifestBuild {
         if (dev == null) return Optional.empty();
         if (!dev.contains("ready") && !dev.contains("ready-pattern")) {
             if (dev.contains("ready-timeout")) {
-                throw new JkBuildParseException("[dev] ready-timeout needs a probe: ready or ready-pattern");
+                throw new JkBuildParseException("[dev] ready-timeout needs ready or ready-pattern");
             }
             return Optional.empty();
         }
@@ -502,7 +504,7 @@ public final class ManifestBuild {
                 ? scalar(table.get(List.of("ready-pattern")), where + ".ready-pattern")
                 : null;
         if (ready != null && pattern != null) {
-            throw new JkBuildParseException(where + " sets both ready and ready-pattern — one probe per process");
+            throw new JkBuildParseException(where + " sets both ready and ready-pattern; use one");
         }
         if (pattern != null) {
             try {
@@ -536,9 +538,7 @@ public final class ManifestBuild {
         Object rawSidecars = dev.get(List.of("sidecars"));
         if (rawSidecars == null) return List.of();
         if (!(rawSidecars instanceof TomlTable sidecars)) {
-            throw new JkBuildParseException(
-                    "[dev.sidecars] must be a table keyed by sidecar name, not an array: [dev.sidecars] web = {"
-                            + " command = \"…\" }");
+            throw new JkBuildParseException("[dev.sidecars] must be a table keyed by name: web = { command = \"…\" }");
         }
         List<Sidecar> out = new ArrayList<>();
         for (String name : sidecars.keySet()) {
@@ -573,8 +573,7 @@ public final class ManifestBuild {
             for (int i = 0; i < arr.size(); i++) command.add(scalar(arr.get(i), where + ".command[" + i + "]"));
         } else {
             throw new JkBuildParseException(
-                    where + ".command must be a string or an array: command = \"npm run dev\" or command = [\"npm\","
-                            + " \"run\", \"dev\"]");
+                    where + ".command must be a string or an array, e.g. [\"npm\", \"run\", \"dev\"]");
         }
         if (rawCommand != null && command.isEmpty()) throw new JkBuildParseException(where + " command is empty");
         String cwd = table.contains("cwd") ? scalar(table.get(List.of("cwd")), where + ".cwd") : ".";
@@ -689,9 +688,8 @@ public final class ManifestBuild {
         }
         for (String key : env.keySet()) {
             if (!ENV_KEYS.contains(key)) {
-                throw new JkBuildParseException("[env] unknown key `" + key + "` — expected one of: "
-                        + String.join(", ", ENV_KEYS) + ". To hand workers a variable, list it under vars: vars = [{ "
-                        + key + " = \"…\" }]");
+                throw new JkBuildParseException(
+                        "[env] unknown key `" + key + "`; to set a variable use vars = [{ " + key + " = \"…\" }]");
             }
         }
         boolean inherit = false;
@@ -713,8 +711,8 @@ public final class ManifestBuild {
     private static List<EnvDecl> parseEnvDecls(@Nullable Object raw, String table, String key) {
         if (raw == null) return List.of();
         if (!(raw instanceof TomlArray arr)) {
-            throw new JkBuildParseException(table + " " + key + " must be an array — a bare name to forward the"
-                    + " caller's value, or a table to set one: " + key + " = [\"CI\", { TZ = \"UTC\" }]");
+            throw new JkBuildParseException(
+                    table + " " + key + " must be an array, e.g. " + key + " = [\"CI\", { TZ = \"UTC\" }]");
         }
         List<EnvDecl> out = new ArrayList<>();
         for (int i = 0; i < arr.size(); i++) {
@@ -727,8 +725,7 @@ public final class ManifestBuild {
                     out.add(new EnvDecl.Set(name, scalar(values.get(List.of(name)), where + "." + name)));
                 }
             } else {
-                throw new JkBuildParseException(
-                        where + " must be a name to forward (a string) or a table of values to set");
+                throw new JkBuildParseException(where + " must be a variable name or a table of values");
             }
         }
         return List.copyOf(out);
@@ -739,14 +736,12 @@ public final class ManifestBuild {
         String name = raw.trim();
         if (name.isEmpty()) throw new JkBuildParseException(where + " is an empty environment variable name");
         if (name.indexOf('=') >= 0) {
-            throw new JkBuildParseException(where + " (\"" + raw + "\") looks like NAME=value. A bare string"
-                    + " forwards the caller's value; to set one, use a table: { "
+            throw new JkBuildParseException(where + ": \"" + raw + "\" is not a name; to set a value write { "
                     + name.substring(0, name.indexOf('=')) + " = \""
                     + name.substring(name.indexOf('=') + 1) + "\" }");
         }
         if (name.indexOf('$') >= 0) {
-            throw new JkBuildParseException(where + " (\"" + raw + "\") is a variable name, not a value —"
-                    + " ${…} is expanded in the table form, not here");
+            throw new JkBuildParseException(where + ": \"" + raw + "\" is not a name; ${…} works only in a table");
         }
         return name;
     }
@@ -811,8 +806,7 @@ public final class ManifestBuild {
         for (String key : javac.keySet()) {
             if (!known.contains(key)) {
                 if ("release".equals(key)) {
-                    throw new JkBuildParseException(at + " has no `release` — the module's level is the top-level"
-                            + " `java = N`; a test-only level is [javac.test] release = N");
+                    throw new JkBuildParseException(at + " has no `release`; set the top-level `java = N`");
                 }
                 throw new JkBuildParseException(
                         at + " unknown key `" + key + "` — expected one of: " + String.join(", ", known));
@@ -830,8 +824,8 @@ public final class ManifestBuild {
         Object rawPlugins = javac.get(List.of("plugins"));
         if (rawPlugins != null) {
             if (!(rawPlugins instanceof TomlTable table)) {
-                throw new JkBuildParseException(at + ".plugins must be a table keyed by plugin name: plugins = {"
-                        + " ErrorProne = { options = […] } }");
+                throw new JkBuildParseException(
+                        at + ".plugins must be a table, e.g. { ErrorProne = { options = […] } }");
             }
             for (String name : table.keySet()) {
                 String where = at.substring(0, at.length() - 1) + ".plugins." + name + "]";
@@ -923,11 +917,11 @@ public final class ManifestBuild {
             }
         }
         if (!(entry.get(List.of("id")) instanceof String id) || id.isBlank()) {
-            throw new JkBuildParseException(where + " needs id = \"GHSA-…\" (the advisory id the audit reports)");
+            throw new JkBuildParseException(where + " needs the advisory id, e.g. id = \"GHSA-…\"");
         }
         String at = "[audit].ignore " + id.trim();
         if (!(entry.get(List.of("reason")) instanceof String reason) || reason.isBlank()) {
-            throw new JkBuildParseException(at + " needs a reason — an ignore without one cannot be reviewed");
+            throw new JkBuildParseException(at + " needs a reason");
         }
         LocalDate until = null;
         Object rawUntil = entry.get(List.of("until"));
@@ -973,13 +967,12 @@ public final class ManifestBuild {
             }
             String coordinate = t.getString("coordinate");
             if (coordinate == null || coordinate.isBlank()) {
-                throw new JkBuildParseException("[[kotlin-plugins]] requires a `coordinate`"
-                        + " (group:artifact[:version]; version defaults to the project's Kotlin version)");
+                throw new JkBuildParseException("[[kotlin-plugins]] needs coordinate = \"group:artifact[:version]\"");
             }
             String[] parts = coordinate.split(":");
             if (parts.length < 2 || parts.length > 3 || parts[0].isBlank() || parts[1].isBlank()) {
                 throw new JkBuildParseException(
-                        "[[kotlin-plugins]] coordinate must be group:artifact[:version] — got: " + coordinate);
+                        "[[kotlin-plugins]] coordinate must be group:artifact[:version], not " + coordinate);
             }
             String id = t.getString("id");
             List<String> options = new ArrayList<>();
@@ -1010,9 +1003,8 @@ public final class ManifestBuild {
             }
             String shaRaw = entry.getString("sha256");
             if (shaRaw == null || shaRaw.isBlank()) {
-                throw new JkBuildParseException("plugins." + alias
-                        + " must declare `sha256` (content pin — refuse unpinned plugin jars)."
-                        + " Compute with: sha256sum vendor/your-plugin.jar");
+                throw new JkBuildParseException(
+                        "plugins." + alias + " needs `sha256`; compute it with sha256sum <plugin.jar>");
             }
             String path = entry.getString("path");
             String group = entry.getString("group");

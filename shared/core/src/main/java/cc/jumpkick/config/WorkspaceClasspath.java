@@ -152,10 +152,8 @@ public final class WorkspaceClasspath {
             if (sourceless) {
                 // Name the real cause: the sibling was never going to compile anything — its
                 // outputs only appear once the module is scheduled and packages empty.
-                missingLabel = module + " has no sources — jk packages an empty jar for it once the"
-                        + " module is scheduled; expected at " + siblingJar;
-                missingClassesLabel = module + " has no sources — jk creates an empty classes tree for"
-                        + " it once the module is scheduled; expected at " + siblingClasses;
+                missingLabel = module + " has no sources and is not built yet; expected " + siblingJar;
+                missingClassesLabel = module + " has no sources and is not built yet; expected " + siblingClasses;
             }
             addIfPresent(jars, seenPaths, siblingJar, missing, missingLabel);
             if (!Files.exists(siblingClasses)) missingClasses.add(missingClassesLabel);

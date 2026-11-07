@@ -68,14 +68,13 @@ class JkBuildParserRepositoryTest {
                 jk-local = "https://example.invalid/maven/"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.jk-local is reserved")
-                .hasMessageContaining("repos/jk-local");
+                .hasMessageContaining("repositories.jk-local: name reserved for jk");
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                 [repositories.jk-local]
                 url = "file:///tmp/repo"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.jk-local is reserved");
+                .hasMessageContaining("repositories.jk-local: name reserved for jk");
     }
 
     @Test
@@ -85,7 +84,7 @@ class JkBuildParserRepositoryTest {
                 url = "http://nexus.corp.example/maven"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.mirror uses plaintext http:// (http://nexus.corp.example/maven)")
+                .hasMessageContaining("repositories.mirror: http://nexus.corp.example/maven is plain http")
                 .hasMessageContaining("allow-insecure = true");
         // The string form has nowhere to put the key, so it is refused the same way.
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
@@ -93,7 +92,7 @@ class JkBuildParserRepositoryTest {
                 mirror = "http://nexus.corp.example/maven"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.mirror uses plaintext http://");
+                .hasMessageContaining("repositories.mirror: http://nexus.corp.example/maven is plain http");
 
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.mirror]
@@ -121,7 +120,7 @@ class JkBuildParserRepositoryTest {
                 allow-insecure = true
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.nm-repo is blocked and says allow-insecure = true");
+                .hasMessageContaining("repositories.nm-repo sets both blocked and allow-insecure");
     }
 
     @Test
@@ -185,8 +184,8 @@ class JkBuildParserRepositoryTest {
                     """.formatted(key)))
                     .as(key)
                     .isInstanceOf(JkBuildParseException.class)
-                    .hasMessageContaining("repositories.central is Maven Central")
-                    .hasMessageContaining("allow-insecure and allow-unverified are not accepted on it");
+                    .hasMessageContaining("repositories.central")
+                    .hasMessageContaining("allow-insecure and allow-unverified are not allowed on Maven Central");
         }
     }
 

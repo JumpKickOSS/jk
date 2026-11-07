@@ -95,11 +95,7 @@ public final class ReferenceResolver {
 
     /** The error for a scheme a project manifest may not use. */
     static JkBuildParseException notHere(ConfigReference ref, String where) {
-        return new JkBuildParseException(
-                where + " uses " + ref.spelling() + ": a ${" + ref.scheme().prefix()
-                        + ":} reference is honoured only in ~/.jk/config.toml, which describes this machine;"
-                        + (ref.scheme() == ConfigReference.Scheme.CMD
-                                ? " a project manifest may not run a command on this machine"
-                                : " a project manifest may not read this machine's files"));
+        return new JkBuildParseException(where + " uses " + ref.spelling() + "; ${"
+                + ref.scheme().prefix() + ":} works only in ~/.jk/config.toml");
     }
 }

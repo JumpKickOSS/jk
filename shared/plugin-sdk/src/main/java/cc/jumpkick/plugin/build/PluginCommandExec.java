@@ -30,9 +30,8 @@ public interface PluginCommandExec {
     /** As {@link #extra} but required. */
     default Path requireExtra(String name) {
         return extra(name)
-                .orElseThrow(() -> new IllegalStateException("tool artifact not provided: " + name
-                        + " — declare it as a [[contribute.command-dependency]] (command-only) or"
-                        + " [[contribute.step-dependency]] (a step tool the command borrows)"));
+                .orElseThrow(() -> new IllegalStateException(
+                        "tool " + name + " not provided; declare it in [[contribute.command-dependency]]"));
     }
 
     /**

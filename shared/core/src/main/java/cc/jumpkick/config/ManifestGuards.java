@@ -21,13 +21,12 @@ final class ManifestGuards {
     static GuardsConfig parse(TomlTable root) {
         if (!root.contains("guards")) return GuardsConfig.ABSENT;
         if (!root.isTable("guards")) {
-            throw new JkBuildParseException("`guards` must be a table — use [guards] with on-build / coverage-report");
+            throw new JkBuildParseException("`guards` must be a table; use [guards]");
         }
         TomlTable guards = Objects.requireNonNull(root.getTable("guards"), "guards");
         for (String k : guards.keySet()) {
             if (!KEYS.contains(k)) {
-                throw new JkBuildParseException("[guards] unknown key `" + k + "` — expected on-build, coverage-report."
-                        + " Rules live in jk-guards.toml, not in the manifest.");
+                throw new JkBuildParseException("[guards] unknown key `" + k + "`; rules go in jk-guards.toml");
             }
         }
         boolean onBuild = true;

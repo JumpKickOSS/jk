@@ -209,13 +209,8 @@ public final class ScriptHeaderParser {
                     || trimmed.startsWith("<")
                     || trimmed.contains(",")
                     || "latest".equalsIgnoreCase(trimmed)) {
-                throw new IllegalArgumentException(coord
-                        + " — the `:` form is for pinned versions only. "
-                        + "Use `"
-                        + module
-                        + "@"
-                        + versionPart
-                        + "` for a floating constraint.");
+                throw new IllegalArgumentException(
+                        coord + ": `:` takes an exact version; use `" + module + "@" + versionPart + "` for a range");
             }
             selector = VersionSelector.parse(versionPart);
         }

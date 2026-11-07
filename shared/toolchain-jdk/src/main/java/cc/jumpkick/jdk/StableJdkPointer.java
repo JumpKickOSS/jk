@@ -248,10 +248,8 @@ public final class StableJdkPointer {
     private static final int MAX_DISPLACED = 64;
 
     private static IOException populatedInstall(Path pointer) {
-        return new IOException("refusing to remove " + pointer
-                + " to free the stable pointer name: it is a populated JDK install that jk did not"
-                + " install, and jk never deletes a JDK on its own. Remove it with `jk jdk uninstall`"
-                + " if you meant to.");
+        return new IOException("refusing to replace " + pointer + ": it is a JDK jk did not install;"
+                + " remove it with jk jdk uninstall");
     }
 
     /**

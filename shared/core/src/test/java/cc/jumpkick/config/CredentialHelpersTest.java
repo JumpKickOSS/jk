@@ -310,7 +310,7 @@ class CredentialHelpersTest {
 
         assertThatThrownBy(() -> r.expand("${cmd:id}", "repositories.corp.token", ReferenceResolver.Origin.PROJECT))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("may not run a command");
+                .hasMessageContaining("works only in ~/.jk/config.toml");
     }
 
     @Test
@@ -322,7 +322,7 @@ class CredentialHelpersTest {
                         """)))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("repositories.gar.token (${cmd:gcloud auth print-access-token})")
-                .hasMessageContaining("only in ~/.jk/config.toml");
+                .hasMessageContaining("declare the repository in ~/.jk/config.toml");
     }
 
     @Test

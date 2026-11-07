@@ -290,7 +290,7 @@ class GlobalConfigTest {
 
         assertThatThrownBy(() -> JkBuildParser.parse("name = \"demo\"\n" + table))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.mirror uses plaintext http://");
+                .hasMessageContaining("is plain http; use https or set allow-insecure = true");
     }
 
     /** {@code jk-local} is the first-party install store: reserved in a manifest, ignored globally. */

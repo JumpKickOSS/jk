@@ -30,7 +30,7 @@ class ManifestIdentityKeysTest {
         assertThatThrownBy(() -> JkBuildParser.parse(f))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("missing required key `name`")
-                .hasMessageContaining("found `name` under [dependencies]")
+                .hasMessageContaining("found it under [dependencies]")
                 .hasMessageContaining("above the first table");
     }
 
@@ -46,7 +46,7 @@ class ManifestIdentityKeysTest {
         assertThatThrownBy(() -> JkBuildParser.parse(f))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("missing required key `version`")
-                .hasMessageContaining("found `version` under [dependencies]");
+                .hasMessageContaining("found it under [dependencies]");
     }
 
     @Test

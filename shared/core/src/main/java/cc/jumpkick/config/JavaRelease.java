@@ -26,7 +26,6 @@ public final class JavaRelease {
 
     /** The one sentence a module compiling below the floor gets, once per build. */
     public static String floorNote(int java) {
-        return "java " + java + " is below jk's floor " + FLOOR + "; compiled with --release " + java
-                + ". Raise to java = " + FLOOR + " when you can";
+        return "java " + java + " is below jk's minimum " + FLOOR + "; raise it to java = " + FLOOR + " when you can";
     }
 }

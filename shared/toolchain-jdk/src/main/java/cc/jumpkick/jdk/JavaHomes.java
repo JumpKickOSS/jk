@@ -157,9 +157,7 @@ public final class JavaHomes {
         // its own environment is the right answer.
         if (home == null || home.isBlank()) home = ProcessEnv.get("JAVA_HOME");
         if (home == null || home.isBlank()) {
-            throw new IllegalStateException("Cannot resolve a JDK: no project pin (`.jdk-version` or `.sdkmanrc`), "
-                    + "no `java.home` (running under native-image?), and `JAVA_HOME` is unset. "
-                    + "Pin a JDK with a `.jdk-version` file, set `JAVA_HOME`, or run jk on a JVM.");
+            throw new IllegalStateException("no JDK found; add a .jdk-version file or set JAVA_HOME");
         }
         return Path.of(home);
     }

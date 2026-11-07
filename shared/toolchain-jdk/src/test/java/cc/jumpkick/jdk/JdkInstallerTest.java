@@ -577,7 +577,7 @@ class JdkInstallerTest {
             JdkCatalog.Entry entry = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), missing);
             assertThatThrownBy(() -> installer.install(entry))
                     .isInstanceOf(IOException.class)
-                    .hasMessageContaining("carries no sha256")
+                    .hasMessageContaining("no sha256 in the catalog")
                     .hasMessageContaining("temurin-21.0.5");
         }
         assertThat(jdksRoot.resolve("temurin-21.0.5")).doesNotExist();

@@ -45,12 +45,12 @@ public record NodeSpec(Kind kind, String text, boolean required) {
         } else if (lower.matches("\\d+\\.\\d+\\.\\d+")) {
             spec = new NodeSpec(Kind.EXACT, lower, required);
         } else {
-            throw new IllegalArgumentException("node = \"" + raw + "\" names no Node release — write a major (24),"
-                    + " a point release (\"24.21.0\", \"=24.21.0\" to require it), \"lts\" or \"lts/<codename>\"");
+            throw new IllegalArgumentException(
+                    "node = \"" + raw + "\" is not a Node version; use 24, \"24.21.0\", \"lts\" or \"lts/<codename>\"");
         }
         if (required && spec.kind != Kind.EXACT) {
             throw new IllegalArgumentException(
-                    "node = \"=" + s + "\" pins nothing — an = version needs a point" + " release (e.g. \"=24.21.0\")");
+                    "node = \"=" + s + "\": an exact pin needs a full version, e.g. \"=24.21.0\"");
         }
         return spec;
     }

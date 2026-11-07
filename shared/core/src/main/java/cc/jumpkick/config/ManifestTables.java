@@ -88,8 +88,8 @@ public final class ManifestTables {
                 }
                 TomlTable valueTable = dimTable.getTable(List.of(key));
                 if (valueTable == null) {
-                    throw new JkBuildParseException("[variants." + dim + "]." + key
-                            + " must be a table (a value's overlay) — or `default = \"<value>\"`");
+                    throw new JkBuildParseException(
+                            "[variants." + dim + "]." + key + " must be a table, or use `default = \"<value>\"`");
                 }
                 values.put(
                         key, parseVariantValue("variants." + dim + "." + key, valueTable, workspace, catalog, byTable));
@@ -139,9 +139,8 @@ public final class ManifestTables {
                         plugin.table(), PluginTableRegistry.validateOverlay(plugin, where + "." + key, overlay));
                 continue;
             }
-            throw new JkBuildParseException("[" + where + "]." + key + " is not an overlayable section —"
-                    + " expected extra-src, a dependency scope table (dependencies, test-dependencies, ...),"
-                    + " or an installed plugin's table " + pluginsByTable.keySet());
+            throw new JkBuildParseException("[" + where + "]." + key + ": a variant cannot set this;"
+                    + " use extra-src, a dependency table or one of " + pluginsByTable.keySet());
         }
         return new Variants.Value(extraSrc, deps, pluginOverlays);
     }
@@ -170,7 +169,7 @@ public final class ManifestTables {
      */
     static Optional<JkBuild.Install> parseInstall(TomlTable root) {
         if (root.contains("install") && !root.isTable("install")) {
-            throw new JkBuildParseException("`install` must be a table — use [install] with a target key");
+            throw new JkBuildParseException("`install` must be a table; use [install] with a target key");
         }
         TomlTable install = root.getTable("install");
         if (install == null) return Optional.empty();
@@ -187,15 +186,13 @@ public final class ManifestTables {
         // installed under jk-engine/ while announcing a directory nothing wrote to. (A client-io
         // test pins this literal to EngineInstall.BIN_NAME.)
         if (productLib != null && !productLib.equals("jk-engine")) {
-            throw new JkBuildParseException("[install] product-lib must be \"jk-engine\" — installing into jk's own"
-                    + " product layout is jk installing jk, and the engine home is not configurable");
+            throw new JkBuildParseException("[install] product-lib must be \"jk-engine\"");
         }
         // The PATH client's name is not configurable either: EngineInstall writes `jk` (and its
         // `jkx` twin) under <home>/bin, and that is the one name LauncherName refuses to every
         // other install.
         if (productBin != null && !productBin.equals("jk")) {
-            throw new JkBuildParseException("[install] product-bin must be \"jk\" — the PATH client under jk's own"
-                    + " bin/ is the one binary an install may replace there");
+            throw new JkBuildParseException("[install] product-bin must be \"jk\"");
         }
         if (productLib == null && productBin == null) return Optional.empty();
         return Optional.of(new JkBuild.Install(productLib, productBin));
@@ -209,7 +206,7 @@ public final class ManifestTables {
      */
     static Optional<BuildBlock.Dokka> parseDokka(TomlTable root) {
         if (root.contains("dokka") && !root.isTable("dokka")) {
-            throw new JkBuildParseException("`dokka` must be a table — use [dokka] with version and format keys");
+            throw new JkBuildParseException("`dokka` must be a table; use [dokka] with version and format");
         }
         TomlTable table = root.getTable("dokka");
         if (table == null) return Optional.empty();
@@ -259,8 +256,8 @@ public final class ManifestTables {
                         + "` is not a Java release: key each source set by its release, 21 = \"src/main/java21\"");
             }
             if (release < ReleaseSources.FLOOR) {
-                throw new JkBuildParseException("[multi-release] " + key + ": a JDK reads META-INF/versions/ from Java "
-                        + ReleaseSources.FLOOR + " on, so the release must be at least " + ReleaseSources.FLOOR);
+                throw new JkBuildParseException(
+                        "[multi-release] " + key + ": release must be " + ReleaseSources.FLOOR + " or later");
             }
             Object raw = table.get(List.of(key));
             List<String> src = new ArrayList<>();
@@ -295,7 +292,7 @@ public final class ManifestTables {
     static Optional<BuildBlock.BuildInfo> parseBuildInfo(TomlTable root) {
         if (root.contains(TaskNames.BUILD_INFO) && !root.isTable(TaskNames.BUILD_INFO)) {
             throw new JkBuildParseException(
-                    "`build-info` must be a table — use [build-info], optionally with file and time keys");
+                    "`build-info` must be a table; use [build-info] with optional file and time");
         }
         TomlTable table = root.getTable(TaskNames.BUILD_INFO);
         if (table == null) return Optional.empty();
@@ -303,17 +300,14 @@ public final class ManifestTables {
         String file = stringOrThrow(table, "file", "build-info.file");
         if (file != null && (file.isBlank() || file.startsWith("/") || file.contains(".."))) {
             throw new JkBuildParseException(
-                    "[build-info] file must be a relative resource path inside the jar, such as git.properties");
+                    "[build-info] file must be a relative path in the jar, e.g. git.properties");
         }
         String time = stringOrThrow(table, "time", "build-info.time");
         boolean buildTime =
                 switch (time == null ? "commit" : time.trim().toLowerCase(Locale.ROOT)) {
                     case "commit" -> false;
                     case "build" -> true;
-                    default ->
-                        throw new JkBuildParseException(
-                                "[build-info] time must be \"commit\" (the HEAD"
-                                        + " commit's time; reproducible) or \"build\" (the wall clock; every build repackages)");
+                    default -> throw new JkBuildParseException("[build-info] time must be \"commit\" or \"build\"");
                 };
         return Optional.of(
                 new BuildBlock.BuildInfo(file == null ? BuildBlock.BuildInfo.DEFAULT_FILE : file, buildTime));
@@ -327,7 +321,7 @@ public final class ManifestTables {
     /** {@code [war]}: present (even empty) means the module packages a war. */
     static Optional<BuildBlock.War> parseWar(TomlTable root) {
         if (root.contains(WAR) && !root.isTable(WAR)) {
-            throw new JkBuildParseException("`war` must be a table — use [war], optionally with name and webapp keys");
+            throw new JkBuildParseException("`war` must be a table; use [war] with optional name and webapp");
         }
         TomlTable table = root.getTable(WAR);
         if (table == null) return Optional.empty();
@@ -338,8 +332,7 @@ public final class ManifestTables {
         }
         String webapp = stringOrThrow(table, "webapp", "war.webapp");
         if (webapp != null && (webapp.startsWith("/") || webapp.contains(".."))) {
-            throw new JkBuildParseException(
-                    "[war] webapp must be a directory inside the module, such as src/main/webapp");
+            throw new JkBuildParseException("[war] webapp must be a directory inside the module, e.g. src/main/webapp");
         }
         return Optional.of(new BuildBlock.War(name, webapp == null ? BuildBlock.War.DEFAULT_WEBAPP : webapp));
     }
@@ -362,7 +355,7 @@ public final class ManifestTables {
      */
     static ReleaseTable parseRelease(TomlTable root) {
         if (root.contains("release") && !root.isTable("release")) {
-            throw new JkBuildParseException("`release` must be a table — use [release] with tag");
+            throw new JkBuildParseException("`release` must be a table; use [release] with tag");
         }
         TomlTable release = root.getTable("release");
         if (release == null) return ReleaseTable.DEFAULT;
@@ -407,16 +400,17 @@ public final class ManifestTables {
     static Optional<PomMetadata> parsePublish(TomlTable root) {
         if (root.contains("publish") && !root.isTable("publish")) {
             throw new JkBuildParseException(
-                    "`publish` must be a table — use [publish] with url, licenses, developers, scm");
+                    "`publish` must be a table; use [publish] with url, licenses, developers, scm");
         }
         TomlTable publish = root.getTable("publish");
         if (publish == null) return Optional.empty();
         for (String secret : PUBLISH_SECRET_KEYS) {
             if (publish.contains(secret)) {
-                throw new JkBuildParseException("[publish] takes no secrets: `" + secret + "` does not belong in"
-                        + " jk.toml. A repository's credentials come from `jk repo login` or JK_REPO_<ID>_*"
-                        + " (PUBLISH_USER / PUBLISH_PASSWORD on the command line), the key's passphrase from"
-                        + " JK_GPG_PASSPHRASE.");
+                throw new JkBuildParseException(
+                        secret.contains("passphrase")
+                                ? "[publish] " + secret + ": no secrets in jk.toml; set JK_GPG_PASSPHRASE"
+                                : "[publish] " + secret
+                                        + ": no secrets in jk.toml; use jk repo login or JK_REPO_<ID>_*");
             }
         }
         rejectUnknownKeys(publish, PUBLISH_KEYS, "[publish]");
@@ -430,8 +424,7 @@ public final class ManifestTables {
             rejectUnknownKeys(t, PUBLISH_LICENSE_KEYS, "[publish] licenses");
             String name = stringOrThrow(t, "name", "publish.licenses.name");
             if (name == null || name.isBlank()) {
-                throw new JkBuildParseException(
-                        "[publish] licenses: every license needs a name (an SPDX id such as Apache-2.0)");
+                throw new JkBuildParseException("[publish] licenses: each license needs a name, e.g. Apache-2.0");
             }
             licenses.add(new PomMetadata.License(name, stringOrThrow(t, "url", "publish.licenses.url")));
         }
@@ -656,10 +649,9 @@ public final class ManifestTables {
             for (String name : feature.deps()) {
                 if (declared.contains(name)) continue;
                 TomlPosition at = root.inputPositionOf(List.of("features", feature.name(), "deps"));
-                throw new JkBuildParseException("features." + feature.name() + ".deps names `" + name + "`"
-                        + (at == null ? "" : " (line " + at.line() + ")")
-                        + ", which no dependency table declares — declare it with `optional = true`"
-                        + " or correct the name");
+                throw new JkBuildParseException((at == null ? "" : "line " + at.line() + ": ") + "features."
+                        + feature.name() + ".deps: no dependency named `" + name + "`; declare it with"
+                        + " `optional = true`");
             }
         }
     }
@@ -685,7 +677,7 @@ public final class ManifestTables {
                 out.put(name, parseWorkspaceDepEntry(name, entry, catalog));
             } else {
                 throw new JkBuildParseException(
-                        displayPath + " must be a version-string shorthand" + " (e.g. \"1.2.3\") or an inline table");
+                        displayPath + " must be a version such as \"1.2.3\" or an inline table");
             }
         }
         return out;
@@ -705,19 +697,17 @@ public final class ManifestTables {
         if (value.isBlank()) {
             throw new JkBuildParseException(displayPath + " has an empty value string");
         }
-        if (ManifestDeps.isPathShorthand(value) || ManifestDeps.isGitUrlShorthand(value)) {
-            throw new JkBuildParseException(displayPath + " string shorthand must be a version spec"
-                    + " (e.g. \"1.2.3\") or a `group:artifact:version` coordinate; for a git source use the"
-                    + " inline `{ git = \"...\" }` form, for a local sibling add it to `[workspace] modules`");
+        if (ManifestDeps.isPathShorthand(value)) {
+            throw new JkBuildParseException(displayPath + ": a local module belongs in `[workspace] modules`");
+        }
+        if (ManifestDeps.isGitUrlShorthand(value)) {
+            throw new JkBuildParseException(displayPath + ": write a git source as `{ git = \"...\" }`");
         }
         if (value.indexOf(':') >= 0) {
             Dependency gav = ManifestDeps.parseGavShorthand(name, value, displayPath);
             if (gav.isPlatformManaged()) {
-                throw new JkBuildParseException(displayPath
-                        + " — `"
-                        + value
-                        + "` has no version; a shared workspace dependency carries the version members"
-                        + " pin against (`group:artifact:1.2.3`)");
+                throw new JkBuildParseException(
+                        displayPath + ": `" + value + "` has no version; write `group:artifact:1.2.3`");
             }
             return new WorkspaceDependency(gav.group(), gav.name(), gav.version(), null);
         }
@@ -733,17 +723,15 @@ public final class ManifestTables {
         boolean hasVersion = entry.contains("version");
         boolean hasGit = entry.contains("git");
         if (entry.contains("path")) {
-            throw new JkBuildParseException(displayPath + " uses `path = \"...\"`; a shared workspace dependency"
-                    + " is a Maven coordinate or a git source. A local sibling belongs in the root jk.toml's"
-                    + " `[workspace] modules = [...]` list, where it is an ordinary workspace member; remove this"
-                    + " [workspace.dependencies." + name + "] entry.");
+            throw new JkBuildParseException(displayPath + ": a local module belongs in `[workspace] modules`,"
+                    + " not [workspace.dependencies]");
         }
         int sourceCount = (hasVersion ? 1 : 0) + (hasGit ? 1 : 0);
         if (sourceCount == 0) {
             throw new JkBuildParseException(displayPath + " must set exactly one of `version` or `git`");
         }
         if (sourceCount > 1) {
-            throw new JkBuildParseException(displayPath + " sets more than one of `version` / `git`; pick exactly one");
+            throw new JkBuildParseException(displayPath + " sets both `version` and `git`; pick one");
         }
         if (hasGit) {
             // Git workspace deps still carry an explicit coordinate: the shared coordinate is what
@@ -759,7 +747,7 @@ public final class ManifestTables {
             }
             if (entry.contains(DependencyExclusions.KEY)) {
                 throw new JkBuildParseException(displayPath + "." + DependencyExclusions.KEY
-                        + " applies to a Maven coordinate (a git source has no POM subtree to prune)");
+                        + " applies only to a Maven coordinate, not a git source");
             }
             GitSource source = ManifestDeps.parseGitSource(entry, displayPath);
             return new WorkspaceDependency(gitGroup, gitArtifact, null, source);
@@ -774,7 +762,7 @@ public final class ManifestTables {
         String artifact =
                 artifactExplicit != null ? artifactExplicit : (catalogHit != null ? catalogHit.artifact() : name);
         if (group == null || group.isBlank()) {
-            throw new JkBuildParseException(displayPath + " must set a `group` (or use a catalog-known short name)");
+            throw new JkBuildParseException(displayPath + " needs a `group` or a catalog short name");
         }
         if (artifact.isBlank()) {
             throw new JkBuildParseException(displayPath + ".name must not be blank");
@@ -836,8 +824,7 @@ public final class ManifestTables {
         TomlTable library = root.getTable("library");
         if (library == null) return Optional.empty();
         if (root.getTable("application") != null) {
-            throw new JkBuildParseException("[library] and [application] are exclusive: an application's fat jar and"
-                    + " relocations belong under [application]; drop the [library] table");
+            throw new JkBuildParseException("[library] and [application] cannot both be set; drop [library]");
         }
         for (String key : library.keySet()) {
             if (!LIBRARY_KEYS.contains(key)) {
@@ -904,12 +891,10 @@ public final class ManifestTables {
             // `native` and `config` are also real top-level TABLES with their own semantics
             // ([application] native = true declares the artifact; [native] enabled = true tunes
             // the build) — a bare scalar could be aiming at either, so the error names both.
-            String alsoATable = key.equals("native") || key.equals("config")
-                    ? ", or as the `[" + key + "]` table if its settings were the intent"
-                    : "";
-            String orLibrary = LIBRARY_KEYS.contains(key) ? " (or in [library] for a library's fat jar)" : "";
-            throw new JkBuildParseException("`" + key + "` belongs in [application]" + orLibrary + " — write it as"
-                    + " `[application]` with `" + key + " = …`" + alsoATable + ", not at the top level");
+            String alsoATable = key.equals("native") || key.equals("config") ? ", or use the [" + key + "] table" : "";
+            String orLibrary = LIBRARY_KEYS.contains(key) ? " or [library]" : "";
+            throw new JkBuildParseException(
+                    "top-level `" + key + "` belongs under [application]" + orLibrary + alsoATable);
         }
     }
 
@@ -933,9 +918,8 @@ public final class ManifestTables {
         Optional<Boolean> flag = EnvValues.parseBool(value);
         if (flag.isPresent()) return flag.get();
         if (value.equals("shrink") || value.equals("shrunk") || value.equals("r8")) {
-            throw new JkBuildParseException(owner + "." + key + " is a boolean, not \"" + raw
-                    + "\" — artifacts are additive: set `minified = true` for an R8 jar (it builds"
-                    + " the fat jar too)");
+            throw new JkBuildParseException(
+                    owner + "." + key + " is a boolean, not \"" + raw + "\"; set `minified = true` for an R8 jar");
         }
         throw new JkBuildParseException(
                 owner + "." + key + " must be true or false (got \"" + (raw == null ? "" : raw) + "\")");
@@ -968,8 +952,7 @@ public final class ManifestTables {
         boolean minified = application != null && application.minified();
         if (!minified) {
             if (pluginConfigs.containsKey("minified")) {
-                throw new JkBuildParseException("[minified] configures the minified jar, but no minified jar is"
-                        + " requested — add `minified = true` under [application], or drop the [minified] table");
+                throw new JkBuildParseException("[minified] needs `minified = true` under [application]");
             }
             return pluginConfigs;
         }
@@ -1008,7 +991,7 @@ public final class ManifestTables {
             minified = PluginTableRegistry.byTable("minified").orElse(null);
         }
         if (minified == null) {
-            throw new JkBuildParseException("minified = true requires the built-in minified plugin (not installed)");
+            throw new JkBuildParseException("minified = true: the minified plugin is not installed");
         }
         TomlTable empty = Objects.requireNonNull(Toml.parse("[minified]\n").getTable("minified"));
         Map<String, PluginConfig> out = new LinkedHashMap<>(pluginConfigs);

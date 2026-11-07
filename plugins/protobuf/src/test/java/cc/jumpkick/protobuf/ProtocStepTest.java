@@ -239,7 +239,7 @@ class ProtocStepTest {
 
         assertThatThrownBy(() -> ProtocStep.run(io))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("step-dependency `protoc-gen-grpc-java` was not supplied");
+                .hasMessageContaining("step-dependency `protoc-gen-grpc-java` not provided");
     }
 
     /**
@@ -384,7 +384,7 @@ class ProtocStepTest {
 
         assertThatThrownBy(() -> ProtocStep.run(io))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("step-dependency `protoc` was not supplied");
+                .hasMessageContaining("step-dependency `protoc` not provided");
     }
 
     /**

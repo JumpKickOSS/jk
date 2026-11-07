@@ -756,9 +756,8 @@ every key the lock carries survives, the relock goes ahead: the format has not m
 two. If a key would be dropped, the command fails naming both builds and the keys:
 
 ```
-jk-lock.toml was written by jk 0.13.7 (build 1a2b3c4d5e6f of 2026-09-17T15:57:16Z) and this
-engine is jk 0.13.7 (build 4ee07400a592 of 2026-09-16T13:12:00Z), an older build of the same
-version that does not know its key(s) artifact[].mirror — a relock with it would drop them …
+jk-lock.toml was written by jk 0.13.7 (build 1a2b3c4d5e6f of 2026-09-17T15:57:16Z); this engine is jk 0.13.7 (build 4ee07400a592 of 2026-09-16T13:12:00Z), an older build of the same version
+a relock would drop artifact[].mirror; install that jk and run jk engine stop, or use jk lock -F
 ```
 
 Install the jk that wrote the lock (`jk self update`, or `jk install -S` from its

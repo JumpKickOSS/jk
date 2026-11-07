@@ -56,6 +56,6 @@ class PluginDescriptorsCompatTest {
                         sdk = " "
                         """, "hello.toml"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("hello.toml.plugin.sdk must name the jk-plugin-sdk release");
+                .hasMessageContaining("hello.toml.plugin.sdk must be a jk-plugin-sdk version");
     }
 }

@@ -604,8 +604,8 @@ public record Lockfile(
             Objects.requireNonNull(coordinate, "coordinate");
             Objects.requireNonNull(version, "version");
             if (checksum != null && path != null) {
-                throw new IllegalArgumentException("[[plugin]] " + coordinate + " names both `checksum` and `path`"
-                        + " — a row is verified by one of them, not both");
+                throw new IllegalArgumentException(
+                        "[[plugin]] " + coordinate + " sets both `checksum` and `path`; keep one");
             }
         }
 

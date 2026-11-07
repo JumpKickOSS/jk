@@ -77,8 +77,8 @@ class NodeSelectorTest {
 
     @Test
     void specs_that_name_no_release_are_refused() {
-        assertThatThrownBy(() -> NodeSpec.parse("=24")).hasMessageContaining("pins nothing");
-        assertThatThrownBy(() -> NodeSpec.parse("hydrogen")).hasMessageContaining("names no Node release");
+        assertThatThrownBy(() -> NodeSpec.parse("=24")).hasMessageContaining("an exact pin needs a full version");
+        assertThatThrownBy(() -> NodeSpec.parse("hydrogen")).hasMessageContaining("is not a Node version");
         assertThatThrownBy(() -> NodeSpec.parse(" ")).hasMessageContaining("empty");
     }
 

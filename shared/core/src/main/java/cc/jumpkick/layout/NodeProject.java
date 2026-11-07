@@ -137,7 +137,7 @@ public record NodeProject(
         }
         if (classic) {
             throw new JkBuildParseException(dir.resolve(PACKAGE_JSON)
-                    + ": Yarn 1 is not supported — run yarn set version stable && yarn install, then commit");
+                    + ": Yarn 1 is not supported; run yarn set version stable && yarn install");
         }
     }
 

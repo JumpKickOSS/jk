@@ -85,9 +85,8 @@ public record NullnessConfig(
         List<String> annotated = include;
         if (annotated == null) {
             if (group == null || group.isBlank()) {
-                throw new IllegalArgumentException("[nullness] checks the module's group by default, and this module"
-                        + " has none: name the packages, include = [\"com.example\"], or check only @NullMarked"
-                        + " code with include = []");
+                throw new IllegalArgumentException(
+                        "[nullness] needs a group or include = [\"com.example\"]; use include = [] for @NullMarked only");
             }
             annotated = List.of(group);
         }

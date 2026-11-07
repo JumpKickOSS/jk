@@ -58,7 +58,7 @@ class JkBuildParserCatalogMemoTest {
         assertThatThrownBy(() -> coordinate(toml))
                 .as("without the project layer the short name is unknown")
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name `http`");
+                .hasMessageContaining("unknown library `http`");
 
         settled(dir.resolve("jk-libs.toml"), libs("com.acme:http-three"));
         assertThat(coordinate(toml)).isEqualTo("com.acme:http-three");

@@ -125,10 +125,8 @@ public record Variants(List<Dimension> dimensions) {
         String selector = d.version() == null ? "" : d.version().raw();
         String[] prior = seen.putIfAbsent(scope.name() + "|" + d.module(), new String[] {selector, origin});
         if (prior != null && !prior[0].equals(selector)) {
-            throw new IllegalStateException(d.name() + " (" + d.module() + ") is declared " + prior[0] + " by "
-                    + prior[1] + " but " + selector + " by " + origin
-                    + " — one lockfile resolves the UNION of every variant value's dependencies, so align"
-                    + " the version across declarations (docs/variants.md → Locking)");
+            throw new IllegalStateException(d.module() + " is " + prior[0] + " in " + prior[1] + " but " + selector
+                    + " in " + origin + "; use one version across variants");
         }
     }
 

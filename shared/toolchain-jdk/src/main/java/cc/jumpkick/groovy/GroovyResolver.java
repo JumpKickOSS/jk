@@ -38,7 +38,7 @@ public final class GroovyResolver {
      * and what to check. The lock and the build both say it.
      */
     public static String floorNote(String declared) {
-        return "groovy " + declared + " is below jk's floor; compiled with " + DEFAULT_VERSION + ". Write groovy = \""
+        return "groovy " + declared + " is below jk's minimum, so " + DEFAULT_VERSION + " compiles it; set groovy = \""
                 + DEFAULT_VERSION + "\"";
     }
 }

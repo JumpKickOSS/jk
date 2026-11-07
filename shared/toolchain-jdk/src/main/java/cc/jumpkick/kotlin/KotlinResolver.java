@@ -63,7 +63,7 @@ public final class KotlinResolver {
      * and what to check. The lock and the build both say it; an import rewrites the manifest instead.
      */
     public static String floorNote(String declared) {
-        return "kotlin " + declared + " is below jk's floor; compiled with " + FLOOR_VERSION + ". Write kotlin = \""
+        return "kotlin " + declared + " is below jk's minimum, so " + FLOOR_VERSION + " compiles it; set kotlin = \""
                 + FLOOR_VERSION + "\"";
     }
 
