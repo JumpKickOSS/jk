@@ -81,6 +81,14 @@ public final class RepositoryToml {
                 if (onBad == OnBad.REJECT) throw new JkBuildParseException(mirrorInProject(name));
                 continue;
             }
+            if (isCredentialOnly(value)) {
+                // A credential this machine lends a project's own repository, read by credentialOnly().
+                if (onBad == OnBad.REJECT) {
+                    throw new JkBuildParseException(
+                            "repositories." + name + "." + CREDENTIAL_ONLY + ": only in ~/.jk/config.toml");
+                }
+                continue;
+            }
             try {
                 RepositorySpec spec = entry(name, value, vars, onBad);
                 if (spec != null) result.add(spec);
@@ -93,6 +101,33 @@ public final class RepositoryToml {
             }
         }
         return result;
+    }
+
+    /**
+     * The key that makes a {@code [repositories.<name>]} table of {@code ~/.jk/config.toml} lend its
+     * credential to a project that declares {@code <name>} at the same URL, and add no repository.
+     */
+    public static final String CREDENTIAL_ONLY = "credential-only";
+
+    /** True when {@code value} is a table with {@code credential-only = true}. */
+    private static boolean isCredentialOnly(@Nullable Object value) {
+        return value instanceof TomlTable t && Boolean.TRUE.equals(t.get(CREDENTIAL_ONLY));
+    }
+
+    /**
+     * The {@code credential-only} tables of the user's config, in file order: a credential bound to an
+     * id and a URL, never a repository a resolve asks. Lenient like the user's repositories.
+     */
+    public static List<RepositorySpec> credentialOnly(@Nullable TomlTable repos) {
+        if (repos == null) return List.of();
+        List<RepositorySpec> out = new ArrayList<>();
+        for (String name : repos.keySet()) {
+            Object value = repos.get(List.of(name));
+            if (!isCredentialOnly(value)) continue;
+            RepositorySpec spec = entry(name, value, VarPolicy.LENIENT, OnBad.SKIP);
+            if (spec != null) out.add(spec);
+        }
+        return out;
     }
 
     /** The key that makes a {@code [repositories.<name>]} table of {@code ~/.jk/config.toml} a mirror. */
@@ -215,7 +250,8 @@ public final class RepositoryToml {
             url = s;
         } else if (value instanceof TomlTable t) {
             for (String key : t.keySet()) {
-                if (!REPOSITORY_KEYS.contains(key)) {
+                // credential-only reaches here only from the user's config; a project refuses it first.
+                if (!REPOSITORY_KEYS.contains(key) && !key.equals(CREDENTIAL_ONLY)) {
                     if (onBad == OnBad.SKIP) return null;
                     throw new JkBuildParseException(where + " unknown key `" + key + "` — expected one of: "
                             + String.join(", ", REPOSITORY_KEYS));

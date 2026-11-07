@@ -221,6 +221,45 @@ class GlobalConfigTest {
      * ({@link RepositoryToml#repositories}), differing only in {@link RepositoryToml.OnBad}. The
      * same text therefore yields the same {@link RepositorySpec} on both sides.
      */
+    /**
+     * A credential-only table lends its credential to a project that declares the repository and is
+     * no repository of its own: every project on the machine would otherwise ask it for everything.
+     */
+    @Test
+    void a_credential_only_table_is_a_credential_not_a_repository(@TempDir Path dir) throws IOException {
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, """
+                [repositories.corp]
+                url = "https://nexus.example.com/repo"
+
+                [repositories.gitlab]
+                url = "https://gitlab.example/api/v4/projects/7/packages/maven/"
+                credential-only = true
+                token = "glpat-test"
+                """);
+
+        assertThat(GlobalConfig.repositories(config))
+                .extracting(RepositorySpec::name)
+                .containsExactly("corp");
+        assertThat(GlobalConfig.credentialOnly(config)).singleElement().satisfies(spec -> {
+            assertThat(spec.name()).isEqualTo("gitlab");
+            assertThat(spec.credentialOpt()).isPresent();
+        });
+    }
+
+    @Test
+    void credential_only_in_a_project_manifest_is_refused() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                        name = "demo"
+
+                        [repositories.gitlab]
+                        url = "https://gitlab.example/maven/"
+                        credential-only = true
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessage("repositories.gitlab.credential-only: only in ~/.jk/config.toml");
+    }
+
     @Test
     void a_well_formed_table_reads_identically_in_both_layers(@TempDir Path dir) throws IOException {
         String table = """

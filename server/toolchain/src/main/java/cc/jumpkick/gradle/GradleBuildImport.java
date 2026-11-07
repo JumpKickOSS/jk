@@ -34,7 +34,7 @@ public final class GradleBuildImport {
             JkBuild root,
             Map<String, JkBuild> modules,
             ImportReport report,
-            List<UserConfigEditor.RepositoryTable> machineRepositories,
+            List<UserConfigEditor.CredentialTable> machineCredentials,
             boolean pinsResolved) {}
 
     /** Reads the evaluated project model of the build rooted at {@code buildRoot}, as the init script's JSON. */

@@ -73,7 +73,7 @@ public final class ProjectImport {
             Map<String, JkBuild> modules,
             ImportReport report,
             FrontendFiles frontend,
-            List<UserConfigEditor.RepositoryTable> machineRepositories,
+            List<UserConfigEditor.CredentialTable> machineCredentials,
             boolean pinsResolved) {}
 
     /** What the write stage left: the converted build, every file written (or a dry run would write), the report so far. */
@@ -152,7 +152,7 @@ public final class ProjectImport {
                         new LinkedHashMap<>(result.modules()),
                         result.report(),
                         FrontendFiles.NONE,
-                        result.machineRepositories(),
+                        result.machineCredentials(),
                         result.pinsResolved()));
             }
             return Staged.stopped(Outcome.failed(Exit.USAGE, "unrecognised source: " + source.getFileName()));
@@ -219,7 +219,7 @@ public final class ProjectImport {
                 wrote.add(e.getKey());
                 progress.advance(1);
             }
-            report = machineRepositories(report, c.machineRepositories(), JkDirs.userConfigFile(), wrote);
+            report = machineCredentials(report, c.machineCredentials(), JkDirs.userConfigFile(), wrote);
             return Staged.of(new Written(c, wrote, report));
         } catch (IOException e) {
             return Staged.stopped(Outcome.failed(1, e.getMessage()));
@@ -323,18 +323,17 @@ public final class ProjectImport {
      * {@code report} after appending each of {@code tables} to {@code configFile}, with a row for a
      * table left out because the file already declares a repository of that name.
      */
-    private static ImportReport machineRepositories(
-            ImportReport report, List<UserConfigEditor.RepositoryTable> tables, Path configFile, List<Path> wrote)
+    private static ImportReport machineCredentials(
+            ImportReport report, List<UserConfigEditor.CredentialTable> tables, Path configFile, List<Path> wrote)
             throws IOException {
         if (tables.isEmpty()) return report;
         ImportReport.Builder out = rebuilt(report);
         boolean written = false;
-        for (UserConfigEditor.RepositoryTable table : tables) {
-            if (UserConfigEditor.addRepository(configFile, table)) {
+        for (UserConfigEditor.CredentialTable table : tables) {
+            if (UserConfigEditor.addCredential(configFile, table)) {
                 written = true;
             } else if (!UserConfigEditor.declaresRepositoryAt(configFile, table)) {
-                out.warning(table.name() + ": already in " + configFile + "; left as is. Check its credential for "
-                        + table.url());
+                out.warning(table.name() + ": ~/.jk/config.toml has another table by that name; left it");
             }
         }
         if (written) wrote.add(configFile);

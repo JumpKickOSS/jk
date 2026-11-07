@@ -161,7 +161,7 @@ class GradleModelImporterTest {
         assertThat(result.root().repositories().getFirst().name()).isEqualTo("repo1");
         assertThat(module(result, "api").repositories()).isEmpty();
         assertThat(messages(result.report())).anySatisfy(m -> assertThat(m).contains("mavenLocal()"));
-        assertThat(result.machineRepositories()).isEmpty();
+        assertThat(result.machineCredentials()).isEmpty();
     }
 
     /**
@@ -186,21 +186,17 @@ class GradleModelImporterTest {
             assertThat(r.groups()).containsExactly("com.acme.internal");
             assertThat(r.credentialOpt()).isEmpty();
         });
-        assertThat(result.machineRepositories()).singleElement().satisfies(t -> {
+        assertThat(result.machineCredentials()).singleElement().satisfies(t -> {
             assertThat(t.name()).isEqualTo("gitlab");
-            assertThat(t.groups()).containsExactly("com.acme.internal");
+            assertThat(t.url()).hasToString("https://gitlab.example/api/v4/projects/7/packages/maven/");
             assertThat(t.credential()).containsExactly(Map.entry("token", "${env:ACME_PULL_TOKEN}"));
         });
         assertThat(messages(result.report()))
-                .anySatisfy(m -> assertThat(m)
-                        .startsWith("gitlab: ${env:ACME_PULL_TOKEN} moved to ~/.jk/config.toml.")
-                        .contains("JK_REPO_GITLAB_USERNAME=gitlab-ci-token")
-                        .contains("JK_REPO_GITLAB_PASSWORD=$CI_JOB_TOKEN")
-                        .contains("JK_REPO_GITLAB_HOST=gitlab.example"))
+                .contains("gitlab: credential added to ~/.jk/config.toml", "on CI, set JK_REPO_<ID>_* for gitlab")
                 .anySatisfy(m -> assertThat(m).contains("com.other:lib"));
     }
 
-    /** {@code mavenContent { releasesOnly() }} is {@code snapshots = false}; another host's CI recipe is the generic one. */
+    /** {@code mavenContent { releasesOnly() }} is {@code snapshots = false}. */
     @Test
     void a_releases_only_repository_is_asked_for_no_snapshots() {
         String model = THREE_MODULES.replace(
@@ -215,9 +211,7 @@ class GradleModelImporterTest {
             assertThat(r.releases()).isTrue();
             assertThat(r.snapshots()).isFalse();
         });
-        assertThat(messages(result.report())).anySatisfy(m -> assertThat(m)
-                .contains("export JK_REPO_ACME_TOKEN")
-                .contains("JK_REPO_ACME_HOST=maven.acme.example"));
+        assertThat(messages(result.report())).contains("on CI, set JK_REPO_<ID>_* for acme");
     }
 
     /** A credential no environment variable holds is a row asking for a login, and nothing is written for it. */
@@ -231,7 +225,7 @@ class GradleModelImporterTest {
         GradleBuildImport.Result result =
                 GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
 
-        assertThat(result.machineRepositories()).isEmpty();
+        assertThat(result.machineCredentials()).isEmpty();
         assertThat(messages(result.report())).anySatisfy(m -> assertThat(m).contains("jk repo login acme"));
     }
 

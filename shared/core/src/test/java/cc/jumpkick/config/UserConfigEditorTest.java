@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -117,22 +116,21 @@ class UserConfigEditorTest {
         return n;
     }
 
-    private static final UserConfigEditor.RepositoryTable GITLAB = new UserConfigEditor.RepositoryTable(
+    private static final UserConfigEditor.CredentialTable GITLAB = new UserConfigEditor.CredentialTable(
             "gitlab",
             URI.create("https://gitlab.example/api/v4/projects/7/packages/maven/"),
-            List.of("com.acme"),
             Map.of("token", "${ACME_PULL_TOKEN}"));
 
     @Test
-    void a_repository_table_is_appended_after_what_the_file_holds() throws Exception {
-        String out = UserConfigEditor.appendRepository("nerd-font = true", GITLAB);
+    void a_credential_only_table_is_appended_after_what_the_file_holds() throws Exception {
+        String out = UserConfigEditor.appendCredential("nerd-font = true", GITLAB);
 
         assertThat(out).isEqualTo("""
                 nerd-font = true
 
                 [repositories.gitlab]
                 url = "https://gitlab.example/api/v4/projects/7/packages/maven/"
-                groups = ["com.acme"]
+                credential-only = true
                 token = "${ACME_PULL_TOKEN}"
                 """);
         assertThat(UserConfigEditor.declaresRepository(out, "gitlab")).isTrue();
@@ -144,7 +142,7 @@ class UserConfigEditorTest {
         Path config = home.resolve("config.toml");
         Files.writeString(config, "[repositories]\ngitlab = \"https://elsewhere.example/\"\n");
 
-        assertThat(UserConfigEditor.addRepository(config, GITLAB)).isFalse();
+        assertThat(UserConfigEditor.addCredential(config, GITLAB)).isFalse();
         assertThat(Files.readString(config)).isEqualTo("[repositories]\ngitlab = \"https://elsewhere.example/\"\n");
     }
 
@@ -152,7 +150,7 @@ class UserConfigEditorTest {
     void a_missing_file_is_created_with_the_table(@TempDir Path home) throws Exception {
         Path config = home.resolve("jk").resolve("config.toml");
 
-        assertThat(UserConfigEditor.addRepository(config, GITLAB)).isTrue();
+        assertThat(UserConfigEditor.addCredential(config, GITLAB)).isTrue();
         assertThat(Files.readString(config)).startsWith("[repositories.gitlab]\n");
     }
 
@@ -160,7 +158,7 @@ class UserConfigEditorTest {
     @Test
     void a_repository_declared_at_the_same_url_is_recognised(@TempDir Path home) throws Exception {
         Path config = home.resolve("config.toml");
-        UserConfigEditor.addRepository(config, GITLAB);
+        UserConfigEditor.addCredential(config, GITLAB);
 
         assertThat(UserConfigEditor.declaresRepositoryAt(config, GITLAB)).isTrue();
         Files.writeString(config, "[repositories]\ngitlab = \"https://elsewhere.example/\"\n");

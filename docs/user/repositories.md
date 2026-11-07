@@ -329,9 +329,37 @@ env:
   JK_REPO_CORP_TOKEN: ${{ secrets.NEXUS_TOKEN }}
 ```
 
+A GitLab package registry on GitLab CI takes the job token as a password:
+
+```yaml
+# .gitlab-ci.yml, for a repository named gitlab
+variables:
+  JK_REPO_GITLAB_USERNAME: gitlab-ci-token
+  JK_REPO_GITLAB_PASSWORD: $CI_JOB_TOKEN
+  JK_REPO_GITLAB_HOST: gitlab.com
+```
+
 `jk repo login` works headless too: the secret goes in the owner-only record without a word (see
 [Where a login keeps its secret](#where-a-login-keeps-its-secret)). jk never prompts for, waits on,
 or warns about a keychain on a machine that has none.
+
+### A credential for one project's repository
+
+A `[repositories.<id>]` table in `~/.jk/config.toml` is a repository every project on the machine
+asks. To give only the projects that declare `<id>` a credential, mark the table
+`credential-only`:
+
+```toml
+# ~/.jk/config.toml
+[repositories.gitlab]
+url = "https://gitlab.com/api/v4/projects/57207691/packages/maven/"
+credential-only = true
+token = "${env:GITLAB_TOKEN}"
+```
+
+A project whose `jk.toml` declares `gitlab` at that URL resolves with this token; every other project
+never asks it. `jk import` writes a build's credentials this way. `credential-only` is refused in a
+project's `jk.toml`.
 
 ### Secret references
 

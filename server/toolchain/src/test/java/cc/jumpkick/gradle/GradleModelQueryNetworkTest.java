@@ -329,7 +329,7 @@ class GradleModelQueryNetworkTest {
             assertThat(r.groups()).containsExactly("com.corp");
             assertThat(r.snapshots()).isFalse();
         });
-        assertThat(result.machineRepositories()).singleElement().satisfies(t -> assertThat(t.credential())
+        assertThat(result.machineCredentials()).singleElement().satisfies(t -> assertThat(t.credential())
                 .containsExactly(Map.entry("token", "${env:JK_TEST_CORP_PULL_TOKEN}")));
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)

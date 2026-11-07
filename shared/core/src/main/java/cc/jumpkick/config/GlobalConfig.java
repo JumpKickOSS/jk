@@ -503,6 +503,13 @@ public final class GlobalConfig {
                 .orElse(List.of());
     }
 
+    /** The {@code credential-only} tables of {@code configFile}: credentials, never repositories. */
+    static List<RepositorySpec> credentialOnly(Path configFile) {
+        return parseConfig(configFile)
+                .map(toml -> RepositoryToml.credentialOnly(toml.getTable("repositories")))
+                .orElse(List.of());
+    }
+
     /**
      * The {@code [repositories.<id>]} tables of {@code ~/.jk/config.toml} that carry {@code
      * mirror-of}, in file order: the routes this machine's requests take, which no project can
@@ -524,7 +531,8 @@ public final class GlobalConfig {
     }
 
     /**
-     * Every id {@code ~/.jk/config.toml} binds to a URL: its repositories, then its mirrors. What
+     * Every id {@code ~/.jk/config.toml} binds to a URL: its repositories, its credential-only
+     * tables, then its mirrors. What
      * the credential resolver treats as the user's own declaration — a mirror's {@code ${VAR}}
      * credential is the user's word for the mirror's URL exactly as a repository's is — and never
      * a repository group: a mirror is not a source.
@@ -534,6 +542,7 @@ public final class GlobalConfig {
     public static List<RepositorySpec> repositoryDeclarations() {
         Path file = JkDirs.userConfigFile();
         List<RepositorySpec> out = new ArrayList<>(repositories(file));
+        out.addAll(credentialOnly(file));
         try {
             for (RepositoryMirror mirror : repositoryMirrors(file)) out.add(mirror.declaration());
         } catch (UserConfigParseException unparsed) {

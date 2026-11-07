@@ -19,8 +19,8 @@ import org.tomlj.TomlTable;
 
 /**
  * Minimal merge editor for {@code ~/.jk/config.toml}. Preserves unknown keys; only touches the
- * root-level {@code nerd-font} and {@code self-update}, and appends {@code [repositories.<id>]}
- * tables.
+ * root-level {@code nerd-font} and {@code self-update}, and appends credential-only {@code
+ * [repositories.<id>]} tables.
  */
 public final class UserConfigEditor {
 
@@ -29,12 +29,13 @@ public final class UserConfigEditor {
     private UserConfigEditor() {}
 
     /**
-     * A {@code [repositories.<name>]} table: {@code credential} maps {@code token}, {@code
-     * username} or {@code password} to its value, a {@code ${VAR}} reference for a secret.
+     * A credential-only {@code [repositories.<name>]} table: the credential this machine sends a
+     * project's own repository {@code name} at {@code url}, never a repository of its own. {@code
+     * credential} maps {@code token}, {@code username} or {@code password} to its value, a {@code
+     * ${VAR}} reference for a secret.
      */
-    public record RepositoryTable(String name, URI url, List<String> groups, Map<String, String> credential) {
-        public RepositoryTable {
-            groups = List.copyOf(groups);
+    public record CredentialTable(String name, URI url, Map<String, String> credential) {
+        public CredentialTable {
             credential = Collections.unmodifiableMap(new LinkedHashMap<>(credential));
         }
     }
@@ -43,12 +44,12 @@ public final class UserConfigEditor {
      * Append {@code table} to {@code configFile}, creating the file as needed. Answers false, and
      * leaves the file as it is, when it already declares a repository of that name.
      */
-    public static boolean addRepository(Path configFile, RepositoryTable table) throws IOException {
+    public static boolean addCredential(Path configFile, CredentialTable table) throws IOException {
         String text = Files.isRegularFile(configFile) ? Files.readString(configFile, StandardCharsets.UTF_8) : "";
         if (declaresRepository(text, table.name())) return false;
         Path parent = configFile.getParent();
         if (parent != null) Files.createDirectories(parent);
-        Files.writeString(configFile, appendRepository(text, table), StandardCharsets.UTF_8);
+        Files.writeString(configFile, appendCredential(text, table), StandardCharsets.UTF_8);
         return true;
     }
 
@@ -70,7 +71,7 @@ public final class UserConfigEditor {
      * Whether {@code configFile} declares {@code table}'s repository at {@code table}'s URL, as an
      * earlier import wrote it or the user did; a trailing {@code /} is not a difference.
      */
-    public static boolean declaresRepositoryAt(Path configFile, RepositoryTable table) throws IOException {
+    public static boolean declaresRepositoryAt(Path configFile, CredentialTable table) throws IOException {
         if (!Files.isRegularFile(configFile)) return false;
         TomlParseResult parsed = Toml.parse(Files.readString(configFile, StandardCharsets.UTF_8));
         if (parsed.hasErrors()) return false;
@@ -86,7 +87,7 @@ public final class UserConfigEditor {
     }
 
     /** Pure text transform for tests: {@code toml} with {@code table} appended. */
-    static String appendRepository(String toml, RepositoryTable table) {
+    static String appendCredential(String toml, CredentialTable table) {
         StringBuilder sb = new StringBuilder(toml);
         if (!toml.isEmpty()) {
             if (!toml.endsWith("\n")) sb.append('\n');
@@ -94,14 +95,7 @@ public final class UserConfigEditor {
         }
         sb.append("[repositories.").append(table.name()).append("]\n");
         sb.append("url = ").append(quote(table.url().toString())).append('\n');
-        if (!table.groups().isEmpty()) {
-            sb.append("groups = [");
-            for (int i = 0; i < table.groups().size(); i++) {
-                if (i > 0) sb.append(", ");
-                sb.append(quote(table.groups().get(i)));
-            }
-            sb.append("]\n");
-        }
+        sb.append(RepositoryToml.CREDENTIAL_ONLY).append(" = true\n");
         table.credential()
                 .forEach((k, v) -> sb.append(k).append(" = ").append(quote(v)).append('\n'));
         return sb.toString();

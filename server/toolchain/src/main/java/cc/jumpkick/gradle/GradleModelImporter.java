@@ -156,7 +156,10 @@ final class GradleModelImporter {
 
     private final Map<String, RepositorySpec> repositories = new LinkedHashMap<>();
     /** The {@code ~/.jk/config.toml} tables that carry the credentials the build reads from the environment. */
-    private final List<UserConfigEditor.RepositoryTable> machineRepositories = new ArrayList<>();
+    private final List<UserConfigEditor.CredentialTable> machineCredentials = new ArrayList<>();
+
+    /** Every repository whose credential the build reads, which CI sends through its own variables. */
+    private final Set<String> credentialed = new LinkedHashSet<>();
     /** The workspace root's {@code java} and {@code jdk}, which a member inherits rather than repeats; 0 for none. */
     private int rootJava;
 
@@ -214,7 +217,7 @@ final class GradleModelImporter {
             for (GradleModel.Repository r : root.repositories()) repository(r);
             JkBuild single = memberBuild(
                     root, GradleModuleSettings.artifactName(root, report), "", new ArrayList<>(repositories.values()));
-            return new GradleBuildImport.Result(single, Map.of(), finish(), machineRepositories, true);
+            return new GradleBuildImport.Result(single, Map.of(), finish(), machineCredentials, true);
         }
         nameMembers(members);
         Project rootProject = rootProject(root, members);
@@ -239,11 +242,15 @@ final class GradleModelImporter {
                         members.stream().map(GradleModel.Project::dir).toList()))
                 .repositories(new ArrayList<>(repositories.values()))
                 .build();
-        return new GradleBuildImport.Result(rootBuild, modules, finish(), machineRepositories, true);
+        return new GradleBuildImport.Result(rootBuild, modules, finish(), machineCredentials, true);
     }
 
     private ImportReport finish() {
         rows.flush(report);
+        // CI has no ~/.jk/config.toml: each repository takes its credential from JK_REPO_<ID>_*.
+        if (!credentialed.isEmpty()) {
+            report.warning("on CI, set JK_REPO_<ID>_* for " + String.join(", ", credentialed));
+        }
         return report.build();
     }
 
@@ -867,10 +874,10 @@ final class GradleModelImporter {
                     + " not written; jk binds whole groups");
         }
         GradleModel.Credential credential = repo.credential();
-        if (credential != null) credential(name, uri, repo.groups(), credential);
+        if (credential != null) credential(name, uri, credential);
     }
 
-    private void credential(String name, URI url, List<String> groups, GradleModel.Credential credential) {
+    private void credential(String name, URI url, GradleModel.Credential credential) {
         String secretEnv = credential.secretEnv();
         Map<String, String> keys = new LinkedHashMap<>();
         switch (credential.kind()) {
@@ -887,32 +894,17 @@ final class GradleModelImporter {
             }
             default -> {}
         }
-        String ci = ciRecipe(name, url);
+        credentialed.add(name);
         if (keys.isEmpty()) {
-            report.warning(name + ": credential source unknown; run jk repo login " + name + "." + ci);
+            report.warning(name + ": no credential found; run jk repo login " + name);
             return;
         }
-        machineRepositories.add(new UserConfigEditor.RepositoryTable(name, url, groups, keys));
-        report.warning(name + ": " + String.join(", ", keys.values()) + " moved to ~/.jk/config.toml." + ci);
+        machineCredentials.add(new UserConfigEditor.CredentialTable(name, url, keys));
+        report.warning(name + ": credential added to ~/.jk/config.toml");
     }
 
     private static String envReference(String variable) {
         return "${env:" + variable + "}";
-    }
-
-    /**
-     * How CI, which has no {@code ~/.jk/config.toml}, sends the credential: the repository's own
-     * {@code JK_REPO_<ID>_*} variables bound to its host. A GitLab package registry takes the job
-     * token as Basic auth under the user {@code gitlab-ci-token}.
-     */
-    private static String ciRecipe(String name, URI url) {
-        String prefix = "JK_REPO_" + name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_") + "_";
-        String host = prefix + "HOST=" + url.getHost();
-        if (url.getPath().contains("/api/v4/") && url.getPath().contains("/packages/maven")) {
-            return " On GitLab CI, export " + prefix + "USERNAME=gitlab-ci-token, " + prefix
-                    + "PASSWORD=$CI_JOB_TOKEN, " + host;
-        }
-        return " On CI, export " + prefix + "TOKEN (or " + prefix + "USERNAME and " + prefix + "PASSWORD) and " + host;
     }
 
     /**

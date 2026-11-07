@@ -547,13 +547,15 @@ a row), and `mavenContent { releasesOnly() }` / `snapshotsOnly()` as `snapshots 
 `releases = false`. A repository credential the build reads from an environment variable
 (`System.getenv("GITLAB_TOKEN")`, as header or password credentials) is never written into the
 project: a project's `jk.toml` may read no variable but the repository's own `JK_REPO_<ID>_*`
-([Who may write a `${VAR}` reference](repositories.md#who-may-write-a-var-reference)). The import
-appends the repository to `~/.jk/config.toml` instead, with `groups` and a reference to that
-variable (`token = "${env:GITLAB_TOKEN}"`), so it is sent from this machine and the group is asked
-of nothing else; a table of that name at another URL is left alone, with a row. A row names the CI
-recipe: `JK_REPO_<ID>_TOKEN` with `JK_REPO_<ID>_HOST`, or for a GitLab package registry
-`JK_REPO_<ID>_USERNAME=gitlab-ci-token` and `JK_REPO_<ID>_PASSWORD=$CI_JOB_TOKEN`; a credential no
-variable holds asks for `jk repo login <id>`. Configurations land in the table that
+([Who may write a `${VAR}` reference](repositories.md#who-may-write-a-var-reference)). The project
+declares the repository; the import adds a
+[`credential-only`](repositories.md#a-credential-for-one-projects-repository) table to
+`~/.jk/config.toml` holding a reference to that variable (`token = "${env:GITLAB_TOKEN}"`), so only
+projects that declare the repository send it, and no other project on the machine asks that
+repository for anything. A table of that name already in the file is left alone, with a row. One
+row lists the repositories CI must send credentials for through `JK_REPO_<ID>_*` (see
+[On CI](repositories.md#on-ci-in-a-container-over-ssh)); a credential no variable holds asks for
+`jk repo login <id>`. Configurations land in the table that
 means the same thing: `implementation` and `api` in `[dependencies]`, `compileOnly` and
 `compileOnlyApi` in `[provided-dependencies]`, `runtimeOnly` in `[runtime-dependencies]`,
 `testImplementation` and `testRuntimeOnly` in `[test-dependencies]` — `testCompileOnly` too, with
