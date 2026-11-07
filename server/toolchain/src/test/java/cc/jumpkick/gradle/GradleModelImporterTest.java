@@ -290,6 +290,52 @@ class GradleModelImporterTest {
                 .containsExactly("org.projectlombok:lombok");
     }
 
+    /** Error Prone running a check beside NullAway keeps its plugin argument and its jars; no [nullness]. */
+    @Test
+    void error_prone_running_other_checks_keeps_its_wiring() {
+        String model = THREE_MODULES
+                .replace(
+                        "\"repositories\":[{\"url\":\"https://repo.maven.apache.org",
+                        NULLAWAY_ARGS
+                                        .strip()
+                                        .replace(
+                                                "-Xep:NullAway:ERROR", "-Xep:NullAway:ERROR -Xep:MissingOverride:ERROR")
+                                + "\"repositories\":[{\"url\":\"https://repo.maven.apache.org")
+                .replace("{\"name\":\"api\",", ERRORPRONE_CONFIGURATION.strip() + "{\"name\":\"api\",");
+
+        JkBuild api = module(GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE), "api");
+
+        assertThat(api.build().nullness()).isNull();
+        assertThat(api.build().javac().args())
+                .anySatisfy(a -> assertThat(a).startsWith("-Xplugin:ErrorProne").contains("-Xep:MissingOverride:ERROR"))
+                .contains("-parameters", "-XDcompilePolicy=simple")
+                .doesNotContain("--release", "17");
+        assertThat(api.dependencies().of(Scope.PROCESSOR))
+                .extracting(Dependency::module)
+                .contains("com.google.errorprone:error_prone_core", "com.uber.nullaway:nullaway");
+    }
+
+    /** JSpecify and an @NullMarked package with no checker is a row suggesting [nullness]. */
+    @Test
+    void jspecify_and_null_marked_packages_without_a_checker_suggest_nullness(@TempDir Path root) throws Exception {
+        Path info = root.resolve("api/src/main/java/com/acme/api/package-info.java");
+        Files.createDirectories(info.getParent());
+        Files.writeString(info, "@NullMarked\npackage com.acme.api;\n\nimport org.jspecify.annotations.NullMarked;\n");
+        String model = THREE_MODULES.replace(
+                "{\"name\":\"api\",\"dependencies\":[",
+                "{\"name\":\"api\",\"dependencies\":[{\"kind\":\"module\",\"group\":\"org.jspecify\","
+                        + "\"artifact\":\"jspecify\",\"version\":\"1.0.1\",\"excludes\":[]},");
+
+        GradleBuildImport.Result result = GradleModelImporter.importModel(model, root, RefreshVersions.NONE);
+
+        assertThat(messages(result.report()))
+                .anySatisfy(m -> assertThat(m).contains("[api]").contains("`[nullness] include = []`"));
+        assertThat(messages(GradleModelImporter.importModel(THREE_MODULES, root, RefreshVersions.NONE)
+                        .report()))
+                .as("no JSpecify, no row")
+                .noneSatisfy(m -> assertThat(m).contains("[nullness]"));
+    }
+
     /** Without the errorprone plugin the arguments are only [javac] args, and the tool jars stay out. */
     @Test
     void compiler_args_without_error_prone_are_only_javac_args() {
