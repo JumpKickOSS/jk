@@ -103,7 +103,7 @@ class ClassPatternSuiteE2eTest {
         assertThat(run.result().errors()).singleElement().satisfies(d -> {
             assertThat(d.code()).isEqualTo(TestClassMatch.NO_TESTS_MATCHED);
             assertThat(d.message())
-                    .isEqualTo("no test classes matched --class FooIT — FooIT is in the integration suite"
+                    .isEqualTo("no test classes matched --class FooIT: FooIT is in the integration suite"
                             + " (jk test -s integration -S FooIT)");
         });
     }

@@ -309,8 +309,8 @@ class OutdatedCommandTest {
         // Locked at 1.1, the selector admits 1.1 and 2.0 is beyond it: Compatible repeats
         // Current as "=", Latest names the version.
         assertThat(TestAnsi.strip(out)).containsPattern("c\\.f\\.o:leaf\\s+│ 1\\.1\\s+│ =\\s+│ 2\\.0\\s+│");
-        // : footer points at graph inspection + intentional update
-        assertThat(out).contains("jk why").contains("jk tree").contains("jk update");
+        // The footer says how to move the pins.
+        assertThat(out).contains("Next: `jk update [name…]`");
     }
 
     /**
