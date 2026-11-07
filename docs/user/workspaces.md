@@ -37,7 +37,8 @@ Inheritance is resolved when the workspace loads members. Resolved values are fr
 `jk-lock.toml` as `[[module]]` rows — re-lock after changing root or member identity.
 
 Three tables are workspace facts and read from the root as well: `[publish]` applies to every
-member that declares none, `[profiles.<name>]` merge by name with the member's winning, and the
+member that declares none, `[profiles.<name>]` merge by name with the root winning every key but the member-additive `env`
+and `jvm-args` (see [Test § Workspace scope](test.md#workspace-scope-tag-filters-come-from-the-root)), and the
 `[image]` registry facts — `base`, `user`, `registry`, `tag`, `env`, `labels`, `platforms`,
 `docker-executable`, `aot-cache` — sit under the member's own table (see
 [Images § In a workspace](images.md#in-a-workspace)). `[manifest]`, `[application]`, `[native]`

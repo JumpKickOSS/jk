@@ -445,6 +445,20 @@ directory makes no difference: the CLI rehomes to the workspace root first. Ever
 the same way: `jk test`, `jk build`, MCP and BSP runs that name no tags, the tier `--class` hints
 name, and the tags `jk info` shows.
 
+The rest of a profile is a workspace fact too: a profile the root declares applies in every member,
+and means the same in each. Where a member declares a `[profiles.<name>]` of the same name, the two
+merge key by key and the root wins unless the key is additive per member:
+
+| Key | Rule | Why |
+|-----|------|-----|
+| `include-tags`, `exclude-tags`, `all-suites` | The root's | They pick the tier; a workspace has one tier table |
+| `env` | Additive; the root's value wins a variable both set | A member adds what only its tests need, such as its own database |
+| `jvm-args` | Additive; the root's follow the member's, so the root wins a flag both set | A member adds flags only its test JVMs need |
+| `javac` | The root's when it sets the key, else the member's | The compiler flags a profile names (`-Werror` on CI) hold for the whole workspace; a module's own flags go in its `[javac]` |
+| `inherits` | The root's when it sets the key, else the member's | One chain per profile name |
+
+A profile only one of them declares is that one's, whole.
+
 Everything else under `[test]` is per-module and is never inherited, including `extra-src`,
 `workers`, `assertions`, `jvm-args`, `system-properties` and `env`. This is not the `key.workspace = true` spelling that identity keys
 (`jdk`, `java`, `layout`, …) and dependency versions use — the tag filters describe the
