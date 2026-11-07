@@ -8,6 +8,7 @@ import cc.jumpkick.model.Variants;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.LinkedHashMap;
@@ -26,8 +27,20 @@ public final class ModuleOrder {
     private ModuleOrder() {}
 
     /**
-     * Order {@code modulesByDir} dependency-first (Kahn). On a cycle, the strays are appended in
-     * declaration order so the build still tries to make progress.
+     * The scopes only a module's tests read. A sibling named in these alone is a test edge: it
+     * orders the module's test steps after the sibling, never the module itself.
+     */
+    public static final List<Scope> TEST_ONLY_SCOPES = List.of(Scope.TEST, Scope.TEST_PROCESSOR, Scope.TEST_DEV);
+
+    /** Every scope but {@link #TEST_ONLY_SCOPES}: the edges that order modules and that may not cycle. */
+    public static final List<Scope> BUILD_ORDER_SCOPES = Arrays.stream(Scope.values())
+            .filter(s -> !TEST_ONLY_SCOPES.contains(s))
+            .toList();
+
+    /**
+     * Order {@code modulesByDir} dependency-first (Kahn) over the {@link #BUILD_ORDER_SCOPES} edges.
+     * On a cycle, the strays are appended in declaration order so the build still tries to make
+     * progress.
      */
     public static List<Path> orderModules(Map<Path, JkBuild> modulesByDir) {
         return orderModules(null, modulesByDir);
@@ -46,8 +59,9 @@ public final class ModuleOrder {
         }
         Map<Path, Set<Path>> edges = new LinkedHashMap<>();
         for (var e : modulesByDir.entrySet()) {
-            Set<Path> prereqs = new LinkedHashSet<>(modulePrereqs(e.getKey(), e.getValue(), dirByCoord, dirByName));
-            prereqs.addAll(substitutedPrereqs(root, e.getKey(), e.getValue(), List.of(Scope.values()), dirByCoord));
+            Set<Path> prereqs = new LinkedHashSet<>(
+                    modulePrereqs(e.getKey(), e.getValue(), dirByCoord, dirByName, BUILD_ORDER_SCOPES));
+            prereqs.addAll(substitutedPrereqs(root, e.getKey(), e.getValue(), BUILD_ORDER_SCOPES, dirByCoord));
             edges.put(e.getKey(), prereqs);
         }
         List<Path> sorted = new ArrayList<>(kahnSort(modulesByDir.keySet(), edges));
@@ -111,9 +125,9 @@ public final class ModuleOrder {
             List.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.RUNTIME, Scope.PROCESSOR, Scope.PLATFORM);
 
     /**
-     * Sibling-dep + {@code [build].order-after} prereqs (self-refs dropped). All scopes — the
-     * default workspace build-order edge. A {@code [variants]} value's dependencies count whichever
-     * value a build selects.
+     * Sibling-dep + {@code [build].order-after} prereqs (self-refs dropped) in every scope: each
+     * sibling the module reads at any point, test edges included. A {@code [variants]} value's
+     * dependencies count whichever value a build selects.
      */
     public static Set<Path> modulePrereqs(
             Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
@@ -130,13 +144,7 @@ public final class ModuleOrder {
             Map<String, Path> dirByCoord,
             Map<String, Path> dirByName,
             Collection<Scope> scopes) {
-        Set<Path> prereqs = new LinkedHashSet<>();
-        for (Scope scope : scopes) {
-            for (Dependency d : declared(m, scope)) {
-                Path depDir = resolveSibling(d, dirByCoord, dirByName);
-                if (depDir != null && !depDir.equals(moduleDir)) prereqs.add(depDir);
-            }
-        }
+        Set<Path> prereqs = siblingsIn(moduleDir, m, dirByCoord, dirByName, scopes);
         // [build].order-after: build-order-only edges (no classpath/lock). Each entry names a
         // sibling by project name or group:artifact coord. Short worker names (test-runner) also
         // match first-party artifacts published as jk-<short>.
@@ -149,6 +157,35 @@ public final class ModuleOrder {
             if (depDir != null && !depDir.equals(moduleDir)) prereqs.add(depDir);
         }
         return prereqs;
+    }
+
+    /**
+     * The siblings {@code m} names in {@link #TEST_ONLY_SCOPES} and in no {@link
+     * #BUILD_ORDER_SCOPES} table: what only its tests read. {@code [build].order-after} is never a
+     * test edge.
+     */
+    public static Set<Path> testOnlyPrereqs(
+            Path moduleDir, JkBuild m, Map<String, Path> dirByCoord, Map<String, Path> dirByName) {
+        Set<Path> test = siblingsIn(moduleDir, m, dirByCoord, dirByName, TEST_ONLY_SCOPES);
+        test.removeAll(modulePrereqs(moduleDir, m, dirByCoord, dirByName, BUILD_ORDER_SCOPES));
+        return test;
+    }
+
+    /** The sibling dirs {@code m} declares in {@code scopes} (self-refs dropped). */
+    private static Set<Path> siblingsIn(
+            Path moduleDir,
+            JkBuild m,
+            Map<String, Path> dirByCoord,
+            Map<String, Path> dirByName,
+            Collection<Scope> scopes) {
+        Set<Path> siblings = new LinkedHashSet<>();
+        for (Scope scope : scopes) {
+            for (Dependency d : declared(m, scope)) {
+                Path depDir = resolveSibling(d, dirByCoord, dirByName);
+                if (depDir != null && !depDir.equals(moduleDir)) siblings.add(depDir);
+            }
+        }
+        return siblings;
     }
 
     /** {@code m}'s dependencies in {@code scope}: its own table's, then every variant value's. */

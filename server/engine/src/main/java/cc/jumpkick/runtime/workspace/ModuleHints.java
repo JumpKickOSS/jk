@@ -42,7 +42,7 @@ public final class ModuleHints {
         if (selected == null || selected.isEmpty()) return Set.of();
         Set<Path> want = copyCanonical(selected);
         if (graph == null) return Set.copyOf(want);
-        var edges = graph.edges();
+        var edges = graph.reads();
         ArrayDeque<Path> q = new ArrayDeque<>(want);
         while (!q.isEmpty()) {
             Path d = q.poll();

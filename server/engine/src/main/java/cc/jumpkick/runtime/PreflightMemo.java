@@ -446,8 +446,9 @@ public final class PreflightMemo {
     // Graph structure (layer A) + rebuild without WorkspaceLoader
 
     /**
-     * Store graph snapshot: ordered units (rel, coord, origin) + prereq edges. Structure key is
-     * membership + per-unit toml/lock digests (not edges — edges are implied by manifests).
+     * Store graph snapshot: ordered units (rel, coord, origin) + prereq edges ({@code edge}) and
+     * test edges ({@code test}). Structure key is membership + per-unit toml/lock digests (not
+     * edges — edges are implied by manifests).
      */
     public static void storeGraph(Path entryDir, BuildGraph.Result graph) {
         if (graph == null || graph.hasErrors() || graph.topoOrder().isEmpty()) return;
@@ -478,17 +479,27 @@ public final class PreflightMemo {
                         .append(u.origin().name())
                         .append('\n');
             }
-            for (var e : graph.edges().entrySet()) {
-                String from = relKey(root, e.getKey().toAbsolutePath().normalize());
-                for (Path prereq : e.getValue()) {
-                    String to = relKey(root, prereq.toAbsolutePath().normalize());
-                    sb.append("edge\t").append(from).append('\t').append(to).append('\n');
-                }
-            }
+            appendEdges(sb, "edge", root, graph.edges());
+            appendEdges(sb, "test", root, graph.testEdges());
             AtomicWrites.replaceIfChanged(file, sb.toString());
         } catch (Exception e) {
             // fail-open
             Log.debug("storeGraph: fail-open", e);
+        }
+    }
+
+    private static void appendEdges(StringBuilder sb, String kind, Path root, Map<Path, Set<Path>> edges) {
+        for (var e : edges.entrySet()) {
+            String from = relKey(root, e.getKey().toAbsolutePath().normalize());
+            for (Path prereq : e.getValue()) {
+                String to = relKey(root, prereq.toAbsolutePath().normalize());
+                sb.append(kind)
+                        .append('\t')
+                        .append(from)
+                        .append('\t')
+                        .append(to)
+                        .append('\n');
+            }
         }
     }
 
@@ -507,6 +518,7 @@ public final class PreflightMemo {
             String gotStruct = null;
             List<UnitLine> units = new ArrayList<>();
             Map<String, Set<String>> edgeRels = new LinkedHashMap<>();
+            Map<String, Set<String>> testRels = new LinkedHashMap<>();
             for (String line : lines) {
                 if (line.isBlank() || line.startsWith("#") || line.startsWith("schema=")) continue;
                 if (line.startsWith("cacheKeyVersion=")) {
@@ -525,10 +537,12 @@ public final class PreflightMemo {
                     edgeRels.putIfAbsent(p[1], new LinkedHashSet<>());
                     continue;
                 }
-                if (line.startsWith("edge\t")) {
+                if (line.startsWith("edge\t") || line.startsWith("test\t")) {
                     String[] p = line.split("\t", 3);
                     if (p.length != 3) return Optional.empty();
-                    edgeRels.computeIfAbsent(p[1], k -> new LinkedHashSet<>()).add(p[2]);
+                    (p[0].equals("edge") ? edgeRels : testRels)
+                            .computeIfAbsent(p[1], k -> new LinkedHashSet<>())
+                            .add(p[2]);
                 }
             }
             if (!BuildIdentity.cacheKeyVersion().equals(gotVersion) || gotStruct == null || units.isEmpty()) {
@@ -566,21 +580,32 @@ public final class PreflightMemo {
                 topo.add(new BuildGraph.BuildUnit(dir, manifest, coord, origin));
                 edges.put(dir, new LinkedHashSet<>());
             }
-            for (var e : edgeRels.entrySet()) {
-                Path from = dirByRel.get(e.getKey());
-                if (from == null) return Optional.empty();
-                for (String toRel : e.getValue()) {
-                    Path to = dirByRel.get(toRel);
-                    if (to == null) return Optional.empty();
-                    edges.computeIfAbsent(from, k -> new LinkedHashSet<>()).add(to);
-                }
+            Map<Path, Set<Path>> testEdges = new LinkedHashMap<>();
+            if (!resolveRels(edgeRels, dirByRel, edges) || !resolveRels(testRels, dirByRel, testEdges)) {
+                return Optional.empty();
             }
-            return Optional.of(new BuildGraph.Result(List.copyOf(topo), Map.copyOf(edges), List.of()));
+            return Optional.of(
+                    new BuildGraph.Result(List.copyOf(topo), Map.copyOf(edges), Map.copyOf(testEdges), List.of()));
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return Optional.empty();
         }
+    }
+
+    /** Fill {@code into} from {@code rels}; false when a rel names no unit. */
+    private static boolean resolveRels(
+            Map<String, Set<String>> rels, Map<String, Path> dirByRel, Map<Path, Set<Path>> into) {
+        for (var e : rels.entrySet()) {
+            Path from = dirByRel.get(e.getKey());
+            if (from == null) return false;
+            for (String toRel : e.getValue()) {
+                Path to = dirByRel.get(toRel);
+                if (to == null) return false;
+                into.computeIfAbsent(from, k -> new LinkedHashSet<>()).add(to);
+            }
+        }
+        return true;
     }
 
     /** True when the on-disk graph memo's structure key matches {@code graph}'s unit set. */

@@ -59,8 +59,8 @@ final class WorkspacePreparePhase {
         listener.onPreflight("plan", 0, Math.max(count, 1), count == 0 ? "Nothing to prepare" : "Preparing modules…");
         List<Path> scheduled = new ArrayList<>();
         for (BuildGraph.BuildUnit unit : resources.dirtyUnits()) scheduled.add(unit.dir());
-        SiblingArtifacts siblings =
-                new SiblingArtifacts(resources.preflight().graph().edges(), scheduled);
+        BuildGraph.Result graph = resources.preflight().graph();
+        SiblingArtifacts siblings = new SiblingArtifacts(graph.edges(), graph.testReads(), scheduled);
         Map<Path, ModulePlan> plans;
         try {
             plans = prepareModules(resources, listener, count, siblings);

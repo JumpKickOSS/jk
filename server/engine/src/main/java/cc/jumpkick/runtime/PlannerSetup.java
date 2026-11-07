@@ -297,9 +297,11 @@ public final class PlannerSetup {
      *
      * <p>Siblings enter the compile classpaths through their classes trees, never their jars: a
      * tree is whole once the sibling has compiled, so this module is admitted — and reaches this
-     * step — while the sibling may still be packaging and testing. Only the trees are required
-     * here. The jars, and the test output a tests kind selects, are what the package and test
-     * steps read, and {@link #awaitSiblingArtifacts} requires them where they are first needed.
+     * step — while the sibling may still be packaging and testing. Only the main compile's trees
+     * are required here. A sibling only the test scopes name is no admission edge, so the test
+     * classpaths name it built or not and {@link #awaitSiblingTestCompile} requires it; the jars
+     * are what the package and test steps read, and {@link #awaitSiblingArtifacts} and {@link
+     * #awaitSiblingTestRuntime} require them where they are first needed.
      */
     static void publishClasspaths(TaskContext ctx, BuildPlanner.Inputs in, Cas cas, PluginBuild.StepTools tools)
             throws Exception {
@@ -339,9 +341,6 @@ public final class PlannerSetup {
         // processor is loaded from its classes tree, which holds its service registration
         // once the sibling's resources are copied — the point its tree is published at.
         requireSiblingsCompiled(ctx, processorSiblings, "processor sibling not compiled — ");
-        if (!PlannerResources.skipJUnit(in)) {
-            requireSiblingsCompiled(ctx, testProcessorSiblings, "test processor sibling not compiled — ");
-        }
         List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock, testProcessorSiblings);
         if (!unresolvedProcessors.isEmpty()) {
             for (String unresolved : unresolvedProcessors)
@@ -367,12 +366,6 @@ public final class PlannerSetup {
 
         WorkspaceClasspath.Result testSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
-        // Only when compile-test is planned: under --skip-tests a test-only sibling may be outside
-        // the build's cone, and nothing in this plan consumes the test classpath, so its absence is
-        // the cone working, not a broken setup.
-        if (!PlannerResources.skipJUnit(in)) {
-            requireSiblingsCompiled(ctx, testSiblings, "test sibling not compiled — ");
-        }
         // Both test classpaths name the declared closure, built or not: a sibling's test classes
         // and jar may still be on their way when this step runs, and a list filtered to what is
         // on disk now would silently drop them from the tests.
@@ -411,28 +404,40 @@ public final class PlannerSetup {
     }
 
     /**
-     * The point a plan first reads a sibling's jar — or the test classes and fixtures a tests kind
-     * or {@code fixtures = true} selects: wait for every sibling this module reads to have
-     * published its artifacts, then require them on disk. The wait is the module's side of the
-     * workspace schedule ({@link cc.jumpkick.runtime.base.SiblingArtifacts}); the check after it
-     * names the jar a failed or sourceless sibling did not produce, so the step that would have
-     * read it fails on the sibling rather than on a {@code NoClassDefFoundError} of its own.
-     *
-     * <p>Test-view artifacts are required only when this plan compiles tests: under
-     * {@code --skip-tests} no sibling produces fixtures or test classes and nothing here reads them.
+     * The point a plan first reads a sibling's jar for its own artifacts: wait for every sibling of
+     * its build-order closure to have published its artifacts, then require them on disk. The wait
+     * is the module's side of the workspace schedule ({@link cc.jumpkick.runtime.base.SiblingArtifacts});
+     * the check after it names the jar a failed or sourceless sibling did not produce, so the step
+     * that would have read it fails on the sibling rather than on a {@code NoClassDefFoundError} of
+     * its own.
      */
     static void awaitSiblingArtifacts(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
         in.siblings().awaitArtifacts(ctx::cancelled);
         if (ctx.cancelled()) return;
-        JkBuild project = ctx.require(PROJECT);
-        WorkspaceClasspath.Result mainSiblings =
-                WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.RUNTIME_SCOPES);
-        requireSiblingsBuilt(ctx, mainSiblings, "sibling not built — ", in.siblings());
+        requireRuntimeSiblings(ctx, in);
+    }
+
+    /**
+     * As {@link #awaitSiblingArtifacts} for a step that runs on the test runtime classpath: it also
+     * waits for the siblings only the test scopes name, and the test classes and fixtures selected,
+     * and requires them. Test-view artifacts are required only when this plan compiles tests: under
+     * {@code --skip-tests} no sibling produces fixtures or test classes and nothing here reads them.
+     */
+    static void awaitSiblingTestRuntime(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
+        in.siblings().awaitTestRuntime(ctx::cancelled);
+        if (ctx.cancelled()) return;
+        requireRuntimeSiblings(ctx, in);
         if (!PlannerResources.skipJUnit(in)) {
             WorkspaceClasspath.Result testSiblings =
-                    WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
+                    WorkspaceClasspath.resolve(in.dir(), ctx.require(PROJECT), WorkspaceClasspath.TEST_SCOPES);
             requireSiblingsBuilt(ctx, testSiblings, "test sibling not built — ", in.siblings());
         }
+    }
+
+    private static void requireRuntimeSiblings(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
+        WorkspaceClasspath.Result mainSiblings =
+                WorkspaceClasspath.resolve(in.dir(), ctx.require(PROJECT), WorkspaceClasspath.RUNTIME_SCOPES);
+        requireSiblingsBuilt(ctx, mainSiblings, "sibling not built — ", in.siblings());
     }
 
     /**
@@ -459,14 +464,30 @@ public final class PlannerSetup {
     }
 
     /**
-     * The test compile's side of the wait. Its classpath is the siblings' classes trees, which the
-     * schedule already admitted this module on, plus what a {@code kind = "tests"} edge or {@code
-     * fixtures = true} selects: the siblings' test classes and fixtures, outputs of their test
-     * stage that publish with their artifacts. A plan that selects neither compiles its tests
-     * without waiting for any sibling to package.
+     * The test compile's side of the wait, then the check that what it compiles against is on disk.
+     * Its classpath is the siblings' classes trees — the build-order ones the schedule admitted this
+     * module on, and those only its test scopes name, which it waits for here — plus the test
+     * classes and fixtures a {@code kind = "tests"} edge or {@code fixtures = true} selects, which it
+     * waits for each sibling to have compiled. It never waits for a sibling to package or test.
+     *
+     * <p>Under {@code --skip-tests} a test-only sibling may be outside the build's cone, so its
+     * absence is the cone working and nothing is required.
      */
-    static void awaitSiblingTestOutputs(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
-        if (WorkspaceClasspath.selectsTestOutputs(ctx.require(PROJECT))) awaitSiblingArtifacts(ctx, in);
+    static void awaitSiblingTestCompile(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
+        in.siblings().awaitTestCompile(ctx::cancelled);
+        if (ctx.cancelled() || PlannerResources.skipJUnit(in)) return;
+        JkBuild project = ctx.require(PROJECT);
+        WorkspaceClasspath.Result testSiblings =
+                WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
+        requireSiblingsCompiled(ctx, testSiblings, "test sibling not compiled — ");
+        WorkspaceClasspath.Result testProcessorSiblings =
+                WorkspaceClasspath.resolve(in.dir(), project, ClasspathResolver.PROCESSOR_PATH);
+        requireSiblingsCompiled(ctx, testProcessorSiblings, "test processor sibling not compiled — ");
+        if (testSiblings.missingSiblingTestOutputs().isEmpty()) return;
+        for (String missing : testSiblings.missingSiblingTestOutputs()) {
+            ctx.error("workspace", missingSiblingMessage("test sibling not built — ", missing, in.siblings()));
+        }
+        throw new RuntimeException("missing workspace siblings");
     }
 
     /** The runtime-view guard: {@code missingSiblingJars} names each jar, test output or fixtures dir absent. */

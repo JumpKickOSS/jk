@@ -247,12 +247,12 @@ class ClasspathAfterSyncTest {
     }
 
     /**
-     * A tests-kind sibling whose test classes are not on disk is named at the point the plan first
-     * reads sibling artifacts, with the written cause — not by compile-test's {@code cannot find
-     * symbol} at the wrong file.
+     * A tests-kind sibling whose test classes are not on disk is named at the test compile's sibling
+     * wait, with the written cause — not by the compiler's {@code cannot find symbol} at the wrong
+     * file.
      */
     @Test
-    void tests_kind_sibling_without_test_output_fails_at_the_artifact_wait_not_compile_test(@TempDir Path tmp)
+    void tests_kind_sibling_without_test_output_fails_at_the_test_compile_wait_not_the_compiler(@TempDir Path tmp)
             throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
         centralIsTheLocalRepository(store);
@@ -271,13 +271,50 @@ class ClasspathAfterSyncTest {
         PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools());
         assertThat(ctx.errors).as("the compile classpaths need only the trees").isEmpty();
 
-        assertThatThrownBy(() -> PlannerSetup.awaitSiblingArtifacts(ctx, in))
+        PlannerSetup.awaitSiblingArtifacts(ctx, in);
+        assertThat(ctx.errors).as("packaging reads lib's jar alone").isEmpty();
+
+        assertThatThrownBy(() -> PlannerSetup.awaitSiblingTestCompile(ctx, in))
                 .hasMessageContaining("missing workspace siblings");
         assertThat(ctx.errors)
                 .as("the written diagnostic reaches the failure report")
                 .anyMatch(e -> e.contains("test sibling not built")
                         && e.contains("tests kind")
                         && e.contains("expected test classes at"));
+    }
+
+    /**
+     * A sibling only the test scopes name is no admission edge, so the classpath step runs before it
+     * has compiled; the test compile is where its absence fails.
+     */
+    @Test
+    void a_test_only_sibling_is_required_by_the_test_compile_not_the_classpath_step(@TempDir Path tmp)
+            throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
+        Workspace ws = twoModules(tmp, "");
+        Files.writeString(ws.app().resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "app"
+                version = "1.0.0"
+
+                [test-dependencies]
+                lib.workspace = true
+                """);
+
+        StashContext ctx = ws.context();
+        BuildPlanner.Inputs in = ws.inputs(store, false);
+        PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools());
+        assertThat(ctx.errors)
+                .as("lib has not compiled and app's main does not read it")
+                .isEmpty();
+        assertThat(String.valueOf(ctx.values.get(BuildPlanner.COMPILE_TEST_CP)))
+                .as("the test classpath names lib's tree, built or not")
+                .contains(ws.libLayout().classesDir().toString());
+
+        assertThatThrownBy(() -> PlannerSetup.awaitSiblingTestCompile(ctx, in))
+                .hasMessageContaining("missing workspace siblings");
+        assertThat(ctx.errors).anyMatch(e -> e.contains("test sibling not compiled") && e.contains("lib"));
     }
 
     @Test
@@ -306,7 +343,8 @@ class ClasspathAfterSyncTest {
         StashContext ctx = ws.context();
         BuildPlanner.Inputs skipping = ws.inputs(store, true);
         PlannerSetup.publishClasspaths(ctx, skipping, new Cas(store), new PluginBuild.StepTools());
-        PlannerSetup.awaitSiblingArtifacts(ctx, skipping);
+        PlannerSetup.awaitSiblingTestCompile(ctx, skipping);
+        PlannerSetup.awaitSiblingTestRuntime(ctx, skipping);
         assertThat(ctx.errors).isEmpty();
         assertThat(ctx.values).containsKey(BuildPlanner.CLASSPATH);
         assertThat(ctx.values).containsKey(BuildPlanner.COMPILE_TEST_CP);
@@ -314,7 +352,7 @@ class ClasspathAfterSyncTest {
         // The same tree with tests planned is still a failure that names the sibling's fixtures.
         BuildPlanner.Inputs withTests = ws.inputs(store, false);
         PlannerSetup.publishClasspaths(ctx, withTests, new Cas(store), new PluginBuild.StepTools());
-        assertThatThrownBy(() -> PlannerSetup.awaitSiblingArtifacts(ctx, withTests))
+        assertThatThrownBy(() -> PlannerSetup.awaitSiblingTestRuntime(ctx, withTests))
                 .hasMessageContaining("missing workspace siblings");
         assertThat(ctx.errors).anyMatch(e -> e.contains("test sibling not built") && e.contains("fixtures"));
     }

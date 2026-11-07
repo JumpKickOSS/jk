@@ -139,7 +139,7 @@ public final class PlannerTest {
                         ctx.progress(1);
                         return;
                     }
-                    PlannerSetup.awaitSiblingTestOutputs(ctx, in);
+                    PlannerSetup.awaitSiblingTestCompile(ctx, in);
                     List<Path> baseCp = testCompileClasspath(ctx, cx, cas, src);
                     PlannerKsp.RoundOutcome round =
                             PlannerKsp.runTestRound(ctx, cx, src, baseCp, compiledSuites, pluginDecls);
@@ -590,7 +590,7 @@ public final class PlannerTest {
             return;
         }
         // The test runtime classpath is the siblings' jars: wait for them to be written.
-        PlannerSetup.awaitSiblingArtifacts(ctx, in);
+        PlannerSetup.awaitSiblingTestRuntime(ctx, in);
         List<Path> testRtCp = TestLaunch.testRuntimeClasspath(ctx, pluginDecls);
         // Worker jars feed both the forked JVM and the TestStamp
         // nested-engine CLI modules enrich with engine + every PluginJar so the stamp

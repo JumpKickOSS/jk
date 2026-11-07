@@ -155,9 +155,15 @@ class WorkspaceExecuteSelectionTest {
                 app, JkBuildParser.parse(app.resolve("jk.toml")), "ex:app", BuildGraph.Origin.MODULE);
 
         var withCli = new BuildGraph.Result(
-                List.of(engineUnit, cliUnit), Map.of(cli, Set.of(engine), engine, Set.of()), List.of());
+                List.of(engineUnit, cliUnit),
+                Map.of(cli, Set.of(), engine, Set.of()),
+                Map.of(cli, Set.of(engine)),
+                List.of());
         var withoutCli = new BuildGraph.Result(
-                List.of(engineUnit, appUnit), Map.of(app, Set.of(engine), engine, Set.of()), List.of());
+                List.of(engineUnit, appUnit),
+                Map.of(app, Set.of(), engine, Set.of()),
+                Map.of(app, Set.of(engine)),
+                List.of());
         Set<Path> launched = WorkspacePreflightPhase.launchedAssemblies(withCli);
         assertThat(launched).containsExactly(BuildGraph.canonicalPath(engine));
         assertThat(WorkspacePreflightPhase.launchedAssemblies(withoutCli)).isEmpty();

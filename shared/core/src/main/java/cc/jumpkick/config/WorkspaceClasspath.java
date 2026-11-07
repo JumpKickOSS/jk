@@ -99,23 +99,6 @@ public final class WorkspaceClasspath {
     }
 
     /**
-     * Whether this manifest puts a sibling's test output on its own test classpath: a {@code kind =
-     * "tests"} edge selects the sibling's test classes, {@code fixtures = true} its fixtures. Both
-     * are outputs of the sibling's test stage rather than of its main compile, so a plan that
-     * selects either waits for the sibling's artifacts before compiling its tests; one that selects
-     * neither has nothing of a sibling's to wait for there. An external test-jar declared with a
-     * tests kind answers true as well — a wait too many, never one too few.
-     */
-    public static boolean selectsTestOutputs(JkBuild project) {
-        for (List<Dependency> deps : project.dependencies().byScope().values()) {
-            for (Dependency dep : deps) {
-                if (dep.kind() == DependencyKind.TESTS || dep.fixtures()) return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * @param projectDir the module being built
      * @param project the parsed manifest of {@code projectDir}
      * @param scopes the scopes whose deps should contribute (typically {@code MAIN} for compile,
@@ -145,6 +128,7 @@ public final class WorkspaceClasspath {
         List<Path> closureClasses = new ArrayList<>();
         List<String> missing = new ArrayList<>();
         List<String> missingClasses = new ArrayList<>();
+        List<String> missingTestOutputs = new ArrayList<>();
         LinkedHashSet<Path> seenPaths = new LinkedHashSet<>();
         for (String module : visited) {
             Path siblingJar = siblingJarByModule.get(module);
@@ -184,12 +168,9 @@ public final class WorkspaceClasspath {
                 if (testClasses != null) {
                     closureJars.add(testClasses);
                     closureClasses.add(testClasses);
-                    addIfPresent(
-                            jars,
-                            seenPaths,
-                            testClasses,
-                            missing,
-                            module + " tests kind (expected test classes at " + testClasses + ")");
+                    String label = module + " tests kind (expected test classes at " + testClasses + ")";
+                    addIfPresent(jars, seenPaths, testClasses, missing, label);
+                    if (!Files.exists(testClasses)) missingTestOutputs.add(label);
                 }
             }
             if (fixturesKinds.contains(module)) {
@@ -197,12 +178,14 @@ public final class WorkspaceClasspath {
                 if (fixtures != null) {
                     closureJars.add(fixtures);
                     closureClasses.add(fixtures);
-                    addIfPresent(
-                            jars, seenPaths, fixtures, missing, module + " fixtures (expected at " + fixtures + ")");
+                    String label = module + " fixtures (expected at " + fixtures + ")";
+                    addIfPresent(jars, seenPaths, fixtures, missing, label);
+                    if (!Files.exists(fixtures)) missingTestOutputs.add(label);
                 }
             }
         }
-        return new Result(jars, missing, closureJars, List.copyOf(visited), closureClasses, missingClasses);
+        return new Result(
+                jars, missing, closureJars, List.copyOf(visited), closureClasses, missingClasses, missingTestOutputs);
     }
 
     /**
@@ -447,7 +430,9 @@ public final class WorkspaceClasspath {
      *     relocates packages — then the same test classes, test resources and fixtures. A compile
      *     classpath, and the key that fingerprints it, read this list
      * @param missingSiblingClasses the siblings whose classes tree is not on disk, each named with
-     *     its cause — the compile's concern, and the only sibling absence a compile has to fail on
+     *     its cause — the main compile's concern, and the only sibling absence it has to fail on
+     * @param missingSiblingTestOutputs the selected test classes and fixtures that are not on disk —
+     *     with {@code missingSiblingClasses}, what a test compile has to fail on
      */
     public record Result(
             List<Path> jars,
@@ -455,7 +440,8 @@ public final class WorkspaceClasspath {
             List<Path> siblingClosureJars,
             List<String> siblingCoords,
             List<Path> siblingClosureClasses,
-            List<String> missingSiblingClasses) {
+            List<String> missingSiblingClasses,
+            List<String> missingSiblingTestOutputs) {
         public Result {
             jars = List.copyOf(jars);
             missingSiblingJars = List.copyOf(missingSiblingJars);
@@ -463,11 +449,12 @@ public final class WorkspaceClasspath {
             siblingCoords = List.copyOf(siblingCoords);
             siblingClosureClasses = List.copyOf(siblingClosureClasses);
             missingSiblingClasses = List.copyOf(missingSiblingClasses);
+            missingSiblingTestOutputs = List.copyOf(missingSiblingTestOutputs);
         }
 
         /** The closure, in both views, defaults to {@code jars}. */
         public Result(List<Path> jars, List<String> missingSiblingJars) {
-            this(jars, missingSiblingJars, jars, List.of(), jars, List.of());
+            this(jars, missingSiblingJars, jars, List.of(), jars, List.of(), List.of());
         }
     }
 

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.runtime.base.WorkspaceScheduler;
 import cc.jumpkick.testing.Await;
 import java.nio.file.Path;
@@ -13,6 +14,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -592,5 +594,47 @@ class WorkspaceSchedulerTest {
                 .hasMessageContaining("unsatisfiable")
                 .hasMessageContaining("a")
                 .hasMessageContaining("b");
+    }
+
+    /**
+     * Under {@code -j1} a unit whose tests read a sibling it has no build-order edge on parks for
+     * it, and the parked unit's slot admits the sibling: holding the slot would wait forever.
+     */
+    @Test
+    void a_parked_unit_frees_its_slot_for_the_sibling_it_waits_on() throws Exception {
+        SiblingArtifacts siblings = new SiblingArtifacts(
+                Map.of(p("a"), Set.of(), p("b"), Set.of()),
+                new SiblingArtifacts.TestReads(Map.of(p("a"), Set.of(p("b"))), Map.of(), Map.of()),
+                List.of(p("a"), p("b")));
+        List<String> completed = Collections.synchronizedList(new ArrayList<>());
+        CompletableFuture<String> run = CompletableFuture.supplyAsync(() -> WorkspaceScheduler.run(
+                List.of("a", "b"),
+                WorkspaceSchedulerTest::p,
+                siblings.edges(),
+                (String unit, Runnable publish) -> {
+                    publish.run();
+                    if ("a".equals(unit)) {
+                        try {
+                            siblings.gateFor(p("a")).awaitTestCompile(() -> false);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    } else {
+                        siblings.compiled(p(unit));
+                    }
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> {
+                    completed.addAll(justCompleted);
+                    return null;
+                },
+                1,
+                () -> false,
+                unit -> false,
+                unit -> {},
+                siblings));
+
+        assertThat(run.get(30, TimeUnit.SECONDS)).isNull();
+        assertThat(completed).containsExactly("b", "a");
     }
 }

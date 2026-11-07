@@ -59,6 +59,29 @@ public final class WorkspaceScheduler {
         R run(U unit, Runnable publish);
     }
 
+    /**
+     * Units blocked in-plan on a sibling the schedule may not have started: a test step waiting for a
+     * sibling only its tests read, which is no admission edge. A parked unit holds no concurrency
+     * slot, so the cap can never starve the sibling it waits on.
+     */
+    public interface Parking {
+        Parking NONE = new Parking() {
+            @Override
+            public int parked() {
+                return 0;
+            }
+
+            @Override
+            public void onPark(Runnable wake) {}
+        };
+
+        /** How many in-flight units are parked now. */
+        int parked();
+
+        /** Run {@code wake} each time a unit parks. */
+        void onPark(Runnable wake);
+    }
+
     /** Handles completed units. */
     @FunctionalInterface
     public interface LevelSink<U, R> {
@@ -168,6 +191,27 @@ public final class WorkspaceScheduler {
             BooleanSupplier cancelled,
             Predicate<U> awaitsCompletion,
             Consumer<U> stopUnit) {
+        return run(
+                units, dirOf, edges, task, sink, maxConcurrency, cancelled, awaitsCompletion, stopUnit, Parking.NONE);
+    }
+
+    /**
+     * As above, where a unit {@code parking} counts as parked holds no slot of {@code maxConcurrency}
+     * while it waits. The batch-per-level schedule ({@code maxConcurrency <= 0}) ignores it: a level
+     * there runs whole before the next starts, so a caller whose units park on later units passes a
+     * positive cap.
+     */
+    public static <U, R> @Nullable R run(
+            List<U> units,
+            Function<U, Path> dirOf,
+            Map<Path, Set<Path>> edges,
+            PhasedUnitTask<U, R> task,
+            LevelSink<U, R> sink,
+            int maxConcurrency,
+            BooleanSupplier cancelled,
+            Predicate<U> awaitsCompletion,
+            Consumer<U> stopUnit,
+            Parking parking) {
         BooleanSupplier stop = cancelled == null ? () -> false : cancelled;
         Set<Path> unitDirs = new HashSet<>();
         for (U u : units) unitDirs.add(dirOf.apply(u));
@@ -200,16 +244,20 @@ public final class WorkspaceScheduler {
         Set<Path> published = ConcurrentHashMap.newKeySet();
         Set<CompletableFuture<?>> inflight = ConcurrentHashMap.newKeySet();
         Map<CompletableFuture<?>, U> unitOf = new ConcurrentHashMap<>();
+        // A park is an event too: the slot it frees may admit the sibling the parked unit waits on.
+        Object parkedEvent = new Object();
+        parking.onPark(() -> events.add(parkedEvent));
         int inFlight = 0;
         while (true) {
             if (stop.getAsBoolean()) {
                 drainCancelled(inflight);
                 return null;
             }
-            while (inFlight < maxConcurrency + criticalOvershoot(maxConcurrency) && !stop.getAsBoolean()) {
+            while (Math.max(0, inFlight - parking.parked()) < maxConcurrency + criticalOvershoot(maxConcurrency)
+                    && !stop.getAsBoolean()) {
                 // At the cap only the head of the one tallest remaining chain is admitted: a leaf
                 // holding a slot through its tests must not hold the build's spine out of the schedule.
-                boolean full = inFlight >= maxConcurrency;
+                boolean full = Math.max(0, inFlight - parking.parked()) >= maxConcurrency;
                 U next = null;
                 for (U u : notStarted) {
                     Set<Path> gate = awaitsCompletion.test(u) ? done : published;
@@ -257,7 +305,7 @@ public final class WorkspaceScheduler {
                 throw new CompletionException(e);
             }
             if (!(event instanceof Done)) {
-                continue; // a publish — loop back to admit newly-unblocked units
+                continue; // a publish or a park — loop back to admit newly-unblocked units
             }
             @SuppressWarnings("unchecked")
             Done<U, R> d = (Done<U, R>) event;

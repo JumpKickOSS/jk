@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -87,45 +89,102 @@ class BuildGraphTest {
     }
 
     @Test
-    void test_only_kind_tests_edge_orders_sibling_before_consumer(@TempDir Path tmp) throws Exception {
-        // Mill testModuleDeps: app has no main dep on lib, only kind=tests under test-deps.
-        // ModuleOrder must still schedule lib before app so lib's test classes exist.
-        Files.writeString(tmp.resolve("jk.toml"), """
-                group = "com.example"
-                name  = "root"
-                version = "1.0.0"
-                jdk = 25
-                java = 25
-
-                [workspace]
-                modules = ["lib", "app"]
-                """);
-        Files.createDirectories(tmp.resolve("lib"));
-        Files.writeString(tmp.resolve("lib/jk.toml"), """
-                group = "com.example"
-                name  = "lib"
-                version = "1.0.0"
-                jdk = 25
-                java = 25
-                """);
-        Files.createDirectories(tmp.resolve("app"));
-        Files.writeString(tmp.resolve("app/jk.toml"), """
-                group = "com.example"
-                name  = "app"
-                version = "1.0.0"
-                jdk = 25
-                java = 25
-
+    void a_sibling_named_only_in_test_scopes_is_a_test_edge_not_a_build_order_edge(@TempDir Path tmp) throws Exception {
+        twoMembers(tmp, """
                 [test-dependencies]
-                lib = { workspace = true, kind = "tests" }
+                core = { workspace = true, kind = "tests" }
                 """);
 
         BuildGraph.Result r = resolve(tmp);
 
+        Path core = BuildGraph.canonicalPath(tmp.resolve("core"));
+        Path app = BuildGraph.canonicalPath(tmp.resolve("app"));
         assertThat(r.errors()).isEmpty();
-        List<String> order = coords(r);
-        assertThat(order).containsExactlyInAnyOrder("com.example:lib", "com.example:app");
-        assertThat(order.indexOf("com.example:lib")).isLessThan(order.indexOf("com.example:app"));
+        assertThat(r.edges().get(app))
+                .as("app is admitted without waiting for core")
+                .isEmpty();
+        assertThat(r.testEdges().get(app)).containsExactly(core);
+        assertThat(r.reads().get(app)).containsExactly(core);
+        assertThat(r.testReads().testClasses().get(app)).containsExactly(core);
+        assertThat(r.testReads().fixtures()).isEmpty();
+    }
+
+    @Test
+    void a_sibling_in_a_main_and_a_test_table_is_a_build_order_edge_only(@TempDir Path tmp) throws Exception {
+        twoMembers(tmp, """
+                [dependencies]
+                core = { workspace = true }
+
+                [test-dependencies]
+                core = { workspace = true, kind = "tests" }
+                """);
+
+        BuildGraph.Result r = resolve(tmp);
+
+        Path core = BuildGraph.canonicalPath(tmp.resolve("core"));
+        Path app = BuildGraph.canonicalPath(tmp.resolve("app"));
+        assertThat(r.edges().get(app)).containsExactly(core);
+        assertThat(r.testEdges()).doesNotContainKey(app);
+        assertThat(r.testReads().testClasses().get(app))
+                .as("the test classes it selects are still waited for")
+                .containsExactly(core);
+    }
+
+    /**
+     * The Gradle shape {@code jk import} writes for a fixtures module: infra's tests read arch's
+     * fixtures, arch's fixtures and tests read infra's main, and app's main reads infra. Per source
+     * set there is no loop, so the graph resolves; only app → infra orders modules.
+     */
+    @Test
+    void members_whose_tests_read_each_other_resolve_without_a_cycle(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "root"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["infra", "arch", "app"]
+                """);
+        member(tmp, "infra", """
+                [test-dependencies]
+                arch = { workspace = true, fixtures = true }
+                """);
+        member(tmp, "arch", """
+                [test]
+                fixtures = true
+
+                [test-dependencies]
+                infra = { workspace = true }
+                """);
+        member(tmp, "app", """
+                [dependencies]
+                infra = { workspace = true }
+                """);
+
+        BuildGraph.Result r = resolve(tmp);
+
+        Path infra = BuildGraph.canonicalPath(tmp.resolve("infra"));
+        Path arch = BuildGraph.canonicalPath(tmp.resolve("arch"));
+        Path app = BuildGraph.canonicalPath(tmp.resolve("app"));
+        assertThat(r.errors()).isEmpty();
+        assertThat(coords(r)).containsExactly("com.example:infra", "com.example:arch", "com.example:app");
+        assertThat(r.edges()).containsEntry(infra, Set.of()).containsEntry(arch, Set.of());
+        assertThat(r.edges().get(app)).containsExactly(infra);
+        assertThat(r.testEdges()).containsEntry(infra, Set.of(arch)).containsEntry(arch, Set.of(infra));
+        assertThat(r.testReads().fixtures()).containsExactly(Map.entry(infra, Set.of(arch)));
+        assertThat(r.maxReadyWidth()).as("infra and arch start together").isEqualTo(2);
+        Map<Path, Set<Path>> order = r.readOrder();
+        assertThat(order.get(app)).containsExactly(infra);
+        assertThat(order.getOrDefault(infra, Set.of()).size()
+                        + order.getOrDefault(arch, Set.of()).size())
+                .as("one of the two test edges closes the loop and is left out of the walk order")
+                .isEqualTo(1);
+        assertThat(BuildGraph.waves(Set.of(infra, arch, app), order).stream()
+                        .mapToInt(List::size)
+                        .sum())
+                .as("the walk order reaches every unit")
+                .isEqualTo(3);
     }
 
     @Test
@@ -267,9 +326,20 @@ class BuildGraphTest {
                 a = { group = "com.example", name = "a", version = "1.0.0" }
                 """);
 
+        member(tmp, "c", """
+                [dependencies]
+                a = { workspace = true }
+                """);
+        Files.writeString(
+                tmp.resolve("jk.toml"),
+                Files.readString(tmp.resolve("jk.toml")).replace("[\"a\", \"b\"]", "[\"a\", \"b\", \"c\"]"));
+
         BuildGraph.Result r = resolve(tmp);
 
-        assertThat(r.errors()).anyMatch(e -> e.contains("cycle"));
+        assertThat(r.errors())
+                .as("the members in the loop and the tables closing it, not c that only waits on it")
+                .containsExactly("workspace build graph has a cycle: a → b → a (a [dependencies] names b;"
+                        + " b [dependencies] names a). Only a test-scope edge may close a loop between members.");
         assertThat(r.topoOrder()).isEmpty();
     }
 
@@ -318,6 +388,17 @@ class BuildGraphTest {
 
         assertThat(r.errors()).isEmpty();
         assertThat(r.edges().get(BuildGraph.canonicalPath(tmp.resolve("app")))).isEmpty();
+    }
+
+    private static void member(Path tmp, String name, String extra) throws IOException {
+        Files.createDirectories(tmp.resolve(name));
+        Files.writeString(tmp.resolve(name + "/jk.toml"), """
+                group = "com.example"
+                name  = "%s"
+                version = "1.0.0"
+                java = 25
+
+                """.formatted(name) + extra);
     }
 
     /** A workspace of {@code core} and {@code app}, app's manifest ending in {@code appExtra}. */
