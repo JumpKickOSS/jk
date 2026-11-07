@@ -12,6 +12,8 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.IntConsumer;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -198,7 +200,90 @@ class RunCommandTest {
 
         String output = TestAnsi.strip(
                 runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65)));
-        assertThat(output).contains("Failed to run").contains("Multiple main methods found");
+        assertThat(output)
+                .contains("Failed to run")
+                .contains("Multiple main methods found")
+                .as("the candidates and how to choose one")
+                .contains("com.example.Main")
+                .contains("com.example.Other")
+                .contains("[application] main");
+    }
+
+    /**
+     * {@code jk run -m <module>} at a workspace root runs that module: its own {@code [application]
+     * main}, not a scan of the workspace, after building only what it runs on — a sibling it names
+     * only for its tests stays unbuilt.
+     */
+    @Test
+    void run_dash_m_launches_the_selected_module_and_builds_only_its_runtime_cone(@TempDir Path ws) throws Exception {
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "root"
+                version = "0.1.0"
+                java    = 25
+
+                [workspace]
+                modules = ["app", "fixtures", "other"]
+                """);
+        member(ws, "fixtures", "", "Fixture", "");
+        member(
+                ws,
+                "app",
+                "[application]\nmain = \"com.example.app.Main\"\n\n[test-dependencies]\nfixtures.workspace = true\n",
+                "Main",
+                "System.exit(args.length);");
+        member(ws, "other", "[application]\nmain = \"com.example.other.Main\"\n", "Main", "System.exit(42);");
+
+        String output = TestAnsi.strip(runCapturingOutput(
+                ws, exit -> assertThat(exit).as("app saw its two args").isEqualTo(2), "-m", "app", "--", "a", "b"));
+
+        assertThat(ws.resolve("app/target/app-0.1.0.jar")).exists();
+        assertThat(ws.resolve("fixtures/target/fixtures-0.1.0.jar"))
+                .as("a test-only sibling is not on the run's path: %s", output)
+                .doesNotExist();
+        assertThat(ws.resolve("other/target/other-0.1.0.jar")).doesNotExist();
+    }
+
+    @Test
+    void run_dash_m_matching_several_modules_names_them(@TempDir Path ws) throws Exception {
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "root"
+                version = "0.1.0"
+                java    = 25
+
+                [workspace]
+                modules = ["app", "other"]
+                """);
+        member(ws, "app", "[application]\nmain = \"com.example.app.Main\"\n", "Main", "");
+        member(ws, "other", "[application]\nmain = \"com.example.other.Main\"\n", "Main", "");
+
+        String output =
+                TestAnsi.strip(runCapturingOutput(ws, exit -> assertThat(exit).isEqualTo(64), "-m", "app,other"));
+
+        assertThat(output).contains("app").contains("other").contains("launches one program");
+        assertThat(ws.resolve("app/target")).doesNotExist();
+    }
+
+    /** A workspace member at {@code ws/name} with one class {@code cls} whose {@code main} runs {@code body}. */
+    private static void member(Path ws, String name, String tables, String cls, String body) throws Exception {
+        Path dir = ws.resolve(name);
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "%s"
+                version = "0.1.0"
+                java    = 25
+
+                %s""".formatted(name, tables));
+        Path src = dir.resolve("src/main/java/com/example/" + name + "/" + cls + ".java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, """
+                package com.example.%s;
+                public final class %s {
+                    public static void main(String[] args) { %s }
+                }
+                """.formatted(name, cls, body));
     }
 
     @Test
@@ -247,7 +332,7 @@ class RunCommandTest {
      * the live progress region it replaces — while ad hoc {@code CliOutput.err} messages go to
      * stderr; capture both since callers don't need to care which one a given message rides.
      */
-    private static String runCapturingOutput(Path tempDir, IntConsumer assertExit) {
+    private static String runCapturingOutput(Path tempDir, IntConsumer assertExit, String... extra) {
         var captured = new ByteArrayOutputStream();
         var prevOut = System.out;
         var prevErr = System.err;
@@ -255,12 +340,14 @@ class RunCommandTest {
         System.setOut(combined);
         System.setErr(combined);
         try {
-            assertExit.accept(run(
+            List<String> argv = new ArrayList<>(List.of(
                     "run",
                     "-C",
                     tempDir.toString(),
                     "--cache-dir",
                     TestCaches.dir("shared-cache").toString()));
+            argv.addAll(List.of(extra));
+            assertExit.accept(run(argv.toArray(String[]::new)));
         } finally {
             System.setOut(prevOut);
             System.setErr(prevErr);
