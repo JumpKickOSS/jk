@@ -35,9 +35,10 @@ class McpClientAgentTest {
         AgentChoice detect = new AgentChoice(AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CODEX));
         AgentChoice none = new AgentChoice(AgentSetup.Mode.NONE, Set.of());
 
-        assertThat(McpClientAgent.choice(claude, detect).wired())
-                .containsExactly(AgentSetup.Host.CLAUDE, AgentSetup.Host.CODEX);
-        assertThat(McpClientAgent.choice(claude, none).wired()).isEmpty();
+        assertThat(McpClientAgent.choice(claude, detect))
+                .isEqualTo(
+                        new AgentChoice(AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CLAUDE, AgentSetup.Host.CODEX)));
+        assertThat(McpClientAgent.choice(claude, none).mode()).isEqualTo(AgentSetup.Mode.NONE);
         assertThat(McpClientAgent.choice(new McpConnection("c2", "fake"), detect))
                 .isEqualTo(detect);
         assertThat(McpClientAgent.choice(null, detect)).isEqualTo(detect);

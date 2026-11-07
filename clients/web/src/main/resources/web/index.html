@@ -407,8 +407,9 @@
           <button type="button" class="ghost small" @click="createdAgents = null" aria-label="Dismiss agent notes"
                   data-tip="Dismiss"><jk-icon name="x"></jk-icon></button>
         </div>
+        <p v-if="createdAgents.callEnded" class="agent-call-ended">The agent that opened the wizard had stopped waiting, so it was not told about this project; give it the project's path.</p>
         <p v-if="createdAgents.files.length" class="agent-files mono">Wrote {{ createdAgents.files.join(', ') }}</p>
-        <ol><li v-for="n in createdAgents.notes" :key="n">{{ n }}</li></ol>
+        <ol v-if="createdAgents.notes.length"><li v-for="n in createdAgents.notes" :key="n">{{ n }}</li></ol>
       </section>
       <p v-if="projectDetail && projectDetail.description" class="proj-desc">
         <span class="proj-desc-q" aria-hidden="true">"</span><span class="proj-desc-body">{{ projectDetail.description }}</span><span class="proj-desc-q" aria-hidden="true">"</span>

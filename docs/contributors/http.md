@@ -422,7 +422,7 @@ then the template's `[[ask]]`), the same model `jk new` and MCP `new` render.
 | --- | --- |
 | `GET /api/forms/new-project?template=<ref>&lang=<lang>` | `{ form, template, derived }`: the form as `Form#toJson` writes it, `rev` included; the id the ref resolved to (no ref: the default template); and this machine's values of the form's derived defaults, `{ "git-email": …, "parent-dir": … }` |
 | `POST /api/projects/preview` | `{ rev, answers }` → `{ path, template, files, manifest }`, scaffolded and wired for agents into a scratch directory; nothing is written |
-| `POST /api/projects` | `{ rev, answers, elicitation? }` → **201** `{ path, dir, projectId, agents }`; `agents` is `{ files, notes }`, the agent files the create wrote for the engine's `JK_AGENTS` setting and the steps left to the user |
+| `POST /api/projects` | `{ rev, answers, elicitation? }` → **201** `{ path, dir, projectId, agents, handedOff? }`; `agents` is `{ files, notes }`, the agent files the create wrote for the engine's `JK_AGENTS` setting and the steps left to the user; `handedOff` comes with an `elicitation`, false when no MCP call was still waiting on it |
 | `GET /api/templates?lang=<lang>` | the catalogue the form's `template` search lists, one language when `lang` names one |
 
 `answers` maps form keys to answers (a string, a boolean for `bool`, a list for `multi`); the
@@ -431,7 +431,10 @@ content is a **409** carrying `{ error, form, template, derived }` for the form 
 that do not settle it are a **400** `{ error, problems: [{ key, message }] }`. A left-out answer
 takes its default, a derived one from `derived`. A target that already exists is a **409** on both
 the preview and the create. `elicitation` is the id from a wizard link MCP `new` handed out by URL
-elicitation (`NewProjectWizard`): the create completes the call waiting on it.
+elicitation (`NewProjectWizard`): the create completes the call waiting on it and is wired for that
+call's agents. The link outlives the call's five-minute wait by up to an hour from when it opened
+(at most 64 are kept), so a create that lands after the call gave up still gets the call's agents
+and says `handedOff: false`; the wizard tells the human the agent was not told.
 
 The token file persists across restarts precisely so an open tab survives an upgrade or crash
 respawn. `jk engine rotate-token` is the explicit way to invalidate it.

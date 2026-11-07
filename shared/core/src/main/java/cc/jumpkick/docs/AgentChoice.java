@@ -56,15 +56,6 @@ public record AgentChoice(AgentSetup.Mode mode, Set<AgentSetup.Host> hosts) {
         return new AgentChoice(mode, more);
     }
 
-    /** The agents this choice wires files or notes for: every one under {@code all}, none under {@code none}. */
-    public Set<AgentSetup.Host> wired() {
-        return switch (mode) {
-            case ALL -> EnumSet.allOf(AgentSetup.Host.class);
-            case NONE -> Set.of();
-            case DETECT -> hosts;
-        };
-    }
-
     /** {@link #mode} as {@link #parse} reads it. */
     public String modeName() {
         return mode.name().toLowerCase(Locale.ROOT);

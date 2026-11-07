@@ -14,6 +14,7 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.runtime.NewProjectAgents;
 import cc.jumpkick.engine.runtime.NewProjectJava;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jsonl.Jsonl;
@@ -30,6 +31,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -357,51 +359,18 @@ class McpNewFormTest {
     @Test
     void the_wizard_s_create_for_a_url_elicitation_wires_the_calling_client_s_agent() throws Exception {
         NewProjectAgents.env(key -> null);
-        HttpServer site = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-        HttpNewProjectApi api = new HttpNewProjectApi(new BuildJournal(temp.resolve("journal")), wizard);
-        // As the engine's router does: the handler answers, the router closes the exchange.
-        site.createContext("/api/projects", exchange -> {
-            try (exchange) {
-                api.handleCreate(exchange);
-            }
-        });
-        site.start();
+        HttpServer site = createSite(wizard);
         try {
             String session = initialize("2025-11-25", "{\"elicitation\":{\"url\":{}}}", "claude-code");
             BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
-            CompletableFuture<McpHandler.Reply> call = CompletableFuture.supplyAsync(
-                    () -> mcp.handle(
-                            call(Map.of("name", "widget", "params", Map.of("motto", "hi"))),
-                            session,
-                            null,
-                            null,
-                            sent::add),
-                    threads);
-            Map<String, Object> ask = nextQuestion(sent);
-            String id = String.valueOf(object(ask, "params").get("elicitationId"));
-            mcp.handle(
-                    "{\"jsonrpc\":\"2.0\",\"id\":" + Jsonl.quote(String.valueOf(ask.get("id")))
-                            + ",\"result\":{\"action\":\"accept\"}}",
-                    session);
+            CompletableFuture<McpHandler.Reply> call = callWidget(mcp, session, sent);
+            String id = acceptLink(mcp, session, sent);
 
             // The human finishes the wizard: its POST /api/projects carries the link's elicitation id.
-            Map<String, Object> answers = new LinkedHashMap<>(answered());
-            answers.putAll(Map.of(
-                    "lang", "java",
-                    "template", template.toString(),
-                    "name", "widget",
-                    "group", "org.example",
-                    "dir", parent.toString()));
-            HttpResponse<String> created = HttpClient.newHttpClient()
-                    .send(
-                            HttpRequest.newBuilder(URI.create("http://127.0.0.1:"
-                                            + site.getAddress().getPort() + "/api/projects"))
-                                    .POST(HttpRequest.BodyPublishers.ofString(MiniJson.write(
-                                            Map.of("answers", answers, NewProjectWizard.ELICITATION, id))))
-                                    .build(),
-                            HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> created = createThrough(site, id);
 
             assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+            assertThat(parseObject(created.body())).containsEntry("handedOff", true);
             assertThat(call.get(30, TimeUnit.SECONDS).body()).contains("\"created\"", "Agents wired: claude");
             assertThat(parent.resolve("widget/CLAUDE.md")).isRegularFile();
             assertThat(parent.resolve("widget/.mcp.json")).isRegularFile();
@@ -410,6 +379,92 @@ class McpNewFormTest {
         } finally {
             site.stop(0);
         }
+    }
+
+    @Test
+    void a_create_after_the_call_stopped_waiting_still_gets_its_agents_and_says_the_call_ended() throws Exception {
+        NewProjectAgents.env(key -> null);
+        NewProjectWizard brief =
+                new NewProjectWizard(() -> "http://127.0.0.1:8910/", () -> "T", Duration.ofMillis(200), Clock.SYSTEM);
+        McpHandler briefMcp = handler(brief);
+        HttpServer site = createSite(brief);
+        try {
+            String session = initialize(briefMcp, "2025-11-25", "{\"elicitation\":{\"url\":{}}}", "claude-code");
+            BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+            CompletableFuture<McpHandler.Reply> call = callWidget(briefMcp, session, sent);
+            String id = acceptLink(briefMcp, session, sent);
+
+            Map<String, Object> error = error(call.get(30, TimeUnit.SECONDS));
+            assertThat(String.valueOf(error.get("message")))
+                    .contains("not finished within", "not reported to this call");
+
+            HttpResponse<String> created = createThrough(site, id);
+
+            assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+            assertThat(parseObject(created.body())).containsEntry("handedOff", false);
+            assertThat(parent.resolve("widget/CLAUDE.md")).isRegularFile();
+            assertThat(parent.resolve("widget/.claude/settings.json")).isRegularFile();
+            assertThat(brief.agents(id)).as("a create spends its link").isNull();
+        } finally {
+            site.stop(0);
+        }
+    }
+
+    /** {@code POST /api/projects} over {@code links}, as the engine's router serves it. */
+    private HttpServer createSite(NewProjectWizard links) throws IOException {
+        HttpServer site = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        HttpNewProjectApi api = new HttpNewProjectApi(new BuildJournal(temp.resolve("journal")), links);
+        // As the engine's router does: the handler answers, the router closes the exchange.
+        site.createContext("/api/projects", exchange -> {
+            try (exchange) {
+                api.handleCreate(exchange);
+            }
+        });
+        site.start();
+        return site;
+    }
+
+    private CompletableFuture<McpHandler.Reply> callWidget(
+            McpHandler server, String session, BlockingQueue<Map<String, Object>> sent) {
+        return CompletableFuture.supplyAsync(
+                () -> server.handle(
+                        call(Map.of("name", "widget", "params", Map.of("motto", "hi"))),
+                        session,
+                        null,
+                        null,
+                        sent::add),
+                threads);
+    }
+
+    /** Accepts the wizard link the call sent; its elicitation id. */
+    private static String acceptLink(McpHandler server, String session, BlockingQueue<Map<String, Object>> sent)
+            throws Exception {
+        Map<String, Object> ask = nextQuestion(sent);
+        String id = String.valueOf(object(ask, "params").get("elicitationId"));
+        server.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":" + Jsonl.quote(String.valueOf(ask.get("id")))
+                        + ",\"result\":{\"action\":\"accept\"}}",
+                session);
+        return id;
+    }
+
+    /** The wizard's create of {@code widget} through the link {@code id} names. */
+    private HttpResponse<String> createThrough(HttpServer site, String id) throws IOException, InterruptedException {
+        Map<String, Object> answers = new LinkedHashMap<>(answered());
+        answers.putAll(Map.of(
+                "lang", "java",
+                "template", template.toString(),
+                "name", "widget",
+                "group", "org.example",
+                "dir", parent.toString()));
+        return HttpClient.newHttpClient()
+                .send(
+                        HttpRequest.newBuilder(URI.create(
+                                        "http://127.0.0.1:" + site.getAddress().getPort() + "/api/projects"))
+                                .POST(HttpRequest.BodyPublishers.ofString(
+                                        MiniJson.write(Map.of("answers", answers, NewProjectWizard.ELICITATION, id))))
+                                .build(),
+                        HttpResponse.BodyHandlers.ofString());
     }
 
     @Test
@@ -546,7 +601,11 @@ class McpNewFormTest {
     }
 
     private String initialize(String version, String capabilities, String client) {
-        return requireNonNull(mcp.handle(
+        return initialize(mcp, version, capabilities, client);
+    }
+
+    private static String initialize(McpHandler server, String version, String capabilities, String client) {
+        return requireNonNull(server.handle(
                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\""
                                 + version + "\",\"capabilities\":" + capabilities
                                 + ",\"clientInfo\":{\"name\":" + Jsonl.quote(client) + ",\"version\":\"1\"}}}",

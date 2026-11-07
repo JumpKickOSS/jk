@@ -50,13 +50,12 @@ class AgentChoiceTest {
     }
 
     @Test
-    void an_added_agent_is_wired_unless_the_setting_wires_none() {
+    void an_added_agent_joins_the_hosts_and_keeps_the_mode() {
         AgentChoice detect = new AgentChoice(AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CODEX));
-        AgentChoice none = new AgentChoice(AgentSetup.Mode.NONE, Set.of());
 
-        assertThat(detect.with(AgentSetup.Host.CLAUDE).wired())
-                .containsExactly(AgentSetup.Host.CLAUDE, AgentSetup.Host.CODEX);
-        assertThat(none.with(AgentSetup.Host.CLAUDE).wired()).isEmpty();
-        assertThat(new AgentChoice(AgentSetup.Mode.ALL, Set.of()).wired()).hasSize(AgentSetup.Host.values().length);
+        assertThat(detect.with(AgentSetup.Host.CLAUDE))
+                .isEqualTo(
+                        new AgentChoice(AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.CLAUDE, AgentSetup.Host.CODEX)));
+        assertThat(detect.with(AgentSetup.Host.CODEX)).isSameAs(detect);
     }
 }

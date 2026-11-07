@@ -34,12 +34,15 @@ import org.jspecify.annotations.Nullable;
  * <pre>
  * GET  /api/forms/new-project?template=&amp;lang=  {form, template, derived}
  * POST /api/projects/preview                      {rev, answers} → {path, template, files, manifest}
- * POST /api/projects                              {rev, answers, elicitation?} → {path, dir, projectId, agents}
+ * POST /api/projects                              {rev, answers, elicitation?}
+ *                                                 → {path, dir, projectId, agents, handedOff?}
  * </pre>
  *
- * {@code agents} is the agent wiring the create did for the engine's agents setting, or, with an
- * {@code elicitation} an MCP call waits on, for that call's: {@code files} written, by path under
- * the project, and the {@code notes} left to the user.
+ * {@code agents} is the agent wiring the create did for the engine's agents setting, or, with the
+ * {@code elicitation} of a wizard link still live, for the MCP call's that opened it: {@code files}
+ * written, by path under the project, and the {@code notes} left to the user. {@code handedOff}
+ * comes with an {@code elicitation}: false when no call was still waiting on it, so no agent was
+ * told of the project.
  *
  * {@code derived} holds the values of the form's derived defaults ({@code git-email},
  * {@code parent-dir}) on this machine; an answer left out takes the same value here.
@@ -100,7 +103,7 @@ final class HttpNewProjectApi {
 
     /**
      * {@code POST /api/projects}: scaffold the answers. An {@code elicitation} id from a wizard link
-     * hands the result to the MCP call waiting on it.
+     * hands the result to the MCP call waiting on it, and says whether one was.
      */
     void handleCreate(HttpExchange exchange) throws IOException {
         Settled s = settle(exchange);
@@ -112,9 +115,9 @@ final class HttpNewProjectApi {
             project.put("path", created.path().toString());
             if (created.projectId() != null) project.put("projectId", created.projectId());
             project.put("agents", NewProjectAgents.json(created.agents(), created.path()));
-            if (s.elicitation() != null) wizard.complete(s.elicitation(), project);
             Map<String, Object> body = new LinkedHashMap<>(project);
             body.put("dir", created.path().toString());
+            if (s.elicitation() != null) body.put("handedOff", wizard.complete(s.elicitation(), project));
             HttpResponses.sendJson(exchange, 201, MiniJson.write(body));
         } catch (IllegalArgumentException e) {
             error(exchange, 400, e.getMessage());
@@ -126,8 +129,9 @@ final class HttpNewProjectApi {
     }
 
     /**
-     * {@code s}'s request, wired for the agents of the MCP call its {@code elicitation} answers, as
-     * that call would wire a project it created itself; the engine's setting when none is waiting.
+     * {@code s}'s request, wired for the agents of the MCP call its {@code elicitation} link came
+     * from, as that call would wire a project it created itself, even once the call stopped waiting;
+     * the engine's setting when the link is spent or past its deadline.
      */
     private NewProjectOps.Request handedOff(Settled s) {
         String id = s.elicitation();
