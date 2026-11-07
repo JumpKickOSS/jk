@@ -32,6 +32,7 @@ import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
@@ -173,7 +174,7 @@ public final class JavaSourceApi {
         try {
             List<Path> parseable = new ArrayList<>(files.size());
             for (Path file : files) {
-                if (Files.size(file) <= maxFileBytes) parseable.add(file);
+                if (sizeOf(file) <= maxFileBytes) parseable.add(file);
                 else Log.debug("parse: " + file + " is over " + maxFileBytes + " bytes; keyed on its content");
             }
             for (List<Path> batch : batches(parseable, batchBytes)) out.putAll(parseBatch(javac, batch, view));
@@ -194,7 +195,7 @@ public final class JavaSourceApi {
         List<Path> batch = new ArrayList<>();
         long bytes = 0;
         for (Path file : files) {
-            long size = Files.size(file);
+            long size = sizeOf(file);
             if (!batch.isEmpty() && bytes + size > maxBytes) {
                 out.add(List.copyOf(batch));
                 batch.clear();
@@ -212,7 +213,8 @@ public final class JavaSourceApi {
         Map<Path, String> out = new LinkedHashMap<>();
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         try (StandardJavaFileManager fm = javac.getStandardFileManager(diagnostics, null, StandardCharsets.UTF_8)) {
-            Iterable<? extends JavaFileObject> units = fm.getJavaFileObjectsFromPaths(files);
+            List<JavaFileObject> units = new ArrayList<>(files.size());
+            for (Path file : files) units.add(unitOf(fm, file));
             JavacTask task = (JavacTask) javac.getTask(null, fm, diagnostics, List.of("-proc:none"), null, units);
             Map<URI, String> shapes = new LinkedHashMap<>();
             for (CompilationUnitTree unit : task.parse()) {
@@ -233,6 +235,27 @@ public final class JavaSourceApi {
             }
         }
         return out;
+    }
+
+    /**
+     * The bytes javac reads for {@code file}: a forecast's projected file reads the blob its sha
+     * names, under the file's own URI, so it parses as the file the build restores there will.
+     */
+    private static JavaFileObject unitOf(StandardJavaFileManager fm, Path file) {
+        Path blob = ProjectedFiles.blob(file);
+        if (blob == null) return fm.getJavaFileObjects(file).iterator().next();
+        return new SimpleJavaFileObject(file.toUri(), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) throws IOException {
+                return Files.readString(blob, StandardCharsets.UTF_8);
+            }
+        };
+    }
+
+    /** The size of what {@link #unitOf} reads for {@code file}. */
+    private static long sizeOf(Path file) throws IOException {
+        Path blob = ProjectedFiles.blob(file);
+        return Files.size(blob != null ? blob : file);
     }
 
     private static void renderUnit(CompilationUnitTree unit, StringBuilder sb, boolean exported) {
