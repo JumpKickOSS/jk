@@ -34,7 +34,7 @@ public final class EngineTestSupport {
 
     /**
      * Idempotent materialize of the engine assembly into EngineInstall under the current {@code
-     * JK_HOME} (the tier's, or an {@link IsolatedHome}'s): {@code -Djk.engine.jar} (the run-tests step names the workspace engine's fat jar),
+     * JK_HOME} (the tier's, or an {@code IsolatedHome}'s): {@code -Djk.engine.jar} (the run-tests step names the workspace engine's fat jar),
      * else the checkout's assembly. Never the installed engine, which is not the code under test.
      */
     public static void ensureEngineMaterialized() {
@@ -85,6 +85,11 @@ public final class EngineTestSupport {
             }
             MATERIALIZED.add(lib);
         }
+    }
+
+    /** Whether this JVM has materialized the engine under test into the current {@code JK_HOME}. */
+    public static boolean materialized() {
+        return MATERIALIZED.contains(JkDirs.productLib());
     }
 
     /**

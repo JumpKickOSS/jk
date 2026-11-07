@@ -51,6 +51,12 @@ directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cos
 crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
 directory.
 
+What every suite shares comes from outside the suites: the module's own `[test] fixtures`
+(`src/fixtures/java`) ride every suite's classpath, and `[test] extra-src` roots and files compile
+into whichever suites are selected. A file `extra-src` names brings the `package-info.java` beside
+it, so its package's annotations (`@NullMarked`) hold in a suite that does not declare the package
+itself.
+
 ## Suites by class name (`[test.suites.<name>] classes`)
 
 A suite is a directory unless the module says otherwise. A Maven tree keeps its integration

@@ -62,26 +62,27 @@ public final class TestSupport {
     /**
      * Sources under {@code [test] extra-src}, by extension. These roots belong to the test tier but
      * to no suite: there is nothing in them to run, so they compile with whichever suites were
-     * selected rather than being selectable themselves. Sibling-consumed helpers use
-     * {@code [test] fixtures} instead.
+     * selected rather than being selectable themselves. A named file brings its directory's
+     * {@code package-info.java} with it, so its package's annotations ({@code @NullMarked}) hold in
+     * every suite. Sibling-consumed helpers use {@code [test] fixtures} instead.
      */
     static List<Path> testExtraSources(JkBuild project, Path moduleDir, String ext) throws IOException {
         List<String> roots = project.build().testExtraSrc();
         if (roots.isEmpty()) return List.of();
-        List<Path> out = new ArrayList<>();
+        Set<Path> out = new LinkedHashSet<>();
         for (String rel : roots) {
             Path root = moduleDir.resolve(rel).normalize();
             if (Files.isDirectory(root)) {
                 out.addAll(TestSuites.collectExt(root, ext));
             } else if (rel.endsWith(ext) && Files.isRegularFile(root)) {
-                // One file, not a root. `clients/cli` needs exactly one source out of the IntelliJ
-                // plugin's package — JkWireModel, the wire parser, which imports only java.util and
-                // org.jetbrains.annotations. Its five neighbours need the platform SDK, so naming
-                // the directory would not compile.
+                // One file, not a root: its neighbours may not compile here (clients/cli takes two
+                // files out of the IntelliJ plugin, whose others need the platform SDK).
                 out.add(root);
+                Path packageInfo = root.resolveSibling("package-info" + ext);
+                if (Files.isRegularFile(packageInfo)) out.add(packageInfo);
             }
         }
-        return out;
+        return List.copyOf(out);
     }
 
     private TestSupport() {}

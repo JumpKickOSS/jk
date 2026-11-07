@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@code [test] extra-src}: extra test-tier sources compiled into test classes. Sibling-consumed
  * helpers use {@code [test] fixtures} instead; this is the single-file / extra-root lane
- * ({@code clients/cli} compiling one IntelliJ parser type).
+ * ({@code clients/cli} compiling the IntelliJ plugin's wire parser, with its package-info).
  *
  * <p>The roots compile into the module's own test classes output. {@code compile-test}'s key has
  * to cover these files because {@code TestSupport.compileWithCache} is driven from the primary
@@ -61,6 +61,24 @@ class TestExtraSrcTest {
         assertThat(TestSupport.testExtraSources(silent, dir, ".java"))
                 .as("no [test] extra-src, so no roots")
                 .isEmpty();
+    }
+
+    @Test
+    void a_named_file_brings_its_package_info_and_not_its_neighbours(@TempDir Path tmp) throws Exception {
+        Path dir = fixtureModule(tmp.resolve("lib"), "class Fix {}\n");
+        Path pkg = dir.resolve("src/extra-test/java/com/example");
+        Files.writeString(pkg.resolve("package-info.java"), "package com.example;\n");
+        Files.writeString(pkg.resolve("Other.java"), "class Other {}\n");
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                MANIFEST.replace(
+                        "\"src/extra-test/java\"",
+                        "\"src/extra-test/java/com/example/Fix.java\", \"src/extra-test/java/com/example/package-info.java\""));
+
+        // Every suite compiles the file, so its package's annotations must come along: a suite
+        // without the package elsewhere would compile it unmarked. Named twice, it is listed once.
+        assertThat(TestSupport.testExtraSources(JkBuildParser.parse(dir.resolve("jk.toml")), dir, ".java"))
+                .containsExactly(pkg.resolve("Fix.java"), pkg.resolve("package-info.java"));
     }
 
     @Test

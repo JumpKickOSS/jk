@@ -125,14 +125,21 @@ test-plugin-jars = [
 ]
 
 [test]
+# The suites' shared harness (src/fixtures/java): the extension that materializes the engine under
+# test into the sandbox JK_HOME and stops it at the end, and the @TempDir deletion strategy. Every
+# suite's classpath carries it, src/test's and src/e2e's alike.
+fixtures = true
 # Two files out of the IntelliJ plugin's package, single-sourced from the plugin's own tree: the
 # wire model and its JSON reader need no platform SDK (java.util + org.jetbrains.annotations),
-# while their neighbours do — so this names the files, not the directory. Compiling them here
-# puts the parallel-array alignment and null-vs-empty rules in-gate, which G22 arm 4 can only
-# approximate textually.
+# while their neighbours do — so this names the files, not the directory. Their package-info.java
+# keeps the package @NullMarked in every suite; a named file brings it along, and it is named too
+# because the bootstrap release that builds this tree in CI does not. Compiling them here puts the
+# parallel-array alignment and null-vs-empty rules in-gate, which G22 arm 4 can only approximate
+# textually.
 extra-src = [
   "../intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java",
   "../intellij/src/main/java/cc/jumpkick/idea/JkJson.java",
+  "../intellij/src/main/java/cc/jumpkick/idea/package-info.java",
 ]
 # Nested engines / shared sockets: integration classes materialize the resident engine and
 # share its JK_HOME store, so they stay on one serial trailing worker (serial-tags) while
