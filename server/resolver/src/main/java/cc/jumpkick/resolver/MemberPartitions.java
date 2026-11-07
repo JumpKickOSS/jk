@@ -340,7 +340,7 @@ final class MemberPartitions {
             boolean prunes = prunes(reach, own);
             boolean graphOnly = flagged.isEmpty() && !prunes;
             flagged.addAll(ownGraphDisagrees(reach, own));
-            if (flagged.isEmpty() && !prunes) continue;
+            if (flagged.isEmpty() && !prunes && !joinsUnmet(reach.declared())) continue;
             out.add(new Flagged(member, manifest, own, flagged, graphOnly));
         }
         return out;
@@ -617,9 +617,19 @@ final class MemberPartitions {
 
     /** Every package key the member reaches through the merged solve's edges. */
     private Set<String> closure(List<Dependency> roots) {
+        List<String> keys = new ArrayList<>(roots.size());
+        for (Dependency root : roots) keys.add(root.packageKey());
         Set<String> visited = new LinkedHashSet<>();
-        Deque<String> queue = new ArrayDeque<>();
-        for (Dependency root : roots) queue.add(root.packageKey());
+        walk(keys, Set.of(), visited);
+        return visited;
+    }
+
+    /**
+     * Add to {@code visited} every package key the merged solve's edges reach from {@code keys},
+     * passing over the edges {@code skipped} names ({@code parent child}, package keys).
+     */
+    private void walk(Collection<String> keys, Set<String> skipped, Set<String> visited) {
+        Deque<String> queue = new ArrayDeque<>(keys);
         while (!queue.isEmpty()) {
             String key = queue.poll();
             if (!visited.add(key)) continue;
@@ -627,10 +637,63 @@ final class MemberPartitions {
             if (mod == null) continue;
             for (String ref : mod.deps()) {
                 int at = ref.indexOf('@');
-                queue.add(at > 0 ? ref.substring(0, at) : ref);
+                String child = at > 0 ? ref.substring(0, at) : ref;
+                if (!skipped.contains(key + " " + child)) queue.add(child);
             }
         }
-        return visited;
+    }
+
+    /**
+     * True when a conditional dependency the merged solve joined reaches this member through its
+     * declarer while the member's own graph does not meet its condition: the workspace's condition
+     * held across every member's graph, so a sibling's dependency may have met it. The member's
+     * main graph is judged against the main graph's joins, and its main and test graphs together
+     * against every join, as its own solve judges them: its closure without the conditional edges,
+     * grown by each join whose declarer it holds and whose condition it meets, to a fixed point. A
+     * declarer left with its joined dependency outside that closure means the member's rows are
+     * not the workspace's, so the member is solved on its own and its declaring row carries no
+     * such edge.
+     */
+    private boolean joinsUnmet(LockRoots.Declared declared) {
+        List<ScopeSolves.Joined> joined = union.solved().joined();
+        if (joined.isEmpty()) return false;
+        Set<String> conditionalEdges = new HashSet<>();
+        List<ScopeSolves.Joined> mainJoins = new ArrayList<>();
+        for (ScopeSolves.Joined j : joined) {
+            conditionalEdges.add(j.declarerKey() + " " + j.dependencyKey());
+            if (j.graph() == LockRoots.GraphGroup.MAIN) mainJoins.add(j);
+        }
+        List<String> main = new ArrayList<>();
+        for (Dependency root : declared.main().values()) main.add(root.packageKey());
+        List<String> both = new ArrayList<>(main);
+        for (Dependency root : declared.test().values()) both.add(root.packageKey());
+        return unmet(main, mainJoins, conditionalEdges) || unmet(both, joined, conditionalEdges);
+    }
+
+    /** True when a join of {@code joined} has its declarer and not its dependency in the closure of {@code roots}. */
+    private boolean unmet(List<String> roots, List<ScopeSolves.Joined> joined, Set<String> conditionalEdges) {
+        Set<String> closure = new LinkedHashSet<>();
+        walk(roots, conditionalEdges, closure);
+        Set<String> present = new HashSet<>();
+        for (String key : closure) present.addAll(ConditionalDependencies.identities(key));
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            for (ScopeSolves.Joined j : joined) {
+                if (!closure.contains(j.declarerKey()) || closure.contains(j.dependencyKey())) continue;
+                if (!present.containsAll(j.active().condition())) continue;
+                Set<String> added = new LinkedHashSet<>();
+                walk(List.of(j.dependencyKey()), conditionalEdges, added);
+                added.removeAll(closure);
+                closure.addAll(added);
+                for (String key : added) present.addAll(ConditionalDependencies.identities(key));
+                grew = true;
+            }
+        }
+        for (ScopeSolves.Joined j : joined) {
+            if (closure.contains(j.declarerKey()) && !closure.contains(j.dependencyKey())) return true;
+        }
+        return false;
     }
 
     /**
