@@ -274,6 +274,14 @@ record GradleModel(
     static final String TYPE = "type";
     static final String XJC = "xjc";
     static final String AVRO = "avro";
+    static final String AVRO_SOURCES = "sources";
+    static final String AVRO_BUILD_DIR = "buildDir";
+    static final String AVRO_STRING_TYPE = "stringType";
+    static final String AVRO_FIELD_VISIBILITY = "fieldVisibility";
+    static final String AVRO_ENCODING = "outputCharacterEncoding";
+    static final String AVRO_SETTERS = "createSetters";
+    static final String AVRO_OPTIONAL_GETTERS = "createOptionalGetters";
+    static final String AVRO_DECIMAL = "enableDecimalLogicalType";
 
     /** The {@code test} task's system properties with string values, and its JVM arguments. */
     record TestTask(Map<String, String> systemProperties, List<String> jvmArgs) {}
@@ -423,14 +431,14 @@ record GradleModel(
     private static @Nullable Avro avro(@Nullable String json) {
         if (json == null) return null;
         return new Avro(
-                Jsonl.strArray(json, "sources"),
-                Jsonl.topStr(json, "buildDir"),
-                Jsonl.topStr(json, "stringType"),
-                Jsonl.topStr(json, "fieldVisibility"),
-                Jsonl.topStr(json, "outputCharacterEncoding"),
-                flag(json, "createSetters"),
-                flag(json, "createOptionalGetters"),
-                flag(json, "enableDecimalLogicalType"));
+                Jsonl.strArray(json, AVRO_SOURCES),
+                Jsonl.topStr(json, AVRO_BUILD_DIR),
+                Jsonl.topStr(json, AVRO_STRING_TYPE),
+                Jsonl.topStr(json, AVRO_FIELD_VISIBILITY),
+                Jsonl.topStr(json, AVRO_ENCODING),
+                flag(json, AVRO_SETTERS),
+                flag(json, AVRO_OPTIONAL_GETTERS),
+                flag(json, AVRO_DECIMAL));
     }
 
     /** The boolean at {@code key}, null when the init script wrote none. */
