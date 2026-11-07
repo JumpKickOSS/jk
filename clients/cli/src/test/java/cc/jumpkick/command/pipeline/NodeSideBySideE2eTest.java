@@ -110,7 +110,7 @@ class NodeSideBySideE2eTest {
                 () -> exit[0] = run("build", "--skip-node", "-C", dir.toString(), "--cache-dir", cache(dir)));
         String out = streams.out() + streams.err();
         assertThat(exit[0]).isNotZero();
-        assertThat(out).contains("run the build once without --skip-node");
+        assertThat(out).contains("build once without --skip-node");
     }
 
     @Test

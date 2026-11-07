@@ -81,18 +81,18 @@ class ReleaseArtifactsTest {
         // Valid signature, older release: the rollback shape a bucket writer or a mirror can stage.
         assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, older, "0.13.3"))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("REFUSING")
+                .hasMessageContaining("refusing")
                 .hasMessageContaining("0.13.0");
         // Tampered after signing: the two lines changed, the signature line did not.
         byte[] tampered = object(body("0.14.0"), signBase64(pair, body("0.13.0")));
         assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, tampered, "0.13.3"))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("REFUSING");
+                .hasMessageContaining("refusing");
         // Signed by a key this jk does not trust.
         byte[] foreign = pointer(rsaPair(), "0.14.0");
         assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, foreign, "0.13.3"))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("REFUSING");
+                .hasMessageContaining("refusing");
         // Not a pointer object.
         byte[] bare = "0.14.0\n".getBytes(StandardCharsets.US_ASCII);
         assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, bare, "0.13.3"))

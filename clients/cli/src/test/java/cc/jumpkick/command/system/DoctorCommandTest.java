@@ -100,7 +100,7 @@ class DoctorCommandTest {
         Symlinks.create(mavenSlug.resolve("3.9.9"), target);
 
         String stdout = verifyLinked(tempDir);
-        assertThat(stdout).contains("no files");
+        assertThat(stdout).contains("link target is empty");
         assertThat(stdout).doesNotContain(JdkFingerprint.EMPTY_TREE.substring(0, 12));
     }
 

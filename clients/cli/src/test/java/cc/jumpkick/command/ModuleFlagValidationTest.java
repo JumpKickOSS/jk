@@ -114,6 +114,6 @@ class ModuleFlagValidationTest {
         workspace(dir);
         Run r = run("image", "-C", dir.toString(), "-m", "a,b");
         assertThat(r.exit()).isEqualTo(64);
-        assertThat(r.err()).contains("exactly one module");
+        assertThat(r.err()).contains("an image is built for one module");
     }
 }
