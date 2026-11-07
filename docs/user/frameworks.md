@@ -236,6 +236,32 @@ Tests run under `junit-jupiter`, or `junit-jupiter-api` alone (jk adds the engin
 does), with no launcher pin. `jk dev` restarts the application on every change, as `helidon dev`
 does.
 
+`jk import` writes the table from a Maven build on Helidon 27 or later
+([Migration](migration.md#which-maven-plugins-import-and-how-well)):
+
+- The `io.helidon.applications:helidon-se` parent, or an imported `io.helidon:helidon-dependencies`
+  BOM, is `version`. Neither becomes a `[platform-dependencies]` row, since the table brings the BOM,
+  and the dependencies it versions stay `"managed"`.
+- `helidon-codegen-apt` and `helidon-service-codegen` leave the processor paths, since the table
+  adds them. `helidon-bundles-apt`, or one of the generators it bundles (Declarative, builder, data,
+  JSON), is `declarative = true`. Any other processor stays in `[processor-dependencies]`.
+- `helidon-service-maven-plugin`'s `create-application` (and its test goal) maps to the binding keys:
+  `<generateMain>true` is `generate-main = true`, `<validate>false` is `validate = false`, and
+  `<generateBinding>false` is `binding = false`. Options with no key, such as `<packageName>`, are
+  rows.
+- The parent's `copy-libs` execution is the default `layout = "libs"`, so no `[application] lib-dir`
+  and no row. An application that copies nothing gets `layout = "jar"`. A copy shaped differently
+  keeps its own `lib-dir`.
+- Surefire's `helidon.config.profile=test` is dropped, since the table sets it.
+- `helidon-maven-plugin`'s `jlink-image` goal is `[jlink]`, so `jk import -P jlink-image` writes it
+  from the parent's profile. `<additionalModules>` maps to `modules`, `<stripDebug>` to `strip-debug`
+  (Helidon's default keeps debug attributes, so `strip-debug = false`), `<aotCache>` /
+  `<addClassDataSharingArchive>` to `aot-cache`, `<defaultJvmOptions>` to `jvm-args`, `<defaultArgs>`
+  to `args`, and `<maxAppStartSeconds>` to `start-timeout`.
+
+A Helidon below 27 gets no table. Its parent or BOM is a `[platform-dependencies]` row as for any
+other parent, Helidon's Maven plugins are rows, and one row says why.
+
 ## Android
 
 **Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).

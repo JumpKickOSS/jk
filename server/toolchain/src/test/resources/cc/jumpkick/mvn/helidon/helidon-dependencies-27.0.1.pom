@@ -1,0 +1,500 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright (c) 2019, 2026 Oracle and/or its affiliates.
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+        xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.helidon</groupId>
+        <artifactId>helidon-bom</artifactId>
+        <version>27.0.1</version>
+        <relativePath>../bom/pom.xml</relativePath>
+    </parent>
+    <artifactId>helidon-dependencies</artifactId>
+    <packaging>pom</packaging>
+
+    <name>Helidon Dependencies</name>
+    <description>Maven dependency management for Helidon applications</description>
+
+    <properties>
+        <!--
+        Changing these versions requires approval for a new third party dependency!
+        -->
+        <version.lib.antlr>4.13.2</version.lib.antlr>
+        <version.lib.bytebuddy>1.18.5</version.lib.bytebuddy>
+        <version.lib.commons-compress>1.27.1</version.lib.commons-compress>
+        <version.lib.commons-lang>3.18.0</version.lib.commons-lang>
+        <version.lib.cron-utils>9.2.1</version.lib.cron-utils>
+        <version.lib.dropwizard.metrics>4.1.36</version.lib.dropwizard.metrics>
+        <version.lib.eclipselink>4.0.7</version.lib.eclipselink>
+        <version.lib.eclipselink.asm>9.10.0</version.lib.eclipselink.asm>
+        <version.lib.google-error-prone-annotations>2.30.0</version.lib.google-error-prone-annotations>
+        <version.lib.google-gson>2.13.2</version.lib.google-gson>
+        <version.lib.google-protobuf>4.36.0</version.lib.google-protobuf>
+        <version.lib.google-j2objc-annotations>3.0.0</version.lib.google-j2objc-annotations>
+        <version.lib.graphql-java>22.1</version.lib.graphql-java>
+        <version.lib.graphql-java.extended.scalars>22.0</version.lib.graphql-java.extended.scalars>
+        <version.lib.grpc>1.73.0</version.lib.grpc>
+        <version.lib.guava>33.3.1-jre</version.lib.guava>
+        <version.lib.h2>2.4.240</version.lib.h2>
+        <version.lib.hamcrest>1.3</version.lib.hamcrest>
+        <version.lib.handlebars>4.5.2</version.lib.handlebars>
+        <version.lib.hibernate.family>6.3</version.lib.hibernate.family>
+        <version.lib.hibernate>${version.lib.hibernate.family}.1.Final</version.lib.hibernate>
+        <version.lib.hikaricp>7.1.0</version.lib.hikaricp>
+        <version.lib.jackson>2.21.7</version.lib.jackson>
+        <version.lib.jakarta.activation-api>2.1.3</version.lib.jakarta.activation-api>
+        <version.lib.jakarta.annotation-api>2.1.1</version.lib.jakarta.annotation-api>
+        <!-- Needed for transaction/jta -->
+        <version.lib.jakarta.cdi-api>4.0.1</version.lib.jakarta.cdi-api>
+        <version.lib.jakarta.inject>2.0.1</version.lib.jakarta.inject>
+        <!-- Needed by current implementation of JSON-Schema and JSON-RPC -->
+        <version.lib.jakarta.jsonb-api>3.0.1</version.lib.jakarta.jsonb-api>
+        <version.lib.jakarta.jsonp-api>2.1.3</version.lib.jakarta.jsonp-api>
+        <version.lib.jakarta.persistence-api>3.1.0</version.lib.jakarta.persistence-api>
+        <version.lib.jakarta.transaction-api>2.0.1</version.lib.jakarta.transaction-api>
+        <!-- Check Hibernate when upgrading to ensure its supplied jaxb-runtime is compatible. -->
+        <version.lib.jakarta.xml.bind-api>4.0.2</version.lib.jakarta.xml.bind-api>
+        <version.lib.jboss.logging>3.5.3.Final</version.lib.jboss.logging>
+        <version.lib.jaxb-runtime>4.0.9</version.lib.jaxb-runtime>
+        <!-- Jetbrains annotations: dependency convergence requirement, we never use this directly -->
+        <version.lib.jetbrains.annotations>17.0.0</version.lib.jetbrains.annotations>
+        <version.lib.junit>5.12.2</version.lib.junit>
+        <version.lib.log4j>2.25.5</version.lib.log4j>
+        <version.lib.micrometer>1.17.1</version.lib.micrometer>
+        <version.lib.micrometer-prometheus>1.17.1</version.lib.micrometer-prometheus>
+        <version.lib.mongodb>5.11.1</version.lib.mongodb>
+        <version.lib.mysql-connector-j>8.2.0</version.lib.mysql-connector-j>
+        <version.lib.narayana>7.1.0.Final</version.lib.narayana>
+        <version.lib.ojdbc.family>23</version.lib.ojdbc.family>
+        <version.lib.ojdbc>${version.lib.ojdbc.family}.26.1.0.0</version.lib.ojdbc>
+        <version.lib.opentelemetry.semconv>1.43.0</version.lib.opentelemetry.semconv>
+        <version.lib.opentelemetry>1.65.0</version.lib.opentelemetry>
+        <version.lib.parsson>1.1.9</version.lib.parsson>
+        <version.lib.postgresql>42.7.13</version.lib.postgresql>
+        <version.lib.prometheus>1.7.0</version.lib.prometheus>
+        <version.lib.reactivestreams>1.0.4</version.lib.reactivestreams>
+        <version.lib.slf4j>2.0.17</version.lib.slf4j>
+        <version.lib.snakeyaml>2.7</version.lib.snakeyaml>
+        <version.lib.testcontainers>1.21.4</version.lib.testcontainers>
+        <version.lib.typesafe-config>1.4.8</version.lib.typesafe-config>
+        <version.lib.yasson>3.0.4</version.lib.yasson>
+    </properties>
+
+    <dependencyManagement>
+        <!--
+         IMPORTANT! These dependencies are organized into four sections. When adding
+         or updating a dependency please place it in the correction section:
+
+         Section 1: Direct third party dependencies of the Helidon toolkit. These are
+                    dependencies used directly by the Helidon implementation (not
+                     examples, not tests) and can be runtime dependencies of a Helidon
+                     application.
+         Section 2: Direct third party dependencies that are used by examples (beyond those
+                    in Section 1). Might also be used in tests.
+         Section 3: Transitive dependencies (or fourth party dependencies) that we
+                    need to manage the version of for convergence or forced upgrade.
+                    Nothing in Helidon depends on these APIs directly.
+         Section 4: Dependencies used for testing only. It's preferable that these are
+                    in the Helidon root project pom, but sometimes they need to be here.
+
+         Importing of BOMs should always be at the end since we want more specific
+         dependencies to override them.
+        -->
+
+        <dependencies>
+            <!-- Section 0: dependencies to be removed, workaround -->
+            <!-- 3.0.0-JAKARTA -->
+            <dependency>
+                <!-- needed for grpc, as generated code contains java.annotation.Generated -->
+                <groupId>javax.annotation</groupId>
+                <artifactId>javax.annotation-api</artifactId>
+                <version>1.3.2</version>
+            </dependency>
+            <!-- Section 1: direct third party dependencies -->
+            <dependency>
+                <groupId>io.opentelemetry.semconv</groupId>
+                <artifactId>opentelemetry-semconv</artifactId>
+                <version>${version.lib.opentelemetry.semconv}</version>
+            </dependency>
+            <!--
+            By default, OpenTelemetry's OTLP exporter uses okhttp. To reduce 3rd-party dependencies and more easily
+            manage dependency convergence use the OpenTelemetry JDK client support instead.
+            -->
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-exporter-otlp</artifactId>
+                <version>${version.lib.opentelemetry}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>io.opentelemetry</groupId>
+                        <artifactId>opentelemetry-exporter-sender-okhttp</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <!--
+                "Jakarta XML Binding API". (See
+                https://github.com/jakartaee/jaxb-api/blob/d8a68e76a5391cb2462f540c9e4c5c81d0a91942/jaxb-api/pom.xml#L23-L25)
+            -->
+            <dependency>
+                <groupId>jakarta.xml.bind</groupId>
+                <artifactId>jakarta.xml.bind-api</artifactId>
+                <version>${version.lib.jakarta.xml.bind-api}</version>
+            </dependency>
+            <!--
+                "JAXB Runtime"/"JAXB (JSR 222) Reference Implementation". (See
+                https://github.com/eclipse-ee4j/jaxb-ri/blob/1120e83b8bac6dfd1636e19269a36a8ccaad94e4/jaxb-ri/runtime/impl/pom.xml#L25-L30.)
+            -->
+            <dependency>
+                <groupId>org.glassfish.jaxb</groupId>
+                <artifactId>jaxb-runtime</artifactId>
+                <version>${version.lib.jaxb-runtime}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.enterprise</groupId>
+                <artifactId>jakarta.enterprise.cdi-api</artifactId>
+                <version>${version.lib.jakarta.cdi-api}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.enterprise</groupId>
+                <artifactId>jakarta.enterprise.lang-model</artifactId>
+                <version>${version.lib.jakarta.cdi-api}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.annotation</groupId>
+                <artifactId>jakarta.annotation-api</artifactId>
+                <version>${version.lib.jakarta.annotation-api}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.inject</groupId>
+                <artifactId>jakarta.inject-api</artifactId>
+                <version>${version.lib.jakarta.inject}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.json</groupId>
+                <artifactId>jakarta.json-api</artifactId>
+                <version>${version.lib.jakarta.jsonp-api}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.json.bind</groupId>
+                <artifactId>jakarta.json.bind-api</artifactId>
+                <version>${version.lib.jakarta.jsonb-api}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.activation</groupId>
+                <artifactId>jakarta.activation-api</artifactId>
+                <version>${version.lib.jakarta.activation-api}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.parsson</groupId>
+                <artifactId>parsson</artifactId>
+                <version>${version.lib.parsson}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse</groupId>
+                <artifactId>yasson</artifactId>
+                <version>${version.lib.yasson}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.jknack</groupId>
+                <artifactId>handlebars</artifactId>
+                <version>${version.lib.handlebars}</version>
+            </dependency>
+
+            <!-- Config related -->
+            <dependency>
+                <groupId>com.typesafe</groupId>
+                <artifactId>config</artifactId>
+                <version>${version.lib.typesafe-config}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.yaml</groupId>
+                <artifactId>snakeyaml</artifactId>
+                <version>${version.lib.snakeyaml}</version>
+            </dependency>
+            <!-- Prometheus related -->
+            <dependency>
+                <groupId>io.prometheus</groupId>
+                <artifactId>prometheus-metrics-exposition-textformats</artifactId>
+                <version>${version.lib.prometheus}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.prometheus</groupId>
+                <artifactId>prometheus-metrics-model</artifactId>
+                <version>${version.lib.prometheus}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.prometheus</groupId>
+                <artifactId>prometheus-metrics-tracer-common</artifactId>
+                <version>${version.lib.prometheus}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy</artifactId>
+                <version>${version.lib.bytebuddy}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.antlr</groupId>
+                <artifactId>antlr4-runtime</artifactId>
+                <version>${version.lib.antlr}</version>
+            </dependency>
+            <!-- DB Client related -->
+            <dependency>
+                <groupId>org.mongodb</groupId>
+                <artifactId>mongodb-driver-sync</artifactId>
+                <version>${version.lib.mongodb}</version>
+            </dependency>
+
+            <!-- Micrometer related -->
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-core</artifactId>
+                <version>${version.lib.micrometer}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-registry-prometheus</artifactId>
+                <version>${version.lib.micrometer-prometheus}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-registry-otlp</artifactId>
+                <version>${version.lib.micrometer}</version>
+            </dependency>
+
+            <!-- Integrations related -->
+            <dependency>
+                <groupId>jakarta.persistence</groupId>
+                <artifactId>jakarta.persistence-api</artifactId>
+                <version>${version.lib.jakarta.persistence-api}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.transaction</groupId>
+                <artifactId>jakarta.transaction-api</artifactId>
+                <version>${version.lib.jakarta.transaction-api}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.h2database</groupId>
+                <artifactId>h2</artifactId>
+                <version>${version.lib.h2}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mysql</groupId>
+                <artifactId>mysql-connector-j</artifactId>
+                <version>${version.lib.mysql-connector-j}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${version.lib.postgresql}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.zaxxer</groupId>
+                <artifactId>HikariCP</artifactId>
+                <version>${version.lib.hikaricp}</version>
+            </dependency>
+            <dependency>
+                <!-- used by Hikari CP to add metrics -->
+                <groupId>io.dropwizard.metrics</groupId>
+                <artifactId>metrics-core</artifactId>
+                <version>${version.lib.dropwizard.metrics}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.persistence</groupId>
+                <artifactId>org.eclipse.persistence.asm</artifactId>
+                <version>${version.lib.eclipselink.asm}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.persistence</groupId>
+                <artifactId>org.eclipse.persistence.core</artifactId>
+                <version>${version.lib.eclipselink}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.persistence</groupId>
+                <artifactId>org.eclipse.persistence.jpa</artifactId>
+                <version>${version.lib.eclipselink}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.hibernate.orm</groupId>
+                <artifactId>hibernate-core</artifactId>
+                <version>${version.lib.hibernate}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jboss.narayana.jta</groupId>
+                <artifactId>narayana-jta</artifactId>
+                <version>${version.lib.narayana}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jboss.logging</groupId>
+                <artifactId>jboss-logging</artifactId>
+                <version>${version.lib.jboss.logging}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.graphql-java</groupId>
+                <artifactId>graphql-java</artifactId>
+                <version>${version.lib.graphql-java}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.graphql-java</groupId>
+                <artifactId>graphql-java-extended-scalars</artifactId>
+                <version>${version.lib.graphql-java.extended.scalars}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.squareup.okhttp3</groupId>
+                        <artifactId>okhttp</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.squareup.okio</groupId>
+                        <artifactId>okio</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains</groupId>
+                <artifactId>annotations</artifactId>
+                <version>${version.lib.jetbrains.annotations}</version>
+            </dependency>
+            <!-- Cron utils -->
+            <dependency>
+                <groupId>com.cronutils</groupId>
+                <artifactId>cron-utils</artifactId>
+                <version>${version.lib.cron-utils}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.reactivestreams</groupId>
+                <artifactId>reactive-streams</artifactId>
+                <version>${version.lib.reactivestreams}</version>
+            </dependency>
+            <!-- END OF Section 1: direct third party dependencies -->
+
+            <!-- Section 2: third party dependencies used by examples (obsolete) -->
+            <!-- END OF Section 2: third party dependencies used by examples -->
+
+            <!-- Section 3: transitive dependencies we manage the version of for convergence/upgrade -->
+            <!-- For dependency convergence -->
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${version.lib.guava}</version>
+            </dependency>
+            <dependency>
+                <!-- Force upgrade -->
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-compress</artifactId>
+                <version>${version.lib.commons-compress}</version>
+            </dependency>
+            <dependency>
+                <!-- Force upgrade -->
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>${version.lib.commons-lang}</version>
+            </dependency>
+            <!-- For dependency convergence -->
+            <dependency>
+                <groupId>com.google.errorprone</groupId>
+                <artifactId>error_prone_annotations</artifactId>
+                <version>${version.lib.google-error-prone-annotations}</version>
+            </dependency>
+            <!-- For dependency convergence -->
+            <dependency>
+                <groupId>com.google.code.gson</groupId>
+                <artifactId>gson</artifactId>
+                <version>${version.lib.google-gson}</version>
+            </dependency>
+            <!-- For dependency convergence -->
+            <dependency>
+                <groupId>com.google.j2objc</groupId>
+                <artifactId>j2objc-annotations</artifactId>
+                <version>${version.lib.google-j2objc-annotations}</version>
+            </dependency>
+            <!-- END OF Section 3: transitive dependencies we manage the version of for convergence/upgrade -->
+
+            <!-- Section 4: Testing -->
+            <dependency>
+                <groupId>org.hamcrest</groupId>
+                <artifactId>hamcrest-all</artifactId>
+                <version>${version.lib.hamcrest}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.hamcrest</groupId>
+                <artifactId>hamcrest-core</artifactId>
+                <version>${version.lib.hamcrest}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${version.lib.testcontainers}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers</artifactId>
+                <version>${version.lib.testcontainers}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>mysql</artifactId>
+                <version>${version.lib.testcontainers}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>jdbc</artifactId>
+                <version>${version.lib.testcontainers}</version>
+            </dependency>
+            <!-- END OF Section 4: Testing -->
+
+            <!-- jk test fixture: the BOM imports (protobuf, grpc, ojdbc, jackson, opentelemetry, log4j,
+                 slf4j, junit) are removed so the chain resolves offline; the Jupiter artifacts the
+                 quickstarts use are pinned here at the junit-bom version instead. -->
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-api</artifactId>
+                <version>${version.lib.junit}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${version.lib.junit}</version>
+            </dependency>
+            <!-- imported boms -->
+            <!-- Force upgrade. Used by grpc -->
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-api</artifactId>
+                <version>${version.lib.grpc}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.google.code.findbugs</groupId>
+                        <artifactId>jsr305</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-protobuf</artifactId>
+                <version>${version.lib.grpc}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.google.code.findbugs</groupId>
+                        <artifactId>jsr305</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>
