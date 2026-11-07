@@ -3,7 +3,10 @@ package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -203,6 +206,35 @@ class JavaSourceApiTest {
                 List.of(small, big), JavaSourceApi.View.DECLARATIONS, Long.MAX_VALUE, Files.size(small));
         assertThat(parsed).containsOnlyKeys(small);
         assertThat(JavaSourceApi.MAX_PARSE_FILE_BYTES).isGreaterThan(JavaSourceApi.PARSE_BATCH_BYTES);
+    }
+
+    /**
+     * A source a forecast projects from an action record, not yet on disk, digests as the file the
+     * build restores there does, with no memo entry to answer for it: its bytes are read from the
+     * blob the projection names.
+     */
+    @Test
+    void a_projected_source_digests_as_the_restored_file_does(@TempDir Path dir) throws Exception {
+        // Content no memo has seen, so the projected digest must come from a parse.
+        String source = BASE.replace("FACTOR = 2", "FACTOR = " + (System.nanoTime() & Integer.MAX_VALUE));
+        Cas cas = new Cas(dir.resolve("cas"));
+        String sha = Hashing.sha256Hex(source.getBytes(StandardCharsets.UTF_8));
+        cas.put(source.getBytes(StandardCharsets.UTF_8), sha);
+        Path root = dir.resolve("ksp/java");
+        Path file = root.resolve("com/example/Lib.java");
+        ProjectedFiles projection = new ProjectedFiles(cas::pathFor);
+        projection.project(root, Map.of("com/example/Lib.java", sha));
+
+        String projected = ProjectedFiles.with(projection, () -> JavaSourceApi.digest(file));
+        assertThat(file).doesNotExist();
+        Files.createDirectories(root.resolve("com/example"));
+        Files.writeString(file, source);
+        String restored = JavaSourceApi.digest(file);
+
+        assertThat(JavaSourceApi.parsed(projected))
+                .as("parsed, not keyed on content: %s", projected)
+                .isTrue();
+        assertThat(projected).isEqualTo(restored);
     }
 
     private static String digest(Path dir, String source) throws IOException {

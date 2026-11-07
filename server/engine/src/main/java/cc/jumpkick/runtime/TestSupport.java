@@ -705,7 +705,7 @@ public final class TestSupport {
      * processors (Lombok, Immutables, …) run over test sources too. The request is {@link
      * PlannerCompile#testCompileRequest}'s, the same body the forecast keys from.
      */
-    public static boolean compileWithCache(
+    public static Compiled compileWithCache(
             TaskContext ctx,
             String taskId,
             PlannerCompile.TestCompile compile,
@@ -718,7 +718,7 @@ public final class TestSupport {
         Path outputDir = compile.outputDir();
         if (sources.isEmpty()) {
             Files.createDirectories(outputDir);
-            return true;
+            return Compiled.RESTORED;
         }
 
         // Project-qualify so the `tasks/<taskId>` pointer is unique per module
@@ -798,7 +798,7 @@ public final class TestSupport {
             if (!errored) {
                 ctx.error("javac", "test compile failed without compiler diagnostics (outcome: " + r.outcome() + ")");
             }
-            return false;
+            return Compiled.FAILED;
         }
         if (TaskNames.COMPILE_TEST.equals(taskId)) {
             // run-tests folds this into its stamp: the test javac configuration is an input to
@@ -807,10 +807,23 @@ public final class TestSupport {
         }
         if (r.cacheHit()) {
             ctx.label(taskId + ": cache hit " + r.actionKey().substring(0, 8));
-            ctx.cached(); // SKIPPED — pure restore didWork accounting)
-        } else {
-            ctx.label(taskId + ": compiled " + sources.size() + " sources");
+            return Compiled.RESTORED;
         }
-        return true;
+        ctx.label(taskId + ": compiled " + sources.size() + " sources");
+        return Compiled.COMPILED;
+    }
+
+    /**
+     * How a test compile ended: failed, compiled, or restored from its record (or had nothing to
+     * compile). The step reports itself a cache hit only when every compiler it ran restored.
+     */
+    public enum Compiled {
+        FAILED,
+        COMPILED,
+        RESTORED;
+
+        public boolean ok() {
+            return this != FAILED;
+        }
     }
 }

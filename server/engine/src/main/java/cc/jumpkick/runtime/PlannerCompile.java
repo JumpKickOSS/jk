@@ -713,13 +713,6 @@ public final class PlannerCompile {
         return requires.toArray(new String[0]);
     }
 
-    /** A Groovy test compile's classpath: Kotlin's test output joins the module's test classpath. */
-    static List<Path> withKotlinTestOutput(List<Path> classpath, Path kotlinTestOut) {
-        List<Path> out = new ArrayList<>(classpath);
-        out.add(kotlinTestOut);
-        return out;
-    }
-
     /**
      * compile-groovy's classpath: the module's, plus Kotlin's output when the module compiled
      * Kotlin, so a Groovy class can reference a Kotlin one (Kotlin cannot see Groovy: it compiles

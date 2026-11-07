@@ -141,7 +141,9 @@ public final class PlannerTest {
                     }
                     PlannerSetup.awaitSiblingTestOutputs(ctx, in);
                     List<Path> baseCp = testCompileClasspath(ctx, cx, cas, src);
-                    if (PlannerKsp.runTestRound(ctx, cx, src, baseCp, compiledSuites, pluginDecls)) {
+                    PlannerKsp.RoundOutcome round =
+                            PlannerKsp.runTestRound(ctx, cx, src, baseCp, compiledSuites, pluginDecls);
+                    if (round != PlannerKsp.RoundOutcome.KEPT) {
                         src = TestSources.collect( // the round rewrote its generated sources
                                 project, in.dir(), compact, suiteNames, ctx.require(LAYOUT), pluginDecls);
                     }
@@ -158,43 +160,37 @@ public final class PlannerTest {
                             .resolve("incremental")
                             .resolve(ResourceMirror.TEST_LEDGER);
                     if (!Files.isRegularFile(testLedger)) forgetTestCompileState(in.cache(), testClasses);
-                    // Two test languages side by side: each compiles into its own dir, merged below.
-                    // kotlinc prunes what it did not write and groovyc's cache snapshots its whole
-                    // output dir, so neither can share target/test-classes with another compiler.
+                    TestOutputs outs = TestOutputs.of(src, ctx.require(LAYOUT), testClasses);
                     boolean javaTests = !src.javaTest().isEmpty();
-                    boolean mixedTest = !src.ktTest().isEmpty()
-                            && (javaTests || !src.gvTest().isEmpty());
-                    boolean mixedTestGv = !src.gvTest().isEmpty()
-                            && (javaTests || !src.ktTest().isEmpty());
-                    Path gvTestOut = mixedTestGv ? ctx.require(LAYOUT).groovyTestClassesDir() : testClasses;
-                    Path ktTestOut = mixedTest ? ctx.require(LAYOUT).kotlinTestClassesDir() : testClasses;
                     // The stamps' instant: before any test compiler reads its first source.
                     long readClock = FreshnessStamp.clockNow(testClasses);
-                    // Kotlin first, then Groovy against its output (Gradle's order), then Java against both.
-                    compileKotlinTests(
-                            ctx, in, cas, actionCache, src, baseCp, ktTestOut, testClasses, mixedTest && javaTests);
-                    compileGroovyTests(
+                    // Kotlin first, then Groovy against its output (Gradle's order), then Java against
+                    // both. The step did no work when the round and every compiler restored.
+                    boolean restored = round != PlannerKsp.RoundOutcome.RAN;
+                    restored &= compileKotlinTests(
                             ctx,
                             in,
                             cas,
                             actionCache,
                             src,
-                            src.ktTest().isEmpty() ? baseCp : PlannerCompile.withKotlinTestOutput(baseCp, ktTestOut),
-                            gvTestOut,
+                            baseCp,
+                            outs.kotlinOut(),
+                            testClasses,
+                            outs.mixedKotlin() && javaTests);
+                    restored &= compileGroovyTests(
+                            ctx,
+                            in,
+                            cas,
+                            actionCache,
+                            src,
+                            outs.groovyClasspath(baseCp),
+                            outs.groovyOut(),
                             testClasses,
                             compiledSuites,
                             compact,
-                            mixedTestGv && javaTests);
-                    compileJavaTests(
-                            ctx, in, cas, src, baseCp, testClasses, ktTestOut, gvTestOut, mixedTest, mixedTestGv);
-                    mergeLanguageOutputs(
-                            src,
-                            testClasses,
-                            ktTestOut,
-                            gvTestOut,
-                            ctx.require(LAYOUT).buildDir(),
-                            mixedTest,
-                            mixedTestGv);
+                            outs.mixedGroovy() && javaTests);
+                    restored &= compileJavaTests(ctx, in, cas, src, outs.javacClasspath(baseCp), testClasses);
+                    mergeLanguageOutputs(src, outs, ctx.require(LAYOUT).buildDir());
                     copySuiteResources(
                             ctx,
                             in,
@@ -203,12 +199,13 @@ public final class PlannerTest {
                             compiledSuites,
                             testClasses,
                             beforeNonClass,
-                            mixedTest,
-                            mixedTestGv);
+                            outs.mixedKotlin(),
+                            outs.mixedGroovy());
                     Files.createDirectories(testClasses);
                     Files.writeString(suiteMarker(testClasses), selectionKey);
                     TestClassStamps.write(
                             ctx, src.javacSources(), src.ktTest(), src.gvTest(), baseCp, testClasses, readClock);
+                    if (restored) ctx.cached(); // SKIPPED — every compiler restored its record
                     ctx.progress(1);
                 })
                 .build();
@@ -291,9 +288,10 @@ public final class PlannerTest {
 
     /**
      * Groovy test sources before Java's (joint mode sweeps the Java test roots for resolution), so
-     * Java tests can reference Groovy test types. {@code jointWithJava} sweeps the Java roots.
+     * Java tests can reference Groovy test types. {@code jointWithJava} sweeps the Java roots. True
+     * when groovyc restored its record or had nothing to compile.
      */
-    private static void compileGroovyTests(
+    private static boolean compileGroovyTests(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             Cas cas,
@@ -306,7 +304,7 @@ public final class PlannerTest {
             boolean compact,
             boolean jointWithJava)
             throws Exception {
-        if (src.gvTest().isEmpty()) return;
+        if (src.gvTest().isEmpty()) return true;
         ctx.label("compiling " + src.gvTest().size() + " Groovy test sources");
         String gvTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_GROOVY, testClasses);
         List<Path> gvJavaRoots = null;
@@ -330,13 +328,15 @@ public final class PlannerTest {
             throw new RuntimeException("test groovyc reported errors");
         }
         ctx.put(COMPILE_TEST_GROOVY_ACTION_KEY, gr.actionKey());
+        return gr.cacheHit();
     }
 
     /**
      * Kotlin test sources first, so Groovy and Java tests can reference Kotlin test types (mirrors
      * the main ordering). {@code readsJava} has kotlinc read the Java test sources' declarations.
+     * True when kotlinc restored its record or had nothing to compile.
      */
-    private static void compileKotlinTests(
+    private static boolean compileKotlinTests(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             Cas cas,
@@ -347,7 +347,7 @@ public final class PlannerTest {
             Path testClasses,
             boolean readsJava)
             throws Exception {
-        if (src.ktTest().isEmpty()) return;
+        if (src.ktTest().isEmpty()) return true;
         ctx.label("compiling " + src.ktTest().size() + " Kotlin test sources");
         String ktTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_KOTLIN, testClasses);
         Path ktWorkingDir = ActionKey.stateDir(
@@ -374,29 +374,18 @@ public final class PlannerTest {
             throw new RuntimeException("test kotlinc reported errors");
         }
         ctx.put(COMPILE_TEST_KOTLIN_ACTION_KEY, kr.actionKey());
+        return kr.cacheHit();
     }
 
-    /** Java/Scala test sources, against the Kotlin/Groovy test output in a mixed module. */
-    private static void compileJavaTests(
-            TaskContext ctx,
-            BuildPlanner.Inputs in,
-            Cas cas,
-            TestSources src,
-            List<Path> baseCp,
-            Path testClasses,
-            Path ktTestOut,
-            Path gvTestOut,
-            boolean mixedTest,
-            boolean mixedTestGv)
+    /**
+     * Java/Scala test sources over {@code javaCp} ({@link TestOutputs#javacClasspath}). True when
+     * javac restored its record or had nothing to compile.
+     */
+    private static boolean compileJavaTests(
+            TaskContext ctx, BuildPlanner.Inputs in, Cas cas, TestSources src, List<Path> javaCp, Path testClasses)
             throws Exception {
-        if (src.javaTest().isEmpty() && src.scTest().isEmpty()) return;
+        if (src.javaTest().isEmpty() && src.scTest().isEmpty()) return true;
         Path javaTestOut = testClasses; // javac always writes to java/test/
-        List<Path> javaCp = baseCp;
-        if (mixedTest || mixedTestGv) {
-            javaCp = new ArrayList<>(baseCp);
-            if (mixedTest) javaCp.add(ktTestOut);
-            if (mixedTestGv) javaCp.add(gvTestOut);
-        }
         List<String> javacArgs = ctx.require(JAVAC_ARGS);
         // The declared annotation processors run over test sources — the shared table's javac
         // half, then the test table's own; the request builder discovers classpath processors
@@ -411,7 +400,7 @@ public final class PlannerTest {
         Files.createDirectories(genDir);
         ScalaCompile.Setup scalaSetup =
                 src.scTest().isEmpty() ? null : ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
-        boolean ok = TestSupport.compileWithCache(
+        TestSupport.Compiled compiled = TestSupport.compileWithCache(
                 ctx,
                 TaskNames.COMPILE_TEST,
                 new PlannerCompile.TestCompile(
@@ -432,29 +421,23 @@ public final class PlannerTest {
                         ctx.require(PROJECT).build().env(),
                         in.dir(),
                         ctx.require(LAYOUT).moduleTargetDir()));
-        if (!ok) throw new RuntimeException("test compile failed");
+        if (!compiled.ok()) throw new RuntimeException("test compile failed");
+        return compiled == TestSupport.Compiled.RESTORED;
     }
 
     /**
      * In mixed test mode, kotlin/groovy output needs to be merged into testClasses (java/test/).
      * Java test output already went there directly.
      */
-    private static void mergeLanguageOutputs(
-            TestSources src,
-            Path testClasses,
-            Path ktTestOut,
-            Path gvTestOut,
-            Path buildDir,
-            boolean mixedTest,
-            boolean mixedTestGv)
-            throws IOException {
-        if (mixedTest && !src.ktTest().isEmpty()) {
+    private static void mergeLanguageOutputs(TestSources src, TestOutputs outs, Path buildDir) throws IOException {
+        Path testClasses = outs.testClasses();
+        if (outs.mixedKotlin() && !src.ktTest().isEmpty()) {
             Files.createDirectories(testClasses);
-            PlannerSupport.mergeLanguageOutput(ktTestOut, testClasses, buildDir, "kotlin-test");
+            PlannerSupport.mergeLanguageOutput(outs.kotlinOut(), testClasses, buildDir, "kotlin-test");
         }
-        if (mixedTestGv && !src.gvTest().isEmpty()) {
+        if (outs.mixedGroovy() && !src.gvTest().isEmpty()) {
             Files.createDirectories(testClasses);
-            PlannerSupport.mergeLanguageOutput(gvTestOut, testClasses, buildDir, "groovy-test");
+            PlannerSupport.mergeLanguageOutput(outs.groovyOut(), testClasses, buildDir, "groovy-test");
         }
     }
 

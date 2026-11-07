@@ -175,12 +175,8 @@ class KspForecastParityTest {
         BuildPlanResult rebuilt = build(project, cache);
 
         assertThat(rebuilt.errors()).isEmpty();
-        // compile-test restores the round and the Kotlin test classes, which it reports as work.
-        TaskForecast.Task compileTest = requireNonNull(forecast.get(TaskNames.COMPILE_TEST), "compile-test");
-        assertThat(compileTest.cached())
-                .as("the test round comes back from its record: %s", compileTest.text())
-                .isTrue();
-        assertAgree(forecast, rebuilt, TaskNames.COMPILE_KOTLIN, TaskNames.RUN_TESTS);
+        // compile-test restores the round and the Kotlin test classes, and reports no work.
+        assertAgree(forecast, rebuilt, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS);
     }
 
     @Test

@@ -42,6 +42,14 @@ final class PlannerTestForecast {
         ForecastScope.Prepared prepared = s.prepared();
         BuildLayout layout = prepared.layout();
         TestSources testSources = s.testSources();
+        if (!s.compileDirty) {
+            s.compileTestKotlinKey = testSources.ktTest().isEmpty()
+                    ? null
+                    : lastTestCompileKey(s.actionCache, TaskNames.COMPILE_TEST_KOTLIN, layout);
+            s.compileTestGroovyKey = testSources.gvTest().isEmpty()
+                    ? null
+                    : lastTestCompileKey(s.actionCache, TaskNames.COMPILE_TEST_GROOVY, layout);
+        }
         TaskForecast.Task step;
         if (s.testRound().runs()) {
             // The round runs inside this step, and its output is unknown until it does.
@@ -62,12 +70,17 @@ final class PlannerTestForecast {
             baseCp.addAll(s.testCompileCp());
             baseCp = PlannerFixtures.withOwnFixtures(s.project, layout, baseCp);
             Path testOut = layout.testClassesDir();
+            // javac reads the Kotlin and Groovy test outputs beside it, as their records restore them.
+            TestOutputs outs = TestOutputs.of(testSources, layout, testOut);
+            if (outs.mixedKotlin()) s.restored.projectFromRecord(outs.kotlinOut(), s.compileTestKotlinKey);
+            if (outs.mixedGroovy()) s.restored.projectFromRecord(outs.groovyOut(), s.compileTestGroovyKey);
+            List<Path> javacCp = outs.javacClasspath(baseCp);
             ScalaCompile.Setup testScala =
                     testSources.scTest().isEmpty() ? null : ScalaCompile.prepare(s.project, prepared.lock(), s.cas);
             List<Path> testSrc = testSources.javacSources();
             CompileRequest req = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
                     testSrc,
-                    baseCp,
+                    javacCp,
                     prepared.javacTestProcessorCp(),
                     testOut,
                     s.project.javac().testRelease(release),
@@ -102,7 +115,7 @@ final class PlannerTestForecast {
                     "reason",
                     pred.reason(),
                     "cp",
-                    baseCp.size(),
+                    javacCp.size(),
                     "src",
                     testSrc.size(),
                     "release",
@@ -115,14 +128,6 @@ final class PlannerTestForecast {
         } else {
             // Kotlin/Groovy-only tests: no content predictor — assume fresh when main is clean.
             step = new TaskForecast.Task(TaskNames.COMPILE_TEST, TaskForecast.Status.CACHED, "", null);
-        }
-        if (!s.compileDirty) {
-            s.compileTestKotlinKey = testSources.ktTest().isEmpty()
-                    ? null
-                    : lastTestCompileKey(s.actionCache, TaskNames.COMPILE_TEST_KOTLIN, layout);
-            s.compileTestGroovyKey = testSources.gvTest().isEmpty()
-                    ? null
-                    : lastTestCompileKey(s.actionCache, TaskNames.COMPILE_TEST_GROOVY, layout);
         }
         if (step.cached()
                 && !s.testDirty
