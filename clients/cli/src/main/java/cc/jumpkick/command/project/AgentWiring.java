@@ -4,9 +4,8 @@ package cc.jumpkick.command.project;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.ChangeSummary;
+import cc.jumpkick.docs.AgentChoice;
 import cc.jumpkick.docs.AgentSetup;
-import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.layout.GraphLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.EnginePaths;
@@ -15,9 +14,7 @@ import cc.jumpkick.wire.protocol.GraphRequest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
@@ -69,12 +66,23 @@ public final class AgentWiring {
 
     /** As {@link #run(Path)} for an explicit {@code mode}. */
     public static AgentSetup.Report run(Path dir, AgentSetup.Mode mode) throws IOException {
-        AgentSetup.Report lines = AgentSetup.install(dir, mode, hosts());
-        boolean project = Files.isRegularFile(ManifestPaths.manifestIn(dir));
-        if (mode != AgentSetup.Mode.NONE && project && !GraphLayout.built(dir)) {
-            seedGraph(dir);
-        }
+        AgentSetup.Report lines = new AgentChoice(mode, choice().hosts()).install(dir);
+        seed(dir, mode);
         return lines;
+    }
+
+    /** The user's agents setting and the agents on this machine, as a create carries them. */
+    public static AgentChoice choice() {
+        return AgentChoice.from(AgentWiring::env);
+    }
+
+    /**
+     * What the create wrote into {@code dir} for {@code choice}, reported as {@link #report} reports
+     * its own wiring, after a first code graph.
+     */
+    public static void reportWired(Path dir, AgentChoice choice, AgentSetup.Report wired) {
+        seed(dir, choice.mode());
+        print(wired, dir, "Agent notes");
     }
 
     /** Take jk's entries out of {@code dir}; the report says what changed. */
@@ -82,22 +90,12 @@ public final class AgentWiring {
         return AgentSetup.remove(dir);
     }
 
-    /** The agents on this machine: Claude Code's shell, and every agent CLI on {@code PATH}. */
-    static Set<AgentSetup.Host> hosts() {
-        Set<AgentSetup.Host> found = EnumSet.noneOf(AgentSetup.Host.class);
-        String claudeCode = env("CLAUDECODE");
-        if (claudeCode != null && !claudeCode.isEmpty()) found.add(AgentSetup.Host.CLAUDE);
-        List<String> entries = SearchPath.entries(env("PATH"));
-        for (AgentSetup.Host host : AgentSetup.Host.values()) {
-            for (String entry : entries) {
-                Path dir = SearchPath.path(entry);
-                if (dir != null && PathUtil.isRunnable(dir.resolve(host.cli))) {
-                    found.add(host);
-                    break;
-                }
-            }
+    /** A first code graph for a wired project, unless agents are off or it has one. */
+    private static void seed(Path dir, AgentSetup.Mode mode) {
+        boolean project = Files.isRegularFile(ManifestPaths.manifestIn(dir));
+        if (mode != AgentSetup.Mode.NONE && project && !GraphLayout.built(dir)) {
+            seedGraph(dir);
         }
-        return found;
     }
 
     private static void seedGraph(Path dir) {

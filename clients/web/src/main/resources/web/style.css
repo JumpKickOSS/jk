@@ -1015,6 +1015,21 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 .detail-head { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 4px; }
 /* The checkout picker under the project header: one button per live worktree of the id. */
+.agent-notes { margin: 2px 0 12px; padding: 8px 12px; border: 1px solid var(--bd); border-radius: 6px; background: var(--s1); font-size: 12.5px; }
+.agent-notes-head { display: flex; align-items: center; justify-content: space-between; }
+.agent-notes .agent-files { margin: 4px 0; color: var(--mu); }
+.agent-notes ol { margin: 4px 0 0; padding-left: 18px; }
+.agent-notes-head button.ghost {
+  display: inline-flex;
+  padding: 2px;
+  background: none;
+  color: var(--mu);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.agent-notes-head button.ghost:hover { color: var(--cn); border-color: var(--bd); }
+.agent-notes-head .ico { width: 14px; height: 14px; }
 .checkouts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
 .checkouts button.ghost {
   background: var(--s1);

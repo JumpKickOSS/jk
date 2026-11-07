@@ -400,6 +400,16 @@
         <button v-for="c in projectCheckouts()" :key="c.dir" type="button" class="ghost small mono"
                 :class="{ active: selectedProjectDir === c.dir }" :data-tip="c.dir" @click="pickCheckout(c.dir)">{{ shortDir(c.dir) }}</button>
       </div>
+      <!-- What the wizard's create wired for coding agents, and the steps left to the user. -->
+      <section v-if="createdAgents && createdAgents.projectId === selectedProjectId" class="agent-notes">
+        <div class="agent-notes-head">
+          <span class="lbl">agent notes</span>
+          <button type="button" class="ghost small" @click="createdAgents = null" aria-label="Dismiss agent notes"
+                  data-tip="Dismiss"><jk-icon name="x"></jk-icon></button>
+        </div>
+        <p v-if="createdAgents.files.length" class="agent-files mono">Wrote {{ createdAgents.files.join(', ') }}</p>
+        <ol><li v-for="n in createdAgents.notes" :key="n">{{ n }}</li></ol>
+      </section>
       <p v-if="projectDetail && projectDetail.description" class="proj-desc">
         <span class="proj-desc-q" aria-hidden="true">"</span><span class="proj-desc-body">{{ projectDetail.description }}</span><span class="proj-desc-q" aria-hidden="true">"</span>
       </p>

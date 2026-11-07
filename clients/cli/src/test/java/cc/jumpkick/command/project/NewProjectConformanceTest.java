@@ -14,6 +14,7 @@ import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.McpHandler;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.runtime.NewProjectAgents;
 import cc.jumpkick.engine.runtime.NewProjectForm;
 import cc.jumpkick.engine.runtime.NewProjectJava;
 import cc.jumpkick.engine.runtime.NewProjectOps;
@@ -48,6 +49,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -65,7 +67,8 @@ import org.junit.jupiter.api.io.TempDir;
  * script opened in the wizard, and the body it posts settled as {@code POST /api/projects} settles
  * it). Each surface's posted answers, read back as one map of form key to text, must equal the
  * script and so each other, and the projects they scaffold must be identical, file for file and
- * byte for byte.
+ * byte for byte, agent files included: every surface wires the project for the same agents
+ * setting ({@code JK_AGENTS=all} here), the CLI from its shell, MCP and the wizard from the engine's.
  *
  * <p>The template asks one field of every kind a template may ask, all but the conditional one
  * without a default, so MCP elicits them rather than taking defaults, plus a field shown only when
@@ -109,6 +112,9 @@ class NewProjectConformanceTest {
         Outcome run(Path template, Map<String, Object> script, Path parent) throws Exception;
     }
 
+    /** The environment every surface reads the agents setting from: every agent wired. */
+    private static final UnaryOperator<@Nullable String> AGENTS_ALL = key -> "JK_AGENTS".equals(key) ? "all" : null;
+
     private final ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor();
 
     @TempDir
@@ -122,11 +128,13 @@ class NewProjectConformanceTest {
         JdkInventory inventory = new JdkInventory(temp.resolve("jdks"), temp.resolve("jk-jdks.toml"));
         inventory.setDefault(new InstalledJdk("temurin-25.0.1", temp.resolve("jdks/temurin-25.0.1")));
         NewProjectJava.inventory(() -> inventory);
+        NewProjectAgents.env(AGENTS_ALL::apply);
     }
 
     @AfterEach
     void tearDown() {
         NewProjectJava.inventory(null);
+        NewProjectAgents.env(null);
         threads.shutdownNow();
     }
 
@@ -156,6 +164,9 @@ class NewProjectConformanceTest {
                     .contains("motto = \"hello\"", "db = \"postgres\"", "cache = \"on\"", "libs = \"jackson,slf4j\"")
                     .contains("group = \"org.example.widgets\"", "java = 25", "[native]");
             assertThat(tree).as("%s renders the simple layout", surface.name()).containsKey("src/Main.java");
+            assertThat(tree)
+                    .as("%s wires the project for its agents", surface.name())
+                    .containsKeys("AGENTS.md", "CLAUDE.md", ".mcp.json", ".claude/settings.json");
             if (reference == null) {
                 reference = surface.name();
                 referencePosted = outcome.posted();
@@ -219,21 +230,23 @@ class NewProjectConformanceTest {
             List<String> pairs = new ArrayList<>();
             a.params().forEach((k, v) -> pairs.add(k + "=" + v));
             Path base = Path.of(requireNonNull(a.text("dir")));
-            EngineRequests.NewProjectRequest posted = NewTemplate.request(
-                    new NewTemplate.Args(
-                            a.template(),
-                            pairs,
-                            a.name(),
-                            a.text("group"),
-                            a.text("lang"),
-                            a.text("layout"),
-                            null,
-                            base,
-                            parent,
-                            null,
-                            false,
-                            null),
-                    requireNonNull(NewTemplate.params(pairs)));
+            NewTemplate.Args args = new NewTemplate.Args(
+                    a.template(),
+                    pairs,
+                    a.name(),
+                    a.text("group"),
+                    a.text("lang"),
+                    a.text("layout"),
+                    null,
+                    base,
+                    parent,
+                    null,
+                    false,
+                    null);
+            Map<String, String> params = requireNonNull(NewTemplate.params(pairs));
+            // The shell jk new runs in carries the agents setting.
+            EngineRequests.NewProjectRequest posted =
+                    ScopedValue.where(AgentWiring.ENV, AGENTS_ALL).call(() -> NewTemplate.request(args, params));
             // As the engine's new verb takes the request off the wire.
             NewProjectOps.Created created = NewProjectOps.createWithIdentity(new NewProjectOps.Request(
                     posted.name(),
@@ -246,7 +259,8 @@ class NewProjectConformanceTest {
                     posted.templateParams(),
                     posted.relaxParent(),
                     posted.targetDir(),
-                    posted.cwd()));
+                    posted.cwd(),
+                    posted.agents()));
             Map<String, String> answers = new LinkedHashMap<>();
             putIfSet(answers, "lang", posted.lang());
             putIfSet(answers, "template", posted.template());

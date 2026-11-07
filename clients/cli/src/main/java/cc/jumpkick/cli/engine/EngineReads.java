@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.docs.AgentChoice;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -386,6 +387,7 @@ final class EngineReads {
     }
 
     static NewProjectAck newProject(EnginePaths.Paths paths, EngineRequests.NewProjectRequest req) throws IOException {
+        AgentChoice agents = req.agents();
         return request(
                 paths,
                 new NewProjectRequest(
@@ -399,7 +401,9 @@ final class EngineReads {
                                 req.templateParams(),
                                 req.relaxParent(),
                                 req.targetDir(),
-                                req.cwd())
+                                req.cwd(),
+                                agents == null ? null : agents.modeName(),
+                                agents == null ? List.of() : agents.hostNames())
                         .encode(),
                 EngineProtocol.NEW_PROJECT_ACK,
                 "new-project request",

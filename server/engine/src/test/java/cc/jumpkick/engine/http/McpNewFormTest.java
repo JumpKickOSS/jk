@@ -6,10 +6,12 @@ import static cc.jumpkick.engine.http.JsonFields.parseObject;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.http.mcp.NewProjectWizard;
 import cc.jumpkick.engine.http.mcp.tools.NewTool;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.runtime.NewProjectAgents;
 import cc.jumpkick.engine.runtime.NewProjectJava;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
@@ -118,6 +120,7 @@ class McpNewFormTest {
 
     @AfterEach
     void stop() {
+        NewProjectAgents.env(null);
         threads.shutdownNow();
     }
 
@@ -152,6 +155,21 @@ class McpNewFormTest {
         assertThat(Files.readString(parent.resolve("widget/jk.toml")))
                 .contains("motto = \"hi\"", "db = \"postgres\"", "cache = \"on\"", "libs = \"jackson\"")
                 .contains("flavour = \"plain\"", "[native]");
+    }
+
+    @Test
+    void a_created_project_is_wired_for_the_engine_s_agents_setting_and_the_reply_says_what_was_left() {
+        NewProjectAgents.env(key -> "JK_AGENTS".equals(key) ? "all" : null);
+        String session = initialize("2025-11-25", "{}");
+        Map<String, Object> params =
+                Map.of("motto", "hi", "native", false, "database", "none", "libs", List.of("guava"));
+
+        McpHandler.Reply reply = mcp.handle(call(Map.of("name", "widget", "params", params)), session);
+
+        assertThat(reply.body()).contains("\"created\"", "AGENTS.md", "CLAUDE.md", AgentSetup.TRUST_NOTE);
+        assertThat(parent.resolve("widget/AGENTS.md")).isRegularFile();
+        assertThat(parent.resolve("widget/.mcp.json")).isRegularFile();
+        assertThat(parent.resolve("widget/.claude/settings.json")).isRegularFile();
     }
 
     @Test
