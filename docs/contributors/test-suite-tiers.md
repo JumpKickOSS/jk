@@ -27,6 +27,16 @@ house rules run under `jk build` and `jk guard` ([self-host](self-host.md#house-
 | `jk test -p bench` | `bench` | — |
 <!-- test-tiers:end -->
 
+**Suites are scope, tags are cost.** Every tier but the fast one sets `all-suites = true`, so it
+runs its tag in every suite a module has: `jk test -p integration` runs `clients/cli`'s `src/e2e`
+suite (`E2eSuiteEngineTest`) beside every `src/test` integration class, and the nightly
+`jk test -p integration` step in `ci-nightly.yml` is that suite's CI run. The ci-cadence guard
+holds `[profiles.integration] all-suites = true`, since dropping it would leave `src/e2e` to `-s e2e`
+and `--all`, which no CI step runs. The fast tier is `src/test` alone, so a test in another suite
+carries a tier's tag. Members carry no `[test] exclude-tags` of their own: the root's table is the
+only routing, and a member's list would shadow it wherever jk falls back to a module's own tags
+(BSP, an MCP run that names none, the `--class` tier hints).
+
 Tag new heavy tests at class level:
 
 ```java

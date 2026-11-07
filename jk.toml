@@ -120,6 +120,10 @@ modules = [
 # table and proves, over every subset of the vocabulary, that each is run by exactly one
 # tier — so the routing and the check cannot drift.
 #
+# Suites are scope, tags are cost: every slow tier sets `all-suites = true`, so its tag runs in
+# every suite a module has (src/test, and src/e2e where there is one). The fast tier runs src/test
+# alone, so a test outside it carries a tier's tag or runs only under `-s <suite>` / `--all`.
+#
 #   jk test                        fast tier, untagged only. The merge gate.
 #   jk test -p integration         engine / e2e / worker suites. The push gate.
 #   jk test -p slow                framework and language e2e. Nightly, never gating.
@@ -147,6 +151,7 @@ fast-method-budget = "5s"
 [profiles.integration]
 include-tags = ["integration"]
 exclude-tags = ["slow", "network", "release", "live", "bench"]
+all-suites = true
 env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }
 jvm-args = [
   "-Djunit.jupiter.execution.timeout.default=5m",
@@ -160,12 +165,14 @@ jvm-args = [
 [profiles.slow]
 include-tags = ["slow"]
 exclude-tags = ["network", "release", "live", "bench"]
+all-suites = true
 
 # Talks to a real remote. Off the gate: Maven Central enforces a per-IP quota, so a gate
 # that needs the network fails for reasons the change did not cause.
 [profiles.network]
 include-tags = ["network"]
 exclude-tags = ["release", "live", "bench"]
+all-suites = true
 
 # Once per release: CI's self-host job runs it on the release tag, after the fast tier and the
 # curated lane, so a red run stops the release. For a test too slow or too heavy for every push
@@ -173,6 +180,7 @@ exclude-tags = ["release", "live", "bench"]
 [profiles.release]
 include-tags = ["release"]
 exclude-tags = ["live", "bench"]
+all-suites = true
 
 # Talks to a service of the machine it runs on and writes to it: the user's OS keychain, or a
 # private gpg-agent it starts in a scratch GNUPGHOME and stops. Off every gate and every CI run,
@@ -181,6 +189,7 @@ exclude-tags = ["live", "bench"]
 [profiles.live]
 include-tags = ["live"]
 exclude-tags = ["bench"]
+all-suites = true
 env = { JK_TEST_SECRET_SERVICE = "1", JK_TEST_GPG_AGENT = "1" }
 
 # Microbenchmarks print medians and assert nothing about deltas, so gating on them would
@@ -188,6 +197,7 @@ env = { JK_TEST_SECRET_SERVICE = "1", JK_TEST_GPG_AGENT = "1" }
 [profiles.bench]
 include-tags = ["bench"]
 exclude-tags = []
+all-suites = true
 
 # Auto-selected when CI is set. CI runs the fast tier with the same filters as a
 # developer's `jk test`; the slow tiers are separate scheduled runs, by profile name.

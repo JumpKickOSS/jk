@@ -579,6 +579,13 @@ public final class ManifestTables {
             List<String> excludeTags = excludeTagsSet
                     ? optionalStringList(body, "exclude-tags", "profiles." + name + ".exclude-tags")
                     : List.of();
+            boolean allSuites = false;
+            if (body.contains("all-suites")) {
+                if (!body.isBoolean("all-suites")) {
+                    throw new JkBuildParseException("profiles." + name + ".all-suites must be true or false");
+                }
+                allSuites = Boolean.TRUE.equals(body.getBoolean("all-suites"));
+            }
             Map<String, String> env = new LinkedHashMap<>();
             if (body.contains("env")) {
                 if (!body.isTable("env")) {
@@ -605,7 +612,8 @@ public final class ManifestTables {
                             excludeTags,
                             includeTagsSet,
                             excludeTagsSet,
-                            env));
+                            env,
+                            allSuites));
         }
         return new Profiles(byName);
     }

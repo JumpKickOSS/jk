@@ -257,6 +257,8 @@ public record BuildFlags(
      * Auto profile defers when CLI set any tag option so explicit CLI selection is not overridden
      * by profile filters. {@code --guard} select {@code test} +
      * {@code integration} (or {@code [test] guard-suites}); {@code --suite} wins over {@code --guard}.
+     * A profile's {@code all-suites = true} runs every suite under the profile's tags, unless
+     * {@code --suite} or {@code --guard} names the suites.
      */
     public static TestSelection testSelection(Invocation in) {
         boolean all = in.isSet("all");
@@ -293,6 +295,7 @@ public record BuildFlags(
         if (profileName != null && !profileName.isBlank()) {
             scanKeys.add("profiles." + profileName + ".include-tags");
             scanKeys.add("profiles." + profileName + ".exclude-tags");
+            scanKeys.add("profiles." + profileName + ".all-suites");
         }
         var scan = TomlScan.scan(toml, scanKeys.toArray(String[]::new));
         List<String> include = new ArrayList<>(scan.stringArray("test.include-tags"));
@@ -303,7 +306,9 @@ public record BuildFlags(
         boolean spoke = scan.hasKey("test.include-tags") || scan.hasKey("test.exclude-tags");
         boolean cliTags = cliInclude || cliExclude;
         boolean applyProfile = !in.isSet("no-profile") && profileName != null && (explicitProfile || !cliTags);
-        if (applyProfile) {
+        boolean profileAllSuites = false;
+        if (applyProfile && profileName != null) {
+            profileAllSuites = profileAllSuites(scan, profileName);
             String incKey = "profiles." + profileName + ".include-tags";
             String excKey = "profiles." + profileName + ".exclude-tags";
             if (scan.hasKey(incKey)) {
@@ -358,6 +363,21 @@ public record BuildFlags(
                         + " names no method after '#' — write Class#method, or the class alone");
             }
         }
-        return TestSelection.of(suites, all, include, exclude, spoke, applyGuard, scriptsOnly, noScripts, classes);
+        // The profile's every-suite switch keeps its tags: unlike --all, it widens scope, not cost.
+        boolean allSuites = all || (profileAllSuites && suites.isEmpty());
+        return TestSelection.of(
+                suites, allSuites, include, exclude, spoke, applyGuard, scriptsOnly, noScripts, classes);
+    }
+
+    /** {@code [profiles.<name>] all-suites}: false when absent; anything but a TOML boolean is refused. */
+    private static boolean profileAllSuites(TomlScan scan, String profileName) {
+        String key = "profiles." + profileName + ".all-suites";
+        String value = scan.get(key);
+        if (value == null) return false;
+        return switch (value.trim()) {
+            case "true" -> true;
+            case "false" -> false;
+            default -> throw new IllegalArgumentException(key + " must be true or false, not " + value.trim());
+        };
     }
 }

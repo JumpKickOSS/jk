@@ -12,6 +12,7 @@ jk test -g -b          # guard suites, skip extra scripts
 jk test -s integration              # climb one named suite
 jk test -s e2e                      # UI / compose / contract; not a habit
 jk test -A                        # every suite; tag excludes cleared. Nightly / release.
+jk test -p integration            # a profile's tags; every suite when it sets all-suites = true
 jk test -E slow,bench
 jk test -I smoke
 jk test -S OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
@@ -375,6 +376,22 @@ exclude-tags = ["slow", "network", "bench"]
 | Active profile (`--profile` / CI auto `ci`) | Replaces a list **only if that key is present** (including `= []` to clear) |
 | `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
 
+**A profile can widen the suites.** `all-suites = true` in `[profiles.<name>]` runs every suite
+a module has (every suite directory and class-pattern suite, as `--all` does) under the profile's
+own tags; without it a profile runs the default suite alone. Unlike `--all` it leaves the tag
+filters as the profile resolved them, so a tier stays a tier: `jk test -p integration` with
+
+```toml
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+all-suites = true
+```
+
+runs the `integration`-tagged tests of `src/test` and `src/e2e` alike. A module without a second
+suite runs its default suite; nothing errors. `--suite` and `--guard` name the suites themselves and
+win over the switch. Any value but `true` or `false` is a config error.
+
 A module whose tests all carry tags the active profile drops reports
 `0 tests (all excluded by profile <name>)` as a plain results line: that tier has no tests in the
 module, which is the expected outcome and not a warning. A profile that includes a tag the
@@ -419,7 +436,7 @@ every member:
 
 - `[test] include-tags` / `exclude-tags`
 - `[test] guard-suites`
-- `[profiles.<name>] include-tags` / `exclude-tags`
+- `[profiles.<name>] include-tags` / `exclude-tags` / `all-suites`
 
 A member's own tags are used only when the root resolved none — the root wins outright rather
 than merging, so a workspace has one answer for "which tests". Running from inside a member

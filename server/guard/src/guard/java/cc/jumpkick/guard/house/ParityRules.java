@@ -369,6 +369,12 @@ final class ParityRules {
     /** The tier the release tag's CI run owns: the self-host job must spell it. */
     private static final String RELEASE_TIER = "jk test -p release";
 
+    /** The root's integration profile, whose nightly run is the only CI run of every suite but src/test. */
+    private static final Pattern INTEGRATION_PROFILE =
+            Pattern.compile("(?ms)^\\[profiles\\.integration\\][^\\n]*\\n(.*?)(?=^\\[|\\z)");
+
+    private static final Pattern ALL_SUITES_ON = Pattern.compile("(?m)^all-suites\\s*=\\s*true\\b");
+
     private static final Pattern RELEASE_VERSION = Pattern.compile("\\d+\\.\\d+\\.\\d+");
     private static final Pattern LITERAL_BOOTSTRAP = Pattern.compile("JK_VERSION=[\"']?\\d");
     private static final Pattern TREE_VERSION = Pattern.compile("(?m)^version\\s*=\\s*\"(\\d+\\.\\d+\\.\\d+)");
@@ -376,7 +382,7 @@ final class ParityRules {
     @Guard(
             id = "ci-cadence",
             why =
-                    "nightly CI runs the slow tiers, the coverage ratchet, the product smoke and the JVM client on a runner without GraalVM; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
+                    "nightly CI runs the slow tiers, the integration one over every suite, the coverage ratchet, the product smoke and the JVM client on a runner without GraalVM; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
                             + BOOTSTRAP_PIN + " pins and judged by the checkout's own jk, and runs the release tier",
             instead =
                     "restore the job, step, script or pin the detail names — a workflow that stops running a gate leaves the claim in the docs with nothing behind it")
@@ -449,7 +455,12 @@ final class ParityRules {
             problems.add(BOOTSTRAP_SCRIPT + " must install the hosted release with install.sh at the version "
                     + BOOTSTRAP_PIN + " names");
         String pin = textOrNull(text, BOOTSTRAP_PIN);
-        Matcher treeVersion = TREE_VERSION.matcher(text(text, "jk.toml"));
+        String manifest = text(text, "jk.toml");
+        Matcher integration = INTEGRATION_PROFILE.matcher(manifest);
+        if (integration.find() && !ALL_SUITES_ON.matcher(integration.group(1)).find())
+            problems.add("jk.toml's [profiles.integration] must set all-suites = true — the nightly `jk test -p"
+                    + " integration` is the only CI run of a suite beside src/test, such as src/e2e");
+        Matcher treeVersion = TREE_VERSION.matcher(manifest);
         String reader = textOrNull(text, BOOTSTRAP_READER);
         if (reader != null && !COMMIT_SHA.matcher(reader.strip()).matches())
             problems.add(BOOTSTRAP_READER + " must hold one full commit sha, not '" + reader.strip() + "'");
@@ -470,9 +481,14 @@ final class ParityRules {
             if (!exists(text, must))
                 problems.add(must + " is missing — the scoreboard's night tier is the wall measurement, and its rows"
                         + " are the baseline");
-        for (String p : problems)
-            v.add(new TextSite(p.startsWith(".github") || p.startsWith(".jk/") ? p.split("['\\s]")[0] : CI, 0, p), p);
+        for (String p : problems) v.add(new TextSite(site(p), 0, p), p);
         v.population(4);
+    }
+
+    /** Where a ci-cadence problem is reported: the file it names first, else the branch workflow. */
+    private static String site(String problem) {
+        if (problem.startsWith(".github") || problem.startsWith(".jk/")) return problem.split("['\\s]")[0];
+        return problem.startsWith("jk.toml") ? "jk.toml" : CI;
     }
 
     /**

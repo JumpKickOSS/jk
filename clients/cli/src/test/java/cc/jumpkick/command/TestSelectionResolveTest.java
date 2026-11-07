@@ -174,6 +174,53 @@ class TestSelectionResolveTest {
     }
 
     @Test
+    void a_profiles_all_suites_widens_the_suites_and_keeps_its_tags(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [test]
+                exclude-tags = ["integration"]
+
+                [profiles.integration]
+                include-tags = ["integration"]
+                exclude-tags = []
+                all-suites = true
+                """);
+        var sel = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration"));
+        assertThat(sel.allSuites()).isTrue();
+        assertThat(sel.includeTags()).containsExactly("integration");
+        assertThat(sel.excludeTags()).isEmpty();
+
+        var fast = BuildFlags.testSelection(parse("-C", dir.toString()));
+        assertThat(fast.allSuites()).as("the switch is the profile's alone").isFalse();
+    }
+
+    @Test
+    void a_named_suite_or_the_gate_wins_over_a_profiles_all_suites(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [profiles.integration]
+                include-tags = ["integration"]
+                all-suites = true
+                """);
+        var named = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration", "-s", "e2e"));
+        assertThat(named.allSuites()).isFalse();
+        assertThat(named.suites()).containsExactly("e2e");
+
+        var gate = BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration", "--guard"));
+        assertThat(gate.allSuites()).isFalse();
+        assertThat(gate.suites()).containsExactly("test", "integration");
+    }
+
+    @Test
+    void a_profiles_all_suites_must_be_a_boolean(@TempDir Path dir) throws Exception {
+        writeToml(dir, """
+                [profiles.integration]
+                all-suites = "yes"
+                """);
+        assertThatThrownBy(() -> BuildFlags.testSelection(parse("-C", dir.toString(), "-p", "integration")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("profiles.integration.all-suites must be true or false");
+    }
+
+    @Test
     void silent_run_stays_unresolved(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
         var sel = BuildFlags.testSelection(parse("-C", dir.toString()));
