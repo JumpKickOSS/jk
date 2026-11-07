@@ -14,6 +14,7 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
@@ -24,7 +25,6 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Workspace;
 import cc.jumpkick.repo.M2Backing;
 import cc.jumpkick.repo.M2Clean;
 import cc.jumpkick.repo.M2Dirs;
@@ -512,35 +512,38 @@ public final class CachePlans {
         }
         LinkedHashSet<Path> dirs = new LinkedHashSet<>();
         dirs.add(here);
+        Path wsRoot;
+        JkBuild root;
         try {
             JkBuild manifest = JkBuildParser.parse(ManifestPaths.manifestIn(here));
-            Path wsRoot = manifest.isWorkspaceRoot()
+            wsRoot = manifest.isWorkspaceRoot()
                     ? here
                     : WorkspaceLocator.findRoot(here).orElse(null);
-            if (wsRoot != null) {
-                try {
-                    wsRoot = wsRoot.toRealPath();
-                } catch (Exception ignored) {
-                    wsRoot = wsRoot.toAbsolutePath().normalize();
-                }
-                dirs.add(wsRoot);
-                JkBuild root = wsRoot.equals(here) ? manifest : JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
-                for (String module : root.workspaceOpt().map(Workspace::modules).orElse(List.of())) {
-                    Path mod = wsRoot.resolve(module).normalize();
-                    try {
-                        mod = mod.toRealPath();
-                    } catch (Exception e) {
-                        // module may not exist on disk yet
-                        Log.debug("resolveModuleDirs: module may not exist on disk yet", e);
-                    }
-                    dirs.add(mod);
-                }
+            if (wsRoot == null) return new ArrayList<>(dirs);
+            try {
+                wsRoot = wsRoot.toRealPath();
+            } catch (Exception ignored) {
+                wsRoot = wsRoot.toAbsolutePath().normalize();
             }
+            root = wsRoot.equals(here) ? manifest : JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             // Standalone project, or an unparseable manifest: just this dir.
             Log.debug("resolveModuleDirs: Standalone project, or an unparseable manifest", e);
+            return new ArrayList<>(dirs);
+        }
+        dirs.add(wsRoot);
+        // The build's expansion, outside the fallback: a glob that selects nothing is the build's error.
+        for (Path member : WorkspaceModules.memberDirs(wsRoot, root)) {
+            Path mod = member;
+            try {
+                mod = member.toRealPath();
+            } catch (Exception e) {
+                // module may not exist on disk yet
+                Log.debug("resolveModuleDirs: module may not exist on disk yet", e);
+            }
+            dirs.add(mod);
         }
         return new ArrayList<>(dirs);
     }

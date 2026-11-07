@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
@@ -148,11 +150,14 @@ public final class ProjectInfoPlans {
                 }
             } catch (UserConfigParseException unparsed) {
                 throw unparsed; // config.toml's own error, with its position — never this site's fallback
-            } catch (Exception ignored) {
-                for (String m : rootBuild.workspaceModules()) {
-                    Path abs = wsRoot.resolve(m).toAbsolutePath().normalize();
+            } catch (Exception halfWritten) {
+                // The one tolerant reader of the list, on purpose: `jk new` asks for this view of
+                // the workspace it is adding a member to before that member's jk.toml exists, so a
+                // listed path with no manifest yet, or a glob with nothing under it yet, must still
+                // describe the workspace. The build refuses both, and reports them for real.
+                for (Path abs : listedDirs(wsRoot, rootBuild)) {
                     moduleDirs.add(abs.toString());
-                    moduleNames.add(abs.getFileName().toString());
+                    moduleNames.add(String.valueOf(abs.getFileName()));
                 }
             }
         } else {
@@ -162,6 +167,25 @@ public final class ProjectInfoPlans {
             toolchains.put(abs, toolchain(build));
         }
         return new Workspace(wsRoot, workspaceRootDir, rootBuild, envSources, moduleDirs, moduleNames, toolchains);
+    }
+
+    /**
+     * The members {@code root} lists as the loader's refusal leaves them: each entry through the
+     * build's expansion on its own, so a glob contributes the members it does select and one that
+     * selects nothing contributes none, and a literal stands as written.
+     */
+    private static List<Path> listedDirs(Path wsRoot, JkBuild root) {
+        List<Path> out = new ArrayList<>();
+        for (String entry : root.workspaceModules()) {
+            List<String> rels;
+            try {
+                rels = WorkspaceModules.expand(wsRoot, List.of(entry));
+            } catch (JkBuildParseException selectsNothing) {
+                continue;
+            }
+            for (String rel : rels) out.add(wsRoot.resolve(rel).toAbsolutePath().normalize());
+        }
+        return out;
     }
 
     /** A module's effective toolchain on the wire — the same spec and level its {@code ensure-jdk} resolves with. */

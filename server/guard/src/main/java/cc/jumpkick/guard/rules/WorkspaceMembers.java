@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.rules;
 
-import static cc.jumpkick.config.WorkspaceModules.expand;
+import static cc.jumpkick.config.WorkspaceModules.memberDirs;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
@@ -22,16 +22,16 @@ final class WorkspaceMembers {
         Path manifest = ManifestPaths.manifestIn(root);
         List<Path> out = new ArrayList<>();
         if (!Files.isRegularFile(manifest)) return out;
-        List<String> rels;
+        JkBuild build;
         try {
-            JkBuild build = JkBuildParser.parse(manifest);
-            rels = expand(root, build.workspaceModules()); // the build's one expansion, globs included
+            build = JkBuildParser.parse(manifest);
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (RuntimeException unparseable) {
             return out; // parse-build reports it
         }
-        for (String m : rels) out.add(root.resolve(m).normalize());
+        // The build's one expansion, outside the fallback: a glob that selects nothing is the build's error.
+        out.addAll(memberDirs(root, build));
         out.sort(null);
         return out;
     }

@@ -105,7 +105,8 @@ public final class RunSnapshots {
 
     /**
      * Relative path to content hash for every file under {@code root}, or {@code null} when the
-     * tree is unreadable or larger than {@link #MAX_FILES}. {@code previous} is the run before's
+     * tree is unreadable, its member list is one the build refuses, or it is larger than {@link
+     * #MAX_FILES}. {@code previous} is the run before's
      * rows: a file whose size and mtime it already knows keeps its hash without a read.
      */
     public static @Nullable Map<String, String> takeSources(Path root, @Nullable Map<String, FileRow> previous) {
@@ -121,9 +122,10 @@ public final class RunSnapshots {
     public static @Nullable Map<String, FileRow> walk(Path root, Map<String, FileRow> previous) {
         Path base = root.toAbsolutePath().normalize();
         if (!Files.isDirectory(base)) return null;
-        Scope scope = scope(base);
         Map<String, FileRow> out = new TreeMap<>();
         try {
+            // A member list the build refuses (a glob that selects nothing) is no snapshot, like an unreadable tree.
+            Scope scope = scope(base);
             for (Path file : scope.files()) {
                 if (Files.isRegularFile(file)) {
                     row(base, file, Files.readAttributes(file, BasicFileAttributes.class), previous, out);

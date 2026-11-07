@@ -107,9 +107,9 @@ final class DependencyFlatten {
             FeatureSelection selection,
             StringBuilder out) {
 
-        WorkspaceGraph ws = WorkspaceGraph.collapse(WorkspaceGraph.modulesByName(root.workspaceModules(), rootDir));
-        List<LoadedModule> modules = WorkspaceGraph.withRoot(
-                root, lock, WorkspaceGraph.loadModules(root.workspaceModules(), rootDir, selection));
+        WorkspaceGraph ws = WorkspaceGraph.collapse(WorkspaceGraph.modulesByName(root, rootDir));
+        List<LoadedModule> modules =
+                WorkspaceGraph.withRoot(root, lock, WorkspaceGraph.loadModules(root, rootDir, selection));
 
         List<Scope> sections = new ArrayList<>();
         for (Scope s : DependencyTreeStyle.sectionOrder(scopeOrder)) {

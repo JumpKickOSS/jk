@@ -53,15 +53,8 @@ final class AlwaysNativeGraal {
      */
     static List<Module> fromManifests(Path root) {
         Path abs = WorkingDirectory.resolve(root);
-        List<String> rels = TomlScan.scan(ManifestPaths.manifestIn(abs), "workspace.modules")
-                .stringArray("workspace.modules");
-        List<Path> dirs = new ArrayList<>();
-        if (rels.isEmpty()) {
-            dirs.add(abs);
-        } else {
-            for (String rel : WorkspaceModules.expand(abs, rels))
-                dirs.add(abs.resolve(rel).normalize());
-        }
+        List<Path> dirs = WorkspaceModules.memberDirs(abs);
+        if (dirs.isEmpty()) dirs = List.of(abs);
         List<Module> out = new ArrayList<>();
         for (Path dir : dirs) {
             Module m = fromManifest(dir);

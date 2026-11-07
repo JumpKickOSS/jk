@@ -20,6 +20,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.groovy.GroovyResolver;
@@ -295,8 +296,7 @@ public final class PlannerSupport {
         Path root = rootOpt.get();
         JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
         if (!rootManifest.isWorkspaceRoot()) return out;
-        for (String module : rootManifest.workspaceModules()) {
-            Path dir = root.resolve(module);
+        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
             Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.exists(manifest)) continue;
             JkBuild sib = siblingOrNull(manifest);
@@ -414,8 +414,8 @@ public final class PlannerSupport {
         Path root = rootOpt.get();
         JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
         if (!rootManifest.isWorkspaceRoot()) return out;
-        for (String module : rootManifest.workspaceModules()) {
-            Path manifest = ManifestPaths.manifestIn(root.resolve(module));
+        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
+            Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.exists(manifest)) continue;
             JkBuild sib = siblingOrNull(manifest);
             if (sib == null) continue;
@@ -429,8 +429,7 @@ public final class PlannerSupport {
     private static Path siblingDir(Path moduleDir, JkBuild sibling) throws IOException {
         Path root = WorkspaceLocator.findRoot(moduleDir).orElseThrow();
         JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
-        for (String module : rootManifest.workspaceModules()) {
-            Path dir = root.resolve(module);
+        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
             Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.exists(manifest)) continue;
             // an unparsable sibling cannot be the one already parsed
@@ -1013,8 +1012,8 @@ public final class PlannerSupport {
         Map<String, Path> dirByName = new LinkedHashMap<>();
         Map<String, Path> dirByCoord = new LinkedHashMap<>();
         Map<Path, JkBuild> byDir = new LinkedHashMap<>();
-        for (String module : rootManifest.workspaceModules()) {
-            Path dir = root.resolve(module);
+        // The build's expansion, outside the fallback: a glob that selects nothing is the build's error.
+        for (Path dir : WorkspaceModules.memberDirs(root, rootManifest)) {
             Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(manifest)) continue;
             JkBuild sib = siblingOrNull(manifest);
