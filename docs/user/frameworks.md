@@ -225,7 +225,8 @@ version = "27.0.1"            # required: 27.0.1 (exact), ^27 (newest 27.x) or l
 # declarative   = false       # true: Helidon Declarative's code generators run
 # binding       = true        # default: on when a class carries @Service.GenerateBinding
 # generate-main = false       # also generate ApplicationMain, the reflection-free entry point
-# validate      = true        # fail the build on an invalid injection graph
+# validate      = true        # check the injection graph; a finding is a build warning
+# fail-on-warning = false     # true: a warning, a validator finding included, fails the build
 # test-binding  = false       # also generate TestApplicationBinding for the test scope
 
 [dependencies]
@@ -281,10 +282,12 @@ the runtime classpath and the table.
   entry point, which starts the registry from the binding and the services' run levels. Point
   `[application] main` at it (`com.example.ApplicationMain`). The inject quickstart starts in about
   a third of the time.
-- **`validate`.** Runs Helidon's injection-graph validator. Any finding it reports fails the build
-  with Helidon's words; today that is a request-scoped service injected into a singleton without a
-  `Supplier`. This is stricter than the Maven plugin's default, which only logs the finding;
-  `validate = false` skips the check.
+- **`validate`.** Runs Helidon's injection-graph validator, as the Maven goal does by default. A
+  finding (today: a request-scoped service injected into a singleton without a `Supplier`) is a
+  build warning in Helidon's words, and the build goes on, as under Maven. `validate = false` skips
+  the check.
+- **`fail-on-warning`.** The goal's `failOnWarning`: any warning while generating the binding, a
+  validator finding included, fails the build once every warning has been said.
 - **`test-binding`.** Also runs `create-test-application` after the test compile:
   `TestApplicationBinding` for the test scope, on the test JVM's classpath after the test classes.
 - **`jk dev`.** Generating the binding costs about a second (1.3 s for the inject quickstart, most of
@@ -309,8 +312,9 @@ does.
   adds them. `helidon-bundles-apt`, or one of the generators it bundles (Declarative, builder, data,
   JSON), is `declarative = true`. Any other processor stays in `[processor-dependencies]`.
 - `helidon-service-maven-plugin`'s `create-application` (and its test goal) maps to the binding keys:
-  `<generateMain>true` is `generate-main = true`, `<validate>false` is `validate = false`, and
-  `<generateBinding>false` is `binding = false`. Options with no key, such as `<packageName>`, are
+  `<generateMain>true` is `generate-main = true`, `<validate>false` is `validate = false`,
+  `<failOnWarning>true` (or the `helidon.service.registry.fail-on-warning` property) is
+  `fail-on-warning = true`, and `<generateBinding>false` is `binding = false`. Options with no key, such as `<packageName>`, are
   rows.
 - The parent's `copy-libs` execution is the default `layout = "libs"`, so no `[application] lib-dir`
   and no row. An application that copies nothing gets `layout = "jar"`. A copy shaped differently

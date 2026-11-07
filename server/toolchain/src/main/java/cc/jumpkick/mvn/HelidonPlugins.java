@@ -78,12 +78,15 @@ final class HelidonPlugins {
     private static final Set<String> BINDING_GOALS =
             Set.of("create-application", "create-test-application", "test-application-create");
     private static final String JLINK_GOAL = "jlink-image";
+    /** The property {@code create-application}'s {@code <failOnWarning>} defaults to. */
+    private static final String FAIL_ON_WARNING_PROPERTY = "helidon.service.registry.fail-on-warning";
 
     /** {@code create-application} options the table models, or that change nothing jk does. */
     private static final Set<String> COVERED_SERVICE_OPTIONS = Set.of(
             "generateBinding",
             "generateMain",
             "validate",
+            "failOnWarning",
             "release",
             "outputDirectory",
             "testOutputDirectory",
@@ -212,7 +215,8 @@ final class HelidonPlugins {
 
     /**
      * {@code create-application} / its test variant → {@code binding}, {@code generate-main},
-     * {@code validate}. The table's {@code binding} default, on when a class carries the {@code
+     * {@code validate}, and {@code <failOnWarning>} (or the {@code
+     * helidon.service.registry.fail-on-warning} property it defaults to) → {@code fail-on-warning}. The table's {@code binding} default, on when a class carries the {@code
      * Service.GenerateBinding} annotation (the only thing that loads the generated binding), is
      * what the goal does, so only {@code <generateBinding>false</generateBinding>} is written.
      */
@@ -229,13 +233,21 @@ final class HelidonPlugins {
         boolean binding = true;
         boolean generateMain = false;
         boolean validate = true;
+        boolean warningsFail =
+                Boolean.parseBoolean(String.valueOf(em.model().getProperties().getProperty(FAIL_ON_WARNING_PROPERTY))
+                        .trim());
+        boolean failOnWarning = false;
         Set<String> unmapped = new LinkedHashSet<>();
         for (PluginExecution execution : executions) {
             Xpp3Dom config = configuration(plugin.get(), execution);
-            if (config == null) continue;
+            if (config == null) {
+                failOnWarning |= warningsFail;
+                continue;
+            }
             binding &= flag(config, "generateBinding", true);
             generateMain |= flag(config, "generateMain", false);
             validate &= flag(config, "validate", true);
+            failOnWarning |= flag(config, "failOnWarning", warningsFail);
             for (Xpp3Dom option : config.getChildren()) {
                 if (!COVERED_SERVICE_OPTIONS.contains(option.getName())) unmapped.add(option.getName());
             }
@@ -243,6 +255,7 @@ final class HelidonPlugins {
         if (!binding) values.put("binding", false);
         if (generateMain) values.put("generate-main", true);
         if (!validate) values.put("validate", false);
+        if (failOnWarning) values.put("fail-on-warning", true);
         if (!unmapped.isEmpty()) {
             report.warning(SERVICE_PLUGIN + " <" + String.join(">, <", unmapped) + ">: not carried into [helidon],"
                     + " which generates the binding under Helidon's default names and options");

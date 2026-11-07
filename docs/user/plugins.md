@@ -42,7 +42,7 @@ register. **Since** is the first jk release that shipped the battery.
 | android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | 0.10.1 | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |
 | grails | `[grails]`: Grails 8 on the Groovy lane | **contrib** | 0.11.0 | Grails 8 (Apache) only |
 | hibernate | `[hibernate] enhance = true`: the project's own Hibernate bytecode enhancer over the compiled entities, a cached step whose output is the module's classes | **contrib** | 0.15.1 | entity models that rely on lazy basic attributes or dirty tracking behave differently without it; most projects do not enhance at build time |
-| helidon | `[helidon]`: Helidon 27+ platform BOM, its annotation processors, the application binding (`create-application`, `generate-main`, `validate`, `test-binding`), the test config profile, the `<name>.jar` + `libs/` deployable | **contrib** | 0.50.4 | new; Helidon 27 follows the JDK tip, so each release moves the Java floor |
+| helidon | `[helidon]`: Helidon 27+ platform BOM, its annotation processors, the application binding (`create-application`, `generate-main`, `validate`, `fail-on-warning`, `test-binding`), the test config profile, the `<name>.jar` + `libs/` deployable | **contrib** | 0.50.4 | new; Helidon 27 follows the JDK tip, so each release moves the Java floor |
 | javafx | `[javafx]`: the project's OpenJFX modules on the module path of the test JVM and `jk run`, with `--add-modules` | **contrib** | 0.20.0 | desktop; OpenJFX moves with the JDK cadence |
 | Scala 3 | mixed Java/Scala modules through Zinc | **contrib** | 0.13.0 | compiles; no cross-building, Scala.js/Native or sbt parity |
 

@@ -177,6 +177,7 @@ class PomHelidonImportTest {
                           <configuration>
                             <generateMain>true</generateMain>
                             <validate>false</validate>
+                            <failOnWarning>true</failOnWarning>
                             <packageName>com.ex.binding</packageName>
                           </configuration>
                         </execution>
@@ -195,6 +196,7 @@ class PomHelidonImportTest {
                 .containsEntry("version", VERSION)
                 .containsEntry("generate-main", true)
                 .containsEntry("validate", false)
+                .containsEntry("fail-on-warning", true)
                 .containsEntry("declarative", true)
                 .as("no copy-dependencies execution: Maven ships the plain jar")
                 .containsEntry("layout", "jar")

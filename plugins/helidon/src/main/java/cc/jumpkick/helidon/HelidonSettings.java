@@ -12,7 +12,9 @@ import java.util.Optional;
  *     when a class carries {@code @Service.GenerateBinding}
  * @param generateMain whether the binding step also generates {@code ApplicationMain}, the
  *     reflection-free entry point
- * @param validate whether the binding step fails the build on an invalid injection graph
+ * @param validate whether the binding step runs Helidon's injection-graph validator
+ * @param failOnWarning whether a warning while generating the binding (a validator finding
+ *     included) fails the build, as Maven's {@code failOnWarning}; otherwise it is a build warning
  * @param testBinding whether a step generates {@code TestApplicationBinding} for the test scope
  * @param layout what the module's deployable is
  * @param declarative whether the module uses Helidon Declarative, whose code generators run
@@ -22,6 +24,7 @@ public record HelidonSettings(
         Optional<Boolean> binding,
         boolean generateMain,
         boolean validate,
+        boolean failOnWarning,
         boolean testBinding,
         Layout layout,
         boolean declarative) {
@@ -39,6 +42,7 @@ public record HelidonSettings(
                 config.bool("binding"),
                 config.bool("generate-main", false),
                 config.bool("validate", true),
+                config.bool("fail-on-warning", false),
                 config.bool("test-binding", false),
                 "jar".equals(config.stringOpt("layout").orElse("libs")) ? Layout.JAR : Layout.LIBS,
                 config.bool("declarative", false));

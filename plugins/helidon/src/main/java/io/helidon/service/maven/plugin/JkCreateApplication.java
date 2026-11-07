@@ -49,7 +49,7 @@ import org.jspecify.annotations.Nullable;
  * classpath, the scope's classes first), {@code --source-root <dir>} and {@code --main-source-root
  * <dir>} (repeatable; module-info and package inference), {@code --release <n>}, {@code
  * --binding-class <name>}, {@code --main-class <name>}, and the switches {@code --validate},
- * {@code --generate-binding}, {@code --generate-main}.
+ * {@code --fail-on-warning}, {@code --generate-binding}, {@code --generate-main}.
  *
  * <p>Output: every line it means for the worker starts with {@link #PREFIX} and a level ({@code
  * ERROR}, {@code WARNING}, {@code INFO}, {@code BINDING}, {@code MAIN}, {@code FAILED}), newlines
@@ -65,6 +65,7 @@ public final class JkCreateApplication {
     private static final String MODULE_INFO = "module-info.java";
 
     private final PrintStream out;
+    private int warnings;
     private final ClassLoader app = JkCreateApplication.class.getClassLoader();
 
     private JkCreateApplication(PrintStream out) {
@@ -74,7 +75,10 @@ public final class JkCreateApplication {
     public static void main(String[] args) {
         PrintStream out = System.out;
         try {
-            new JkCreateApplication(out).run(Options.parse(args));
+            Options options = Options.parse(args);
+            JkCreateApplication app = new JkCreateApplication(out);
+            app.run(options);
+            app.failOnWarnings(options);
         } catch (Throwable e) {
             Throwable cause = unwrap(e);
             // Off the protocol: the worker shows it only when the failure says nothing itself.
@@ -184,16 +188,14 @@ public final class JkCreateApplication {
             Set<Object> allServices = new TreeSet<>();
             for (Object info : all) allServices.add(invoke(info, serviceInfoType, "serviceType", new Class<?>[0]));
             if (allServices.isEmpty()) {
-                emit(out, "WARNING", "Binding generator found no services to process");
+                warn("Binding generator found no services to process");
                 return;
             }
             if (o.validate) {
-                // Strict: a finding the validator reports fails the build. Its one check today (a
-                // request-scoped service injected into a singleton without a Supplier) is a warning
-                // Maven's default lets pass; jk's validate means the graph has to be sound.
+                // As the Mojo: a finding is a warning, and fails the build only with failOnWarning.
                 Object validator = cls("ApplicationValidator")
                         .getDeclaredConstructor(contextType, boolean.class)
-                        .newInstance(context, true);
+                        .newInstance(context, o.failOnWarning);
                 invoke(validator, validator.getClass(), "validate", new Class<?>[] {wrappedType}, services);
             }
             Class<?> typeNameType = type("io.helidon.common.types.TypeName");
@@ -373,6 +375,23 @@ public final class JkCreateApplication {
         return Proxy.newProxyInstance(app, new Class<?>[] {loggerType}, handler);
     }
 
+    /** A warning, counted as Maven's logger counts them for {@code failOnWarning}. */
+    private void warn(String message) {
+        warnings++;
+        emit(out, "WARNING", message);
+    }
+
+    /**
+     * As the Mojo with {@code failOnWarning}: a run that logged a warning fails once it is done, so
+     * every warning is said first.
+     */
+    private void failOnWarnings(Options o) {
+        if (o.failOnWarning && warnings > 0) {
+            throw new IllegalStateException(
+                    warnings + " warning(s) while generating the binding, and fail-on-warning is set");
+        }
+    }
+
     private void log(Class<?> eventType, Object event) throws Exception {
         System.Logger.Level level = (System.Logger.Level) invoke(event, eventType, "level", new Class<?>[0]);
         String message = String.valueOf(invoke(event, eventType, "message", new Class<?>[0]));
@@ -389,7 +408,7 @@ public final class JkCreateApplication {
         throwable.ifPresent(t -> text.append(": ").append(t));
         switch (level) {
             case ERROR -> emit(out, "ERROR", text.toString());
-            case WARNING -> emit(out, "WARNING", text.toString());
+            case WARNING -> warn(text.toString());
             case INFO -> emit(out, "INFO", text.toString());
             default -> {
                 // trace and debug: the Mojo sends them to Maven's debug log, which a build hides
@@ -495,6 +514,7 @@ public final class JkCreateApplication {
         String bindingClass = "ApplicationBinding";
         String mainClass = "ApplicationMain";
         boolean validate;
+        boolean failOnWarning;
         boolean generateBinding;
         boolean generateMain;
 
@@ -522,6 +542,7 @@ public final class JkCreateApplication {
                     case "--binding-class" -> o.bindingClass = value(args, ++i);
                     case "--main-class" -> o.mainClass = value(args, ++i);
                     case "--validate" -> o.validate = true;
+                    case "--fail-on-warning" -> o.failOnWarning = true;
                     case "--generate-binding" -> o.generateBinding = true;
                     case "--generate-main" -> o.generateMain = true;
                     default -> throw new IllegalArgumentException("unknown option " + args[i]);

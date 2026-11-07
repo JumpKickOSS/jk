@@ -125,6 +125,7 @@ final class HelidonBinding {
         if (binding) args.add("--generate-binding");
         if (settings.generateMain()) args.add("--generate-main");
         if (settings.validate()) args.add("--validate");
+        if (settings.failOnWarning()) args.add("--fail-on-warning");
 
         List<Path> toolClasspath = new ArrayList<>(ownJar());
         toolClasspath.addAll(toolClasspath(exec.requireExtra(TOOL)));

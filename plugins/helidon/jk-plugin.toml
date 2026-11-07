@@ -25,7 +25,8 @@ version       = { type = "string", required = true, min-version = "27", example 
 # Tri-state: absent = on when a class carries @Service.GenerateBinding.
 binding       = { type = "bool", hint = "generate the application binding after compile (helidon-service-maven-plugin's create-application); unset: when a class carries @Service.GenerateBinding" }
 generate-main = { type = "bool", default = false, hint = "also generate ApplicationMain, the reflection-free entry point; point [application] main at it" }
-validate      = { type = "bool", default = true, hint = "validate the injection graph while generating the binding; an invalid graph fails the build with Helidon's findings" }
+validate      = { type = "bool", default = true, hint = "validate the injection graph while generating the binding (create-application's <validate>); a finding is a build warning, or fails the build with fail-on-warning" }
+fail-on-warning = { type = "bool", default = false, hint = "fail the build on a warning while generating the binding, the validator's findings included (create-application's <failOnWarning>)" }
 test-binding  = { type = "bool", default = false, hint = "also generate TestApplicationBinding for the test scope (create-test-application), on the test classpath" }
 layout        = { type = "string", default = "libs", one-of = ["libs", "jar"], hint = "libs (default): target/<name>.jar + target/libs/, Helidon's deployable; jar: the plain jar alone" }
 declarative   = { type = "bool", default = false }

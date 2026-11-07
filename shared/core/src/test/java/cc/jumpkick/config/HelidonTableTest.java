@@ -58,6 +58,7 @@ class HelidonTableTest {
                         "version", "27.0.1",
                         "generate-main", false,
                         "validate", true,
+                        "fail-on-warning", false,
                         "test-binding", false,
                         "layout", "libs",
                         "declarative", false));
@@ -72,6 +73,7 @@ class HelidonTableTest {
                 binding       = false
                 generate-main = true
                 validate      = false
+                fail-on-warning = true
                 test-binding  = true
                 layout        = "jar"
                 declarative   = true
@@ -83,6 +85,7 @@ class HelidonTableTest {
                         "binding", false,
                         "generate-main", true,
                         "validate", false,
+                        "fail-on-warning", true,
                         "test-binding", true,
                         "layout", "jar",
                         "declarative", true));

@@ -21,12 +21,13 @@ class HelidonSettingsTest {
                         "version", "27.0.1",
                         "generate-main", false,
                         "validate", true,
+                        "fail-on-warning", false,
                         "layout", "libs",
                         "declarative", false));
 
         assertThat(HelidonSettings.of(config))
                 .isEqualTo(new HelidonSettings(
-                        "27.0.1", Optional.empty(), false, true, false, HelidonSettings.Layout.LIBS, false));
+                        "27.0.1", Optional.empty(), false, true, false, false, HelidonSettings.Layout.LIBS, false));
     }
 
     @Test
@@ -38,12 +39,13 @@ class HelidonSettingsTest {
                         "binding", false,
                         "generate-main", true,
                         "validate", false,
+                        "fail-on-warning", true,
                         "test-binding", true,
                         "layout", "jar",
                         "declarative", true));
 
         assertThat(HelidonSettings.of(config))
                 .isEqualTo(new HelidonSettings(
-                        "27.0.1", Optional.of(false), true, false, true, HelidonSettings.Layout.JAR, true));
+                        "27.0.1", Optional.of(false), true, false, true, true, HelidonSettings.Layout.JAR, true));
     }
 }

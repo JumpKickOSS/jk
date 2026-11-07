@@ -165,7 +165,8 @@ class HelidonQuickstartE2eTest {
     }
 
     @Test
-    void an_invalid_injection_graph_fails_the_build_with_helidon_s_findings(@TempDir Path tmp) throws Exception {
+    void a_validator_finding_warns_as_maven_does_and_fails_the_build_with_fail_on_warning(@TempDir Path tmp)
+            throws Exception {
         Path project = fixture(tmp, "quickstart-inject");
         Path pkg = project.resolve("src/main/java/io/helidon/examples/quickstart/inject");
         Files.writeString(pkg.resolve("RequestCounter.java"), """
@@ -190,6 +191,15 @@ class HelidonQuickstartE2eTest {
         Path cache = TestCaches.dir("helidon-quickstart-cache");
         lock(project, cache);
 
+        BuildPlanResult warned = plan(project, cache).run();
+        assertThat(warned.errors()).isEmpty();
+        assertThat(warned.success())
+                .as("Maven's default, failOnWarning=false, lets a finding pass")
+                .isTrue();
+        assertThat(warned.warnings()).anySatisfy(warning -> assertThat(warning.message())
+                .contains("Injection of request scoped service into a singleton without a supplier"));
+
+        edit(project.resolve("jk.toml"), "version = \"27.0.1\"\n", "version = \"27.0.1\"\nfail-on-warning = true\n");
         BuildPlanResult built = plan(project, cache).run();
         assertThat(built.success()).isFalse();
         assertThat(built.errors()).anySatisfy(error -> assertThat(error.message())
