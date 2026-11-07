@@ -17,7 +17,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class WorkerClassesWithoutAetherTest {
 
     @ParameterizedTest
-    @ValueSource(classes = {QuarkusPlugin.class, RepositoryRoutes.class})
+    @ValueSource(classes = {QuarkusPlugin.class, RepositoryRoutes.class, ForkNotices.class})
     void a_class_the_worker_loads_names_no_aether_transfer_type(Class<?> type) throws Exception {
         String resource = type.getName().replace('.', '/') + ".class";
         byte[] bytes;

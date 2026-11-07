@@ -5,6 +5,7 @@ import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -133,6 +134,17 @@ public interface TaskExec {
      * unknown. An error diagnostic does not fail the step by itself — a failing body throws.
      */
     void diagnostic(String severity, @Nullable String file, int line, int col, String message);
+
+    /**
+     * Something the step left out of what it built that the user has to act on — an artifact a
+     * framework resolved but the step did not ship — reported as a {@value
+     * PluginProtocol#SEVERITY_NOTICE} diagnostic. The engine puts a notice on every verdict, a
+     * passing build's included, where a plain warning only rides the report; an engine that does
+     * not know the severity reports it as the step's warning. Not for progress or chatter.
+     */
+    default void notice(String message) {
+        diagnostic(PluginProtocol.SEVERITY_NOTICE, null, 0, 0, message);
+    }
 
     /** A {@code bin/<name>} fork off {@link #javaHome()} ({@code java}, {@code javac}, …). */
     default ToolRun tool(String bin) {

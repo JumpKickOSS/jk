@@ -41,6 +41,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -419,7 +420,7 @@ public final class PlannerPlugin {
         try {
             PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label, line -> {
                 reported.set(true);
-                forwardStepDiagnostic(ctx, step, line);
+                forwardStepDiagnostic(ctx, in.dir(), project.project().name(), step, line);
             });
         } finally {
             HeapScope.restore(previous);
@@ -657,11 +658,6 @@ public final class PlannerPlugin {
                 .build();
     }
 
-    /**
-     * One {@code diagnostic} reply from a step worker, as the step's own report entry: the
-     * {@code file:line[:col]: message} header the journal parses for a locus, an error when the
-     * tool said so, a warning otherwise.
-     */
     /** The key token of an input no file holds (a live schema), measured before the lookup; empty without a probe. */
     private static Optional<String> probeToken(
             TaskContext ctx, TaskDecl step, Path javaHome, Path workerJar, Map<String, Path> tools, Path dir)
@@ -677,7 +673,24 @@ public final class PlannerPlugin {
         }
     }
 
-    static void forwardStepDiagnostic(TaskContext ctx, String step, String line) {
+    /**
+     * One {@code diagnostic} reply from a step worker, as the step's own report entry: the
+     * {@code file:line[:col]: message} header the journal parses for a locus, an error when the
+     * tool said so, a warning otherwise.
+     *
+     * <p>A {@link PluginProtocol#SEVERITY_NOTICE notice} is something the step left out of what it
+     * built, which the user has to act on even when the build passes, so it is a run notice instead:
+     * a WARN line on the client's stream and a line on every verdict, a passing one's included,
+     * where a step warning shows only in the report. It names the module and the step, since a run
+     * notice belongs to neither, and is said once per run however many times it arrives.
+     */
+    static void forwardStepDiagnostic(TaskContext ctx, Path moduleDir, String module, String step, String line) {
+        if (PluginProtocol.SEVERITY_NOTICE.equals(Jsonl.str(line, "sev"))) {
+            String message = String.valueOf(Jsonl.str(line, "msg"));
+            String text = module + " " + step + ": " + message;
+            RunNotices.warnOnce("step-notice:" + moduleDir + "\0" + step + "\0" + message, () -> text);
+            return;
+        }
         StringBuilder text = new StringBuilder();
         @Nullable String file = Jsonl.str(line, "file");
         if (file != null) {

@@ -130,11 +130,13 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         String packageType =
                 normalizePackageType(exec.config().stringOpt("package").orElse("fast-jar"));
         Path routes = writeRepositoryRoutes(exec);
+        Path notices = Files.createTempFile("jk-quarkus-notices-", ".txt");
         TaskExec.ToolRun.Result run;
         try {
             run = exec.java()
                     .classpath(cp)
                     .arg(PreferIpv4.JVM_FLAG)
+                    .arg(ForkNotices.flag(notices))
                     .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
                     .arg("-Djk.quarkus.package.type=" + packageType)
                     .arg("-Djk.quarkus.native.sources=" + exec.project().nativeDeclared())
@@ -143,8 +145,10 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                     .args(augmentArgs(exec, classes, outRoot, baseName, listFile, quarkusVersion, routes))
                     .cwd(exec.moduleDir())
                     .run();
+            ForkNotices.relay(notices, exec);
         } finally {
             Files.deleteIfExists(routes);
+            Files.deleteIfExists(notices);
         }
         if (run.exit() != 0) {
             // Fail loudly: a cached "success" with no quarkus-app would silently ship a
@@ -232,18 +236,22 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         Path listFile = writeRuntimeList(exec, exec.scratch().resolve("test-runtime-jars.tsv"));
         exec.label("quarkus test model (" + exec.project().name() + ")");
         Path routes = writeRepositoryRoutes(exec);
+        Path notices = Files.createTempFile("jk-quarkus-notices-", ".txt");
         TaskExec.ToolRun.Result run;
         try {
             run = exec.java()
                     .classpath(toolClasspath(exec))
                     .arg(PreferIpv4.JVM_FLAG)
+                    .arg(ForkNotices.flag(notices))
                     .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
                     .mainClass(QuarkusTestModelMain.class.getName())
                     .args(testModelArgs(exec, classes, outDir, listFile, quarkusVersion(exec), routes))
                     .cwd(exec.moduleDir())
                     .run();
+            ForkNotices.relay(notices, exec);
         } finally {
             Files.deleteIfExists(routes);
+            Files.deleteIfExists(notices);
         }
         if (run.exit() != 0) {
             throw new IOException("quarkus-test-model failed (exit " + run.exit() + "):\n"
