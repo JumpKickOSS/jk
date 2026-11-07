@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
@@ -13,7 +14,9 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
+import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -352,5 +355,98 @@ class ToolchainEvaluatorTest {
                 .as("a rule that judges the root judges the inherited value there, once")
                 .extracting(Observation::key)
                 .containsExactlyInAnyOrder("java root", "java app");
+    }
+
+    @Test
+    void a_root_edit_is_judged_at_add_time_at_every_member_that_inherits_what_it_changes(@TempDir Path root)
+            throws Exception {
+        String rules = """
+                [guards.floor]
+                kind  = "toolchain"
+                java  = ">=17"
+                scope = ["lib"]
+                why   = "w"
+                """;
+        workspace(root);
+        Files.writeString(
+                root.resolve("lib/" + ManifestPaths.MANIFEST),
+                "name = \"lib\"\ngroup = \"acme\"\nversion = \"1.0.0\"\n");
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), rules);
+        Path rootManifest = root.resolve(ManifestPaths.MANIFEST);
+        String lowered = Files.readString(rootManifest).replace("java = 17", "java = 11");
+
+        String refusal = MutationCheck.check(rootManifest, lowered);
+        assertThat(refusal)
+                .as("lib inherits the root's java, so the root edit lowers lib's")
+                .isNotNull()
+                .contains("lib builds for Java 11, outside >=17");
+
+        Files.writeString(rootManifest, lowered);
+        EvalContext ctx = new EvalContext(
+                Lane.MODEL,
+                root,
+                "",
+                null,
+                List.of(root.resolve("app"), root.resolve("lib")),
+                () -> FactsIndex.EMPTY,
+                () -> null,
+                List::of);
+        Evaluation e = ev(
+                LaneRun.evaluate(
+                        LaneRun.rulesFor(
+                                Lane.MODEL,
+                                GuardRules.load(root, GuardsConfig.ABSENT).rules(),
+                                ""),
+                        ctx),
+                "floor");
+        assertThat(e.observations())
+                .as("jk guard reports at lib what jk add refused")
+                .singleElement()
+                .satisfies(o -> {
+                    assertThat(o.key()).isEqualTo("java lib");
+                    assertThat(refusal).contains(o.detail());
+                });
+
+        String another = lowered.replace(
+                "[repositories]\n", "[repositories]\nextra = { url = \"https://extra.example/m2/\" }\n");
+        assertThat(MutationCheck.check(rootManifest, another))
+                .as("a root edit that leaves what lib inherits alone is not refused for what lib already was")
+                .isNull();
+    }
+
+    @Test
+    void pinned_plugins_judge_the_root_as_written_without_a_users_config_pins(@TempDir Path root, @TempDir Path home)
+            throws Exception {
+        String previous = System.getProperty("jk.env.JK_HOME");
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        try {
+            Path config = JkDirs.userConfigFile();
+            Files.createDirectories(Objects.requireNonNull(config.getParent()));
+            Files.writeString(config, """
+                    [plugins]
+                    mine = { group = "acme.tools", name = "mine", version = "latest", sha256 = "%s" }
+                    """.formatted(SHA));
+            workspace(root);
+            assertThat(JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST)).plugins())
+                    .as("the build's parse folds the user's pin in")
+                    .extracting(PluginDeclaration::alias)
+                    .contains("mine");
+
+            Evaluation e = ev(run(root, """
+                    [guards.pins]
+                    kind    = "toolchain"
+                    plugins = { pinned = true }
+                    why     = "w"
+                    """), "pins");
+
+            assertThat(e.observations())
+                    .as("the user's floating pin is not the project's to judge")
+                    .extracting(Observation::key)
+                    .containsExactly("plugin:acme.tools:fmt");
+            assertThat(e.population()).containsEntry("plugins", 2L);
+        } finally {
+            if (previous == null) System.clearProperty("jk.env.JK_HOME");
+            else System.setProperty("jk.env.JK_HOME", previous);
+        }
     }
 }

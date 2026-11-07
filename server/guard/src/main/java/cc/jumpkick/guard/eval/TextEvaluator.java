@@ -187,9 +187,12 @@ final class TextEvaluator implements BatchEvaluator {
         return n;
     }
 
-    /** Whether {@code p} reads {@code f}: its module is in scope, and {@code languages} and {@code files} take it. */
+    /**
+     * Whether {@code p} reads {@code f}: its module is in scope, or it is an {@code owner} file, which
+     * the rule reads wherever it lives; and {@code languages} and {@code files} take it.
+     */
     private static boolean applies(Prepared p, TextFiles.Entry f, FileModules modules) {
-        if (!modules.judges(p.rule, f.rel())) return false;
+        if (!modules.judges(p.rule, f.rel()) && !matchesAny(p.owners, f.rel())) return false;
         if (!p.languages.isEmpty() && !p.languages.contains(f.language().id())) return false;
         if (p.files.isEmpty()) return f.rel().contains("/src/") || f.rel().startsWith("src/");
         return matchesAny(p.files, f.rel());
