@@ -1,0 +1,64 @@
+language = "java"
+framework = "helidon"
+name = "quickstart"
+description = "Helidon SE quickstart: the /greet REST service of Helidon's quickstart archetype, on Helidon 27 and JDK 27"
+layouts = ["traditional", "simple"]
+
+# The questions of `helidon init`'s quickstart (archetypes/archetypes/src/main/archetype at the
+# Helidon release [helidon] version names), with the archetype's preset answers as defaults, except
+# jlink: Maven links the runtime image in a profile, so a plain build does not, and here [jlink]
+# would link and train it on every jk build. HelidonArchetypeOptionsTest diffs these against the
+# archetype's inputs.
+
+[[ask]]
+key = "media"
+label = "JSON library"
+help = "What /greet reads and writes JSON with"
+kind = "choice"
+options = [
+  { id = "jsonp", label = "JSON-P", help = "Jakarta JSON Processing (helidon-http-media-jsonp), the archetype's choice for SE" },
+  { id = "json", label = "Helidon JSON", help = "Helidon's own JSON (helidon-http-media-json), a preview API in 27" },
+]
+default = "jsonp"
+
+[[ask]]
+key = "metrics"
+label = "Metrics"
+help = "Serve /observe/metrics with the built-in system meters"
+kind = "bool"
+default = true
+
+[[ask]]
+key = "health"
+label = "Health checks"
+help = "Serve /observe/health with the built-in checks"
+kind = "bool"
+default = true
+
+[[ask]]
+key = "tracing"
+label = "Tracing"
+help = "OpenTelemetry tracing, with a /traced endpoint that opens its own span"
+kind = "bool"
+default = false
+
+[[ask]]
+key = "docker"
+label = "Container image"
+help = "jk image builds an OCI image of target/<name>.jar and target/libs/, in place of Helidon's Dockerfile"
+kind = "bool"
+default = true
+
+[[ask]]
+key = "jlink"
+label = "Runtime image (jlink)"
+help = "jk build also links target/<name>-jri/ with an AOT cache, in place of Helidon's jlink-image profile"
+kind = "bool"
+default = false
+
+[[ask]]
+key = "k8s"
+label = "Kubernetes manifest"
+help = "app.yaml: a Service and a Deployment of the application's image"
+kind = "bool"
+default = true

@@ -175,6 +175,38 @@ one convenience: no service is started for you.
 
 **Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).
 
+```bash
+jk new -t helidon/quickstart my-api      # helidon init's quickstart: /greet, health, metrics
+jk new -t helidon/declarative my-api     # the same service as a Helidon Declarative endpoint
+jk new -t helidon/quickstart -p media=json -p tracing=true -p jlink=true my-api
+```
+
+`helidon/quickstart` is the counterpart of `helidon init`'s quickstart application, and asks its
+questions with its preset answers as defaults:
+
+| `-p` | Default | What it writes |
+|---|---|---|
+| `media=jsonp\|json` | `jsonp` | `/greet`'s JSON library: Jakarta JSON-P (`helidon-http-media-jsonp`, the archetype's), or Helidon JSON (`helidon-http-media-json`, a preview API in 27) |
+| `metrics` | `true` | `/observe/metrics` with the built-in system meters |
+| `health` | `true` | `/observe/health` with the built-in checks |
+| `tracing` | `false` | OpenTelemetry tracing and a `/traced` endpoint that opens its own span |
+| `docker` | `true` | an [`[image]`](images.md) table: `jk image` in place of Helidon's `Dockerfile` |
+| `jlink` | `false` | a [`[jlink]`](packaging.md#runtime-image-jlink) table: `jk build` also links `target/<name>-jri/`, in place of the `jlink-image` profile. Off by default because Maven links it only in that profile, and a `[jlink]` build links and trains it every time |
+| `k8s` | `true` | `app.yaml`, a Kubernetes Service and Deployment of the image |
+
+`helidon/declarative` writes the same `/greet` service as an annotated `@RestServer.Endpoint`
+that the service registry wires (`[helidon] declarative = true`, `@Service.GenerateBinding` on
+`Main`), after Helidon's inject quickstart and Declarative examples: the same questions, and
+`generate_main` (advanced), which sets `[helidon] generate-main`. Both write `java = 27`,
+`[helidon] version` at the current Helidon release, versionless Helidon dependencies, and
+`junit-jupiter`; the scaffold builds, tests and serves `/greet` as written. Neither ships
+a `jk-guards.toml` yet: the Helidon rule pack is still to come. Helidon's `database` and
+`custom` application types have no template.
+
+jk's own tests diff these questions against the inputs of Helidon's archetypes
+(`archetypes/archetypes/src/main/archetype` at the pinned release), so an input a Helidon release
+adds is either asked by a template or recorded with the reason it is not.
+
 `[helidon]` builds Helidon 27 and later applications (Helidon SE; 27 has no MicroProfile and no
 GraalVM native image). The version is the only required key:
 
