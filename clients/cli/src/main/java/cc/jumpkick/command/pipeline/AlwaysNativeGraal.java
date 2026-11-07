@@ -12,18 +12,20 @@ import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The GraalVM home each always-native module builds with, resolved on the client before the request
- * ships — the one owner for {@code jk build}, {@code jk run} and {@code jk install}. The engine is a daemon: a
+ * ships — the one owner for {@code jk build}, {@code jk run}, {@code jk install} and {@code jk native}. The engine is a daemon: a
  * GraalVM it found for itself would answer from the shell that started it, and a prompt or an
  * install belongs to the terminal the user is looking at. So the client's resolver decides (pin,
  * lock, inventory, then prompt or install) and the request carries the answer per module.
@@ -171,6 +173,32 @@ final class AlwaysNativeGraal {
         // A member that inherits its `java` from the root declares none of its own; the summary has it.
         if (!members.isEmpty()) members = withEffectiveReleases(members, rootInfo.get());
         return homes(members, resolve);
+    }
+
+    /**
+     * The GraalVM of each of {@code dirs}, modules already known to link a native image, gathered from
+     * the engine's summary of each: {@code jk native}'s native-eligible modules and {@code jk install}'s
+     * always-native ones. A module that pins no {@code graal} resolves with {@link #DEFAULT_SPEC}, and
+     * one the engine could not summarize targets no release. Empty when the resolver could not
+     * decide; it printed why.
+     */
+    static Optional<Graal> reached(
+            Collection<Path> dirs, Function<Path, @Nullable ProjectInfo> summary, Resolve resolve) {
+        List<Module> modules = new ArrayList<>();
+        for (Path dir : dirs) modules.add(fromSummary(dir, summary.apply(dir)));
+        return homes(modules, resolve);
+    }
+
+    /** Whether the engine's summary of a module says its build always links a native image. */
+    static boolean alwaysNative(@Nullable ProjectInfo info) {
+        return info != null && info.error() == null && "ALWAYS".equals(info.nativeMode());
+    }
+
+    /** {@code dir} as a native module, its spec and release read from the engine's summary {@code info}. */
+    static Module fromSummary(Path dir, @Nullable ProjectInfo info) {
+        if (info == null) return new Module(dir, DEFAULT_SPEC, 0);
+        String spec = info.graal().isBlank() ? DEFAULT_SPEC : info.graal();
+        return new Module(dir, spec, info.javaRelease());
     }
 
     /** {@code dir} as an always-native module, or null when its build links no native image. */
