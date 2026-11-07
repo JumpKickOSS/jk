@@ -134,7 +134,9 @@ class EditOpsGuardTest {
         EditOps.Result test = EditOps.apply(manifest, "add-dependency", with("test", playwright));
         assertThat(test.error()).isNull();
         assertThat(test.changed()).isTrue();
-        assertThat(Files.readString(manifest)).contains("com.microsoft.playwright");
+        // The row lands either way; whether it is the short name or full coordinates depends on
+        // whether the home holds the global library catalog, which another test may have fetched.
+        assertThat(Files.readString(manifest)).containsPattern("(?m)^playwright\\s*=");
     }
 
     private static List<String> with(String scope, List<String> rest) {
