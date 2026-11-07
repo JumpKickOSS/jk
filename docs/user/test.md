@@ -586,13 +586,22 @@ lock's pin is part of the stamp: a Node upgrade re-runs the suites. See [Node.js
 puts `junit-platform-launcher` on every test classpath, and `junit-jupiter` on a module that
 declares no `[test-dependencies]` at all. Once you own that table, the framework is yours.
 
-The launcher follows the Jupiter you declare. Jupiter 5.x.y runs on Platform 1.x.y and Jupiter 6
-shares the Platform's number, so `junit-jupiter = "5.9.0"` locks `junit-platform-launcher 1.9.0`,
-`"^5.9"` locks `^1.9`, and a module with no Jupiter (or a range) takes `latest`. A Platform 6
-launcher beside a Jupiter 5 engine would drop the engine without a word and the run would report
-success with no tests; a lock whose launcher and Jupiter engine sit on different lines — your own
-launcher pin on the wrong line — is refused by `jk lock` with the pin that aligns them. In a
-workspace each member is judged on the rows it reads, and the refusal names the member.
+The lock reads the solved test graph — what you declare and what it brings in — the way Maven
+Surefire reads the resolved test classpath. A `junit-jupiter-api` on that graph with no
+`junit-jupiter-engine` gets the engine at the API's version, so declaring only the API (as Helidon's
+archetypes and many Maven projects do) runs the tests. The launcher follows the resolved Jupiter:
+Jupiter 5.x.y runs on Platform 1.x.y and Jupiter 6 shares the Platform's number, so
+`junit-jupiter = "5.9.0"` locks `junit-platform-launcher 1.9.0`, and a test library that brings in
+Jupiter 5.12.2 (`helidon-webserver-testing-junit5` 27.0.1) locks `1.12.2` with no pin of yours. A
+graph with no Jupiter follows the `junit-platform-engine` a Vintage or TestNG engine carries, and
+`latest` otherwise. Gradle infers none of this — you declare the engine and the launcher there — and
+jk departs from Surefire in one place: Vintage joins only for a `junit:junit` you declare, never one
+a test library such as Testcontainers 1.x brings in. Your `jk.toml` is not touched; the lock records
+the result. A launcher you declare yourself always wins, so a Platform 6 launcher beside a Jupiter
+5 engine — which would drop the engine without a word and report success with no tests — can only
+be your own pin, and `jk lock` refuses it with the pin that aligns them. In a workspace each member
+is judged on the rows it reads: a member whose tests reach no Jupiter gets no Jupiter engine, and
+the refusal names the member.
 
 A run that discovers no test where test classes declare one fails the `run-tests` step with the
 count (`no tests discovered in 3 classes under …`): an engine missing from the classpath, a
@@ -605,7 +614,7 @@ reports as *No tests to run*: the module passes with zero tests and one warning
 it skipped. A green with zero tests where a test was declared is never the answer.
 
 A framework that has no Platform engine of its own gets one from the lock. Declare `junit:junit`
-and `jk lock` adds `org.junit.vintage:junit-vintage-engine` beside the launcher, on the declared
+and `jk lock` adds `org.junit.vintage:junit-vintage-engine` beside the launcher, on the resolved
 Jupiter's line (`latest` when there is none) so both sit on one Platform line:
 
 ```toml

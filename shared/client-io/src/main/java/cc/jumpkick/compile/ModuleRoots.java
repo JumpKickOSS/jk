@@ -16,7 +16,9 @@ import cc.jumpkick.resolver.TestEngines;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +36,7 @@ final class ModuleRoots {
 
     private static final Set<Scope> INHERITED_COMPILE = EnumSet.of(Scope.EXPORT, Scope.MAIN);
     private static final Set<Scope> INHERITED_RUNTIME = EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
+    private static final Set<Scope> TEST_SCOPES = EnumSet.of(Scope.TEST, Scope.TEST_DEV);
 
     private ModuleRoots() {}
 
@@ -53,10 +56,31 @@ final class ModuleRoots {
             addFeatureExtras(roots, module.dependencies().of(Scope.MAIN), moduleDir, rows);
             roots.addAll(LanguageRuntimes.of(module, moduleDir).modules());
         }
-        if (scopes.contains(Scope.TEST)) {
-            for (Dependency dep : TestEngines.injectedRoots(module)) roots.add(dep.packageKey());
-        }
+        if (scopes.contains(Scope.TEST)) roots.addAll(testPlatform(module, moduleDir, rows));
         return roots;
+    }
+
+    /**
+     * The roots {@code jk lock} added to the module's test graph, by the rule the lock applied to
+     * its solve ({@link TestEngines#injectedKeys}): the walk that asks whether the module reaches a
+     * Jupiter API runs over the lock's test rows from what the module's test declarations stand for.
+     */
+    private static List<String> testPlatform(JkBuild module, @Nullable Path moduleDir, List<Lockfile.Artifact> rows) {
+        Set<String> declared = new LinkedHashSet<>();
+        for (Scope scope : TEST_SCOPES) {
+            for (Dependency dep : module.dependencies().of(scope)) addDeclared(declared, dep, moduleDir, rows);
+        }
+        List<Lockfile.Artifact> testRows = new ArrayList<>();
+        for (Lockfile.Artifact row : rows) {
+            if (row.inAnyScope(TEST_SCOPES)) testRows.add(row);
+        }
+        return TestEngines.injectedKeys(module, declared, keys -> {
+            Set<String> reached = new HashSet<>();
+            for (Lockfile.Artifact row : ClasspathResolver.reachableArtifacts(testRows, keys)) {
+                reached.add(row.packageKey());
+            }
+            return reached;
+        });
     }
 
     /**

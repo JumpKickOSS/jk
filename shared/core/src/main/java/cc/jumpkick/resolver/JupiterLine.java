@@ -9,10 +9,11 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The JUnit Platform line a declared Jupiter runs on. Jupiter 5.x.y ships with Platform 1.x.y;
- * from Jupiter 6 the two share one number. A Platform 6 launcher beside a Jupiter 5 engine drops
- * the engine without a word and the run reports no tests, so the launcher {@code jk lock} injects
- * follows the declared Jupiter's line, and a lock whose lines still disagree is refused.
+ * The JUnit Platform line a Jupiter runs on. Jupiter 5.x.y ships with Platform 1.x.y; from
+ * Jupiter 6 the two share one number. A Platform 6 launcher beside a Jupiter 5 engine drops the
+ * engine without a word and the run reports no tests, so the launcher {@code jk lock} injects
+ * follows the Jupiter the test graph resolves, declared or transitive ({@link TestEngines}), and a
+ * lock whose lines still disagree — a launcher the module declares on another line — is refused.
  */
 public final class JupiterLine {
 
@@ -22,6 +23,7 @@ public final class JupiterLine {
     public static final String LAUNCHER = "org.junit.platform:junit-platform-launcher";
     public static final String ENGINE = JUPITER_GROUP + ":junit-jupiter-engine";
     public static final String API = JUPITER_GROUP + ":junit-jupiter-api";
+    public static final String PLATFORM_ENGINE = "org.junit.platform:junit-platform-engine";
 
     /** The Platform version Jupiter {@code version} ships with: {@code 5.9.0 -> 1.9.0}, {@code 6.1.3 -> 6.1.3}. */
     public static String platformVersion(String version) {
@@ -29,9 +31,10 @@ public final class JupiterLine {
     }
 
     /**
-     * The selector the injected launcher rides: the declared Jupiter's selector moved onto the
-     * Platform line ({@code 5.9.0 -> 1.9.0}, {@code ^5.9 -> ^1.9}), or {@code latest} when the
-     * module declares no Jupiter, or one whose selector names no line (a range, latest).
+     * The selector the launcher seeding the first test solve rides: the declared Jupiter's selector
+     * moved onto the Platform line ({@code 5.9.0 -> 1.9.0}, {@code ^5.9 -> ^1.9}), or {@code
+     * latest} when the module declares no Jupiter, or one whose selector names no line (a range,
+     * latest).
      */
     public static VersionSelector launcherSelector(JkBuild project) {
         Dependency jupiter = declaredJupiter(project);
@@ -39,8 +42,9 @@ public final class JupiterLine {
     }
 
     /**
-     * The selector an injected engine of another framework rides (Vintage): Jupiter's own line,
-     * which the engines share, or {@code latest} when the module declares no Jupiter.
+     * The selector an injected engine of another framework (Vintage) seeds the first test solve
+     * with: Jupiter's own line, which the engines share, or {@code latest} when the module declares
+     * no Jupiter.
      */
     public static VersionSelector engineSelector(JkBuild project) {
         Dependency jupiter = declaredJupiter(project);
