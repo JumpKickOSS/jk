@@ -18,7 +18,8 @@ import java.util.Map;
 /**
  * {@code new} — the scaffolder behind {@code jk new} and the dashboard, preview included. A
  * template's questions are answered by {@code params}; what is still required goes to the human
- * through elicitation when the client offers it.
+ * through elicitation when the client offers it: a form, or the dashboard's wizard pre-filled with
+ * the call's answers.
  */
 public final class NewTool implements McpTool {
 
@@ -65,8 +66,14 @@ public final class NewTool implements McpTool {
                 Map<String, Object> form = McpScaffold.form(in.str("template"), in.str("lang"), cwd(in));
                 return in.ok(McpEnvelope.of("new-form", form), "form of " + form.get("template"));
             }
-            NewProjectOps.Request req = McpScaffold.request(in, parentDir(in), cwd(in));
             boolean preview = "preview".equalsIgnoreCase(action) || in.flag("preview");
+            NewProjectOps.Request req;
+            switch (McpScaffold.plan(in, parentDir(in), cwd(in), !preview)) {
+                case McpScaffold.Plan.Created wizard -> {
+                    return created(in, wizard.project());
+                }
+                case McpScaffold.Plan.Scaffold scaffold -> req = scaffold.request();
+            }
             if (preview) {
                 return in.ok(
                         McpEnvelope.of(
@@ -77,10 +84,7 @@ public final class NewTool implements McpTool {
                                 "Nothing was written — call again without preview to create"),
                         "new preview");
             }
-            Map<String, Object> created = McpScaffold.create(req);
-            return in.ok(
-                    McpEnvelope.of("created", created, false, null, "bind {dir: " + created.get("path") + "} next"),
-                    "created " + created.get("path"));
+            return created(in, McpScaffold.create(req));
         } catch (IllegalArgumentException e) {
             throw new McpError(-32602, e.getMessage());
         } catch (IllegalStateException e) {
@@ -88,6 +92,12 @@ public final class NewTool implements McpTool {
         } catch (IOException e) {
             throw new McpError(-32000, Errors.text(e));
         }
+    }
+
+    private static Map<String, Object> created(McpCall in, Map<String, Object> created) {
+        return in.ok(
+                McpEnvelope.of("created", created, false, null, "bind {dir: " + created.get("path") + "} next"),
+                "created " + created.get("path"));
     }
 
     /**

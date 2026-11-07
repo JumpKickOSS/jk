@@ -478,6 +478,12 @@ completes the waiting call by request id. The wait yields the RPC admission perm
 `run` does. `jk mcp` (`McpBridge`) asks for both content types, writes each streamed request to
 stdout, and posts the host's response lines back.
 
+MCP `new` climbs from form mode to URL mode (`McpNewForm`): with only URL mode declared, it opens an
+id in `NewProjectWizard`, sends a `mode: "url"` request whose link is the dashboard's wizard
+(`#new?<key>=<value>&…&elicitation=<id>&t=<token>`), and after an accept waits for
+`POST /api/projects` to carry that `elicitation`. The create completes the wait, the call answers
+with the created project and sends `notifications/elicitation/complete`.
+
 ## Starting a job (`POST /api/build`)
 
 One admission point for every HTTP and MCP job: the body's `dir` (required) and `kind`

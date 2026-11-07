@@ -168,6 +168,10 @@ joined with commas.
 #new?template=cli&name=tool&dir=/home/you/src&layout=traditional
 ```
 
+MCP `new` hands out such a link when its client supports only URL elicitation
+([MCP](mcp.md#new)); the wizard then says an agent is waiting, and the agent's call returns the
+project you create.
+
 Live events: `GET /api/events` (SSE). Cancel: `POST /api/cancel`. Implementation of the
 SPA and HTTP contract: [contributor web client](../contributors/webclient.md),
 [contributor HTTP](../contributors/http.md).
