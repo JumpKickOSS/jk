@@ -34,3 +34,22 @@ export const SSE = Object.freeze({
   plan: 'plan',
   cache: 'cache',
 });
+
+/**
+ * The session log's dashboard-only frames (values owned by EventCatalog in shared/wire): a
+ * session started, went idle or changed its current episode; an episode started, was retitled or
+ * settled; one non-run MCP action.
+ */
+export const LOG = Object.freeze({
+  session: 'session',
+  episode: 'episode',
+  action: 'action',
+});
+
+/**
+ * The decision queue's frame: a decision opened or resolved. The console's Needs-you banner folds
+ * it; an engine that has no queue never sends it.
+ */
+export const QUEUE = Object.freeze({
+  decision: 'decision',
+});

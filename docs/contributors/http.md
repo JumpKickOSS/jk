@@ -320,7 +320,7 @@ plus `trigger` (`cli` / `mcp` / `web` / `bsp`, or a fixture trigger the
 list already hides) and, when the surface had one, `session` — the MCP connection's
 `<client> <id>` or the BSP client's `<displayName> <id>`; a CLI row has no `session` key. A run a
 session owns also carries `episode`, the id of the episode it was admitted into (below). The
-dashboard's **By session** grouping and the project page's followed run read only these
+dashboard's console and the project page's followed run read only these
 fields, so they show exactly what `jk-results.md` prints.
 A row's `record.json` carries a capped `diagnostics` list and names the rest in
 `diagnosticsSpill`, a file beside it; this list, `?id=` and the MCP history and diagnostics tools

@@ -51,7 +51,7 @@ never bypasses a checksum that is published.
 `jk mvn` also writes jk's run report for the Maven run: `target/jk-results.md` and the history
 row behind `jk results`, MCP `run` and `diagnostics` (header `trigger: cli · tool: mvn`).
 The run counts as a build: it takes the project's next build number (`#N` in the header), appears
-in `jk history` and on the dashboard's Activity feed labelled `tool: mvn`, so a supervisor sees
+in `jk history` and on the dashboard's console and run page labelled `tool: mvn`, so a supervisor sees
 what an agent ran through Maven beside what it ran through jk. The row's duration is Maven's wall
 clock, from the launch to Maven's exit, and its `Saved` column stays empty: jk ran none of the
 steps and cached none of them, so there is no cache saving to price. Provisioning Maven writes no

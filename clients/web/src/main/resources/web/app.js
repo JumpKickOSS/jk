@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// The dashboard root: one component over four views (Activity, Projects, Project, Status), mounted
-// by Vue 3 from the CDN. The in-DOM template lives in index.html and Vue's runtime compiler turns
+// The dashboard root: one component over its views (Console, Projects, Project, Admin, New project),
+// mounted by Vue 3 from the CDN. The in-DOM template lives in index.html and Vue's runtime compiler turns
 // it into render functions at load. This file owns the shell — auth, the SSE connection, the hash
 // route and the cross-view fetches; each view's own methods live beside it.
 
@@ -19,6 +19,7 @@ import {
 import { cardMethods } from './cards.js';
 import { BuildBars, ModuleDepGraph } from './chart.js';
 import { CodeView } from './code.js';
+import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
 import { foldEvent, seedFromHistory } from './fold.js';
 import {
   ago as agoOf,
@@ -38,7 +39,7 @@ import { RunDelta } from './delta.js';
 import { projectComputed, projectMethods } from './projects.js';
 import { FailReport } from './report.js';
 import { buildProjectHash, routeFromHash } from './route.js';
-import { sessionComputed, sessionMethods } from './sessions.js';
+import { sessionMethods } from './sessions.js';
 import { statusMethods } from './status.js';
 import { installTips } from './tip.js';
 import { EVENT, SSE } from './wire.js';
@@ -50,7 +51,8 @@ if (typeof document !== 'undefined') bootstrapToken();
 // Exported for the headless harness; the browser block below mounts it.
 export const appOptions = {
   data: () => ({
-    view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status' | 'new'
+    ...consoleData(routeFromHash()),
+    view: routeFromHash().view, // 'console' | 'projects' | 'project' | 'status' | 'new'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
     codePath: routeFromHash().path,
@@ -59,7 +61,7 @@ export const appOptions = {
     codeLineErr: !!routeFromHash().lineErr,
     codeMsg: routeFromHash().msg || '',
     pinnedRun: routeFromHash().run || 0, // #project/<id>/run/<n>: 0 follows the newest run
-    groupBySession: false, // Activity feed: one card per run, or runs grouped under the session that asked
+    projectTab: routeFromHash().tab, // the project page's tab: 'runs' | 'sessions'
     // The checkout the route names (#project/<id>?dir=…) — picked on the page, or carried by an
     // MCP / CLI link. Null while the id implies its one checkout; projectDir() folds in the
     // engine's answer.
@@ -75,13 +77,11 @@ export const appOptions = {
     engineLog: '', // the /api/log tail, shown on the Status view
     configPath: null, // absolute path of the machine config.toml
     configRows: [], // EffectiveUserConfig rows: {key, default, value, overridden}
-    cards: [], // folded activity, newest first
+    cards: [], // folded runs, newest first: the console's live builds and the run page
     projectHistory: [], // raw /api/history records (up to 200), grouped into the Projects tab
-    buildDir: '',
     buildError: null,
-    browser: null, // the /api/fs payload while the workspace picker is open, else null
-    browserMode: 'workspace', // 'workspace' | 'parent' (a path field of the new-project wizard)
-    browserKey: null, // the wizard field a 'parent' browse answers
+    browser: null, // the /api/fs payload while the directory picker is open, else null
+    browserKey: null, // the wizard path field the picker answers
     help: false, // the header Help/About modal
     // Blocking gate when a required token is missing/invalid — no partial dashboard (docs/webclient.md).
     authModal: false,
@@ -105,11 +105,14 @@ export const appOptions = {
     // Gate before hydrating: a missing/invalid token must not leave a half-working UI.
     const authed = await this.checkAuth();
     if (authed) {
+      // The console's reads go first: they are what the landing page paints from.
+      if (this.view === 'console') this.loadConsole();
       this.connectEvents();
       this.refresh();
       this.loadHistory(); // backfill past builds so a reload/restart doesn't start from an empty feed
       this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
       if (this.view === 'project' && this.selectedProjectId) this.loadProjectMeta(this.selectedProjectId);
+      if (this.view === 'project' && this.projectTab === 'sessions') this.loadProjectSessions();
       if (this.view === 'new') this.enterWizard();
     }
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
@@ -128,10 +131,21 @@ export const appOptions = {
   computed: {
     ...wizardComputed,
     ...projectComputed,
-    ...sessionComputed,
+    ...consoleComputed,
+  },
+  watch: {
+    // The run page names its episode and attempt: the episode's session page loads when it changes.
+    runEpisodeId(id) {
+      if (id) this.loadRunEpisode();
+    },
+    // A routed pick, or the rail's first session appearing, brings that session's page.
+    selectedSessionId(id) {
+      if (this.view === 'console' && this.sessionsLoaded && id) this.loadSessionDetail(id);
+    },
   },
   methods: {
     ...projectMethods,
+    ...consoleMethods,
     ...cardMethods,
     ...statusMethods,
     ...wizardMethods,
@@ -162,6 +176,11 @@ export const appOptions = {
       this.configPath = null;
       this.cards = [];
       this.projectHistory = [];
+      this.sessions = [];
+      this.sessionDetail = null;
+      this.decisions = [];
+      this.runEpisodePage = null;
+      this.projectSessions = null;
       this.browser = null;
       this.help = false;
       this.wizard = emptyWizard();
@@ -178,7 +197,7 @@ export const appOptions = {
     /**
      * Session gate on load. Fails closed when there is no token, when {@code GET /api/status} is
      * 401, or when a stored token is rejected by a gated probe. Loopback is not a free pass —
-     * without a bearer the SPA must not paint Activity (recover via {@code jk web} / status URL).
+     * without a bearer the SPA must not paint the console (recover via {@code jk web} / status URL).
      */
     async checkAuth() {
       if (!token()) {
@@ -227,7 +246,9 @@ export const appOptions = {
       this._eventSource = events(
         (event) => {
           if (this.authModal || this.connection === 'unauthorized') return;
-          // Live chrome vitals: change-gated on the server; apply without folding cards.
+          // The session log and the decision queue feed the console.
+          if (this.applyConsoleEvent(event)) return;
+          // Live vitals: change-gated on the server; apply without folding cards.
           if (event.type === EVENT.status) {
             this.applyStatusEvent(event.data);
             return;
@@ -250,6 +271,7 @@ export const appOptions = {
             this._reconcileTimer = setTimeout(() => {
               this.loadHistory();
               this.loadProjectHistory();
+              this.scheduleSessionReload(); // the finished run joins its session's timeline
               // Metrics are view-scoped; refresh them only where they paint.
               if (this.view === 'status' || this.view === 'projects' || this.view === 'project') {
                 this.refreshMetrics();
@@ -275,6 +297,7 @@ export const appOptions = {
             if (wasOffline) this.refresh(); // full chrome resync after an engine restart
             this.loadHistory();
             this.loadProjectHistory();
+            if (wasOffline && this.view === 'console') this.loadConsole();
           } else if (state === 'offline') {
             // EventSource's own retry cadence (~3s on refused connections) is shorter than the
             // poll delay — re-arming on every onerror would perpetually reset the pending timer
@@ -289,6 +312,10 @@ export const appOptions = {
       this.view = view;
       history.replaceState(null, '', '#' + view);
       if (view === 'status') this.refresh(); // full cache + metrics + log
+      if (view === 'console') {
+        this.consoleSession = null; // the bare #console route: the held first session
+        this.loadConsole();
+      }
       if (view === 'projects') {
         this.loadProjectHistory();
         this.refreshMetrics(); // view-scoped, not a global timer
@@ -325,11 +352,6 @@ export const appOptions = {
       if (this.selectedProjectId) this.openProject(this.selectedProjectId);
       else this.setView('projects');
     },
-    /** Activity card badge / coord → project detail (by projectId, with dir fallback). */
-    openProjectFromCard(card) {
-      if (!card) return;
-      this.openProject(card.projectId, card.dir);
-    },
     // Re-derive view + selected project from the hash, loading whatever that route needs.
     applyRoute() {
       if (this.authModal) return;
@@ -346,6 +368,8 @@ export const appOptions = {
       this.codeLineErr = !!r.lineErr;
       this.codeMsg = r.msg || '';
       this.pinnedRun = r.run || 0;
+      this.projectTab = r.tab;
+      this.consoleSession = r.session || null;
       // Collapse the expensive graph panel when leaving project view or switching projects.
       if (r.view !== 'project' || idChanged || r.files) this.projectGraphOpen = false;
       // Project identity cannot change between two clicks on the same #project/<id> route, and
@@ -367,6 +391,8 @@ export const appOptions = {
       }
       if (r.view === 'status') this.refresh();
       if (r.view === 'new') this.enterWizard();
+      if (r.view === 'console' && !this.sessionsLoaded) this.loadConsole();
+      if (r.view === 'project' && r.tab === 'sessions') this.loadProjectSessions(r.projectId);
     },
     browseCodebase() {
       this.openCode({ projectId: this.selectedProjectId });
@@ -461,10 +487,11 @@ export const appOptions = {
     onCodeSaved({ path } = {}) {
       if (path === 'jk.toml' || (path && path.endsWith('/jk.toml'))) this.refreshProjectMeta();
     },
-    // The "Build" button: kick off a fresh build of this project and jump to the live Activity feed.
+    // The project page's Build: start a build of this checkout; the page follows the newest run, so
+    // a pinned run lets go and the new one shows as it starts.
     buildProject(dir) {
       this.triggerBuild(dir);
-      this.setView('activity');
+      if (this.pinnedRun || this.projectTab !== 'runs') this.unpinRun();
     },
     // Cancel a running job by jid (card.id === requestId/jid from request-start).
     async cancelCard(card) {
@@ -515,13 +542,14 @@ export const appOptions = {
         }
       });
     },
-    // Delete a finished run from history (engine + disk), then drop its card locally.
-    async deleteCard(card) {
+    // Delete a finished run from history (engine + disk), drop it locally, and follow the newest.
+    async deleteRun(card) {
       if (!card.historyId) return;
       try {
         await del('/api/history?id=' + encodeURIComponent(card.historyId));
-        const i = this.cards.indexOf(card);
-        if (i >= 0) this.cards.splice(i, 1);
+        this.cards = this.cards.filter((c) => c.historyId !== card.historyId);
+        this.projectHistory = this.projectHistory.filter((r) => r.id !== card.historyId);
+        if (this.pinnedRun) this.unpinRun();
       } catch (e) {
         if (this.handleHttpError(e)) return;
         this.buildError = 'Could not delete this run';
@@ -530,11 +558,10 @@ export const appOptions = {
     async triggerBuild(dir) {
       if (this.authModal) return;
       this.buildError = null;
-      const target = (dir ?? this.buildDir).trim();
+      const target = String(dir || '').trim();
       if (!target) return;
       try {
         await post('/api/build', { dir: target });
-        if (dir == null) this.buildDir = '';
       } catch (e) {
         if (this.handleHttpError(e)) return;
         this.buildError = e.error || 'Build request failed';

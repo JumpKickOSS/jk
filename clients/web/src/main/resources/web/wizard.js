@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// The new-project wizard page (#new) and the directory browser it and the Activity view open. The
+// The new-project wizard page (#new) and the directory browser its path fields open. The
 // page renders the engine's form (GET /api/forms/new-project) through wizard-model.js: jk's step,
 // then the chosen template's, then review, with a debounced preview of the tree and jk.toml beside
 // it. Nothing here knows a template; every field, option and condition comes from the form. Spread
@@ -88,23 +88,14 @@ export const wizardComputed = {
 
 export const wizardMethods = {
   // ---- the directory browser ----
-  async openBrowser() {
-    if (this.authModal) return;
-    // Seed the picker with whatever was typed (~ / relative / absolute); server resolves vs $HOME.
-    this.browserMode = 'workspace';
-    const seed = this.buildDir.trim() || null;
-    await this.browseTo(seed);
-  },
   /** Browse for a path field of the wizard; Use writes the chosen directory into that answer. */
   async openPathBrowser(key) {
     if (this.authModal) return;
-    this.browserMode = 'parent';
     this.browserKey = key;
     const typed = this.wizardSettled.values[key];
     await this.browseTo(typeof typed === 'string' && typed.trim() ? typed.trim() : null);
   },
   async browseTo(dir) {
-    this.buildError = null;
     try {
       this.browser = await get('/api/fs' + (dir ? '?dir=' + encodeURIComponent(dir) : ''));
     } catch (e) {
@@ -112,24 +103,15 @@ export const wizardMethods = {
         this.browser = null;
         return;
       }
-      if (!this.browser) {
-        const msg = 'Could not list that directory';
-        this.buildError = msg;
-        if (this.browserMode === 'parent') this.wizard.error = msg;
-      }
+      if (!this.browser) this.wizard.error = 'Could not list that directory';
     }
   },
   chooseBrowsed() {
-    if (this.browserMode === 'parent') {
-      this.setWizardAnswer(this.browserKey || 'dir', this.browser.dir);
-    } else {
-      this.buildDir = this.browser.dir;
-    }
+    this.setWizardAnswer(this.browserKey || 'dir', this.browser.dir);
     this.closeBrowser();
   },
   closeBrowser() {
     this.browser = null;
-    this.browserMode = 'workspace';
     this.browserKey = null;
   },
   joinPath(dir, name) {
@@ -373,7 +355,7 @@ export const wizardMethods = {
       this.createdAgents = agentNotes(res);
       if (path) await this.triggerBuild(path);
       if (res.projectId) this.openProject(res.projectId, path);
-      else this.setView('activity');
+      else this.setView('console');
     } catch (e) {
       if (this.handleHttpError(e)) return;
       if (this.applyStaleForm(e)) return;

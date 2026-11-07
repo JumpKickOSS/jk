@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.EventCatalog;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -25,7 +26,8 @@ import org.junit.jupiter.api.Test;
  * copy can be trusted: generation-as-guard for a deliberately no-build-step SPA. Every {@code
  * EVENT} token must be a value {@link EngineProtocol} declares; every {@code SSE} token must be
  * the dashboard's own SSE-layer vocabulary — written as a literal by the engine's SSE publishers
- * and spelled by no protocol constant. A third arm keeps the vocabulary from leaking back out:
+ * and spelled by no protocol constant; every {@code LOG} token must be one of {@link EventCatalog}'s
+ * dashboard-only frames. A third arm keeps the vocabulary from leaking back out:
  * no other shipped module may type a hyphenated token as a string literal.
  *
  * <p>Each arm fails loudly on an empty parse — a token map the regex cannot see is a guard
@@ -81,6 +83,17 @@ class WireTokenParityTest {
                     .as("wire.js SSE.%s = '%s' is written by none of the engine's SSE publishers", name, value)
                     .contains("\"" + value + "\"");
         });
+    }
+
+    @Test
+    void every_LOG_token_is_a_dashboard_only_EventCatalog_frame() throws Exception {
+        Map<String, String> log = tokens("LOG");
+        assertThat(log)
+                .as("LOG tokens parsed out of wire.js — zero means the parse broke")
+                .hasSize(3);
+        log.forEach((name, value) -> assertThat(EventCatalog.DASHBOARD_ONLY)
+                .as("wire.js LOG.%s = '%s' must be a dashboard-only frame EventCatalog declares", name, value)
+                .contains(value));
     }
 
     /** The re-introduction ratchet: a hyphenated token typed anywhere else is a second copy. */

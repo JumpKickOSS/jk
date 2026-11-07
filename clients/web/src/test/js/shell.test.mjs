@@ -130,7 +130,7 @@ test('importing the entry point initialises the app', async () => {
   const { appOptions } = await import(pathToFileURL(path.join(DIR, 'app.js')));
   assert.ok(appOptions, 'app.js exports appOptions');
   const data = appOptions.data();
-  assert.equal(data.view, 'activity');
+  assert.equal(data.view, 'console');
   assert.ok(Object.keys(appOptions.methods).length > 100);
   assert.ok(Object.keys(appOptions.computed).length > 0);
 });

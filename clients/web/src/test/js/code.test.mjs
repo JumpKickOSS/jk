@@ -57,6 +57,8 @@ test('routeFromHash nests files under #project/<id>', () => {
     lineErr: false,
     msg: '',
     run: 0,
+    session: null,
+    tab: 'runs',
   });
   assert.deepEqual(routeFromHash('#project/ab12/files'), {
     view: 'project',
@@ -69,6 +71,8 @@ test('routeFromHash nests files under #project/<id>', () => {
     lineErr: false,
     msg: '',
     run: 0,
+    session: null,
+    tab: 'runs',
   });
   const r = routeFromHash('#project/ab12/files/src/Main.java?line=42');
   assert.equal(r.view, 'project');
@@ -89,8 +93,8 @@ test('routeFromHash nests files under #project/<id>', () => {
   assert.equal(noted.msg, 'error: cannot find symbol');
   assert.equal(noted.col, 5);
   assert.equal(noted.lineErr, true);
-  assert.equal(routeFromHash('#code').view, 'activity');
-  assert.equal(routeFromHash('#project/').view, 'activity');
+  assert.equal(routeFromHash('#code').view, 'console');
+  assert.equal(routeFromHash('#project/').view, 'console');
 });
 
 test('project routes carry the checkout as ?dir= — every worktree of a repository shares the id', () => {

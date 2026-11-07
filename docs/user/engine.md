@@ -67,7 +67,7 @@ finishes. A queued job is not an error and never dies for lack of memory: the CL
 queue and `queued behind 2 jobs for 5m, live: test /home/me/app since 22:36` once a minute while
 it waits, then proceeds as usual; `jk engine status` shows `Queued: N (waiting for engine
 memory)` and the rows above while any job waits (`-O jsonl`: `queuedBuildPlans`, `jobs`);
-the dashboard's Activity feed shows the card as *Queued for memory* until it turns live. Ctrl-C
+the dashboard shows the run as *queued for memory* in its session's timeline and on its run page until it turns live. Ctrl-C
 and `jk cancel` dequeue a waiting job the same way they cancel a running one.
 
 The cost of a job is estimated from what it parses whole — the workspace `jk-lock.toml` and the

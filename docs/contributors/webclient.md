@@ -20,17 +20,21 @@ stopped providing.
 | `app.js` | The root component: auth, the SSE connection, the hash route, cross-view fetches |
 | `api.js` | **The only file that talks HTTP**: token bootstrap, fetch wrappers, SSE client |
 | `format.js` | One duration, one relative time, one byte size — every surface formats the same |
-| `fold.js` | Folds `/api/events` into activity cards — pure `(cards, event)` functions |
+| `fold.js` | Folds `/api/events` build frames into run cards — pure `(cards, event)` functions |
 | `outcome.js` | Derived state of a folded card: outcome badge, phase chain, module order |
 | `label.js` | Step detail and the colour segments of a Java type / member / JDK-download label |
 | `failure.js` | Diagnostics → the test and compile failure report models (CLI parity) |
-| `cards.js` | The Activity feed's per-card methods: progress, ETA, badge, diagnostics |
+| `cards.js` | A run card's methods for the console's live builds and the run page: progress, ETA, badge, diagnostics |
+| `console.js` | The console's view models: the sessions rail, the session log's frames folded, an episode's timeline, its header and arc, earlier episodes, the right rail, the run page's attempt, the project's Sessions tab |
+| `consoleview.js` | The console's root-component mixins: `/api/sessions`, one session's page, `/api/decisions`, the log and decision frames, the first-paint mark |
+| `needs.js` | The Needs-you banner: open decisions, the `decision` frame folded, a 404 read as "no queue" |
+| `strip.js` | A run as one line: what it is doing, one cell per module, and which modules the run page opens (failed, slow) |
 | `status.js` | The Status view: the `/api/{status,cache,metrics,log,config}` reads and its meters |
 | `projects.js` | The Projects tab and Project page: history records grouped per project, and the run the page follows or pins |
 | `coverage.js` | `<run-coverage>`: the Coverage block on the focused run — the record's `coverage[]` rows, deltas against the previous coverage run, the tokenized `/report/<token>/<id>/` link |
 | `delta.js` | `<run-delta>`: the iteration strip — a record's `delta` as chips with the rows behind them |
-| `sessions.js` | Who asked: origin labels, the Activity feed grouped by session, the followed-or-pinned run, the pin route |
-| `wizard.js` | New Project and the workspace directory browser |
+| `sessions.js` | Who asked: origin labels, the followed-or-pinned run, the pin route |
+| `wizard.js` | New Project and the directory browser its path fields open |
 | `icons.js` | `<jk-icon>`: the inline-SVG glyph set |
 | `phase.js` | `<phase-chain>`: the coarse plan-phase strip on a card |
 | `report.js` | `<fail-report>`: one failure body for the compact card and the module branch |
@@ -39,7 +43,7 @@ stopped providing.
 | `monaco.js` | Monaco and the preview CDNs: version pins, SRI hashes, AMD parking, editor options |
 | `preview.js` | The Preview half: markdown, mermaid, graphviz, asciidoc, d2, images |
 | `paths.js` | Workspace paths: extension → language, previewable kinds, markdown href resolution |
-| `route.js` | The hash router: `#project/<id>/files/<rel>?line=…` parsed and rendered |
+| `route.js` | The hash router: `#console/<session>`, `#project/<id>/files/<rel>?line=…` parsed and rendered |
 | `tree.js` | The file-tree model: flat paths → a directory-first render tree |
 | `tip.js` | The `data-tip` tooltip layer |
 | `style.css` | Chrome; JetBrains Mono via Google Fonts |
@@ -61,8 +65,8 @@ opens it in a browser (`$BROWSER` when set — word-split, so values with argume
 
 When a token is **missing or invalid** (bare `http://localhost:8910` with no stored token, a
 rotated/stale token, or any `401` from the engine), the SPA opens a **blocking “Access Denied”
-dialog** and freezes the rest of the UI — it does **not** paint Activity, vitals, or a quiet
-“No activity yet” empty state. There is no paste field and no dismiss: recover by running
+dialog** and freezes the rest of the UI — it does **not** paint the console, vitals, or a quiet
+empty state. There is no paste field and no dismiss: recover by running
 `jk web` (opens an authenticated tab and prints a clickable `#t=…` URL if the browser cannot
 open). The dialog shows a console-style `jk web` snippet with a copy button.
 
@@ -70,7 +74,7 @@ open). The dialog shows a console-style `jk web` snippet with a copy button.
 
 Native HTML `title=` is **OS chrome** (harsh white-on-black, no radius) and cannot be styled.
 Hover help uses `data-tip="…"` (or `:data-tip`) plus `tip.js`, which paints a fixed `.jk-tip-float`
-panel with the same soft Jk Dark shell as retention / sysbox / the millis I/O tip. Do not reintroduce
+panel with the same soft Jk Dark shell as retention / the millis I/O tip. Do not reintroduce
 `title=` for user-visible hover text.
 
 ## Dependencies: CDN, pinned, integrity-locked
@@ -98,6 +102,47 @@ line and widget with, and `data:` in `font-src` for the codicon font inlined int
 setting its global. Vue/ECharts are `defer` tags in `index.html`, and Monaco only loads when a
 user opens `/files`, so that ordering holds.
 
+## The console
+
+`#console` is the landing page (no hash, and any hash no route claims, land there too). It renders
+three reads and three SSE frames through `console.js`'s pure models; `consoleview.js` owns the reads
+and spreads the computeds into the root component.
+
+| Read / frame | What it feeds |
+| --- | --- |
+| `GET /api/sessions?limit=50` | the sessions rail (`sessionRail`): live, idle, and ended within the hour |
+| `GET /api/sessions/<id>` | the selected session's page: its current episode (`currentEpisode`), timeline (`episodeTimeline`), header (`episodeHeader`), earlier episodes, and the right rail (`sessionChanges`, `sessionService`) |
+| `GET /api/decisions` | the Needs-you banner (`needs.js`); a 404 means the engine has no decision queue and the banner stays absent |
+| SSE `session` / `episode` | `foldSessionFrame`, `foldEpisodeIntoRail` and `foldIntoDetail`: the rail rows and the selected page, replaced in place |
+| SSE `action` | appended to the selected page once by `seq` |
+| SSE `decision` | `foldDecision`: a decision opened or resolved |
+
+Runs are not `action` frames. A run in flight is a folded card (`fold.js`) matched to its session by
+trigger and label (`cardInSession`: `mcp` + `claude-code 3f9a`; the shell is `cli` with no label)
+and placed at the end of the session's current episode; a finished run reaches the page on its next
+read, which `request-finish` schedules. A run line joins its action to its journal record (by
+episode and build number) for the outcome chip, the failing headline and the delta chip, and an
+`edited N files` line goes before every run whose `delta.files` is not empty. The live build is
+`strip.js`: `doingLine`, `moduleCells` (padded with waiting cells to the record's `moduleCount`)
+and the card's own progress and ETA (`cards.js`).
+
+With no session in the route (`#console/<id>`), the console holds the rail's first card at load
+(`consoleAutoSession`) so a reordering rail does not move the selection; a watcher on
+`selectedSessionId` loads the page of whichever session becomes selected.
+
+The wire tokens live in `wire.js`: `LOG` (`session`, `episode`, `action`, held to
+`EventCatalog.DASHBOARD_ONLY` by `WireTokenParityTest`) and `QUEUE` (`decision`); `api.js` listens
+for every one. The decision page itself (`#decision/<id>`) and answering are the decision queue's.
+
+**First meaningful paint.** Once the rail and the selected episode (or the empty state) are
+rendered, `markConsolePainted` waits for Vue's patch and the next frame, then sets
+`performance.mark('jk-console-painted')` and `<html data-console-painted-ms>` (milliseconds since
+navigation start), once per load. The scoreboard's `console` dimension
+(`bench/scoreboard.d/console.py`, `bench/console/paint.mjs`) loads the page in headless Chrome over
+the DevTools protocol against a private engine serving this tree's `web/` and banks the median as
+`console.paint.p50`; the PRD target is 500 ms. The mounted hook starts the console's reads before
+the history and status reads so the paint does not wait on them.
+
 ## Project routes
 
 Project detail is `#project/<projectId>` — a durable opaque id (from `project-id` in `jk-lock.toml`,
@@ -116,15 +161,24 @@ Source files hang off the same route:
 ```text
 #project/<projectId>                 (follows the project's newest run)
 #project/<projectId>?dir=<checkout>  (one worktree of an id several build under)
-#project/<projectId>/run/<n>         (pinned to build #n — a history row click; Follow newest clears it)
+#project/<projectId>/run/<n>         (pinned to build #n — a history row or console click; Follow newest clears it)
+#project/<projectId>/sessions        (the Sessions tab)
 #project/<projectId>/files
 #project/<projectId>/files/src/Main.java?line=42&dir=<checkout>
 ```
 
-The **focused run** panel above the build history renders `projectRun` (`projects.js`): the
+The project page has two tabs, **Runs** and **Sessions**. Sessions renders `projectSessionRows`
+(`console.js`) over `GET /api/sessions?limit=200` filtered to the sessions whose project (or
+current episode's) is this one, and the pages of the newest twenty, for their episodes on it.
+
+The **run page** above the build history renders `projectRun` (`projects.js`): the
 pinned record when the route names a build number the project has, else the newest — a live
-card first, then the newest journal record — folded through `historyCard` so the same outcome
-rule and module rows apply as on the Activity feed. `focusedRun` in `sessions.js` is the pure
+card first, then the newest journal record — folded through `historyCard` so one outcome rule
+and one module shape serve every surface. Its header names the episode and the attempt
+(`runAttempt` over the episode's session page, loaded when `runEpisodeId` changes; a run in flight
+whose record does not name its episode yet takes its session's current one). Its modules split by
+`moduleFocus` (`strip.js`): the failed and the slow (≥ 2× the median module wall and ≥ 5 s, at
+most three) open with their phase chains and failure reports, and the rest fold under one line. `focusedRun` in `sessions.js` is the pure
 rule and is tested headlessly; the panel markup itself is checked only by `shell.test.mjs`'s
 name contract, not rendered.
 
@@ -138,7 +192,9 @@ neither a header nor a query string into the next page. The engine redirects the
 report's entry page and serves only files under the report directories the record names, each
 under `Content-Security-Policy: sandbox` ([HTTP](http.md#get-reporttokenidpath)).
 
-The cyan **code** control (**View/edit this codebase**) sits next to **Build** and opens
+**Build** in the project header is the dashboard's one build action (`POST /api/build` with the
+checkout the page shows); the page lets go of a pinned run and follows the new one. The cyan
+**code** control (**View/edit this codebase**) sits next to **Build** and opens
 `#project/<id>/files` (tree). It is hidden *on* the files pane — you are already there — which is
 also where the header's back control drops its label: a bare chevron that goes up one level to
 `#project/<id>`, not out to the project list.
@@ -261,11 +317,12 @@ that needs a field reads it from `d` under the record's name; there are no per-s
 
 | Path | Handler |
 | --- | --- |
-| Build activity | `fold.js` → activity cards (hard bounds: `MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`); `label` events drive the live detail after the running phase node (CLI tree-row parity) |
-| `status` | Header sysbox (capacity + CPU/RAM % + load avg / used GiB) + footer Builds Running / Engine Heap; latches `engineEpoch` for hard-refresh on engine replace |
-| `cache` | Footer **Cache** + **Store** (thin dual-surface frames); Status panels load full breakdown via REST on view entry |
+| Build activity | `fold.js` → run cards (hard bounds: `MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`), rendered as the console's live builds and the run page; `label` events drive the live detail (CLI tree-row parity) |
+| `session` / `episode` / `action` / `decision` | The console (above) |
+| `status` | The console's Engine card and Admin (CPU/RAM %, load avg, used GiB, heap) + the status bar's Builds Running; latches `engineEpoch` for hard-refresh on engine replace |
+| `cache` | The Engine card's cache size (thin dual-surface frames); Admin loads the full breakdown via REST on view entry |
 
-**Builds Running** stays in lockstep with Live activity (running card count while live). **API
+**Builds Running** stays in lockstep with the live cards (running card count while live). **API
 calls** after the first status hydrate send `X-Jk-Engine-Epoch`; a **409** or a changed epoch on
 status triggers a full page reload so static assets match the new engine. Classpath shell
 files revalidate on every load (`Cache-Control: no-cache` plus a version+mtime `ETag`), so
@@ -274,7 +331,7 @@ that reload is not served a still-fresh copy of the previous jar.
 While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.
 REST hydrate runs on load/reconnect. **Offline** status fallback uses stepped backoff (5 s → 30 s
 cap) and pauses when the tab is hidden (`document.hidden`); EventSource stays open. Metrics are
-**view-scoped** (Status / Projects / project detail), not a global chrome poll. All REST GETs go
+**view-scoped** (Admin / Projects / project detail), not a global chrome poll. All REST GETs go
 through a single-flight gate (`fetchOnce`) so reconnect cannot stack duplicate in-flight calls.
 Relative “ago” labels use a local 1 s `now` tick only (no network).
 
@@ -294,7 +351,9 @@ server-side so unchanged free RAM does not repaint noise.
 ## Testing
 
 `fold.js` is browser-free on purpose — pure functions of `(cards, event)` — and is tested
-headlessly with `node --test`. Fold-layer suites share `fold-harness.mjs` for the staged SPA
+headlessly with `node --test`; so are the console's models (`console.js`, `needs.js`, `strip.js`:
+`console.test.mjs`, `needs.test.mjs`, `strip.test.mjs`). The templates themselves are checked only
+by `shell.test.mjs`'s name contract, not rendered. Fold-layer suites share `fold-harness.mjs` for the staged SPA
 bindings so the export list has one owner. One JUnit wrapper, `WebClientJsTest`, runs every
 `src/test/js/*.test.mjs`: it stages the SPA's modules in a `type:module` temp dir and hands each
 one to Node as `JK_<NAME>_MJS` (plus `JK_APP_DIR`). The Node.js is the one `clients/web/jk.toml`
