@@ -43,7 +43,11 @@ final class PlannerTestForecast {
         BuildLayout layout = prepared.layout();
         TestSources testSources = s.testSources();
         TaskForecast.Task step;
-        if (s.compileDirty) {
+        if (s.testRound().runs()) {
+            // The round runs inside this step, and its output is unknown until it does.
+            step = new TaskForecast.Task(TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, "KSP test round runs", null);
+            s.testDirty = true;
+        } else if (s.compileDirty || s.kspRuns()) {
             // Dependency-only dirtiness: the tests recompile only if main really does.
             step = new TaskForecast.Task(
                     TaskNames.COMPILE_TEST,
@@ -64,7 +68,7 @@ final class PlannerTestForecast {
             CompileRequest req = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
                     testSrc,
                     baseCp,
-                    prepared.testProcessorCp(),
+                    prepared.javacTestProcessorCp(),
                     testOut,
                     s.project.javac().testRelease(release),
                     prepared.javacArgs(),
@@ -167,7 +171,7 @@ final class PlannerTestForecast {
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
         // A sibling on the test classpath is rebuilding: the suite re-runs even when the main
         // compile stays cached.
-        if (s.compileDirty || s.testDirty || s.testDepDirty) {
+        if (s.compileDirty || s.testDirty || s.testDepDirty || s.kspRuns()) {
             // A suite re-run for a sibling's jar bytes alone reads as that, not as this module's
             // change: the runtime classpath is keyed on full bytes where the compile is keyed on
             // ABI, and why-rebuilt must be able to tell the two apart.

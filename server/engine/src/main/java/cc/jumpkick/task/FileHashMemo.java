@@ -86,9 +86,12 @@ public final class FileHashMemo {
     /**
      * SHA-256 hex of {@code file}'s contents, from the memo when the file's stat identity still
      * matches what was recorded. Streams the file on a miss. IOException propagates (caller decides).
+     * A file under a {@link ProjectedFiles} root is the bytes the build lays there.
      */
     public static String contentHash(Path file) throws IOException {
         Path abs = file.toAbsolutePath().normalize();
+        String projected = ProjectedFiles.contentHash(abs);
+        if (projected != null) return projected;
         return contentHash(abs, StatIdentity.of(abs));
     }
 

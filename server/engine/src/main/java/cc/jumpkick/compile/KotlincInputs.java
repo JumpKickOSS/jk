@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.task.ProjectedFiles;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -20,11 +21,12 @@ public final class KotlincInputs {
 
     private KotlincInputs() {}
 
-    /** See the class note. Empty for a Kotlin-only module. */
+    /** See the class note. Empty for a Kotlin-only module. A projected root lists what the build lays there. */
     public static List<Path> javaSources(KotlincRequest request) throws IOException {
         LinkedHashSet<Path> out = new LinkedHashSet<>();
         for (Path root : request.javaSourceRoots()) {
-            List<Path> java = new ArrayList<>(CompileSupport.collectJavaSources(root));
+            List<Path> projected = ProjectedFiles.files(root, ".java");
+            List<Path> java = new ArrayList<>(projected != null ? projected : CompileSupport.collectJavaSources(root));
             java.sort(Comparator.comparing(Path::toString));
             for (Path p : java) out.add(p.toAbsolutePath().normalize());
         }

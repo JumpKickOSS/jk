@@ -465,7 +465,9 @@ public final class PlannerResources {
         ForecastScope.Prepared p = s.prepared();
         Path classes = p.layout().classesDir();
         if (s.compileDirty || !Files.isDirectory(classes)) return null;
-        s.mainResourceDrift = TaskForecaster.mainResourcesOutOfSync(s.dir, s.project, p.compact(), classes);
+        // A KSP round that runs mirrors output nothing knows yet into the tree.
+        s.mainResourceDrift =
+                s.kspRuns() || TaskForecaster.mainResourcesOutOfSync(s.dir, s.project, p.compact(), classes);
         BuildBlock.BuildInfo buildInfo = s.project.build().buildInfo();
         if (buildInfo != null) {
             // A rewritten git.properties changes the classes tree package-jar keys on, so the

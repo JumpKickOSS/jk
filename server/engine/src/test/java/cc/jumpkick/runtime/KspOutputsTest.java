@@ -1,42 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static cc.jumpkick.runtime.KspProjects.build;
+import static cc.jumpkick.runtime.KspProjects.buildSkippingTests;
+import static cc.jumpkick.runtime.KspProjects.forecast;
+import static cc.jumpkick.runtime.KspProjects.jarEntries;
+import static cc.jumpkick.runtime.KspProjects.lock;
+import static cc.jumpkick.runtime.KspProjects.step;
+import static cc.jumpkick.runtime.KspProjects.write;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cache.Cas;
-import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
-import cc.jumpkick.runtime.base.KspResolver;
-import cc.jumpkick.runtime.workspace.ForecastWalk;
-import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
-import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
-import java.util.jar.JarOutputStream;
-import java.util.stream.Collectors;
-import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -324,7 +310,7 @@ class KspOutputsTest {
 
         // jk clean: target/ goes, the action cache stays.
         PathUtil.deleteRecursively(layout.buildDir());
-        Map<String, TaskForecast.Task> forecast = forecast(project, cache);
+        Map<String, TaskForecast.Task> forecast = forecast(project, cache, true);
 
         BuildPlanResult rebuilt = buildSkippingTests(project, cache);
         assertThat(rebuilt.errors()).isEmpty();
@@ -387,133 +373,8 @@ class KspOutputsTest {
         return MANIFEST.formatted(table, repo.toUri()) + extra;
     }
 
-    /** Write {@code manifest} and lock it; the module's layout. */
-    private static BuildLayout lock(Path project, String manifest, Path cache) throws Exception {
-        Files.writeString(project.resolve("jk.toml"), manifest);
-        JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
-                .run();
-        assertThat(lock.errors()).isEmpty();
-        return BuildLayout.of(project, build);
-    }
-
-    /** What the forecast prices each step of the module at, skipping tests as the build does. */
-    private static Map<String, TaskForecast.Task> forecast(Path project, Path cache) throws IOException {
-        BuildGraph.Result graph = BuildGraph.resolve(project, JkBuildParser.parse(project.resolve("jk.toml")));
-        assertThat(graph.hasErrors()).isFalse();
-        // As `jk explain` reads them: artifacts from the store, records from the cache.
-        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-        List<TaskForecast.Module> modules = ForecastWalk.of(graph, JkStores.storeCas(), actionCache, cache, true);
-        assertThat(modules).hasSize(1);
-        Map<String, TaskForecast.Task> steps = new LinkedHashMap<>();
-        for (TaskForecast.Task t : modules.getFirst().steps()) steps.put(t.name(), t);
-        return steps;
-    }
-
-    /** {@link #PROVIDER} compiled against the KSP2 closure, jarred with its service entry, published to {@code repo}. */
+    /** The marker processor, published to {@code repo} as {@code com.example:marker-proc:1.0}. */
     private static void publishProcessor(Path repo, Path work) throws Exception {
-        JkBuild any = JkBuildParser.parse(manifest(repo, MAIN_TABLE, ""));
-        Cas cas = JkStores.storeCas();
-        List<Path> kspClasspath = KspResolver.resolveClasspath(
-                RepoGroupBuilder.buildFor(any, null, cas), cas, KspResolver.DEFAULT_VERSION);
-        Path src = work.resolve("src/proc/MarkerProvider.java");
-        write(src, PROVIDER);
-        Path classes = Files.createDirectories(work.resolve("classes"));
-        List<String> args = new ArrayList<>(List.of(
-                "-d",
-                classes.toString(),
-                "-cp",
-                kspClasspath.stream().map(Path::toString).collect(Collectors.joining(File.pathSeparator)),
-                src.toString()));
-        int exit =
-                requireNonNull(ToolProvider.getSystemJavaCompiler()).run(null, null, null, args.toArray(String[]::new));
-        assertThat(exit).as("the processor compiles against the KSP API").isZero();
-
-        Path vDir = Files.createDirectories(repo.resolve("com/example/marker-proc/1.0"));
-        try (OutputStream file = Files.newOutputStream(vDir.resolve("marker-proc-1.0.jar"));
-                JarOutputStream out = new JarOutputStream(file)) {
-            try (var walk = Files.walk(classes)) {
-                for (Path c : walk.filter(Files::isRegularFile).sorted().toList()) {
-                    out.putNextEntry(
-                            new JarEntry(classes.relativize(c).toString().replace('\\', '/')));
-                    out.write(Files.readAllBytes(c));
-                    out.closeEntry();
-                }
-            }
-            out.putNextEntry(
-                    new JarEntry("META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider"));
-            out.write("proc.MarkerProvider\n".getBytes(StandardCharsets.UTF_8));
-            out.closeEntry();
-        }
-        Files.writeString(repo.resolve("com/example/marker-proc/maven-metadata.xml"), """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <metadata>
-                  <groupId>com.example</groupId>
-                  <artifactId>marker-proc</artifactId>
-                  <versioning>
-                    <latest>1.0</latest>
-                    <release>1.0</release>
-                    <versions><version>1.0</version></versions>
-                  </versioning>
-                </metadata>
-                """);
-        Files.writeString(vDir.resolve("marker-proc-1.0.pom"), """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <project xmlns="http://maven.apache.org/POM/4.0.0">
-                  <modelVersion>4.0.0</modelVersion>
-                  <groupId>com.example</groupId>
-                  <artifactId>marker-proc</artifactId>
-                  <version>1.0</version>
-                </project>
-                """);
-    }
-
-    private static Set<String> jarEntries(Path jar) throws IOException {
-        try (JarFile file = new JarFile(jar.toFile())) {
-            return file.stream().map(JarEntry::getName).collect(Collectors.toSet());
-        }
-    }
-
-    private static BuildPlanResult build(Path project, Path cache) throws Exception {
-        return BuildPlanner.fullPlan(inputs(project, cache, false)).run();
-    }
-
-    private static BuildPlanResult buildSkippingTests(Path project, Path cache) throws Exception {
-        return BuildPlanner.fullPlan(inputs(project, cache, true)).run();
-    }
-
-    private static BuildPlanner.Inputs inputs(Path project, Path cache, boolean skipTests) {
-        return new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                skipTests,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
-    }
-
-    private static BuildPlanResult.StepReport step(BuildPlanResult result, String name) {
-        return result.steps().stream()
-                .filter(s -> s.name().equals(name))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("no " + name + " step in "
-                        + result.steps().stream()
-                                .map(BuildPlanResult.StepReport::name)
-                                .toList()));
-    }
-
-    private static void write(Path file, String text) throws IOException {
-        Files.createDirectories(requireNonNull(file.getParent()));
-        Files.writeString(file, text);
+        KspProjects.publishProcessor(repo, work, "marker-proc", "1.0", "proc.MarkerProvider", PROVIDER);
     }
 }

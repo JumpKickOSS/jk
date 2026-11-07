@@ -296,7 +296,7 @@ public final class PlannerFixtures {
                 s.project,
                 s.dir,
                 p.layout(),
-                p.processorCp(),
+                p.javacProcessorCp(),
                 p.release(),
                 p.javacArgs(),
                 p.javaHome(),

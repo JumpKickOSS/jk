@@ -44,6 +44,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.PortablePath;
+import cc.jumpkick.task.ProjectedFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -230,7 +231,7 @@ public final class PlannerKsp {
     }
 
     /** The subdirectories a round writes under its output base, cleared before each round. */
-    private static final List<String> OUTPUT_DIRS = List.of("kotlin", "java", "classes", "resources");
+    static final List<String> OUTPUT_DIRS = List.of("kotlin", "java", "classes", "resources");
 
     /** The main round's output base: {@code target/ksp}. */
     static Path kspOutBase(BuildLayout layout) {
@@ -252,11 +253,19 @@ public final class PlannerKsp {
         return generatedSources(kspOutBase(layout), suffix);
     }
 
-    /** Files with {@code suffix} under a round's generated-source dirs, sorted — empty when it never ran. */
+    /**
+     * Files with {@code suffix} under a round's generated-source dirs, sorted — empty when it never
+     * ran. A {@link ProjectedFiles projected} dir lists the files the build restores there.
+     */
     static List<Path> generatedSources(Path outBase, String suffix) throws IOException {
         List<Path> out = new ArrayList<>();
         for (String lang : List.of("kotlin", "java")) {
             Path dir = outBase.resolve(lang);
+            List<Path> projected = ProjectedFiles.files(dir, suffix);
+            if (projected != null) {
+                out.addAll(projected);
+                continue;
+            }
             if (!Files.isDirectory(dir)) continue;
             List<Path> found = new ArrayList<>();
             PathUtil.forEachRegularFile(dir, (file, attrs) -> {
@@ -273,13 +282,14 @@ public final class PlannerKsp {
      * processor that emits bytecode (Micronaut's bean definitions) or a resource (a service
      * registration) writes them here rather than as sources, so nothing compiles them: the resource
      * copy mirrors these roots into the classes tree like any resource root, which puts them in the
-     * tree's key, on every classpath that reads the tree, and in the jar.
+     * tree's key, on every classpath that reads the tree, and in the jar. A {@link ProjectedFiles
+     * projected} root exists when the build restores a file into it.
      */
     static List<Path> outputRoots(Path outBase) {
         List<Path> out = new ArrayList<>();
         for (String sub : List.of("classes", "resources")) {
             Path dir = outBase.resolve(sub);
-            if (Files.isDirectory(dir)) out.add(dir);
+            if (ProjectedFiles.isDirectory(dir)) out.add(dir);
         }
         return out;
     }
@@ -308,7 +318,7 @@ public final class PlannerKsp {
                 TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         requires.addAll(sourceGenStepSteps(pluginDecls));
         return Task.builder(TaskNames.KSP)
-                .forecast(StepForecast.RIDES)
+                .forecast(StepForecast.priced(s -> KspForecast.predict(ForecastScope.of(s))))
                 .stage(BuildStage.COMPILE)
                 .label("KSP")
                 .kind(TaskKind.CPU)
@@ -563,45 +573,19 @@ public final class PlannerKsp {
     }
 
     /**
-     * The files a round's record places in the classes tree, tree-relative path to content sha:
-     * its bytecode, then its resources, the order {@code copy-resources} mirrors the two roots in.
+     * The files a round's record ({@code outputs}, its output-relative paths to content sha) places
+     * in the classes tree, tree-relative path to sha: its bytecode, then its resources, the order
+     * {@code copy-resources} mirrors the two roots in.
      */
-    static Map<String, String> classesTreeOutputs(ActionCache.ActionRecord record) {
+    static Map<String, String> classesTreeOutputs(Map<String, String> outputs) {
         Map<String, String> out = new LinkedHashMap<>();
         for (String sub : List.of("classes/", "resources/")) {
-            record.outputs().entrySet().stream()
+            outputs.entrySet().stream()
                     .filter(e -> e.getKey().startsWith(sub))
                     .sorted(Map.Entry.comparingByKey())
                     .forEach(e -> out.put(e.getKey().substring(sub.length()), e.getValue()));
         }
         return out;
-    }
-
-    /**
-     * What the main round puts in the classes tree, as the forecast reads it from the round's
-     * record rather than from {@code target/ksp}, which {@code jk clean} removes: empty when the
-     * module runs no round (no Kotlin, no processors, or none of them KSP's), null when the round
-     * the build will run has no record, so the tree cannot be described.
-     */
-    static @Nullable Map<String, String> forecastClassesTreeOutputs(
-            JkBuild project,
-            Path dir,
-            Lockfile lock,
-            Path javaHome,
-            int release,
-            List<Path> roundInputs,
-            List<Path> classpath,
-            List<Path> processorCp,
-            BuildLayout layout,
-            ActionCache actionCache,
-            ClasspathFingerprint.EntryIdentity identity)
-            throws IOException {
-        if (!runsMainRound(project, dir)
-                || KspProcessors.split(processorCp).ksp().isEmpty()) return Map.of();
-        String digest = kspStampDigest(
-                project, lock, dir, kotlinVersion(lock, project), KspResolver.versionFor(project), javaHome, release);
-        String key = roundKey(kspOutBase(layout), digest, roundInputs, classpath, processorCp, identity);
-        return actionCache.lookup(key).map(PlannerKsp::classesTreeOutputs).orElse(null);
     }
 
     /**
@@ -930,7 +914,7 @@ public final class PlannerKsp {
         List<Path> roots = new ArrayList<>();
         roots.add(compact ? dir.resolve("src") : dir.resolve("src/main/java"));
         Path kspJava = kspOutBase(layout).resolve("java");
-        if (ksp && Files.isDirectory(kspJava)) roots.add(kspJava);
+        if (ksp && ProjectedFiles.isDirectory(kspJava)) roots.add(kspJava);
         // Plugin-contributed generated dirs can carry Java that Kotlin sources reference
         // (protoc: the --kotlin_out DSL wraps its own --java_out message classes).
         if (decls != null) {

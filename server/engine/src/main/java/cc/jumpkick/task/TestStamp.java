@@ -176,7 +176,7 @@ public final class TestStamp {
             List<Path> sortedSources = new ArrayList<>(testSources);
             sortedSources.sort(Comparator.comparing(Path::toString));
             for (Path src : sortedSources) {
-                if (!Files.isRegularFile(src)) continue; // generated later, or deleted: absent either way
+                if (!ProjectedFiles.isRegularFile(src)) continue; // generated later, or deleted: absent either way
                 feed(md, "src:" + PortablePath.of(src) + ":" + FileHashMemo.contentHash(src));
             }
 
@@ -194,7 +194,7 @@ public final class TestStamp {
                 List<Path> sortedRes = new ArrayList<>(resourceRoots);
                 sortedRes.sort(Comparator.comparing(Path::toString));
                 for (Path res : sortedRes) {
-                    if (!Files.isDirectory(res)) continue;
+                    if (!ProjectedFiles.isDirectory(res)) continue;
                     feed(md, "res:" + PortablePath.of(res) + ":" + ClasspathFingerprint.entry(res));
                 }
             }
