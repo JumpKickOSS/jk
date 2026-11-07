@@ -111,8 +111,7 @@ final class ProfileMapping {
 
     private void row(Profile profile, String text) {
         String activation = describeActivation(profile.getActivation());
-        report.warning("Maven profile `" + label(profile) + "`" + (activation == null ? "" : " (" + activation + ")")
-                + ": " + text);
+        report.warning("profile " + label(profile) + (activation == null ? "" : " (" + activation + ")") + ": " + text);
     }
 
     // --- active ---------------------------------------------------------------
@@ -129,7 +128,7 @@ final class ProfileMapping {
         List<String> plugins = pluginIds(profile.getBuild());
         if (!plugins.isEmpty()) parts.add("plugins=[" + String.join(",", plugins) + "]");
         if (parts.isEmpty()) parts.add("no payload");
-        row(profile, "active on this machine and folded into the import: " + String.join("; ", parts) + ".");
+        row(profile, "active here, folded in: " + String.join("; ", parts));
     }
 
     // --- inactive, by payload ---------------------------------------------------
@@ -141,7 +140,7 @@ final class ProfileMapping {
         any |= mapRepositories(profile);
         any |= reportPlugins(profile);
         if (!any) {
-            row(profile, "no convertible payload; dropped.");
+            row(profile, "nothing to convert; dropped");
         }
     }
 
@@ -164,15 +163,11 @@ final class ProfileMapping {
             row(
                     profile,
                     count(managed, "dependencyManagement entry", "dependencyManagement entries")
-                            + " and no dependency of its own; nothing to write"
-                            + " (inline the versions on the matching `<dependency>` or use a BOM import).");
+                            + " only; dropped. Inline the versions or import a BOM");
             return true;
         }
         if (isPlatformConditional(profile, deps)) {
-            row(
-                    profile,
-                    "per-platform dependencies " + modules(deps)
-                            + " → declare a `[variants]` dimension for the platform axis; nothing written.");
+            row(profile, "platform dependencies " + modules(deps) + " dropped; declare a [variants] dimension");
             return true;
         }
         String id = label(profile);
@@ -190,15 +185,14 @@ final class ProfileMapping {
             handles.add(d.library());
         }
         if (handles.isEmpty()) {
-            row(profile, "every dependency was refused (see the rows above); no `[features." + id + "]` written.");
+            row(profile, "every dependency refused; no [features." + id + "] written");
             return true;
         }
         features.put(id, new Feature(id, handles, List.of()));
         row(
                 profile,
-                count(handles.size(), "dependency", "dependencies") + " → `[features." + id
-                        + "]` (optional deps " + String.join(", ", handles) + "; not in `default`, activate with"
-                        + " `--features " + id + "`).");
+                count(handles.size(), "dependency", "dependencies") + " → [features." + id + "] ("
+                        + String.join(", ", handles) + "); enable with --features " + id);
         return true;
     }
 
@@ -308,12 +302,9 @@ final class ProfileMapping {
         String id = label(profile);
         profiles.add(new CompilerProfile(id, javac, jvm));
         List<String> keys = new ArrayList<>();
-        if (!javac.isEmpty()) keys.add("`javac`");
-        if (!jvm.isEmpty()) keys.add("`jvm-args`");
-        row(
-                profile,
-                "compiler settings → `[profiles." + id + "]` " + String.join(" and ", keys) + "; select with `-p " + id
-                        + "`.");
+        if (!javac.isEmpty()) keys.add("javac");
+        if (!jvm.isEmpty()) keys.add("jvm-args");
+        row(profile, String.join(" and ", keys) + " → [profiles." + id + "]; select with -p " + id);
         return true;
     }
 
@@ -325,10 +316,7 @@ final class ProfileMapping {
             repositories.add(repo);
             ids.add(repo.getId() == null ? repo.getUrl() : repo.getId());
         }
-        row(
-                profile,
-                "`<repositories>` " + String.join(", ", ids)
-                        + " → merged into `[repositories]`; a repository is never conditional in jk.");
+        row(profile, "repositories " + String.join(", ", ids) + " merged into [repositories], always on");
         return true;
     }
 
@@ -351,10 +339,7 @@ final class ProfileMapping {
         }
         plugins.remove("maven-compiler-plugin");
         if (plugins.isEmpty()) return false;
-        row(
-                profile,
-                "plugins=[" + String.join(",", plugins)
-                        + "] — port by hand; docs/user/migration.md lists where each plugin lands.");
+        row(profile, "plugins " + String.join(", ", plugins) + ": port by hand (docs/user/migration.md)");
         return true;
     }
 
@@ -401,10 +386,10 @@ final class ProfileMapping {
         ActivationProperty property = activation.getProperty();
         if (property != null) {
             String name = property.getName();
-            kinds.add("property=" + (name != null ? name : "?") + ", a command-line switch jk has no equivalent for");
+            kinds.add("property=" + (name != null ? name : "?") + ", unsupported");
         }
         if (activation.getFile() != null) {
-            kinds.add("file-existence, which jk has no equivalent for");
+            kinds.add("file, unsupported");
         }
         return kinds.isEmpty() ? null : "activation " + String.join("+", kinds);
     }

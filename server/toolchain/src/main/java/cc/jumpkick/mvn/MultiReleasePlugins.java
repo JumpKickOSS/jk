@@ -41,23 +41,21 @@ final class MultiReleasePlugins {
                             PluginFacts.usable(PluginFacts.text(config.getChild("multiReleaseOutput"))))
                     .orElse(false);
             if (!multiRelease) continue;
-            String label = "`maven-compiler-plugin` execution `" + execution.getId() + "`";
+            String label = "maven-compiler-plugin execution " + execution.getId();
             Integer release = release(config);
             if (release == null) {
-                report.warning(label + " writes multi-release output but names no `<release>`; add a"
-                        + " `[multi-release]` entry for its release by hand.");
+                report.warning(label + ": multi-release with no <release>; add a [multi-release] entry");
                 continue;
             }
             if (release < ReleaseSources.FLOOR) {
-                report.warning(label + " writes multi-release output for Java " + release + ", below the "
-                        + ReleaseSources.FLOOR + " a JDK reads `META-INF/versions/` from; not written.");
+                report.warning(label + ": multi-release Java " + release + " is below " + ReleaseSources.FLOOR
+                        + "; not imported");
                 continue;
             }
             List<String> roots = roots(config.getChild("compileSourceRoots"), baseDir);
             if (roots.isEmpty()) {
-                report.warning(label + " writes multi-release output for Java " + release
-                        + " from the main source root; jk compiles that root once, so move the release's sources"
-                        + " to their own directory and name it under `[multi-release]`.");
+                report.warning(label + ": Java " + release
+                        + " sources share the main root; move them to their own [multi-release] directory");
                 continue;
             }
             byRelease.computeIfAbsent(release, r -> new LinkedHashSet<>()).addAll(roots);

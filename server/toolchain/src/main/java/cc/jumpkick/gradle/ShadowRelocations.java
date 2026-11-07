@@ -33,11 +33,8 @@ final class ShadowRelocations {
         List<RelocationRules.Relocation> relocations = parse(script);
         RelocationRules.Mapped mapped = RelocationRules.map(relocations);
         if (!mapped.unmapped().isEmpty()) {
-            report.warning("Shadow `relocate` " + String.join(", ", mapped.unmapped())
-                    + " — `relocate` moves whole packages, first rule winning; an exclude no other relocation"
-                    + " lands where the rule would, and an include naming a class or a package's direct classes"
-                    + " the rules move elsewhere, are not written, and those classes are bundled under their own"
-                    + " names.");
+            report.warning("Shadow relocate " + String.join(", ", mapped.unmapped())
+                    + " not written; those classes keep their own names");
         }
         return mapped;
     }

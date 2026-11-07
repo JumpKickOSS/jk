@@ -32,8 +32,7 @@ final class AvroPlugin {
     static final String ARTIFACT = "avro-maven-plugin";
 
     /** What an {@code add-source} root inside the output is, for the build-helper row. */
-    static final String ADD_SOURCE_ROW = "the avro preset's output; `[avro]` folds the generated classes into the"
-            + " compile itself, so no `extra-src` root is written";
+    static final String ADD_SOURCE_ROW = "the [avro] output; no extra-src needed";
 
     private static final String DEFAULT_OUTPUT = "target/generated-sources/avro";
     private static final String DEFAULT_SRC = "src/main/avro";
@@ -80,7 +79,7 @@ final class AvroPlugin {
                 values.put("decimal-logical-type", true);
             }
             for (String name : List.of("includes", "excludes", "testSourceDirectory", "testOutputDirectory")) {
-                if (config.getChild(name) != null) uncovered.add("`<" + name + ">`");
+                if (config.getChild(name) != null) uncovered.add("<" + name + ">");
             }
         }
         if (!src.equals(DEFAULT_SRC)) values.put("src", src);
@@ -88,13 +87,11 @@ final class AvroPlugin {
         String version = PluginFacts.usable(plugin.getVersion());
         if (version != null) values.put("version", version);
         if (!uncovered.isEmpty()) {
-            report.warning("`" + ARTIFACT + "` " + String.join(", ", uncovered) + " have no `[avro]` key; the preset"
-                    + " generates from every schema, protocol and IDL file under `" + src + "` into the main compile.");
+            report.warning(ARTIFACT + " " + String.join(", ", uncovered) + " have no [avro] key; every file under "
+                    + src + " is generated");
         }
-        report.warning("`" + ARTIFACT + "` is `[avro]`: the classes are generated into the compile from the files"
-                + " under `" + src + "`, a schema naming a type another file defines in any order; the module's"
-                + " `org.apache.avro:avro` dependency stays and is expected at the compiler's version ("
-                + PluginFacts.versionOrDefault(version, "avro", "version") + ").");
+        report.warning(ARTIFACT + " became [avro]; generates from " + src + ". Keep org.apache.avro:avro at "
+                + PluginFacts.versionOrDefault(version, "avro", "version"));
         return new Mapped(new PluginConfig("avro", values), Map.of(output, ADD_SOURCE_ROW));
     }
 }

@@ -194,8 +194,8 @@ final class GradleModelImporter {
         for (GradleModel.Project p : byPath) {
             if (p.isRoot()) continue;
             if (p.applies("java-platform")) {
-                report.warning("`" + p.path() + "` (" + p.dir() + ") applies `java-platform`: a BOM, not a module;"
-                        + " it is not a workspace module. Publish it with `jk export bom` if the build needs one.");
+                report.warning(p.path() + " (" + p.dir() + ") is a java-platform BOM, not a module; publish it with"
+                        + " jk export bom if needed");
             } else if (!p.hasJvmSources() && p.configurations().isEmpty()) {
                 skipped.add(p.path());
             } else {
@@ -203,9 +203,7 @@ final class GradleModelImporter {
             }
         }
         if (!skipped.isEmpty()) {
-            report.warning("`" + String.join("`, `", skipped) + "` appl" + (skipped.size() == 1 ? "ies" : "y")
-                    + " no JVM plugin and declare" + (skipped.size() == 1 ? "s" : "")
-                    + " nothing; not workspace modules.");
+            report.warning(String.join(", ", skipped) + ": no JVM plugin, nothing declared; not imported as modules");
         }
         for (GradleModel.Repository r : model.settingsRepositories()) repository(r);
         if (members.isEmpty()) {
@@ -225,8 +223,8 @@ final class GradleModelImporter {
         }
         ImportReport.Builder rootRows = ImportReport.builder();
         if (root.hasJvmSources() || declaresDependencies(root)) {
-            rootRows.warning("the root project `" + root.name() + "` has sources or dependencies of its own; a jk"
-                    + " workspace root is a coordination point, so move them into a module.");
+            rootRows.warning("root project " + root.name() + " has its own sources or dependencies; move them into a"
+                    + " module");
         }
         reportPlugins(root, new LinkedHashSet<>(root.plugins()), rootRows);
         reportTasks(root, rootRows);
@@ -266,12 +264,10 @@ final class GradleModelImporter {
                 namesByPath.put(p.path(), name);
                 renamed.add(p.dir() + " → `" + name + "`");
             }
-            report.warning("`"
-                    + String.join(
-                            "`, `",
+            report.warning(String.join(
+                            ", ",
                             carriers.stream().map(GradleModel.Project::dir).toList())
-                    + "` all carry the name `" + e.getKey() + "`; each module is named by its path instead ("
-                    + String.join(", ", renamed) + ").");
+                    + " share the name " + e.getKey() + "; named by path instead: " + String.join(", ", renamed));
         }
     }
 
@@ -370,9 +366,8 @@ final class GradleModelImporter {
                 || !p.relocations().isEmpty();
         RelocationRules.Mapped relocations = RelocationRules.map(p.relocations());
         if (!relocations.unmapped().isEmpty()) {
-            local.warning("Shadow `relocate` " + String.join(", ", relocations.unmapped())
-                    + " — `relocate` moves whole packages, first rule winning; what the rules do not express is not"
-                    + " written, and those classes are bundled under their own names.");
+            local.warning("Shadow relocate " + String.join(", ", relocations.unmapped())
+                    + " not written; those classes keep their own names");
         }
         JkBuild.Builder builder = JkBuild.builder(project.build())
                 .dependencies(new JkBuild.Dependencies(deps))
@@ -456,9 +451,8 @@ final class GradleModelImporter {
             }
         }
         if (version == null) {
-            local.warning("plugin `groovy` is applied and no Groovy version could be read from the build; `groovy = \""
-                    + GroovyResolver.DEFAULT_VERSION
-                    + "\"` (jk's default) is written — set the version the build uses.");
+            local.warning("groovy: no version found; wrote groovy = \"" + GroovyResolver.DEFAULT_VERSION
+                    + "\". Set the version the build uses");
             return GroovyResolver.DEFAULT_VERSION;
         }
         if (GroovyResolver.belowFloor(version)) {
@@ -480,9 +474,8 @@ final class GradleModelImporter {
         if (xjc.defaultPackage() != null) table.put("package", xjc.defaultPackage());
         if (!xjc.bindingFiles().isEmpty()) table.put("bindings", xjc.bindingFiles());
         if (!xjc.options().isEmpty()) table.put("arguments", xjc.options());
-        local.warning("plugin `" + XJC_PLUGIN + "` is `[jaxb]`: xjc generates the classes into the compile from the"
-                + " schemas under `" + src + "`; the module keeps `jakarta.xml.bind:jakarta.xml.bind-api` for the"
-                + " compile and a JAXB runtime (`org.glassfish.jaxb:jaxb-runtime`) for run time.");
+        local.warning(XJC_PLUGIN + " became [jaxb] over the schemas in " + src
+                + "; kept jakarta.xml.bind-api and jaxb-runtime");
         return new PluginConfig("jaxb", table);
     }
 
@@ -503,14 +496,13 @@ final class GradleModelImporter {
         boolean written = false;
         for (String bom : boms) {
             if (bom.indexOf('$') >= 0) {
-                local.warning("dependencyManagement imports the BOM `" + bom + "`, whose version reads a property"
-                        + " nothing defines; declare it under [platform-dependencies] by hand.");
+                local.warning("BOM " + bom + ": version reads an undefined property; declare it in"
+                        + " [platform-dependencies]");
                 continue;
             }
             String[] parts = bom.split(":");
             if (parts.length != 3) {
-                local.warning("dependencyManagement imports `" + bom + "`, which is not `group:artifact:version`;"
-                        + " declare the BOM under [platform-dependencies] by hand.");
+                local.warning("BOM " + bom + " is not group:artifact:version; declare it in [platform-dependencies]");
                 continue;
             }
             if (bom.equals(p.springBootBom()) && applied.contains("org.springframework.boot")) {
@@ -543,9 +535,8 @@ final class GradleModelImporter {
                                 ? d.module()
                                 : d.kind().equals("project") ? "project(" + d.projectPath() + ")" : d.kind())
                         .toList();
-                local.warning("configuration `" + c.name() + "` (" + coords.size()
-                        + (coords.size() == 1 ? " dependency: " : " dependencies: ") + String.join(", ", coords)
-                        + ") has no jk table; declare them under the scope they belong to.");
+                local.warning("configuration " + c.name() + " has no jk table; declare " + String.join(", ", coords)
+                        + " under the right scope");
             }
             return;
         }
@@ -562,14 +553,13 @@ final class GradleModelImporter {
         if (scope == Scope.TEST
                 && c.name().equals("testCompileOnly")
                 && !c.dependencies().isEmpty()) {
-            local.warning("`testCompileOnly` dependencies "
+            local.warning("testCompileOnly "
                     + String.join(
                             ", ",
                             c.dependencies().stream()
                                     .map(GradleModel.Dependency::module)
                                     .toList())
-                    + " are written to [test-dependencies]: jk has no test-provided table, so they are on the"
-                    + " test runtime classpath too.");
+                    + " went to [test-dependencies], so also on the test runtime");
         }
     }
 
@@ -602,8 +592,8 @@ final class GradleModelImporter {
             case "project" -> {
                 String sibling = d.projectPath() == null ? null : namesByPath.get(d.projectPath());
                 if (sibling == null) {
-                    local.warning("dependency on project `" + d.projectPath() + "` (configuration `" + configuration
-                            + "`) names a project that is not a workspace module; dropped.");
+                    local.warning("project " + d.projectPath() + " (" + configuration + ") is not a workspace module;"
+                            + " dropped");
                     return;
                 }
                 Dependency edge = Dependency.workspace(sibling);
@@ -612,11 +602,11 @@ final class GradleModelImporter {
             }
             case "module" -> mapModule(p, scope, d, deps, local, platformed);
             case "files" ->
-                local.warning("file dependency `" + String.join(", ", d.files()) + "` on configuration `"
-                        + configuration + "` has no coordinate to import; dropped.");
+                local.warning("file dependency " + String.join(", ", d.files()) + " (" + configuration
+                        + ") has no coordinate; dropped");
             default ->
-                local.warning("dependency `" + (d.text() == null ? d.kind() : d.text()) + "` on configuration `"
-                        + configuration + "` is not a coordinate or a project; dropped.");
+                local.warning((d.text() == null ? d.kind() : d.text()) + " (" + configuration
+                        + ") is not a coordinate or project; dropped");
         }
     }
 
@@ -628,7 +618,7 @@ final class GradleModelImporter {
             ImportReport.Builder local,
             boolean platformed) {
         if (d.group().isBlank() || d.artifact().isBlank()) {
-            local.error("dependency `" + d.module() + "` has no group or no artifact; dropped.");
+            local.error(d.module() + " lacks a group or artifact; dropped");
             return;
         }
         Scope target = d.isPlatform() ? Scope.PLATFORM : scope;
@@ -646,9 +636,7 @@ final class GradleModelImporter {
             String managed = platformed ? null : p.managedVersions().get(module);
             if (managed != null && !managed.isBlank()) {
                 dep = Dependency.of(shortName, module, VersionSelector.parse(managed));
-                local.warning("version of " + module + " (" + managed + ") comes from the dependency-management"
-                        + " plugin's `dependencyManagement { }` block, not a BOM this import can name; written as"
-                        + " an exact pin.");
+                local.warning(module + " " + managed + " from dependencyManagement { }; pinned exactly");
             } else {
                 dep = Dependency.platformManaged(shortName, module);
             }
@@ -661,22 +649,20 @@ final class GradleModelImporter {
                 dep = Dependency.platformManaged(shortName, module);
             }
         } else if (version.endsWith("+") || version.startsWith("latest.")) {
-            local.warning("dependency `" + module + "` has the dynamic version `" + version
-                    + "`; written as `latest`, which the first `jk lock` pins.");
+            local.warning(module + " " + version + " is dynamic; wrote latest, pinned by jk lock");
             dep = Dependency.of(shortName, module, VersionSelector.parse("latest"));
         } else if (platformed && managedAbove(p, module, version)) {
             // Gradle's dependency-management lets a declared version undercut the BOM; a jk pin below
             // the version the platform aligns the rest of the graph on does not resolve.
-            local.warning("`" + module + "` is declared at " + version + ", below the "
-                    + p.managedVersions().get(module) + " its BOM manages; written as `managed` so it resolves"
-                    + " with the rest of the platform.");
+            local.warning(module + " " + version + " is below its BOM's "
+                    + p.managedVersions().get(module) + "; wrote managed");
             dep = Dependency.platformManaged(shortName, module);
         } else {
             dep = Dependency.of(shortName, module, VersionSelector.parse(raised(p, d, version, local)));
         }
         if (d.classifier() != null && !d.classifier().isBlank()) dep = dep.withClassifier(d.classifier());
         if (d.type() != null && !d.type().isBlank()) {
-            local.warning("artifact type `" + d.type() + "` on `" + module + "` dropped; jk resolves the jar.");
+            local.warning(module + ": artifact type " + d.type() + " dropped; jk uses the jar");
         }
         List<String> exclusions = exclusions(d);
         if (!exclusions.isEmpty()) dep = dep.withExclusions(exclusions);
@@ -699,8 +685,7 @@ final class GradleModelImporter {
             GradleModel.Project p, GradleModel.Dependency d, String version, ImportReport.Builder local) {
         String resolved = p.resolved().get(d.module());
         if (resolved == null || d.strict() != null || Versions.compare(resolved, version) <= 0) return version;
-        local.warning("`" + d.module() + "` is declared at " + version + " and Gradle resolves " + resolved
-                + ", which a dependency of the graph asks for; written as " + resolved + ".");
+        local.warning(d.module() + " " + version + " resolves to " + resolved + " in Gradle; wrote " + resolved);
         return resolved;
     }
 
@@ -718,39 +703,31 @@ final class GradleModelImporter {
                     || GradleImporter.pluginImportRules().containsKey(id)) continue;
             switch (id) {
                 case "groovy", "scala" ->
-                    local.warning("plugin `" + id + "` is applied: set `project." + id
-                            + "` to the compiler version the build uses.");
+                    local.warning(id + ": set project." + id + " to the build's compiler version");
                 case "java-test-fixtures" ->
-                    local.warning(
-                            "plugin `java-test-fixtures` is applied: declare `[test] fixtures = true` and move the fixtures"
-                                    + " under src/fixtures/java.");
-                case "checkstyle", "pmd" ->
-                    local.warning("plugin `" + id + "` is applied: configure the [lint] table by hand.");
-                default ->
-                    local.warning(
-                            "Gradle plugin `" + id + "` is not mapped; what it configures is not in this import.");
+                    local.warning("java-test-fixtures: set [test] fixtures = true; move fixtures to src/fixtures/java");
+                case "checkstyle", "pmd" -> local.warning(id + ": configure [lint] by hand");
+                default -> local.warning("Gradle plugin " + id + " not mapped");
             }
         }
         for (String cls : p.pluginClasses()) {
             if (MAPPED_PLUGIN_CLASSES.stream().anyMatch(cls::startsWith)) continue;
-            local.warning("Gradle plugin `" + cls + "` is not mapped; what it configures is not in this import.");
+            local.warning("Gradle plugin " + cls + " not mapped");
         }
     }
 
     private static void reportTasks(GradleModel.Project p, ImportReport.Builder local) {
         for (GradleModel.Task t : p.tasks()) {
             String type = t.type().substring(t.type().lastIndexOf('.') + 1);
-            local.warning("task `" + t.name() + "` (" + type + (t.group().isBlank() ? "" : ", group " + t.group())
-                    + ") is registered by the build script and is not translated; write it as a jk build script"
-                    + " under .jk/ if the build needs it.");
+            local.warning("task " + t.name() + " (" + type + (t.group().isBlank() ? "" : ", group " + t.group())
+                    + ") not translated; port it to a .jk/ build script if needed");
         }
     }
 
     private static void reportSourceSets(GradleModel.Project p, ImportReport.Builder local) {
         for (GradleModel.SourceSet s : p.sourceSets()) {
             if (!s.name().equals("main") && !s.name().equals("test")) {
-                local.warning(
-                        "source set `" + s.name() + "` has no jk equivalent; its sources are not in this import.");
+                local.warning("source set " + s.name() + " has no jk equivalent; sources not imported");
                 continue;
             }
             List<String> odd = new ArrayList<>();
@@ -760,8 +737,8 @@ final class GradleModelImporter {
                 if (!dir.equals(prefix + "kotlin") && !dir.equals(prefix + "java")) odd.add(dir);
             for (String dir : s.resources()) if (!dir.equals(prefix + "resources")) odd.add(dir);
             if (!odd.isEmpty()) {
-                local.warning("source set `" + s.name() + "` reads from " + String.join(", ", odd)
-                        + ", outside jk's layout; move the sources or generate them with a build script.");
+                local.warning("source set " + s.name() + " reads " + String.join(", ", odd)
+                        + ", outside jk's layout; move them or generate them");
             }
         }
     }
@@ -778,7 +755,7 @@ final class GradleModelImporter {
         if (url.startsWith("file:") && url.replace('\\', '/').matches(".*/\\.m2/repository/?")) {
             if (mavenLocal) return;
             mavenLocal = true;
-            report.warning("`mavenLocal()` recognised but not mapped — jk reads ~/.m2 by default.");
+            report.warning("mavenLocal() not mapped; jk reads ~/.m2 already");
             return;
         }
         String normalized = url.endsWith("/") ? url : url + "/";
@@ -787,7 +764,7 @@ final class GradleModelImporter {
         try {
             uri = RepositorySpec.normalizedUrl(new URI(normalized));
         } catch (URISyntaxException e) {
-            report.warning("repository URL `" + url + "` is not a valid URI; skipped.");
+            report.warning("repository URL " + url + " is not a valid URI; skipped");
             return;
         }
         String name = repositoryName(repo.name());
@@ -795,9 +772,8 @@ final class GradleModelImporter {
                 normalized,
                 new RepositorySpec(name, uri, null, null, repo.groups()).withPolicy(repo.releases(), repo.snapshots()));
         if (!repo.unmappedContent().isEmpty()) {
-            report.warning(
-                    "repository `" + name + "` filters its content by " + String.join(", ", repo.unmappedContent())
-                            + "; jk binds whole groups to a repository (`groups`), so these filters are not written.");
+            report.warning(name + ": content filters " + String.join(", ", repo.unmappedContent())
+                    + " not written; jk binds whole groups");
         }
         GradleModel.Credential credential = repo.credential();
         if (credential != null) credential(name, uri, repo.groups(), credential);
@@ -822,15 +798,11 @@ final class GradleModelImporter {
         }
         String ci = ciRecipe(name, url);
         if (keys.isEmpty()) {
-            report.warning("repository `" + name + "` takes a credential (" + credential.kind() + ") the build reads"
-                    + " from no environment variable jk can name; run `jk repo login " + name + "`." + ci);
+            report.warning(name + ": credential source unknown; run jk repo login " + name + "." + ci);
             return;
         }
         machineRepositories.add(new UserConfigEditor.RepositoryTable(name, url, groups, keys));
-        report.warning("repository `" + name + "` takes the credential the build reads from "
-                + String.join(" and ", keys.values()) + ": a project's jk.toml may not read that variable, so"
-                + " jk import declares [repositories." + name + "] at the same URL with the reference in"
-                + " ~/.jk/config.toml." + ci);
+        report.warning(name + ": " + String.join(", ", keys.values()) + " moved to ~/.jk/config.toml." + ci);
     }
 
     private static String envReference(String variable) {
@@ -846,11 +818,10 @@ final class GradleModelImporter {
         String prefix = "JK_REPO_" + name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "_") + "_";
         String host = prefix + "HOST=" + url.getHost();
         if (url.getPath().contains("/api/v4/") && url.getPath().contains("/packages/maven")) {
-            return " On GitLab CI, which has no such table, export " + prefix + "USERNAME=gitlab-ci-token, " + prefix
-                    + "PASSWORD=$CI_JOB_TOKEN and " + host + ".";
+            return " On GitLab CI, export " + prefix + "USERNAME=gitlab-ci-token, " + prefix
+                    + "PASSWORD=$CI_JOB_TOKEN, " + host;
         }
-        return " Where that table is not (CI), export " + prefix + "TOKEN (or " + prefix + "USERNAME + " + prefix
-                + "PASSWORD) with " + host + ".";
+        return " On CI, export " + prefix + "TOKEN (or " + prefix + "USERNAME and " + prefix + "PASSWORD) and " + host;
     }
 
     /**

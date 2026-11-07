@@ -51,9 +51,7 @@ final class HibernateEnhancePlugin {
             }
             if (declared != null && declared != s.byDefault()) values.put(s.key(), declared);
         }
-        report.warning("`" + plugin.get().getArtifactId() + "` is `[hibernate] enhance = true`: the module's own"
-                + " Hibernate enhances the compiled entity classes after compile, and the tests and the jar"
-                + " use the enhanced classes.");
+        report.warning(plugin.get().getArtifactId() + " became [hibernate] enhance = true");
         return new PluginConfig("hibernate", values);
     }
 

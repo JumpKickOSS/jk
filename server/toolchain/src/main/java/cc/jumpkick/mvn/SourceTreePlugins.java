@@ -121,9 +121,8 @@ final class SourceTreePlugins {
                     case "add-test-source" ->
                         testExtraSrc.addAll(ownRoots(sourceDirs(config, baseDir), generatorOutputs, report));
                     default ->
-                        report.warning("`build-helper-maven-plugin` goal `" + goal
-                                + "` was not imported; only `add-source` and `add-test-source` map to"
-                                + " source roots.");
+                        report.warning("build-helper-maven-plugin goal " + goal
+                                + " not imported; only add-source and add-test-source map");
                 }
             }
         }
@@ -142,7 +141,7 @@ final class SourceTreePlugins {
                 own.add(dir);
                 continue;
             }
-            report.warning("`build-helper-maven-plugin` adds `" + dir + "`, " + generatorOutputs.get(output) + ".");
+            report.warning("build-helper-maven-plugin adds " + dir + ", " + generatorOutputs.get(output));
         }
         return own;
     }
@@ -247,8 +246,7 @@ final class SourceTreePlugins {
             if (artifactId == null
                     || PluginFacts.MAPPED_PLUGINS.contains(artifactId)
                     || consumedPlugins.contains(artifactId)) continue;
-            String message = "`<plugin>" + artifactId
-                    + "</plugin>` was not imported; docs/user/migration.md lists where it lands in jk.";
+            String message = artifactId + " not imported";
             boolean own = InheritedRows.declaresPlugin(em.raw(), artifactId, em.activeProfiles());
             if (inherited == null || (!isRoot && own)) {
                 report.warning(message);

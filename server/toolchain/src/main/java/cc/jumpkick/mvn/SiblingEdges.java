@@ -88,11 +88,8 @@ final class SiblingEdges {
                     rows.add(
                             moduleKey,
                             ImportReport.Severity.WARNING,
-                            "`<dependencyManagement>` imports the reactor BOM `" + bomPath + "` (" + d.module()
-                                    + "); its managed versions are applied to the declared dependencies and no"
-                                    + " `[platform]` row is written, because the lock fetches a BOM from a repository"
-                                    + " and a reactor BOM is not published, so transitive versions follow the"
-                                    + " resolver.");
+                            "reactor BOM " + bomPath + " (" + d.module()
+                                    + "): versions applied to dependencies; no [platform] row (it is unpublished)");
                     continue;
                 }
                 String siblingName = siblingByGa.get(d.module());
@@ -123,10 +120,8 @@ final class SiblingEdges {
                     rows.add(
                             moduleKey,
                             ImportReport.Severity.WARNING,
-                            "`<dependencyManagement>` imports the sibling BOM " + d.module()
-                                    + "; its managed versions are applied to the declared dependencies and no"
-                                    + " `[platform]` entry is written, because a workspace module is not a published"
-                                    + " BOM, so transitive versions follow the resolver.");
+                            "sibling BOM " + d.module()
+                                    + ": versions applied to dependencies; no [platform] row (it is unpublished)");
                     continue;
                 }
                 // The edge keeps the handle the Maven dependency was written under — the

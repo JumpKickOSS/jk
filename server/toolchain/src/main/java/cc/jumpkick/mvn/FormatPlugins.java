@@ -63,9 +63,8 @@ final class FormatPlugins {
             }
         }
         if (java == null && javaSteps) {
-            report.warning("`" + SPOTLESS + "` formats Java with a step jk does not run (palantirJavaFormat and"
-                    + " googleJavaFormat are the ones it does); `[format] enforce` is left off, so `jk guard`"
-                    + " formats nothing — choose `[format] java` and set `enforce = true` to have it.");
+            report.warning(
+                    SPOTLESS + ": Java formatter not supported; choose [format] java and set" + " enforce = true");
             return Optional.empty();
         }
         if (java == null && kotlin == null) return Optional.empty();

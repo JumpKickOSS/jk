@@ -210,7 +210,7 @@ public final class GradleVersionCatalog {
         if (module != null) {
             int sep = module.indexOf(':');
             if (sep < 0) {
-                notes.add("library `" + accessorPath + "` has malformed module `" + module + "` (want group:artifact)");
+                notes.add("catalog " + accessorPath + ": module " + module + " is not group:artifact; skipped");
                 return null;
             }
             group = module.substring(0, sep);
@@ -220,24 +220,20 @@ public final class GradleVersionCatalog {
             name = lib.getString("name");
         }
         if (group == null || group.isBlank() || name == null || name.isBlank()) {
-            notes.add("library `" + accessorPath + "` is missing group/name (or module)");
+            notes.add("catalog " + accessorPath + ": no group/name or module; skipped");
             return null;
         }
         String ga = group.trim() + ":" + name.trim();
         if (lib.contains("version.ref")) {
             String ref = lib.getString("version.ref");
             if (ref == null || ref.isBlank()) {
-                notes.add("library `" + accessorPath + "` has empty version.ref");
+                notes.add("catalog " + accessorPath + ": empty version.ref; imported without a version");
                 return ga; // version-less; BOM may manage
             }
             String v = versions.get(ref);
             if (v == null) {
-                notes.add(
-                        "library `"
-                                + accessorPath
-                                + "` version.ref `"
-                                + ref
-                                + "` is not defined in [versions]; imported as version-less (platform-managed if a BOM is present)");
+                notes.add("catalog " + accessorPath + ": version.ref " + ref
+                        + " not in [versions]; imported without a version");
                 return ga;
             }
             return ga + ":" + v;

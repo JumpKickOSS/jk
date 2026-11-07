@@ -88,7 +88,7 @@ when       = { config = "include-tools", equals = "true" }
 [[import.gradle-plugin]]
 id                      = "org.springframework.boot"
 version-to              = "version"
-missing-version-warning = "the Spring Boot plugin is applied without an inline version (settings pluginManagement?) -- add `[spring-boot] version = \"...\"` to jk.toml yourself."
+missing-version-warning = "Spring Boot plugin has no inline version; add [spring-boot] version = \"...\" to jk.toml"
 
 [[import.gradle-plugin]]
 id = "io.spring.dependency-management"

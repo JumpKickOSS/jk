@@ -78,9 +78,9 @@ class GradleBuildImportTest {
         assertThat(result.root().project().name()).isEqualTo("shop");
         assertThat(result.root().dependencies().of(Scope.MAIN)).hasSize(1);
         assertThat(messages(result.report())).anySatisfy(m -> assertThat(m)
-                .contains("Gradle could not evaluate the build")
+                .startsWith("Gradle failed (")
                 .contains("com.acme.house")
-                .contains("scanning build.gradle.kts alone"));
+                .contains("scanned build.gradle.kts alone"));
         assertThat(result.report().hasErrors()).isTrue();
     }
 
@@ -126,8 +126,8 @@ class GradleBuildImportTest {
         assertThat(reads).as("a subproject alone is not evaluated by Gradle").isEmpty();
         assertThat(result.root().project().name()).isEqualTo("core");
         assertThat(messages(result.report())).anySatisfy(m -> assertThat(m)
-                .contains("one project of the build rooted at")
-                .contains("settings.gradle.kts"));
+                .startsWith("build.gradle.kts is one project of ")
+                .endsWith("; import settings.gradle.kts there for every module"));
     }
 
     @Test

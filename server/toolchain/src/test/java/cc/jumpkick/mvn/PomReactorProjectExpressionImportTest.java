@@ -94,7 +94,7 @@ class PomReactorProjectExpressionImportTest {
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .as("no parent fell through to the repository")
-                .noneMatch(m -> m.contains("could not be resolved"));
+                .noneMatch(m -> m.contains("not resolved"));
         assertThat(requireNonNull(result.root().workspace()).modules()).containsExactly("libs/util", "libs/core");
         JkBuild core = requireNonNull(result.modules().get("libs/core"));
         assertThat(core.dependencies().of(Scope.MAIN)).singleElement().satisfies(d -> {

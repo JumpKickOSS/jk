@@ -102,24 +102,25 @@ class PomRepeatedRowsImportTest {
         assertThat(rows.stream().filter(m -> m.contains("inherited from workspace parent")))
                 .as("a dependency every module inherits: one row at the first module, the list elided past three")
                 .singleElement()
-                .isEqualTo("[m1] dependencies org.projectlombok:lombok inherited from workspace parent"
-                        + " org.demo:parent:1.0.0. (5 modules: m1, m2, m3, …)");
-        assertThat(rows.stream().filter(m -> m.contains("imports the reactor BOM")))
+                .isEqualTo("m1, m2, m3 and 2 more: dependencies org.projectlombok:lombok inherited from"
+                        + " workspace parent org.demo:parent:1.0.0");
+        assertThat(rows.stream().filter(m -> m.contains("reactor BOM")))
                 .as("a sibling BOM two modules import: one row naming both")
                 .singleElement()
                 .satisfies(m -> {
-                    assertThat(m)
-                            .startsWith("[m1] `<dependencyManagement>` imports the reactor BOM `bom` (org.demo:bom)");
-                    assertThat(m).endsWith(" (2 modules: m1, m2)");
+                    assertThat(m).startsWith("m1, m2: reactor BOM bom (org.demo:bom): versions applied");
                 });
         assertThat(rows.stream().filter(m -> m.contains("<type>pom</type>")))
                 .as("a row one module says keeps its own row, with no count")
                 .singleElement()
                 .satisfies(m -> {
-                    assertThat(m).startsWith("[m4] `<type>pom</type>` on com.google.guava:guava-bom");
-                    assertThat(m).doesNotContain("modules:");
+                    assertThat(m).startsWith("m4: com.google.guava:guava-bom: <type>pom</type> moved");
+                    assertThat(m).doesNotContain("m1");
                 });
-        assertThat(rows.stream().filter(m -> m.contains("(1 module"))).isEmpty();
+        assertThat(rows.stream().filter(m -> m.matches("[^:]+ and \\d+ more: .*")))
+                .as("only rows all five modules say elide the list")
+                .isNotEmpty()
+                .allMatch(m -> m.startsWith("m1, m2, m3 and 2 more: "));
     }
 
     private static String leaf(String artifactId, String body) {

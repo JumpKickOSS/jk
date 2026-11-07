@@ -79,6 +79,7 @@ class BootImportRoundTripTest {
                 }
                 """, "demo");
         assertThat(result.jkBuild().pluginConfig("spring-boot")).isEmpty();
-        assertThat(result.report().issues()).anyMatch(i -> i.message().contains("applied without an inline version"));
+        assertThat(result.report().issues())
+                .anyMatch(i -> i.message().contains("Spring Boot plugin has no inline version"));
     }
 }

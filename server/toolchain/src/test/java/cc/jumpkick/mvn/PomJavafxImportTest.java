@@ -37,7 +37,7 @@ class PomJavafxImportTest {
                 .as("the default modules are not written")
                 .isEmpty();
         assertThat(result.jkBuild().mainClass()).isEqualTo("org.openjfx.App");
-        assertThat(messages(result)).noneMatch(m -> m.contains("javafx-maven-plugin` is not"));
+        assertThat(messages(result)).noneMatch(m -> m.startsWith("javafx-maven-plugin not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("[javafx]");
         assertThat(JkBuildParser.parse(rendered).pluginConfig("javafx")).isPresent();
@@ -60,7 +60,9 @@ class PomJavafxImportTest {
 
         assertThat(result.jkBuild().pluginConfig("javafx").orElseThrow().values())
                 .isEqualTo(Map.of("modules", List.of("javafx.controls", "javafx.web")));
-        assertThat(messages(result)).anyMatch(m -> m.contains("<options> has no `[javafx]` key"));
+        assertThat(messages(result))
+                .anyMatch(m ->
+                        m.equals("javafx-maven-plugin <options> not imported; put test JVM flags in [test] jvm-args"));
     }
 
     private static String pom(List<String> openjfx, String plugin) {

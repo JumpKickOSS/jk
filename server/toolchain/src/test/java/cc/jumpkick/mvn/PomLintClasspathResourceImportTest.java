@@ -37,24 +37,21 @@ class PomLintClasspathResourceImportTest {
                 .containsEntry("checkstyle", "acme/checkstyle.xml")
                 .containsEntry("checkstyle-header", "acme/header.txt")
                 .containsEntry("checkstyle-classpath", List.of("com.acme:rules:1.0"));
-        assertThat(messages(held)).noneMatch(m -> m.contains("none of the plugin's dependency jars"));
+        assertThat(messages(held)).noneMatch(m -> m.contains(": in none of "));
 
         PomImporter.Result missing =
                 importCheckstyle(tempDir.resolve("missing"), repo, "acme/other.xml", "acme/header.txt");
         assertThat(missing.jkBuild().pluginConfig("lint").orElseThrow().values())
                 .containsEntry("checkstyle", "acme/other.xml");
         assertThat(messages(missing))
-                .anyMatch(m -> m.contains("`acme/other.xml`")
-                        && m.contains("none of the plugin's dependency jars holds (com.acme:rules:1.0)"))
-                .noneMatch(m -> m.contains("`acme/header.txt`"));
+                .anyMatch(m -> m.contains("acme/other.xml: in none of com.acme:rules:1.0;"))
+                .noneMatch(m -> m.contains("acme/header.txt"));
 
         Path empty = Files.createDirectories(tempDir.resolve("empty-repo"));
         PomImporter.Result unserved =
                 importCheckstyle(tempDir.resolve("unserved"), empty, "acme/checkstyle.xml", "acme/header.txt");
         assertThat(messages(unserved))
-                .anyMatch(m -> m.contains("`acme/checkstyle.xml`")
-                        && m.contains("could not confirm")
-                        && m.contains("com.acme:rules:1.0"));
+                .anyMatch(m -> m.contains("acme/checkstyle.xml: unconfirmed; no repository serves com.acme:rules:1.0"));
     }
 
     /** A jar under {@code repo} in Maven layout holding empty entries of the given names. */

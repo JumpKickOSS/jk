@@ -29,8 +29,8 @@ class GroovyResolverTest {
     @Test
     void the_floor_note_names_the_declared_version_the_floor_and_the_key_to_write() {
         assertThat(GroovyResolver.floorNote("4.0.28"))
-                .startsWith("groovy 4.0.28 is below jk's floor 5.0")
-                .contains("compiles and runs with " + GroovyResolver.DEFAULT_VERSION)
+                .startsWith("groovy 4.0.28 is below jk's floor")
+                .contains("compiled with " + GroovyResolver.DEFAULT_VERSION)
                 .contains("groovy = \"" + GroovyResolver.DEFAULT_VERSION + "\"");
     }
 

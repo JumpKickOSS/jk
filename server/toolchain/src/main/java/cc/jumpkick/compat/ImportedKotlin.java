@@ -19,10 +19,8 @@ public final class ImportedKotlin {
         if (!(declared instanceof VersionSelector.Exact exact) || !KotlinResolver.belowFloor(exact.version())) {
             return declared;
         }
-        report.warning("Kotlin `" + exact.version() + "` is below jk's floor `" + KotlinResolver.FLOOR_VERSION
-                + "`, the oldest Kotlin its compile path drives; `kotlin = \"" + KotlinResolver.FLOOR_VERSION
-                + "\"` is written and the module compiles with it — check the build against that compiler's"
-                + " warnings and language changes.");
+        report.warning("Kotlin " + exact.version() + " is below jk's floor; wrote kotlin = \""
+                + KotlinResolver.FLOOR_VERSION + "\". Check for new compiler warnings");
         return VersionSelector.parse(KotlinResolver.FLOOR_VERSION);
     }
 }

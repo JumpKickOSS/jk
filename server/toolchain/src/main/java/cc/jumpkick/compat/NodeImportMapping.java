@@ -89,14 +89,12 @@ public final class NodeImportMapping {
         Path ui = moduleDir.resolve(uiDir).normalize();
         if (!declared && !Files.isRegularFile(ui.resolve("package.json"))) return null;
         if (!Files.isRegularFile(ui.resolve("package.json"))) {
-            report.warning(
-                    "Quinoa is configured but `" + uiDir + "/package.json` is missing: no node build is" + " written.");
+            report.warning("Quinoa: " + uiDir + "/package.json is missing; no node build written");
             return null;
         }
         String version = props.getProperty(QUINOA + "package-manager-install.node-version");
         String buildDir = props.getProperty(QUINOA + "build-dir");
-        report.warning("Quinoa's UI in `" + uiDir + "` is a node build beside the Java sources ([node] dir), served"
-                + " from META-INF/resources.");
+        report.warning("Quinoa UI in " + uiDir + " became a [node] build, served from META-INF/resources");
         return new Mapped(
                 spec(version, ui), sideBySide(uiDir, "META-INF/resources", buildDir == null ? null : buildDir.trim()));
     }

@@ -105,18 +105,17 @@ final class FrontendImport {
         boolean elsewhere = out != null && !out.startsWith(moduleDir);
         if ("pom".equals(model.getPackaging()) || elsewhere) {
             if (standalone) {
-                report.warning("`" + FrontendPlugin.ARTIFACT + "` builds a front end "
-                        + (elsewhere ? "into `" + out + "`, outside this module" : "in a `pom` module")
-                        + "; importing the workspace's root POM makes it a node module of its own");
+                report.warning(FrontendPlugin.ARTIFACT
+                        + (elsewhere ? " writes outside this module (" + out + ")" : " runs in a pom module")
+                        + "; import the root POM to give it its own module");
                 return new Applied(build, null, FrontendFiles.NONE);
             }
             return new Applied(build, new Relocation(frontend, moduleDir, output), FrontendFiles.NONE);
         }
         boolean atRoot = frontend.workingDirectory().equals(".");
         if (atRoot && NodeShape.jvmSources(moduleDir)) {
-            report.warning("`" + FrontendPlugin.ARTIFACT + "` builds the front end at the module's root, beside"
-                    + " its JVM sources: move package.json and the front end's sources into src/main/node,"
-                    + " then import again");
+            report.warning(FrontendPlugin.ARTIFACT + " runs at the module root beside JVM sources; move"
+                    + " package.json and the front-end sources to src/main/node, then import again");
             return new Applied(build, null, FrontendFiles.NONE);
         }
         // A front end at the root of a module with no JVM sources makes it a node module, built in place.
@@ -160,8 +159,8 @@ final class FrontendImport {
             String consumer = target == null ? null : consumer(rootDir, out.keySet(), target);
             Roots roots = consumer == null ? Roots.NONE : roots(rootDir.resolve(consumer), target, report);
             if (target != null && consumer == null) {
-                report.warning("`" + FrontendPlugin.ARTIFACT + "` writes into `" + rel(rootDir, target)
-                        + "`, which is in no module; `" + webRel + "` packages its output as a resource jar");
+                report.warning(FrontendPlugin.ARTIFACT + " writes into " + rel(rootDir, target)
+                        + ", outside every module; " + webRel + " packages it as a resource jar");
             }
             NodeTable table = placed(frontend.table(), null, roots);
             Project project = Project.builder(
@@ -173,8 +172,7 @@ final class FrontendImport {
             modules.add(webRel);
             List<FrontendFiles.Move> moves = moves(frontend.dir(), webDir, r.output(), target, rootDir, out.keySet());
             for (FrontendFiles.Move m : moves) {
-                report.warning("front end moves into the generated node module `" + webRel + "`: `"
-                        + rel(rootDir, m.from()) + "` → `" + rel(rootDir, m.to()) + "`");
+                report.warning("front end moved: " + rel(rootDir, m.from()) + " → " + rel(rootDir, m.to()));
             }
             FrontendFiles moved = new FrontendFiles(moves, Map.of());
             if (r.output() != null) {
@@ -187,12 +185,10 @@ final class FrontendImport {
             files = files.plus(moved);
             if (consumer != null) {
                 out.put(consumer, dependOn(out.get(consumer), name));
-                report.warning("`" + consumer + "` depends on the generated node module `" + webRel + "`, which"
-                        + " places its output "
+                report.warning(consumer + " depends on node module " + webRel + "; output goes "
                         + (roots.webapp() != null
-                                ? "in the war under `" + (roots.webapp().isEmpty() ? "/" : roots.webapp()) + "`"
-                                : "on the classpath under `"
-                                        + (roots.classpath() == null ? "static" : roots.classpath()) + "`"));
+                                ? "in the war at " + (roots.webapp().isEmpty() ? "/" : roots.webapp())
+                                : "on the classpath at " + (roots.classpath() == null ? "static" : roots.classpath())));
             }
         }
         Workspace ws = root.workspaceOpt().orElseThrow();
@@ -220,9 +216,9 @@ final class FrontendImport {
             Path target = r.output() == null ? null : r.output().target(frontend.dir());
             String consumer = target == null ? null : consumer(rootDir, out.keySet(), target);
             if (target == null || consumer == null) {
-                report.error("`" + FrontendPlugin.ARTIFACT + "` in `" + rel(rootDir, frontend.dir()) + "` writes "
-                        + (target == null ? "where its bundler config does not say" : "outside every module")
-                        + "; the in-place build cannot place it");
+                report.error(FrontendPlugin.ARTIFACT + " in " + rel(rootDir, frontend.dir()) + " writes "
+                        + (target == null ? "to an unknown directory" : "outside every module")
+                        + "; the in-place build can't place it");
                 continue;
             }
             Path consumerDir = rootDir.resolve(consumer).normalize();
@@ -236,8 +232,8 @@ final class FrontendImport {
                     frontend.table(), rel(consumerDir, frontend.dir()), roots, rel(frontend.dir(), target), inputs);
             JkBuild built = Objects.requireNonNull(out.get(consumer), "consumer module");
             out.put(consumer, withFrontend(built, built.project(), frontend, table));
-            report.warning("`" + consumer + "` builds the front end in `" + rel(rootDir, frontend.dir())
-                    + "` where it stands, and packages what it writes to `" + rel(rootDir, target) + "`");
+            report.warning(consumer + " builds the front end in place at " + rel(rootDir, frontend.dir())
+                    + " and packages " + rel(rootDir, target));
         }
         return new Relocated(root, out, FrontendFiles.NONE);
     }
@@ -260,8 +256,8 @@ final class FrontendImport {
             if (rel.equals(classes)) return new Roots("", null);
             if (rel.startsWith(classes + "/")) return new Roots(rel.substring(classes.length() + 1), null);
         }
-        report.warning("`" + FrontendPlugin.ARTIFACT + "` writes into `" + rel + "`, neither the war's webapp nor"
-                + " the classpath; jk packages the output under `static/`");
+        report.warning(FrontendPlugin.ARTIFACT + " writes into " + rel + " (not webapp or classpath); jk"
+                + " packages it under static/");
         return Roots.NONE;
     }
 
@@ -390,14 +386,12 @@ final class FrontendImport {
 
     private static FrontendFiles rewrite(BundlerOutput.Found output, Path configAt, ImportReport.Builder report) {
         String rewritten = output.rewritten(OUT);
-        report.warning("`" + output.file().getFileName() + "` now writes to `" + OUT + "/` instead of `"
-                + output.literal() + "`; jk places the output");
+        report.warning(output.file().getFileName() + " now writes to " + OUT + "/ instead of " + output.literal());
         return new FrontendFiles(List.of(), Map.of(configAt, rewritten));
     }
 
     private static void reportUnreadOutput(FrontendPlugin.Frontend f, ImportReport.Builder report) {
-        report.warning("the bundler's output directory in `" + f.workingDirectory() + "` could not be read (no"
-                + " webpack or vite config with a literal output path): set `[node] out` to it by hand");
+        report.warning("bundler output in " + f.workingDirectory() + " unreadable; set [node] out by hand");
     }
 
     private static Path freeDir(Path wanted, Iterable<String> members, Path rootDir) {

@@ -36,21 +36,14 @@ final class ManagedRows {
     }
 
     void flush(ImportReport.Builder report) {
-        pinned.forEach((owner, modules) -> report.warning("`<dependencyManagement>` in " + owner + " pins "
-                + count(modules, "version") + " no declared dependency uses (" + sample(modules)
-                + "); written to [managed-dependencies], so they govern transitive versions as they do under"
-                + " Maven."));
-        excluding.forEach((owner, modules) -> report.warning("`<dependencyManagement>` in " + owner
-                + " excludes coordinates under " + count(modules, "module") + " (" + sample(modules)
-                + "); written to [managed-dependencies] with `exclude`, so every edge onto the module drops them"
-                + " as it does under Maven."));
-        versionless.forEach((owner, modules) -> report.warning("`<dependencyManagement>` in " + owner
-                + " carries " + count(modules, "entry") + " with exclusions and no version (" + sample(modules)
-                + "); jk has no versionless constraint, so the exclusions reach only a dependency that declares"
-                + " the module."));
-        unresolved.forEach((owner, modules) -> report.warning("`<dependencyManagement>` in " + owner + " pins "
-                + count(modules, "version") + " no declared dependency uses whose version is still a property ("
-                + sample(modules) + "); no [managed-dependencies] row is written for them."));
+        pinned.forEach((owner, modules) -> report.warning("dependencyManagement in " + owner + ": "
+                + count(modules, "unused pin") + " moved to [managed-dependencies] (" + sample(modules) + ")"));
+        excluding.forEach((owner, modules) -> report.warning("dependencyManagement in " + owner + ": exclusions on "
+                + count(modules, "module") + " moved to [managed-dependencies] (" + sample(modules) + ")"));
+        versionless.forEach((owner, modules) -> report.warning("dependencyManagement in " + owner + ": exclusions on "
+                + count(modules, "versionless entry") + " apply only where declared (" + sample(modules) + ")"));
+        unresolved.forEach((owner, modules) -> report.warning("dependencyManagement in " + owner + ": "
+                + count(modules, "pin") + " with unresolved versions dropped (" + sample(modules) + ")"));
     }
 
     /** The rows for the reactor parents' entries a workspace import writes once on the root. */
@@ -59,26 +52,22 @@ final class ManagedRows {
         List<String> excluding = new ArrayList<>();
         for (Dependency d : hoisted) (d.exclusions().isEmpty() ? pinned : excluding).add(d.module());
         if (!pinned.isEmpty()) {
-            report.warning("`<dependencyManagement>` of the reactor's parent POMs pins " + count(pinned, "version")
-                    + " no module declares (" + sample(pinned) + "); written once to the root's"
-                    + " [managed-dependencies], so they govern every member's transitive versions as they do under"
-                    + " Maven.");
+            report.warning("parent dependencyManagement: " + count(pinned, "unused pin")
+                    + " moved to the root's [managed-dependencies] (" + sample(pinned) + ")");
         }
         if (!excluding.isEmpty()) {
-            report.warning("`<dependencyManagement>` of the reactor's parent POMs excludes coordinates under "
-                    + count(excluding, "module") + " (" + sample(excluding) + "); written once to the root's"
-                    + " [managed-dependencies] with `exclude`, so every member's edge onto the module drops them"
-                    + " as it does under Maven.");
+            report.warning("parent dependencyManagement: exclusions on " + count(excluding, "module")
+                    + " moved to the root's [managed-dependencies] (" + sample(excluding) + ")");
         }
     }
 
     static String count(List<String> modules, String noun) {
         int n = modules.size();
-        String plural = noun.equals("entry") ? "entries" : noun + "s";
+        String plural = noun.endsWith("entry") ? noun.substring(0, noun.length() - 1) + "ies" : noun + "s";
         return n + " " + (n == 1 ? noun : plural);
     }
 
     static String sample(List<String> modules) {
-        return modules.size() > 5 ? String.join(", ", modules.subList(0, 5)) + ", …" : String.join(", ", modules);
+        return modules.size() > 3 ? String.join(", ", modules.subList(0, 3)) + ", …" : String.join(", ", modules);
     }
 }

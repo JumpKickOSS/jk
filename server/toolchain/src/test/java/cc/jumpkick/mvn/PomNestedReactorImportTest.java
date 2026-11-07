@@ -108,7 +108,7 @@ class PomNestedReactorImportTest {
         });
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m -> m.startsWith("workspace module `missing` has no pom.xml"));
+                .anyMatch(m -> m.startsWith("module missing: no pom.xml at "));
     }
 
     /**
@@ -160,9 +160,8 @@ class PomNestedReactorImportTest {
         assertThat(plain.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .anySatisfy(m -> assertThat(m)
-                        .startsWith("`<modules>` are declared only in profiles that are not active on this machine"
-                                + " (default, default-heavy, legacy)")
-                        .contains("`jk import pom.xml -P default`"));
+                        .isEqualTo("<modules> only in inactive profiles (default, default-heavy, legacy); no module"
+                                + " imported. Re-run jk import pom.xml -P default"));
 
         PomImporter.WorkspaceImportResult activated = TestImporters.offline(tmp)
                 .activeProfiles(List.of("default", "default-heavy", "nowhere"))
@@ -174,8 +173,8 @@ class PomNestedReactorImportTest {
         assertThat(activated.modules().keySet()).containsExactlyInAnyOrder("app", "heavy");
         assertThat(activated.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anySatisfy(m -> assertThat(m).startsWith("`-P nowhere` names a profile the root POM does not declare"))
-                .noneMatch(m -> m.startsWith("`<modules>` are declared only in profiles"));
+                .anySatisfy(m -> assertThat(m).startsWith("-P nowhere: the root POM has no such profile"))
+                .noneMatch(m -> m.startsWith("<modules> only in inactive profiles"));
     }
 
     @Test
@@ -202,7 +201,7 @@ class PomNestedReactorImportTest {
         assertThat(requireNonNull(result.root().workspace()).modules()).containsExactly("inside");
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m -> m.startsWith("module `../outside` of the root pom.xml lies outside the root directory"));
+                .anyMatch(m -> m.equals("module ../outside of root pom.xml is outside the root; skipped"));
     }
 
     /**

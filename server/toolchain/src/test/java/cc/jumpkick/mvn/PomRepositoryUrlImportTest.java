@@ -79,9 +79,8 @@ class PomRepositoryUrlImportTest {
                 .extracting(RepositorySpec::name, r -> r.url().toString())
                 .containsExactly(Tuple.tuple("central-mirror", "https://nexus.example/repository/maven-public/"));
         assertThat(TestImporters.messages(result))
-                .anyMatch(
-                        m -> m.startsWith("`<repository>` `central` at https://nexus.example/repository/maven-public/")
-                                && m.contains("written as `central-mirror`"));
+                .anyMatch(m -> m.startsWith("repository central at https://nexus.example/repository/maven-public/")
+                        && m.contains("written as central-mirror"));
         assertThat(JkBuildRenderer.render(result.jkBuild()))
                 .contains(
                         "central-mirror = { url = \"https://nexus.example/repository/maven-public/\", optional = true }");
@@ -120,9 +119,9 @@ class PomRepositoryUrlImportTest {
                 .filteredOn(i -> i.severity() == ImportReport.Severity.WARNING)
                 .extracting(ImportReport.Issue::message)
                 .anySatisfy(m -> assertThat(m)
-                        .contains("`nm-repo` at http://repo.numericalmethod.com/maven/ is plaintext http")
-                        .contains("`blocked = true`")
-                        .contains("`allow-insecure = true`"));
+                        .contains("repository nm-repo at http://repo.numericalmethod.com/maven/ is plain http")
+                        .contains("written blocked = true")
+                        .contains("allow-insecure = true"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered)
                 .contains("nm-repo = { url = \"http://repo.numericalmethod.com/maven/\", blocked = true }")

@@ -137,7 +137,7 @@ class PomResourcesImportTest {
         assertThat(r.dirs()).containsExactly("src/main/config");
         assertThat(r.testFiltered()).containsExactly("src/it/resources");
         assertThat(r.properties()).isEmpty();
-        assertThat(TestImporters.messages(result)).anyMatch(m -> m.contains("`<targetPath>` on src/main/config"));
+        assertThat(TestImporters.messages(result)).anyMatch(m -> m.contains("<targetPath> on src/main/config"));
     }
 
     /**
@@ -184,7 +184,7 @@ class PomResourcesImportTest {
         assertThat(rendered).doesNotContain("[resources]");
         assertThat(JkBuildParser.parse(rendered).build().resources()).isEqualTo(r);
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.contains("the module directory itself"))
-                .noneMatch(m -> m.contains("`<targetPath>` on src/main/resources/META-INF"));
+                .anyMatch(m -> m.contains("the module directory (${basedir})"))
+                .noneMatch(m -> m.contains("<targetPath> on src/main/resources/META-INF"));
     }
 }

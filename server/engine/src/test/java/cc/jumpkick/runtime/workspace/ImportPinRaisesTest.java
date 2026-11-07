@@ -93,10 +93,8 @@ class ImportPinRaisesTest {
         assertThat(lines)
                 .singleElement()
                 .asString()
-                .startsWith(
-                        "`jakarta.inject:jakarta.inject-api` 2.0.1 → 2.0.1.MR ([dependencies] in org.cryptomator:app)")
-                .contains("depended on by org.cryptomator:cryptofs 2.10.0")
-                .contains("highest wins");
+                .isEqualTo("jakarta.inject:jakarta.inject-api raised 2.0.1 → 2.0.1.MR in org.cryptomator:app;"
+                        + " needed by org.cryptomator:cryptofs 2.10.0");
         assertThat(Files.readString(ws.resolve("app").resolve("jk.toml")))
                 .contains("jakarta-inject-api = \"jakarta.inject:jakarta.inject-api:2.0.1.MR\"")
                 .as("a pin nothing asks above stays where the POM put it")
@@ -129,8 +127,8 @@ class ImportPinRaisesTest {
         assertThat(ImportPinRaises.PROBES.sum() - probes)
                 .as("lib's raise moves what app carries, app's raise moves nothing another member carries")
                 .isEqualTo(2);
-        assertThat(lines).anyMatch(l -> l.startsWith("`org.ex:core` 1.0 → 2.0 ([dependencies] in org.ex:lib)"));
-        assertThat(lines).anyMatch(l -> l.startsWith("`org.ex:api` 1.0 → 2.0 ([dependencies] in org.ex:app)"));
+        assertThat(lines).anyMatch(l -> l.startsWith("org.ex:core raised 1.0 → 2.0 in org.ex:lib"));
+        assertThat(lines).anyMatch(l -> l.startsWith("org.ex:api raised 1.0 → 2.0 in org.ex:app"));
         LockFlow.Result lock = LockFlow.run(ws, ws.resolve("cache-lock"), List.of(), false, http.base());
         assertThat(lock.status()).as(String.valueOf(lock.error())).isZero();
     }

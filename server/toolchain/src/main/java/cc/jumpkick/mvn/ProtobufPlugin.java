@@ -46,11 +46,10 @@ final class ProtobufPlugin {
     static final String ARTIFACT = "protobuf-maven-plugin";
 
     /** What an {@code add-source} root inside the output is, for the build-helper row. */
-    static final String ADD_SOURCE_ROW = "the protobuf plugin's output; `[protobuf]` folds the generated Java"
-            + " into the compile itself, so no `extra-src` root is written";
+    static final String ADD_SOURCE_ROW = "the [protobuf] output; no extra-src needed";
 
-    private static final String NO_PROTOS_ROW = "the protobuf plugin's output, which this module has no `.proto`"
-            + " sources to fill, so no `extra-src` root is written";
+    private static final String NO_PROTOS_ROW =
+            "the [protobuf] output, but the module has no .proto files; no extra-src";
 
     /** Maven's proto root when the POM names none; the {@code [protobuf]} preset's own default is {@code proto}. */
     private static final String DEFAULT_SRC = "src/main/proto";
@@ -147,9 +146,8 @@ final class ProtobufPlugin {
         }
         String managed = PluginFacts.managedVersion(model, PROTOBUF_GROUP, PROTOBUF_JAVA);
         if (managed != null) return managed;
-        report.error("`" + ARTIFACT + "` names no resolvable `<protocArtifact>` and the POM no protobuf-java"
-                + " version, so `[protobuf]` was written without `version`; set it to the protoc release to run"
-                + " (the protobuf-java release the module compiles against).");
+        report.error(ARTIFACT + ": no protocArtifact or protobuf-java version; set [protobuf] version to the"
+                + " protoc release");
         return null;
     }
 
@@ -169,12 +167,10 @@ final class ProtobufPlugin {
         String artifact = value(configs, "pluginArtifact");
         String coordinate = artifact == null ? null : gav(artifact);
         if (pluginId == null || coordinate == null) {
-            String name = pluginId == null ? "a" : "the `" + pluginId + "`";
             String table = "[protobuf." + (pluginId == null ? "<id>" : pluginId) + "]";
-            report.error("`" + ARTIFACT + "` `" + CUSTOM_GOAL + "` runs " + name + " protoc plugin but names no"
-                    + (pluginId == null ? " `<pluginId>`" : " resolvable `<pluginArtifact>`") + ", so no `" + table
-                    + "` entry was written; add it with `plugin = \"group:artifact:version\"` naming the plugin"
-                    + " executable (protoc's `--" + (pluginId == null ? "<id>" : pluginId) + "_out`).");
+            report.error(ARTIFACT + " " + CUSTOM_GOAL + ": protoc plugin "
+                    + (pluginId == null ? "has no <pluginId>" : pluginId + " has no resolvable <pluginArtifact>")
+                    + "; add " + table + " plugin = \"group:artifact:version\"");
             return Map.of();
         }
         Map<String, Object> entry = new LinkedHashMap<>();
@@ -203,11 +199,8 @@ final class ProtobufPlugin {
                 String artifact = PluginFacts.child(binary, "artifactId");
                 String version = PluginFacts.child(binary, "version");
                 if (group == null || artifact == null || version == null) {
-                    report.error(
-                            "`" + ARTIFACT + "` `<binaryMavenPlugin>` "
-                                    + (artifact == null ? "" : "`" + artifact + "` ")
-                                    + "names no resolvable group, artifact and version, so no `[protobuf.<id>]` entry was"
-                                    + " written; add it with `plugin = \"group:artifact:version\"` naming the plugin executable.");
+                    report.error(ARTIFACT + " <binaryMavenPlugin> " + (artifact == null ? "" : artifact + " ")
+                            + "has no full coordinate; add [protobuf.<id>] plugin = \"group:artifact:version\"");
                     continue;
                 }
                 String id = artifact.startsWith("protoc-gen-") ? artifact.substring("protoc-gen-".length()) : artifact;
@@ -261,11 +254,11 @@ final class ProtobufPlugin {
     private static void reportOtherGoals(Plugin plugin, ImportReport.Builder report) {
         Set<String> others = new LinkedHashSet<>();
         for (PluginExecution execution : plugin.getExecutions()) {
-            for (String goal : execution.getGoals()) if (!GOALS.contains(goal)) others.add("`" + goal + "`");
+            for (String goal : execution.getGoals()) if (!GOALS.contains(goal)) others.add(goal);
         }
         if (others.isEmpty()) return;
-        report.warning("`" + ARTIFACT + "` goals " + String.join(", ", others) + " were not imported; `[protobuf]`"
-                + " is the `compile` goal's Java codegen over the main protos.");
+        report.warning(ARTIFACT + " goals " + String.join(", ", others) + " not imported; [protobuf] covers"
+                + " compile only");
     }
 
     /** Every configuration element the preset has no key or row for, as one row. */
@@ -273,13 +266,11 @@ final class ProtobufPlugin {
         Set<String> names = new LinkedHashSet<>();
         for (Xpp3Dom config : configs) {
             for (Xpp3Dom child : config.getChildren()) {
-                if (!COVERED.contains(child.getName())) names.add("`<" + child.getName() + ">`");
+                if (!COVERED.contains(child.getName())) names.add("<" + child.getName() + ">");
             }
         }
         if (names.isEmpty()) return;
-        report.warning("`" + ARTIFACT + "` " + String.join(", ", names) + " have no `[protobuf]` key; the preset"
-                + " runs protoc with `version`, `src`, `lite` and `kotlin`, and one `[protobuf.<id>]` entry per"
-                + " protoc plugin.");
+        report.warning(ARTIFACT + " " + String.join(", ", names) + " have no [protobuf] key; not imported");
     }
 
     /**

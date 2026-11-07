@@ -27,8 +27,7 @@ final class ExclusionMapping {
             try {
                 exclude.add(Dependency.exclusion(spelling));
             } catch (IllegalArgumentException e) {
-                report.warning("`<exclusion>` " + spelling + " on " + source.module()
-                        + " is not a coordinate jk prunes by (" + e.getMessage() + "); it was not written.");
+                report.warning(source.module() + ": exclusion " + spelling + " dropped (" + e.getMessage() + ")");
             }
         }
         return exclude.isEmpty() ? dep : dep.withExclusions(exclude);

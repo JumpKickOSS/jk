@@ -63,22 +63,12 @@ final class ReactorModules {
          * written} are the dependencies of this POM the dependent received in the pom edge's place.
          */
         String row(String module, boolean platform, List<String> written) {
-            String subject =
-                    (platform ? "`<type>pom</type>` on " : "") + module + " names `" + path + "/pom.xml`, " + why;
-            if (!platform) {
-                return subject + "; the lock would fetch it from a repository, where a reactor module is not"
-                        + " published, so the dependency was not written.";
-            }
-            String row = subject + "; the lock fetches a `[platform]` entry from a repository, where a reactor POM"
-                    + " is not published, so no row is written";
-            if (classpath.isEmpty()) return row + ".";
-            if (written.isEmpty()) {
-                return row + "; its own dependencies " + modules(classpath) + ", which Maven adds to the"
-                        + " dependent's classpath through the pom, are declared by this module already.";
-            }
-            return row + "; its own dependencies " + String.join(", ", written) + ", which Maven adds to the"
-                    + " dependent's classpath through the pom, are written on this module in its place, a"
-                    + " workspace module among them as a workspace edge.";
+            String subject = (platform ? "<type>pom</type> on " : "") + module + " names " + path + "/pom.xml, " + why;
+            if (!platform) return subject + "; dependency not written (unpublished)";
+            String row = subject + "; no [platform] row (unpublished)";
+            if (classpath.isEmpty()) return row;
+            if (written.isEmpty()) return row + "; its dependencies " + modules(classpath) + " are already declared";
+            return row + "; its dependencies " + String.join(", ", written) + " are declared here instead";
         }
 
         private static String modules(List<Pom.Dep> deps) {
@@ -200,13 +190,11 @@ final class ReactorModules {
         for (String module : em.model().getModules()) {
             Path childPom = childPom(pomFile, module);
             if (!Files.isRegularFile(childPom)) {
-                report.error("workspace module `" + module + "` has no pom.xml at " + childPom);
+                report.error("module " + module + ": no pom.xml at " + childPom);
                 continue;
             }
             if (relativePath(childPom) == null) {
-                report.error(
-                        "module `" + module + "` of " + relativeOrRoot(pomFile) + " lies outside the root directory;"
-                                + " a jk workspace lists modules under its root, so it was skipped.");
+                report.error("module " + module + " of " + relativeOrRoot(pomFile) + " is outside the root; skipped");
                 continue;
             }
             if (!walked.add(childPom)) continue;
@@ -248,13 +236,8 @@ final class ReactorModules {
                     scope == null || scope.isBlank() || "compile".equals(scope) || "runtime".equals(scope);
             if (onClasspath && !d.isOptional()) classpath.add(EffectiveModel.toDep(d));
         }
-        String modules = "`" + String.join("`, `", model.getModules()) + "`";
-        return new Unbuilt(
-                path,
-                "the aggregator of " + modules + " (packaging `pom` with `<modules>`), which is a parent and a list"
-                        + " rather than a module the workspace builds",
-                List.copyOf(classpath),
-                true);
+        String modules = String.join(", ", model.getModules());
+        return new Unbuilt(path, "the aggregator of " + modules + ", not a built module", List.copyOf(classpath), true);
     }
 
     /** Every registered pom.xml the walk did not reach is a module Maven would not build here either. */
@@ -269,10 +252,9 @@ final class ReactorModules {
             String group = raw.getGroupId() != null ? raw.getGroupId() : parent != null ? parent.getGroupId() : null;
             String lister = relativeOrRoot(listing.pomFile());
             String why = listing.profile() == null
-                    ? "which only " + lister + " lists, itself not built here"
-                    : "which only profile `" + listing.profile() + "` of " + lister + " lists, and that profile is"
-                            + " not active on this machine (activate it with Maven's `-P` and re-import, or list"
-                            + " the module at the top level)";
+                    ? "listed only by " + lister + ", which is not built"
+                    : "listed only by inactive profile " + listing.profile() + " of " + lister + " (re-import with -P "
+                            + listing.profile() + ")";
             unbuilt.putIfAbsent(group + ":" + raw.getArtifactId(), new Unbuilt(path, why, List.of(), false));
         }
     }
@@ -294,6 +276,6 @@ final class ReactorModules {
 
     private String relativeOrRoot(Path pomFile) {
         String path = relativePath(pomFile);
-        return path == null ? "the root pom.xml" : "`" + path + "`";
+        return path == null ? "root pom.xml" : path;
     }
 }

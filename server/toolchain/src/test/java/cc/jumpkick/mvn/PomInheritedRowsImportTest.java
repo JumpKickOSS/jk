@@ -102,33 +102,29 @@ class PomInheritedRowsImportTest {
                 .as("the root's extension: one row, unprefixed, counting the three modules that inherit it")
                 .singleElement()
                 .satisfies(m -> {
-                    assertThat(m)
-                            .startsWith(
-                                    "`<build><extensions>` org.apache.maven.wagon:wagon-ssh:2.6 is the ssh transport");
-                    assertThat(m).endsWith("Declared by the root pom.xml, inherited by 3 modules.");
+                    assertThat(m).startsWith("extension org.apache.maven.wagon:wagon-ssh:2.6: ssh deploy transport");
+                    assertThat(m).endsWith("; declared by root pom.xml, inherited by 3 modules");
                 });
         assertThat(rows.stream().filter(m -> m.contains("maven-enforcer-plugin")))
                 .singleElement()
                 .satisfies(
                         m -> assertThat(m)
                                 .isEqualTo(
-                                        "`<plugin>maven-enforcer-plugin</plugin>` was not imported; docs/user/migration.md"
-                                                + " lists where it lands in jk. Declared by the root pom.xml, inherited by 3 modules."));
+                                        "maven-enforcer-plugin not imported; declared by root pom.xml, inherited by 3 modules"));
         assertThat(rows.stream().filter(m -> m.contains("formatter-maven-plugin")))
                 .as("an aggregator's plugin is named by its pom.xml and counts its own subtree")
                 .singleElement()
-                .satisfies(m -> assertThat(m).endsWith("Declared by `libs/pom.xml`, inherited by 2 modules."));
+                .satisfies(m -> assertThat(m).endsWith("; declared by libs/pom.xml, inherited by 2 modules"));
         assertThat(rows.stream().filter(m -> m.contains("my-extension")))
                 .as("a module's own extension stays a row at the module")
                 .singleElement()
                 .satisfies(m -> {
-                    assertThat(m).startsWith("[app] `<build><extensions>` com.acme:my-extension:1.0");
+                    assertThat(m).startsWith("app: extension com.acme:my-extension:1.0: ");
                     assertThat(m).doesNotContain("inherited by");
                 });
         assertThat(rows.stream().filter(m -> m.contains("acme-maven-plugin")))
                 .singleElement()
-                .satisfies(
-                        m -> assertThat(m).startsWith("[app] `<plugin>acme-maven-plugin</plugin>` was not imported"));
+                .satisfies(m -> assertThat(m).startsWith("app: acme-maven-plugin not imported"));
         assertThat(result.report().issues().stream()
                         .filter(i -> i.message().contains("wagon-ssh"))
                         .map(ImportReport.Issue::severity))
@@ -229,8 +225,7 @@ class PomInheritedRowsImportTest {
                 .satisfies(
                         m -> assertThat(m)
                                 .isEqualTo(
-                                        "`<plugin>maven-dependency-plugin</plugin>` was not imported; docs/user/migration.md"
-                                                + " lists where it lands in jk. Declared by the root pom.xml, inherited by 2 modules."));
+                                        "maven-dependency-plugin not imported; declared by root pom.xml, inherited by 2 modules"));
     }
 
     @Test
@@ -257,9 +252,7 @@ class PomInheritedRowsImportTest {
 
         PomImporter.Result result = TestImporters.offline(root).importFrom(root.resolve("app/pom.xml"));
 
-        assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.equals("`<plugin>maven-enforcer-plugin</plugin>` was not imported;"
-                        + " docs/user/migration.md lists where it lands in jk."));
+        assertThat(TestImporters.messages(result)).anyMatch(m -> m.equals("maven-enforcer-plugin not imported"));
     }
 
     private static String parent(String artifactId, String relativePath) {

@@ -61,7 +61,8 @@ class PomTestFailuresImportTest {
                 dir, pom("", plugin("maven-failsafe-plugin", "<testFailureIgnore>true</testFailureIgnore>")));
         assertThat(result.jkBuild().build().testFailures()).isEqualTo(TestFailureMode.REPORT);
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<testFailureIgnore>` is written as"));
+                .anyMatch(m ->
+                        m.startsWith("maven-failsafe-plugin <testFailureIgnore>: became [test] failures = \"report\""));
     }
 
     @Test

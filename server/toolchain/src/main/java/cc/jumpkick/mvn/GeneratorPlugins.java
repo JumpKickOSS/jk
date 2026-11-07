@@ -79,8 +79,7 @@ final class GeneratorPlugins {
     private static final String GRAPHQL_JAVA_CODEGEN = "graphql-codegen-maven-plugin";
 
     /** What an {@code add-source} root inside the OpenAPI output is, for the build-helper row. */
-    private static final String OPENAPI_ADD_SOURCE_ROW = "the OpenAPI generator's output; `[openapi]` folds the"
-            + " generated sources into the compile itself, so no `extra-src` root is written";
+    private static final String OPENAPI_ADD_SOURCE_ROW = "the [openapi] output; no extra-src needed";
 
     /** The {@code <configuration>} children the preset's keys cover; anything else is a row. */
     private static final Set<String> COVERED = Set.of(
@@ -158,14 +157,11 @@ final class GeneratorPlugins {
     /** The GraphQL code generators: a row each naming where the step lands. */
     private static void reportGraphQl(Model model, ImportReport.Builder report) {
         if (PluginFacts.plugin(model, DGS_CODEGEN).isPresent()) {
-            report.warning("`" + DGS_CODEGEN + "` (DGS codegen) is a `[generate.<name>]` recipe over"
-                    + " `com.netflix.graphql.dgs.codegen:graphql-dgs-codegen-core`'s command line — see the GraphQL"
-                    + " section of docs/user/generate.md for the entry; nothing was written.");
+            report.warning(DGS_CODEGEN + ": not imported; write a [generate.<name>] entry"
+                    + " (docs/user/generate.md, GraphQL)");
         }
         if (PluginFacts.plugin(model, GRAPHQL_JAVA_CODEGEN).isPresent()) {
-            report.warning("`" + GRAPHQL_JAVA_CODEGEN + "` (graphql-java-codegen) has no command line a"
-                    + " `[generate.<name>]` entry could run — its Maven and Gradle plugins are the only drivers — so"
-                    + " that step stays under `jk mvn`; see the GraphQL section of docs/user/generate.md.");
+            report.warning(GRAPHQL_JAVA_CODEGEN + ": not imported; no CLI to run, keep it under jk mvn");
         }
     }
 
@@ -189,9 +185,8 @@ final class GeneratorPlugins {
             if (execution.getConfiguration() instanceof Xpp3Dom dom) configs.add(dom);
         }
         if (!others.isEmpty()) {
-            report.warning("`" + OPENAPI + "` runs `generate` more than once (" + String.join(", ", others)
-                    + " besides the first); `[openapi]` is one run, so give each further run its own"
-                    + " `[generate.<name>]` entry.");
+            report.warning(OPENAPI + " executions " + String.join(", ", others)
+                    + ": not imported; [openapi] is one run, add a [generate.<name>] entry each");
         }
         return configs;
     }
@@ -205,9 +200,9 @@ final class GeneratorPlugins {
         String inputSpec = value(configs, "inputSpec");
         String generator = value(configs, "generatorName");
         if (inputSpec == null || generator == null) {
-            report.error("`" + OPENAPI + "` declares no resolvable `<"
+            report.error(OPENAPI + ": no resolvable <"
                     + (inputSpec == null ? "inputSpec" : "generatorName")
-                    + ">`; no `[openapi]` table was written. The preset needs `spec` and `generator`.");
+                    + ">; no [openapi] written");
             return null;
         }
         Map<String, Object> values = new LinkedHashMap<>();
@@ -218,8 +213,7 @@ final class GeneratorPlugins {
         if (version != null) {
             values.put("version", version);
         } else {
-            report.warning("`" + OPENAPI + "` has no resolvable version; `[openapi] version` is `latest`, which"
-                    + " `jk lock` pins to the newest openapi-generator-cli release.");
+            report.warning(OPENAPI + ": no version; [openapi] version = latest, pinned by jk lock");
         }
         Map<String, String> options = options(configs);
         if (!options.isEmpty()) values.put("options", options);
@@ -235,11 +229,8 @@ final class GeneratorPlugins {
         if (!types.isEmpty()) values.put("type-mappings", types);
         reportUncovered(configs, report);
         if ("spring".equals(generator)) {
-            report.warning("`[openapi] generator = \"spring\"` applies jk's defaults (interfaceOnly, useSpringBoot3,"
-                    + " useJakartaEe, documentationProvider = none, annotationLibrary = none, openApiNullable ="
-                    + " false, useTags) under your `<configOptions>`; the Maven plugin's own defaults generate"
-                    + " springdoc and swagger annotations and JsonNullable fields, so set those keys in `options`"
-                    + " if the code depends on them.");
+            report.warning("[openapi] spring generator: jk's defaults drop springdoc, swagger and JsonNullable;"
+                    + " set them in options if needed");
         }
         return new PluginConfig("openapi", values);
     }
@@ -259,8 +250,7 @@ final class GeneratorPlugins {
         if (file.isBlank() || file.contains("?")) file = "openapi.yaml";
         String spec = "api/" + file;
         if (baseDir != null && Files.exists(baseDir.resolve(spec))) {
-            report.warning("`<inputSpec>` is " + inputSpec + "; `" + spec
-                    + "` is already there, so `[openapi] spec` names it and the URL was not fetched.");
+            report.warning("<inputSpec> " + inputSpec + ": using existing " + spec + "; URL not fetched");
             return spec;
         }
         try {
@@ -269,12 +259,10 @@ final class GeneratorPlugins {
             Path target = baseDir.resolve(spec);
             Files.createDirectories(target.getParent());
             Files.write(target, body);
-            report.warning("`<inputSpec>` is " + inputSpec + "; a generator step's inputs are files, so the spec was"
-                    + " fetched to `" + spec + "` and `[openapi] spec` names it. Check the file in; a newer"
-                    + " release of the spec is a new copy.");
+            report.warning("<inputSpec> " + inputSpec + ": fetched to " + spec + "; check it in");
         } catch (IOException e) {
-            report.error("`<inputSpec>` is " + inputSpec + ", which could not be fetched (" + e.getMessage()
-                    + "); `[openapi] spec = \"" + spec + "\"` was written — save the spec there before building.");
+            report.error("<inputSpec> " + inputSpec + ": fetch failed (" + e.getMessage() + "); save it to " + spec
+                    + " before building");
         }
         return spec;
     }
@@ -299,8 +287,7 @@ final class GeneratorPlugins {
         if (model != null && !model.equals(pkg + ".model")) keys.put("model-package", model);
         if (invoker != null && !invoker.equals(pkg)) keys.put("invoker-package", invoker);
         if (packageName != null && !packageName.equals(pkg)) {
-            report.warning("`<packageName>` " + packageName + " has no `[openapi]` key; the generator's"
-                    + " `--package-name` is `package` (" + pkg + ").");
+            report.warning("<packageName> " + packageName + ": not imported; package is " + pkg);
         }
         return keys;
     }
@@ -362,13 +349,12 @@ final class GeneratorPlugins {
         Set<String> names = new LinkedHashSet<>();
         for (Xpp3Dom config : configs) {
             for (Xpp3Dom child : config.getChildren()) {
-                if (!COVERED.contains(child.getName())) names.add("`<" + child.getName() + ">`");
+                if (!COVERED.contains(child.getName())) names.add("<" + child.getName() + ">");
             }
         }
         if (names.isEmpty()) return;
-        report.warning("`" + OPENAPI + "` " + String.join(", ", names) + " have no `[openapi]` key; the preset"
-                + " runs the generator with `spec`, `generator`, `package`, `version` and `options`, and a"
-                + " `[generate.<name>]` entry spells any other argument.");
+        report.warning(OPENAPI + " " + String.join(", ", names)
+                + ": not imported; use a [generate.<name>] entry for other arguments");
     }
 
     /** The last usable value of {@code name} across {@code configs}, so an execution's wins over the plugin's. */

@@ -449,7 +449,7 @@ class PomImporterTest {
         List<Dependency> main = result.jkBuild().dependencies().of(Scope.MAIN);
         assertThat(main).extracting(Dependency::library).containsExactly("util", "util-2");
         assertThat(main).extracting(Dependency::module).containsExactly("com.a:util", "com.b:util");
-        assertThat(result.report().issues()).anyMatch(i -> i.message().contains("`util` collides"));
+        assertThat(result.report().issues()).anyMatch(i -> i.message().contains("handle util collides"));
     }
 
     @Test

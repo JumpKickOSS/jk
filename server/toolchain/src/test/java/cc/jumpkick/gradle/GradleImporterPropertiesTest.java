@@ -137,7 +137,7 @@ class GradleImporterPropertiesTest {
                 .first()
                 .asString()
                 .contains("io.kotest:kotest-assertions-core")
-                .contains("no `version.kotest` entry for it");
+                .contains("no version.kotest in versions.properties");
     }
 
     /** A plugin applied without a version reads its {@code plugin.<id>} pin from versions.properties, Kotlin's {@code version.kotlin}. */
@@ -160,7 +160,7 @@ class GradleImporterPropertiesTest {
         assertThat(Objects.requireNonNull(result.jkBuild().project().kotlin()).raw())
                 .isEqualTo("2.4.10");
         assertThat(result.jkBuild().build().dokka().version().raw()).isEqualTo("2.0.0");
-        assertThat(messages(result.report())).noneMatch(m -> m.contains("without an explicit version"));
+        assertThat(messages(result.report())).noneMatch(m -> m.contains("Kotlin plugin has no version"));
     }
 
     /** No versions.properties beside the script: the placeholder is a row and the entry is written version-less. */
@@ -174,8 +174,9 @@ class GradleImporterPropertiesTest {
 
         Dependency logging = only(result.jkBuild(), Scope.MAIN);
         assertThat(logging.isPlatformManaged()).isTrue();
-        assertThat(messages(result.report()))
-                .anySatisfy(m -> assertThat(m).contains("`_`").contains("io.github.microutils:kotlin-logging"));
+        assertThat(messages(result.report())).anySatisfy(m -> assertThat(m)
+                .startsWith("io.github.microutils:kotlin-logging: no ")
+                .contains("in versions.properties; pin it in jk.toml"));
     }
 
     /** spring-petclinic-kotlin: {@code kotlin("jvm") version kotlinVersion} with the val declared in the plugins block. */
@@ -219,8 +220,7 @@ class GradleImporterPropertiesTest {
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .anySatisfy(m -> assertThat(m)
-                        .contains("`2.2.21`")
-                        .contains("below jk's floor `" + KotlinResolver.FLOOR_VERSION + "`")
+                        .contains("Kotlin 2.2.21 is below jk's floor")
                         .contains("kotlin = \"" + KotlinResolver.FLOOR_VERSION + "\""));
     }
 

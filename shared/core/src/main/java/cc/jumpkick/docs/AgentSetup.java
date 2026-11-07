@@ -112,11 +112,9 @@ public final class AgentSetup {
     }
 
     /** The step every agent leaves to the user, so it is said once, not per agent. */
-    public static final String TRUST_NOTE = "Trust this project's directory in your coding agents: most read AGENTS.md"
-            + " and project MCP files such as .mcp.json only in a folder you trust.";
+    public static final String TRUST_NOTE = "Agents ignore AGENTS.md and .mcp.json until you trust this folder";
 
-    static final String CODEX_NOTE =
-            "Codex reads AGENTS.md but no project MCP file: register jk's tools once with codex mcp add jk -- jk mcp";
+    static final String CODEX_NOTE = "Codex: register jk's tools once with codex mcp add jk -- jk mcp";
 
     private AgentSetup() {}
 

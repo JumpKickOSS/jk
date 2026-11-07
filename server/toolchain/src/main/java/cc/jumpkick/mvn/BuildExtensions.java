@@ -42,50 +42,34 @@ final class BuildExtensions {
         return Map.entry(ga, new Role(effect, ImportReport.Severity.ERROR));
     }
 
-    private static final String DEPLOY_TRANSPORT =
-            "transport of `mvn deploy`; `jk publish` speaks HTTP(S), `s3://` and `gs://`";
+    private static final String DEPLOY_TRANSPORT = "deploy transport; jk publish speaks HTTP(S), s3:// and gs://";
 
     /** The common extensions and lifecycle plugins, by {@code groupId:artifactId}. */
     private static final Map<String, Role> ROLES = Map.ofEntries(
-            covered(
-                    "io.quarkus.bot:build-reporter-maven-extension",
-                    "reports the Maven build to CI; the build's outputs do not depend on it"),
+            covered("io.quarkus.bot:build-reporter-maven-extension", "reports to CI; outputs do not depend on it"),
             covered(
                     "io.github.gitflow-incremental-builder:gitflow-incremental-builder",
-                    "builds only the modules git shows as changed, a selection `jk build` makes from its own action"
-                            + " cache"),
-            covered("org.apache.maven.wagon:wagon-ssh", "is the ssh " + DEPLOY_TRANSPORT),
-            covered("org.apache.maven.wagon:wagon-ssh-external", "is the external-ssh " + DEPLOY_TRANSPORT),
-            covered("org.apache.maven.wagon:wagon-webdav-jackrabbit", "is the WebDAV " + DEPLOY_TRANSPORT),
-            covered("org.apache.maven.wagon:wagon-ftp", "is the ftp " + DEPLOY_TRANSPORT),
+                    "builds changed modules only; jk build does that from its cache"),
+            covered("org.apache.maven.wagon:wagon-ssh", "ssh " + DEPLOY_TRANSPORT),
+            covered("org.apache.maven.wagon:wagon-ssh-external", "external-ssh " + DEPLOY_TRANSPORT),
+            covered("org.apache.maven.wagon:wagon-webdav-jackrabbit", "WebDAV " + DEPLOY_TRANSPORT),
+            covered("org.apache.maven.wagon:wagon-ftp", "ftp " + DEPLOY_TRANSPORT),
             covered(
                     "org.codehaus.mojo:flatten-maven-plugin",
-                    "writes the flattened POM `mvn deploy` publishes in place of the build POM; `jk publish` writes"
-                            + " its POM from jk.toml, which has no build-time properties to flatten, and `jk export"
-                            + " maven` writes a flat POM"),
+                    "flattens the deployed POM; jk publish writes a flat one"),
             covered(
                     "org.apache.maven.extensions:maven-build-cache-extension",
-                    "caches module outputs between Maven builds; jk's action cache does this for every step"),
-            covered(
-                    "io.takari.maven:takari-smart-builder",
-                    "schedules the reactor along its critical path; `jk build` schedules its own graph"),
+                    "caches module outputs; jk's action cache does this"),
+            covered("io.takari.maven:takari-smart-builder", "schedules the reactor; jk build schedules its own graph"),
             covered(
                     "fr.brouillard.oss:jgitver-maven-plugin",
-                    "derives the version from git tags at build time; `version` in jk.toml is what the lock and the"
-                            + " artifacts carry, so set it from the tag before `jk build`"),
+                    "versions from git tags; set version in jk.toml from the tag before jk build"),
             unbuilt(
                     "org.apache.maven.archetype:archetype-packaging",
-                    "is the `maven-archetype` packaging, a project template jk does not build"),
-            unbuilt(
-                    "org.eclipse.tycho:tycho-maven-plugin",
-                    "is the Tycho lifecycle — `eclipse-plugin`, `eclipse-feature` and p2 packaging resolved"
-                            + " against a target platform — none of which jk builds"),
-            unbuilt(
-                    "org.apache.felix:maven-bundle-plugin",
-                    "is the `bundle` packaging: an OSGi manifest bnd computes, which jk's jar step does not write"),
-            unbuilt(
-                    "com.github.maven-nar:nar-maven-plugin",
-                    "is the `nar` packaging for native archives, which jk does not build"));
+                    "maven-archetype packaging, which jk does not build"),
+            unbuilt("org.eclipse.tycho:tycho-maven-plugin", "Tycho/p2 packaging, which jk does not build"),
+            unbuilt("org.apache.felix:maven-bundle-plugin", "OSGi bundle packaging; jk writes no OSGi manifest"),
+            unbuilt("com.github.maven-nar:nar-maven-plugin", "nar native packaging, which jk does not build"));
 
     private BuildExtensions() {}
 
@@ -117,18 +101,17 @@ final class BuildExtensions {
             String ga = extension.getGroupId() + ":" + extension.getArtifactId();
             if (PROPERTY_ONLY.contains(ga)) continue;
             Role role = ROLES.get(ga);
-            String effect = role != null ? role.effect() : "is a Maven core extension jk does not load";
+            String effect = role != null ? role.effect() : "Maven core extension, which jk does not load";
             ImportReport.Severity severity = role != null ? role.severity() : ImportReport.Severity.ERROR;
-            String message = "`<build><extensions>` " + coordinate(ga, extension.getVersion()) + " " + effect
-                    + "; nothing is written for it. " + remedy(severity);
+            String message = "extension " + coordinate(ga, extension.getVersion()) + ": " + effect + remedy(severity);
             row(em, report, inherited, isRoot, severity, message, raw -> declaresExtension(raw, ga));
         }
         for (Plugin plugin : PluginFacts.plugins(em.model())) {
             String ga = ga(plugin);
             Role role = ROLES.get(ga);
             if (role == null || PluginFacts.MAPPED_PLUGINS.contains(plugin.getArtifactId())) continue;
-            String message = "`<plugin>` " + coordinate(ga, plugin.getVersion()) + " " + role.effect()
-                    + "; nothing is written for it. " + remedy(role.severity());
+            String message =
+                    "plugin " + coordinate(ga, plugin.getVersion()) + ": " + role.effect() + remedy(role.severity());
             row(
                     em,
                     report,
@@ -143,8 +126,8 @@ final class BuildExtensions {
     /** A packaging jk does not build keeps its Maven step; an effect jk has needs nothing kept. */
     private static String remedy(ImportReport.Severity severity) {
         return severity == ImportReport.Severity.ERROR
-                ? "Drop it from the POM when the jk build does not need it, or keep running that step with `jk mvn`."
-                : "Drop it from the POM when the jk build does not need it.";
+                ? ". Skipped; drop it or run that step with jk mvn"
+                : "; skipped";
     }
 
     /** The row itself, or its count onto the declaring POM's row in a workspace. */

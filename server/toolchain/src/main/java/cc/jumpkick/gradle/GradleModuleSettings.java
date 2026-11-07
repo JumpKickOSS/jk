@@ -44,8 +44,8 @@ final class GradleModuleSettings {
                 .toList();
         if (ids.size() == 1) return ids.getFirst();
         if (ids.size() > 1) {
-            report.warning("`" + p.path() + "` publishes " + ids.size() + " artifacts (" + String.join(", ", ids)
-                    + "); a jk module publishes one, so it is named after its archives and the rest are not written.");
+            report.warning(p.path() + " publishes " + ids.size() + " artifacts (" + String.join(", ", ids)
+                    + "); kept only the one named after its archives");
         }
         String archives = p.archivesName();
         return archives == null || archives.isBlank() ? p.name() : archives;
@@ -159,8 +159,7 @@ final class GradleModuleSettings {
                 .flatMap(List::stream)
                 .anyMatch(d -> "org.jspecify:jspecify".equals(d.module()));
         if (!jspecify || !marksNullMarked(p, dir)) return;
-        local.warning("packages are marked `@NullMarked` and JSpecify is declared, but no null checker runs;"
-                + " `[nullness] include = []` would check exactly the marked code with NullAway.");
+        local.warning("@NullMarked code but no null checker; add [nullness] include = [] to check it");
     }
 
     /** Whether a {@code package-info.java} under the project's main Java roots says {@code @NullMarked}. */

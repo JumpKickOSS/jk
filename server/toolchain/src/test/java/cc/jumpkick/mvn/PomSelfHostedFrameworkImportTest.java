@@ -46,12 +46,9 @@ class PomSelfHostedFrameworkImportTest {
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .anySatisfy(m -> assertThat(m)
-                        .contains("(app)")
-                        .contains("`[quarkus]`")
-                        .contains("999-SNAPSHOT")
-                        .contains("io.quarkus.platform:quarkus-bom:999-SNAPSHOT")
-                        .contains("bom/application")
-                        .contains("jk mvn"));
+                        .startsWith("quarkus-maven-plugin 999-SNAPSHOT on 1 module (app): no [quarkus]")
+                        .contains("io.quarkus.platform:quarkus-bom:999-SNAPSHOT is unpublished")
+                        .contains("jk mvn package"));
     }
 
     @Test

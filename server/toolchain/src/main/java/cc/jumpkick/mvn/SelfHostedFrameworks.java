@@ -32,7 +32,7 @@ final class SelfHostedFrameworks {
                     "spring-boot-dependencies"));
 
     /** How many module paths a row names before counting the rest. */
-    private static final int NAMED_PATHS = 6;
+    private static final int NAMED_PATHS = 3;
 
     private SelfHostedFrameworks() {}
 
@@ -62,7 +62,7 @@ final class SelfHostedFrameworks {
                 stripped.add(e.getKey());
                 version = declared;
             }
-            if (version != null) report.warning(row(framework, version, stripped, bomVersions));
+            if (version != null) report.warning(row(framework, version, stripped));
         }
         return out;
     }
@@ -83,10 +83,9 @@ final class SelfHostedFrameworks {
         return found;
     }
 
-    private static String row(Framework framework, String version, List<String> paths, Map<String, String> boms) {
-        StringBuilder out = new StringBuilder("`")
-                .append(framework.plugin())
-                .append("` runs at the reactor's own version ")
+    private static String row(Framework framework, String version, List<String> paths) {
+        StringBuilder out = new StringBuilder(framework.plugin())
+                .append(' ')
                 .append(version)
                 .append(" on ")
                 .append(paths.size())
@@ -97,18 +96,15 @@ final class SelfHostedFrameworks {
         }
         if (paths.size() > NAMED_PATHS)
             out.append(", +").append(paths.size() - NAMED_PATHS).append(" more");
-        out.append("), so no `[")
+        return out.append("): no [")
                 .append(framework.table())
-                .append("]` table is written there: the table would imply the platform BOM ")
+                .append("], since ")
                 .append(framework.impliedBom())
                 .append(':')
                 .append(version)
-                .append(", which repositories publish for releases only, and this reactor builds `")
-                .append(framework.reactorBom())
-                .append("` itself (");
-        out.append(String.join(", ", boms.keySet()));
-        return out.append("). These modules build as plain jars; keep building them with `jk mvn package` for the")
-                .append(" framework's own packaging.")
+                .append(" is unpublished. Plain jars; use jk mvn package for ")
+                .append(framework.plugin())
+                .append(" packaging")
                 .toString();
     }
 }

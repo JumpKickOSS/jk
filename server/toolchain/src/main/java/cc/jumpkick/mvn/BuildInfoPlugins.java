@@ -54,8 +54,8 @@ final class BuildInfoPlugins {
                 goals.equals(Set.of("dokka")) ? BuildBlock.Dokka.Format.HTML : BuildBlock.Dokka.Format.JAVADOC;
         String version = PluginFacts.usable(dokka.get().getVersion());
         if (version == null) {
-            report.warning("`" + DOKKA + "` is declared without a resolvable version; `[dokka]` documents with Dokka "
-                    + BuildBlock.Dokka.DEFAULT_VERSION + " — set `[dokka] version` yourself to keep the plugin's.");
+            report.warning(DOKKA + ": no version; using Dokka " + BuildBlock.Dokka.DEFAULT_VERSION
+                    + ", set [dokka] version to change it");
             return Optional.of(new BuildBlock.Dokka(BuildBlock.Dokka.DEFAULT.version(), format));
         }
         return Optional.of(new BuildBlock.Dokka(VersionSelector.parse(version), format));
@@ -81,18 +81,17 @@ final class BuildInfoPlugins {
 
     private static BuildBlock.BuildInfo mapGitCommitId(
             Plugin plugin, @Nullable String outputDirectory, ImportReport.Builder report) {
-        String id = "`" + plugin.getArtifactId() + "`";
+        String id = plugin.getArtifactId();
         String file = null;
         for (Xpp3Dom config : PluginFacts.configurations(plugin)) {
             String format = PluginFacts.usable(PluginFacts.child(config, "format"));
             if (format != null && !"properties".equalsIgnoreCase(format)) {
-                report.warning(id + " `<format>" + format + "` — `[build-info]` writes a properties file;"
-                        + " a consumer parsing JSON reads the same keys from `git.properties`.");
+                report.warning(id + " <format> " + format + ": not imported; [build-info] writes git.properties");
             }
             String dateFormat = PluginFacts.usable(PluginFacts.child(config, "dateFormat"));
             if (dateFormat != null && !DEFAULT_DATE_FORMAT.equals(dateFormat)) {
-                report.warning(id + " `<dateFormat>` " + dateFormat + " — `[build-info]` writes timestamps as "
-                        + DEFAULT_DATE_FORMAT + ", the plugin's default and the spelling Spring Boot parses.");
+                report.warning(
+                        id + " <dateFormat> " + dateFormat + ": not imported; timestamps use " + DEFAULT_DATE_FORMAT);
             }
             String filename = PluginFacts.usable(PluginFacts.child(config, "generateGitPropertiesFilename"));
             if (filename != null) file = fileInsideJar(filename, outputDirectory, id, report);
@@ -115,8 +114,8 @@ final class BuildInfoPlugins {
         }
         String name = normalized.substring(normalized.lastIndexOf('/') + 1);
         if (name.isEmpty()) return null;
-        report.warning(id + " `<generateGitPropertiesFilename>` " + filename + " — `[build-info]` writes the file"
-                + " into the jar's root as `" + name + "`; a copy in the source tree is not maintained.");
+        report.warning(id + " <generateGitPropertiesFilename> " + filename + ": now " + name
+                + " at the jar root; no source-tree copy");
         return name;
     }
 

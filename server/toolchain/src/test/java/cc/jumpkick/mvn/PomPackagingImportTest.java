@@ -38,14 +38,14 @@ class PomPackagingImportTest {
         assertThat(build.manifest()).containsEntry("Multi-Release", "true");
         assertThat(messages)
                 .as("a relocation whose exclude nothing else relocates is the one row, naming the exclude")
-                .anyMatch(m -> m.startsWith("`maven-shade-plugin` `<relocations>` org.apache.commons.io →"
-                        + " com.ex.shaded.commons.io (excludes org.apache.commons.io.input.*) — `relocate` moves"
-                        + " whole packages"));
-        assertThat(messages).anyMatch(m -> m.startsWith("`maven-shade-plugin` `<filters>` on *:* —"));
+                .anyMatch(m -> m.startsWith("maven-shade-plugin <relocations> org.apache.commons.io →"
+                        + " com.ex.shaded.commons.io (excludes org.apache.commons.io.input.*): partly written"
+                        + " (relocate moves whole packages)"));
+        assertThat(messages).anyMatch(m -> m.startsWith("maven-shade-plugin <filters> on *:*: skipped"));
         assertThat(messages)
                 .as("the manifest and services transformers are jk's default merge; only the appending one is a row")
-                .anyMatch(m -> m.startsWith("`maven-shade-plugin` transformers AppendingTransformer —"));
-        assertThat(messages).noneMatch(m -> m.startsWith("`<plugin>"));
+                .anyMatch(m -> m.startsWith("maven-shade-plugin transformers AppendingTransformer: skipped"));
+        assertThat(messages).noneMatch(m -> m.matches("[\\w.-]+ not imported(; declared by .*)?"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
@@ -106,7 +106,7 @@ class PomPackagingImportTest {
                 .containsExactly(
                         Map.entry("io.grpc", "com.alibaba.nacos.shaded.io.grpc"),
                         Map.entry("com.google", "com.alibaba.nacos.shaded.com.google"));
-        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("`<relocations>`"));
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("<relocations>"));
     }
 
     @Test
@@ -116,8 +116,8 @@ class PomPackagingImportTest {
         assertThat(application.main()).isEqualTo("com.ex.tool.Main");
         assertThat(application.assembly()).isTrue();
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("`maven-assembly-plugin` descriptors src —"))
-                .noneMatch(m -> m.startsWith("`<plugin>"));
+                .anyMatch(m -> m.startsWith("maven-assembly-plugin descriptors src: skipped"))
+                .noneMatch(m -> m.matches("[\\w.-]+ not imported(; declared by .*)?"));
     }
 
     @Test
@@ -156,8 +156,8 @@ class PomPackagingImportTest {
                 .as("the Boot jar is plugin-owned, not the assembly fat jar")
                 .isFalse();
         assertThat(messages)
-                .anyMatch(m -> m.startsWith("`spring-boot-maven-plugin` `<excludes>` org.projectlombok:lombok —"))
-                .noneMatch(m -> m.startsWith("`<plugin>"));
+                .anyMatch(m -> m.startsWith("spring-boot-maven-plugin <excludes> org.projectlombok:lombok: skipped"))
+                .noneMatch(m -> m.matches("[\\w.-]+ not imported(; declared by .*)?"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered).contains("[spring-boot]\nversion = \"3.5.5\"\n").doesNotContain("platform =");
@@ -175,7 +175,8 @@ class PomPackagingImportTest {
 
         assertThat(build.pluginConfig("quarkus")).isPresent();
         assertThat(build.pluginConfig("quarkus").get().string("version")).isEqualTo("3.39.2");
-        assertThat(TestImporters.messages(result)).noneMatch(m -> m.startsWith("`<plugin>"));
+        assertThat(TestImporters.messages(result))
+                .noneMatch(m -> m.matches("[\\w.-]+ not imported(; declared by .*)?"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered).contains("[quarkus]\nversion = \"3.39.2\"\n");
@@ -202,8 +203,8 @@ class PomPackagingImportTest {
                 """);
         assertThat(result.jkBuild().pluginConfig("quarkus")).isEmpty();
         assertThat(TestImporters.messages(result))
-                .anyMatch(
-                        m -> m.startsWith("`quarkus-maven-plugin` is declared without a resolvable platform version"));
+                .anyMatch(m ->
+                        m.equals("quarkus-maven-plugin: no platform version found; add [quarkus] version by hand"));
     }
 
     /** Quarkus 1.x published its BOM under {@code io.quarkus} and predates the bootstrap API the plugin drives. */
@@ -225,8 +226,8 @@ class PomPackagingImportTest {
                 """);
         assertThat(result.jkBuild().pluginConfig("quarkus")).isEmpty();
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("`quarkus-maven-plugin` is at Quarkus 1.0.0.Final")
-                        && m.contains("builds 2.0 and later"));
+                .anyMatch(m ->
+                        m.startsWith("quarkus-maven-plugin at Quarkus 1.0.0.Final") && m.contains("jk needs 2.0+"));
     }
 
     @Test
@@ -263,8 +264,7 @@ class PomPackagingImportTest {
         assertThat(result.jkBuild().pluginConfig("spring-boot")).isEmpty();
         assertThat(result.jkBuild().applicationOpt()).isEmpty();
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith(
-                        "`spring-boot-maven-plugin` binds no `repackage` execution and names no" + " `<mainClass>`"));
+                .anyMatch(m -> m.startsWith("spring-boot-maven-plugin has no repackage execution or <mainClass>"));
     }
 
     /** A {@code repackage} execution is the Boot jar even without a declared main: the packager scans for it. */
@@ -313,7 +313,7 @@ class PomPackagingImportTest {
 
         assertThat(result.jkBuild().pluginConfig("spring-boot")).isEmpty();
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("`spring-boot-maven-plugin` is skipped (`<skip>true</skip>`)"));
+                .anyMatch(m -> m.startsWith("spring-boot-maven-plugin is skipped (<skip>true</skip>)"));
     }
 
     @Test
@@ -333,8 +333,8 @@ class PomPackagingImportTest {
                 """);
         assertThat(result.jkBuild().pluginConfig("spring-boot")).isEmpty();
         assertThat(TestImporters.messages(result))
-                .anyMatch(
-                        m -> m.startsWith("`spring-boot-maven-plugin` is declared without a resolvable Boot version"));
+                .anyMatch(m ->
+                        m.equals("spring-boot-maven-plugin: no Boot version found; add [spring-boot] version by hand"));
     }
 
     @Test
@@ -357,11 +357,9 @@ class PomPackagingImportTest {
         assertThat(image.name()).isEqualTo("ex/fastcli");
         assertThat(image.tag()).isEqualTo("1.0.0");
         assertThat(messages)
-                .anyMatch(m ->
-                        m.startsWith("`jib-maven-plugin` `<from>` and `<to>` are written as `[image]` base, registry,"
-                                + " name and tag; jk builds the image itself (`jk image`)"))
+                .anyMatch(m -> m.startsWith("jib-maven-plugin <from>/<to> became [image]; build with jk image"))
                 .noneMatch(m -> m.contains("paste"))
-                .noneMatch(m -> m.startsWith("`<plugin>"));
+                .noneMatch(m -> m.matches("[\\w.-]+ not imported(; declared by .*)?"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
@@ -424,7 +422,8 @@ class PomPackagingImportTest {
         BuildBlock.War war = result.jkBuild().build().war();
         assertThat(war).isEqualTo(new BuildBlock.War("ROOT", "web"));
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("`maven-war-plugin` `<filteringDeploymentDescriptors>` is not carried"));
+                .anyMatch(m ->
+                        m.equals("maven-war-plugin <filteringDeploymentDescriptors>: not carried into [war]; skipped"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("\n[war]\nname = \"ROOT\"\nwebapp = \"web\"\n");
         assertThat(JkBuildParser.parse(rendered).build().war()).isEqualTo(war);

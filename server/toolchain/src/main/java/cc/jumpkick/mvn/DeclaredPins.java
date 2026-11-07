@@ -178,11 +178,9 @@ public final class DeclaredPins {
         String budgetNote(Duration budget) {
             Set<String> coordinates = new LinkedHashSet<>();
             for (String gav : unchecked) coordinates.add(gav.substring(0, gav.lastIndexOf(':')));
-            return unchecked.size() + (unchecked.size() == 1 ? " pinned version" : " pinned versions") + " ("
+            return unchecked.size() + (unchecked.size() == 1 ? " pin" : " pins") + " ("
                     + coordinates.size() + (coordinates.size() == 1 ? " coordinate" : " coordinates")
-                    + ") were not checked against the repositories the lock reads: the check stopped at its "
-                    + budget.toSeconds() + "-second budget after " + verdicts.size() + " of "
-                    + (verdicts.size() + unchecked.size()) + ". `jk lock` decides whether each version exists.";
+                    + ") unchecked after the " + budget.toSeconds() + "s budget; jk lock checks them";
         }
     }
 
@@ -410,16 +408,14 @@ public final class DeclaredPins {
             int cut = gav.lastIndexOf(':');
             String module = gav.substring(0, cut);
             String version = gav.substring(cut + 1);
-            String pin = "`" + module + " " + version + "`";
+            String pin = module + " " + version;
             if (!unreachable.isEmpty()) {
-                return pin + " is pinned by the POM and was not checked against the repositories the lock reads: "
-                        + String.join("; ", unreachable) + ". `jk lock` decides whether the version exists.";
+                return pin + ": unchecked (" + String.join("; ", unreachable) + "); jk lock checks it";
             }
             String where = catalogs.isEmpty()
-                    ? "no repository the lock reads (" + String.join(", ", asked) + ") lists " + module + " at all"
-                    : "no repository the lock reads lists that version (" + String.join("; ", catalogs) + ")";
-            return pin + " is pinned by the POM, and " + where + "; `jk lock` refuses it. Pin a version a repository"
-                    + " lists, or declare the repository that publishes " + version + " in `[repositories]`.";
+                    ? "no repository lists it (" + String.join(", ", asked) + ")"
+                    : "no repository lists that version (" + String.join("; ", catalogs) + ")";
+            return pin + ": " + where + ". Pin a listed version or add its repository to [repositories]";
         }
     }
 }

@@ -37,7 +37,7 @@ class GradleImporterJavafxTest {
                 .contains(tuple("org.openjfx:javafx-controls", "27"), tuple("org.openjfx:javafx-web", "27"));
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .noneMatch(m -> m.contains("org.openjfx.javafxplugin") && m.contains("not yet mapped"));
+                .noneMatch(m -> m.contains("org.openjfx.javafxplugin") && m.contains("not mapped"));
     }
 
     @Test
@@ -76,6 +76,6 @@ class GradleImporterJavafxTest {
                 .noneMatch(m -> m.startsWith("org.openjfx:"));
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m -> m.contains("no `javafx { version }`"));
+                .anyMatch(m -> m.contains("has no javafx { version }"));
     }
 }

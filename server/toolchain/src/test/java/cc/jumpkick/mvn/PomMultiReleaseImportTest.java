@@ -87,7 +87,10 @@ class PomMultiReleaseImportTest {
                 .as("[multi-release] sets the attribute itself")
                 .doesNotContainKey("Multi-Release")
                 .containsEntry("Automatic-Module-Name", "com.ex.lib");
-        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("multi-release output"));
+        assertThat(TestImporters.messages(result))
+                .noneMatch(m -> m.contains("multi-release with no <release>"))
+                .noneMatch(m -> m.contains("sources share the main root"))
+                .noneMatch(m -> m.contains(": multi-release Java "));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered).contains("\n[multi-release]\n11 = \"src/main/java11\"\n");
@@ -124,10 +127,10 @@ class PomMultiReleaseImportTest {
         assertThat(result.jkBuild().build().multiRelease()).isEmpty();
         List<String> messages = TestImporters.messages(result);
         assertThat(messages)
-                .anyMatch(m -> m.startsWith("`maven-compiler-plugin` execution `same-root` writes multi-release output"
-                        + " for Java 21 from the main source root"));
+                .anyMatch(m -> m.equals("maven-compiler-plugin execution same-root: Java 21 sources share the main"
+                        + " root; move them to their own [multi-release] directory"));
         assertThat(messages)
-                .anyMatch(m -> m.startsWith(
-                        "`maven-compiler-plugin` execution `no-release` writes multi-release output but names no"));
+                .anyMatch(m -> m.equals("maven-compiler-plugin execution no-release: multi-release with no"
+                        + " <release>; add a [multi-release] entry"));
     }
 }

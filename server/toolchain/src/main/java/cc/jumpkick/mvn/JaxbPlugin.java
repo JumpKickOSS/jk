@@ -33,8 +33,7 @@ final class JaxbPlugin {
     static final String JVNET_RENAMED = "jaxb-maven-plugin";
 
     /** What an {@code add-source} root inside the output is, for the build-helper row. */
-    static final String ADD_SOURCE_ROW = "the jaxb preset's output; `[jaxb]` folds the generated classes into the"
-            + " compile itself, so no `extra-src` root is written";
+    static final String ADD_SOURCE_ROW = "the [jaxb] output; no extra-src needed";
 
     private static final String DEFAULT_SRC = "src/main/xsd";
 
@@ -69,8 +68,8 @@ final class JaxbPlugin {
             if (!sources.isEmpty()) {
                 src = SourceTreePlugins.moduleRelative(sources.getFirst(), baseDir);
                 if (sources.size() > 1) {
-                    report.warning("`" + MOJOHAUS + "` names " + sources.size() + " `<sources>`; `[jaxb]` compiles"
-                            + " one directory, `" + src + "` — move the others under it.");
+                    report.warning(MOJOHAUS + " names " + sources.size() + " <sources>; [jaxb] takes one, " + src
+                            + ". Move the others under it");
                 }
             }
             String declaredOutput = PluginFacts.child(config, "outputDirectory");
@@ -92,11 +91,9 @@ final class JaxbPlugin {
         for (PluginExecution execution : plugin.getExecutions()) {
             for (String goal : execution.getGoals()) {
                 if (goal.startsWith("schemagen")) {
-                    report.warning("`" + MOJOHAUS + "` goal `" + goal + "` (a schema from the classes) has no jk"
-                            + " step; only `xjc` maps to `[jaxb]`.");
+                    report.warning(MOJOHAUS + " goal " + goal + " not imported; [jaxb] covers xjc only");
                 } else if (goal.equals("testXjc")) {
-                    report.warning("`" + MOJOHAUS + "` goal `testXjc` generates for the test compile; `[jaxb]`"
-                            + " generates into the main compile.");
+                    report.warning(MOJOHAUS + " goal testXjc not imported; [jaxb] generates for main only");
                 }
             }
         }
@@ -124,8 +121,7 @@ final class JaxbPlugin {
                 values.put("extension", true);
             arguments.addAll(children(config, "args"));
             if (config.getChild("plugins") != null) {
-                report.warning("`" + artifact + "` `<plugins>` (xjc plugins on the compiler's classpath) have no"
-                        + " `[jaxb]` key; the preset runs xjc with its own closure.");
+                report.warning(artifact + " <plugins> (xjc plugins) have no [jaxb] key; not imported");
             }
         }
         return finish(artifact, values, src, bindings, arguments, output, report);
@@ -144,9 +140,7 @@ final class JaxbPlugin {
         table.putAll(values);
         if (!bindings.isEmpty()) table.put("bindings", bindings);
         if (!arguments.isEmpty()) table.put("arguments", arguments);
-        report.warning("`" + artifact + "` is `[jaxb]`: the classes are generated into the compile by xjc from the"
-                + " schemas under `" + src + "`; the module keeps `jakarta.xml.bind:jakarta.xml.bind-api` for the"
-                + " compile and a JAXB runtime (`org.glassfish.jaxb:jaxb-runtime`) for run time.");
+        report.warning(artifact + " became [jaxb]; xjc generates from " + src);
         return new Mapped(new PluginConfig("jaxb", table), Map.of(output, ADD_SOURCE_ROW));
     }
 

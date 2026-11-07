@@ -33,7 +33,7 @@ class GradleImporterHibernateTest {
                 .isEqualTo(Map.of("enhance", true, "dirty-tracking", false, "association-management", true));
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .noneMatch(m -> m.contains("org.hibernate.orm") && m.contains("not yet mapped"));
+                .noneMatch(m -> m.contains("org.hibernate.orm") && m.contains("not mapped"));
     }
 
     @Test
@@ -65,6 +65,6 @@ class GradleImporterHibernateTest {
         assertThat(result.jkBuild().pluginConfig("hibernate")).isEmpty();
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m -> m.contains("without an `enhancement` block"));
+                .anyMatch(m -> m.contains("has no enhancement block"));
     }
 }

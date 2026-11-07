@@ -109,7 +109,7 @@ class PomLintImportTest {
 
         PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
         assertThat(lint.values()).containsEntry("checkstyle", "https://example.com/build-tools/nohttp-checkstyle.xml");
-        assertThat(messages(result)).noneMatch(m -> m.contains("copy the rule set in"));
+        assertThat(messages(result)).noneMatch(m -> m.contains("copy it into the module"));
     }
 
     /**
@@ -169,8 +169,8 @@ class PomLintImportTest {
                 .containsEntry("checkstyle", "../../src/checkstyle/checkstyle-configuration.xml")
                 .containsEntry("checkstyle-suppressions", "../../src/checkstyle/checkstyle-suppressions.xml");
         assertThat(workspace.report().issues())
-                .noneMatch(i -> i.message().contains("a property no POM defines"))
-                .noneMatch(i -> i.message().contains("copy the rule set in"));
+                .noneMatch(i -> i.message().contains("undefined property"))
+                .noneMatch(i -> i.message().contains("copy it into the module"));
 
         PomImporter.Result alone = TestImporters.offline(root.resolve("alone")).importFrom(spi.resolve("pom.xml"));
         assertThat(alone.jkBuild().pluginConfig("lint").orElseThrow().values())
@@ -268,11 +268,11 @@ class PomLintImportTest {
         List<String> rows = messages(result);
         assertThat(rows)
                 .noneMatch(m -> m.contains("default ruleset"))
-                .noneMatch(m -> m.contains("`<excludeFromFailureFile>`"))
+                .noneMatch(m -> m.contains("<excludeFromFailureFile>"))
                 .noneMatch(m -> m.contains("has one threshold"))
-                .noneMatch(m -> m.contains("`<plugins>`"))
-                .anyMatch(m -> m.contains("`[lint]`") && m.contains("jk-results.md"))
-                .noneMatch(m -> m.contains("was not imported"));
+                .noneMatch(m -> m.contains("add group:artifact:version to [lint] spotbugs-plugins"))
+                .anyMatch(m -> m.startsWith("lint plugins: became [lint]") && m.contains("fail-on"))
+                .noneMatch(m -> m.matches("[\\w.-]+ not imported(; declared by .*)?"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("[lint]").contains("spotbugs = true");
         assertThat(JkBuildParser.parse(rendered).pluginConfig("lint")).isPresent();
@@ -332,7 +332,7 @@ class PomLintImportTest {
                                 "io.spring.nohttp:nohttp-checkstyle:0.0.11"))
                 .doesNotContainKey("checkstyle-header")
                 .doesNotContainKey("checkstyle-properties");
-        assertThat(messages(result)).noneMatch(m -> m.contains("copy the rule set in"));
+        assertThat(messages(result)).noneMatch(m -> m.contains("copy it into the module"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("[lint.no-http-checkstyle-validation]");
         PluginConfig reparsed =
@@ -350,7 +350,7 @@ class PomLintImportTest {
         assertThat(lint.values()).containsEntry("checkstyle", "checkstyle.xml");
         assertThat(lint.entries()).isEmpty();
         assertThat(messages(result))
-                .anyMatch(m -> m.contains("`no-http-checkstyle-validation`") && m.contains("skipped"));
+                .anyMatch(m -> m.contains("execution no-http-checkstyle-validation: <skip> is true"));
     }
 
     private static final String SPRING_CLOUD_BUILD = """
@@ -458,7 +458,8 @@ class PomLintImportTest {
                 .doesNotContainKey("fail-on")
                 .doesNotContainKey("checkstyle-version");
         assertThat(messages(result))
-                .anyMatch(m -> m.contains("`google_checks.xml`") && m.contains("copy the rule set in"));
+                .anyMatch(m ->
+                        m.contains("google_checks.xml (inside the plugin)") && m.contains("copy it into the module"));
     }
 
     /** Maven fails on every PMD priority up to failurePriority (default 5): fail-on follows it, not Checkstyle's severity. */
@@ -549,9 +550,9 @@ class PomLintImportTest {
                 .as("a release whose POM no repository serves pins nothing")
                 .doesNotContainKey("pmd-version");
         assertThat(messages(unserved)).anySatisfy(m -> assertThat(m)
-                .contains("`maven-pmd-plugin` 3.99.0")
+                .startsWith("maven-pmd-plugin 3.99.0: bundled PMD unknown")
                 .contains("POM")
-                .contains("`pmd-version`"));
+                .contains("pmd-version defaults to"));
     }
 
     /** A {@code maven-pmd-plugin} release's POM under {@code repo}, naming the PMD it bundles the way the real ones do. */
@@ -664,7 +665,8 @@ class PomLintImportTest {
                 .containsEntry("spotbugs-plugins", List.of("com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0"))
                 .as("Medium is the step's own floor")
                 .doesNotContainKey("spotbugs-threshold");
-        assertThat(messages(result)).noneMatch(m -> m.contains("own detectors"));
+        assertThat(messages(result))
+                .noneMatch(m -> m.contains("add group:artifact:version to [lint] spotbugs-plugins"));
     }
 
     private static PluginConfig pmdOnly(Path dir, String configuration) throws Exception {
@@ -721,7 +723,7 @@ class PomLintImportTest {
         assertThat(result.jkBuild().pluginConfig("lint")).isEmpty();
     }
 
-    /** The migration plugins are rows naming the tool recipe, with the POM's URL and change log in them. */
+    /** The migration plugins are rows pointing at the tool recipe in docs/user/database.md. */
     @Test
     void the_migration_plugins_are_rows_naming_the_tool_recipe(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
@@ -759,16 +761,14 @@ class PomLintImportTest {
         assertThat(result.jkBuild().pluginConfigs()).isEmpty();
         List<String> rows = messages(result);
         assertThat(rows).anySatisfy(m -> assertThat(m)
-                .contains("`flyway-maven-plugin`")
-                .contains("flyway-commandline:<version> --main org.flywaydb.commandline.Main --bin flyway --with")
-                .contains("`FLYWAY_URL` (`jdbc:h2:file:./target/db`)")
-                .contains("database.md"));
+                .startsWith("flyway-maven-plugin: not imported")
+                .contains("Flyway CLI")
+                .contains("docs/user/database.md"));
         assertThat(rows).anySatisfy(m -> assertThat(m)
-                .contains("`liquibase-maven-plugin`")
-                .contains("LiquibaseCommandLine --bin liquibase --with")
-                .contains("`LIQUIBASE_COMMAND_URL` in")
-                .contains("LIQUIBASE_COMMAND_CHANGELOG_FILE=config/liquibase/master.xml"));
-        assertThat(rows).noneMatch(m -> m.contains("was not imported"));
+                .startsWith("liquibase-maven-plugin: not imported")
+                .contains("Liquibase CLI")
+                .contains("docs/user/database.md"));
+        assertThat(rows).noneMatch(m -> m.matches("[\\w.-]+ not imported(; declared by .*)?"));
     }
 
     /** nacos's shape: the root configures SpotBugs for whoever runs {@code mvn spotbugs:check}; no module gets a table. */
@@ -793,9 +793,9 @@ class PomLintImportTest {
                         .filter(m -> m.contains("spotbugs-maven-plugin")))
                 .singleElement()
                 .satisfies(m -> assertThat(m)
-                        .startsWith("`spotbugs-maven-plugin` binds no `<execution>`, so Maven runs it only by hand"
-                                + " (`mvn spotbugs:check`); no `[lint] spotbugs` was written")
-                        .endsWith("Declared by the root pom.xml, inherited by 2 modules."));
+                        .startsWith(
+                                "spotbugs-maven-plugin: no <execution>, so no [lint] spotbugs for inheriting modules")
+                        .endsWith("; declared by root pom.xml, inherited by 2 modules"));
     }
 
     /** A parent's execution bound to a phase runs on every module under Maven, so every module gets the table. */
@@ -820,7 +820,7 @@ class PomLintImportTest {
         assertThat(result.modules().values()).allSatisfy(module -> assertThat(
                         module.pluginConfig("lint").orElseThrow().stringList("pmd"))
                 .containsExactly("rulesets/java/maven-pmd-plugin-default.xml"));
-        assertThat(result.report().issues()).noneMatch(i -> i.message().contains("binds no `<execution>`"));
+        assertThat(result.report().issues()).noneMatch(i -> i.message().contains("no <execution>, so no [lint]"));
     }
 
     /** A ruleset spelled through a property nothing defines (a directory plugin's, set at run time) is a row, not silence. */
@@ -858,9 +858,8 @@ class PomLintImportTest {
         PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
         assertThat(lint.stringList("pmd")).containsExactly("rulesets/java/quickstart.xml");
         assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .contains("names the ruleset `${tutorialsproject.basedir}/baeldung-pmd-rules.xml` through a property"
-                        + " no POM defines")
-                .contains("`rulesets/java/quickstart.xml` stands in"));
+                .contains("ruleset ${tutorialsproject.basedir}/baeldung-pmd-rules.xml: undefined property")
+                .contains("quickstart.xml stands in"));
     }
 
     /** A root declaring {@code plugin} under {@code <build><plugins>} over two leaf modules. */

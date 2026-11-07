@@ -92,7 +92,7 @@ class PomFrontendImportTest {
                 .anyMatch(m -> m.contains("[node] registry = \"https://nexus.corp/npm/\"") && m.contains("config.toml"))
                 .anyMatch(m -> m.contains("<serverId>nexus</serverId>"))
                 .anyMatch(m -> m.contains("npmInheritsProxyConfigFromMaven"))
-                .anyMatch(m -> m.contains("goal `karma`") && m.contains("not imported"))
+                .anyMatch(m -> m.contains("goal karma (") && m.contains("not imported"))
                 .noneMatch(m -> m.contains("yarnVersion"));
         assertThat(frontends.files().rewrites())
                 .containsEntry(front.resolve("vite.config.js"), "export default { build: { outDir: \"dist\" } };\n");
@@ -130,7 +130,7 @@ class PomFrontendImportTest {
 
         assertThat(result.root().project().nodeSpec().requiredVersion()).isEqualTo("24.21.0");
         assertThat(result.root().node().dir()).isNull();
-        assertThat(messages(result.report())).noneMatch(m -> m.contains("beside its JVM sources"));
+        assertThat(messages(result.report())).noneMatch(m -> m.contains("beside JVM sources"));
     }
 
     /** A module that installs no Node itself takes the version the inherited plugin configuration names. */
@@ -153,7 +153,7 @@ class PomFrontendImportTest {
         PomImporter.WorkspaceImportResult result = importing(tmp).importWorkspace(project.resolve("pom.xml"));
 
         assertThat(result.root().project().nodeSpec().requiredVersion()).isEqualTo("24.9.0");
-        assertThat(messages(result.report())).noneMatch(m -> m.contains("names no nodeVersion"));
+        assertThat(messages(result.report())).noneMatch(m -> m.contains("no nodeVersion"));
     }
 
     /** The same front end beside JVM sources stays refused: it belongs in src/main/node. */
@@ -174,7 +174,7 @@ class PomFrontendImportTest {
         PomImporter.WorkspaceImportResult result = importing(tmp).importWorkspace(project.resolve("pom.xml"));
 
         assertThat(result.root().node()).isEqualTo(NodeTable.EMPTY);
-        assertThat(messages(result.report())).anyMatch(m -> m.contains("beside its JVM sources"));
+        assertThat(messages(result.report())).anyMatch(m -> m.contains("runs at the module root beside JVM sources"));
     }
 
     @Test
@@ -434,8 +434,7 @@ class PomFrontendImportTest {
                         "src/test/js")
                 .noneMatch(in -> in.startsWith("war") || in.startsWith("target") || in.startsWith("core"));
         assertThat(inPlace.files()).as("nothing moves, nothing is rewritten").isEqualTo(FrontendFiles.NONE);
-        assertThat(messages(result.report()))
-                .anyMatch(m -> m.contains("`war` builds the front end in") && m.contains("where it stands"));
+        assertThat(messages(result.report())).anyMatch(m -> m.contains("war builds the front end in place at"));
         assertThat(JkBuildParser.parse(JkBuildRenderer.render(war)).node()).isEqualTo(node);
     }
 

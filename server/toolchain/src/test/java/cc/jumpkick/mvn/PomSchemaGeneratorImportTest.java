@@ -84,8 +84,8 @@ class PomSchemaGeneratorImportTest {
                 .isEmpty();
         assertThat(result.report().issues()).noneMatch(i -> i.severity() == ImportReport.Severity.ERROR);
         assertThat(messages(result))
-                .anyMatch(m -> m.contains("`[avro]`") && m.contains("`org.apache.avro:avro`"))
-                .noneMatch(m -> m.contains("`<plugin>avro-maven-plugin</plugin>` was not imported"));
+                .anyMatch(m -> m.contains("became [avro]") && m.contains("org.apache.avro:avro"))
+                .noneMatch(m -> m.startsWith("avro-maven-plugin not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered)
                 .contains("[avro]")
@@ -125,7 +125,7 @@ class PomSchemaGeneratorImportTest {
                 .containsEntry("version", "1.11.4")
                 .doesNotContainKey("src");
         assertThat(messages(result))
-                .anyMatch(m -> m.contains("`<testSourceDirectory>`") && m.contains("no `[avro]` key"));
+                .anyMatch(m -> m.contains("<testSourceDirectory>") && m.contains("have no [avro] key"));
     }
 
     /** The Baeldung jaxb module's shape: MojoHaus xjc over one schema directory with a package and bindings. */
@@ -175,9 +175,9 @@ class PomSchemaGeneratorImportTest {
                 .containsEntry("bindings", List.of("src/main/resources/global.xjb"))
                 .containsEntry("arguments", List.of("-npa", "-mark-generated"));
         assertThat(messages(result))
-                .anyMatch(m -> m.contains("`[jaxb]`") && m.contains("jakarta.xml.bind-api"))
-                .anyMatch(m -> m.contains("goal `schemagen`"))
-                .noneMatch(m -> m.contains("`<plugin>jaxb2-maven-plugin</plugin>` was not imported"));
+                .anyMatch(m -> m.contains("became [jaxb]"))
+                .anyMatch(m -> m.contains("goal schemagen not imported"))
+                .noneMatch(m -> m.startsWith("jaxb2-maven-plugin not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("[jaxb]").contains("package = \"com.baeldung.jaxb.gen\"");
         assertThat(JkBuildParser.parse(rendered).pluginConfig("jaxb")).isPresent();
@@ -237,8 +237,8 @@ class PomSchemaGeneratorImportTest {
                 .doesNotContainKey("bindings");
         assertThat(result.jkBuild().build().extraSrc()).isEmpty();
         assertThat(messages(result))
-                .anyMatch(m -> m.contains("`<plugins>`") && m.contains("no `[jaxb]` key"))
-                .noneMatch(m -> m.contains("`<plugin>maven-jaxb2-plugin</plugin>` was not imported"));
+                .anyMatch(m -> m.contains("<plugins>") && m.contains("have no [jaxb] key"))
+                .noneMatch(m -> m.startsWith("maven-jaxb2-plugin not imported"));
     }
 
     /** The Baeldung spring-jooq shape: a live database from POM properties, generating into the tree. */
@@ -306,9 +306,9 @@ class PomSchemaGeneratorImportTest {
                 .doesNotContainKey("jdbc-password")
                 .doesNotContainKey("schema");
         assertThat(messages(result))
-                .anyMatch(m -> m.contains("live database") && m.contains("`sql`"))
-                .anyMatch(m -> m.contains("`src/main/java`") && m.contains("delete the checked-in copies"))
-                .noneMatch(m -> m.contains("`<plugin>jooq-codegen-maven</plugin>` was not imported"));
+                .anyMatch(m -> m.contains("reads a live database") && m.contains("list the schema migrations in sql"))
+                .anyMatch(m -> m.contains("source root src/main/java") && m.contains("delete the checked-in copies"))
+                .noneMatch(m -> m.startsWith("jooq-codegen-maven not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("[jooq]").contains("jdbc-url = \"jdbc:h2:~/jooq\"");
         assertThat(JkBuildParser.parse(rendered).pluginConfig("jooq")).isPresent();
@@ -366,6 +366,6 @@ class PomSchemaGeneratorImportTest {
                 .containsEntry("version", "3.21.8")
                 .doesNotContainKey("jdbc-url");
         assertThat(result.jkBuild().build().extraSrc()).isEmpty();
-        assertThat(messages(result)).anyMatch(m -> m.contains("`[jooq]`") && m.contains("DDL scripts"));
+        assertThat(messages(result)).anyMatch(m -> m.contains("became [jooq]") && m.contains("the sql DDL"));
     }
 }

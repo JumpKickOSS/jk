@@ -129,7 +129,7 @@ public final class ImportCommand implements CliCommand {
         List<String> issues = new ArrayList<>();
         HostedEvents.NoteObserver observer = (kind, text) -> {
             switch (kind) {
-                case "wrote" -> changes.add(new ChangeSummary.Change("Wrote", Path.of(text)));
+                case "wrote" -> changes.add(new ChangeSummary.Change(dryRun ? "Would write" : "Wrote", Path.of(text)));
                 case "issue" -> issues.add(text);
                 case "report" -> {
                     if (reportPath != null) changes.add(new ChangeSummary.Change("Wrote", Path.of(text)));

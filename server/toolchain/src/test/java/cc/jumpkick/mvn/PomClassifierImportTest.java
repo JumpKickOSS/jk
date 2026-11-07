@@ -91,13 +91,14 @@ class PomClassifierImportTest {
         assertThat(build.dependencies().of(Scope.PLATFORM))
                 .extracting(Dependency::module)
                 .containsExactly("org.demo:deps");
-        assertThat(messages).anyMatch(m -> m.startsWith("`<type>pom</type>` on org.demo:deps"));
+        assertThat(messages)
+                .anyMatch(m -> m.startsWith("org.demo:deps: <type>pom</type> moved to [platform-dependencies]"));
 
         assertThat(build.dependencies().byScope().values())
                 .allSatisfy(deps -> assertThat(deps).noneMatch(d -> d.module().equals("androidx.core:core-ktx")));
         assertThat(result.report().issues())
                 .anyMatch(i -> i.severity() == ImportReport.Severity.ERROR
-                        && i.message().startsWith("`<type>aar</type>` on androidx.core:core-ktx"));
+                        && i.message().startsWith("androidx.core:core-ktx: <type>aar</type> not supported"));
 
         assertThat(build.dependencies().of(Scope.TEST))
                 .anyMatch(d -> d.isTestsKind() && d.packageKey().equals("com.acme:helpers:jar:tests"));

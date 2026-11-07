@@ -77,11 +77,11 @@ final class PackagingPlugins {
         PluginConfig quarkus = PluginFacts.plugin(model, QUARKUS)
                 .map(plugin -> mapQuarkus(plugin, model, report))
                 .orElse(null);
-        JkBuild.NativeConfig nativeConfig = active(em, NATIVE, "no `[native]` table is written", report)
+        JkBuild.NativeConfig nativeConfig = active(em, NATIVE, "no [native] table", report)
                 .map(plugin -> mapNative(plugin, mainClass))
                 .orElse(null);
-        ImageTable image = active(em, "jib-maven-plugin", "no `[image]` table is written", report)
-                .or(() -> active(em, "docker-maven-plugin", "no `[image]` table is written", report))
+        ImageTable image = active(em, "jib-maven-plugin", "no [image] table", report)
+                .or(() -> active(em, "docker-maven-plugin", "no [image] table", report))
                 .map(plugin -> mapImage(plugin, report))
                 .orElse(ImageTable.EMPTY);
         // Packaging decides: a parent's <build><plugins> declaration of the war plugin is inherited
@@ -128,8 +128,7 @@ final class PackagingPlugins {
             if (source != null) webapp = moduleRelative(source, model.getProjectDirectory());
             for (String option : UNMAPPED_WAR_OPTIONS) {
                 if (PluginFacts.child(config, option) != null) {
-                    report.warning("`maven-war-plugin` `<" + option + ">` is not carried into `[war]`: the war holds"
-                            + " the webapp directory, WEB-INF/classes and WEB-INF/lib as they are.");
+                    report.warning("maven-war-plugin <" + option + ">: not carried into [war]; skipped");
                 }
             }
         }
@@ -195,10 +194,8 @@ final class PackagingPlugins {
         if (plugin.isEmpty()) return plugin;
         Optional<String> profile = PluginFacts.boundOnlyInProfile(em, plugin.get());
         if (profile.isEmpty()) return plugin;
-        report.warning("`" + artifactId + "` is declared without executions or configuration; Maven profile `"
-                + profile.get() + "` supplies them, and that profile is not active on this machine, so the plugin"
-                + " runs only under `-P " + profile.get() + "`; " + written
-                + ". Activate the profile and re-import, or add the table to jk.toml yourself.");
+        report.warning(artifactId + " is configured only in inactive profile " + profile.get() + "; " + written
+                + ". Re-import with -P " + profile.get() + " or add the table by hand");
         return Optional.empty();
     }
 
@@ -209,7 +206,7 @@ final class PackagingPlugins {
      */
     private static boolean mapShade(EffectiveModel em, Map<String, String> relocate, ImportReport.Builder report) {
         Model model = em.model();
-        Optional<Plugin> shade = active(em, SHADE, "no fat jar is written", report);
+        Optional<Plugin> shade = active(em, SHADE, "no fat jar", report);
         if (shade.isEmpty()) return false;
         RelocationRules.Mapped mapped = RelocationRules.map(relocations(model));
         relocate.putAll(mapped.rules());
@@ -231,32 +228,27 @@ final class PackagingPlugins {
             minimize |= Boolean.parseBoolean(PluginFacts.child(config, "minimizeJar"));
         }
         if (!partial.isEmpty()) {
-            report.warning("`maven-shade-plugin` `<relocations>` " + String.join(", ", partial)
-                    + " — `relocate` moves whole packages, first rule winning; an exclude no other relocation"
-                    + " lands where the rule would, an include naming a class or a package's direct classes"
-                    + " the rules move elsewhere, and a rawString rewrite with no rule of the same name are not"
-                    + " written, and those classes are bundled under their own names.");
+            report.warning("maven-shade-plugin <relocations> " + String.join(", ", partial)
+                    + ": partly written (relocate moves whole packages); the rest stay unrelocated");
         }
         if (!filters.isEmpty()) {
-            report.warning("`maven-shade-plugin` `<filters>` on " + String.join(", ", filters)
-                    + " — jk's fat jar bundles every dependency jar whole; the filtered entries are kept.");
+            report.warning("maven-shade-plugin <filters> on " + String.join(", ", filters)
+                    + ": skipped; the fat jar keeps every entry");
         }
         if (!transformers.isEmpty()) {
-            report.warning("`maven-shade-plugin` transformers " + String.join(", ", transformers)
-                    + " — jk's fat jar concatenates `META-INF/services/*` and Spring's registries and takes the"
-                    + " first copy of anything else; those transformers were not applied.");
+            report.warning("maven-shade-plugin transformers " + String.join(", ", transformers)
+                    + ": skipped; the fat jar merges META-INF/services and Spring registries only");
         }
         if (minimize) {
-            report.warning("`maven-shade-plugin` `<minimizeJar>true</minimizeJar>` — jk's nearest is"
-                    + " `[application] minified = true` (R8), which is opt-in and audited; the fat jar was written"
-                    + " unminimized.");
+            report.warning("maven-shade-plugin <minimizeJar>: fat jar left unminimized; opt in with"
+                    + " [application] minified = true (R8)");
         }
         return true;
     }
 
     /** {@code jar-with-dependencies} is the fat jar; any other descriptor is a row. */
     private static boolean mapAssembly(EffectiveModel em, ImportReport.Builder report) {
-        Optional<Plugin> assembly = active(em, ASSEMBLY, "no fat jar is written", report);
+        Optional<Plugin> assembly = active(em, ASSEMBLY, "no fat jar", report);
         if (assembly.isEmpty()) return false;
         boolean fatJar = false;
         List<String> other = new ArrayList<>();
@@ -278,9 +270,8 @@ final class PackagingPlugins {
             }
         }
         if (!other.isEmpty()) {
-            report.warning("`maven-assembly-plugin` descriptors " + String.join(", ", other)
-                    + " — jk packages a fat jar (`jar-with-dependencies`) and nothing else from an assembly"
-                    + " descriptor; those assemblies were not imported.");
+            report.warning("maven-assembly-plugin descriptors " + String.join(", ", other)
+                    + ": skipped; only jar-with-dependencies maps (to the fat jar)");
         }
         return fatJar;
     }
@@ -295,8 +286,7 @@ final class PackagingPlugins {
     private static boolean repackages(Plugin boot, @Nullable String mainClass, ImportReport.Builder report) {
         for (Xpp3Dom config : PluginFacts.configurations(boot)) {
             if (EnvValues.parseBool(PluginFacts.child(config, "skip")).orElse(false)) {
-                report.warning("`spring-boot-maven-plugin` is skipped (`<skip>true</skip>`), so this module is not"
-                        + " the Boot jar; no `[spring-boot]` table is written.");
+                report.warning("spring-boot-maven-plugin is skipped (<skip>true</skip>); no [spring-boot] table");
                 return false;
             }
         }
@@ -304,9 +294,8 @@ final class PackagingPlugins {
         for (PluginExecution execution : boot.getExecutions()) {
             if (execution.getGoals().contains("repackage")) return true;
         }
-        report.warning("`spring-boot-maven-plugin` binds no `repackage` execution and names no `<mainClass>`, so it"
-                + " packages nothing under Maven; no `[spring-boot]` table is written and the module packages a"
-                + " plain jar.");
+        report.warning("spring-boot-maven-plugin has no repackage execution or <mainClass>; no [spring-boot]"
+                + " table, plain jar");
         return false;
     }
 
@@ -327,12 +316,11 @@ final class PackagingPlugins {
                     String artifact = PluginFacts.child(exclude, "artifactId");
                     if (artifact != null) names.add(group == null ? artifact : group + ":" + artifact);
                 }
-                report.warning("`spring-boot-maven-plugin` `<excludes>` " + String.join(", ", names)
-                        + " — jk's Boot jar nests every runtime dependency; there is no `[spring-boot]` exclude key.");
+                report.warning("spring-boot-maven-plugin <excludes> " + String.join(", ", names)
+                        + ": skipped; the Boot jar nests every runtime dependency");
             }
             if (config.getChild("image") != null) {
-                report.warning("`spring-boot-maven-plugin` `<image>` (buildpacks) — jk builds the OCI image itself:"
-                        + " `jk image`, configured under `[image]`.");
+                report.warning("spring-boot-maven-plugin <image>: skipped; use jk image and [image]");
             }
         }
         @Nullable String managed = PluginFacts.managedVersion(model, "org.springframework.boot", "spring-boot");
@@ -340,8 +328,7 @@ final class PackagingPlugins {
         if (version == null) version = managed;
         if (version == null) version = PluginFacts.usable(model.getProperties().getProperty("spring-boot.version"));
         if (version == null) {
-            report.warning("`spring-boot-maven-plugin` is declared without a resolvable Boot version; add"
-                    + " `[spring-boot] version = \"...\"` to jk.toml yourself.");
+            report.warning("spring-boot-maven-plugin: no Boot version found; add [spring-boot] version by hand");
             return null;
         }
         Map<String, Object> values = new LinkedHashMap<>();
@@ -368,14 +355,12 @@ final class PackagingPlugins {
         }
         if (version == null) version = PluginFacts.usable(model.getProperties().getProperty("quarkus.version"));
         if (version == null) {
-            report.warning("`quarkus-maven-plugin` is declared without a resolvable platform version; add"
-                    + " `[quarkus] version = \"...\"` to jk.toml yourself.");
+            report.warning("quarkus-maven-plugin: no platform version found; add [quarkus] version by hand");
             return null;
         }
         if (majorOf(version) < 2) {
-            report.warning("`quarkus-maven-plugin` is at Quarkus " + version
-                    + "; jk's Quarkus plugin builds 2.0 and later, so no `[quarkus]` table was written."
-                    + " Upgrade the project to a 2.x or 3.x platform and add `[quarkus] version` to jk.toml.");
+            report.warning("quarkus-maven-plugin at Quarkus " + version
+                    + ": jk needs 2.0+; no [quarkus] table. Upgrade, then add [quarkus] version");
             return null;
         }
         return new PluginConfig("quarkus", Map.of("version", version));
@@ -446,10 +431,9 @@ final class PackagingPlugins {
             }
         }
         ImageReference reference = target == null ? new ImageReference(null, null, null) : ImageReference.parse(target);
-        report.warning("`" + plugin.getArtifactId() + "` `<from>` and `<to>` are written as `[image]` base, registry,"
-                + " name and tag; jk builds the image itself (`jk image`)"
-                + (base == null && target == null ? " — the plugin names neither image, so fill the keys in" : "")
-                + ". Ports, env, labels and the entry point live under the same table: see docs/user/images.md.");
+        report.warning(plugin.getArtifactId() + " <from>/<to> became [image]; build with jk image"
+                + (base == null && target == null ? ". Neither image is named; fill in base and name" : "")
+                + ". Ports, env, labels: docs/user/images.md");
         return new ImageTable(
                 base,
                 reference.name(),

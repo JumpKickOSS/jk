@@ -38,10 +38,7 @@ public final class GroovyResolver {
      * and what to check. The lock and the build both say it.
      */
     public static String floorNote(String declared) {
-        return "groovy " + declared + " is below jk's floor " + FLOOR_VERSION
-                + ", the oldest Groovy its compiler worker drives, so the module compiles and runs with "
-                + DEFAULT_VERSION
-                + " — check the build against that release's warnings and language changes, and write groovy = \""
-                + DEFAULT_VERSION + "\" to have the manifest say so";
+        return "groovy " + declared + " is below jk's floor; compiled with " + DEFAULT_VERSION + ". Write groovy = \""
+                + DEFAULT_VERSION + "\"";
     }
 }

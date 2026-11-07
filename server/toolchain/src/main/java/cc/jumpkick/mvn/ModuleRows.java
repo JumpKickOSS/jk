@@ -9,9 +9,8 @@ import java.util.Map;
 
 /**
  * The rows a workspace import attributes to a module, folded before they reach the report: a row
- * whose severity and text are the same in several modules is written once, at the first module
- * saying it, with the count of modules and the module list elided past {@link #MODULES_NAMED}. A
- * row only one module says keeps its {@code [module]} prefix and nothing more; a row owned by the
+ * whose severity and text are the same in several modules is written once, led by the modules
+ * saying it ({@code core, app: …}), the list elided past {@link #MODULES_NAMED}. A row owned by the
  * root (an empty module path) carries no prefix.
  */
 public final class ModuleRows {
@@ -46,15 +45,17 @@ public final class ModuleRows {
         });
     }
 
-    /** {@code [first] message (N modules: first, second, third, …)}, the count and list only when more than one module says it. */
+    /**
+     * {@code a, b, c: message}, or {@code a, b, c and 2 more: message} past {@link #MODULES_NAMED};
+     * the bare message when only the root says it.
+     */
     public static String render(List<String> modules, String message) {
         List<String> named = modules.stream().filter(m -> !m.isEmpty()).toList();
         if (named.isEmpty()) return message;
-        String row = "[" + named.getFirst() + "] " + message;
-        if (named.size() == 1) return row;
         String list = named.size() > MODULES_NAMED
-                ? String.join(", ", named.subList(0, MODULES_NAMED)) + ", …"
+                ? String.join(", ", named.subList(0, MODULES_NAMED)) + " and " + (named.size() - MODULES_NAMED)
+                        + " more"
                 : String.join(", ", named);
-        return row + " (" + named.size() + " modules: " + list + ")";
+        return list + ": " + message;
     }
 }

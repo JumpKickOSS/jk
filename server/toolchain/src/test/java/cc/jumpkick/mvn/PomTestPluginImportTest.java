@@ -36,26 +36,26 @@ class PomTestPluginImportTest {
                 .containsExactly("-Xmx1g", "-Dfile.encoding=UTF-8");
         assertThat(build.build().testJvm().systemProperties())
                 .containsExactly(Map.entry("spring.profiles.active", "test"), Map.entry("java.awt.headless", "true"));
-        assertThat(messages).noneMatch(m -> m.startsWith("`maven-surefire-plugin` `<argLine>`"));
-        assertThat(messages).noneMatch(m -> m.startsWith("`maven-surefire-plugin` system properties"));
+        assertThat(messages).noneMatch(m -> m.startsWith("maven-surefire-plugin <argLine>"));
+        assertThat(messages).noneMatch(m -> m.startsWith("maven-surefire-plugin system properties"));
         assertThat(build.build().testExcludeClasses())
                 .as("the file pattern becomes the class pattern Maven's runner skips")
                 .containsExactly("*Slow*");
-        assertThat(messages).noneMatch(m -> m.startsWith("`maven-surefire-plugin` `<excludes>`"));
+        assertThat(messages).noneMatch(m -> m.startsWith("maven-surefire-plugin <excludes>"));
         assertThat(build.build().testClassSuites())
                 .as("failsafe's default patterns are the integration suite's classes")
                 .containsExactly(Map.entry("integration", ClassSuite.of(List.of("IT*", "*IT", "*ITCase"))));
-        assertThat(messages).noneMatch(m -> m.startsWith("`maven-failsafe-plugin` runs"));
+        assertThat(messages).noneMatch(m -> m.startsWith("maven-failsafe-plugin runs"));
         assertThat(messages).noneMatch(m -> m.contains("src/integration/java"));
         assertThat(messages)
                 .as("failsafe's argLine differs from surefire's, and [test] jvm-args is one list")
-                .anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<argLine>` -Xmx2g —")
-                        && m.contains("Surefire's -Xmx1g -Dfile.encoding=UTF-8 is in it"));
-        assertThat(messages).anyMatch(m -> m.startsWith("`jacoco-maven-plugin` —") && m.contains("`jk test -T`"));
-        assertThat(messages).noneMatch(m -> m.contains("skip tests"));
+                .anyMatch(m -> m.startsWith("maven-failsafe-plugin <argLine> -Xmx2g:")
+                        && m.contains("merge it into [test] jvm-args"));
+        assertThat(messages).anyMatch(m -> m.startsWith("jacoco-maven-plugin:") && m.contains("jk test -T"));
+        assertThat(messages).noneMatch(m -> m.contains("skips tests"));
         assertThat(messages)
                 .as("surefire, failsafe and jacoco each have their own rows, never the generic one")
-                .noneMatch(m -> m.startsWith("`<plugin>"));
+                .noneMatch(m -> m.matches("[\\w.-]+ not imported(; declared by .*)?"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
@@ -136,9 +136,9 @@ class PomTestPluginImportTest {
         List<String> messages = TestImporters.messages(result);
         assertThat(result.jkBuild().build().testIncludeTags()).isEmpty();
         assertThat(messages)
-                .anyMatch(m ->
-                        m.startsWith("`maven-surefire-plugin` `<groups>fast & !flaky</groups>` is a tag expression"));
-        assertThat(messages).anyMatch(m -> m.contains("skip tests") && m.contains("`jk build -S`"));
+                .anyMatch(
+                        m -> m.startsWith("maven-surefire-plugin <groups> fast & !flaky: tag expression not imported"));
+        assertThat(messages).anyMatch(m -> m.contains("skips tests") && m.contains("jk build -S"));
         assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("[test]");
     }
 
@@ -159,7 +159,7 @@ class PomTestPluginImportTest {
                 </project>
                 """);
         assertThat(result.jkBuild().build().testJvm().jvmArgs()).containsExactly("--enable-preview", "-XX:+UseZGC");
-        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("`<argLine>`"));
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("<argLine>"));
     }
 
     @Test
@@ -191,8 +191,9 @@ class PomTestPluginImportTest {
                         "integration",
                         new ClassSuite(
                                 List.of("*IntegrationTest", "com.ex.smoke.*"), List.of("*SlowIntegrationTest"))));
-        assertThat(messages).anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<includes>` %regex[.*Flow.*] —"));
-        assertThat(messages).noneMatch(m -> m.startsWith("`maven-failsafe-plugin` `<excludes>`"));
+        assertThat(messages)
+                .anyMatch(m -> m.startsWith("maven-failsafe-plugin <includes> %regex[.*Flow.*]: not imported"));
+        assertThat(messages).noneMatch(m -> m.startsWith("maven-failsafe-plugin <excludes>"));
         assertThat(result.jkBuild().build().testExcludeClasses())
                 .as("Failsafe's excludes narrow its own pass; they do not leave a class out of every suite")
                 .isEmpty();
@@ -250,10 +251,10 @@ class PomTestPluginImportTest {
         assertThat(build.build().testExcludeClasses()).containsExactly("*PerformanceTest");
         assertThat(build.build().testExcludeSrc()).containsExactly("**/*Benchmark*");
         assertThat(messages)
-                .anyMatch(m -> m.startsWith("`maven-surefire-plugin` `<excludes>` %regex[.*Flaky.*] —"))
-                .anyMatch(m -> m.startsWith("`maven-surefire-plugin` `<includes>` **/*Test.java —"))
-                .anyMatch(m -> m.startsWith("`maven-compiler-plugin` `<excludes>` **/package-info.java —"))
-                .noneMatch(m -> m.startsWith("`maven-compiler-plugin` `<testExcludes>`"));
+                .anyMatch(m -> m.startsWith("maven-surefire-plugin <excludes> %regex[.*Flaky.*]: not imported"))
+                .anyMatch(m -> m.startsWith("maven-surefire-plugin <includes> **/*Test.java: not imported"))
+                .anyMatch(m -> m.startsWith("maven-compiler-plugin <excludes> **/package-info.java: skipped"))
+                .noneMatch(m -> m.startsWith("maven-compiler-plugin <testExcludes>"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
@@ -289,7 +290,7 @@ class PomTestPluginImportTest {
         assertThat(build.build().testExcludeDependencies())
                 .containsExactly("org.slf4j:slf4j-simple", "ch.qos.logback:logback-classic");
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("`maven-surefire-plugin` `<classpathDependencyExcludes>` log4j —"));
+                .anyMatch(m -> m.startsWith("maven-surefire-plugin <classpathDependencyExcludes> log4j: not imported"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
@@ -352,7 +353,7 @@ class PomTestPluginImportTest {
         assertThat(result.jkBuild().build().testClassSuites())
                 .containsExactly(Map.entry("integration", ClassSuite.of(List.of("IT*", "*IT", "*ITCase"))));
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("test classes named `IT*`") && m.contains("jk test -s integration"));
+                .anyMatch(m -> m.startsWith("IT*, *IT and *ITCase classes:") && m.contains("jk test -s integration"));
     }
 
     @Test
@@ -362,7 +363,7 @@ class PomTestPluginImportTest {
                 tests.resolve("GreetingResourceTest.java"), "package org.acme; class GreetingResourceTest {}\n");
         PomImporter.Result result = TestImporters.importXml(tempDir, PROFILE_ONLY_FAILSAFE);
         assertThat(result.jkBuild().build().testClassSuites()).isEmpty();
-        assertThat(TestImporters.messages(result)).noneMatch(m -> m.startsWith("test classes named `IT*`"));
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.startsWith("IT*, *IT and *ITCase classes:"));
     }
 
     @Test

@@ -38,8 +38,7 @@ final class HibernateGradle {
         Optional<String> enhancement = GradleScriptText.extractBlock(script, "hibernate")
                 .flatMap(body -> GradleScriptText.extractBlock(body, "enhancement"));
         if (enhancement.isEmpty()) {
-            report.warning("`" + PLUGIN + "` is applied without an `enhancement` block, so it enhances nothing;"
-                    + " no `[hibernate]` table is written.");
+            report.warning(PLUGIN + " has no enhancement block; no [hibernate] table written");
             return null;
         }
         Map<String, Object> values = new LinkedHashMap<>();

@@ -134,7 +134,7 @@ class GradleModelQueryNetworkTest {
                 .extracting(Dependency::library)
                 .containsExactly("api", "picocli");
         assertThat(Objects.requireNonNull(appBuild.application()).main()).isEqualTo("com.acme.App");
-        assertThat(rows).anySatisfy(r -> assertThat(r).contains("task `release`"));
+        assertThat(rows).anySatisfy(r -> assertThat(r).contains("task release ("));
     }
 
     /**

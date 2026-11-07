@@ -78,10 +78,11 @@ class PomManagedImportTest {
         List<String> messages = TestImporters.messages(result);
         assertThat(messages)
                 .anySatisfy(m -> assertThat(m)
-                        .contains("`<dependencyManagement>` in this POM pins 1 version no declared dependency uses"
-                                + " (commons-io:commons-io)")
-                        .contains("written to [managed-dependencies]"))
-                .anySatisfy(m -> assertThat(m).contains("1 entry with exclusions and no version (org.yaml:snakeyaml)"))
+                        .isEqualTo("dependencyManagement in this POM: 1 unused pin moved to [managed-dependencies]"
+                                + " (commons-io:commons-io)"))
+                .anySatisfy(m -> assertThat(m)
+                        .isEqualTo("dependencyManagement in this POM: exclusions on 1 versionless entry apply only"
+                                + " where declared (org.yaml:snakeyaml)"))
                 .noneMatch(m -> m.contains("declared dependencies only"));
 
         String rendered = JkBuildRenderer.render(build);
@@ -143,10 +144,9 @@ class PomManagedImportTest {
                         tuple("junit:junit", "4.13.2", List.of("org.hamcrest:*")));
         assertThat(TestImporters.messages(result))
                 .anySatisfy(m -> assertThat(m)
-                        .contains("`<dependencyManagement>` in this POM excludes coordinates under 2 modules"
-                                + " (org.apache.hadoop:hadoop-common, junit:junit)")
-                        .contains("written to [managed-dependencies] with `exclude`"))
-                .noneMatch(m -> m.contains("pins 1 version no declared dependency uses"));
+                        .isEqualTo("dependencyManagement in this POM: exclusions on 2 modules moved to"
+                                + " [managed-dependencies] (org.apache.hadoop:hadoop-common, junit:junit)"))
+                .noneMatch(m -> m.contains("unused pin"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
@@ -226,14 +226,12 @@ class PomManagedImportTest {
                 .as("the parent's pins are one row at the root; a leaf's own table is the leaf's row")
                 .satisfiesExactlyInAnyOrder(
                         m -> assertThat(m)
-                                .startsWith("`<dependencyManagement>` of the reactor's parent POMs pins 1 version"
-                                        + " no module declares (commons-io:commons-io)")
-                                .contains("written once to the root's [managed-dependencies]"),
+                                .isEqualTo("parent dependencyManagement: 1 unused pin moved to the root's"
+                                        + " [managed-dependencies] (commons-io:commons-io)"),
                         m -> assertThat(m)
-                                .startsWith("`<dependencyManagement>` of the reactor's parent POMs excludes"
-                                        + " coordinates under 1 module (org.apache.hadoop:hadoop-common)")
-                                .contains("written once to the root's [managed-dependencies] with `exclude`"),
-                        m -> assertThat(m).startsWith("[app] `<dependencyManagement>` in this POM pins 1 version"));
+                                .isEqualTo("parent dependencyManagement: exclusions on 1 module moved to the root's"
+                                        + " [managed-dependencies] (org.apache.hadoop:hadoop-common)"),
+                        m -> assertThat(m).startsWith("app: dependencyManagement in this POM: 1 unused pin"));
     }
 
     /**

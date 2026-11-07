@@ -56,8 +56,8 @@ final class InheritedRows {
         inheriting.forEach((key, modules) -> {
             String text = modules == 0
                     ? key.message()
-                    : key.message() + " Declared by " + key.declaredBy() + ", inherited by " + count.format(modules)
-                            + (modules == 1 ? " module." : " modules.");
+                    : key.message().replaceFirst("\\.$", "") + "; declared by " + key.declaredBy() + ", inherited by "
+                            + count.format(modules) + (modules == 1 ? " module" : " modules");
             if (key.severity() == ImportReport.Severity.ERROR) {
                 report.error(text);
             } else {
@@ -67,7 +67,7 @@ final class InheritedRows {
     }
 
     /** How the report names the root pom.xml as a declaring POM. */
-    static final String ROOT = "the root pom.xml";
+    static final String ROOT = "root pom.xml";
 
     /**
      * The nearest ancestor of {@code em} whose own {@code <build>} (or one of its profiles')
@@ -85,7 +85,7 @@ final class InheritedRows {
         if (pom == null || !pom.startsWith(rootDir)) return ancestor.label();
         Path dir = Objects.requireNonNull(pom.getParent());
         if (dir.equals(rootDir)) return ROOT;
-        return "`" + rootDir.relativize(pom).toString().replace(File.separatorChar, '/') + "`";
+        return rootDir.relativize(pom).toString().replace(File.separatorChar, '/');
     }
 
     /** Whether a raw model declares {@code artifactId} under {@code <build><plugins>}, its profiles included. */

@@ -63,10 +63,8 @@ public final class KotlinResolver {
      * and what to check. The lock and the build both say it; an import rewrites the manifest instead.
      */
     public static String floorNote(String declared) {
-        return "kotlin " + declared + " is below jk's floor " + FLOOR_VERSION
-                + ", the oldest Kotlin its compile path drives, so the module compiles with " + FLOOR_VERSION
-                + " — check the build against that compiler's warnings and language changes, and write kotlin = \""
-                + FLOOR_VERSION + "\" to have the manifest say so";
+        return "kotlin " + declared + " is below jk's floor; compiled with " + FLOOR_VERSION + ". Write kotlin = \""
+                + FLOOR_VERSION + "\"";
     }
 
     /**

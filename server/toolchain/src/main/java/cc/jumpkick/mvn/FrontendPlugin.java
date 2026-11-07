@@ -176,21 +176,19 @@ final class FrontendPlugin {
         String configured = setting(shared, null, "workingDirectory");
         String workingDirectory = workingDirectory(configured, moduleDir);
         Path dir = moduleDir.resolve(workingDirectory).normalize();
-        String where = "`" + ARTIFACT + "`";
+        String where = ARTIFACT;
         if (!Files.isRegularFile(dir.resolve("package.json"))) {
             // A parent's plugin reaches every child; only a directory the module names is worth a row.
             if (configured != null) {
-                report.warning(where + " runs in `" + workingDirectory + "`, which has no package.json; no node"
-                        + " build is imported");
+                report.warning(where + ": no package.json in " + workingDirectory + "; front end not imported");
             }
             return null;
         }
         String packageManager = packageManager(dir);
         boolean yarnOne = yarnOne(dir, packageManager);
         if (yarnOne) {
-            report.error(where + " builds with Yarn 1, which jk does not run: imported with `[node] skip = true`, so"
-                    + " this module builds no front end. In `" + workingDirectory + "` run `yarn set version stable"
-                    + " && yarn install`, commit, and import again");
+            report.error(where + ": Yarn 1 is unsupported, so [node] skip = true. In " + workingDirectory
+                    + " run yarn set version stable && yarn install, then import again");
         }
         boolean skip = yarnOne;
         for (String property : SKIP_PROPERTIES) {
@@ -211,7 +209,7 @@ final class FrontendPlugin {
             boolean skipped = isTrue(setting(shared, config, "skip"));
             int phase = phase(execution.getPhase());
             for (String goal : execution.getGoals()) {
-                String id = "`" + execution.getId() + "`";
+                String id = execution.getId();
                 if (INSTALL_GOALS.contains(goal)) {
                     if (skipped) skip = true;
                     String v = setting(shared, config, "nodeVersion");
@@ -219,23 +217,23 @@ final class FrontendPlugin {
                     continue;
                 }
                 if (TOOL_GOALS.contains(goal)) {
-                    report.warning(where + " goal `" + goal + "` (execution " + id + ") is not imported: run it from"
-                            + " an npm script, or as a [[node.steps]] npx step");
+                    report.warning(where + " goal " + goal + " (" + id + ") not imported; run it from an npm script"
+                            + " or a [[node.steps]] npx step");
                     continue;
                 }
                 if (!COMMAND_GOALS.contains(goal)) continue;
                 if (skipped) {
-                    report.warning(where + " execution " + id + " sets <skip>true</skip> and is not imported");
+                    report.warning(where + " execution " + id + " has <skip>true</skip>; not imported");
                     continue;
                 }
                 Parsed parsed = parse(goal, setting(shared, config, "arguments"));
                 if (parsed == null) {
-                    report.warning(where + " execution " + id + " names no command and is not imported");
+                    report.warning(where + " execution " + id + " names no command; not imported");
                 } else if (parsed.kind() == Parsed.Kind.INSTALL) {
                     if (parsed.install() != null) install = parsed.install();
                 } else if (phase >= PHASES.indexOf("install")) {
-                    report.warning(where + " execution " + id + " runs at `" + execution.getPhase()
-                            + "`, after the build; it is not imported");
+                    report.warning(where + " execution " + id + " runs at " + execution.getPhase()
+                            + ", after the build; not imported");
                 } else {
                     placed.add(
                             new Placed(stepName(execution.getId()), phase, Objects.requireNonNull(parsed.command())));
@@ -247,7 +245,7 @@ final class FrontendPlugin {
         String inherited = version == null ? setting(shared, null, "nodeVersion") : null;
         if (inherited != null) version = nodeVersion(inherited);
         if (version == null) {
-            report.warning(where + " names no nodeVersion: write `node = 24` (or the version the project needs)");
+            report.warning(where + ": no nodeVersion; add node = 24 (or the version you need)");
         }
         NodeTable table = table(placed, install, skip);
         return new Frontend(dir, workingDirectory, version, table, failuresReport, envDecls(env));
@@ -380,35 +378,33 @@ final class FrontendPlugin {
             @Nullable String packageManager,
             ImportReport.Builder report,
             Set<String> reported) {
-        String where = "`" + ARTIFACT + "`";
+        String where = ARTIFACT;
         for (Map.Entry<String, String> mirror : MIRRORS.entrySet()) {
             String url = setting(shared, config, mirror.getKey());
             if (url == null || !reported.add(mirror.getKey())) continue;
-            report.warning(where + " `<" + mirror.getKey() + ">` is machine configuration jk does not take from a"
-                    + " project: add `" + mirror.getValue() + " = \"" + url + "\"` to ~/.jk/config.toml");
+            report.warning(where + " <" + mirror.getKey() + "> is machine config; add " + mirror.getValue() + " = \""
+                    + url + "\" to ~/.jk/config.toml");
         }
         String server = setting(shared, config, "serverId");
         if (server != null && reported.add("serverId")) {
-            report.warning(where + " `<serverId>" + server + "</serverId>`: jk takes the mirror's credentials from"
-                    + " `jk repo login <host>`, JK_REPO_<HOST>_TOKEN, or the settings.xml <server> of a node or"
-                    + " npm <mirror>");
+            report.warning(where + " <serverId>" + server + "</serverId> ignored; run jk repo login <host> or set"
+                    + " JK_REPO_<HOST>_TOKEN");
         }
         for (String key : List.of(
                 "npmInheritsProxyConfigFromMaven",
                 "yarnInheritsProxyConfigFromMaven",
                 "bowerInheritsProxyConfigFromMaven")) {
             if (EnvValues.parseBool(setting(shared, config, key)).map(b -> !b).orElse(false) && reported.add(key)) {
-                report.warning(where + " `<" + key + ">false`: jk hands every package manager the proxy it uses"
-                        + " itself; a host that must go direct belongs in no-proxy");
+                report.warning(where + " <" + key + ">false ignored; jk passes its proxy to every package"
+                        + " manager. List direct hosts in no-proxy");
             }
         }
         for (String key : MANAGER_VERSIONS) {
             String v = setting(shared, config, key);
             if (v == null || v.equals("provided") || packageManager != null || !reported.add(key)) continue;
             String pm = key.substring(0, key.length() - "Version".length());
-            report.warning(where + " `<" + key + ">" + v + "`: jk takes the manager's version from package.json —"
-                    + " add `\"packageManager\": \""
-                    + (pm.equals("corepack") ? "<manager>@<version>" : pm + "@" + stripV(v)) + "\"`");
+            report.warning(where + " <" + key + ">" + v + " ignored; add \"packageManager\": \""
+                    + (pm.equals("corepack") ? "<manager>@<version>" : pm + "@" + stripV(v)) + "\" to package.json");
         }
     }
 

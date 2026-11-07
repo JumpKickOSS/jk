@@ -65,9 +65,9 @@ class PomReactorUnbuiltDependencyImportTest {
                     assertThat(issue.severity()).isEqualTo(ImportReport.Severity.WARNING);
                     assertThat(issue.message())
                             .startsWith(
-                                    "[docs] `<type>pom</type>` on org.demo:js-parent names `js/pom.xml`, the aggregator of"
-                                            + " `account-ui`, `admin-ui`")
-                            .contains("no row is written");
+                                    "docs: <type>pom</type> on org.demo:js-parent names js/pom.xml, the aggregator of"
+                                            + " account-ui, admin-ui")
+                            .contains("no [platform] row");
                 });
     }
 
@@ -150,8 +150,8 @@ class PomReactorUnbuiltDependencyImportTest {
                             .as("nothing Maven put on the classpath is lost")
                             .isEqualTo(ImportReport.Severity.WARNING);
                     assertThat(issue.message())
-                            .contains("its own dependencies org.demo:account-ui (workspace), com.google.guava:guava")
-                            .contains("are written on this module in its place")
+                            .contains("its dependencies org.demo:account-ui (workspace), com.google.guava:guava")
+                            .contains("are declared here instead")
                             .doesNotContain("org.demo:services")
                             .doesNotContain("slf4j");
                 });
@@ -192,9 +192,9 @@ class PomReactorUnbuiltDependencyImportTest {
                     assertThat(issue.severity()).isEqualTo(ImportReport.Severity.ERROR);
                     assertThat(issue.message())
                             .startsWith(
-                                    "[docs] org.demo:legacy names `legacy/pom.xml`, which only profile `jdk8` of the"
-                                            + " root pom.xml lists, and that profile is not active on this machine")
-                            .contains("the dependency was not written");
+                                    "docs: org.demo:legacy names legacy/pom.xml, listed only by inactive profile jdk8"
+                                            + " of root pom.xml (re-import with -P jdk8)")
+                            .contains("dependency not written");
                 });
     }
 

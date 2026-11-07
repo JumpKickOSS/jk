@@ -87,7 +87,9 @@ class PomFormatImportTest {
                 </plugin>
                 """ + TAIL);
         assertThat(result.jkBuild().format().enforce()).isFalse();
-        assertThat(TestImporters.messages(result)).anyMatch(m -> m.contains("`[format] enforce` is left off"));
+        assertThat(TestImporters.messages(result))
+                .anyMatch(
+                        m -> m.endsWith(": Java formatter not supported; choose [format] java and set enforce = true"));
     }
 
     @Test
