@@ -411,11 +411,10 @@ final class GradleModelImporter {
         List<String> java = fixtures == null ? List.of() : fixtures.java();
         String root = java.isEmpty() ? "src/testFixtures/java" : java.getFirst();
         if (java.size() > 1) {
-            local.warning("source set testFixtures reads " + String.join(", ", java) + "; [test] fixtures = \"" + root
-                    + "\" compiles the first");
+            local.warning("testFixtures: imported " + root + " only");
         }
         if (fixtures != null && !fixtures.kotlin().stream().allMatch(java::contains)) {
-            local.warning("source set testFixtures has Kotlin roots; jk compiles Java fixtures only");
+            local.warning("testFixtures: Kotlin sources not imported");
         }
         return root;
     }
@@ -628,8 +627,8 @@ final class GradleModelImporter {
                 }
                 boolean fixtures = d.fixtures() && scope == Scope.TEST;
                 if (d.fixtures() && !fixtures) {
-                    local.warning("testFixtures(project(" + d.projectPath() + ")) (" + configuration
-                            + ") outside a test configuration; wrote the main edge");
+                    local.warning(
+                            configuration + ": testFixtures(" + d.projectPath() + ") imported as " + d.projectPath());
                 }
                 Dependency edge = Dependency.workspace(sibling).withFixtures(fixtures);
                 if (!d.excludes().isEmpty()) edge = edge.withExclusions(exclusions(d));
@@ -804,8 +803,7 @@ final class GradleModelImporter {
             if (s.name().equals("testFixtures")) {
                 Path dir = buildRoot.resolve(p.dir());
                 if (s.resources().stream().anyMatch(r -> holdsFiles(dir.resolve(r)))) {
-                    local.warning("source set testFixtures has resources in " + String.join(", ", s.resources())
-                            + "; jk fixtures compile Java only, so move them under src/test/resources");
+                    local.warning("testFixtures: resources not imported");
                 }
                 continue;
             }

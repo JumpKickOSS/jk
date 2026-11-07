@@ -432,27 +432,14 @@ public final class BuildGraph {
         }
 
         /**
-         * One cycle among {@code stuck} (the units Kahn could not place), each member named and each
-         * edge closing it with the table that declares it. A leftover that only depends on a cycle
-         * is not in it.
+         * One cycle among {@code stuck} (the units Kahn could not place), its members in order. A
+         * leftover that only depends on a cycle is not in it.
          */
         private String cycleError(Set<Path> stuck) {
             List<Path> cycle = findCycle(stuck);
-            StringBuilder msg = new StringBuilder("workspace build graph has a cycle: ");
+            StringBuilder msg = new StringBuilder("dependency cycle: ");
             for (Path p : cycle) msg.append(nameOf(p)).append(" → ");
-            msg.append(nameOf(cycle.getFirst())).append(" (");
-            for (int i = 0; i < cycle.size(); i++) {
-                Path from = cycle.get(i);
-                Path to = cycle.get((i + 1) % cycle.size());
-                if (i > 0) msg.append("; ");
-                msg.append(nameOf(from))
-                        .append(' ')
-                        .append(edgeCause(from, to))
-                        .append(' ')
-                        .append(nameOf(to));
-            }
-            msg.append("). Only a test-scope edge may close a loop between members.");
-            return msg.toString();
+            return msg.append(nameOf(cycle.getFirst())).toString();
         }
 
         /** A cycle among {@code stuck}: walk prereqs inside the set until a unit repeats. */
@@ -480,27 +467,6 @@ public final class BuildGraph {
         private String nameOf(Path dir) {
             BuildUnit u = units.get(dir);
             return u == null ? dir.toString() : u.manifest().project().name();
-        }
-
-        /** How {@code from} names {@code to}: the tables that declare it, else the other edge kinds. */
-        private String edgeCause(Path from, Path to) {
-            BuildUnit u = units.get(from);
-            if (u == null) return "depends on";
-            JkBuild m = u.manifest();
-            Set<String> tables = new LinkedHashSet<>();
-            for (Scope scope : ModuleOrder.BUILD_ORDER_SCOPES) {
-                for (Dependency d : ModuleOrder.declared(m, scope)) {
-                    if (to.equals(ModuleOrder.resolveSibling(d, dirByCoord, dirByName))) {
-                        tables.add("[" + scope.tomlSection() + "]");
-                    }
-                }
-            }
-            if (!tables.isEmpty()) return String.join(" ", tables) + " names";
-            for (String ref : m.build().allOrderAfter()) {
-                Path dir = dirByCoord.getOrDefault(ref, dirByName.getOrDefault(ref, dirByName.get("jk-" + ref)));
-                if (to.equals(dir)) return "[build].order-after names";
-            }
-            return "depends through a published POM edge on";
         }
 
         Path canonical(Path p) {

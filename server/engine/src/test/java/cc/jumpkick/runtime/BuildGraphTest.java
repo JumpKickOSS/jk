@@ -338,8 +338,7 @@ class BuildGraphTest {
 
         assertThat(r.errors())
                 .as("the members in the loop and the tables closing it, not c that only waits on it")
-                .containsExactly("workspace build graph has a cycle: a → b → a (a [dependencies] names b;"
-                        + " b [dependencies] names a). Only a test-scope edge may close a loop between members.");
+                .containsExactly("dependency cycle: a → b → a");
         assertThat(r.topoOrder()).isEmpty();
     }
 

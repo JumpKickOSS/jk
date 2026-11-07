@@ -3,6 +3,7 @@ package cc.jumpkick.compat;
 
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.gradle.GradleBuildImport;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
@@ -239,8 +240,7 @@ public final class ProjectImport {
             return raisedAt(w.report(), raise, out, w.converted().modules().isEmpty(), progress);
         } catch (IOException e) {
             ImportReport.Builder b = rebuilt(w.report());
-            b.warning("Pins not checked against their dependencies (" + e.getMessage() + "); jk lock names any pin"
-                    + " set too low");
+            b.warning(notChecked(e));
             return b.build();
         }
     }
@@ -363,6 +363,12 @@ public final class ProjectImport {
         }
     }
 
+    /** The report row for a pin check that could not run; the cause goes to the log. */
+    private static String notChecked(Exception e) {
+        Log.debug("import: pins not checked", e);
+        return "pins not checked; jk lock reports any set too low";
+    }
+
     /** {@code report} with one warning per raised pin, or one naming why the pins were not checked. */
     private static ImportReport raised(ImportReport report, PinRaise raise, Path lockDir, ImportProgress progress) {
         List<String> lines;
@@ -372,9 +378,7 @@ public final class ProjectImport {
         } catch (Exception e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             lines = List.of();
-            failed = "Pins not checked against their dependencies ("
-                    + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())
-                    + "); jk lock names any pin set too low";
+            failed = notChecked(e);
         }
         if (lines.isEmpty() && failed == null) return report;
         ImportReport.Builder out = rebuilt(report);

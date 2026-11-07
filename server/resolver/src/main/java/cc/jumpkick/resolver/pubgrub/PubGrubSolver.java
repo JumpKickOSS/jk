@@ -650,8 +650,7 @@ public class PubGrubSolver {
             List<String> available = unknownPackage ? List.of() : sampleAvailable(pkg);
             List<String> notes = new ArrayList<>(source.refusalNotes(pkg));
             if (asked.isPresent() && solution.choosePreferred(pkg, declared) != null) {
-                notes.add("an exact pin read as a floor rises only to a version a dependency asks for, and none of "
-                        + String.join(", ", asked.get()) + " fits");
+                notes.add("pinned " + pinFloor(pkg).orElse("") + ": no version the graph asks for fits");
             }
             addIncompatibility(new Incompatibility(
                     List.of(Term.positive(pkg, allowed)),

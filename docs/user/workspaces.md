@@ -196,11 +196,11 @@ infrastructure = { workspace = true }
 ```
 
 Both start at once; architecture-tests' fixtures compile once infrastructure's classes are whole,
-and infrastructure's tests compile once those fixtures are. A loop through any other table is a
-build-order cycle, refused before anything builds with the members and the tables that close it:
+and infrastructure's tests compile once those fixtures are. A loop through any other table is
+refused before anything builds, naming the members in order:
 
 ```text
-workspace build graph has a cycle: a → b → a (a [dependencies] names b; b [dependencies] names a). Only a test-scope edge may close a loop between members.
+dependency cycle: a → b → a
 ```
 
 Fixtures compile against the whole test classpath, so two members whose fixtures select each

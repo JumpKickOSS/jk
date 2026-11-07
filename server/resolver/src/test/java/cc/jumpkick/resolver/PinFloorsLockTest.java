@@ -139,7 +139,7 @@ class PinFloorsLockTest {
                         .lock(serializerProject(List.of()), "test"))
                 .isInstanceOf(UnsatisfiableException.class)
                 .hasMessageContaining("org.ex:serializer")
-                .hasMessageContaining("rises only to a version a dependency asks for");
+                .hasMessageContaining("pinned 7.4.8: no version the graph asks for fits");
         assertThat(serializerPomsRead()).containsExactly("7.4.8");
     }
 
