@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
-import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -73,24 +71,8 @@ final class PackageVerb implements BuildVerb {
             run.fail("--aot-cache packages a single application project; run it from the module directory.");
             return Exit.USAGE;
         }
-        // The GraalVM home for every always-native module this build reaches, before any progress UI
-        // opens: the resolver may prompt or install, and the request carries the answer (the engine is
-        // a daemon and must not pick one from the shell that started it). A member the selection
-        // leaves out is not asked about.
-        List<AlwaysNativeGraal.Module> members;
-        if (run.standalone()) {
-            AlwaysNativeGraal.Module self = AlwaysNativeGraal.fromManifest(entryDir);
-            members = self == null ? List.of() : List.of(self);
-        } else {
-            members = AlwaysNativeGraal.fromManifests(entryDir);
-            if (selection.confines()) members = AlwaysNativeGraal.within(members, selection.dirs());
-        }
-        // A member that inherits its `java` from the root declares none of its own; the summary has it.
-        if (!members.isEmpty()) {
-            members = AlwaysNativeGraal.withEffectiveReleases(members, ProjectInfos.orNull(entryDir));
-        }
-        Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.homes(
-                members, new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())::resolve);
+        // The GraalVM home for every always-native module this build reaches, before any progress UI.
+        Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.reached(run, entryDir, selection);
         if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
         this.graal = resolved.get();
         return -1;

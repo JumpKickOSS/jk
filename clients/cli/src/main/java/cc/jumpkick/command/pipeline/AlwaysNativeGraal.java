@@ -2,6 +2,7 @@
 package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.GraalResolver;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceModules;
@@ -17,11 +18,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The GraalVM home each always-native module builds with, resolved on the client before the request
- * ships — the one owner for {@code jk build} and {@code jk install}. The engine is a daemon: a
+ * ships — the one owner for {@code jk build}, {@code jk run} and {@code jk install}. The engine is a daemon: a
  * GraalVM it found for itself would answer from the shell that started it, and a prompt or an
  * install belongs to the terminal the user is looking at. So the client's resolver decides (pin,
  * lock, inventory, then prompt or install) and the request carries the answer per module.
@@ -131,6 +133,44 @@ final class AlwaysNativeGraal {
         WorkspaceSpec onto(WorkspaceSpec spec) {
             return spec.withGraalByDir(homes).withGraalInstalls(installs);
         }
+    }
+
+    /**
+     * The GraalVM of every always-native module a build of {@code entryDir} reaches, decided before any
+     * progress UI opens: the resolver may prompt or install, and the request carries the answer (the
+     * engine is a daemon and must not pick one from the shell that started it). A member the selection
+     * leaves out is not asked about. Empty when the resolver could not decide; it printed why.
+     */
+    static Optional<Graal> reached(BuildRun run, Path entryDir, BuildRun.Selection selection) {
+        return reached(
+                run.standalone(),
+                entryDir,
+                selection,
+                () -> ProjectInfos.orNull(entryDir),
+                new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())::resolve);
+    }
+
+    /**
+     * {@link #reached(BuildRun, Path, BuildRun.Selection)} over its inputs: {@code rootInfo} is the
+     * engine's summary of {@code entryDir}, asked only when some module links a native image.
+     */
+    static Optional<Graal> reached(
+            boolean standalone,
+            Path entryDir,
+            BuildRun.Selection selection,
+            Supplier<@Nullable ProjectInfo> rootInfo,
+            Resolve resolve) {
+        List<Module> members;
+        if (standalone) {
+            Module self = fromManifest(entryDir);
+            members = self == null ? List.of() : List.of(self);
+        } else {
+            members = fromManifests(entryDir);
+            if (selection.confines()) members = within(members, selection.dirs());
+        }
+        // A member that inherits its `java` from the root declares none of its own; the summary has it.
+        if (!members.isEmpty()) members = withEffectiveReleases(members, rootInfo.get());
+        return homes(members, resolve);
     }
 
     /** {@code dir} as an always-native module, or null when its build links no native image. */
