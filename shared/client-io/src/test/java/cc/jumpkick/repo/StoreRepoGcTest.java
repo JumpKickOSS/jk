@@ -2,11 +2,15 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.cache.SafePoint;
 import cc.jumpkick.host.Hashing;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -88,5 +92,34 @@ class StoreRepoGcTest {
         assertThat(report.deleted()).isEqualTo(1);
         assertThat(tree.resolve(gone)).as("the store holds its only copy").exists();
         assertThat(tree.resolve(held)).as("its origin can serve it again").doesNotExist();
+    }
+
+    @Test
+    void a_stop_lands_between_artifacts_each_gone_with_its_memo_or_kept_with_it() throws Exception {
+        List<String> rels = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            String rel = "com/v/a" + i + "/1.0/a" + i + "-1.0.jar";
+            artifact("vendor", rel, ("bytes-" + i).getBytes(), 60);
+            rels.add(rel);
+        }
+        Path tree = store.resolve("repos/vendor");
+        SafePoint afterFirstRemoval = () -> {
+            if (rels.stream().anyMatch(rel -> Files.notExists(tree.resolve(rel))))
+                throw new IllegalStateException("stop");
+        };
+
+        assertThatThrownBy(() -> StoreRepoGc.run(store, 1.0, System.currentTimeMillis(), false, afterFirstRemoval))
+                .hasMessage("stop");
+
+        assertThat(rels.stream().filter(rel -> Files.notExists(tree.resolve(rel))))
+                .hasSize(1);
+        for (String rel : rels) {
+            assertThat(Files.exists(ArtifactMemo.jkPath(tree, rel)))
+                    .as("%s and its memo go together", rel)
+                    .isEqualTo(Files.exists(tree.resolve(rel)));
+        }
+
+        StoreRepoGc.run(store, 1.0, System.currentTimeMillis(), false, SafePoint.NONE);
+        assertThat(rels).noneMatch(rel -> Files.exists(tree.resolve(rel)));
     }
 }

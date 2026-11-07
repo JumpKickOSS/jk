@@ -91,12 +91,31 @@ public final class ToolsGc {
             long nowMillis,
             boolean dryRun)
             throws IOException {
+        return run(toolsRoot, families, uses, pressure, nowMillis, dryRun, SafePoint.NONE);
+    }
+
+    /**
+     * As {@link #run(Path, Set, Map, double, long, boolean)}, asking {@code safePoint} before each
+     * family, each install the listing meets, each file the sizing walk counts and each install or
+     * staging directory it removes. An install goes whole once its removal starts, its publish lock
+     * with it, so a stop never leaves half a tool behind.
+     */
+    public static Report run(
+            Path toolsRoot,
+            Set<String> families,
+            Map<String, AccessLedger.Use> uses,
+            double pressure,
+            long nowMillis,
+            boolean dryRun,
+            SafePoint safePoint)
+            throws IOException {
         List<String> removed = new ArrayList<>();
         long[] freed = {0};
         int[] kept = {0};
         List<String> all = new ArrayList<>(families);
         all.add(UNPACKED);
         for (String family : all) {
+            safePoint.check();
             Path dir = toolsRoot.resolve(family);
             if (!Files.isDirectory(dir)) continue;
             Rule rule = ruleFor(family);
@@ -104,6 +123,7 @@ public final class ToolsGc {
             List<Install> installs = new ArrayList<>();
             List<Path> abandoned = new ArrayList<>();
             PathUtil.forEachChild(dir, (child, attrs) -> {
+                safePoint.check();
                 if (!attrs.isDirectory()) return true;
                 if (child.getFileName().toString().startsWith(".")) {
                     if (family.equals(CLOSURE_FAMILY)
@@ -123,7 +143,8 @@ public final class ToolsGc {
                 return true;
             });
             for (Path staging : abandoned) {
-                long size = sizeOf(staging);
+                long size = sizeOf(staging, safePoint);
+                safePoint.check();
                 if (!dryRun) PathUtil.deleteRecursively(staging);
                 removed.add(family + "/" + staging.getFileName());
                 freed[0] += size;
@@ -139,7 +160,8 @@ public final class ToolsGc {
                     kept[0]++;
                     continue;
                 }
-                long size = sizeOf(install.dir());
+                long size = sizeOf(install.dir(), safePoint);
+                safePoint.check();
                 if (!dryRun) {
                     PathUtil.deleteRecursively(install.dir());
                     // A closure directory's publish lock beside it goes with it.
@@ -154,9 +176,12 @@ public final class ToolsGc {
         return new Report(removed.size(), freed[0], kept[0], removed);
     }
 
-    private static long sizeOf(Path dir) throws IOException {
+    private static long sizeOf(Path dir, SafePoint safePoint) throws IOException {
         long[] bytes = {0};
-        PathUtil.forEachRegularFile(dir, (file, attrs) -> bytes[0] += attrs.size());
+        PathUtil.forEachRegularFile(dir, (file, attrs) -> {
+            safePoint.check();
+            bytes[0] += attrs.size();
+        });
         return bytes[0];
     }
 }

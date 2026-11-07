@@ -2,7 +2,9 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.cache.SafePoint;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.AccessLedger;
@@ -12,6 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -200,5 +204,31 @@ class M2CleanTest {
         assertThat(m2.resolve(jarRel)).doesNotExist();
         assertThat(m2.resolve(pomRel)).exists();
         assertThat(hint).hasContent("lib-1.0.pom>central=\n");
+    }
+
+    @Test
+    void a_stop_lands_between_files_and_what_is_left_is_still_provably_jks() throws Exception {
+        List<String> rels = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            String rel = "com/example/l" + i + "/1.0/l" + i + "-1.0.jar";
+            download(rel, "bytes-" + i, 90);
+            rels.add(rel);
+        }
+        SafePoint afterFirstRemoval = () -> {
+            if (rels.stream().anyMatch(rel -> Files.notExists(m2.resolve(rel))))
+                throw new IllegalStateException("stop");
+        };
+
+        assertThatThrownBy(() -> M2Clean.run(
+                        store, m2, SIXTY_DAYS, Set.of(), System.currentTimeMillis(), false, afterFirstRemoval))
+                .hasMessage("stop");
+
+        assertThat(rels.stream().filter(rel -> Files.notExists(m2.resolve(rel))))
+                .hasSize(1);
+        M2Clean.Report rest = M2Clean.run(store, m2, SIXTY_DAYS, Set.of(), System.currentTimeMillis(), false);
+        assertThat(rest.removed()).hasSize(rels.size() - 1);
+        assertThat(rest.foreign())
+                .as("a stopped pass leaves no file it cannot prove")
+                .isZero();
     }
 }

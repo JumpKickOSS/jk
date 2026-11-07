@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.cache.SafePoint;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -11,8 +12,11 @@ import java.util.function.BooleanSupplier;
  * entry is never split). A check that finds a build waiting unwinds the pass with {@link Yielded};
  * the caller sees {@link #yielded()} and runs the whole pass again later, because every root set
  * and refcount it computed is stale the moment it lets a build in.
+ *
+ * <p>It is the store collectors' {@link SafePoint} too, which is how a stop reaches inside their
+ * scans without the shared collectors knowing about the engine.
  */
-public final class PruneYield {
+public final class PruneYield implements SafePoint {
 
     /** Never stops: maintenance someone asked for in the foreground runs to the end. */
     public static final PruneYield NEVER = new PruneYield(() -> false);
@@ -26,6 +30,7 @@ public final class PruneYield {
     }
 
     /** A safe point: unwinds the pass with {@link Yielded} when a build is waiting. */
+    @Override
     public void check() {
         if (!wanted.getAsBoolean()) return;
         yielded = true;
