@@ -20,6 +20,7 @@ import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
+import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -61,7 +62,9 @@ final class LockCascade {
      * first moving the declared exact pins {@code rewrite} selects ({@code jk update}): each move
      * streams as an {@code update-rewrite} event, the manifests are written, and the resolve then
      * runs against the rewritten tree. Unless {@code accept}, a move across a minor or a major is a
-     * decision for a person: nothing is written and the run fails naming the moves and the flag.
+     * decision for a person: such pins move only to their newest patch, and a run notice names the
+     * moves held and the flag that takes them. When every move is held nothing is written or
+     * relocked.
      */
     static JobOutcome run(
             VerbHost host,
@@ -101,9 +104,16 @@ final class LockCascade {
             if (rewrite != null) {
                 try {
                     ManifestUpdates.Plan plan = ManifestUpdates.plan(lockDir, repoUrl, rewrite);
-                    sendRewrites(host, writer, plan);
                     String held = accept ? null : held(plan);
-                    if (held != null) return fail(host, writer, Exit.USAGE, held);
+                    if (held != null) {
+                        plan = ManifestUpdates.plan(lockDir, repoUrl, rewrite.holding());
+                        RunNotices.warnOnce(HELD_NOTICE, () -> held);
+                        if (plan.isEmpty()) {
+                            host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
+                            return JobOutcome.ok();
+                        }
+                    }
+                    sendRewrites(host, writer, plan);
                     ManifestUpdates.apply(plan);
                     // The manifests just changed: the merged model the resolve sees must be theirs.
                     if (!plan.isEmpty())
@@ -198,34 +208,27 @@ final class LockCascade {
         }
     }
 
-    /** One {@code update-rewrite} event per planned pin move. */
-    /** The refusal for {@code plan}'s moves across a minor or a major, or null when it has none. */
+    /**
+     * The run notice naming {@code plan}'s moves across a minor or a major, held for a person, or
+     * null when it has none.
+     */
     static @Nullable String held(ManifestUpdates.Plan plan) {
-        List<ManifestUpdates.Rewrite> crossing = plan.rewrites().stream()
+        List<String> crossing = plan.rewrites().stream()
                 .filter(ManifestUpdates.Rewrite::crossesMinor)
+                .map(r -> r.handle() + " " + r.from() + " → " + r.to())
                 .toList();
         if (crossing.isEmpty()) return null;
-        StringBuilder out = new StringBuilder()
-                .append(crossing.size())
-                .append(crossing.size() == 1 ? " pin moves" : " pins move")
-                .append(" across a minor or a major, which a person accepts:");
-        for (ManifestUpdates.Rewrite r : crossing) {
-            out.append("\n  ")
-                    .append(r.handle())
-                    .append(' ')
-                    .append(r.from())
-                    .append(" → ")
-                    .append(r.to());
-        }
-        return out.append("\nnothing was written; ")
-                .append(UPDATE_ACCEPT_FLAG)
-                .append(" accepts them (jk update asks at a terminal)")
-                .toString();
+        return "held " + crossing.size() + (crossing.size() == 1 ? " pin" : " pins") + " across a minor or a major ("
+                + UPDATE_ACCEPT + " takes them): " + String.join(", ", crossing);
     }
 
-    /** The {@code jk update} flag that accepts moves across a minor or a major. */
-    static final String UPDATE_ACCEPT_FLAG = "--yes";
+    /** The command that accepts moves across a minor or a major. */
+    static final String UPDATE_ACCEPT = "jk update -y";
 
+    /** The {@link RunNotices} key of the held-moves notice. */
+    private static final String HELD_NOTICE = "update-held";
+
+    /** One {@code update-rewrite} event per planned pin move. */
     static void sendRewrites(VerbHost host, @Nullable BufferedWriter writer, ManifestUpdates.Plan plan) {
         for (ManifestUpdates.Rewrite r : plan.rewrites()) {
             host.sendQuiet(

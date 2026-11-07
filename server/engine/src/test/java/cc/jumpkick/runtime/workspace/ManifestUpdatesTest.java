@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -47,6 +48,20 @@ class ManifestUpdatesTest {
         assertThat(ManifestUpdates.newer("2.18.0", published, true)).isEqualTo("3.0.0");
         assertThat(ManifestUpdates.newer("2.18.2", published, false)).isNull();
         assertThat(ManifestUpdates.newer("3.0.0", published, true)).isNull();
+    }
+
+    @Test
+    void a_held_selection_moves_a_pin_only_to_the_newest_patch_on_its_minor() {
+        List<String> published = List.of("1.2.3", "1.2.5", "1.3.0", "2.0.0");
+        ManifestUpdates.Selection held = new ManifestUpdates.Selection(List.of(), true).holding();
+        assertThat(ManifestUpdates.newer("1.2.3", published, held)).isEqualTo("1.2.5");
+        assertThat(ManifestUpdates.newer("1.2.5", published, held)).isNull();
+        assertThat(new ManifestUpdates.Selection(List.of("a"), false)
+                        .holding()
+                        .withModules(Set.of("com.acme:a"))
+                        .hold())
+                .as("a widened selection still holds")
+                .isTrue();
     }
 
     @Test
@@ -126,6 +141,19 @@ class ManifestUpdatesTest {
                 .extracting(r -> r.handle(), r -> r.to())
                 .containsExactlyInAnyOrder(
                         tuple("jackson", "3.0.0"), tuple("jackson", "3.0.0"), tuple("guava", "34.0.0-jre"));
+    }
+
+    @Test
+    void a_held_plan_keeps_every_pin_on_its_minor(@TempDir Path ws) throws Exception {
+        workspace(ws);
+        publish();
+
+        ManifestUpdates.Plan plan = ManifestUpdates.plan(ws, http.base(), ManifestUpdates.Selection.ALL.holding());
+
+        assertThat(plan.rewrites())
+                .extracting(r -> r.handle(), r -> r.from(), r -> r.to())
+                .as("shared 1.0.0 → 1.2.0 and tj 1.0 → 1.1 cross a minor; guava's 33.4.8 too")
+                .containsExactlyInAnyOrder(tuple("jackson", "2.18.0", "2.18.2"), tuple("jackson", "2.18.0", "2.18.2"));
     }
 
     @Test

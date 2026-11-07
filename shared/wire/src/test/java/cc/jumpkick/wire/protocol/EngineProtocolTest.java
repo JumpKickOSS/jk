@@ -339,7 +339,7 @@ class EngineProtocolTest {
         assertThat(bare.deps()).isEmpty();
         assertThat(bare.major()).isFalse();
         assertThat(bare.preview()).isFalse();
-        assertThat(bare.accept()).as("absent, a move across a minor is refused").isFalse();
+        assertThat(bare.accept()).as("absent, a move across a minor is held").isFalse();
     }
 
     @Test

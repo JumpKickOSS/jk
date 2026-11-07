@@ -154,8 +154,8 @@ public final class EngineRequests {
      * Everything an engine-hosted {@code jk update} needs — mirrors {@code UpdateCommand}'s local
      * fields. {@code deps} limits the pin rewrite to those handles or {@code group:artifact}
      * coordinates (empty = all); {@code major} lets a pin cross its Maven major; {@code accept} lets
-     * a pin move across a minor or a major, which the engine otherwise refuses unwritten; {@code
-     * preview} only reports the moves.
+     * a pin move across a minor or a major, which the engine otherwise holds, moving the pin only
+     * to its newest patch; {@code preview} only reports the moves.
      */
     public record UpdateRequest(
             Path entryDir,

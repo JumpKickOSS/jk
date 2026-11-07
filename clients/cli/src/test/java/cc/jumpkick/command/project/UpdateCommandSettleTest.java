@@ -63,6 +63,23 @@ class UpdateCommandSettleTest {
     }
 
     @Test
+    void printHeld_names_each_held_move_and_the_command_that_takes_them() {
+        List<UpdateCommand.Moved> held = List.of(
+                new UpdateCommand.Moved("jackson", "2.18.2", "3.0.0", List.of()),
+                new UpdateCommand.Moved("other", "1.0.0", "1.1.0", List.of()));
+        String moved = TestAnsi.strip(Capture.stdout(() -> UpdateCommand.printHeld(held, true)));
+        assertThat(moved)
+                .contains("Update")
+                .contains("held 2 pins across a minor or a major; jk update -y takes them")
+                .contains("  jackson  2.18.2 → 3.0.0")
+                .contains("  other  1.0.0 → 1.1.0")
+                .doesNotContain("nothing moved");
+
+        String none = TestAnsi.strip(Capture.stdout(() -> UpdateCommand.printHeld(held.subList(0, 1), false)));
+        assertThat(none).contains("nothing moved; held 1 pin across a minor or a major; jk update -y takes them");
+    }
+
+    @Test
     void printChange_shows_a_move_an_addition_a_removal_and_a_member_row() {
         String out = Capture.stdout(() -> {
             UpdateCommand.printChange(new UpdateCommand.Moved("com.acme:a", "1.0", "1.1", List.of()));

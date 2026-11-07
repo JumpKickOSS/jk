@@ -47,7 +47,8 @@ import org.jspecify.annotations.Nullable;
  * Maven major ({@code --major} to cross one; names or {@code --dep} to pick handles), then
  * re-resolve and overwrite {@code jk-lock.toml}. Workspace roots cascade over every member; {@code
  * --git [name]} re-resolves only git deps (pinned refs move only here). A move across a minor or a
- * major is the user's to accept: asked at a terminal, {@code --yes} elsewhere. Engine-hosted.
+ * major is the user's to accept: asked at a terminal; elsewhere held, the pin moving only to its
+ * newest patch, unless {@code --yes}. Engine-hosted.
  */
 public final class UpdateCommand implements CliCommand {
 
@@ -166,11 +167,13 @@ public final class UpdateCommand implements CliCommand {
     /**
      * The request to send: accepting when {@code --yes} said so, or when a terminal user accepted
      * the moves across a minor or a major the preview names (or there are none). Empty when they
-     * declined. Without a terminal the request goes unaccepted, and the engine refuses such moves
-     * naming {@code --yes}.
+     * declined. Without a terminal the request goes unaccepted: the engine holds such moves, and
+     * {@code held} receives them for the verdict to name.
      */
-    private Optional<EngineRequests.UpdateRequest> decided(EngineRequests.UpdateRequest req) throws IOException {
-        if (req.accept() || !Interactivity.canPrompt() || global.outputIsJson()) return Optional.of(req);
+    private Optional<EngineRequests.UpdateRequest> decided(EngineRequests.UpdateRequest req, List<Moved> held)
+            throws IOException {
+        if (req.accept() || global.outputIsJson()) return Optional.of(req);
+        boolean ask = Interactivity.canPrompt();
         List<Moved> crossing = new ArrayList<>();
         EngineRequests.LockHandler preview = new EngineRequests.LockHandler() {
             @Override
@@ -185,6 +188,10 @@ public final class UpdateCommand implements CliCommand {
             }
         };
         EngineRequests.LockOutcome looked = EngineClient.runUpdate(EnginePaths.current(), req.previewing(), preview);
+        if (!ask) {
+            if (looked.success()) held.addAll(crossing);
+            return Optional.of(req);
+        }
         if (!looked.success() || crossing.isEmpty()) return Optional.of(req.accepting());
         CliOutput.out(RichText.parse("[bold]" + crossing.size() + "[/] pin"
                         + (crossing.size() == 1 ? " moves" : "s move") + " across a minor or a major:")
@@ -198,6 +205,8 @@ public final class UpdateCommand implements CliCommand {
     /** Hosted full re-resolve: one console listener per cascade module, summary line per lockfile. */
     private int runHosted(Path dir, Path cache) {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        List<Moved> held = new ArrayList<>();
+        boolean[] relocked = {false};
         EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
             private final List<Moved> rewritten = new ArrayList<>();
             private final List<Moved> changed = new ArrayList<>();
@@ -227,6 +236,7 @@ public final class UpdateCommand implements CliCommand {
             @Override
             public void onModuleFinish(
                     @Nullable String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
+                relocked[0] = true;
                 if (result.success() && !global.outputIsJson()) {
                     for (Moved m : changed) {
                         if (rewritten.stream().noneMatch(m::sameMoveAs)) printChange(m);
@@ -243,7 +253,7 @@ public final class UpdateCommand implements CliCommand {
 
         EngineRequests.LockOutcome outcome;
         try {
-            Optional<EngineRequests.UpdateRequest> req = decided(updateRequest(dir, cache));
+            Optional<EngineRequests.UpdateRequest> req = decided(updateRequest(dir, cache), held);
             if (req.isEmpty()) {
                 CommandWedge.printFail("Update", "declined; nothing changed");
                 return Exit.FAILURE;
@@ -261,7 +271,24 @@ public final class UpdateCommand implements CliCommand {
         if (!outcome.success() && outcome.errors().isEmpty() && !global.outputIsJson()) {
             CommandWedge.printFail("Update", "update failed; see the errors above");
         }
+        if (outcome.success() && !held.isEmpty()) printHeld(held, relocked[0]);
         return outcome.exitCode();
+    }
+
+    /**
+     * The verdict on moves held across a minor or a major: how many, the command that takes them,
+     * one line each. {@code relocked} false says the run moved nothing.
+     */
+    static void printHeld(List<Moved> held, boolean relocked) {
+        JkWedge.warning("Update", RichText.parse(heldTail(held.size(), relocked)))
+                .print();
+        for (Moved m : held) printChange(m);
+    }
+
+    /** {@code [nothing moved; ]held N pins across a minor or a major; jk update -y takes them}. */
+    static String heldTail(int held, boolean relocked) {
+        return (relocked ? "" : "nothing moved; ") + "held [bold]" + held + "[/] pin" + (held == 1 ? "" : "s")
+                + " across a minor or a major; [bold]jk update -y[/] takes them";
     }
 
     /** Hosted {@code --git} splice: no plan events — the terminal carries the refreshed count. */

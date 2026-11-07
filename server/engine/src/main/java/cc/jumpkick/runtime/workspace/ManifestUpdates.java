@@ -65,14 +65,24 @@ public final class ManifestUpdates {
 
     /**
      * Which pins to move: the handles or {@code group:artifact} coordinates in {@code deps} (empty =
-     * every declared pin), crossing a Maven major only when {@code major} is set.
+     * every declared pin), crossing a Maven major only when {@code major} is set. {@code hold} keeps
+     * every pin on its minor: it moves only to the newest patch, a move no person need accept.
      */
-    public record Selection(List<String> deps, boolean major) {
+    public record Selection(List<String> deps, boolean major, boolean hold) {
 
         public static final Selection ALL = new Selection(List.of(), false);
 
         public Selection {
             deps = deps == null ? List.of() : List.copyOf(deps);
+        }
+
+        public Selection(List<String> deps, boolean major) {
+            this(deps, major, false);
+        }
+
+        /** This selection, each pin kept on its minor. */
+        public Selection holding() {
+            return new Selection(deps, major, true);
         }
 
         boolean selects(String handle, String module) {
@@ -94,7 +104,7 @@ public final class ManifestUpdates {
             if (deps.isEmpty() || modules.isEmpty()) return this;
             List<String> wider = new ArrayList<>(deps);
             wider.addAll(modules);
-            return new Selection(wider, major);
+            return new Selection(wider, major, hold);
         }
     }
 
@@ -181,8 +191,7 @@ public final class ManifestUpdates {
                 lockDir,
                 repoUrl,
                 selection,
-                (dir, repos, module, current) ->
-                        newer(current, available(module, repos, versionsByModule), selection.major()),
+                (dir, repos, module, current) -> newer(current, available(module, repos, versionsByModule), selection),
                 versionsByModule);
     }
 
@@ -307,7 +316,10 @@ public final class ManifestUpdates {
             if (toolVersions != null) {
                 text = moveToolPins(dir, moduleLabel, build, text, repos, selection, toolVersions, rewrites);
             }
-            if (toolPins && selection.major() && selection.selects(NodeUpdates.HANDLE, NodeUpdates.HANDLE)) {
+            if (toolPins
+                    && selection.major()
+                    && !selection.hold()
+                    && selection.selects(NodeUpdates.HANDLE, NodeUpdates.HANDLE)) {
                 NodeUpdates.Move node = NodeUpdates.major(text, releases);
                 if (node != null) {
                     text = node.text();
@@ -353,9 +365,7 @@ public final class ManifestUpdates {
         for (GuardPacks.Coordinate pack : packs) {
             if (!selection.selects(pack.artifact(), pack.ga())) continue;
             String to = newer(
-                    pack.version(),
-                    GuardPackPins.available(pack, cas.root(), repos, versionsByModule),
-                    selection.major());
+                    pack.version(), GuardPackPins.available(pack, cas.root(), repos, versionsByModule), selection);
             if (to == null) continue;
             try {
                 text = GuardPackPins.rewrite(text, pack, to);
@@ -419,7 +429,7 @@ public final class ManifestUpdates {
         for (List<ToolPins.ToolPin> pins : byKey.values()) {
             if (pins.stream().noneMatch(selection::selects)) continue;
             ToolPins.ToolPin pin = pins.getFirst();
-            String to = newer(pin.version(), published(pins, repos, versionsByModule), selection.major());
+            String to = newer(pin.version(), published(pins, repos, versionsByModule), selection);
             if (to == null) continue;
             try {
                 text = pin.rewrite(text, to);
@@ -465,10 +475,16 @@ public final class ManifestUpdates {
      * unless {@code major} is set; {@code null} when the pin already is the newest such release.
      */
     static @Nullable String newer(String current, List<String> available, boolean major) {
+        return newer(current, available, new Selection(List.of(), major));
+    }
+
+    /** As {@link #newer(String, List, boolean)}, kept on {@code current}'s minor when {@code selection} holds. */
+    static @Nullable String newer(String current, List<String> available, Selection selection) {
         long line = major(current);
         return available.stream()
                 .filter(Versions::isStable)
-                .filter(v -> major || major(v) == line)
+                .filter(v -> selection.major() || major(v) == line)
+                .filter(v -> !selection.hold() || !Versions.crossesMinor(current, v))
                 .filter(v -> Versions.compare(v, current) > 0)
                 .max(Versions::compare)
                 .orElse(null);

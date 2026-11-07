@@ -5,7 +5,9 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.BlankProject;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.cli.testing.TranscriptOf;
 import cc.jumpkick.command.DefaultTestDepsFixture;
@@ -15,6 +17,7 @@ import cc.jumpkick.testing.SysProps;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -133,6 +136,64 @@ class UpdateCommandTest {
 
         assertThat(exit).isEqualTo(0);
         assertThat(TranscriptOf.results(tempDir)).exists();
+    }
+
+    /**
+     * Without a terminal and without {@code -y}, moves across a minor or a major are held and named,
+     * the rest apply, and the run exits 0; with every move held nothing changes; {@code -y} takes
+     * them all.
+     */
+    @Test
+    void update_without_a_terminal_holds_moves_across_a_minor_and_yes_takes_them(@TempDir Path tempDir)
+            throws Exception {
+        for (String artifact : new String[] {"patchy", "minory"}) {
+            for (String v : new String[] {"1.0.0", "1.0.1", "1.1.0"}) {
+                maven.registerPom("com.foo.update", artifact, v, pom("com.foo.update", artifact, v, ""));
+                maven.registerJar("com.foo.update", artifact, v, artifact.getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        maven.registerMetadata("com.foo.update", "patchy", "1.0.0", "1.0.1");
+        maven.registerMetadata("com.foo.update", "minory", "1.0.1", "1.1.0");
+        BlankProject.write(tempDir.toString());
+        Path manifest = tempDir.resolve("jk.toml");
+        Files.writeString(
+                manifest,
+                Files.readString(manifest)
+                        + "\n[dependencies]\npatchy = \"com.foo.update:patchy:1.0.0\"\n"
+                        + "minory = \"com.foo.update:minory:1.0.1\"\n");
+        String[] update = {
+            "update",
+            "-C",
+            tempDir.toString(),
+            "--repo-url",
+            maven.base().toString(),
+            "--cache-dir",
+            tempDir.resolve("cache").toString()
+        };
+
+        int[] exit = {-1};
+        String mixed = TestAnsi.strip(Capture.stdout(() -> exit[0] = run(update)));
+        assertThat(exit[0]).isZero();
+        assertThat(Files.readString(manifest))
+                .contains("com.foo.update:patchy:1.0.1")
+                .contains("com.foo.update:minory:1.0.1");
+        assertThat(mixed)
+                .contains("held 1 pin across a minor or a major; jk update -y takes them")
+                .contains("minory  1.0.1 → 1.1.0")
+                .doesNotContain("nothing moved");
+
+        String lock = Files.readString(tempDir.resolve("jk-lock.toml"));
+        String held = TestAnsi.strip(Capture.stdout(() -> exit[0] = run(update)));
+        assertThat(exit[0]).isZero();
+        assertThat(held).contains("nothing moved; held 1 pin across a minor or a major; jk update -y takes them");
+        assertThat(Files.readString(tempDir.resolve("jk-lock.toml"))).isEqualTo(lock);
+
+        String[] yes = Arrays.copyOf(update, update.length + 1);
+        yes[update.length] = "-y";
+        String taken = TestAnsi.strip(Capture.stdout(() -> exit[0] = run(yes)));
+        assertThat(exit[0]).isZero();
+        assertThat(Files.readString(manifest)).contains("com.foo.update:minory:1.1.0");
+        assertThat(taken).doesNotContain("held");
     }
 
     @Test
