@@ -265,4 +265,28 @@ class OutputMeasuresTest {
                         .get("coverage-floor"));
         assertThat(c.outcome()).as(c.note()).isEqualTo(Outcome.CLEAN);
     }
+
+    @Test
+    void a_measure_scoped_to_one_module_does_not_fire_on_another_that_breaches_it(@TempDir Path root) throws Exception {
+        List<OutputArtifacts.Module> mods = OutputEvaluatorTest.twoMembers(root);
+        OutputEvaluatorTest.jar(mods.get(0).jar(), Map.of(), "a/A.class", "a/B.class", "a/C.class", "a/D.class");
+        OutputEvaluatorTest.jar(mods.get(1).jar(), Map.of(), "a/A.class");
+        long cap = Files.size(mods.get(1).jar());
+        assertThat(Files.size(mods.get(0).jar())).isGreaterThan(cap);
+        String rule = """
+                [guards.jar-cap]
+                kind    = "metric"
+                measure = "jar-size"
+                cap     = %d
+                why     = "w"
+                """.formatted(cap);
+        Evaluation scoped =
+                Objects.requireNonNull(OutputEvaluatorTest.runTwo(root, rule + "scope = \"api\"\n", Lane.OUTPUT)
+                        .get("jar-cap"));
+        assertThat(scoped.outcome()).as(scoped.note()).isEqualTo(Outcome.CLEAN);
+        assertThat(scoped.population()).containsEntry("units", 1L);
+        Evaluation every = Objects.requireNonNull(
+                OutputEvaluatorTest.runTwo(root, rule, Lane.OUTPUT).get("jar-cap"));
+        assertThat(every.observations()).extracting(o -> o.key()).containsExactly("core");
+    }
 }

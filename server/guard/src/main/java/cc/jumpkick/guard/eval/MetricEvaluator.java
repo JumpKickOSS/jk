@@ -504,8 +504,10 @@ final class MetricEvaluator implements BatchEvaluator {
     private Evaluation outputMeasure(Rule rule, EvalContext ctx, String measure, Bound bound) throws IOException {
         Double limit = bound.limitFor("");
         if (limit == null) return Evaluation.failed("output measures take a scalar cap or min");
-        List<OutputArtifacts.Module> modules = OutputArtifacts.of(
-                ctx.root(), ctx.modules(), ctx.rules().config().coverageReport());
+        List<OutputArtifacts.Module> modules = OutputArtifacts.judgedBy(
+                rule,
+                OutputArtifacts.of(
+                        ctx.root(), ctx.modules(), ctx.rules().config().coverageReport()));
         List<Observation> out = new ArrayList<>();
         Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         for (Allow a : rule.allow()) allowUsed.put(a, false);
