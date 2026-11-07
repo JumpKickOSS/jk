@@ -150,7 +150,7 @@ class LockClosuresTest {
                         build, tmp, tmp, JkStores.storeCas(), Lockfile.empty("test"), Lockfile.empty("test")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("quarkus/deployment")
-                .hasMessageContaining("run `jk lock`");
+                .hasMessageContaining("run jk lock");
     }
 
     @Test

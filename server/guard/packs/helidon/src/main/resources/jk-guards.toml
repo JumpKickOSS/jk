@@ -1,0 +1,49 @@
+# cc.jumpkick.guards:helidon — the Helidon 27 starter pack. Extend it from the root jk-guards.toml:
+#   [guards]
+#   extends = ["cc.jumpkick.guards:helidon:<jk version>"]
+
+[guards.helidon-no-microprofile]
+kind       = "forbid"
+signatures = ["io.helidon.microprofile.**"]
+instead    = "Helidon SE's own APIs: io.helidon.webserver, io.helidon.service.registry, io.helidon.config"
+why        = "Helidon 27 is Helidon SE only; MicroProfile stopped at Helidon 4, and its classes come from a 4.x jar beside 27's"
+fixture    = "guard-fixtures/helidon-no-microprofile"
+
+[guards.helidon-no-microprofile-artifacts]
+kind    = "depend"
+ban     = [
+  "io.helidon.microprofile.bundles:*",
+  "io.helidon.microprofile.server:*",
+  "io.helidon.microprofile.cdi:*",
+  "io.helidon.microprofile.config:*",
+]
+instead = "the Helidon SE modules (helidon-webserver, helidon-service-registry, helidon-config-yaml)"
+why     = "Helidon 27's BOM manages no MicroProfile artifact: one of these brings a Helidon 4 graph into a 27 build"
+
+[guards.jakarta-not-javax]
+kind       = "forbid"
+signatures = ["@jakarta-not-javax"]
+instead    = "the jakarta.* package of the same type"
+why        = "Helidon 27 builds on Jakarta APIs (jakarta.json, jakarta.persistence); a javax.* import names a classpath that is no longer there"
+fixture    = "guard-fixtures/jakarta-not-javax"
+
+[guards.helidon-test-types-stay-in-test]
+kind       = "forbid"
+signatures = ["io.helidon.webserver.testing.**", "io.helidon.testing.**"]
+instead    = "keep test support under src/test"
+why        = "Helidon's testing types ride helidon-webserver-testing-junit5 and helidon-testing-junit5, which belong in [test-dependencies] alone"
+fixture    = "guard-fixtures/helidon-test-types-stay-in-test"
+
+[guards.helidon-testing-in-test]
+kind    = "depend"
+ban     = ["io.helidon.webserver.testing.junit5:*", "io.helidon.testing:*"]
+scopes  = ["dependencies", "runtime-dependencies"]
+instead = "[test-dependencies]"
+why     = "Helidon's test support in [dependencies] rides into the application's libs/, its image and its jlink runtime"
+
+[guards.test-libraries-stay-in-test]
+kind    = "depend"
+ban     = ["org.junit.jupiter:*", "org.junit.platform:*", "org.hamcrest:*", "org.assertj:*", "org.mockito:*"]
+scopes  = ["dependencies", "runtime-dependencies"]
+instead = "[test-dependencies]"
+why     = "a test library in [dependencies] rides into the production jar's libs/ and the runtime image"

@@ -28,7 +28,7 @@ class TemplateLintTest {
                 .contains("default.properties sets 'flavour'");
         assertThat(result.failures().get(1))
                 .startsWith("kotlin/none/moved.g8/.jk-template.toml: ")
-                .contains("declares kotlin/none/elsewhere, but it sits at kotlin/none/moved");
+                .contains("declares kotlin/none/elsewhere but sits at kotlin/none/moved");
     }
 
     @Test

@@ -105,7 +105,7 @@ class PlannerLangKotlinConfigTest {
         assertThatThrownBy(config.plugins().getFirst()::requiredSha256)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.example:opener-compiler-plugin:2.4.10")
-                .hasMessageContaining("run `jk lock`");
+                .hasMessageContaining("run jk lock");
         Lockfile pinned = lock.withPlugins(List.of(
                 lock.plugins().getFirst(),
                 new Lockfile.PluginEntry("com.example:opener-compiler-plugin", "2.4.10", "sha256:" + "cd".repeat(32))));
@@ -226,7 +226,7 @@ class PlannerLangKotlinConfigTest {
         assertThatThrownBy(missing::requiredSha256)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(ga + ":2.4.10")
-                .hasMessageContaining("run `jk lock`");
+                .hasMessageContaining("run jk lock");
         assertThat(PlannerLang.kotlinConfig(project, pinned, module, 25, javaHome, null)
                         .digest())
                 .as("the pinned digest is an input of the compile")

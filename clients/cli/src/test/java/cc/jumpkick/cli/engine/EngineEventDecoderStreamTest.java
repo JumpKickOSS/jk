@@ -107,7 +107,7 @@ class EngineEventDecoderStreamTest {
                         null,
                         null))
                 .isInstanceOf(EngineWireException.class)
-                .hasMessageContaining("workspace vocabulary");
+                .hasMessageContaining("read a workspace result as a single plan");
         assertThat(ActiveJobs.snapshot()).isEmpty();
 
         assertThatThrownBy(() -> WireStream.pumpJob(
@@ -116,7 +116,7 @@ class EngineEventDecoderStreamTest {
                         EnginePluginAdapter.hostedDecoder(
                                 "compile", steps -> new BuildPlanListener() {}, (type, line) -> {}, null)))
                 .isInstanceOf(EngineWireException.class)
-                .hasMessageContaining("workspace vocabulary");
+                .hasMessageContaining("read a workspace result as a single plan");
     }
 
     @Test

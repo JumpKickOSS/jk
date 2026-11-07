@@ -58,7 +58,7 @@ class UserConfigPluginPinTest {
 
         assertThatThrownBy(UserPluginPins::sync)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("no file exists")
+                .hasMessageContaining("which does not exist")
                 .hasMessageContaining("gone.jar");
     }
 

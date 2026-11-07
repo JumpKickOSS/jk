@@ -30,7 +30,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class StarterPacksTest {
 
     static Stream<String> packs() {
-        return Stream.of("spring", "quarkus", "android", "library", "monorepo");
+        return Stream.of("spring", "quarkus", "helidon", "android", "library", "monorepo");
     }
 
     @ParameterizedTest

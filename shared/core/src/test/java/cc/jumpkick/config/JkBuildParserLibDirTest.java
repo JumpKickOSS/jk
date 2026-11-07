@@ -71,6 +71,6 @@ class JkBuildParserLibDirTest {
     void a_top_level_lib_dir_is_a_misplaced_application_key() {
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\nlib-dir = true\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("belongs in [application]");
+                .hasMessageContaining("belongs under [application]");
     }
 }

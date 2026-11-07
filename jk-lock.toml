@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.50.4-SNAPSHOT"
-generated-by-build = "b5eae7689f6d"
-generated-by-build-time = "2026-11-07T08:04:35Z"
+generated-by-build = "9bb302bbba67"
+generated-by-build-time = "2026-11-07T20:23:54Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "7924811facfddea6d58614604ca5f4e671b7f01ad8a2416fd8d49c89c6e78095"
+manifests-sha256 = "d138388494f8b2cb4937a36a58c875a274fa0f4932869674b7602b0cdfc61361"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -7329,6 +7329,15 @@ name    = "android"
 version = "0.50.4"
 java    = 25
 description = "Android house rules: one logging owner, no blocking sleeps, java.time, test libraries in the test scope, a file-size ratchet."
+install.destination = "jk"
+
+[[module]]
+path    = "server/guard/packs/helidon"
+group   = "cc.jumpkick.guards"
+name    = "helidon"
+version = "0.50.4"
+java    = 25
+description = "Helidon 27 house rules: SE only (no MicroProfile), Jakarta EE, Helidon test types and test libraries in the test scope."
 install.destination = "jk"
 
 [[module]]

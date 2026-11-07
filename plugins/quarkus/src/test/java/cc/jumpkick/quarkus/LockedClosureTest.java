@@ -133,6 +133,6 @@ class LockedClosureTest {
         assertThatThrownBy(() -> LockedClosure.of(twice))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("netty-transport-native-epoll")
-                .hasMessageContaining("ambiguous");
+                .hasMessageContaining("more than once");
     }
 }

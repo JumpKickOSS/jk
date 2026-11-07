@@ -143,8 +143,8 @@ class StepToolLockTest {
         assertThatThrownBy(() ->
                         PluginBuild.fetchStepDependencies(build, tmp, new Cas(tmp.resolve("cas")), lockFile, false))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("pins no [[tool]] row for " + GROUP + ":protoc:" + VERSION)
-                .hasMessageContaining("run `jk lock`");
+                .hasMessageContaining("has no [[tool]] row for " + GROUP + ":protoc:" + VERSION)
+                .hasMessageContaining("run jk lock");
     }
 
     @Test

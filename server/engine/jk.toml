@@ -92,6 +92,7 @@ test-plugin-jars = [
   # scaffolded project's lock looks for a first-party pack.
   "cc.jumpkick.guards:spring",
   "cc.jumpkick.guards:quarkus",
+  "cc.jumpkick.guards:helidon",
   "cc.jumpkick.guards:android",
   "cc.jumpkick.guards:library",
   "cc.jumpkick.guards:monorepo",

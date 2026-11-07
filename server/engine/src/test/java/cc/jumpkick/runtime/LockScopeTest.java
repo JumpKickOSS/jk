@@ -106,7 +106,7 @@ class LockScopeTest {
         assertThatThrownBy(() -> LockPlans.lockScope(tmp))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining(tmp.resolve("core/jk.toml") + ":10 [platform-dependencies] netty-bom")
-                .hasMessageContaining("io.netty:netty-bom is pinned at `unresolved`");
+                .hasMessageContaining("io.netty:netty-bom has placeholder version `unresolved`");
     }
 
     @Test

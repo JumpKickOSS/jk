@@ -63,6 +63,6 @@ class CoverageToolsTest {
                         tmp.resolve("jacoco.xml"),
                         tmp.resolve("coverage"),
                         "g:a"))
-                .hasMessageContaining("no execution data");
+                .hasMessageContaining("no coverage data at");
     }
 }

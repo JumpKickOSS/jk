@@ -93,7 +93,7 @@ class SelfUpdateArtifactTest {
         assertThatThrownBy(() -> SelfCommand.UpdateSub.jvmClientArtifact(without, V))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("jk-0.12.0.jar")
-                .hasMessageContaining("no JVM client");
+                .hasMessageContaining("cannot verify the JVM client");
     }
 
     @Test

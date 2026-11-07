@@ -1,0 +1,1268 @@
+# The new-project corpus of java/helidon/database: NewProjectCorpusTest writes it; change the template, then re-capture.
+
+=== defaults
+layout = traditional
+db = h2
+metrics = true
+health = true
+docker = true
+jlink = false
+k8s = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+app.yaml
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/Pokemon.java
+src/main/java/com/acme/PokemonMapper.java
+src/main/java/com/acme/PokemonMapperProvider.java
+src/main/java/com/acme/PokemonService.java
+src/main/java/com/acme/package-info.java
+src/main/resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/main/resources/pokemon-types.json
+src/main/resources/pokemons.json
+src/test/java/com/acme/MainTest.java
+src/test/resources/application-test.yaml
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+helidon-dbclient-metrics = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics" }
+helidon-dbclient-metrics-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics-hikari" }
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+helidon-dbclient-health = { group = "io.helidon.dbclient", name = "helidon-dbclient-health" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+h2 = { group = "com.h2database", name = "h2" }
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+aot-cache = true
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== metrics=false health=false docker=false k8s=false
+layout = traditional
+db = h2
+metrics = false
+health = false
+docker = false
+jlink = false
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/Pokemon.java
+src/main/java/com/acme/PokemonMapper.java
+src/main/java/com/acme/PokemonMapperProvider.java
+src/main/java/com/acme/PokemonService.java
+src/main/java/com/acme/package-info.java
+src/main/resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/main/resources/pokemon-types.json
+src/main/resources/pokemons.json
+src/test/java/com/acme/MainTest.java
+src/test/resources/application-test.yaml
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+h2 = { group = "com.h2database", name = "h2" }
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== db=mysql jlink=true
+layout = traditional
+db = mysql
+metrics = true
+health = true
+docker = true
+jlink = true
+k8s = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+app.yaml
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/Pokemon.java
+src/main/java/com/acme/PokemonMapper.java
+src/main/java/com/acme/PokemonMapperProvider.java
+src/main/java/com/acme/PokemonService.java
+src/main/java/com/acme/package-info.java
+src/main/resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/main/resources/pokemon-types.json
+src/main/resources/pokemons.json
+src/test/java/com/acme/MainTest.java
+src/test/resources/application-test.yaml
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+helidon-dbclient-metrics = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics" }
+helidon-dbclient-metrics-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics-hikari" }
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+helidon-dbclient-health = { group = "io.helidon.dbclient", name = "helidon-dbclient-health" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+mysql-connector-j = { group = "com.mysql", name = "mysql-connector-j" }
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# The tests run on an in-memory H2 (application-test.yaml).
+h2 = { group = "com.h2database", name = "h2" }
+# `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+# The AOT cache is trained by starting the application, which needs its database up.
+aot-cache = false
+
+# jk build also writes target/demo-jri/: a runtime linked from the project JDK with the modules
+# jdeps finds, the application under app/, bin/start, and an AOT cache trained by starting it.
+[jlink]
+# HikariCP and the database drivers load through ServiceLoader, where jdeps does not look, and use JNDI.
+modules = ["java.naming"]
+# The build's starts of the image (the AOT training and the start test) start the application,
+# which needs its database up; jk build would fail without it.
+aot-cache  = false
+test-start = false
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== db=oracledb metrics=false docker=false jlink=true k8s=false
+layout = traditional
+db = oracledb
+metrics = false
+health = true
+docker = false
+jlink = true
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/Pokemon.java
+src/main/java/com/acme/PokemonMapper.java
+src/main/java/com/acme/PokemonMapperProvider.java
+src/main/java/com/acme/PokemonService.java
+src/main/java/com/acme/package-info.java
+src/main/resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/main/resources/pokemon-types.json
+src/main/resources/pokemons.json
+src/test/java/com/acme/MainTest.java
+src/test/resources/application-test.yaml
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+helidon-dbclient-health = { group = "io.helidon.dbclient", name = "helidon-dbclient-health" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+# Oracle's production set: the driver with UCP, ONS and the security jars.
+ojdbc17-production = { group = "com.oracle.database.jdbc", name = "ojdbc17-production" }
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# The tests run on an in-memory H2 (application-test.yaml).
+h2 = { group = "com.h2database", name = "h2" }
+# jk build also writes target/demo-jri/: a runtime linked from the project JDK with the modules
+# jdeps finds, the application under app/, bin/start, and an AOT cache trained by starting it.
+[jlink]
+# HikariCP and the database drivers load through ServiceLoader, where jdeps does not look, and use JNDI.
+modules = ["java.naming"]
+# The build's starts of the image (the AOT training and the start test) start the application,
+# which needs its database up; jk build would fail without it.
+aot-cache  = false
+test-start = false
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== db=mongodb metrics=false health=false
+layout = traditional
+db = mongodb
+metrics = false
+health = false
+docker = true
+jlink = false
+k8s = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+app.yaml
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/Pokemon.java
+src/main/java/com/acme/PokemonMapper.java
+src/main/java/com/acme/PokemonMapperProvider.java
+src/main/java/com/acme/PokemonService.java
+src/main/java/com/acme/package-info.java
+src/main/resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/main/resources/pokemon-types.json
+src/main/resources/pokemons.json
+src/test/java/com/acme/MainTest.java
+src/test/resources/application-test.yaml
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-mongodb = { group = "io.helidon.dbclient", name = "helidon-dbclient-mongodb" }
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# The tests run on an in-memory H2 (application-test.yaml).
+h2 = { group = "com.h2database", name = "h2" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+
+# `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+# The AOT cache is trained by starting the application, which needs its database up.
+aot-cache = false
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== layout=simple health=false docker=false jlink=true
+layout = simple
+db = h2
+metrics = true
+health = false
+docker = false
+jlink = true
+k8s = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+app.yaml
+jk-guards.toml
+jk.toml
+resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+resources/application.yaml
+resources/logging.properties
+resources/pokemon-types.json
+resources/pokemons.json
+src/com/acme/GreetService.java
+src/com/acme/Main.java
+src/com/acme/Pokemon.java
+src/com/acme/PokemonMapper.java
+src/com/acme/PokemonMapperProvider.java
+src/com/acme/PokemonService.java
+src/com/acme/package-info.java
+test/resources/application-test.yaml
+test/src/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+helidon-dbclient-metrics = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics" }
+helidon-dbclient-metrics-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics-hikari" }
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+h2 = { group = "com.h2database", name = "h2" }
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# jk build also writes target/demo-jri/: a runtime linked from the project JDK with the modules
+# jdeps finds, the application under app/, bin/start, and an AOT cache trained by starting it.
+[jlink]
+# HikariCP and the database drivers load through ServiceLoader, where jdeps does not look, and use JNDI.
+modules = ["java.naming"]
+
+# The training starts bind a free port, so a build beside a running copy does not collide.
+[jlink.training-env]
+SERVER_PORT = "0"
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== layout=simple db=mysql metrics=false health=false docker=false k8s=false
+layout = simple
+db = mysql
+metrics = false
+health = false
+docker = false
+jlink = false
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+resources/application.yaml
+resources/logging.properties
+resources/pokemon-types.json
+resources/pokemons.json
+src/com/acme/GreetService.java
+src/com/acme/Main.java
+src/com/acme/Pokemon.java
+src/com/acme/PokemonMapper.java
+src/com/acme/PokemonMapperProvider.java
+src/com/acme/PokemonService.java
+src/com/acme/package-info.java
+test/resources/application-test.yaml
+test/src/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+mysql-connector-j = { group = "com.mysql", name = "mysql-connector-j" }
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# The tests run on an in-memory H2 (application-test.yaml).
+h2 = { group = "com.h2database", name = "h2" }
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== layout=simple db=oracledb health=false k8s=false
+layout = simple
+db = oracledb
+metrics = true
+health = false
+docker = true
+jlink = false
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+resources/application.yaml
+resources/logging.properties
+resources/pokemon-types.json
+resources/pokemons.json
+src/com/acme/GreetService.java
+src/com/acme/Main.java
+src/com/acme/Pokemon.java
+src/com/acme/PokemonMapper.java
+src/com/acme/PokemonMapperProvider.java
+src/com/acme/PokemonService.java
+src/com/acme/package-info.java
+test/resources/application-test.yaml
+test/src/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+helidon-dbclient-metrics = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics" }
+helidon-dbclient-metrics-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics-hikari" }
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+# Oracle's production set: the driver with UCP, ONS and the security jars.
+ojdbc17-production = { group = "com.oracle.database.jdbc", name = "ojdbc17-production" }
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# The tests run on an in-memory H2 (application-test.yaml).
+h2 = { group = "com.h2database", name = "h2" }
+# `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+# The AOT cache is trained by starting the application, which needs its database up.
+aot-cache = false
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== layout=simple db=mongodb docker=false k8s=false
+layout = simple
+db = mongodb
+metrics = true
+health = true
+docker = false
+jlink = false
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+resources/application.yaml
+resources/logging.properties
+resources/pokemon-types.json
+resources/pokemons.json
+src/com/acme/GreetService.java
+src/com/acme/Main.java
+src/com/acme/Pokemon.java
+src/com/acme/PokemonMapper.java
+src/com/acme/PokemonMapperProvider.java
+src/com/acme/PokemonService.java
+src/com/acme/package-info.java
+test/resources/application-test.yaml
+test/src/com/acme/MainTest.java
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-mongodb = { group = "io.helidon.dbclient", name = "helidon-dbclient-mongodb" }
+helidon-webserver-observe-metrics = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-metrics" }
+helidon-dbclient-metrics = { group = "io.helidon.dbclient", name = "helidon-dbclient-metrics" }
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+helidon-dbclient-health = { group = "io.helidon.dbclient", name = "helidon-dbclient-health" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+helidon-metrics-system-meters = { group = "io.helidon.metrics", name = "helidon-metrics-system-meters" }
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# The tests run on an in-memory H2 (application-test.yaml).
+h2 = { group = "com.h2database", name = "h2" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== metrics=false k8s=false
+layout = traditional
+db = h2
+metrics = false
+health = true
+docker = true
+jlink = false
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/Pokemon.java
+src/main/java/com/acme/PokemonMapper.java
+src/main/java/com/acme/PokemonMapperProvider.java
+src/main/java/com/acme/PokemonService.java
+src/main/java/com/acme/package-info.java
+src/main/resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/main/resources/pokemon-types.json
+src/main/resources/pokemons.json
+src/test/java/com/acme/MainTest.java
+src/test/resources/application-test.yaml
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+helidon-webserver-observe-health = { group = "io.helidon.webserver.observe", name = "helidon-webserver-observe-health" }
+helidon-health-checks = { group = "io.helidon.health", name = "helidon-health-checks" }
+helidon-dbclient-health = { group = "io.helidon.dbclient", name = "helidon-dbclient-health" }
+
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+h2 = { group = "com.h2database", name = "h2" }
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
+# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "demo"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
+ports     = [8080]
+aot-cache = true
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== db=mongodb metrics=false health=false docker=false jlink=true k8s=false
+layout = traditional
+db = mongodb
+metrics = false
+health = false
+docker = false
+jlink = true
+k8s = false
+--- files
+.gitignore
+AGENTS.md
+README.md
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/Pokemon.java
+src/main/java/com/acme/PokemonMapper.java
+src/main/java/com/acme/PokemonMapperProvider.java
+src/main/java/com/acme/PokemonService.java
+src/main/java/com/acme/package-info.java
+src/main/resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/main/resources/pokemon-types.json
+src/main/resources/pokemons.json
+src/test/java/com/acme/MainTest.java
+src/test/resources/application-test.yaml
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-mongodb = { group = "io.helidon.dbclient", name = "helidon-dbclient-mongodb" }
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# The tests run on an in-memory H2 (application-test.yaml).
+h2 = { group = "com.h2database", name = "h2" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+
+# jk build also writes target/demo-jri/: a runtime linked from the project JDK with the modules
+# jdeps finds, the application under app/, bin/start, and an AOT cache trained by starting it.
+[jlink]
+# HikariCP and the database drivers load through ServiceLoader, where jdeps does not look, and use JNDI.
+modules = ["java.naming"]
+# The build's starts of the image (the AOT training and the start test) start the application,
+# which needs its database up; jk build would fail without it.
+aot-cache  = false
+test-start = false
+
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
+
+=== db=oracledb metrics=false health=false docker=false
+layout = traditional
+db = oracledb
+metrics = false
+health = false
+docker = false
+jlink = false
+k8s = true
+--- files
+.gitignore
+AGENTS.md
+README.md
+app.yaml
+jk-guards.toml
+jk.toml
+src/main/java/com/acme/GreetService.java
+src/main/java/com/acme/Main.java
+src/main/java/com/acme/Pokemon.java
+src/main/java/com/acme/PokemonMapper.java
+src/main/java/com/acme/PokemonMapperProvider.java
+src/main/java/com/acme/PokemonService.java
+src/main/java/com/acme/package-info.java
+src/main/resources/META-INF/services/io.helidon.dbclient.spi.DbMapperProvider
+src/main/resources/application.yaml
+src/main/resources/logging.properties
+src/main/resources/pokemon-types.json
+src/main/resources/pokemons.json
+src/test/java/com/acme/MainTest.java
+src/test/resources/application-test.yaml
+--- jk.toml
+group = "com.acme"
+name = "demo"
+version = "…"
+# Helidon 27 is compiled for Java 27; the first jk build installs that JDK when the machine has none.
+java = 27
+
+[application]
+main = "com.acme.Main"
+
+# The Helidon BOM (io.helidon:helidon-dependencies), so the dependencies below carry no version;
+# Helidon's annotation processors; the test config profile; and Helidon's deployable,
+# target/demo.jar with target/libs/.
+[helidon]
+version = "…"
+
+[dependencies]
+helidon-webserver = { group = "io.helidon.webserver", name = "helidon-webserver" }
+helidon-config-yaml = { group = "io.helidon.config", name = "helidon-config-yaml" }
+helidon-http-media-jsonp = { group = "io.helidon.http.media", name = "helidon-http-media-jsonp" }
+# Reads the Pokemon record a POST or PUT carries.
+helidon-http-media-jsonb = { group = "io.helidon.http.media", name = "helidon-http-media-jsonb" }
+jakarta-json-api = { group = "jakarta.json", name = "jakarta.json-api" }
+helidon-dbclient = { group = "io.helidon.dbclient", name = "helidon-dbclient" }
+# A database row as a JSON-P object: row.as(JsonObject.class).
+helidon-dbclient-jsonp = { group = "io.helidon.dbclient", name = "helidon-dbclient-jsonp" }
+helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclient-jdbc" }
+helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
+[runtime-dependencies]
+helidon-logging-jul = { group = "io.helidon.logging", name = "helidon-logging-jul" }
+# HikariCP and the MongoDB driver log through SLF4J; this sends it to java.util.logging.
+slf4j-jdk14 = { group = "org.slf4j", name = "slf4j-jdk14" }
+# Oracle's production set: the driver with UCP, ONS and the security jars.
+ojdbc17-production = { group = "com.oracle.database.jdbc", name = "ojdbc17-production" }
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
+hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
+# The tests run on an in-memory H2 (application-test.yaml).
+h2 = { group = "com.h2database", name = "h2" }
+# Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+[nullness]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test -p integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"

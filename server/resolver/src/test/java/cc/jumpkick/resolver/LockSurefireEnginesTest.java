@@ -181,9 +181,8 @@ class LockSurefireEnginesTest {
 
         assertThatThrownBy(() -> lock(tempDir, project))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("junit-jupiter 5.12.2 runs on JUnit Platform 1.12.2, but"
-                        + " junit-platform-launcher resolved to 6.1.0")
-                .hasMessageContaining("pin junit-platform-launcher to 1.12.2");
+                .hasMessageContaining("junit-platform-launcher 6.1.0 does not run junit-jupiter 5.12.2")
+                .hasMessageContaining("pin the launcher to 1.12.2");
     }
 
     @Test

@@ -71,7 +71,8 @@ class UrlToolsTest {
 
         assertThatThrownBy(() -> UrlTools.fetch(url, cas, pinned))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("jk-lock.toml pins sha256 " + pinned + " for " + url)
+                .hasMessageContaining(url + ": server sends sha256")
+                .hasMessageContaining("jk-lock.toml pins " + pinned)
                 .hasMessageContaining("jk lock -F");
     }
 
@@ -86,7 +87,7 @@ class UrlToolsTest {
         assertThatThrownBy(() -> SessionContext.where(offline, () -> UrlTools.fetch(url, cas, sha256)))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining(url)
-                .hasMessageContaining("--offline");
+                .hasMessageContaining("run once online");
         assertThat(http.served()).containsKey("/build/rules.xml");
 
         Path fetched = UrlTools.fetch(url, cas, sha256);
