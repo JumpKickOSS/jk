@@ -702,6 +702,7 @@ public final class ForecastScope implements StepForecast.Scope {
                     || !TaskForecaster.classesDirHasContent(layout.classesDir())
                     || incomplete
                     || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()))
+                    || ModuleOutputs.jlinkImageMissing(project, layout)
                     || nativeBinaryToRestore;
         } else if (!project.isWorkspaceRoot()) {
             // Source-less member: the build still packages its jar, and a resources-only

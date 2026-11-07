@@ -638,10 +638,6 @@ population = { examined = 1930 }
 "shared/core" = { classes = 506, sites = 31724 }
 "shared/toolchain-jdk" = { classes = 210, sites = 10447 }
 [[child-env-owner.entries]]
-in     = "plugins/image-builder"
-at     = "cc.jumpkick.plugin.image.AotCacheTrainer#runUntilSettled(Ljava/util/List;Ljava/nio/file/Path;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ljava/util/function/Consumer;)Lcc/jumpkick/plugin/image/AotCacheTrainer$Output; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
-reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
-[[child-env-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.engine.EngineAotTrainer#start(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/Map;[Ljava/lang/String;)Ljava/lang/Process; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
 reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"

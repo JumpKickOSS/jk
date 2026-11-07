@@ -15,6 +15,7 @@ import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Jlink;
 import cc.jumpkick.model.NodeTable;
 import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.PluginConfig;
@@ -497,6 +498,8 @@ public final class JkBuildParser {
         if (!resources.isEmpty()) build = build.withResources(resources);
         Optional<BuildBlock.War> war = ManifestTables.parseWar(result);
         if (war.isPresent()) build = build.withWar(war.get());
+        Optional<Jlink> jlink = ManifestJlink.parse(result);
+        if (jlink.isPresent()) build = build.withJlink(jlink.get());
         Optional<BuildBlock.Dokka> dokka = ManifestTables.parseDokka(result);
         if (dokka.isPresent()) build = build.withDokka(dokka.get());
         // [multi-release] adds release source sets to the compile and the jar.

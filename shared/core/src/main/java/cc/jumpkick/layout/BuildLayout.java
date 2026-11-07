@@ -451,6 +451,11 @@ public final class BuildLayout {
         return artifactDir().resolve(libDir.dir());
     }
 
+    /** {@code <artifactDir>/<artifact>-jri/}: the {@code [jlink]} runtime image. */
+    public Path jlinkImage() {
+        return artifactDir().resolve(artifact + "-jri");
+    }
+
     /** {@code <artifactDir>/<artifact>-<version>-all.jar} — the fat / shaded jar (deps included). */
     public Path assemblyJar() {
         return artifactDir().resolve(artifact + "-" + version + "-all.jar");

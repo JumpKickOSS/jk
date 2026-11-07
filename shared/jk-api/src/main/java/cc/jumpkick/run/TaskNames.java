@@ -139,6 +139,9 @@ public final class TaskNames {
     /** {@code [application] lib-dir}: the runnable {@code <name>.jar} and its lib directory beside the module jar. */
     public static final String PACKAGE_LIB_DIR = "package-lib-dir";
 
+    /** {@code [jlink]}: the custom runtime image {@code target/<name>-jri/} beside the module jar. */
+    public static final String PACKAGE_JLINK = "package-jlink";
+
     /** {@code -javadoc.jar} for a library, built from its Java sources beside the module jar. */
     public static final String PACKAGE_JAVADOC = "package-javadoc";
 
@@ -184,7 +187,8 @@ public final class TaskNames {
             PACKAGE_SOURCES,
             PACKAGE_JAVADOC,
             PACKAGE_WAR,
-            PACKAGE_LIB_DIR);
+            PACKAGE_LIB_DIR,
+            PACKAGE_JLINK);
 
     public static final String SET_DEFAULT = "set-default";
     public static final String SYNC_CAS = "sync-cas";

@@ -14,6 +14,7 @@ R8 minification is **opt-in**, never the default.
 | Javadoc jar `*-javadoc.jar` | library, unless `javadoc = false` | `jk build` / `jk package` |
 | Fat jar `*-all.jar` | `[application] assembly = true` | `jk assemble` / `jk build` |
 | Runnable `target/<name>.jar` + `target/libs/` | `[application] lib-dir = true` | `jk build` |
+| Runtime image `target/<name>-jri/` (jlink, with a startup cache) | `[jlink]` | `jk build` |
 | Minified jar `*-min.jar` | `[application] minified = true` | `jk assemble` / `jk build` (also builds the fat jar) |
 | War `target/<name>-<version>.war`, exploded beside it | `[war]` | `jk build` |
 | Node module's resource jar `target/<name>-<version>.jar` | a node module a sibling depends on, or `[node] classpath-root` | `jk build` |
@@ -166,6 +167,91 @@ CMD ["java", "-jar", "app.jar"]
 on a module with a main class, the directory as its value, `<stripVersion>` as `lib-versions =
 false`, and `<excludeArtifactIds>` / `<excludeGroupIds>` as `lib-exclude`. Helidon's application
 parent (`copy-libs` into `target/libs`, excluding `okio`) imports with no row.
+
+## Runtime image (jlink)
+
+```toml
+[application]
+main = "com.example.Main"
+
+[jlink]                                   # the table alone is the whole declaration
+# modules       = ["jdk.crypto.ec"]       # JDK modules beside the ones jdeps finds
+# strip-debug   = true
+# aot-cache     = true                    # false, or "cds" for a CDS archive on any JDK
+# jvm-args      = ["-XX:+UseSerialGC"]    # bin/start's flags; the training runs use them too
+# args          = ["serve"]               # bin/start's arguments when it is given none
+# start-timeout = 60                      # seconds a start may take to settle
+# test-start    = true                    # false needs aot-cache = false
+
+# [jlink.training-env]                    # what the build's starts see and the image does not
+# SERVER_PORT = "0"
+```
+
+`[jlink]` makes `jk build` write a self-contained runtime image of the application, what
+`helidon-maven-plugin:jlink-image` and `javafx:jlink` write for Maven builds:
+
+```
+target/<name>-jri/
+  bin/java, lib/, conf/, legal/, release   the runtime, linked from the project JDK
+  bin/start                                the launcher (bin/start.bat on Windows)
+  app/<name>.jar                           Main-Class and a Class-Path of libs/…
+  app/libs/                                the runtime jars
+  app/<name>.aot                           the startup cache (<name>.jsa for a CDS archive)
+```
+
+- **Modules.** `jdeps --print-module-deps --ignore-missing-deps`, at the module's `java` release,
+  reads the application jar and its runtime jars; `modules` adds what jdeps cannot see, such as a
+  provider reached through `ServiceLoader` or reflection (`jdk.crypto.ec`, `jdk.localedata`,
+  `jdk.zipfs`). The JDWP agent is always linked, for `--debug`.
+- **The JDK.** The runtime is linked from the JDK the module compiles with (`java = 27` links a
+  27 runtime). A JDK that ships `jmods/` links any module. A JDK without `jmods/` links from its
+  own run-time image, which most JDK 24+ builds can do (JumpKick's Temurin installs are such
+  builds), with two limits: it cannot link `jdk.jlink`, and only for the host's own platform. The
+  build names the JDK when jlink refuses.
+- **The libs.** The same jars as [Lib-dir layout](#lib-dir-layout), and `lib-versions` and
+  `lib-exclude` shape them here too when the module declares `lib-dir`.
+- **bin/start** runs the image's `java` with `jvm-args`, then `$JAVA_OPTS`, then the cache, on
+  `app/<name>.jar`, passing its arguments or `args` when it has none. `bin/start --debug` adds a
+  JDWP agent on port 5005 (`JDWP_PORT`, and `JDWP_SUSPEND=y` to wait for the debugger) and leaves
+  the cache out.
+- **The startup cache.** The build trains it by starting the image: on JDK 25 and newer a
+  JEP 483/514 AOT cache (a recording run, then an assembling run), below 25, or with
+  `aot-cache = "cds"`, a dynamic CDS archive over the base archive jlink writes. A start that has
+  printed nothing for 4 seconds, after at least 3, has settled and is asked to stop (SIGTERM), and
+  the JVM writes its recording as it exits: a server trains the way a command that ends on its
+  own does, with nothing to configure per framework. A last start with the cache proves the JVM
+  maps it. A start that exits with an error fails the build with its output, so the training is
+  also the image's test; with `aot-cache = false` the build still starts the image once unless
+  `test-start = false`. Starts see the module's worker environment ([env]) with
+  `[jlink.training-env]` over it, which is how a server that binds a fixed port trains beside a
+  running copy (Helidon reads `SERVER_PORT`). A GUI application needs a display at build time:
+  `DISPLAY` from the shell, or `xvfb-run`.
+- **What voids the cache.** The JVM checks each jar's size and modification time and the
+  image's flags: every file in the image carries the same fixed time, so a copy that keeps times
+  (`cp -a`, a Dockerfile `COPY`) keeps the cache, and so does moving the whole image. Other
+  `$JAVA_OPTS` collectors or heap shapes make the JVM decline the cache and start without it.
+  Windows trains no cache: a process there cannot be asked to stop politely.
+- **Caching.** The step (`package-jlink`) is cached like the fat jar: an unchanged rebuild
+  neither links nor trains, and a deleted image is restored from the action cache. Its key is the
+  jars, the JDK and every key of the table.
+
+The quickstart of Helidon 27 (SE, three JDK modules) links to 99 MiB: 56 MiB of runtime, 11 MiB of
+libs and a 31 MiB AOT cache. `bin/start` answers its first `GET /greet` after about 170 ms with the
+cache and 520 ms without.
+
+`jk import` writes `[jlink]` from `javafx-maven-plugin`'s jlink settings: `<stripDebug>`, and
+`<options>` as `jvm-args`; the image and launcher names are JumpKick's, and the table trains no
+cache (`aot-cache = false`, `test-start = false`), since that would open a window on the build
+host.
+
+### Design
+
+One table, one packaging tail, beside the thin jar like every other artifact on this page; OCI
+images are their own surface ([Images](images.md)). The image is the lib-dir layout under `app/`
+on a runtime jlink links from the project JDK, so the jars a Dockerfile copies and the jars the
+image runs are the same files. The startup cache is trained by starting the image the way its
+launcher does (the absolute path of the jar, the launcher's flags), by the trainer `[image]
+aot-cache` uses, so a server needs no framework hook to be trained.
 
 ## War
 

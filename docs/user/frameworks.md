@@ -310,8 +310,9 @@ needs a display; on a headless CI host run it under `xvfb-run`.
 
 `jk import` writes the table from `javafx-maven-plugin` (its `mainClass`, `module/class` included,
 is `[application] main`) and from the Gradle plugin's `javafx { version; modules }` block, writing
-the OpenJFX dependency the Gradle plugin adds for each module. A jlink image and jpackage installers
-are not covered.
+the OpenJFX dependency the Gradle plugin adds for each module. The plugin's jlink settings become
+`[jlink]`, a runtime image `jk build` writes ([Packaging](packaging.md#runtime-image-jlink)); jpackage
+installers are not covered.
 
 ## Protobuf
 

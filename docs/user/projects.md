@@ -156,7 +156,9 @@ assembly = true                # also write `-all.jar`
 ```
 
 Absent `[application]` means **library**: `jk build` also writes the `-sources.jar` and
-`-javadoc.jar` Maven Central requires. Packaging matrix: [Packaging](packaging.md).
+`-javadoc.jar` Maven Central requires. Packaging matrix: [Packaging](packaging.md). A `[jlink]`
+table beside `[application]` also writes a runtime image, `target/<name>-jri/`, with a startup
+cache ([Runtime image](packaging.md#runtime-image-jlink)).
 
 ## Features, profiles, variants
 

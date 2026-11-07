@@ -68,6 +68,7 @@ harness that knows where Maven puts things finds them there:
 | Jar, sources jar, javadoc jar | `target/<name>-<version>.jar`, `-sources.jar`, `-javadoc.jar` |
 | Fat jar, minified jar (jk's own) | `target/<name>-<version>-all.jar`, `-min.jar` |
 | War, exploded war (`[war]`) | `target/<name>-<version>.war`, `target/<name>-<version>/` |
+| Runtime image (`[jlink]`) | `target/<name>-jri/`; its training runs' scratch in `target/jlink-train/` |
 | Native binary | `target/<name>` |
 | JUnit XML | `target/surefire-reports/`; the `integration` suite in `target/failsafe-reports/` |
 | JaCoCo | `target/jacoco.exec`, report in `target/site/jacoco/` |

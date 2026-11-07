@@ -65,6 +65,8 @@ final class EngineRules {
             "PlannerWar.java|key", new Object[] {"package-war", false, "explain does not forecast the war at all"},
             "PlannerLibDir.java|key",
                     new Object[] {"package-lib-dir", false, "explain does not forecast the lib-dir layout at all"},
+            "PlannerJlink.java|key",
+                    new Object[] {"package-jlink", false, "explain does not forecast the runtime image at all"},
             "PlannerNative.java|nKey",
                     new Object[] {
                         "native-image",

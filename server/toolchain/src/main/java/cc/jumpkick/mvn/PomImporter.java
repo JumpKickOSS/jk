@@ -338,7 +338,8 @@ public final class PomImporter {
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))
                         .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(BuildBlock.Dokka.DEFAULT))
                         .withMultiRelease(releases)
-                        .withWar(packaging.war()))
+                        .withWar(packaging.war())
+                        .withJlink(mainClass != null ? JavafxMavenPlugin.jlink(em.model(), report) : null))
                 .build();
         jkBuild = NullnessImport.map(jkBuild, report);
         Map<String, String> manifest = new LinkedHashMap<>(PluginFacts.manifestEntries(em.model()));

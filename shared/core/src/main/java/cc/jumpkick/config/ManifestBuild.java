@@ -97,6 +97,7 @@ public final class ManifestBuild {
                 "dokka",
                 ManifestTables.MULTI_RELEASE,
                 ManifestTables.WAR,
+                ManifestJlink.TABLE,
                 ManifestResources.TABLE,
                 ManifestNode.TABLE,
                 TaskNames.BUILD_INFO));
@@ -349,6 +350,7 @@ public final class ManifestBuild {
                     null,
                     null,
                     BuildBlock.Resources.EMPTY,
+                    null,
                     null);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
@@ -393,6 +395,7 @@ public final class ManifestBuild {
                 null,
                 null,
                 BuildBlock.Resources.EMPTY,
+                null,
                 null);
     }
 

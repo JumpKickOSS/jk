@@ -12,6 +12,7 @@ import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Jlink;
 import cc.jumpkick.model.LibDir;
 import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.PlatformPolicy;
@@ -75,6 +76,7 @@ public final class JkBuildRenderer {
         renderBuild(sb, jkBuild.build());
         renderBuildInfo(sb, jkBuild.build().buildInfo());
         renderWar(sb, jkBuild.build().war());
+        renderJlink(sb, jkBuild.build().jlink());
         renderResources(sb, jkBuild.build().resources());
         NodeTomlRenderer.renderNode(sb, jkBuild);
         NodeTomlRenderer.renderEnv(sb, jkBuild.build().env());
@@ -204,6 +206,34 @@ public final class JkBuildRenderer {
         if (war.name() != null) sb.append("name = ").append(quote(war.name())).append('\n');
         if (!war.webapp().equals(BuildBlock.War.DEFAULT_WEBAPP)) {
             sb.append("webapp = ").append(quote(war.webapp())).append('\n');
+        }
+    }
+
+    /** {@code [jlink]}, its keys only when off their defaults. */
+    private static void renderJlink(StringBuilder sb, @Nullable Jlink jlink) {
+        if (jlink == null) return;
+        sb.append("\n[jlink]\n");
+        if (!jlink.modules().isEmpty())
+            sb.append("modules = ").append(list(jlink.modules())).append('\n');
+        if (!jlink.stripDebug()) sb.append("strip-debug = false\n");
+        switch (jlink.aotCache()) {
+            case AUTO -> {}
+            case OFF -> sb.append("aot-cache = false\n");
+            case CDS -> sb.append("aot-cache = \"cds\"\n");
+        }
+        if (!jlink.jvmArgs().isEmpty())
+            sb.append("jvm-args = ").append(list(jlink.jvmArgs())).append('\n');
+        if (!jlink.args().isEmpty())
+            sb.append("args = ").append(list(jlink.args())).append('\n');
+        if (jlink.startTimeoutSeconds() != Jlink.DEFAULT_START_TIMEOUT) {
+            sb.append("start-timeout = ").append(jlink.startTimeoutSeconds()).append('\n');
+        }
+        if (!jlink.testStart()) sb.append("test-start = false\n");
+        if (!jlink.trainingEnv().isEmpty()) {
+            sb.append("\n[jlink.training-env]\n");
+            new TreeMap<>(jlink.trainingEnv())
+                    .forEach((k, v) ->
+                            sb.append(k).append(" = ").append(quote(v)).append('\n'));
         }
     }
 

@@ -668,6 +668,66 @@
       },
       "additionalProperties": false
     },
+    "jlink": {
+      "type": "object",
+      "description": "[jlink]: package a custom runtime image target/<name>-jri/ of an application: a runtime linked from the project JDK with the modules jdeps finds, the jar and its runtime jars under app/, bin/start, and a startup cache trained by starting the image (docs/user/packaging.md). The table alone is the whole declaration.",
+      "properties": {
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "JDK modules linked beside the ones jdeps finds, such as \"jdk.crypto.ec\"."
+        },
+        "strip-debug": {
+          "type": "boolean",
+          "description": "Drop debug attributes from the linked runtime. Default true."
+        },
+        "aot-cache": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "const": "cds"
+            }
+          ],
+          "description": "The startup cache: true (default) is an AOT cache on JDK 25+ and a CDS archive below, \"cds\" a CDS archive on any JDK, false none."
+        },
+        "jvm-args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "JVM flags bin/start runs with; the training runs use them too."
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Application arguments bin/start passes when it is given none."
+        },
+        "start-timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600,
+          "description": "Seconds a training or test start may run before it is asked to stop. Default 60."
+        },
+        "test-start": {
+          "type": "boolean",
+          "description": "Start the image once at build time to prove it runs. Default true; false needs aot-cache = false."
+        },
+        "training-env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment variables the build's starts see and the image does not."
+        }
+      },
+      "additionalProperties": false
+    },
     "war": {
       "type": "object",
       "description": "[war]: package a web archive beside the jar, exploded to target/<name>/ and archived to target/<name>.war (docs/user/packaging.md). The table alone is the whole declaration.",

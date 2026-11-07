@@ -929,6 +929,10 @@ instead    = "WorkerEnv.strict() / forModule(...).environment() for a worker, Ta
 why        = "a child's environment copied from the daemon is the engine's shell, not the jk command being served"
 
 [[guards.child-env-owner.allow]]
+in     = "cc.jumpkick.host.AotTraining"
+reason = "a training run's environment is its launcher's to compose: the engine hands it a WorkerEnv's whole map, the image builder runs inside a worker whose own environment WorkerEnv composed"
+
+[[guards.child-env-owner.allow]]
 in     = "cc.jumpkick.config.CredentialHelpers"
 reason = "a ${cmd:} credential helper runs under exactly the request's shell (BuildEnv.callerEnv()): the inherited map is cleared before it is set"
 
