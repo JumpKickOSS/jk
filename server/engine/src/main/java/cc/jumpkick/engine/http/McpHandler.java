@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.HttpLive;
+import cc.jumpkick.engine.decisions.Decisions;
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.http.mcp.McpConnections;
 import cc.jumpkick.engine.http.mcp.McpContext;
@@ -105,6 +106,11 @@ public final class McpHandler {
     /** Wire the dashboard's new-project wizard, which MCP {@code new} opens by URL elicitation. Optional. */
     public void wizard(NewProjectWizard wizard) {
         ctx.wizard(wizard);
+    }
+
+    /** Wire the engine's decision queue and the dashboard links into it. Optional. */
+    public void decisions(Decisions decisions) {
+        ctx.decisions(decisions);
     }
 
     /** Wire the shared cache/store snapshot supplier (memoized in the live engine). Optional. */

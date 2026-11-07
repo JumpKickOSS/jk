@@ -10,6 +10,7 @@ import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
+import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.graph.GraphCompiles;
 import cc.jumpkick.engine.graph.GraphRunner;
 import cc.jumpkick.engine.http.HttpEngineServer;
@@ -134,6 +135,9 @@ public final class EngineServer implements AutoCloseable {
 
     /** Sessions, their episodes and actions: written beside the journal, served on /api/sessions. */
     private final SessionLog sessionLog;
+
+    /** Questions operations put to a person: answered by MCP hosts, the dashboard and jk decide. */
+    private final DecisionQueue decisions = new DecisionQueue();
 
     private final EngineListeners listeners;
     private final EngineHttpFront http;
@@ -500,21 +504,23 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private VerbRegistry newVerbRegistry() {
-        return VerbRegistry.standard(new EngineVerbBridge(
-                this::eventRequestId,
-                sessions,
-                listeners,
-                jobs,
-                journalWriter,
-                sse,
-                idle,
-                cacheGate,
-                activeBuildPlans,
-                clockMillis,
-                journal,
-                historyConfig,
-                () -> metricsFile,
-                inFlightBuilds));
+        return VerbRegistry.standard(
+                new EngineVerbBridge(
+                        this::eventRequestId,
+                        sessions,
+                        listeners,
+                        jobs,
+                        journalWriter,
+                        sse,
+                        idle,
+                        cacheGate,
+                        activeBuildPlans,
+                        clockMillis,
+                        journal,
+                        historyConfig,
+                        () -> metricsFile,
+                        inFlightBuilds),
+                decisions);
     }
 
     /** Starts a job the way {@code POST /api/build} does: the verb's request line, stamped with its origin. */
@@ -544,7 +550,8 @@ public final class EngineServer implements AutoCloseable {
                 jobs::cancelJob,
                 jobs::cancelJobsForDir,
                 cacheGate,
-                sessionLog);
+                sessionLog,
+                decisions);
     }
 
     private EngineVitals newVitals() {

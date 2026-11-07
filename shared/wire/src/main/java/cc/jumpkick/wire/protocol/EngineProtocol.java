@@ -413,6 +413,12 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #NEW_PROJECT_FORM_REQUEST}. */
     public static final String NEW_PROJECT_FORM_ACK = "new-project-form-ack";
 
+    /** Client → server: list or answer the engine's decisions ({@code jk decide}); one {@link #DECISIONS_ACK}. */
+    public static final String DECISIONS_REQUEST = "decisions-request";
+
+    /** Server → client, terminal for {@link #DECISIONS_REQUEST}. */
+    public static final String DECISIONS_ACK = "decisions-ack";
+
     /** Client → server: lint template directories ({@code jk template lint}); one {@link #TEMPLATE_LINT_ACK}. */
     public static final String TEMPLATE_LINT_REQUEST = "template-lint-request";
 

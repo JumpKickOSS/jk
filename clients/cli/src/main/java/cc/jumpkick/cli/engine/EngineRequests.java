@@ -153,7 +153,9 @@ public final class EngineRequests {
     /**
      * Everything an engine-hosted {@code jk update} needs — mirrors {@code UpdateCommand}'s local
      * fields. {@code deps} limits the pin rewrite to those handles or {@code group:artifact}
-     * coordinates (empty = all); {@code major} lets a pin cross its Maven major.
+     * coordinates (empty = all); {@code major} lets a pin cross its Maven major; {@code accept} lets
+     * a pin move across a minor or a major, which the engine otherwise refuses unwritten; {@code
+     * preview} only reports the moves.
      */
     public record UpdateRequest(
             Path entryDir,
@@ -166,18 +168,13 @@ public final class EngineRequests {
             boolean verbose,
             @Nullable String platform,
             List<String> deps,
-            boolean major) {
-        /** No platform override, every pin, same major. */
-        public UpdateRequest(
-                Path entryDir,
-                Path cache,
-                List<String> features,
-                boolean noDefaultFeatures,
-                @Nullable URI repoUrl,
-                boolean offline,
-                boolean force,
-                boolean verbose) {
-            this(
+            boolean major,
+            boolean accept,
+            boolean preview) {
+
+        /** This request, previewing: the moves stream and nothing is written. */
+        public UpdateRequest previewing() {
+            return new UpdateRequest(
                     entryDir,
                     cache,
                     features,
@@ -186,9 +183,29 @@ public final class EngineRequests {
                     offline,
                     force,
                     verbose,
-                    null,
-                    List.of(),
-                    false);
+                    platform,
+                    deps,
+                    major,
+                    accept,
+                    true);
+        }
+
+        /** This request, accepting moves across a minor or a major. */
+        public UpdateRequest accepting() {
+            return new UpdateRequest(
+                    entryDir,
+                    cache,
+                    features,
+                    noDefaultFeatures,
+                    repoUrl,
+                    offline,
+                    force,
+                    verbose,
+                    platform,
+                    deps,
+                    major,
+                    true,
+                    preview);
         }
     }
 

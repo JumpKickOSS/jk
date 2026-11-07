@@ -53,14 +53,15 @@ final class LockCascade {
             boolean skipWhenFresh,
             @Nullable BufferedWriter writer)
             throws Exception {
-        return run(host, entryDir, cache, repoUrl, features, withDefaults, mode, skipWhenFresh, null, writer);
+        return run(host, entryDir, cache, repoUrl, features, withDefaults, mode, skipWhenFresh, null, false, writer);
     }
 
     /**
      * As {@link #run(VerbHost, Path, Path, URI, List, boolean, LockMode, boolean, BufferedWriter)},
      * first moving the declared exact pins {@code rewrite} selects ({@code jk update}): each move
      * streams as an {@code update-rewrite} event, the manifests are written, and the resolve then
-     * runs against the rewritten tree.
+     * runs against the rewritten tree. Unless {@code accept}, a move across a minor or a major is a
+     * decision for a person: nothing is written and the run fails naming the moves and the flag.
      */
     static JobOutcome run(
             VerbHost host,
@@ -72,6 +73,7 @@ final class LockCascade {
             LockMode mode,
             boolean skipWhenFresh,
             ManifestUpdates.@Nullable Selection rewrite,
+            boolean accept,
             @Nullable BufferedWriter writer)
             throws Exception {
         Files.createDirectories(cache);
@@ -100,6 +102,8 @@ final class LockCascade {
                 try {
                     ManifestUpdates.Plan plan = ManifestUpdates.plan(lockDir, repoUrl, rewrite);
                     sendRewrites(host, writer, plan);
+                    String held = accept ? null : held(plan);
+                    if (held != null) return fail(host, writer, Exit.USAGE, held);
                     ManifestUpdates.apply(plan);
                     // The manifests just changed: the merged model the resolve sees must be theirs.
                     if (!plan.isEmpty())
@@ -195,6 +199,33 @@ final class LockCascade {
     }
 
     /** One {@code update-rewrite} event per planned pin move. */
+    /** The refusal for {@code plan}'s moves across a minor or a major, or null when it has none. */
+    static @Nullable String held(ManifestUpdates.Plan plan) {
+        List<ManifestUpdates.Rewrite> crossing = plan.rewrites().stream()
+                .filter(ManifestUpdates.Rewrite::crossesMinor)
+                .toList();
+        if (crossing.isEmpty()) return null;
+        StringBuilder out = new StringBuilder()
+                .append(crossing.size())
+                .append(crossing.size() == 1 ? " pin moves" : " pins move")
+                .append(" across a minor or a major, which a person accepts:");
+        for (ManifestUpdates.Rewrite r : crossing) {
+            out.append("\n  ")
+                    .append(r.handle())
+                    .append(' ')
+                    .append(r.from())
+                    .append(" → ")
+                    .append(r.to());
+        }
+        return out.append("\nnothing was written; ")
+                .append(UPDATE_ACCEPT_FLAG)
+                .append(" accepts them (jk update asks at a terminal)")
+                .toString();
+    }
+
+    /** The {@code jk update} flag that accepts moves across a minor or a major. */
+    static final String UPDATE_ACCEPT_FLAG = "--yes";
+
     static void sendRewrites(VerbHost host, @Nullable BufferedWriter writer, ManifestUpdates.Plan plan) {
         for (ManifestUpdates.Rewrite r : plan.rewrites()) {
             host.sendQuiet(

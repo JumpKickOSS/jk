@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.LockDiff;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -31,7 +32,14 @@ public final class McpUpdate {
 
     private McpUpdate() {}
 
-    public static Map<String, Object> run(String dir, List<String> deps, boolean major, boolean apply) {
+    /**
+     * The plan for {@code dir}, written and relocked when {@code apply}. Unless {@code approved}, an
+     * apply that moves a pin across a minor or a major writes nothing, and one whose relock adds a
+     * package is rolled back; either answers {@code held}, one line per move or added package, for
+     * the caller to put to a person before it applies again with {@code approved}.
+     */
+    public static Map<String, Object> run(
+            String dir, List<String> deps, boolean major, boolean apply, boolean approved) {
         Path root = PathUtil.resolveUserPath(dir);
         Map<String, Object> out = new LinkedHashMap<>();
         if (McpManifest.refuseShadowed(root.resolve(ManifestPaths.MANIFEST), out)) return out;
@@ -49,49 +57,84 @@ public final class McpUpdate {
                     out.put("files", files(plan));
                     String entryManifest = plan.contents().get(root.resolve(ManifestPaths.MANIFEST));
                     out.put("preview", entryManifest == null ? "" : entryManifest);
-                    if (!apply) {
+                    List<String> crossing = crossing(plan);
+                    if (!apply || (!approved && !crossing.isEmpty())) {
                         out.put("applied", false);
+                        if (apply) out.put("held", crossing);
                         return null;
                     }
-                    Lockfile before = LockDiff.current(lockDir);
-                    ManifestUpdates.apply(plan);
-                    out.put("applied", true);
-                    LockPlans.LockScope relockScope = plan.isEmpty() ? scope : LockPlans.lockScope(root);
-                    BuildPlan relock = LockPlans.plan(
-                            lockDir,
-                            relockScope.effective(),
-                            cache,
-                            null,
-                            List.of(),
-                            true,
-                            new LockMode.Update(null),
-                            ResolveObserver.NOOP,
-                            null);
-                    BuildPlanResult result = relock.run();
-                    Map<String, Object> lock = new LinkedHashMap<>();
-                    lock.put("success", result.success());
-                    lock.put("exitCode", result.success() ? 0 : LockPlans.failureExitCode(result));
-                    Lockfile written = relock.get(LockPlans.LOCKFILE).orElse(null);
-                    lock.put(
-                            "packages",
-                            written == null ? -1 : written.artifacts().size());
-                    if (written != null) {
-                        List<LockDiff.Change> changes = LockDiff.between(before, written);
-                        lock.put("updated", changes.size());
-                        lock.put("changes", changes(changes));
-                    }
-                    List<String> errors = new ArrayList<>();
-                    for (BuildPlanResult.Diagnostic d : result.errors()) {
-                        if (d.message() != null) errors.add(d.message());
-                    }
-                    if (!errors.isEmpty()) lock.put("errors", errors);
-                    out.put("lock", lock);
-                    if (!result.success()) out.put("error", "relock failed");
+                    apply(root, scope, lockDir, cache, plan, approved, out);
                     return null;
                 }
             });
         } catch (Exception e) {
             out.put("error", Errors.text(e));
+        }
+        return out;
+    }
+
+    /** Writes {@code plan}, relocks, and rolls both back when the relock added a package unapproved. */
+    private static void apply(
+            Path root,
+            LockPlans.LockScope scope,
+            Path lockDir,
+            Path cache,
+            ManifestUpdates.Plan plan,
+            boolean approved,
+            Map<String, Object> out)
+            throws Exception {
+        List<Path> touched = new ArrayList<>(plan.contents().keySet());
+        touched.add(LockPaths.lockFile(lockDir));
+        HeldFiles held = HeldFiles.of(touched);
+        Lockfile before = LockDiff.current(lockDir);
+        ManifestUpdates.apply(plan);
+        out.put("applied", true);
+        LockPlans.LockScope relockScope = plan.isEmpty() ? scope : LockPlans.lockScope(root);
+        BuildPlan relock = LockPlans.plan(
+                lockDir,
+                relockScope.effective(),
+                cache,
+                null,
+                List.of(),
+                true,
+                new LockMode.Update(null),
+                ResolveObserver.NOOP,
+                null);
+        BuildPlanResult result = relock.run();
+        Map<String, Object> lock = new LinkedHashMap<>();
+        lock.put("success", result.success());
+        lock.put("exitCode", result.success() ? 0 : LockPlans.failureExitCode(result));
+        Lockfile written = relock.get(LockPlans.LOCKFILE).orElse(null);
+        lock.put("packages", written == null ? -1 : written.artifacts().size());
+        List<String> added = new ArrayList<>();
+        if (written != null) {
+            List<LockDiff.Change> changes = LockDiff.between(before, written);
+            lock.put("updated", changes.size());
+            lock.put("changes", changes(changes));
+            for (LockDiff.Change c : changes) {
+                if (c.from() == null && c.to() != null) added.add(c.coordinate() + " " + c.to() + " (new)");
+            }
+        }
+        List<String> errors = new ArrayList<>();
+        for (BuildPlanResult.Diagnostic d : result.errors()) {
+            if (d.message() != null) errors.add(d.message());
+        }
+        if (!errors.isEmpty()) lock.put("errors", errors);
+        out.put("lock", lock);
+        if (!result.success()) out.put("error", "relock failed");
+        // A first lock adds every package; only a relock that grows an existing lock asks.
+        if (!approved && before != null && result.success() && !added.isEmpty()) {
+            held.restore();
+            out.put("applied", false);
+            out.put("held", added);
+        }
+    }
+
+    /** Each move across a minor or a major, as {@code handle from → to}. */
+    private static List<String> crossing(ManifestUpdates.Plan plan) {
+        List<String> out = new ArrayList<>();
+        for (ManifestUpdates.Rewrite r : plan.rewrites()) {
+            if (r.crossesMinor()) out.add(r.handle() + " " + r.from() + " → " + r.to());
         }
         return out;
     }

@@ -130,6 +130,12 @@ class UpdateRequestWireTest extends EngineServerHarness {
             assertThat(locked(project, "com.acme:other")).isEqualTo("1.0.0");
             assertThat(Files.readString(project.resolve("jk.toml"))).contains("com.acme:jackson:2.18.2");
 
+            // Moves across a minor or a major are a person's to accept: unaccepted, nothing is written.
+            Outcome held = drive(p, update(project, cache, List.of(), true, false, false));
+            assertThat(held.success()).isFalse();
+            assertThat(Files.readString(project.resolve("jk.toml"))).contains("com.acme:jackson:2.18.2");
+            assertThat(locked(project, "com.acme:jackson")).isEqualTo("2.18.2");
+
             // --major crosses the line for every pin.
             Outcome crossed = drive(p, update(project, cache, List.of(), true, false));
             assertThat(crossed.success()).isTrue();
@@ -158,6 +164,10 @@ class UpdateRequestWireTest extends EngineServerHarness {
     // ---- wire ------------------------------------------------------------------
 
     private String update(Path project, Path cache, List<String> deps, boolean major, boolean preview) {
+        return update(project, cache, deps, major, preview, true);
+    }
+
+    private String update(Path project, Path cache, List<String> deps, boolean major, boolean preview, boolean accept) {
         return new UpdateRequest(
                         project.toString(),
                         cache.toString(),
@@ -172,7 +182,8 @@ class UpdateRequestWireTest extends EngineServerHarness {
                         "",
                         deps,
                         major,
-                        preview)
+                        preview,
+                        accept)
                 .encode();
     }
 

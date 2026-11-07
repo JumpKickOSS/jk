@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.engine.http.mcp.McpAgentText;
 import cc.jumpkick.engine.http.mcp.McpCall;
+import cc.jumpkick.engine.http.mcp.McpDecisions;
 import cc.jumpkick.engine.http.mcp.McpDiagnostics;
 import cc.jumpkick.engine.http.mcp.McpJobRuns;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
@@ -13,7 +14,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code run} — start a job and wait, keep waiting on one, or read an earlier verdict. {@code jid}
- * waits on that job; {@code run} (a history id) with no {@code kind} is the read; otherwise it
+ * waits on that job; {@code decision} continues the call a {@code NEEDS-YOU} answered; {@code run} (a history id) with no {@code kind} is the read; otherwise it
  * starts a job, {@code test} unless {@code kind} says otherwise. {@code only} limits modules.
  */
 public final class RunTool implements McpTool {
@@ -40,11 +41,15 @@ public final class RunTool implements McpTool {
                         "suites",
                         McpSchemas.strings(),
                         "classes",
+                        McpSchemas.string(),
+                        McpDecisions.DECISION,
                         McpSchemas.string())));
     }
 
     @Override
     public Map<String, Object> call(McpCall in) {
+        String decision = in.str(McpDecisions.DECISION);
+        if (decision != null && !decision.isBlank()) return McpDecisions.resume(in, decision);
         Long jid = in.num("jid");
         if (jid != null) return McpJobRuns.await(in, jid);
         String kind = in.str("kind");

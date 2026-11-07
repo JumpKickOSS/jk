@@ -23,7 +23,7 @@ export const MAX_DIAGNOSTICS = 12;
  */
 export const MAX_TEST_FAILURE_DIAGNOSTICS = 120;
 
-/** Same set as {@code BuildHistoryKinds} — Activity tracks builds, a jk mvn run included, not format/lock/cache. */
+/** Same set as {@code BuildHistoryKinds} — the dashboard tracks builds, a jk mvn run included, not format/lock/cache. */
 export const BUILD_LIKE_KINDS = new Set(['build', 'test', 'compile', 'native', 'image', 'mvn']);
 
 export function isBuildLikeKind(kind) {
@@ -546,6 +546,8 @@ export function seedFromHistory(cards, records) {
       if (rec.projectId && !live.projectId) live.projectId = rec.projectId;
       if (rec.trigger && !live.trigger) live.trigger = rec.trigger;
       if (rec.session && !live.session) live.session = rec.session;
+      if (rec.episode && !live.episode) live.episode = rec.episode; // the episode it was placed in
+      if (typeof rec.moduleCount === 'number') live.moduleCount = rec.moduleCount;
       if (rec.delta && !live.delta) live.delta = rec.delta; // what changed since the run before
       if (Array.isArray(rec.coverage) && rec.coverage.length && !(live.coverage && live.coverage.length)) {
         live.coverage = rec.coverage; // the record carries the coverage rows a finish frame does not
@@ -622,6 +624,9 @@ export function historyCard(rec) {
     projectId: rec.projectId || null,
     trigger: rec.trigger || null,
     session: rec.session || null,
+    episode: rec.episode || null, // the session episode the run was placed in (console.js)
+    moduleCount: typeof rec.moduleCount === 'number' ? rec.moduleCount : null,
+    tests: rec.tests || null,
     delta: rec.delta || null, // since the previous run from the same origin (delta.js)
     coverage: Array.isArray(rec.coverage) ? rec.coverage : [], // per-module coverage rows (coverage.js)
     state: running ? 'running' : 'finished',

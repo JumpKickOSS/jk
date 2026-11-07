@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// The dashboard's URL: `#project/<id>/files/<rel>?line=..&col=..` parsed into a route object and
-// rendered back. The hash is the whole client-side router, so a deep link into a failing line is
+// The dashboard's URL: `#console/<session>`, `#project/<id>/files/<rel>?line=..&col=..` and the
+// rest parsed into a route object and rendered back. The hash is the whole client-side router, so a deep link into a failing line is
 // just a string both directions.
 
 export function escapeHtml(s) {
@@ -48,9 +48,13 @@ export function parseTruthy(raw) {
 
 /**
  * Hash routes:
+ *  #console                                   (the landing page: no hash, or one no route claims)
+ *  #console/<sessionId>                       (the console with one session selected)
  *  #new?<key>=<value>&…                       (the new-project wizard, pre-filled)
+ *  #decision/<id>                             (one decision; decisions.js)
  *  #project/<id>
  *  #project/<id>/run/<buildNumber>            (pin one run; without it the page follows the newest)
+ *  #project/<id>/sessions                     (the project's Sessions tab)
  *  #project/<id>/files
  *  #project/<id>/files/<rel/path>?line=<n>
  *  #project/<id>/files/<rel/path>?line=<n>&col=<c>&err=true&msg=<note>  (fail-report / OSC-8)
@@ -61,8 +65,10 @@ export function parseTruthy(raw) {
  */
 function routeFields(over = {}) {
   return {
-    view: 'activity',
+    view: 'console',
+    session: null,
     projectId: null,
+    tab: 'runs',
     dir: null,
     files: false,
     path: null,
@@ -80,6 +86,10 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
   const q = parseHashQuery(h);
   const pathPart = h.indexOf('?') >= 0 ? h.slice(0, h.indexOf('?')) : h;
   const empty = routeFields();
+  if (pathPart === '#console' || pathPart.startsWith('#console/')) {
+    const session = decodeComp(pathPart.slice('#console/'.length)) || null;
+    return routeFields({ session: pathPart === '#console' ? null : session });
+  }
   if (pathPart === '#projects') {
     return routeFields({ view: 'projects' });
   }
@@ -89,6 +99,10 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
   // The new-project wizard; its query is the answers it opens with (wizard-model.js#linkFromHash).
   if (pathPart === '#new') {
     return routeFields({ view: 'new' });
+  }
+  if (pathPart.startsWith('#decision/')) {
+    const id = decodeComp(pathPart.slice('#decision/'.length));
+    return id ? routeFields({ view: 'decision', decisionId: id }) : empty;
   }
   if (pathPart.startsWith('#project/')) {
     const segs = pathPart.slice('#project/'.length).split('/');
@@ -129,16 +143,26 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
     if (segs[1] === 'run') {
       return routeFields({ view: 'project', projectId: id, dir, run: parseLine(segs[2]) });
     }
+    if (segs[1] === 'sessions') {
+      return routeFields({ view: 'project', projectId: id, dir, tab: 'sessions' });
+    }
     return routeFields({ view: 'project', projectId: id, dir });
   }
   return empty;
 }
 
-export function buildProjectHash({ projectId, dir, files, path, line, col, err, msg, run } = {}) {
+/** `#console`, or `#console/<sessionId>` with one session selected. */
+export function buildConsoleHash(sessionId) {
+  return sessionId ? '#console/' + encodeURIComponent(sessionId) : '#console';
+}
+
+export function buildProjectHash({ projectId, dir, files, path, line, col, err, msg, run, sessions } = {}) {
   if (!projectId) return '#projects';
   let h = '#project/' + encodeURIComponent(projectId);
   const query = [];
-  if (run > 0 && !files && !path) {
+  if (sessions && !files && !path) {
+    h += '/sessions';
+  } else if (run > 0 && !files && !path) {
     h += '/run/' + run;
   } else {
     if (files || path) {

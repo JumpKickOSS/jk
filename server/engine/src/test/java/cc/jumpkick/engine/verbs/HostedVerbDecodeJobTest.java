@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
@@ -187,7 +188,7 @@ class HostedVerbDecodeJobTest {
 
     @Test
     void every_exposed_kind_resolves_through_the_registry() {
-        VerbRegistry registry = VerbRegistry.standard(new InertVerbHost());
+        VerbRegistry registry = VerbRegistry.standard(new InertVerbHost(), new DecisionQueue());
         for (String kind : List.of(
                 "build",
                 "assemble",

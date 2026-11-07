@@ -33,4 +33,17 @@ export const SSE = Object.freeze({
   runSnapshot: 'run-snapshot',
   plan: 'plan',
   cache: 'cache',
+  decision: 'decision',
 });
+
+/**
+ * The session log's dashboard-only frames (values owned by EventCatalog in shared/wire): a
+ * session started, went idle or changed its current episode; an episode started, was retitled or
+ * settled; one non-run MCP action.
+ */
+export const LOG = Object.freeze({
+  session: 'session',
+  episode: 'episode',
+  action: 'action',
+});
+

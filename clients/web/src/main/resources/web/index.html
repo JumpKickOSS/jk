@@ -41,33 +41,10 @@
         <div class="brand-sub">Build Engine</div>
       </div>
 
-      <span class="hdiv"></span>
-
-      <div class="sysbox" aria-label="Engine host CPU and RAM (live over SSE)">
-        <div class="sysrow" :class="sysMeterLevel(cpuPercent())">
-          <span class="sk">CPU</span>
-          <span class="meter" role="meter"
-                :aria-valuenow="cpuPercent() ?? undefined" aria-valuemin="0" aria-valuemax="100"
-                :aria-label="'Host CPU ' + sysMeterPct(cpuPercent())">
-            <span class="meter-fill used" :style="{ width: (cpuPercent() ?? 0) + '%' }"></span>
-          </span>
-          <span class="sv" :data-tip="cpuSysTip() || undefined">{{ sysMeterPct(cpuPercent()) }}<span class="ssec" v-if="loadAverageText() != null"> ({{ loadAverageText() }} load)</span></span>
-        </div>
-        <div class="sysrow" :class="sysMeterLevel(ramPercent())">
-          <span class="sk">RAM</span>
-          <span class="meter" role="meter"
-                :aria-valuenow="ramPercent() ?? undefined" aria-valuemin="0" aria-valuemax="100"
-                :aria-label="'Host RAM ' + sysMeterPct(ramPercent())">
-            <span class="meter-fill used" :style="{ width: (ramPercent() ?? 0) + '%' }"></span>
-          </span>
-          <span class="sv" :data-tip="ramSysTip() || undefined">{{ sysMeterPct(ramPercent()) }}<span class="ssec" v-if="ramUsedBytes() != null"> ({{ gib(ramUsedBytes()) }})</span></span>
-        </div>
-      </div>
-
       <span class="spacer"></span>
 
       <nav>
-        <button :class="{ active: view === 'activity' }" @click="setView('activity')">Activity</button>
+        <button :class="{ active: view === 'console' }" @click="setView('console')">Console</button>
         <button :class="{ active: view === 'projects' }" @click="setView('projects')">Projects</button>
         <button :class="{ active: view === 'status' }" @click="setView('status')">Admin</button>
       </nav>
@@ -80,228 +57,144 @@
       </div>
     </header>
 
-    <main v-if="view === 'activity'">
-      <div class="feed-head">
-        <h2>Live activity</h2>
-        <span class="retention">Last 50 requests</span>
-        <button type="button" class="ghost group-toggle" :class="{ active: groupBySession }" @click="toggleSessionGrouping()"
-                :data-tip="groupBySession ? 'One card per run' : 'Group runs under the session that asked'">
-          <jk-icon name="dot"></jk-icon>{{ groupBySession ? 'Sessions' : 'By session' }}</button>
-        <span class="spacer"></span>
-        <form class="trigger" @submit.prevent="triggerBuild()">
-          <input v-model="buildDir" placeholder="/path/to/workspace" spellcheck="false">
-          <button type="button" class="browse" @click="openBrowser()" aria-label="Browse for a workspace" data-tip="Browse for a workspace"><jk-icon name="folder-open"></jk-icon></button>
-          <button type="submit"><jk-icon name="bolt"></jk-icon>Build</button>
-        </form>
-      </div>
-      <p v-if="buildError" class="error">{{ buildError }}</p>
-
-      <p v-if="cards.length === 0 && !authModal" class="empty">
-        No activity yet. Run <code>jk build</code> to see it here.
-      </p>
-
-      <!-- Grouped by session: one block per session that asked, its runs in the order they happened. -->
-      <template v-if="groupBySession">
-        <section v-for="g in sessionGroups" :key="g.key" class="card session-group">
-          <div class="card-head">
-            <span class="origin" :class="'origin-' + (g.trigger || 'none')">{{ g.label }}</span>
-            <span class="summary">{{ g.runs.length }} run{{ g.runs.length === 1 ? '' : 's' }}</span>
-            <span class="tally"><span v-if="g.running" class="badge running">{{ g.running }} running</span>
-              <span v-if="g.passed" class="badge success">{{ g.passed }} ok</span>
-              <span v-if="g.failed" class="badge failed">{{ g.failed }} failed</span>
-              <span v-if="g.cancelled" class="badge cancelled">{{ g.cancelled }} cancelled</span></span>
-            <span class="spacer"></span>
-            <span class="millis" data-tip="Wall time of the finished runs">{{ duration(g.wallMillis) }}</span>
+    <!-- The console: what each session is doing, what it changed, and whether it needs you
+         (console.js models, consoleview.js reads). A build is one action in an episode; its
+         module detail is the run page, one click down. -->
+    <main v-if="view === 'console'" class="console-page">
+      <!-- Needs you: the decisions that block an agent, oldest first (needs.js). Absent when empty. -->
+      <section v-if="needsYou.length" class="needs-you" role="region" aria-label="Needs you">
+        <div v-for="d in needsYou" :key="d.id" class="needs-row">
+          <span class="dot-warn" aria-hidden="true"></span>
+          <div class="needs-body">
+            <div class="needs-q">{{ d.question }}</div>
+            <div class="needs-meta">{{ d.askedBy }}<template v-if="d.openedAt"> · asked {{ ago(d.openedAt) }}</template><template v-if="d.deadline"> · expires {{ fmtDateTime(d.deadline) }}</template> · the agent is waiting · <code>{{ d.command }}</code></div>
           </div>
-          <ol class="timeline">
-            <li v-for="r in g.runs" :key="r.id" :class="r.outcome">
-              <span class="badge to-project" :class="r.outcome" role="link" tabindex="0"
-                    @click="openProjectFromCard(r)" @keydown.enter.prevent="openProjectFromCard(r)">
-                <jk-icon :name="stateIcon(r.outcome)"></jk-icon><template v-if="r.buildNumber">#{{ r.buildNumber }}</template></span>
-              <span class="coord"><template v-if="coordParts(r).group"><span class="cg">{{ coordParts(r).group }}</span><span class="csep">:</span></template><span class="cn">{{ coordParts(r).name }}</span></span>
-              <span class="kind">{{ r.kind }}</span>
+          <a class="action-cyan needs-open" :href="d.href">Review</a>
+        </div>
+      </section>
+
+      <div class="console-grid">
+        <!-- Sessions rail: one card per live or recently idle session; your shell is one too. -->
+        <aside class="rail-sessions" aria-label="Sessions">
+          <div class="rail-head"><span class="lbl">sessions</span><span class="spacer"></span><span class="dim small">{{ sessionRail.length || '' }}</span></div>
+          <p v-if="sessionsLoaded && !sessionRail.length" class="empty small">No sessions yet. An agent's first jk call, or your own <code>jk build</code>, opens one.</p>
+          <button v-for="s in sessionRail" :key="s.id" type="button" class="sess-card" :class="[s.state, { sel: s.id === selectedSessionId }]"
+                  :aria-pressed="s.id === selectedSessionId" @click="selectSession(s.id)">
+            <span class="sess-top"><span class="sess-dot" :class="s.state"></span><span class="sess-host">{{ s.host }}</span>
+              <span class="spacer"></span><span class="chip" :class="'chip-' + s.state">{{ railStateLabel(s.state) }}</span></span>
+            <span class="sess-title">{{ s.title }}</span>
+            <span class="sess-src">{{ s.source }}</span>
+            <span class="sess-meta"><template v-if="s.project">{{ s.project }} · </template><template v-if="s.episodeNumber">episode {{ s.episodeNumber }} · </template>{{ ago(s.startedAt) }}</span>
+          </button>
+        </aside>
+
+        <!-- The selected session's current episode: header, attempts arc, action timeline. -->
+        <section class="panel episode" aria-label="Current episode">
+          <p v-if="!consoleEpisode && (!sessionsLoaded || sessionRail.length)" class="empty small">Loading…</p>
+          <p v-else-if="!consoleEpisode && sessionsLoaded" class="empty small">When a session acts, its current episode shows here: the goal, each action it took, and every build as one line.</p>
+          <template v-if="consoleEpisode">
+            <div class="ep-head">
+              <span class="badge" :class="outcomeClass(consoleEpisode.header.outcome)">{{ consoleEpisode.header.outcome }}</span>
+              <span class="ep-title">{{ consoleEpisode.header.title }}</span>
+              <span class="ep-src">{{ consoleEpisode.header.source }}</span>
               <span class="spacer"></span>
-              <!-- One chip of what changed since the run before from this origin (delta.js). -->
-              <span v-if="r.deltaChip" class="run-delta-chip timeline-delta" :class="r.deltaChip.cls" :data-tip="r.deltaChip.tip">{{ r.deltaChip.text }}</span>
-              <span class="millis">{{ r.outcome === 'running' ? elapsed(r) : duration(r.millis) }}</span>
-              <span class="ago" :data-tip="fmtDateTime(r.finishedAt || r.startedAt) || undefined">{{ ago(r.finishedAt || r.startedAt) }}</span>
-            </li>
-          </ol>
-        </section>
-      </template>
-
-      <template v-else>
-      <article v-for="(card, i) in cards" :key="card.id" class="card rise-in" :class="outcome(card)" :style="{ animationDelay: riseDelay(i) }">
-        <div class="card-head">
-          <span v-if="outcome(card) === 'running'" class="spin"></span>
-          <span v-else class="badge to-project" :class="outcome(card)"
-                role="link" tabindex="0"
-                @click="openProjectFromCard(card)"
-                @keydown.enter.prevent="openProjectFromCard(card)">
-            <jk-icon :name="stateIcon(outcome(card))"></jk-icon>{{ activityBadge(card) }}
-          </span>
-          <span class="coord to-project"
-                role="link" tabindex="0"
-                @click="openProjectFromCard(card)"
-                @keydown.enter.prevent="openProjectFromCard(card)">
-            <template v-if="coordParts(card).group"><span class="cg">{{ coordParts(card).group }}</span><span class="csep">:</span></template>
-            <span class="cn">{{ coordParts(card).name }}</span>
-          </span>
-          <!-- Multi-module cards use a self-contained summary ("built 27 modules"); hide the raw
-               kind so it does not read as "build 27 modules" / "build built …". Finished builds
-               conjugate to "built" (incl. fully-cached / no module rows). -->
-          <span v-if="card.modules.length <= 1" class="kind">{{ kindLabel(card) }}</span>
-          <span v-if="card.modules.length > 1" class="summary">{{ summary(card) }}</span>
-          <!-- Who asked: trigger · session, the same line the results header prints. -->
-          <span v-if="card.trigger" class="origin" :class="'origin-' + card.trigger" data-tip="Trigger · session that asked">{{ originLabel(card) }}</span>
-          <span class="spacer"></span>
-          <button v-if="isLive(card) && card.id != null" class="rebuild icon danger"
-                  @click="cancelCard(card)" aria-label="Cancel" data-tip="Cancel this job (jid)"><jk-icon name="ban"></jk-icon></button>
-          <button v-if="!isLive(card) && card.kind === 'build'" class="rebuild icon"
-                  @click="triggerBuild(card.dir)" aria-label="Rebuild" data-tip="Re-run this build"><jk-icon name="refresh"></jk-icon></button>
-          <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
-                  @click="deleteCard(card)" aria-label="Delete" data-tip="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
-          <!-- Dual clock (CLI parity): italic/dim "ETA" + mid-gray ~remaining (residual-reanchored;
-               0s at the deadline, then +overrun). Elapsed stays dim. No seed → yellow count-up. -->
-          <span v-if="outcome(card) === 'running' && hasEta(card)" class="eta" data-tip="estimated time remaining">
-            <span class="eta-label">ETA</span>
-            <span class="eta-cd">{{ etaCountdown(card) }}</span>
-          </span>
-          <!-- Duration; when the run moved bytes, hover or keyboard focus reveals the I/O
-               breakdown (remote = network, local = build cache) as `label  N ↑ / N ↓`.
-               No traffic → no tip. tabindex + aria-label keep it keyboard/SR reachable. -->
-          <span class="millis" :class="{
-                  'has-io': ioLines(card).length,
-                  'elapsed-dim': outcome(card) === 'running' && hasEta(card),
-                  'elapsed-warn': outcome(card) === 'running' && !hasEta(card)
-                }"
-                :tabindex="ioLines(card).length ? 0 : null"
-                :aria-label="ioLines(card).length ? ioSummary(card) : null">
-            {{ outcome(card) === 'running' ? elapsed(card) : duration(card.millis) }}
-            <span v-if="ioLines(card).length" class="io" role="tooltip">
-              <span v-for="l in ioLines(card)" :key="l.scope" class="io-row">
-                <span class="io-scope">{{ l.label }}</span>
-                <span class="io-n">{{ bytes(l.up) }}</span><jk-icon name="arrow-up"></jk-icon>
-                <span class="io-sep">/</span>
-                <span class="io-n">{{ bytes(l.down) }}</span><jk-icon name="arrow-down"></jk-icon>
-              </span>
-            </span>
-          </span>
-          <span v-if="outcome(card) !== 'running'" class="ago"
-                :data-tip="fmtDateTime(card.finishedAt) || undefined">{{ ago(card.finishedAt) }}</span>
-        </div>
-
-        <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar"
-             :aria-valuenow="progress(card)" aria-valuemin="0" aria-valuemax="100">
-          <span class="cardbar-fill" :style="{ width: progress(card) + '%' }">
-            <span class="cardbar-pct">{{ progress(card) }}%</span>
-          </span>
-        </div>
-
-        <!-- The run's downloads while bytes move, as the terminal's Download block: count and bytes,
-             then a bar per body in flight. -->
-        <div v-if="outcome(card) === 'running' && card.downloads" class="downloads">
-          <div class="downloads-head">Download <span class="downloads-sep">›</span> {{ downloadsHead(card.downloads) }}</div>
-          <div v-for="r in card.downloads.rows" :key="r.label" class="downloads-row">
-            <span class="downloads-bar"><span class="downloads-fill"
-                  :style="{ width: (downloadPct(r) ?? 0) + '%' }"></span></span>
-            <span class="downloads-pct">{{ downloadPct(r) == null ? '' : downloadPct(r) + '%' }}</span>
-            <span class="downloads-label">{{ r.label }}</span>
-          </div>
-          <div v-if="downloadsMore(card.downloads) > 0" class="downloads-more">… {{ downloadsMore(card.downloads) }} more in flight</div>
-        </div>
-
-        <!-- Compact (single-module): the step chain rolls up under a "success details" accordion
-             that is open while the build runs and collapses once it finishes — same treatment as
-             workspace modules. A failed build keeps its chain and failure output visible inline.
-             Cancelled cards stay a one-line header. -->
-        <template v-if="compact(card) && outcome(card) !== 'cancelled'">
-          <details v-if="okModules(card).length && singleChain(card).length" class="module-group" :open="outcome(card) === 'running'">
-            <summary>success details</summary>
-            <phase-chain :steps="singleChain(card)" :module="card.coord || ''"></phase-chain>
-          </details>
-          <template v-if="failedModules(card).length">
-            <phase-chain v-if="singleChain(card).length" :steps="singleChain(card)" :module="card.coord || ''"></phase-chain>
-            <div v-if="singleModule(card) && singleModule(card).diagnostics.length" class="diag">
-              <div class="console">
-                <template v-for="(d, i) in singleModule(card).diagnostics" :key="i">
-                  <div v-if="isTestFailure(d)" class="fail-report">
-                    <fail-report v-for="rep in tfReports(singleModule(card), d)" :key="'tf'+i" :rep="rep"
-                                 :project-id="card.projectId" :checkout-dir="card.dir"
-                                 :module-dir="singleModule(card) && singleModule(card).dir"></fail-report>
-                  </div>
-                  <div v-else-if="isCompiler(d)" class="fail-report">
-                    <fail-report v-for="(rep, ri) in cfReports(singleModule(card), d)" :key="'cf'+i+'-'+ri" :rep="rep"
-                                 :project-id="card.projectId" :checkout-dir="card.dir"
-                                 :module-dir="singleModule(card) && singleModule(card).dir"></fail-report>
-                  </div>
-                  <div v-else class="diag-line">
-                    <span class="console-err">✘&nbsp;</span><template v-if="diagPhase(singleModule(card), d)"><span class="console-phase">{{ diagPhase(singleModule(card), d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><template v-if="d.test"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.test }}</span></template><template v-if="d.exceptionClass"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.exceptionClass }}</span></template><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span>
-                  </div>
-                </template>
-              </div>
+              <span v-if="selectedSessionRow" class="origin">{{ hostOf(selectedSessionRow) }}</span>
             </div>
-          </template>
-        </template>
-
-        <!-- Multi-module workspace: successful modules roll up under an accordion that is open while
-             the build runs and collapses once it finishes; failed modules sit in a peer accordion
-             that stays open, each with its own step chain AND its own failure output nested under
-             it — the error belongs to the module and rolls up with it. -->
-        <template v-if="!compact(card) && outcome(card) !== 'cancelled'">
-          <details v-if="okModules(card).length" class="module-group" :open="outcome(card) === 'running'">
-            <summary>success details ({{ okModules(card).length }})</summary>
-            <div v-for="m in okModules(card)" :key="m.dir" class="module">
-              <div class="module-row">
-                <span class="dot" :class="m.state"></span>
-                <span class="mname" :data-tip="m.dir">{{ moduleLabel(m) }}</span>
-                <span class="spacer"></span>
-                <span class="millis">{{ duration(m.millis) }}</span>
-              </div>
-              <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || card.coord || ''"></phase-chain>
+            <div class="ep-stats">
+              <span>episode <b>{{ consoleEpisode.header.number }}</b> of {{ consoleEpisode.header.of }}</span>
+              <span v-if="consoleEpisode.header.project">{{ consoleEpisode.header.project }}</span>
+              <span><b>{{ duration(consoleEpisode.header.wallMillis) }}</b> wall</span>
+              <span data-tip="jk's own time on this episode's actions and runs"><b>{{ duration(consoleEpisode.header.jkMillis) }}</b> in jk</span>
+              <span><b>{{ consoleEpisode.header.files }}</b> files</span>
             </div>
-          </details>
-          <details v-if="failedModules(card).length" class="module-group fail" open>
-            <summary>failure details ({{ failedModules(card).length }})</summary>
-            <div v-for="m in failedModules(card)" :key="m.dir" class="module">
-              <div class="module-row">
-                <span class="dot" :class="m.state"></span>
-                <span class="mname" :data-tip="m.dir">{{ moduleLabel(m) }}</span>
-                <span class="spacer"></span>
-                <span class="millis">{{ duration(m.millis) }}</span>
-              </div>
-              <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || card.coord || ''"></phase-chain>
-              <div v-if="m.diagnostics.length" class="diag">
-                <div class="console">
-                  <template v-for="(d, i) in m.diagnostics" :key="i">
-                    <div v-if="isTestFailure(d)" class="fail-report">
-                    <fail-report v-for="rep in tfReports(m, d)" :key="'tf'+i" :rep="rep"
-                                 :project-id="card.projectId" :checkout-dir="card.dir"
-                                 :module-dir="m.dir"></fail-report>
-                  </div>
-                    <div v-else-if="isCompiler(d)" class="fail-report">
-                    <fail-report v-for="(rep, ri) in cfReports(m, d)" :key="'cf'+i+'-'+ri" :rep="rep"
-                                 :project-id="card.projectId" :checkout-dir="card.dir"
-                                 :module-dir="m.dir"></fail-report>
-                  </div>
-                    <div v-else class="diag-line">
-                      <span class="console-err">✘&nbsp;</span><template v-if="diagPhase(m, d)"><span class="console-phase">{{ diagPhase(m, d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><template v-if="d.test"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.test }}</span></template><template v-if="d.exceptionClass"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.exceptionClass }}</span></template><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span>
+            <div v-if="consoleEpisode.header.arc.length" class="arc" role="img" :aria-label="consoleEpisode.header.arc.length + ' attempts'">
+              <span v-for="a in consoleEpisode.header.arc" :key="a.key" :class="a.state"></span>
+            </div>
+            <ol class="tl">
+              <li v-for="i in consoleEpisode.timeline" :key="i.key" :class="['tl-' + i.family, 'tl-' + (i.state || 'none')]">
+                <span class="tl-tm">{{ fmtClock24(i.at) }}</span>
+                <span class="tl-ic"><jk-icon :name="timelineIcon(i)"></jk-icon></span>
+                <div class="tl-body">
+                  <template v-if="i.family === 'run'">
+                    <span class="tl-kind">{{ i.kind }}</span>
+                    <button type="button" class="chip run-chip" :class="'chip-' + i.state" @click="openRun(i)"
+                            :data-tip="'Open the run' + (i.buildNumber ? ' #' + i.buildNumber : '')"><template v-if="i.buildNumber">#{{ i.buildNumber }} · </template>{{ i.chip }}</button>
+                    <span v-if="i.delta" class="run-delta-chip timeline-delta" :class="i.delta.cls" :data-tip="i.delta.tip">{{ i.delta.text }}</span>
+                    <div v-if="i.sub" class="tl-sub">{{ i.sub }}</div>
+                    <!-- The live build: one line, one bar with its ETA, one strip of module cells. -->
+                    <div v-if="i.state === 'run' && i.card" class="live-build" role="link" tabindex="0" @click="openRun(i)" @keydown.enter.prevent="openRun(i)">
+                      <div class="live-line"><span class="live-doing">{{ doingLine(i.card) }}</span><span class="spacer"></span>
+                        <span v-if="hasEta(i.card)" class="eta" data-tip="estimated time remaining"><span class="eta-label">ETA</span> <span class="eta-cd">{{ etaCountdown(i.card) }}</span></span>
+                        <span v-else class="millis elapsed-warn">{{ elapsed(i.card) }}</span>
+                        <button v-if="i.card.id != null" type="button" class="rebuild icon danger" @click.stop="cancelCard(i.card)" aria-label="Cancel" data-tip="Cancel this run"><jk-icon name="ban"></jk-icon></button></div>
+                      <div class="cardbar" role="progressbar" :aria-valuenow="progress(i.card)" aria-valuemin="0" aria-valuemax="100">
+                        <span class="cardbar-fill" :style="{ width: progress(i.card) + '%' }"></span></div>
+                      <div class="cells" aria-label="Modules">
+                        <i v-for="c in moduleCells(i.card)" :key="c.key" :class="c.state" :data-tip="c.tip"></i></div>
                     </div>
                   </template>
+                  <template v-else>
+                    <span class="tl-title">{{ i.title }}</span>
+                    <div v-if="i.sub" class="tl-sub" :data-tip="i.tip || undefined">{{ i.sub }}</div>
+                  </template>
                 </div>
-              </div>
-            </div>
-          </details>
-        </template>
+                <span class="tl-r">{{ i.millis != null ? duration(i.millis) : i.state === 'run' && i.card ? elapsed(i.card) : '' }}</span>
+              </li>
+            </ol>
+            <template v-if="consoleEpisode.earlier.length">
+              <div class="rail-head earlier-head"><span class="lbl">earlier episodes in this session</span></div>
+              <details v-for="e in consoleEpisode.earlier" :key="e.id" class="earlier">
+                <summary><span class="badge" :class="outcomeClass(e.outcome)">{{ e.outcome }}</span> <span class="ep-name">{{ e.title }}</span>
+                  <span class="ep-src">{{ e.source }}</span><span class="spacer"></span><span class="dim">{{ e.runs }} runs · {{ duration(e.wallMillis) }}</span></summary>
+                <ol class="tl">
+                  <li v-for="i in earlierTimeline(e.id)" :key="i.key" :class="['tl-' + i.family, 'tl-' + (i.state || 'none')]">
+                    <span class="tl-tm">{{ fmtClock24(i.at) }}</span>
+                    <span class="tl-ic"><jk-icon :name="timelineIcon(i)"></jk-icon></span>
+                    <div class="tl-body"><template v-if="i.family === 'run'"><span class="tl-kind">{{ i.kind }}</span>
+                        <button type="button" class="chip run-chip" :class="'chip-' + i.state" @click="openRun(i)"><template v-if="i.buildNumber">#{{ i.buildNumber }} · </template>{{ i.chip }}</button></template>
+                      <span v-else class="tl-title">{{ i.title }}</span>
+                      <div v-if="i.sub" class="tl-sub">{{ i.sub }}</div></div>
+                    <span class="tl-r">{{ i.millis != null ? duration(i.millis) : '' }}</span>
+                  </li>
+                </ol>
+              </details>
+            </template>
+          </template>
+        </section>
 
-        <div v-if="outcome(card) === 'running' && card.output.length" class="console">
-          <div v-for="(o, i) in card.output" :key="i">
-            <span class="console-dir">{{ lastSegment(o.dir) }}</span> <span class="console-sep">›</span> {{ o.line }}
-          </div>
-        </div>
-
-      </article>
-      </template>
+        <!-- Right rail: what the session changed, how jk served it, and the engine's vitals. -->
+        <aside class="rail-right">
+          <section v-if="sessionChanges" class="panel">
+            <div class="rail-head"><span class="lbl">this session changed</span></div>
+            <dl class="kv">
+              <dt>files</dt><dd :data-tip="sessionChanges.files.paths.join('\n') || undefined">{{ sessionChanges.files.count }}</dd>
+              <dt>migrations</dt><dd><template v-if="sessionChanges.migrations.length"><span v-for="m in sessionChanges.migrations" :key="m.path" :class="{ ok: m.change === 'new' }" :data-tip="m.path">{{ m.name }} {{ m.change }} </span></template><span v-else class="dim">none</span></dd>
+              <dt>dependencies</dt><dd :data-tip="sessionChanges.deps.join('\n') || undefined"><template v-if="sessionChanges.deps.length">{{ sessionChanges.deps.length }} change{{ sessionChanges.deps.length === 1 ? '' : 's' }}</template><span v-else class="dim">none</span></dd>
+              <dt>guards</dt><dd><span v-if="sessionChanges.guard" class="chip" :class="sessionChanges.guard === 'clean' ? 'chip-ok' : 'chip-err'">{{ sessionChanges.guard }}</span><span v-else class="dim">not run</span></dd>
+              <dt>tests</dt><dd><span v-if="sessionChanges.tests.fixed" class="ok">{{ sessionChanges.tests.fixed }} fixed</span><template v-if="sessionChanges.tests.fixed && sessionChanges.tests.broke"> · </template><span v-if="sessionChanges.tests.broke" class="err">{{ sessionChanges.tests.broke }} broken</span><span v-if="!sessionChanges.tests.fixed && !sessionChanges.tests.broke" class="dim">none flipped</span></dd>
+            </dl>
+          </section>
+          <section v-if="sessionService" class="panel">
+            <div class="rail-head"><span class="lbl">how jk served the agent</span></div>
+            <dl class="kv">
+              <dt>tool calls</dt><dd>{{ sessionService.calls }}</dd>
+              <dt>runs</dt><dd>{{ sessionService.runs }}</dd>
+              <dt>jk wall</dt><dd>{{ duration(sessionService.wallMillis) }}</dd>
+              <dt data-tip="Tasks the cache or an up-to-date check skipped, across this session's runs">tasks cached</dt><dd>{{ sessionService.cachedPct == null ? '—' : sessionService.cachedPct + '%' }}</dd>
+            </dl>
+          </section>
+          <!-- Engine vitals: the host's CPU and RAM, the cache, the builds running (detail on Admin). -->
+          <section class="panel engine-card">
+            <div class="rail-head"><span class="lbl">engine</span><span class="spacer"></span><a href="#status" class="small" @click.prevent="setView('status')">Admin</a></div>
+            <dl class="kv">
+              <dt>CPU</dt><dd :class="sysMeterLevel(cpuPercent())" :data-tip="cpuSysTip() || undefined">{{ sysMeterPct(cpuPercent()) }}</dd>
+              <dt>RAM</dt><dd :class="sysMeterLevel(ramPercent())" :data-tip="ramSysTip() || undefined">{{ sysMeterPct(ramPercent()) }}</dd>
+              <dt>cache</dt><dd>{{ actionCacheBytes() != null ? gib(actionCacheBytes()) : '—' }}</dd>
+              <dt>builds running</dt><dd>{{ buildsRunning() }}</dd>
+            </dl>
+          </section>
+        </aside>
+      </div>
     </main>
 
     <main v-if="view === 'projects'">
@@ -415,7 +308,30 @@
         <span class="proj-desc-q" aria-hidden="true">"</span><span class="proj-desc-body">{{ projectDetail.description }}</span><span class="proj-desc-q" aria-hidden="true">"</span>
       </p>
       <p v-else-if="projectDetail" class="proj-desc dim small">No description; add a top-level <code>description</code> key in jk.toml.</p>
+      <p v-if="buildError" class="error">{{ buildError }}</p>
 
+      <nav class="tabs" aria-label="Project">
+        <a :href="projectTabHash('runs')" :class="{ active: projectTab !== 'sessions' }">Runs</a>
+        <a :href="projectTabHash('sessions')" :class="{ active: projectTab === 'sessions' }">Sessions</a>
+      </nav>
+
+      <!-- Sessions: every session and episode that touched this project, newest first. -->
+      <template v-if="projectTab === 'sessions'">
+        <p v-if="!projectSessionRows" class="empty small">Loading sessions…</p>
+        <p v-else-if="!projectSessionRows.length" class="empty small">No session has worked on this project yet.</p>
+        <section v-for="s in projectSessionRows || []" :key="s.id" class="panel wide proj-session">
+          <div class="panel-head"><span class="sess-dot" :class="s.state === 'live' ? 'working' : s.state"></span>
+            <a class="sess-host" :href="consoleHash(s.id)">{{ s.host }}</a><span class="dim small">{{ s.state }}</span>
+            <span class="spacer"></span><span class="dim small" :data-tip="fmtDateTime(s.lastActiveAt) || undefined">{{ ago(s.lastActiveAt) }}</span></div>
+          <ul class="ep-list">
+            <li v-for="e in s.episodes" :key="e.id"><span class="badge" :class="outcomeClass(e.outcome)">{{ e.outcome }}</span>
+              <span class="ep-name">{{ e.title }}</span><span class="ep-src">{{ e.source }}</span><span class="spacer"></span>
+              <span class="dim">{{ e.runs }} runs · {{ e.actions }} actions · {{ duration(e.wallMillis) }} · {{ fmtDateTime(e.startedAt) }}</span></li>
+          </ul>
+        </section>
+      </template>
+
+      <template v-else>
       <template v-if="projectDetail && !projectDetail.empty">
         <div class="tiles">
           <div class="tile"><span class="lbl">reliability</span><span class="kpi" :class="projectDetail.reliabilityClass">{{ projectDetail.reliability }}</span></div>
@@ -437,11 +353,13 @@
         <module-dep-graph :dir="projectDir()" :key="projectDir()"></module-dep-graph>
       </section>
 
-      <!-- The run this page shows: the newest by default (a live one first), or the one a history
-           row pinned. The route carries the pin (#project/<id>/run/<n>) so a reload keeps it. -->
+      <!-- The run page: the newest run by default (a live one first), or the one a history row or a
+           console timeline pinned (#project/<id>/run/<n>). It names its episode and attempt; only
+           the failed and the slow modules open (strip.js moduleFocus). -->
       <section v-if="projectRun" class="panel wide focused-run" :class="projectRun.outcome">
         <div class="panel-head">
           <span class="lbl">{{ projectRun.following ? 'following newest run' : 'pinned run' }}</span>
+          <span v-if="runAttempt" class="run-episode">attempt {{ runAttempt.attempt }} of <a :href="consoleHash(runAttempt.sessionId)">“{{ runAttempt.title }}”</a> <span class="ep-src">{{ runAttempt.source }}</span></span>
           <span class="spacer"></span>
           <button v-if="!projectRun.following" type="button" class="ghost small" @click="unpinRun()" data-tip="Back to following the newest run">Follow newest</button>
         </div>
@@ -451,32 +369,80 @@
           <span v-if="projectRun.buildNumber" class="mono">#{{ projectRun.buildNumber }}</span>
           <span v-if="projectCheckouts().length > 1 && !selectedProjectDir && projectRun.card.dir" class="mono dim checkout" :data-tip="projectRun.card.dir">{{ shortDir(projectRun.card.dir) }}</span>
           <span class="kind">{{ kindLabel(projectRun.card) }}</span>
+          <span v-if="projectRun.card.modules.length > 1" class="summary">{{ summary(projectRun.card) }}</span>
           <span v-if="projectRun.card.trigger" class="origin" :class="'origin-' + projectRun.card.trigger">{{ originLabel(projectRun.card) }}</span>
           <span class="spacer"></span>
-          <span class="millis">{{ projectRun.outcome === 'running' ? elapsed(projectRun.card) : duration(projectRun.card.millis) }}</span>
+          <button v-if="isLive(projectRun.card) && projectRun.card.id != null" class="rebuild icon danger"
+                  @click="cancelCard(projectRun.card)" aria-label="Cancel" data-tip="Cancel this run"><jk-icon name="ban"></jk-icon></button>
+          <button v-if="!isLive(projectRun.card) && projectRun.card.historyId" class="rebuild icon danger"
+                  @click="deleteRun(projectRun.card)" aria-label="Delete" data-tip="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
+          <span v-if="projectRun.outcome === 'running' && hasEta(projectRun.card)" class="eta" data-tip="estimated time remaining">
+            <span class="eta-label">ETA</span> <span class="eta-cd">{{ etaCountdown(projectRun.card) }}</span></span>
+          <span class="millis" :class="{ 'has-io': ioLines(projectRun.card).length }" :tabindex="ioLines(projectRun.card).length ? 0 : null"
+                :aria-label="ioLines(projectRun.card).length ? ioSummary(projectRun.card) : null">{{ projectRun.outcome === 'running' ? elapsed(projectRun.card) : duration(projectRun.card.millis) }}
+            <span v-if="ioLines(projectRun.card).length" class="io" role="tooltip">
+              <span v-for="l in ioLines(projectRun.card)" :key="l.scope" class="io-row">
+                <span class="io-scope">{{ l.label }}</span>
+                <span class="io-n">{{ bytes(l.up) }}</span><jk-icon name="arrow-up"></jk-icon>
+                <span class="io-sep">/</span>
+                <span class="io-n">{{ bytes(l.down) }}</span><jk-icon name="arrow-down"></jk-icon>
+              </span>
+            </span></span>
           <span v-if="projectRun.outcome !== 'running'" class="ago" :data-tip="fmtDateTime(projectRun.card.finishedAt) || undefined">{{ ago(projectRun.card.finishedAt) }}</span>
         </div>
-        <div v-if="projectRun.outcome === 'running'" class="cardbar" role="progressbar"
-             :aria-valuenow="progress(projectRun.card)" aria-valuemin="0" aria-valuemax="100">
-          <span class="cardbar-fill" :style="{ width: progress(projectRun.card) + '%' }"><span class="cardbar-pct">{{ progress(projectRun.card) }}%</span></span>
-        </div>
+        <template v-if="projectRun.outcome === 'running'">
+          <div class="live-line"><span class="live-doing">{{ doingLine(projectRun.card) }}</span></div>
+          <div class="cardbar" role="progressbar" :aria-valuenow="progress(projectRun.card)" aria-valuemin="0" aria-valuemax="100">
+            <span class="cardbar-fill" :style="{ width: progress(projectRun.card) + '%' }"><span class="cardbar-pct">{{ progress(projectRun.card) }}%</span></span>
+          </div>
+          <!-- The run's downloads while bytes move, as the terminal's Download block. -->
+          <div v-if="projectRun.card.downloads" class="downloads">
+            <div class="downloads-head">Download <span class="downloads-sep">›</span> {{ downloadsHead(projectRun.card.downloads) }}</div>
+            <div v-for="r in projectRun.card.downloads.rows" :key="r.label" class="downloads-row">
+              <span class="downloads-bar"><span class="downloads-fill" :style="{ width: (downloadPct(r) ?? 0) + '%' }"></span></span>
+              <span class="downloads-pct">{{ downloadPct(r) == null ? '' : downloadPct(r) + '%' }}</span>
+              <span class="downloads-label">{{ r.label }}</span>
+            </div>
+            <div v-if="downloadsMore(projectRun.card.downloads) > 0" class="downloads-more">… {{ downloadsMore(projectRun.card.downloads) }} more in flight</div>
+          </div>
+        </template>
         <!-- Since the previous run from the same origin: files, diagnostics, tests, wall (delta.js). -->
         <run-delta v-if="projectRun.card.delta" :delta="projectRun.card.delta" :millis="projectRun.card.millis"></run-delta>
         <!-- Coverage: the record's per-module rows as the results file prints them, and the HTML report (coverage.js). -->
         <run-coverage v-if="projectRun.card.coverage && projectRun.card.coverage.length" :coverage="projectRun.card.coverage" :previous="projectRun.previousCoverage" :history-id="projectRun.card.historyId"></run-coverage>
-        <div v-for="m in failedModules(projectRun.card)" :key="m.dir" class="module">
-          <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || projectRun.card.coord || ''"></phase-chain>
-          <div v-if="m.diagnostics.length" class="diag"><div class="console">
-            <template v-for="(d, i) in m.diagnostics" :key="i">
+        <div v-if="projectRun.card.modules.length > 1" class="cells run-cells" aria-label="Modules">
+          <i v-for="c in moduleCells(projectRun.card)" :key="c.key" :class="c.state" :data-tip="c.tip"></i></div>
+        <div v-for="f in runModules.expanded" :key="f.module.dir" class="module" :class="'module-' + f.reason">
+          <div v-if="projectRun.card.modules.length > 1" class="module-row">
+            <span class="dot" :class="f.module.state"></span><span class="mname" :data-tip="f.module.dir">{{ moduleLabel(f.module) }}</span>
+            <span v-if="f.reason === 'slow'" class="chip chip-warn">slow</span><span class="spacer"></span><span class="millis">{{ duration(f.module.millis) }}</span></div>
+          <phase-chain v-if="f.module.steps.length" :steps="f.module.steps" :module="f.module.coord || projectRun.card.coord || ''"></phase-chain>
+          <div v-if="f.module.diagnostics.length" class="diag"><div class="console">
+            <template v-for="(d, i) in f.module.diagnostics" :key="i">
               <div v-if="isTestFailure(d)" class="fail-report">
-                <fail-report v-for="rep in tfReports(m, d)" :key="'ptf'+i" :rep="rep" :project-id="projectRun.card.projectId" :checkout-dir="projectRun.card.dir" :module-dir="m.dir"></fail-report>
+                <fail-report v-for="rep in tfReports(f.module, d)" :key="'ptf'+i" :rep="rep" :project-id="projectRun.card.projectId" :checkout-dir="projectRun.card.dir" :module-dir="f.module.dir"></fail-report>
               </div>
               <div v-else-if="isCompiler(d)" class="fail-report">
-                <fail-report v-for="(rep, ri) in cfReports(m, d)" :key="'pcf'+i+'-'+ri" :rep="rep" :project-id="projectRun.card.projectId" :checkout-dir="projectRun.card.dir" :module-dir="m.dir"></fail-report>
+                <fail-report v-for="(rep, ri) in cfReports(f.module, d)" :key="'pcf'+i+'-'+ri" :rep="rep" :project-id="projectRun.card.projectId" :checkout-dir="projectRun.card.dir" :module-dir="f.module.dir"></fail-report>
               </div>
-              <div v-else class="diag-line"><span class="console-err">✘&nbsp;</span><span class="console-dir">{{ d.step }}</span><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span></div>
+              <div v-else class="diag-line"><span class="console-err">✘&nbsp;</span><template v-if="diagPhase(f.module, d)"><span class="console-phase">{{ diagPhase(f.module, d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span></div>
             </template>
           </div></div>
+        </div>
+        <!-- Every other module, folded: its phase chain is the tool for "why is this build slow". -->
+        <details v-if="runModules.rest.length" class="module-group" :open="projectRun.card.modules.length === 1 && projectRun.outcome === 'running'">
+          <summary>{{ projectRun.card.modules.length === 1 ? 'phases' : runModules.rest.length + ' other module' + (runModules.rest.length === 1 ? '' : 's') }}</summary>
+          <div v-for="m in runModules.rest" :key="m.dir" class="module">
+            <div v-if="projectRun.card.modules.length > 1" class="module-row">
+              <span class="dot" :class="m.state"></span><span class="mname" :data-tip="m.dir">{{ moduleLabel(m) }}</span>
+              <span class="spacer"></span><span class="millis">{{ duration(m.millis) }}</span></div>
+            <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || projectRun.card.coord || ''"></phase-chain>
+          </div>
+        </details>
+        <div v-if="projectRun.outcome === 'running' && projectRun.card.output.length" class="console">
+          <div v-for="(o, i) in projectRun.card.output" :key="i">
+            <span class="console-dir">{{ lastSegment(o.dir) }}</span> <span class="console-sep">›</span> {{ o.line }}
+          </div>
         </div>
       </section>
 
@@ -505,7 +471,11 @@
       </template>
       <p v-else-if="projectDetail && projectDetail.empty" class="empty">No build history for this project yet.</p>
       </template>
+      </template>
     </main>
+
+    <!-- One decision an operation waits on (decisions.js). -->
+    <decision-page v-if="view === 'decision'" :id="decisionId" :event="decisionEvent"></decision-page>
 
     <!-- New project: the engine's form as a stepper (jk's step, the template's, review) with a live
          preview beside it. Every field is rendered by kind from the form; nothing is per template. -->
@@ -637,6 +607,22 @@
       </div>
       <p v-if="!status" class="empty">No status yet; the engine has not answered.</p>
       <template v-if="status">
+        <!-- Host vitals, live over SSE: the console's Engine card shows the same two. -->
+        <div class="panels">
+          <div class="panel">
+            <div class="panel-head"><span class="lbl">host cpu</span><span class="spacer"></span>
+              <span class="mono dim" :data-tip="cpuSysTip() || undefined">{{ sysMeterPct(cpuPercent()) }}<template v-if="loadAverageText() != null"> · {{ loadAverageText() }} load</template></span></div>
+            <span class="meter" :class="sysMeterLevel(cpuPercent())" role="meter" :aria-valuenow="cpuPercent() ?? undefined" aria-valuemin="0" aria-valuemax="100" aria-label="Host CPU">
+              <span class="meter-fill used" :style="{ width: (cpuPercent() ?? 0) + '%' }"></span></span>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span class="lbl">host ram</span><span class="spacer"></span>
+              <span class="mono dim" :data-tip="ramSysTip() || undefined">{{ sysMeterPct(ramPercent()) }}<template v-if="ramUsedBytes() != null"> · {{ gib(ramUsedBytes()) }} used</template></span></div>
+            <span class="meter" :class="sysMeterLevel(ramPercent())" role="meter" :aria-valuenow="ramPercent() ?? undefined" aria-valuemin="0" aria-valuemax="100" aria-label="Host RAM">
+              <span class="meter-fill used" :style="{ width: (ramPercent() ?? 0) + '%' }"></span></span>
+          </div>
+        </div>
+
         <div class="tiles">
           <div class="tile"><span class="lbl">version</span><span class="kpi">{{ status.version }}</span></div>
           <div class="tile"><span class="lbl">pid</span><span class="kpi">{{ status.pid }}</span></div>
@@ -778,16 +764,11 @@
       </template>
     </main>
 
-    <!-- Global status bar: shown on every view. Left = live engine vitals; right = connection. -->
+    <!-- Global status bar: shown on every view. Left = builds running; right = connection. The
+         cache, store and heap are on Admin; CPU and RAM on the console's Engine card and Admin. -->
     <footer class="statusbar">
       <div class="sb-left">
         <span class="sb-item"><jk-icon name="activity"></jk-icon>Builds Running&nbsp;<b>{{ buildsRunning() }}</b></span>
-        <span class="sb-div"></span>
-        <span class="sb-item" data-tip="Rebuildable build outputs; see jk cache usage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? gib(actionCacheBytes()) : '—' }}</b></span>
-        <span class="sb-div"></span>
-        <span class="sb-item" data-tip="Downloaded artifacts; see jk storage usage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? gib(artifactStorageBytes()) : '—' }}</b></span>
-        <span class="sb-div"></span>
-        <span class="sb-item"><jk-icon name="cpu"></jk-icon>Engine Heap&nbsp;<b>{{ status ? mib(status.heapCommittedBytes) : '—' }}</b></span>
       </div>
       <span class="spacer"></span>
       <div class="conn" :class="connection" :data-tip="connectionLabel()">
@@ -796,12 +777,11 @@
       </div>
     </footer>
 
-    <!-- Directory picker — hoisted out of the Activity main so the new-project wizard can open it
-         too. browserMode selects the footer's Use action. -->
+    <!-- Directory picker: a path field of the new-project wizard. -->
     <div v-if="browser" class="modal-bg browser-modal-bg" @click.self="closeBrowser()">
       <div class="modal">
         <div class="modal-head">
-          <span class="lbl">{{ browserMode === 'parent' ? 'choose a parent directory' : 'choose a workspace' }}</span>
+          <span class="lbl">choose a parent directory</span>
           <span class="spacer"></span>
           <button class="rebuild" @click="closeBrowser()">Close</button>
         </div>
@@ -815,17 +795,9 @@
           <div v-if="browser.truncated" class="fs-entry none">… list truncated</div>
         </div>
         <div class="modal-foot">
-          <template v-if="browserMode === 'parent'">
-            <span class="dim small">The new project goes in this folder</span>
-            <span class="spacer"></span>
-            <button class="use-folder" @click="chooseBrowsed()">Use this folder</button>
-          </template>
-          <template v-else>
-            <span v-if="browser.hasJkToml" class="jk-found"><jk-icon name="check"></jk-icon>jk.toml found</span>
-            <span v-else class="dim small">No jk.toml in this folder</span>
-            <span class="spacer"></span>
-            <button class="use-folder" :disabled="!browser.hasJkToml" @click="chooseBrowsed()">Use this folder</button>
-          </template>
+          <span class="dim small">The new project goes in this folder</span>
+          <span class="spacer"></span>
+          <button class="use-folder" @click="chooseBrowsed()">Use this folder</button>
         </div>
       </div>
     </div>
@@ -853,7 +825,7 @@
           <dt>Dashboard docs</dt><dd class="mono">docs/contributors/webclient.md</dd>
         </dl>
         <div class="modal-foot">
-          <span class="dim small">Live build activity streams over SSE. Run <code>jk build</code> in any workspace to see it here.</span>
+          <span class="dim small">Sessions, episodes and builds stream over SSE. Run <code>jk build</code> in any workspace, or let an agent call jk, to see it on the console.</span>
         </div>
       </div>
     </div>

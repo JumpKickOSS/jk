@@ -7,6 +7,7 @@ import { previousCoverage } from './coverage.js';
 import { historyCard } from './fold.js';
 import { outcomeOf } from './outcome.js';
 import { focusedRun } from './sessions.js';
+import { moduleFocus } from './strip.js';
 
 /**
  * A persisted record's outcome. There is exactly one outcome rule, {@link outcomeOf}, and it reads
@@ -160,6 +161,10 @@ export const projectComputed = {
     const card = focus.live ? focus.run : historyCard(focus.run);
     // The baseline of the Coverage block: the nearest earlier record of this project that measured.
     return { ...focus, card, outcome: outcomeOf(card), previousCoverage: previousCoverage(records, card) };
+  },
+  /** The run page's modules: the failed and the slow open, every other one folded (strip.js). */
+  runModules() {
+    return this.projectRun ? moduleFocus(this.projectRun.card) : { expanded: [], rest: [] };
   },
   // The open project's detail page: identity + aggregate metrics + a build-history table, all
   // derived from the journal filtered to this project (by projectId).

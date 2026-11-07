@@ -52,7 +52,7 @@ class McpManifestTest {
                 McpManifest.setJava(dir.toString(), 21, true),
                 McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true),
                 McpManifest.workspace(dir.toString(), "add_member", "api", true),
-                McpUpdate.run(dir.toString(), List.of(), false, false))) {
+                McpUpdate.run(dir.toString(), List.of(), false, false, false))) {
             assertThat(out.get("applied")).isEqualTo(false);
             assertThat(String.valueOf(out.get("error")))
                     .contains("no jk.toml in")

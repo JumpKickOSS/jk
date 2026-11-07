@@ -38,4 +38,24 @@ public final class DashboardLinks {
         if (!auth.isEmpty()) route.append(sep).append("t=").append(auth);
         return route.toString();
     }
+
+    /**
+     * The decision page {@code #decision/<id>}, authenticated. {@code hostKey} rides as {@code k=}
+     * only on the link handed to the agent's host by URL elicitation; {@code null} when HTTP is not
+     * serving.
+     */
+    public static @Nullable String decision(
+            @Nullable String baseUrl, @Nullable String token, String id, @Nullable String hostKey) {
+        if (baseUrl == null || baseUrl.isBlank()) return null;
+        StringBuilder route = new StringBuilder(baseUrl.endsWith("/") ? baseUrl : baseUrl + "/")
+                .append("#decision/")
+                .append(id);
+        char sep = '?';
+        if (hostKey != null && !hostKey.isBlank()) {
+            route.append(sep).append("k=").append(hostKey.strip());
+            sep = '&';
+        }
+        if (token != null && !token.isBlank()) route.append(sep).append("t=").append(token.trim());
+        return route.toString();
+    }
 }

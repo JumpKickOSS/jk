@@ -8,9 +8,49 @@ jk web -n       # print only
 The resident engine serves a small dashboard (thin renderer; the engine owns all build
 logic). `jk engine status` also prints the authenticated URL.
 
-The dashboard is the **supervisor's view**. When an agent drives the builds, the human
-watching has no terminal of their own to read; this page shows what ran, who asked, why it
-failed and how long it took, from the same facts as `target/jk-results.md` and MCP.
+The dashboard is the **supervisor's view**. When an agent drives jk, the human watching has no
+terminal of their own to read. The landing page answers three questions for every live session:
+what is each agent trying to do, what did it change, and does it need you. Every number comes from
+the same facts as `target/jk-results.md`, the journal and MCP, and colour means state: blue
+working, green done, red failed, amber needs you, cyan identity.
+
+## The console
+
+`#console` is the landing page. From top to bottom and left to right:
+
+- **Needs you**: the decisions an agent is blocked on, oldest first, each with who asked, how
+  long ago, the `jk decide` command that answers it in a terminal, and **Review**, which opens the
+  decision (`#decision/<id>`). Absent when nothing waits, and on an engine without a decision queue.
+- **Sessions**: one card per live or idle session, and those that ended within the last hour. A
+  card shows the host (`claude-code 3f9a`, `IntelliJ-BSP 7b2c`, `shell`), the current episode's
+  title and where it came from (*goal from the agent*, *inferred*, or *your own commands* for the
+  shell), the project, and the state: **waiting on you**, **working** (a run in flight or its
+  episode open), **idle** or **ended**. Your own shell is a session like any other, so your
+  `jk test` sits beside the agent's. Click a card to select it; the route carries the choice
+  (`#console/<session-id>`). With none chosen the console holds the first card.
+- **The selected session's current episode**: its outcome, title and title source; episode *n* of
+  *m*, the project, its wall (to now while it works), the time jk spent on its actions and runs,
+  and the files its runs saw change; an **attempts arc**, one segment per run, red, green or blue;
+  and its **timeline**, one line per action in the order it happened: code-graph questions with
+  the first line of their answer, renames, dependency changes, runs, and `edited N files` just
+  before the run that saw the edits (jk sees edits at the next run, through its file delta). A run
+  line shows its kind, its number and outcome chip (`#1066 · 2 failed`), the one-chip summary of
+  what changed since the run before, and the first failing test or error. Clicking the chip opens
+  the run page. **Earlier episodes** of the session fold below it; open one for its timeline.
+- **This session changed**: the files its runs changed, migrations (`V7 new`), dependency
+  changes, the newest guard run's outcome, and the tests its runs fixed and broke.
+- **How jk served the agent**: tool calls (every action and run), runs, jk's wall time across
+  them, and the share of tasks the cache or an up-to-date check skipped.
+- **Engine**: host CPU and RAM, the action cache's size and the builds running, with a link to
+  Admin.
+
+### A live build is one line
+
+A run still in flight is one line in its session's timeline: what it is doing (`testing service ·
+QuoteServiceIT`), one progress bar with its ETA, and one strip of module cells, one small cell per
+module coloured by state (blue running, green done, red failed, grey not started). A 55-module
+workspace is one row of cells. Hovering a cell names the module and its phase; clicking anywhere on
+the line opens the run page, and the cancel button stops the run.
 
 ## Who asked
 
@@ -18,17 +58,14 @@ Every run carries its **trigger** — `cli`, `mcp`, `web` or `bsp` — and, when
 one, the **session** that asked: an MCP connection is `<client> <id>` (`claude-code 3f9a`,
 from the client's `initialize` and the id the engine minted for that connection), a BSP client
 is the IDE's `displayName` plus a per-process id (`IntelliJ-BSP 7b2c`). A shell run is `cli`
-with no session. The Activity card shows it as `MCP · claude-code 3f9a`; `jk-results.md`
+with no session. The run page and the build history show it as `MCP · claude-code 3f9a`; `jk-results.md`
 prints the same as `trigger: mcp · session: claude-code 3f9a`, and `jk history` has a
 Trigger column.
 
-**By session** on the Activity feed regroups the feed: one block per session, newest first,
-with its runs as a timeline in the order they happened — outcome, `#build`, kind, one chip of
-what that run changed and its wall — and the block's tallies (ok / failed / cancelled / running,
-total wall). The chip is the strongest signal of the run's [iteration strip](#since-the-previous-run):
-a test that broke, else a diagnostic that appeared, else a test fixed, else a diagnostic gone, else
-the files changed, else the wall against the previous attempt; hovering it shows the whole strip.
-Two agents on one project are two blocks; your own `jk build` is a third.
+The one chip beside a run in a timeline is the strongest signal of its
+[iteration strip](#since-the-previous-run): a test that broke, else a diagnostic that appeared,
+else a test fixed, else a diagnostic gone, else the files changed, else the wall against the
+previous attempt; hovering it shows the whole strip.
 
 ## Sessions and episodes
 
@@ -72,13 +109,29 @@ run, its last action), and **abandoned** when nothing in it was judged. `GET /ap
 live and recent sessions with their current episode; `GET /api/sessions/<id>` returns one with its
 episodes and a page of its timeline ([HTTP](../contributors/http.md#get-apisessions)).
 
-## Following a run
+## The project page
 
-The project page shows one run above its build history: the **newest** by default (a live
-one first), so an MCP result's `dashboard` link lands on the job it just started and keeps
-following as the agent iterates. Click a history row to **pin** that run; the route carries
-the pin (`#project/<id>/run/<n>`) so a reload keeps it, and **Follow newest** returns to
+A project's page has two tabs. **Runs** holds its tiles, the run page and its build history;
+**Sessions** (`#project/<id>/sessions`) lists every session whose project is this one, newest
+first, with the episodes it spent here (title, outcome, runs, actions, wall, when), for answering
+"what happened here yesterday". A session's name opens it on the console. **Build** in the header
+starts a build of the checkout the page shows; the page then follows it.
+
+### The run page
+
+The Runs tab shows one run above the build history: the **newest** by default (a live one first),
+so an MCP result's `dashboard` link lands on the job it just started and keeps following as the
+agent iterates. Click a history row, or a run's chip on the console, to **pin** that run; the route
+carries the pin (`#project/<id>/run/<n>`) so a reload keeps it, and **Follow newest** returns to
 following.
+
+Its header names the episode and the attempt (`attempt 2 of "Fix weekend uplift rounding"`), which
+links back to the session on the console. Under the iteration strip and the coverage block comes
+one cell per module, then the modules worth opening: the **failed** ones, with their phase chain
+and failure report, and the **slow** ones (at least twice the run's median module wall and five
+seconds or more; at most three), marked `slow`. Every other module folds under one line; its phase
+chain is the tool for "why is this build slow". A run in flight also shows what it is doing, its
+bar and ETA, its downloads and the newest output lines.
 
 ## Since the previous run
 
@@ -139,6 +192,13 @@ follow and edit (**all** shows every worktree's runs with a Checkout column); th
 its Save work in the picked tree only, and a link from `jk` or an MCP result already names the
 tree the build ran in. A deleted worktree drops out of the list on the next build of a sibling.
 
+## Admin
+
+**Admin** holds the engine's vitals: host CPU and RAM, version, pid, uptime, connections, the
+builds running, MCP sessions, heap and RSS, the workers' budget, build metrics, the action cache
+and artifact store, the effective configuration and the engine log. The status bar at the bottom of
+every page shows the builds running and whether the page is live.
+
 ## New project
 
 **New project** (on the Projects page) opens the wizard at `#new`. It asks the same form `jk new`
@@ -172,6 +232,30 @@ MCP `new` hands out such a link when its client supports only URL elicitation
 ([MCP](mcp.md#new)); the wizard then says an agent is waiting, and the agent's call returns the
 project you create. A create after the call stopped waiting (five minutes) is still wired for that
 agent, and the new project's page says the agent was not told.
+
+## Decisions
+
+An operation that waits for a person (an update across a minor, a dependency the deny policy
+refuses, a destructive clean) is a decision ([MCP](mcp.md#decisions)). `#decision/<id>` shows one:
+the question, who asked and where, the lines that explain it (the moves, the policy hits), and the
+answers this page may give. The agent's host sends you there by URL elicitation, a desktop
+notification carries the link under `[ui] ask = notify`, and a `NEEDS-YOU` result names it.
+
+- A decision that does not change what the project trusts is answered here: pick an answer and
+  **Answer**, or **Decline**.
+- A **trust-changing** one shows the command that accepts it, `jk decide <id>`, and only
+  **Decline**: an agent can read the dashboard token and drive a browser, so a click here is no
+  proof a person decided. The page the agent's host opened is the exception: its link carries a
+  one-time key (`k=`, scrubbed from the address bar like the token), and with it the page accepts.
+
+The first answer wins, wherever it came from; the page then says how and where it was settled.
+`GET /api/decisions` lists open decisions first, then recently settled ones; `GET
+/api/decisions/<id>` returns one; `POST /api/decisions/<id>` answers it; every change is an SSE
+`decision` event ([contributor HTTP](../contributors/http.md#decisions)).
+
+```text
+#decision/<id>
+```
 
 Live events: `GET /api/events` (SSE). Cancel: `POST /api/cancel`. Implementation of the
 SPA and HTTP contract: [contributor web client](../contributors/webclient.md),
