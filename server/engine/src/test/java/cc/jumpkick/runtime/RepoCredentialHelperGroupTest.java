@@ -205,7 +205,7 @@ class RepoCredentialHelperGroupTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("gar")
                 .hasMessageContaining("401")
-                .hasMessageContaining("the value its credential helper printed when it ran again was refused too");
+                .hasMessageContaining("the credential helper's new value was refused too");
         assertThat(runs(tmp)).isEqualTo(2);
         assertThat(gar.unreachableFault())
                 .as("the passed-over note carries the helper's side too")

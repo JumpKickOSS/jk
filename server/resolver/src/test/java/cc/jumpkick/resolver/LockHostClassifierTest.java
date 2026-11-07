@@ -83,9 +83,10 @@ class LockHostClassifierTest {
                 .as("the classified row is this host's")
                 .contains("org.demo:graphics:jar:" + javafx);
         assertThat(notes).singleElement().satisfies(note -> assertThat(note)
-                .startsWith("org.demo:graphics 1.0 depends on org.demo:graphics with classifier `" + javafx + "`")
+                .startsWith("org.demo:graphics 1.0 depends on org.demo:graphics with OS-specific classifier `" + javafx
+                        + "`")
                 .contains("${javafx.platform}")
-                .contains("follows the host"));
+                .contains("a lock made on another OS picks a different artifact"));
     }
 
     private static JkBuild project(String ga, String selector) {

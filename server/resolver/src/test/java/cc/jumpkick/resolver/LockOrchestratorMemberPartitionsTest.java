@@ -310,7 +310,7 @@ class LockOrchestratorMemberPartitionsTest {
         assertThat(rows(lock, "com.foo:deep:jar:")).hasSize(1).allMatch(r -> !r.isPartition());
         assertThat(notes)
                 .contains(
-                        "app reads its own rows for 1 coordinate: com.foo:leaf 1.0 (the workspace's without com.foo:deep)");
+                        "app locks its own versions of 1 dependency: com.foo:leaf 1.0 (as the workspace, without com.foo:deep)");
     }
 
     /**
@@ -401,7 +401,7 @@ class LockOrchestratorMemberPartitionsTest {
         assertThat(rows(lock, "com.foo:middle:jar:")).hasSize(1).allMatch(r -> !r.isPartition());
         assertThat(notes)
                 .contains(
-                        "app reads its own rows for 1 coordinate: com.foo:leaf 1.0 (the workspace's without com.foo:deep)");
+                        "app locks its own versions of 1 dependency: com.foo:leaf 1.0 (as the workspace, without com.foo:deep)");
     }
 
     @Test
@@ -827,9 +827,8 @@ class LockOrchestratorMemberPartitionsTest {
                     .containsExactly(tuple("2.0", "org.example:quarkus-bom:1.0"));
             assertThat(overrides)
                     .as(label)
-                    .containsExactly("com.foo:leaf 2.0 is org.example:quarkus-bom:1.0's, the highest a"
-                            + " [platform-dependencies] entry manages; org.example:api-parent:1.0 constrains to 1.0"
-                            + " — the highest version wins");
+                    .containsExactly("com.foo:leaf 2.0 from org.example:quarkus-bom:1.0 wins over 1.0 from"
+                            + " org.example:api-parent:1.0; the highest version wins");
         }
     }
 

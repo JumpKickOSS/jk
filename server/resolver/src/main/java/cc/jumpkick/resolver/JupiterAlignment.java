@@ -30,19 +30,13 @@ final class JupiterAlignment {
         String expected = JupiterLine.platformVersion(jupiter);
         if (major(expected).equals(major(launcher))) return;
         throw new IllegalArgumentException(where
-                + "junit-jupiter "
-                + jupiter
-                + " runs on JUnit Platform "
-                + expected
-                + ", but junit-platform-launcher resolved to "
+                + "junit-platform-launcher "
                 + launcher
-                + ": a Platform "
-                + major(launcher)
-                + " launcher drops a Jupiter "
-                + major(jupiter)
-                + " engine without a word and the run reports no tests — pin junit-platform-launcher to "
+                + " does not run junit-jupiter "
+                + jupiter
+                + "; pin the launcher to "
                 + expected
-                + " (or move junit-jupiter to the launcher's line) and lock again");
+                + " and lock again");
     }
 
     private static @Nullable String versionOf(Resolution test, String module) {

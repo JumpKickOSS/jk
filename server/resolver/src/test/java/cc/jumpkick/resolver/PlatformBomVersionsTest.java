@@ -86,6 +86,6 @@ class PlatformBomVersionsTest {
         RepoGroup repos = RepoGroup.of(new MavenRepo("local", http.base(), new Http(), new Cas(tmp.resolve("c"))));
         assertThatThrownBy(() -> PlatformBomVersions.resolve(repos, "org.example", "bom", VersionSelector.parse(">=4")))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("exact, caret/tilde, latest, or snapshot");
+                .hasMessageContaining("ranges are not allowed; use an exact, ^, ~, latest or snapshot version");
     }
 }

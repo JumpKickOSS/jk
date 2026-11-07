@@ -19,7 +19,7 @@ class MavenSettingsRowsTest {
     void a_config_toml_mirror_and_a_refused_settings_xml_mirror_each_name_their_file() {
         MavenSettingsRows.Rows rows = MavenSettingsRows.decode(CacheInventoryAck.m2Settings(List.of(
                 "mirror|corp|*,!jumpkick|https://artifactory.acme/maven/|central,google||/home/me/.jk/config.toml",
-                "mirror|nexus|*|http://nexus.acme/m2/|jumpkick,central,google|it is plaintext http on a network path"
+                "mirror|nexus|*|http://nexus.acme/m2/|jumpkick,central,google|it uses plain http"
                         + "|/home/me/.m2/settings.xml")));
 
         List<String> lines = MavenSettingsRows.render(rows, Theme.active()).stream()
@@ -36,6 +36,6 @@ class MavenSettingsRowsTest {
         assertThat(lines.get(1))
                 .startsWith("warn:")
                 .contains("mirror `nexus`")
-                .contains("refused, so what it mirrors fails to resolve: it is plaintext http");
+                .contains("refused, so what it mirrors fails to resolve: it uses plain http");
     }
 }

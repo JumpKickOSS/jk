@@ -578,7 +578,7 @@ public final class RepoGroup {
                     RunNotices.warnOnce(
                             "repo-unreachable:" + repo.name(),
                             () -> "jk: warning: repository " + repo.name() + " is unreachable (" + describe(transport)
-                                    + "); trying the remaining repositories");
+                                    + "); trying the others");
                     continue;
                 }
                 fold(found, repo, snapshots, union);
@@ -877,8 +877,7 @@ public final class RepoGroup {
         RunNotices.warnOnce(
                 "repo-passed-over:" + repo.name(),
                 () -> "jk: warning: repository " + repo.name() + " at " + SafeUri.forMessage(repo.baseUrl())
-                        + " is passed over for the rest of the resolve, as a blocked one is ("
-                        + repo.unreachableFault() + ")");
+                        + " skipped for the rest of this lock (" + repo.unreachableFault() + ")");
     }
 
     /**

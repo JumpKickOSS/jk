@@ -110,7 +110,7 @@ class MavenRepoTest {
 
         // Without a pin, a fresh lock: the repository's own checksum disowns the stale copy.
         assertThat(repo.fetchArtifact(coord).sha256()).isEqualTo(newSha);
-        assertThat(repo.checksumNotes()).singleElement().asString().contains("discarded");
+        assertThat(repo.checksumNotes()).singleElement().asString().contains("downloaded it again");
 
         // With a pin, a build after the lock moved: the digest alone evicts the stale copy.
         store.materialize(relPath, stale, Hashing.sha256Hex(oldBytes));
@@ -399,7 +399,7 @@ class MavenRepoTest {
                 .singleElement()
                 .asString()
                 .contains("org.example:bom:1.0 from central")
-                .contains(".md5 sidecar alone");
+                .contains("verified by .md5 only");
     }
 
     @Test
@@ -444,8 +444,8 @@ class MavenRepoTest {
         MavenRepo repo = new MavenRepo("mirror", base, new Http(), new Cas(tempDir));
         assertThatThrownBy(() -> repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0")))
                 .isInstanceOf(MavenRepo.MissingChecksumException.class)
-                .hasMessageContaining("no upstream checksum for com.example:widget:1.0 from mirror")
-                .hasMessageContaining("no .sha256, .sha1 or .md5 sidecar")
+                .hasMessageContaining("no checksum for com.example:widget:1.0 from mirror")
+                .hasMessageContaining("no .sha256, .sha1 or .md5")
                 .hasMessageContaining("allow-unverified = true on [repositories.mirror]");
         assertThat(repo.unverifiedAllowed()).isZero();
         assertThat(Objects.requireNonNull(

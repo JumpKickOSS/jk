@@ -359,11 +359,9 @@ final class DownloadLeg {
         }
         Optional<String> differing = differing(published.get(), path, sha256);
         if (differing.isPresent()) {
-            checksumNotes.add(coord + " from " + name + ": the store's copy (" + relativePath + ") is not what the"
-                    + " repository publishes, " + published.get().algorithm().label + " "
-                    + published.get().hex()
-                    + " published against " + differing.get() + " stored; the copy was discarded and the artifact"
-                    + " downloaded again");
+            checksumNotes.add(coord + " from " + name + ": stored " + relativePath + " has "
+                    + published.get().algorithm().label + " " + differing.get() + ", the repository publishes "
+                    + published.get().hex() + "; downloaded it again");
             return false;
         }
         accept(coord, published.get().algorithm(), leg, vouch);
@@ -386,9 +384,8 @@ final class DownloadLeg {
     private void accept(Coordinate coord, ChecksumSidecars.Algorithm algorithm, MavenRepo.Leg leg, Vouch vouch) {
         if (vouch.mirrorOnly()) mirrorVouched.incrementAndGet();
         if (algorithm == ChecksumSidecars.Algorithm.MD5) {
-            checksumNotes.add(coord + " from " + name + " is verified against its .md5 sidecar alone: the"
-                    + " repository publishes no .sha256 or .sha1 for it, and md5 is the weakest digest a"
-                    + " repository publishes; the lock pins its bytes by sha256 from here on");
+            checksumNotes.add(coord + " from " + name + " verified by .md5 only; the repository publishes no"
+                    + " .sha256 or .sha1, the lock pins it by sha256");
         }
         if (leg == MavenRepo.Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
     }
@@ -401,10 +398,9 @@ final class DownloadLeg {
             throws MavenRepo.MissingChecksumException {
         if ("file".equalsIgnoreCase(baseUrl.getScheme())) return;
         if (!allowUnverified) {
-            throw new MavenRepo.MissingChecksumException("no upstream checksum for " + coord + " from " + name + " ("
-                    + relativePath + "): the repository publishes no .sha256, .sha1 or .md5 sidecar, so the"
-                    + " bytes cannot be verified before they are pinned. Set allow-unverified = true on"
-                    + " [repositories." + name + "] to pin them anyway.");
+            throw new MavenRepo.MissingChecksumException("no checksum for " + coord + " from " + name + " ("
+                    + relativePath + "): the repository publishes no .sha256, .sha1 or .md5; set"
+                    + " allow-unverified = true on [repositories." + name + "] to lock it anyway");
         }
         if (leg == MavenRepo.Leg.ARTIFACT) unverifiedAllowed.incrementAndGet();
     }
@@ -435,8 +431,7 @@ final class DownloadLeg {
         int mirrored = mirrorVouched.get();
         if (mirrored > 0) {
             out.add(mirrored + (mirrored == 1 ? " file" : " files") + " from " + name
-                    + " verified against the mirror only: Maven Central is refusing this host, so the"
-                    + " mirror's own checksums vouched for its bytes; the lock pins them by sha256 from here on");
+                    + " verified by the mirror's checksums only; Maven Central refused this host");
         }
         out.sort(null);
         return List.copyOf(out);

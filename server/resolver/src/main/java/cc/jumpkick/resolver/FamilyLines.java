@@ -129,17 +129,14 @@ final class FamilyLines {
     }
 
     private static String warning(String path, String family, Map<String, String> versions) {
-        StringBuilder b = new StringBuilder(path)
-                .append(" has no [platform-dependencies] table and its rows mix ")
-                .append(family)
-                .append("-* lines: ");
+        StringBuilder b =
+                new StringBuilder(path).append(" mixes ").append(family).append("-* versions: ");
         boolean first = true;
         for (Map.Entry<String, String> e : versions.entrySet()) {
             if (!first) b.append(", ");
             b.append(e.getKey()).append(' ').append(e.getValue());
             first = false;
         }
-        return b.append(" — pin the family to one line in the member, or hold it under a platform BOM there")
-                .toString();
+        return b.append("; align them or add a platform BOM").toString();
     }
 }

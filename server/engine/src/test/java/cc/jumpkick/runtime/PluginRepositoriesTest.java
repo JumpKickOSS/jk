@@ -265,10 +265,10 @@ class PluginRepositoriesTest {
                         URI.create("http://nexus.example.test/m2/"),
                         RepoCredential.ANONYMOUS,
                         "mirror `nexus` (settings.xml)",
-                        "it is plaintext http on a network path"));
+                        "it uses plain http"));
 
         assertThatThrownBy(() -> PluginRepositories.of(RepoGroup.of(refused), UnaryOperator.identity()))
                 .hasMessageContaining("mirror `nexus` (settings.xml)")
-                .hasMessageContaining("plaintext http");
+                .hasMessageContaining("plain http");
     }
 }

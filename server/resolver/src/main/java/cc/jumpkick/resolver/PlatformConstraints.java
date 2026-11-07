@@ -105,14 +105,13 @@ public final class PlatformConstraints {
         }
 
         private static String render(Pair pair, List<Meeting> meetings) {
-            String rule =
-                    pair.byManifest() ? " — the project's own entry wins over the BOMs" : " — the highest version wins";
+            String rule = pair.byManifest() ? "" : "; the highest version wins";
             if (meetings.size() == 1) {
                 Meeting m = meetings.getFirst();
-                String keeper = pair.byManifest()
-                        ? " is the project's [managed-dependencies] entry (" + m.keptBy() + "); "
-                        : " is " + m.keptBy() + "'s, the highest a [platform-dependencies] entry manages; ";
-                return m.module() + " " + m.kept() + keeper + pair.later() + " constrains to " + m.asked() + rule;
+                String keeper =
+                        pair.byManifest() ? " from [managed-dependencies] (" + m.keptBy() + ")" : " from " + m.keptBy();
+                return m.module() + " " + m.kept() + keeper + " wins over " + m.asked() + " from " + pair.later()
+                        + rule;
             }
             StringBuilder out = new StringBuilder();
             if (pair.byManifest()) {
@@ -127,7 +126,7 @@ public final class PlatformConstraints {
                         .append(pair.later())
                         .append(" on ")
                         .append(meetings.size())
-                        .append(" modules it manages higher: ");
+                        .append(" modules: ");
             }
             List<Meeting> ordered = new ArrayList<>(meetings);
             ordered.sort(Comparator.comparing(Meeting::module));
@@ -338,12 +337,8 @@ public final class PlatformConstraints {
             String table = platformDep.impliedBy();
             if (table == null) throw e;
             throw new IllegalStateException(
-                    "platform BOM " + bomCoord.toGav() + " is in no declared repository (" + e.getMessage() + ")."
-                            + " The `[" + table + "]` table implies it: `version = \""
-                            + platformDep.version().raw()
-                            + "\"` names the release of the plugin's platform BOM, and repositories publish"
-                            + " that BOM for releases only. Point `[" + table + "] version` at a published"
-                            + " release, or drop the table from a module of the framework's own build.",
+                    "platform BOM " + bomCoord.toGav() + " is in no declared repository (" + e.getMessage()
+                            + "); set `[" + table + "] version` to a published release",
                     e);
         }
     }
@@ -532,8 +527,7 @@ public final class PlatformConstraints {
                 }
                 if (managed == null) {
                     throw new IllegalStateException("`" + d.module()
-                            + "` is declared without a version, but no [platform-dependencies] BOM manages it"
-                            + " — add a `version`, or import the BOM that pins it.");
+                            + "` has no version and no platform BOM manages it; add a `version` or a BOM that does");
                 }
                 root = Dependency.of(d.library(), d.module(), VersionSelector.parse("=" + managed))
                         .withOptional(d.optional())

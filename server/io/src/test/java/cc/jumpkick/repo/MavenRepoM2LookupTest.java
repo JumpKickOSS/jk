@@ -183,7 +183,7 @@ class MavenRepoM2LookupTest {
 
         assertThatThrownBy(() -> repo.fetchArtifact(coord()))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("did not put it there");
+                .hasMessageContaining("jk did not write it");
         assertThat(Files.readAllBytes(tmp.resolve("m2").resolve(REL)))
                 .isEqualTo("a hand-built impostor".getBytes(StandardCharsets.UTF_8));
     }

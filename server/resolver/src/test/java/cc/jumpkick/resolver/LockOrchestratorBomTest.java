@@ -70,7 +70,7 @@ class LockOrchestratorBomTest {
         LockOrchestrator orchestrator = new LockOrchestrator(repoGroup(tempDir));
         assertThatThrownBy(() -> orchestrator.lock(project, "test"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("`[quarkus]`")
+                .hasMessageContaining("`[quarkus] version`")
                 .hasMessageContaining("io.quarkus.platform:quarkus-bom:999-SNAPSHOT")
                 .hasMessageContaining("no declared repository")
                 .hasMessageContaining("POM not found in any declared repo");
@@ -385,7 +385,7 @@ class LockOrchestratorBomTest {
                 jkBuildWithDeps(Map.of(Scope.MAIN, List.of(Dependency.platformManaged("widget", "com.foo:widget"))));
         org.assertj.core.api.Assertions.assertThatThrownBy(
                         () -> new LockOrchestrator(repoGroup(tempDir)).lock(project, "test"))
-                .hasMessageContaining("no [platform-dependencies] BOM manages it");
+                .hasMessageContaining("has no version and no platform BOM manages it");
     }
 
     @Test
@@ -454,7 +454,7 @@ class LockOrchestratorBomTest {
         LockOrchestrator orchestrator = new LockOrchestrator(repoGroup(tempDir));
         assertThatThrownBy(() -> orchestrator.lock(project, "test"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("not a declared optional dependency");
+                .hasMessageContaining("is not optional; add `optional = true`");
     }
 
     private static JkBuild jkBuildWithFeatures(JkBuild.Dependencies deps, Features features) {
@@ -486,7 +486,7 @@ class LockOrchestratorBomTest {
 
         assertThatThrownBy(() -> new LockOrchestrator(repoGroup(tempDir)).lock(project, "test"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("could not fetch artifact")
+                .hasMessageContaining("artifact com.foo:ghost:1.0 not found")
                 .hasMessageContaining("com.foo:ghost:1.0")
                 .hasMessageContaining("ghost-1.0.jar")
                 .hasMessageContaining("tried:");

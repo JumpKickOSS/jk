@@ -23,9 +23,8 @@ class JupiterAlignmentTest {
                 "5.9.0"));
         assertThatThrownBy(() -> JupiterAlignment.check(mixed))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("junit-jupiter 5.9.0 runs on JUnit Platform 1.9.0")
-                .hasMessageContaining("junit-platform-launcher resolved to 6.1.3")
-                .hasMessageContaining("pin junit-platform-launcher to 1.9.0");
+                .hasMessageContaining("junit-platform-launcher 6.1.3 does not run junit-jupiter 5.9.0")
+                .hasMessageContaining("pin the launcher to 1.9.0");
     }
 
     @Test
@@ -88,7 +87,8 @@ class JupiterAlignmentTest {
                 .doesNotThrowAnyException();
         assertThatThrownBy(() -> JupiterAlignment.check(lock.forMember("mixed"), "mixed"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageStartingWith("mixed: junit-jupiter 5.11.4 runs on JUnit Platform 1.11.4");
+                .hasMessageStartingWith("mixed: junit-platform-launcher ")
+                .hasMessageContaining(" does not run junit-jupiter 5.11.4");
     }
 
     private static Resolution resolution(Map<String, String> versions) {

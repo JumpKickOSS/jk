@@ -147,7 +147,7 @@ class CentralVouchesTest {
         assertThat(repo.checksumNotes())
                 .singleElement()
                 .asString()
-                .contains("the mirror's copy of " + JAR, "downloaded from Maven Central instead");
+                .contains("the mirror's " + JAR, "downloaded from Maven Central instead");
     }
 
     @Test
@@ -164,7 +164,7 @@ class CentralVouchesTest {
         assertThat(repo.checksumNotes())
                 .singleElement()
                 .asString()
-                .startsWith("1 file from central verified against the mirror only");
+                .startsWith("1 file from central verified by the mirror's checksums only");
     }
 
     @Test

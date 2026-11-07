@@ -54,7 +54,7 @@ class PomRuntimeClasspathStagingTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.foo:fat:1.0")
                 .hasMessageContaining("no POM")
-                .hasMessageContaining("`jk install`");
+                .hasMessageContaining("run jk install again");
     }
 
     @Test
@@ -78,8 +78,8 @@ class PomRuntimeClasspathStagingTest {
 
         assertThatThrownBy(() -> resolve(store, workerJar))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("com.foo:gone:1.0 was not found")
-                .hasMessageContaining("`jk install`");
+                .hasMessageContaining("com.foo:gone:1.0 not found")
+                .hasMessageContaining("run jk install again");
     }
 
     @Test
@@ -125,7 +125,7 @@ class PomRuntimeClasspathStagingTest {
 
         assertThatThrownBy(() -> resolve(store, workerJar))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("incomplete POM chain")
+                .hasMessageContaining("missing a parent or BOM POM")
                 .hasMessageContaining("com.foo:parent:9");
     }
 

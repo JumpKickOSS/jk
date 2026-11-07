@@ -875,8 +875,8 @@ public final class MavenRepo {
             if (e instanceof ChecksumMismatchException) {
                 // Central's releases do not change, so bytes that fail the check are the
                 // mirror's fault; Central's copy is what the check is for.
-                download.note(coord + " from " + name + ": the mirror's copy of " + relativePath
-                        + " failed verification, so it was downloaded from Maven Central instead");
+                download.note(coord + " from " + name + ": the mirror's " + relativePath
+                        + " failed verification; downloaded from Maven Central instead");
             }
             return download.run(coord, uri, relativePath, vouch, leg, expectedSha256, abort);
         }
@@ -907,7 +907,7 @@ public final class MavenRepo {
                 fresh = refresh.get();
             } catch (RuntimeException e) {
                 throw new CredentialNotRefreshedException(
-                        name, refused, "its credential helper could not supply another: " + e.getMessage(), failure);
+                        name, refused, "its credential helper failed: " + e.getMessage(), failure);
             }
             credential = fresh;
             download.credential(fresh);
@@ -923,7 +923,7 @@ public final class MavenRepo {
         String refused = refusal(failure);
         if (refused == null || failure instanceof CredentialNotRefreshedException) return failure;
         return new CredentialNotRefreshedException(
-                name, refused, "the value its credential helper printed when it ran again was refused too", failure);
+                name, refused, "the credential helper's new value was refused too", failure);
     }
 
     /**
@@ -1026,13 +1026,12 @@ public final class MavenRepo {
         // and the later requirePresent gate throws a misleading "run jk sync -F" loop.
         Path placed = repoStore
                 .locate(relativePath)
-                .orElseThrow(() -> new IOException(
-                        "failed to store " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " at "
-                                + relativePath + " (store write failed — check disk space and permissions)"));
+                .orElseThrow(() -> new IOException("failed to store " + coord.group() + ":" + coord.artifact() + ":"
+                        + coord.version() + " at " + relativePath + "; check disk space and permissions"));
         if (repoStore.verify(relativePath, sha256) != RepoArtifactStore.IndexState.VERIFIED) {
-            throw new IOException(placed + " holds other bytes than the " + sha256 + " " + coord.group() + ":"
-                    + coord.artifact() + ":" + coord.version() + " is pinned to, and jk did not put it there: "
-                    + "remove the file, or point JK_M2_LOCAL elsewhere");
+            throw new IOException(placed + " does not match the locked sha256 of " + coord.group() + ":"
+                    + coord.artifact() + ":" + coord.version() + " and jk did not write it; remove the file, or"
+                    + " point JK_M2_LOCAL elsewhere");
         }
         if (repoStore.m2Backed() && repoStore.fetchedByJk(relativePath)) writeMavenSidecars(placed);
         return placed;
@@ -1266,8 +1265,7 @@ public final class MavenRepo {
         public RepositoryUnreachableException(String repository, URI url, String fault, @Nullable Throwable cause) {
             this(
                     "repository " + repository + " at " + SafeUri.forMessage(url) + " is unreachable (" + fault
-                            + "); the resolve stops rather than lock without a configured repository — fix its url,"
-                            + " start it, or remove it from [repositories]",
+                            + "); fix its url, start it, or remove it from [repositories]",
                     cause);
         }
 
@@ -1282,10 +1280,8 @@ public final class MavenRepo {
         static RepositoryUnreachableException throughMirror(
                 String repository, URI url, Mirror mirror, String fault, @Nullable Throwable cause) {
             return new RepositoryUnreachableException(
-                    "repository " + repository + " is reached through " + mirror.label() + " at "
-                            + SafeUri.forMessage(mirror.url()) + ", which is unreachable (" + fault + "); a mirror is"
-                            + " never bypassed, so " + repository + " is not asked at " + SafeUri.forMessage(url)
-                            + " instead — fix or start the mirror, or remove it",
+                    "repository " + repository + ": its " + mirror.label() + " at " + SafeUri.forMessage(mirror.url())
+                            + " is unreachable (" + fault + "); fix or start the mirror, or remove it",
                     cause);
         }
     }

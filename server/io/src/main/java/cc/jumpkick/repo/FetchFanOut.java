@@ -59,8 +59,7 @@ final class FetchFanOut {
         MavenRepo answered = holder;
         RunNotices.warnOnce(
                 "repo-unreachable:" + unreachable.name(),
-                () -> "jk: warning: repository " + unreachable.name() + " is unreachable ("
-                        + RepoGroup.describe(cause) + "); " + answered.name() + " holds the POM of " + coord
-                        + " and answered for its files");
+                () -> "jk: warning: repository " + unreachable.name() + " is unreachable (" + RepoGroup.describe(cause)
+                        + "); fetched " + coord + " from " + answered.name());
     }
 }

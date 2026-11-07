@@ -668,7 +668,7 @@ class PomRuntimeClasspathTest {
         assertThatThrownBy(() -> resolve(store, workerJar))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unresolved version ${not.defined}")
-                .hasMessageNotContaining("run `jk install`");
+                .hasMessageNotContaining("jk install");
     }
 
     @Test

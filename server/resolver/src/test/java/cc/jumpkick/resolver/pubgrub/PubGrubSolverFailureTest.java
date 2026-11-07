@@ -30,7 +30,7 @@ class PubGrubSolverFailureTest {
         assertThat(unsat).isNotNull();
         assertThat(Diagnostics.render(unsat.rootCause(), Diagnostics.Palette.PLAIN))
                 .contains("widget")
-                .contains("no declared repository has it");
+                .contains("is in no declared repository; skipped");
     }
 
     @Test

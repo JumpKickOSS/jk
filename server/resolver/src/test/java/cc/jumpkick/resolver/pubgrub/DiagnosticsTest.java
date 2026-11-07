@@ -116,9 +116,10 @@ class DiagnosticsTest {
     void renders_budget_exceeded() {
         Incompatibility inco = new Incompatibility(
                 List.of(Term.positive("<root>", VersionSet.EMPTY)),
-                new Incompatibility.Cause.BudgetExceeded("exceeded max decisions (5)"));
+                new Incompatibility.Cause.BudgetExceeded(
+                        "decision limit 5 reached; raise it with JK_RESOLVE_MAX_DECISIONS"));
         String rendered = Diagnostics.render(inco);
-        assertThat(rendered).contains("budget exceeded").contains("max decisions");
+        assertThat(rendered).contains("budget exceeded").contains("decision limit 5");
     }
 
     @Test

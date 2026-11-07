@@ -758,13 +758,13 @@ final class MemberPartitions {
             Set<String> pinners = new LinkedHashSet<>();
             for (String pinner : ownPinned.values()) pinners.add(pinner.replaceFirst(" \\(.*\\)$", ""));
             int n = differing.size();
-            return path + " reads its own rows for " + n + (n == 1 ? " coordinate " : " coordinates ")
+            return path + " locks its own versions of " + n + (n == 1 ? " dependency " : " dependencies ")
                     + String.join(", ", pinners) + (pinners.size() == 1 ? " manages" : " manage");
         }
         StringBuilder out = new StringBuilder(path)
-                .append(" reads its own rows for ")
+                .append(" locks its own versions of ")
                 .append(differing.size())
-                .append(differing.size() == 1 ? " coordinate: " : " coordinates: ");
+                .append(differing.size() == 1 ? " dependency: " : " dependencies: ");
         int named = 0;
         for (Map.Entry<String, String> e : differing.entrySet()) {
             if (named == NOTE_COORDINATES) {
@@ -776,13 +776,13 @@ final class MemberPartitions {
             String workspace = mergedVersions.get(e.getKey());
             Set<String> lacking = pruned.get(e.getKey());
             if (workspace == null) {
-                out.append(" (only there)");
+                out.append(" (only here)");
             } else if (workspace.equals(e.getValue()) && lacking != null && !lacking.isEmpty()) {
-                out.append(" (the workspace's without ")
+                out.append(" (as the workspace, without ")
                         .append(String.join(", ", lacking))
                         .append(')');
             } else if (workspace.equals(e.getValue())) {
-                out.append(" (the workspace's, its edges at this member's versions)");
+                out.append(" (as the workspace, with this module's dependency versions)");
             } else {
                 out.append(" (workspace ").append(workspace).append(')');
             }

@@ -106,8 +106,8 @@ class ManagedDependenciesLockTest {
         assertThat(row(lock, LEAF).pinnedBy()).isEqualTo("jk.toml:leaf");
         assertThat(overrides).hasSize(1);
         assertThat(overrides.getFirst())
-                .contains("com.foo:leaf 1.0 is the project's [managed-dependencies] entry (jk.toml:leaf)")
-                .contains("org.example:the-bom:1.0 constrains to 2.0");
+                .isEqualTo("com.foo:leaf 1.0 from [managed-dependencies] (jk.toml:leaf) wins over 2.0 from"
+                        + " org.example:the-bom:1.0");
     }
 
     @Test

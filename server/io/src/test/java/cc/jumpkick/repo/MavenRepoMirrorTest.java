@@ -153,7 +153,7 @@ class MavenRepoMirrorTest {
         MavenRepo refused = RepoMirrors.apply(central, List.of(), settings, creds(settings, dir));
 
         assertThat(refused.mirror())
-                .hasValueSatisfying(m -> assertThat(m.refusal()).contains("plaintext http"));
+                .hasValueSatisfying(m -> assertThat(m.refusal()).contains("plain http"));
         assertThat(refused.passable())
                 .as("a mirrored repository is never passed over")
                 .isFalse();
@@ -162,7 +162,7 @@ class MavenRepoMirrorTest {
                 .hasMessageContaining("mirror `nexus` (" + dir.resolve("settings.xml") + ")")
                 .hasMessageContaining("switch it to https")
                 .hasMessageContaining("mirror-of = [\"*\"] and allow-insecure = true")
-                .hasMessageContaining("is not asked at " + SafeUri.forMessage(origin.base()));
+                .hasMessageContaining("fix or start the mirror, or remove it");
         assertThat(origin.requested()).isEmpty();
         assertThat(RepoMirrors.refusal(mirror("ok", "*", nexus.base()))).isNull();
         assertThat(RepoMirrors.refusal(mirror("ok", "*", URI.create("https://nexus.example/m2/"))))
@@ -237,8 +237,8 @@ class MavenRepoMirrorTest {
 
             assertThatThrownBy(() -> mirrored.fetchPom(WIDGET))
                     .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
-                    .hasMessageContaining("reached through mirror `corp` (/home/me/.jk/config.toml)")
-                    .hasMessageContaining("a mirror is never bypassed");
+                    .hasMessageContaining("its mirror `corp` (/home/me/.jk/config.toml)")
+                    .hasMessageContaining("fix or start the mirror");
         }
         assertThat(origin.requested()).isEmpty();
     }

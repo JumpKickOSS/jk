@@ -285,7 +285,7 @@ class PinFloorsLockTest {
                 .isEqualTo("2.0.1.MR");
         assertThat(overrides).hasSize(1);
         assertThat(overrides.getFirst())
-                .contains("jakarta.inject:jakarta.inject-api 2.0.1 is the main graph's version")
+                .contains("jakarta.inject:jakarta.inject-api 2.0.1: tests use the main version")
                 .contains("org.cryptomator:cryptofs 2.10.0");
     }
 

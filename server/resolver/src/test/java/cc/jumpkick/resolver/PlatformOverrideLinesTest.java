@@ -23,9 +23,9 @@ class PlatformOverrideLinesTest {
         for (String m : List.of("e", "b", "d", "a", "c")) lines.add(meeting("com.foo:" + m, "1.0"));
 
         assertThat(lines.render())
-                .containsExactly("org.example:bom-a:1.0 wins over org.example:bom-b:1.0 on 5 modules it manages higher:"
+                .containsExactly("org.example:bom-a:1.0 wins over org.example:bom-b:1.0 on 5 modules:"
                         + " com.foo:a 2.0 over 1.0, com.foo:b 2.0 over 1.0, com.foo:c 2.0 over 1.0 and 2 more"
-                        + " — the highest version wins");
+                        + "; the highest version wins");
     }
 
     @Test
@@ -34,7 +34,7 @@ class PlatformOverrideLinesTest {
         for (String m : List.of("a", "b", "c")) lines.add(meeting("com.foo:" + m, "1.0"));
 
         assertThat(lines.render().getFirst())
-                .contains("on 3 modules it manages higher: com.foo:a 2.0 over 1.0, com.foo:b 2.0 over 1.0,"
-                        + " com.foo:c 2.0 over 1.0 — ");
+                .contains(
+                        "on 3 modules: com.foo:a 2.0 over 1.0, com.foo:b 2.0 over 1.0," + " com.foo:c 2.0 over 1.0; ");
     }
 }

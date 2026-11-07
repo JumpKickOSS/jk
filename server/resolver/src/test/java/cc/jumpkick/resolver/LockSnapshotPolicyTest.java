@@ -62,8 +62,8 @@ class LockSnapshotPolicyTest {
         assertThatThrownBy(() -> new LockOrchestrator(repos)
                         .lock(project("org.questdb:questdb-client", "1.3.10-SNAPSHOT"), "test"))
                 .hasMessageContaining("No versions of org.questdb:questdb-client match 1.3.10-SNAPSHOT")
-                .hasMessageContaining("1.3.10-SNAPSHOT is a snapshot, and no repository org.questdb:questdb-client may"
-                        + " resolve from serves snapshots: central (releases only)");
+                .hasMessageContaining("1.3.10-SNAPSHOT is a snapshot and no repository for org.questdb:questdb-client"
+                        + " serves snapshots: central (releases only); add one to [repositories]");
     }
 
     @Test

@@ -103,11 +103,10 @@ public final class RepoMirrors {
      */
     public static @Nullable String refusal(MavenSettings.Mirror mirror) {
         String scheme = mirror.url().getScheme();
-        if (scheme == null) return "its URL names no scheme";
+        if (scheme == null) return "its URL has no scheme";
         if ("http".equalsIgnoreCase(scheme)
                 && !RepositorySpec.loopback(mirror.url().getHost())) {
-            return "it is plaintext http on a network path, and a settings.xml mirror has no table to say"
-                    + " allow-insecure in — switch it to https, or declare it in ~/.jk/config.toml as"
+            return "it uses plain http; switch it to https, or declare it in ~/.jk/config.toml as"
                     + " [repositories." + mirror.id() + "] with url, mirror-of = ["
                     + String.join(
                             ", ",

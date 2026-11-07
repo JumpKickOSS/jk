@@ -80,7 +80,7 @@ mirror never vouches for its own bytes; mirror bytes Central disowns are discard
 from Central with a checksum note. A file the lock pins is verified against its sha256 and reads
 no checksum at all, so a cold-cache build from a lockfile asks Central for none of its artifacts.
 While the window is open the mirror's own checksums stand in for Central's, and the results say
-how many files were verified that way (`N files from central verified against the mirror only`).
+how many files were verified that way (`N files from central verified by the mirror's checksums only`).
 
 The window is a transport fact, not a repository: the lock records `central` at Central's own URL
 and is byte-identical to one written directly. The results say what happened, once per lock,

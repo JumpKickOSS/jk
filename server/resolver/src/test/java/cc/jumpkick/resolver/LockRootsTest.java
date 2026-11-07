@@ -271,8 +271,7 @@ class LockRootsTest {
                 """);
         assertThatThrownBy(() -> LockRoots.partition(project, List.of("fast"), true))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("feature dependency 'core' is not a declared optional dependency"
-                        + " — declare it under [dependencies.*] with `optional = true`");
+                .hasMessage("feature dependency 'core' is not optional; add `optional = true` to it in [dependencies]");
     }
 
     /**

@@ -360,13 +360,8 @@ final class LockfileAssembler {
         if (coord.classifier() != null && !coord.classifier().isEmpty()) {
             display = display + " classifier=" + coord.classifier();
         }
-        return new IllegalStateException("could not fetch artifact "
-                + display
-                + " at "
-                + rel
-                + " (tried: "
-                + reposTried
-                + ") — the POM resolved but the artifact is missing; check the coordinate and repositories");
+        return new IllegalStateException("artifact " + display + " not found at " + rel + " (tried: " + reposTried
+                + "); its POM exists, so check the coordinate and repositories");
     }
 
     /** BFS through the resolved graph starting from {@code roots}. */
