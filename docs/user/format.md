@@ -187,8 +187,8 @@ rounded up, at most ten times — and a file that still blows it says so, so a s
 apart from a slow file:
 
 ```
-  error  src/main/java/example/Wide.java: timed out after 31.2s (limit 30000 ms, the 3000 ms
-         default stretched 10× for a load average of 290.4 over 24 processors); …
+  error  src/main/java/example/Wide.java: timed out after 31.2s (limit 30000 ms, 3000 ms
+         default ×10 for load 290.4 on 24 CPUs); …
 ```
 
 A limit set by hand (`jk.format.file-timeout-ms`, below) is taken as written, whatever the load.
@@ -201,17 +201,16 @@ the source explains the stall, the error says so:
 
 ```
   error  src/test/java/example/ProviderTest.java: timed out after 3.0s (limit 3000 ms);
-         deepest expression nesting here is 11 parentheses at line 214, 6 nested lambdas —
-         a line-break search grows steeply with nesting, so splitting that expression into
-         named locals or helper methods is usually the fix
+         11 nested parentheses at line 214, 6 nested lambdas; split that expression into
+         locals or methods
 ```
 
 For those files the timeout is paid **once**: jk remembers them by content, so later runs report
 them straight away instead of spending the limit again.
 
 ```
-  error  src/test/java/example/ProviderTest.java: timed out at a 3000 ms limit on an earlier
-         run and has not changed since, so it was not retried; deepest expression nesting …
+  error  src/test/java/example/ProviderTest.java: not retried: timed out at a 3000 ms limit on
+         an earlier run; 11 nested parentheses …
 ```
 
 Only files whose nesting accounts for the stall are remembered. A file of ordinary shape that
@@ -220,9 +219,8 @@ something that cannot be formatted, so it is reported and then **retried in full
 wrong memo would refuse a good file on every later run. Those say so, and name the knob:
 
 ```
-  error  build/generated/demo/Huge.java: timed out after 3.0s (limit 3000 ms); nothing about
-         this file's shape explains that, so it was not remembered — raise
-         jk.format.file-timeout-ms if the file is simply very large, or this host slow
+  error  build/generated/demo/Huge.java: timed out after 3.0s (limit 3000 ms); raise
+         jk.format.file-timeout-ms for a large file or slow host
 ```
 
 For scale: a 4.7 MB, 200,000-line flat Java source takes about 9.5 s to format. Machine-generated
@@ -236,8 +234,8 @@ parallelism — up to one replacement per thread the run started with. Past that
 started are reported as errors straight away rather than waited on:
 
 ```
-  error  src/main/java/example/Later.java: not formatted: every formatter thread the run could
-         spare was left wedged by a file that timed out
+  error  src/main/java/example/Later.java: not formatted: every formatter thread is stuck on a
+         file that timed out
 ```
 
 Deal with the timed-out files (or raise the limit) and run again; nothing about those files is

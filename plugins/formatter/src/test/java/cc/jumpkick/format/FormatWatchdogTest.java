@@ -155,8 +155,7 @@ class FormatWatchdogTest {
             dog.tick();
 
             assertThat(dog.verdict(0))
-                    .isEqualTo("timed out after 6.0s (limit 6000 ms, the 3000 ms default stretched 2× for a load"
-                            + " average of 48.0 over 24 processors)");
+                    .isEqualTo("timed out after 6.0s (limit 6000 ms, 3000 ms default ×2 for load 48.0 on 24 CPUs)");
         }
     }
 
