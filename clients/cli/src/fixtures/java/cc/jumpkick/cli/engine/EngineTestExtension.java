@@ -16,7 +16,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  *
  * <p>Keeps one warm engine across methods and classes. TempDir cleanup uses
  * {@link JkTempDirDeletionStrategy}: stop engine only when a delete fails. A test that needs
- * a fresh engine stops it itself ({@link IsolatedStore} classes already do).
+ * a fresh engine stops it itself ({@code IsolatedStore} classes already do).
  */
 public final class EngineTestExtension implements BeforeAllCallback {
 
