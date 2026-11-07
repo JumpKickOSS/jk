@@ -62,7 +62,7 @@ public final class AgentsCommand implements CliCommand {
             CommandWedge.printOk(
                     "Agents",
                     remove
-                            ? changed ? "Removed jk's agent wiring from " + name : "Nothing of jk's in " + name
+                            ? changed ? "Removed jk from " + name : name + " has no jk wiring"
                             : changed ? "Wired " + name + " for coding agents" : name + " is already wired");
             return Exit.SUCCESS;
         } catch (IOException e) {

@@ -151,6 +151,16 @@ class AgentSetupTest {
     }
 
     @Test
+    void a_second_remove_finds_nothing_and_says_nothing(@TempDir Path dir) throws Exception {
+        AgentSetup.install(dir, AgentSetup.Mode.ALL, Set.of());
+        AgentSetup.Report first = AgentSetup.remove(dir);
+        assertThat(first.changes()).extracting(AgentSetup.Change::action).contains("Removed jk from", "Deleted");
+        AgentSetup.Report again = AgentSetup.remove(dir);
+        assertThat(again.changes()).isEmpty();
+        assertThat(again.notes()).isEmpty();
+    }
+
+    @Test
     void an_installed_agy_gets_its_measured_rule_and_remove_takes_it(@TempDir Path dir) throws Exception {
         AgentSetup.install(dir, AgentSetup.Mode.DETECT, Set.of(AgentSetup.Host.AGY));
         Path rule = dir.resolve(".agents/rules/jk.md");

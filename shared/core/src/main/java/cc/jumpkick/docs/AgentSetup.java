@@ -118,7 +118,7 @@ public final class AgentSetup {
 
     private AgentSetup() {}
 
-    /** One file jk changed; {@code action} is the verb read before its path ({@code Wrote}, {@code Removed}). */
+    /** One file jk changed; {@code action} is the verb read before its path ({@code Wrote}, {@code Removed jk from}, {@code Deleted}). */
     public record Change(String action, Path file) {}
 
     /**
@@ -214,7 +214,7 @@ public final class AgentSetup {
      */
     public static Report remove(Path dir) throws IOException {
         Draft lines = new Draft(dir);
-        String done = "Removed jk's entries from";
+        String done = "Removed jk from";
         if (AgentsGuide.remove(dir) == AgentsGuide.Change.UPDATED) {
             lines.changes().add(new Change(done, dir.resolve(AgentsGuide.FILE)));
         }
@@ -232,9 +232,9 @@ public final class AgentSetup {
         Path opencode = opencodeFile(dir);
         step(opencode, lines, () -> mergeJson(opencode, AgentSetup::dropOpencode), done);
         Path cursorRules = dir.resolve(CURSOR_RULES_FILE);
-        step(cursorRules, lines, () -> dropOwnedFile(cursorRules, CURSOR_RULES), "Removed");
+        step(cursorRules, lines, () -> dropOwnedFile(cursorRules, CURSOR_RULES), "Deleted");
         Path agy = dir.resolve(AGY_RULES_FILE);
-        step(agy, lines, () -> dropOwnedFile(agy, AGY_RULES), "Removed");
+        step(agy, lines, () -> dropOwnedFile(agy, AGY_RULES), "Deleted");
         return lines.report();
     }
 
@@ -429,7 +429,7 @@ public final class AgentSetup {
             try {
                 parsed = MiniJson.parse(before);
             } catch (IllegalArgumentException bad) {
-                throw new IOException("not strict JSON (" + bad.getMessage() + "); add jk's entries by hand");
+                throw new IOException("not strict JSON (" + bad.getMessage() + "); edit it by hand");
             }
             if (!(parsed instanceof Map<?, ?> map)) throw new IOException("not a JSON object");
             map.forEach((k, v) -> root.put(String.valueOf(k), v));
@@ -437,10 +437,7 @@ public final class AgentSetup {
         String was = MiniJson.write(root);
         edit.apply(root);
         if (Files.exists(file) && MiniJson.write(root).equals(was)) return false;
-        if (root.isEmpty()) {
-            Files.delete(file);
-            return true;
-        }
+        if (root.isEmpty()) return Files.deleteIfExists(file);
         Path parent = file.getParent();
         if (parent != null) Files.createDirectories(parent);
         Files.writeString(file, MiniJson.writePretty(root), StandardCharsets.UTF_8);
