@@ -17,7 +17,7 @@ public final class JdkUninstallPolicy {
 
     private static final Map<String, String> REFUSED = Map.of(
             "system",
-            "the OS package manager owns it",
+            "the OS package manager owns it; remove it with apt, dnf or brew",
             "intellij",
             "IntelliJ owns it; remove it under Project Structure > SDKs",
             "maven-toolchains",
@@ -77,8 +77,8 @@ public final class JdkUninstallPolicy {
 
     /** Why jk leaves {@code hit}'s directory in place: it is outside {@code managedRoot}. */
     public static String outsideRoot(JdkHit hit, Path managedRoot) {
-        return "jk jdk uninstall: not removing " + hit.home() + "; it is outside " + managedRoot
-                + ", remove it with the tool that installed it";
+        return "jk jdk uninstall: not removing the `" + hit.source() + "` JDK at " + hit.home() + "; it is outside "
+                + managedRoot + ", remove it with the tool that installed it";
     }
 
     private static Path real(Path path) {
