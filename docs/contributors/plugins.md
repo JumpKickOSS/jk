@@ -458,7 +458,8 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   A step's and a packager's diagnostics, notices included, ride its action record, and a build
   that restores it from the cache says them again in the same words, so a notice stays on every
   verdict while its cause is unchanged. A plugin `jk lock` asks for a closure is heard the same way:
-  a notice is a run notice, anything else the lock's warning. Quarkus's lock-closure fork checks
+  a notice is a run notice naming `lock <plugin>`, so the same notice from two of a plugin's
+  closures is said once, and anything else is the lock's warning. Quarkus's lock-closure fork checks
   the model it resolves against the lock being written, as the augment does, and hands back the
   same notice through the same file.
 - The worker wire keeps its legacy spellings (`run-step`, `step:` input refs, `step-output`) —

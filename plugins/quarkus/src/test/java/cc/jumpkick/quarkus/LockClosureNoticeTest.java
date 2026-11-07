@@ -4,6 +4,9 @@ package cc.jumpkick.quarkus;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.plugin.testing.FakeBuildIo;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -50,9 +53,21 @@ class LockClosureNoticeTest {
                 "com.example", "widget", "1.0", repo.resolve("com/example/widget/1.0/widget-1.0.jar"), false)));
         Path notices = dir.resolve("notices.txt");
 
-        Map<String, Path> files = resolve(dir, repo, lock, notices);
+        Map<String, Path> files;
+        PrintStream err = System.err;
+        ByteArrayOutputStream said = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(said, true, StandardCharsets.UTF_8));
+        try {
+            files = resolve(dir, repo, lock, notices);
+        } finally {
+            System.setErr(err);
+        }
 
         assertThat(files).containsKey("com.example:widget-extra:1.0");
+        // The lock fork labels its own lines, so a failing lock's kept output names the right fork.
+        assertThat(said.toString(StandardCharsets.UTF_8))
+                .contains(QuarkusLockClosureMain.LOG_PREFIX + ": NOT shipped — outside jk-lock.toml")
+                .doesNotContain(QuarkusAugmentMain.LOG_PREFIX + ":");
         FakeBuildIo step = new FakeBuildIo(dir.resolve("step"), "quarkus");
         ForkNotices.relay(notices, step);
         assertThat(step.diagnostics()).singleElement().satisfies(notice -> assertThat(notice)

@@ -90,7 +90,8 @@ public final class QuarkusTestModelMain {
                 classesDir,
                 quarkusVersion,
                 null,
-                ForkNotices.fromProperty());
+                ForkNotices.fromProperty(),
+                LOG_PREFIX);
         QuarkusAugmentMain.injectPlatform(resolved, quarkusVersion, platformProps, offline);
         ApplicationModel model = LockedAppModel.withApplicationModule(
                 resolved, workspaceModule(moduleDir, classesDir, group, artifact, version));

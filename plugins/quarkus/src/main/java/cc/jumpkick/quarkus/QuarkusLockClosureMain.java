@@ -118,7 +118,8 @@ public final class QuarkusLockClosureMain {
                 classesDir,
                 quarkusVersion,
                 record,
-                notices);
+                notices,
+                LOG_PREFIX);
         return record.files();
     }
 
