@@ -84,8 +84,8 @@ class PomKotlinMixedImportTest {
         assertThat(reparsed.project().java()).isEqualTo(17);
         assertThat(reparsed.project().isKotlin()).isTrue();
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("`kotlin-maven-plugin` beside Java sources under `src/main/java`"))
-                .noneMatch(m -> m.contains("was not imported"));
+                .anyMatch(m -> m.startsWith("kotlin-maven-plugin beside Java sources in src/main/java: mixed module"))
+                .noneMatch(m -> m.contains("not imported"));
     }
 
     @Test
@@ -120,7 +120,7 @@ class PomKotlinMixedImportTest {
         assertThat(JkBuildRenderer.render(result.jkBuild()))
                 .contains("kotlin   = \"" + KotlinResolver.FLOOR_VERSION + "\"\n");
         assertThat(TestImporters.messages(result))
-                .anySatisfy(m -> assertThat(m).contains("`2.2.21`").contains("below jk's floor"));
+                .anySatisfy(m -> assertThat(m).contains("Kotlin 2.2.21 is below jk's floor"));
     }
 
     /** An archive's POM has no tree behind it: a Kotlin plugin that never binds {@code compile} leaves main to javac. */

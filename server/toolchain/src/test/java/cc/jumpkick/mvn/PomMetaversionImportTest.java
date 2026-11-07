@@ -50,12 +50,9 @@ class PomMetaversionImportTest {
                         tuple("commons-io:commons-io", VersionSelector.parse("latest")));
         assertThat(TestImporters.messages(result))
                 .anySatisfy(m -> assertThat(m)
-                        .contains("`<version>LATEST</version>` on com.google.guava:guava floats under Maven")
-                        .contains("written as the `latest` selector")
-                        .contains("pins the newest version"))
+                        .isEqualTo("com.google.guava:guava: LATEST written as latest; jk lock pins the newest version"))
                 .anySatisfy(m -> assertThat(m)
-                        .contains("`<version>RELEASE</version>` on commons-io:commons-io")
-                        .contains("pins the newest release"))
+                        .isEqualTo("commons-io:commons-io: RELEASE written as latest; jk lock pins the newest release"))
                 .noneMatch(m -> m.contains("unresolved"));
 
         String xml = PomExporter.export(build).xml();

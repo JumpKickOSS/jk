@@ -84,7 +84,7 @@ class GradleImporterCatalogTest {
                         .map(i -> i.message())
                         .toList()
                         .toString())
-                .contains("not found");
+                .contains("libs.does.not.exist: not in the version catalog");
         assertThat(result.report().hasErrors()).isTrue();
         // guava still imported
         assertThat(result.jkBuild().dependencies().of(Scope.MAIN).stream()

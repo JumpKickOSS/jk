@@ -41,7 +41,8 @@ public final class ProjectImport {
 
     /**
      * What an import did: its exit code, each issue the report lists, the error behind a non-zero
-     * exit, the files it wrote for the user, and the report it wrote ({@code null} when none).
+     * exit, the files it wrote for the user (or a dry run would write), and the report it wrote
+     * ({@code null} when none).
      */
     public record Outcome(
             int exit,
@@ -128,7 +129,8 @@ public final class ProjectImport {
             }
             List<Path> wrote = new ArrayList<>();
             if (dryRun) {
-                importReport = dryRun(importReport, manifests.keySet(), frontend, effectiveBaseDir);
+                wrote.addAll(manifests.keySet());
+                wrote.addAll(frontend.rewrites().keySet());
             } else {
                 for (FrontendFiles.Move move : frontend.moves()) {
                     Path dir = move.to().getParent();
@@ -195,27 +197,6 @@ public final class ProjectImport {
         }
     }
 
-    /** {@code report} with what a dry run would have written, moved and rewritten, and that it did none of it. */
-    private static ImportReport dryRun(
-            ImportReport report, Collection<Path> manifests, FrontendFiles frontend, Path baseDir) {
-        ImportReport.Builder out = ImportReport.builder();
-        for (ImportReport.Issue issue : report.issues()) {
-            if (issue.severity() == ImportReport.Severity.ERROR) out.error(issue.message());
-            else out.warning(issue.message());
-        }
-        for (Path m : manifests) out.warning("dry run: would write `" + relative(baseDir, m) + "`");
-        for (Path r : frontend.rewrites().keySet())
-            out.warning("dry run: would rewrite `" + relative(baseDir, r) + "`");
-        out.warning("dry run: nothing was written or moved");
-        return out.build();
-    }
-
-    private static String relative(Path baseDir, Path p) {
-        Path a = p.toAbsolutePath().normalize();
-        Path b = baseDir.toAbsolutePath().normalize();
-        return (a.startsWith(b) ? b.relativize(a).toString() : a.toString()).replace('\\', '/');
-    }
-
     /**
      * Raises the written project's exact pins that a highest-wins solve needs higher, returning one
      * line per raise. The engine supplies it; the import alone cannot solve.
@@ -251,8 +232,8 @@ public final class ProjectImport {
             if (UserConfigEditor.addRepository(configFile, table)) {
                 written = true;
             } else if (!UserConfigEditor.declaresRepositoryAt(configFile, table)) {
-                out.warning(configFile + " already declares the repository `" + table.name() + "`; it is left as it"
-                        + " is, so check that it carries the credential for " + table.url() + ".");
+                out.warning(table.name() + ": already in " + configFile + "; left as is. Check its credential for "
+                        + table.url());
             }
         }
         if (written) wrote.add(configFile);
@@ -283,9 +264,9 @@ public final class ProjectImport {
         } catch (Exception e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             lines = List.of();
-            failed = "the imported pins were not checked against the versions their dependencies need ("
+            failed = "Pins not checked against their dependencies ("
                     + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())
-                    + "); `jk lock` names any pin a dependency needs higher";
+                    + "); jk lock names any pin set too low";
         }
         if (lines.isEmpty() && failed == null) return report;
         ImportReport.Builder out = ImportReport.builder();

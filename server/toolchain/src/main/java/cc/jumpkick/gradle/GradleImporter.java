@@ -258,11 +258,7 @@ public final class GradleImporter {
                 }
                 default -> {
                     if (!importRules.containsKey(pluginId)) {
-                        report.warning(
-                                "Gradle plugin `"
-                                        + pluginId
-                                        + "` not yet mapped."
-                                        + " Plugin-aware mappings (Spring Boot, Quarkus, Spotless, ...) arrive in a later slice.");
+                        report.warning("Gradle plugin " + pluginId + " not mapped");
                     }
                 }
             }
@@ -339,9 +335,7 @@ public final class GradleImporter {
         GradleProperties.Interpolated resolved = properties.resolvePluginVersions(body);
         if (resolved.complete()) return resolved.text();
         for (String name : resolved.unresolved()) {
-            report.warning("a plugin version in the plugins block reads the Gradle property `" + name
-                    + "`, which neither gradle.properties nor the build script defines; the plugin is imported"
-                    + " as applied without a version.");
+            report.warning("plugin version reads undefined Gradle property " + name + "; imported without a version");
         }
         return UNRESOLVED_VERSION_CLAUSE.matcher(resolved.text()).replaceAll("");
     }
@@ -375,12 +369,8 @@ public final class GradleImporter {
                 String expr = m.group(5);
                 value = resolveGradleExpr(expr, group, artifact, version);
                 if (value == null) {
-                    report.warning("manifest attribute `"
-                            + key
-                            + "` uses the Gradle expression `"
-                            + expr
-                            + "`, which jk import can't resolve; the attribute was dropped."
-                            + " Add it to the [manifest] table in jk.toml if needed.");
+                    report.warning(
+                            "manifest attribute " + key + " = " + expr + " dropped; add it to [manifest] if needed");
                     continue;
                 }
             }
@@ -424,8 +414,7 @@ public final class GradleImporter {
             String pinned =
                     refreshVersions.pluginVersion("org.jetbrains.kotlin.jvm").version();
             if (pinned != null) return VersionSelector.parse(pinned);
-            report.warning("Kotlin plugin recognised without an explicit version; project.kotlin is"
-                    + " `latest` — `jk lock` picks the current stable, then `jk update` moves it.");
+            report.warning("Kotlin plugin has no version; wrote kotlin = latest, pinned by jk lock");
             return VersionSelector.parse("latest");
         }
         return null;
@@ -488,11 +477,11 @@ public final class GradleImporter {
                 String name = "repo" + (deduped.size() + 1);
                 deduped.put(name, new RepositorySpec(name, RepositorySpec.normalizedUrl(new URI(url.trim()))));
             } catch (URISyntaxException e) {
-                report.warning("repository URL `" + url + "` is not a valid URI; skipped.");
+                report.warning("repository URL " + url + " is not a valid URI; skipped");
             }
         }
         if (body.contains("mavenLocal()")) {
-            report.warning("`mavenLocal()` recognised but not mapped — jk reads ~/.m2 by default.");
+            report.warning("mavenLocal() not mapped; jk reads ~/.m2 already");
         }
         return new ArrayList<>(deduped.values());
     }
@@ -552,10 +541,7 @@ public final class GradleImporter {
     private static void warnUnsupportedSections(String text, ImportReport.Builder report) {
         for (String kw : TIER3_KEYWORDS) {
             if (text.contains(kw)) {
-                report.error("script uses `"
-                        + kw.trim()
-                        + "` — programmatic Gradle blocks cannot be imported automatically."
-                        + " Convert the intent to a jk profile/feature/task by hand.");
+                report.error("script uses " + kw.trim() + "; programmatic Gradle not imported. Port it by hand");
             }
         }
     }

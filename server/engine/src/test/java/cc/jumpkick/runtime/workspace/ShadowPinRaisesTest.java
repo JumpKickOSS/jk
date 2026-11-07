@@ -94,8 +94,8 @@ class ShadowPinRaisesTest {
                 .contains("jakarta.inject:jakarta.inject-api:2.0.1.MR")
                 .doesNotContain("jakarta.inject:jakarta.inject-api:2.0.1\"");
         assertThat(ShadowManifests.drainTier3(project)).anySatisfy(line -> assertThat(line)
-                .startsWith("`jakarta.inject:jakarta.inject-api` 2.0.1 → 2.0.1.MR")
-                .contains("highest wins"));
+                .startsWith("jakarta.inject:jakarta.inject-api raised 2.0.1 → 2.0.1.MR")
+                .contains("needed by"));
         assertThat(ShadowManifests.drainTier3(project))
                 .as("said once per POM change")
                 .isEmpty();

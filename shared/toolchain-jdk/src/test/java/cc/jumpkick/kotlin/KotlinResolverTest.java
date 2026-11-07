@@ -40,8 +40,6 @@ class KotlinResolverTest {
     @Test
     void the_floor_note_names_the_declared_version_the_floor_and_the_key_to_write() {
         assertThat(KotlinResolver.floorNote("2.2.21"))
-                .startsWith("kotlin 2.2.21 is below jk's floor 2.4.10")
-                .contains("compiles with 2.4.10")
-                .contains("kotlin = \"2.4.10\"");
+                .isEqualTo("kotlin 2.2.21 is below jk's floor; compiled with 2.4.10. Write kotlin = \"2.4.10\"");
     }
 }

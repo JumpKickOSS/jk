@@ -361,22 +361,17 @@ public final class PomImporter {
         PluginFacts.CompilerArgs args = PluginFacts.compilerArgs(model);
         if (args.split()) {
             build = build.withJavac(new JavacConfig(Map.of(), args.main(), new JavacConfig(Map.of(), args.test())));
-            report.warning("`maven-compiler-plugin` execution " + String.join(", ", args.scoped())
-                    + " carries `<compilerArgs>` for one compile step, so `[javac] args` is what compile-main"
-                    + " runs and `[javac.test] args` what compile-test runs, as under Maven.");
+            report.warning("<compilerArgs> split into [javac] args and [javac.test] args");
         } else if (!args.main().isEmpty()) {
             build = build.withJavac(new JavacConfig(Map.of(), args.main()));
         }
         if (!args.granted().isEmpty()) {
-            report.warning("`<compilerArgs>` carries " + args.granted().size() + " `-J` line"
-                    + (args.granted().size() == 1 ? "" : "s") + " opening `jdk.compiler` packages jk grants every"
-                    + " compiler worker (" + String.join(", ", packagesOf(args.granted()))
-                    + "); they add nothing to a jk build and are not written.");
+            report.warning("<compilerArgs>: dropped "
+                    + packagesOf(args.granted()).size() + " -J jdk.compiler opens jk already grants");
         }
         for (String execution : PluginFacts.mainScopedProcessorPaths(model)) {
-            report.warning("`<annotationProcessorPaths>` on execution " + execution
-                    + " — jk's [processor-dependencies] serves compile-test as well as compile-main; the paths"
-                    + " are written there, so both compiles run them.");
+            report.warning("<annotationProcessorPaths> on execution " + execution
+                    + ": written to [processor-dependencies], which test compiles use too");
         }
         if (!sourceTree.extraSrc().isEmpty()) build = build.withExtraSrc(sourceTree.extraSrc());
         if (!sourceTree.testExtraSrc().isEmpty()) build = build.withTestExtraSrc(sourceTree.testExtraSrc());
@@ -403,11 +398,9 @@ public final class PomImporter {
     private static void reportCompilerGlobs(Model model, String element, boolean test, ImportReport.Builder report) {
         List<String> globs = PluginFacts.compilerSourceGlobs(model, element, test);
         if (globs.isEmpty()) return;
-        report.warning("`maven-compiler-plugin` `<" + element + ">` " + String.join(", ", globs) + " — jk compiles"
-                + " every " + (test ? "test" : "main") + " source under its roots"
-                + (test
-                        ? "; leave sources out with `[test] exclude-src`."
-                        : "; move the sources the build leaves out."));
+        report.warning("maven-compiler-plugin <" + element + "> " + String.join(", ", globs) + ": skipped; jk"
+                + " compiles every " + (test ? "test" : "main") + " source. "
+                + (test ? "Use [test] exclude-src" : "Move excluded sources out"));
     }
 
     /** {@code com.sun.tools.javac.api} out of {@code -J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED}. */
@@ -434,12 +427,10 @@ public final class PomImporter {
         if (em.failure() == null) return;
         Parent parent = em.raw().getParent();
         String subject = parent == null
-                ? "the effective model could not be built"
-                : "`<parent>` " + parent.getGroupId() + ":" + parent.getArtifactId() + ":" + parent.getVersion()
-                        + " could not be resolved";
-        report.error(subject
-                + " (" + em.failure() + "); nothing was inherited, and a dependency whose version the parent"
-                + " managed is written as `=unresolved`.");
+                ? "effective model not built"
+                : "parent " + parent.getGroupId() + ":" + parent.getArtifactId() + ":" + parent.getVersion()
+                        + " not resolved";
+        report.error(subject + " (" + em.failure() + "); nothing inherited, managed versions written =unresolved");
     }
 
     /**
@@ -566,8 +557,7 @@ public final class PomImporter {
         moduleRows.flush(report);
         for (String bom : bomByGa.values()) {
             if (importedBoms.contains(bom)) continue;
-            report.warning("`" + bom + "` is a BOM (packaging `pom`, a `<dependencyManagement>` table and nothing"
-                    + " else) that no module of the reactor imports; it is not a workspace module.");
+            report.warning(bom + " is a BOM no module imports; not a workspace module");
         }
         FrontendImport.Relocated placed = frontends.place(
                 rootModel.model(), Objects.requireNonNull(rootFile.getParent()), rootJkBuild, rewritten, report);
@@ -612,10 +602,8 @@ public final class PomImporter {
             if (!profile.getModules().isEmpty() && !root.isActive(profile)) inactive.add(profile.getId());
         }
         if (inactive.isEmpty()) return;
-        report.error("`<modules>` are declared only in profiles that are not active on this machine ("
-                + String.join(", ", inactive) + "); no module was imported, so the workspace builds nothing."
-                + " Activate one as Maven's `-P` does — `jk import pom.xml -P " + inactive.getFirst()
-                + "` — or list the modules at the top level.");
+        report.error("<modules> only in inactive profiles (" + String.join(", ", inactive)
+                + "); no module imported. Re-run jk import pom.xml -P " + inactive.getFirst());
     }
 
     /** A {@code -P} id no {@code <profile>} of the root POM declares is a row; a member's own profile still activates there. */
@@ -623,8 +611,7 @@ public final class PomImporter {
         for (String id : activeProfiles) {
             boolean declared = rootRaw.getProfiles().stream().anyMatch(p -> id.equals(p.getId()));
             if (!declared) {
-                report.warning("`-P " + id + "` names a profile the root POM does not declare; a member declaring"
-                        + " it activates it there, and the root's module list is as its own profiles leave it.");
+                report.warning("-P " + id + ": the root POM has no such profile; only members declaring it use it");
             }
         }
     }
@@ -680,9 +667,9 @@ public final class PomImporter {
         String filled = CiFriendlyVersions.interpolate(version, model.getProperties()::getProperty);
         List<String> missing = CiFriendlyVersions.unresolved(filled);
         if (missing.isEmpty()) return filled;
-        report.warning("`<version>" + version + "</version>` references " + String.join(", ", missing)
-                + ", which no POM in the chain defines (Maven takes it from `-D" + missing.getFirst()
-                + "=…` on the command line); written as `version = \"" + CiFriendlyVersions.FALLBACK + "\"`.");
+        report.warning("<version>" + version + "</version>: " + String.join(", ", missing)
+                + " is undefined (Maven reads -D" + missing.getFirst() + "); written as version = \""
+                + CiFriendlyVersions.FALLBACK + "\"");
         return CiFriendlyVersions.FALLBACK;
     }
 
@@ -691,12 +678,8 @@ public final class PomImporter {
         if (declared.isEmpty()) return 25;
         int release = declared.get().release();
         if (release >= PluginFacts.JAVA_FLOOR) return release;
-        report.warning(
-                declared.get().origin() + " declared " + release + "; jk's floor is " + PluginFacts.JAVA_FLOOR
-                        + "; bytecode level raised — written as `java = " + PluginFacts.JAVA_FLOOR
-                        + "`. A module whose sources or dependencies need an API a later JDK removed keeps `java = "
-                        + release
-                        + "` instead: the toolchain JDK cross-compiles for it, and a compile that misses such an API names it.");
+        report.warning(declared.get().origin() + " " + release + " raised to java = " + PluginFacts.JAVA_FLOOR
+                + " (jk's floor). Set java = " + release + " back if it needs a removed API");
         return PluginFacts.JAVA_FLOOR;
     }
 
@@ -705,12 +688,12 @@ public final class PomImporter {
         if (pin.isEmpty()) return null;
         String spec = pin.get();
         if (Project.majorOf(spec) < PluginFacts.JAVA_FLOOR) {
-            report.warning("toolchain pin `" + spec + "` is below jk's floor of " + PluginFacts.JAVA_FLOOR
-                    + "; no `jdk` written — the host JDK compiles for `java = " + PluginFacts.JAVA_FLOOR + "`.");
+            report.warning(
+                    "toolchain JDK " + spec + " is below jk's floor " + PluginFacts.JAVA_FLOOR + "; no jdk written");
             return null;
         }
-        report.warning("`<toolchains>` pins JDK " + spec + "; written as `jdk = \"" + spec
-                + "\"`, which provisions that runtime. Drop the key if the level alone is what you meant.");
+        report.warning("<toolchains> JDK " + spec + " written as jdk = \"" + spec
+                + "\", which installs it; drop it if java = is enough");
         return spec;
     }
 
@@ -724,8 +707,7 @@ public final class PomImporter {
         if (kotlin.isEmpty()) return null;
         String version = kotlin.get().version();
         if (version == null) {
-            report.warning("kotlin-maven-plugin recognised without a resolvable version; project.kotlin"
-                    + " is `latest` — `jk lock` picks the current stable, then `jk update` moves it.");
+            report.warning("kotlin-maven-plugin: no version found; kotlin = latest, pinned by jk lock");
             return VersionSelector.parse("latest");
         }
         return ImportedKotlin.floored(VersionSelector.parse(version), report);
@@ -737,10 +719,8 @@ public final class PomImporter {
      */
     private static boolean javaMainBesideKotlin(Model model, VersionSelector kotlin, ImportReport.Builder report) {
         if (!PluginFacts.javaMainSources(model)) return false;
-        report.warning("`kotlin-maven-plugin` beside Java sources under `" + PluginFacts.mainSourceDirectory(model)
-                + "`: the module is mixed — `java` is javac's level for those and `kotlin = \"" + kotlin.raw()
-                + "\"` kotlinc's for the Kotlin sources of main and test; kotlinc runs first and javac compiles"
-                + " against its output.");
+        report.warning("kotlin-maven-plugin beside Java sources in " + PluginFacts.mainSourceDirectory(model)
+                + ": mixed module; java sets javac, kotlin = \"" + kotlin.raw() + "\" sets kotlinc");
         return true;
     }
 
@@ -799,9 +779,9 @@ public final class PomImporter {
         }
         mapManagement(mgmt, byScope, report, hoisted);
         managedBy.forEach((source, modules) ->
-                report.warning("versions for " + String.join(", ", modules) + " managed by " + source + "."));
+                report.warning("versions for " + String.join(", ", modules) + " managed by " + source));
         inheritedFrom.forEach((source, modules) ->
-                report.warning("dependencies " + String.join(", ", modules) + " inherited from " + source + "."));
+                report.warning("dependencies " + String.join(", ", modules) + " inherited from " + source));
         KnownProcessors.write(plainProcessors, byScope, report);
         uniquifyHandles(byScope, report);
         return byScope;
@@ -830,9 +810,9 @@ public final class PomImporter {
         }
         mapProcessorPaths(testOnly, Scope.TEST_PROCESSOR, byScope, report);
         if (!testOnly.isEmpty()) {
-            report.warning("`<annotationProcessorPaths>` on a `testCompile` execution: "
+            report.warning("<annotationProcessorPaths> on testCompile: "
                     + testOnly.stream().map(Pom.Dep::module).collect(Collectors.joining(", "))
-                    + " written to [test-processor-dependencies], so compile-test alone runs them.");
+                    + " written to [test-processor-dependencies]");
         }
     }
 
@@ -840,8 +820,7 @@ public final class PomImporter {
             List<Pom.Dep> paths, Scope scope, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
         for (Pom.Dep path : paths) {
             if (PluginFacts.usable(path.version()) == null) {
-                report.warning("`<annotationProcessorPaths>` entry " + path.module()
-                        + " has no version in the POM or its dependencyManagement; jk wrote `=unresolved`.");
+                report.warning("<annotationProcessorPaths> " + path.module() + ": no version; written =unresolved");
             }
             byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(DependencyMapping.toDependency(path));
         }
@@ -858,11 +837,9 @@ public final class PomImporter {
         List<String> properties = CiFriendlyVersions.unresolved(version);
         String named = properties.isEmpty()
                 ? "no version"
-                : "version `" + version + "`, and " + String.join(", ", properties)
-                        + (properties.size() == 1 ? " has" : " have") + " no value in the effective model";
-        report.error("`<scope>import</scope>` BOM " + bom.module() + " has " + named
-                + "; no `[platform-dependencies]` row is written for it. Make the parent chain resolvable"
-                + " or pin the version in the POM and re-import.");
+                : "version " + version + " (" + String.join(", ", properties) + " undefined)";
+        report.error("BOM import " + bom.module() + " has " + named
+                + "; no [platform-dependencies] row. Pin the version in the POM and re-import");
     }
 
     /**
@@ -891,11 +868,7 @@ public final class PomImporter {
             String module = parent.groupId() + ":" + parent.artifactId();
             byScope.computeIfAbsent(Scope.PLATFORM, s -> new ArrayList<>())
                     .add(Dependency.of(parent.artifactId(), module, VersionSelector.parse(parent.version())));
-            report.warning("`<dependencyManagement>` inherited from "
-                    + parent.label()
-                    + " is carried as `[platform]` "
-                    + parent.gav()
-                    + ", so its managed versions govern transitive dependencies as well.");
+            report.warning("<dependencyManagement> from " + parent.label() + " written as [platform] " + parent.gav());
         }
         ManagedRows rows = new ManagedRows();
         Set<String> seen = new HashSet<>();
@@ -946,15 +919,8 @@ public final class PomImporter {
                 do {
                     candidate = d.library() + "-" + n++;
                 } while (!seen.add(candidate));
-                report.warning("dependency handle `"
-                        + d.library()
-                        + "` collides in ["
-                        + e.getKey().tomlSection()
-                        + "]; "
-                        + d.module()
-                        + " was written as `"
-                        + candidate
-                        + "`.");
+                report.warning("handle " + d.library() + " collides in ["
+                        + e.getKey().tomlSection() + "]; " + d.module() + " written as " + candidate);
                 deps.set(i, d.withLibrary(candidate));
             }
         }
@@ -974,9 +940,8 @@ public final class PomImporter {
                                 return Optional.of(builder.build(Coordinate.of(groupId, artifactId, version))
                                         .managedDependencies());
                             } catch (IOException | RuntimeException e) {
-                                report.warning("BOM `" + gav + "`, imported by a profile's `<dependencyManagement>`,"
-                                        + " could not be read (" + e.getMessage() + "); the profile's dependencies"
-                                        + " it versions are written `=unresolved`.");
+                                report.warning("profile BOM " + gav + " unreadable (" + e.getMessage()
+                                        + "); its versions written =unresolved");
                                 return Optional.empty();
                             } catch (InterruptedException e) {
                                 Thread.currentThread().interrupt();
@@ -1005,17 +970,15 @@ public final class PomImporter {
             String id = repo.getId();
             String url = repo.getUrl();
             if (url == null || url.isBlank()) {
-                report.warning("`<repository>` with no `<url>` was skipped (id=" + id + ").");
+                report.warning("repository " + id + ": no <url>; skipped");
                 continue;
             }
             if (RepoModelResolver.isCentral(url)) continue;
             String name = (id == null || id.isBlank()) ? "repo" + (deduped.size() + 1) : id;
             if (name.equals(RepositorySpec.CENTRAL)) {
                 name = CENTRAL_MIRROR;
-                report.warning("`<repository>` `central` at " + url.trim() + " is not Maven Central; `central` is"
-                        + " the lock's name for Central itself, so it is written as `" + CENTRAL_MIRROR
-                        + "` under [repositories]. A mirror of Central for this machine belongs in"
-                        + " `~/.m2/settings.xml` or `~/.jk/config.toml` instead.");
+                report.warning("repository central at " + url.trim() + " is not Maven Central; written as "
+                        + CENTRAL_MIRROR + ". A machine-wide mirror belongs in ~/.jk/config.toml");
             }
             boolean releases = repo.getReleases() == null || repo.getReleases().isEnabled();
             boolean snapshots =
@@ -1026,16 +989,14 @@ public final class PomImporter {
                 RepositorySpec spec = new RepositorySpec(name, written).withPolicy(releases, snapshots);
                 if ("http".equalsIgnoreCase(written.getScheme()) && !RepositorySpec.loopback(written.getHost())) {
                     spec = spec.withBlocked();
-                    report.warning("`<repository>` `" + name + "` at " + written + " is plaintext http, which Maven"
-                            + " 3.9 blocks by default: it is written `blocked = true` under [repositories], so the"
-                            + " lock never asks it and names it when an artifact resolves nowhere else. Set"
-                            + " `allow-insecure = true` in place of `blocked` to ask it.");
+                    report.warning("repository " + name + " at " + written + " is plain http; written blocked = true."
+                            + " Use allow-insecure = true to query it");
                 } else {
                     spec = spec.withOptional();
                 }
                 deduped.put(name, spec);
             } catch (URISyntaxException e) {
-                report.warning("`<repository><url>" + url + "</url></repository>` is not a valid URI; skipped.");
+                report.warning("repository URL " + url + " is not a valid URI; skipped");
             }
         }
         return new ArrayList<>(deduped.values());
@@ -1066,8 +1027,8 @@ public final class PomImporter {
             boolean isWorkspaceRoot,
             @Nullable InheritedRows inherited) {
         if (!isWorkspaceRoot && inherited == null && !em.model().getModules().isEmpty()) {
-            report.warning("`<modules>` block present but this import was run in single-POM mode."
-                    + " Re-run as `jk import pom.xml` from the project root to materialise a workspace.");
+            report.warning(
+                    "<modules> ignored in single-POM mode; run jk import pom.xml from the root for a" + " workspace");
         }
         BuildExtensions.report(em, report, inherited, isWorkspaceRoot);
     }

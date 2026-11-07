@@ -73,9 +73,7 @@ final class TestPlugins {
                 .map(failsafe -> mapFailsafe(failsafe, model, report, jvm))
                 .orElseGet(() -> unboundIntegration(model, report));
         if (PluginFacts.plugin(model, "jacoco-maven-plugin").isPresent()) {
-            report.warning("`jacoco-maven-plugin` — coverage is a run flag in jk, not a build setting:"
-                    + " `jk test -T` runs every suite JVM under the JaCoCo agent and writes"
-                    + " `reports/jacoco.xml` per module.");
+            report.warning("jacoco-maven-plugin: not imported; run jk test -T for coverage");
         }
         return new TestSettings(
                 tags.includeTags(),
@@ -98,8 +96,8 @@ final class TestPlugins {
         boolean failsafe = ignoresFailures(model, FAILSAFE);
         if (!property && !surefire && !failsafe) return TestFailureMode.FAIL;
         if (failsafe && !property && !surefire) {
-            report.warning("`maven-failsafe-plugin` `<testFailureIgnore>` is written as `[test] failures = \"report\"`,"
-                    + " which covers every suite of the module, unit tests included.");
+            report.warning("maven-failsafe-plugin <testFailureIgnore>: became [test] failures = \"report\","
+                    + " which covers unit tests too");
         }
         return TestFailureMode.REPORT;
     }
@@ -144,9 +142,8 @@ final class TestPlugins {
         String value = PluginFacts.child(config, element);
         if (value == null) return Optional.empty();
         if (value.chars().anyMatch(c -> TAG_EXPRESSION_OPERATORS.indexOf(c) >= 0)) {
-            report.warning("`" + plugin + "` `<" + element + ">" + value + "</" + element
-                    + ">` is a tag expression; `[test] include-tags` / `exclude-tags` list plain tags, so"
-                    + " write the list yourself.");
+            report.warning(plugin + " <" + element + "> " + value
+                    + ": tag expression not imported; list plain tags in [test] include-tags/exclude-tags");
             return Optional.empty();
         }
         List<String> tags = new ArrayList<>();
@@ -160,10 +157,8 @@ final class TestPlugins {
     private static void reportIncludes(Xpp3Dom config, ImportReport.Builder report) {
         List<String> patterns = children(config.getChild("includes"));
         if (patterns.isEmpty()) return;
-        report.warning("`" + SUREFIRE + "` `<includes>` " + String.join(", ", patterns)
-                + " — jk runs every test class in the suite directory; select classes at run time with"
-                + " `jk test -S '<pattern>'`, or tag them and filter with `[test] include-tags` /"
-                + " `exclude-tags`.");
+        report.warning(SUREFIRE + " <includes> " + String.join(", ", patterns)
+                + ": not imported; jk runs every test class. Filter with jk test -S '<pattern>' or tags");
     }
 
     /**
@@ -186,13 +181,13 @@ final class TestPlugins {
             }
         }
         if (!unmapped.isEmpty()) {
-            report.warning("`" + SUREFIRE + "` `<excludes>` " + String.join(", ", unmapped)
-                    + " — `[test] exclude-classes` takes class names with `*` wildcards; add the classes by hand.");
+            report.warning(SUREFIRE + " <excludes> " + String.join(", ", unmapped)
+                    + ": not imported; add the classes to [test] exclude-classes");
         }
         String file = PluginFacts.child(config, "excludesFile");
         if (file != null) {
-            report.warning("`" + SUREFIRE + "` `<excludesFile>" + file + "</excludesFile>` — list those classes"
-                    + " under `[test] exclude-classes`.");
+            report.warning(SUREFIRE + " <excludesFile> " + file
+                    + ": not imported; list its classes in [test] exclude-classes");
         }
         return out;
     }
@@ -222,8 +217,8 @@ final class TestPlugins {
             }
         }
         if (!unmapped.isEmpty()) {
-            report.warning("`" + SUREFIRE + "` `<classpathDependencyExcludes>` " + String.join(", ", unmapped)
-                    + " — `[test] exclude-dependencies` takes `group:artifact` coordinates; add them by hand.");
+            report.warning(SUREFIRE + " <classpathDependencyExcludes> " + String.join(", ", unmapped)
+                    + ": not imported; add group:artifact entries to [test] exclude-dependencies");
         }
         return out;
     }
@@ -284,18 +279,16 @@ final class TestPlugins {
                 if (jvmArgs.isEmpty()) {
                     jvmArgs.addAll(args);
                 } else if (!jvmArgs.equals(args)) {
-                    report.warning("`" + label + "` `<argLine>` " + String.join(" ", args)
-                            + " — `[test] jvm-args` is one list for every suite and Surefire's "
-                            + String.join(" ", jvmArgs) + " is in it; merge the two by hand.");
+                    report.warning(label + " <argLine> " + String.join(" ", args)
+                            + ": not imported; merge it into [test] jvm-args by hand");
                 }
             }
             if (!props.isEmpty()) {
                 if (properties.isEmpty()) {
                     properties.putAll(props);
                 } else if (!properties.equals(props)) {
-                    report.warning("`" + label + "` system properties " + render(props)
-                            + " — `[test] system-properties` is one table for every suite and Surefire's "
-                            + render(properties) + " is in it; merge the two by hand.");
+                    report.warning(label + " system properties " + render(props)
+                            + ": not imported; merge them into [test] system-properties by hand");
                 }
             }
         }
@@ -345,9 +338,8 @@ final class TestPlugins {
             Map<String, String> out, String name, @Nullable String raw, String label, ImportReport.Builder report) {
         String value = raw == null ? "" : raw.trim();
         if (value.contains("${") || value.contains("@{")) {
-            report.warning("`" + label + "` system property " + name + "=" + value
-                    + " — the placeholder has no value outside Maven; set it under"
-                    + " `[test] system-properties` yourself.");
+            report.warning(label + " system property " + name + "=" + value
+                    + ": Maven placeholder; set it in [test] system-properties");
             return;
         }
         out.put(name, value);
@@ -362,8 +354,7 @@ final class TestPlugins {
         Properties props = model.getProperties();
         skip |= isTrue(props.getProperty("skipTests")) || isTrue(props.getProperty("maven.test.skip"));
         if (skip) {
-            report.warning("`maven-surefire-plugin` is configured to skip tests; jk has no manifest key for that —"
-                    + " `jk build -S` skips them for one build.");
+            report.warning("maven-surefire-plugin skips tests: not imported; use jk build -S per build");
         }
     }
 
@@ -387,9 +378,8 @@ final class TestPlugins {
             for (String element : new String[] {"groups", "excludedGroups"}) {
                 String value = PluginFacts.child(config, element);
                 if (value != null) {
-                    report.warning("`maven-failsafe-plugin` `<" + element + ">" + value + "</" + element
-                            + ">` — jk's tag filters apply to every suite, not to `integration` alone; tag the"
-                            + " integration classes and select with `jk test -s integration -I`.");
+                    report.warning("maven-failsafe-plugin <" + element + "> " + value
+                            + ": not imported; select with jk test -s integration -I");
                 }
             }
         }
@@ -418,9 +408,7 @@ final class TestPlugins {
             return null;
         }
         if (!found) return null;
-        report.warning("test classes named `IT*`, `*IT` or `*ITCase` run under no Failsafe in this build, so"
-                + " `mvn test` leaves them out; they are jk's `integration` suite, which `jk test` leaves out"
-                + " too — run them with `jk test -s integration`.");
+        report.warning("IT*, *IT and *ITCase classes: integration suite; run with jk test -s integration");
         return new ClassSuite(classPatterns(FAILSAFE_DEFAULT_INCLUDES, "<includes>", "classes", report), List.of());
     }
 
@@ -464,9 +452,8 @@ final class TestPlugins {
             }
         }
         if (!unmapped.isEmpty()) {
-            report.warning("`maven-failsafe-plugin` `" + element + "` " + String.join(", ", unmapped)
-                    + " — `[test.suites.integration] " + key + "` takes class names with `*` wildcards; add the"
-                    + " classes by hand.");
+            report.warning("maven-failsafe-plugin " + element + " " + String.join(", ", unmapped)
+                    + ": not imported; add the classes to [test.suites.integration] " + key);
         }
         return List.copyOf(patterns);
     }

@@ -60,13 +60,13 @@ class PomGeneratorImportTest {
                 .containsExactly("src/generated/java");
 
         List<String> rows = messages(result);
-        assertThat(rows).anySatisfy(m -> assertThat(m).contains("fetched to `api/apollo-openapi.yaml`"));
+        assertThat(rows).anySatisfy(m -> assertThat(m).contains("fetched to api/apollo-openapi.yaml"));
         assertThat(rows)
-                .anySatisfy(m -> assertThat(m).contains("`<skipValidateSpec>`").contains("no `[openapi]` key"));
+                .anySatisfy(m -> assertThat(m).contains("<skipValidateSpec>").contains("not imported"));
         assertThat(rows).anySatisfy(m -> assertThat(m)
                 .contains("target/generated-sources/openapi/src/main/java")
-                .contains("no `extra-src` root is written"));
-        assertThat(rows).noneMatch(m -> m.contains("openapi-generator-maven-plugin</plugin>` was not imported"));
+                .contains("the [openapi] output; no extra-src needed"));
+        assertThat(rows).noneMatch(m -> m.startsWith("openapi-generator-maven-plugin not imported"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
@@ -93,9 +93,9 @@ class PomGeneratorImportTest {
                 .isEqualTo("api/apollo-openapi.yaml");
         assertThat(tempDir.resolve("project/api/apollo-openapi.yaml")).doesNotExist();
         assertThat(result.report().hasErrors()).isTrue();
-        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .contains("could not be fetched (HTTP 503)")
-                .contains("save the spec there before building"));
+        assertThat(messages(result))
+                .anySatisfy(
+                        m -> assertThat(m).contains("fetch failed (HTTP 503)").contains("before building"));
     }
 
     @Test
@@ -108,7 +108,7 @@ class PomGeneratorImportTest {
 
         assertThat(existing).content().isEqualTo("mine");
         assertThat(messages(result))
-                .anySatisfy(m -> assertThat(m).contains("already there").contains("was not fetched"));
+                .anySatisfy(m -> assertThat(m).contains("using existing").contains("URL not fetched"));
     }
 
     /** spring-petclinic-rest's shape: a library, a model-name suffix and an import mapping beside the spec. */
@@ -135,10 +135,10 @@ class PomGeneratorImportTest {
         assertThat(openapi.stringMap("type-mappings"))
                 .containsExactly(Map.entry("DateTime", "java.time.Instant"), Map.entry("Date", "java.time.LocalDate"));
         assertThat(messages(result))
-                .noneMatch(m -> m.contains("`<library>`")
-                        || m.contains("`<modelNameSuffix>`")
-                        || m.contains("`<importMappings>`")
-                        || m.contains("`<typeMappings>`"));
+                .noneMatch(m -> m.contains("<library>")
+                        || m.contains("<modelNameSuffix>")
+                        || m.contains("<importMappings>")
+                        || m.contains("<typeMappings>"));
         PluginConfig reparsed = JkBuildParser.parse(JkBuildRenderer.render(result.jkBuild()))
                 .pluginConfig("openapi")
                 .orElseThrow();
@@ -271,11 +271,11 @@ class PomGeneratorImportTest {
 
         List<String> rows = messages(result);
         assertThat(rows).anySatisfy(m -> assertThat(m)
-                .contains("`build-helper-maven-plugin` adds `target/generated-test-sources/wire`")
-                .contains("`[generate.wire]`"));
+                .contains("build-helper-maven-plugin adds target/generated-test-sources/wire")
+                .contains("[generate.wire]"));
         assertThat(rows)
-                .noneMatch(m -> m.contains("wire-maven-plugin</plugin>` was not imported"))
-                .noneMatch(m -> m.contains("maven-dependency-plugin</plugin>` was not imported"));
+                .noneMatch(m -> m.startsWith("wire-maven-plugin not imported"))
+                .noneMatch(m -> m.startsWith("maven-dependency-plugin not imported"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
@@ -320,14 +320,14 @@ class PomGeneratorImportTest {
         assertThat(result.jkBuild().pluginConfigs()).isEmpty();
         List<String> rows = messages(result);
         assertThat(rows).anySatisfy(m -> assertThat(m)
-                .contains("`graphqlcodegen-maven-plugin`")
-                .contains("`[generate.<name>]` recipe")
-                .contains("graphql-dgs-codegen-core"));
+                .startsWith("graphqlcodegen-maven-plugin: not imported")
+                .contains("[generate.<name>] entry")
+                .contains("docs/user/generate.md"));
         assertThat(rows).anySatisfy(m -> assertThat(m)
-                .contains("`graphql-codegen-maven-plugin`")
-                .contains("no command line")
+                .startsWith("graphql-codegen-maven-plugin: not imported")
+                .contains("no CLI")
                 .contains("jk mvn"));
-        assertThat(rows).noneMatch(m -> m.contains("was not imported"));
+        assertThat(rows).noneMatch(m -> m.contains("docs/user/migration.md"));
     }
 
     /** A wire plugin over protos in the tree, at generate-sources, with no wire-runtime dependency. */
@@ -371,9 +371,8 @@ class PomGeneratorImportTest {
                 .doesNotContainKey("unpack")
                 .doesNotContainKey("contributes");
         assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .contains("`wire-maven-plugin`")
-                .contains("no wire-runtime dependency")
-                .contains("latest"));
+                .startsWith("wire-maven-plugin: no wire-runtime version")
+                .contains(":latest"));
     }
 
     /**
@@ -440,10 +439,10 @@ class PomGeneratorImportTest {
                 .doesNotContainKey("resources");
         assertThat(result.report().issues()).noneMatch(i -> i.severity() == ImportReport.Severity.ERROR);
         assertThat(messages(result))
-                .anyMatch(m -> m.startsWith("`build-helper-maven-plugin` adds `target/generated-sources/localizer`, the"
-                        + " localizer preset's output"))
-                .anyMatch(m -> m.contains("`[localizer]`") && m.contains("`org.jvnet.localizer:localizer`"))
-                .noneMatch(m -> m.contains("`<plugin>localizer-maven-plugin</plugin>` was not imported"));
+                .anyMatch(m -> m.equals("build-helper-maven-plugin adds target/generated-sources/localizer, the"
+                        + " [localizer] output; no extra-src needed"))
+                .anyMatch(m -> m.startsWith("localizer-maven-plugin became [localizer]"))
+                .noneMatch(m -> m.startsWith("localizer-maven-plugin not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("[localizer]").contains("access-modifier-annotations = true");
         assertThat(JkBuildParser.parse(rendered).pluginConfig("localizer")).isPresent();
@@ -544,10 +543,10 @@ class PomGeneratorImportTest {
         assertThat(antlr.values()).containsOnlyKeys("version");
         assertThat(result.report().issues()).noneMatch(i -> i.severity() == ImportReport.Severity.ERROR);
         assertThat(messages(result))
-                .anyMatch(m -> m.startsWith("`build-helper-maven-plugin` adds `target/generated-sources/antlr4`, the"
-                        + " antlr preset's output"))
-                .anyMatch(m -> m.contains("`[antlr]`") && m.contains("`org.antlr:antlr4-runtime`"))
-                .noneMatch(m -> m.contains("`<plugin>antlr4-maven-plugin</plugin>` was not imported"));
+                .anyMatch(m -> m.equals("build-helper-maven-plugin adds target/generated-sources/antlr4, the"
+                        + " [antlr] output; no extra-src needed"))
+                .anyMatch(m -> m.contains("became [antlr]") && m.contains("org.antlr:antlr4-runtime"))
+                .noneMatch(m -> m.startsWith("antlr4-maven-plugin not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered)
                 .contains("[antlr]")
@@ -602,7 +601,7 @@ class PomGeneratorImportTest {
                 .containsEntry("arguments", List.of("-Werror", "-Xexact-output-dir"))
                 .containsEntry("options", Map.of("superClass", "com.acme.Base"))
                 .containsEntry("version", "4.12.0");
-        assertThat(messages(result)).anyMatch(m -> m.contains("`<includes>` have no `[antlr]` key"));
+        assertThat(messages(result)).anyMatch(m -> m.contains("<includes> have no [antlr] key"));
     }
 
     /** jenkins core's shape: the hpi plugin's taglib goal beside another goal, build-helper adding the output. */
@@ -655,12 +654,11 @@ class PomGeneratorImportTest {
         PluginConfig taglib = result.jkBuild().pluginConfig("taglib").orElseThrow();
         assertThat(taglib.values()).containsEntry("resources", List.of("src/main/resources", "src/filter/resources"));
         assertThat(messages(result))
-                .anyMatch(m ->
-                        m.startsWith("`build-helper-maven-plugin` adds `target/generated-sources/taglib-interface`,"
-                                + " the taglib preset's output"))
-                .anyMatch(m -> m.contains("`[taglib]`") && m.contains("`org.kohsuke.stapler:stapler-groovy`"))
-                .anyMatch(m -> m.startsWith("`maven-hpi-plugin` goal `record-core-location` was not imported"))
-                .noneMatch(m -> m.contains("`<plugin>maven-hpi-plugin</plugin>` was not imported"));
+                .anyMatch(m -> m.equals("build-helper-maven-plugin adds target/generated-sources/taglib-interface,"
+                        + " the [taglib] output; no extra-src needed"))
+                .anyMatch(m -> m.startsWith("maven-hpi-plugin generate-taglib-interface became [taglib]"))
+                .anyMatch(m -> m.startsWith("maven-hpi-plugin goal record-core-location not imported"))
+                .noneMatch(m -> m.startsWith("maven-hpi-plugin not imported"));
         assertThat(JkBuildParser.parse(JkBuildRenderer.render(result.jkBuild())).pluginConfig("taglib"))
                 .isPresent();
     }
@@ -688,7 +686,7 @@ class PomGeneratorImportTest {
                 """);
 
         assertThat(result.jkBuild().pluginConfig("taglib")).isEmpty();
-        assertThat(messages(result)).anyMatch(m -> m.contains("`<plugin>maven-hpi-plugin</plugin>` was not imported"));
+        assertThat(messages(result)).anyMatch(m -> m.startsWith("maven-hpi-plugin not imported"));
     }
 
     /** Jenkins core's test module: the hpi plugin installs the test closure's plugins for JenkinsRule. */
@@ -728,9 +726,9 @@ class PomGeneratorImportTest {
         assertThat(result.jkBuild().pluginConfig("jenkins-test")).isPresent();
         assertThat(result.jkBuild().pluginConfig("taglib")).isEmpty();
         assertThat(messages(result))
-                .anyMatch(m -> m.startsWith("`maven-hpi-plugin` `resolve-test-dependencies` is `[jenkins-test]`"))
-                .anyMatch(m -> m.startsWith("`maven-hpi-plugin` goal `test-runtime` was not imported"))
-                .noneMatch(m -> m.contains("`<plugin>maven-hpi-plugin</plugin>` was not imported"));
+                .anyMatch(m -> m.equals("maven-hpi-plugin resolve-test-dependencies became [jenkins-test]"))
+                .anyMatch(m -> m.startsWith("maven-hpi-plugin goal test-runtime not imported"))
+                .noneMatch(m -> m.startsWith("maven-hpi-plugin not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("[jenkins-test]");
         assertThat(JkBuildParser.parse(rendered).pluginConfig("jenkins-test")).isPresent();

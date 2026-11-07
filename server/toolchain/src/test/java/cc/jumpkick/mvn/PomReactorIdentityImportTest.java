@@ -46,9 +46,8 @@ class PomReactorIdentityImportTest {
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .anySatisfy(m -> assertThat(m)
-                        .contains(
-                                "`common/edqs` and `edqs` all carry the name `edqs` (org.tb.common:edqs, org.tb:edqs)")
-                        .contains("`application` depends on it")
+                        .contains("common/edqs and edqs share the name edqs (org.tb.common:edqs, org.tb:edqs)")
+                        .contains("application depends on it")
                         .contains("group = \"…\""));
         JkBuild application = requireNonNull(result.modules().get("application"));
         assertThat(application.dependencies().of(Scope.MAIN))
@@ -74,8 +73,8 @@ class PomReactorIdentityImportTest {
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .anySatisfy(m -> assertThat(m)
-                        .contains("`common/edqs` and `edqs` all carry the name `edqs`")
-                        .contains("no member depends on the name"));
+                        .contains("common/edqs and edqs share the name edqs")
+                        .contains("nothing depends on it"));
     }
 
     @Test
@@ -149,8 +148,7 @@ class PomReactorIdentityImportTest {
         assertThat(result.report().hasErrors()).isFalse();
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anySatisfy(
-                        m -> assertThat(m).startsWith("[core] `<dependencyManagement>` imports the reactor BOM `bom`"));
+                .anySatisfy(m -> assertThat(m).startsWith("core").contains(": reactor BOM bom ("));
     }
 
     @Test
@@ -185,8 +183,7 @@ class PomReactorIdentityImportTest {
         assertThat(result.report().hasErrors()).isFalse();
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anySatisfy(
-                        m -> assertThat(m).startsWith("`bom` is a BOM").contains("no module of the reactor imports"));
+                .anySatisfy(m -> assertThat(m).startsWith("bom is a BOM no module imports"));
     }
 
     private static String parent(List<String> modules) {

@@ -140,11 +140,12 @@ class GradleModelImporterTest {
                 GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
         List<String> rows = messages(result.report());
 
-        assertThat(rows).anySatisfy(m -> assertThat(m).contains("`release`").contains("task"));
-        assertThat(rows).anySatisfy(m -> assertThat(m).contains("[core]").contains("`generateVersionFile`"));
+        assertThat(rows)
+                .anySatisfy(m -> assertThat(m).contains("task release (").contains("not translated"));
+        assertThat(rows).anySatisfy(m -> assertThat(m).contains("core").contains("task generateVersionFile ("));
         assertThat(rows).anySatisfy(m -> assertThat(m)
-                .contains("[api]")
-                .contains("`intTestImplementation`")
+                .contains("api")
+                .contains("configuration intTestImplementation has no jk table")
                 .contains("org.testcontainers:postgresql"));
         assertThat(result.report().hasErrors()).isFalse();
     }
@@ -192,7 +193,7 @@ class GradleModelImporterTest {
         });
         assertThat(messages(result.report()))
                 .anySatisfy(m -> assertThat(m)
-                        .contains("${env:ACME_PULL_TOKEN}")
+                        .startsWith("gitlab: ${env:ACME_PULL_TOKEN} moved to ~/.jk/config.toml.")
                         .contains("JK_REPO_GITLAB_USERNAME=gitlab-ci-token")
                         .contains("JK_REPO_GITLAB_PASSWORD=$CI_JOB_TOKEN")
                         .contains("JK_REPO_GITLAB_HOST=gitlab.example"))
@@ -352,8 +353,8 @@ class GradleModelImporterTest {
 
         GradleBuildImport.Result result = GradleModelImporter.importModel(model, root, RefreshVersions.NONE);
 
-        assertThat(messages(result.report()))
-                .anySatisfy(m -> assertThat(m).contains("[api]").contains("`[nullness] include = []`"));
+        assertThat(messages(result.report())).anySatisfy(m -> assertThat(m)
+                .isEqualTo("api: @NullMarked code but no null checker; add [nullness] include = [] to check it"));
         assertThat(messages(GradleModelImporter.importModel(THREE_MODULES, root, RefreshVersions.NONE)
                         .report()))
                 .as("no JSpecify, no row")
@@ -428,7 +429,7 @@ class GradleModelImporterTest {
         assertThat(Objects.requireNonNull(core.project().kotlin()).raw()).isEqualTo(KotlinResolver.FLOOR_VERSION);
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anySatisfy(m -> assertThat(m).contains("`2.2.21`").contains("below jk's floor"));
+                .anySatisfy(m -> assertThat(m).contains("Kotlin 2.2.21 is below jk's floor"));
     }
 
     @Test
@@ -514,8 +515,8 @@ class GradleModelImporterTest {
                 .isEmpty();
         assertThat(application.build().buildInfo()).isNotNull();
         assertThat(result.root().project().name()).isEqualTo("gs-multi-module");
-        assertThat(messages(result.report()))
-                .anySatisfy(m -> assertThat(m).contains("[library]").contains("com.acme.gradle.HousePlugin"));
+        assertThat(messages(result.report())).anySatisfy(m -> assertThat(m)
+                .isEqualTo("library: Gradle plugin com.acme.gradle.HousePlugin not mapped"));
     }
 
     /** A library under dependency-management importing Spring Cloud's BOM beside Boot's, as the script text names them. */
@@ -548,10 +549,9 @@ class GradleModelImporterTest {
                 .as("the BOMs manage the versions; no exact pin is written")
                 .allMatch(Dependency::isPlatformManaged);
         List<String> rows = messages(result.report());
-        assertThat(rows).noneMatch(m -> m.contains("exact pin"));
+        assertThat(rows).noneMatch(m -> m.contains("pinned exactly"));
         assertThat(rows).anySatisfy(m -> assertThat(m)
-                .contains("com.acme:acme-bom:${acmeVersion}")
-                .contains("nothing defines"));
+                .contains("BOM com.acme:acme-bom:${acmeVersion}: version reads an undefined property"));
     }
 
     /** A `dependencyManagement { dependencies { } }` block with no BOM: the plugin's version is all there is to write. */
@@ -572,7 +572,8 @@ class GradleModelImporterTest {
         Dependency guava = only(result.root(), Scope.MAIN);
         assertThat(guava.version().raw()).isEqualTo("33.4.8-jre");
         assertThat(result.root().dependencies().of(Scope.PLATFORM)).isEmpty();
-        assertThat(messages(result.report())).anySatisfy(m -> assertThat(m).contains("exact pin"));
+        assertThat(messages(result.report())).anySatisfy(m -> assertThat(m)
+                .isEqualTo("com.google.guava:guava 33.4.8-jre from dependencyManagement { }; pinned exactly"));
     }
 
     @Test
@@ -596,7 +597,7 @@ class GradleModelImporterTest {
         assertThat(edge.isWorkspace()).isTrue();
         assertThat(edge.library()).isEqualTo("retrofit-adapters-guava");
         assertThat(messages(result.report()))
-                .anySatisfy(m -> assertThat(m).contains("`guava`").contains("retrofit-adapters/guava"))
+                .anySatisfy(m -> assertThat(m).contains("share the name guava").contains("retrofit-adapters/guava"))
                 .anySatisfy(m -> assertThat(m).contains("retrofit-bom").contains("java-platform"));
     }
 
@@ -633,8 +634,8 @@ class GradleModelImporterTest {
                 .hasSize(1)
                 .first()
                 .asString()
-                .contains("io.kotest:kotest-assertions-core")
-                .contains("`_`");
+                .startsWith("io.kotest:kotest-assertions-core: no ")
+                .contains("in versions.properties; pin it in jk.toml");
     }
 
     /**
@@ -668,7 +669,7 @@ class GradleModelImporterTest {
         assertThat(build.project().java()).isEqualTo(17);
         assertThat(Objects.requireNonNull(build.project().kotlin()).raw()).isEqualTo("2.4.20");
         assertThat(Objects.requireNonNull(build.project().groovy()).raw()).isEqualTo("5.1.2");
-        assertThat(messages(result.report())).noneSatisfy(m -> assertThat(m).contains("plugin `groovy`"));
+        assertThat(messages(result.report())).noneSatisfy(m -> assertThat(m).contains("groovy: no version found"));
     }
 
     /** A Groovy module over Java sources declares the Groovy its classpath resolves and java at the release. */
@@ -693,7 +694,7 @@ class GradleModelImporterTest {
         assertThat(Objects.requireNonNull(result.root().project().groovy()).raw())
                 .isEqualTo("5.0.2");
         assertThat(result.root().project().java()).isEqualTo(21);
-        assertThat(messages(result.report())).noneMatch(m -> m.contains("plugin `groovy`"));
+        assertThat(messages(result.report())).noneMatch(m -> m.contains("groovy: no version found"));
     }
 
     /**
@@ -724,7 +725,7 @@ class GradleModelImporterTest {
                 .extracting(d -> d.module() + ":" + d.version().raw())
                 .containsExactly("org.junit.jupiter:junit-jupiter:6.1.0", "org.strict:pinned:1.0");
         assertThat(messages(result.report()))
-                .anySatisfy(m -> assertThat(m).contains("declared at 5.12.2").contains("resolves 6.1.0"));
+                .anySatisfy(m -> assertThat(m).contains(" 5.12.2 resolves to 6.1.0 in Gradle; wrote 6.1.0"));
     }
 
     /**
@@ -765,8 +766,8 @@ class GradleModelImporterTest {
         assertThat(build.pluginConfig("jaxb").orElseThrow().string("src"))
                 .isEqualTo("src/main/resources/META-INF/schemas");
         assertThat(messages(result.report()))
-                .anySatisfy(m -> assertThat(m).contains("declared at 4.0.4").contains("4.0.5 its BOM manages"))
-                .noneMatch(m -> m.contains("`xjc`"))
+                .anySatisfy(m -> assertThat(m).contains(" 4.0.4 is below its BOM's 4.0.5; wrote managed"))
+                .noneMatch(m -> m.contains("Gradle plugin") && m.contains("xjc"))
                 .noneMatch(m -> m.contains("com.github.bjornvester.xjc.XjcPlugin"));
     }
 

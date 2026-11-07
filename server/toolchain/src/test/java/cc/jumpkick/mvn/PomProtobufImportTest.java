@@ -128,8 +128,8 @@ class PomProtobufImportTest {
                 .isEmpty();
         assertThat(result.report().hasErrors()).as(messages(result).toString()).isFalse();
         assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .startsWith("`build-helper-maven-plugin` adds `target/generated-sources/protobuf/java`")
-                .contains("no `extra-src` root is written"));
+                .contains("build-helper-maven-plugin adds target/generated-sources/protobuf/java, the [protobuf]"
+                        + " output; no extra-src needed"));
         assertThat(protobuf.entries())
                 .as("compile-custom's grpc-java plugin is the [protobuf.grpc-java] entry")
                 .containsOnlyKeys("grpc-java");
@@ -137,7 +137,7 @@ class PomProtobufImportTest {
                 .containsEntry("plugin", "io.grpc:protoc-gen-grpc-java:1.81.0")
                 .doesNotContainKey("options");
         assertThat(messages(result)).noneMatch(m -> m.contains("protoc plugin"));
-        assertThat(messages(result)).noneMatch(m -> m.contains("protobuf-maven-plugin</plugin>` was not imported"));
+        assertThat(messages(result)).noneMatch(m -> m.startsWith("protobuf-maven-plugin not imported"));
 
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered)
@@ -164,8 +164,8 @@ class PomProtobufImportTest {
         PluginConfig protobuf = result.jkBuild().pluginConfig("protobuf").orElseThrow();
         assertThat(protobuf.string("src")).isEqualTo("src/main/resources/proto");
         assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .contains("`<useArgumentFile>`, `<checkStaleness>`")
-                .contains("no `[protobuf]` key"));
+                .contains("<useArgumentFile>, <checkStaleness>")
+                .contains("have no [protobuf] key"));
     }
 
     /** {@code <pluginParameter>} is the plugin's parameter string: its comma-separated items are the entry's {@code options}. */
@@ -184,7 +184,7 @@ class PomProtobufImportTest {
                 .containsEntry("plugin", "io.grpc:protoc-gen-grpc-java:1.81.0")
                 .containsEntry("options", List.of("@generated=omit", "jakarta_omit"));
         assertThat(result.report().hasErrors()).as(messages(result).toString()).isFalse();
-        assertThat(messages(result)).noneMatch(m -> m.contains("`<pluginParameter>`"));
+        assertThat(messages(result)).noneMatch(m -> m.contains("<pluginParameter>"));
         assertThat(JkBuildRenderer.render(result.jkBuild()))
                 .contains("[protobuf.grpc-java]\nplugin = \"io.grpc:protoc-gen-grpc-java:1.81.0\"\n"
                         + "options = [\"@generated=omit\", \"jakarta_omit\"]\n");
@@ -240,8 +240,8 @@ class PomProtobufImportTest {
                 .containsEntry("options", List.of("@generated=omit"));
         assertThat(result.report().hasErrors()).as(messages(result).toString()).isFalse();
         assertThat(messages(result))
-                .noneMatch(m -> m.contains("`generate`"))
-                .noneMatch(m -> m.contains("no `[protobuf]` key"));
+                .noneMatch(m -> m.startsWith("protobuf-maven-plugin goals"))
+                .noneMatch(m -> m.contains("have no [protobuf] key"));
     }
 
     /** tutorials' shape: ascopes' {@code <sourceDirectories>} are the table's {@code src}. */
@@ -292,7 +292,7 @@ class PomProtobufImportTest {
                 .satisfies(issue -> {
                     assertThat(issue.severity()).isEqualTo(ImportReport.Severity.ERROR);
                     assertThat(issue.message())
-                            .contains("`compile-custom` runs the `grpc-java` protoc plugin")
+                            .contains("compile-custom: protoc plugin grpc-java has no resolvable <pluginArtifact>")
                             .contains("[protobuf.grpc-java]");
                 });
     }
@@ -307,8 +307,8 @@ class PomProtobufImportTest {
         assertThat(result.jkBuild().build().extraSrc()).isEmpty();
         assertThat(result.report().hasErrors()).as(messages(result).toString()).isFalse();
         assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .startsWith("`build-helper-maven-plugin` adds `target/generated-sources/protobuf/java`")
-                .contains("no `.proto` sources to fill"));
+                .contains("build-helper-maven-plugin adds target/generated-sources/protobuf/java, the [protobuf]"
+                        + " output, but the module has no .proto files; no extra-src"));
         assertThat(messages(result)).noneMatch(m -> m.contains("protoc plugin"));
     }
 
@@ -372,7 +372,7 @@ class PomProtobufImportTest {
         assertThat(protobuf.stringList("exclude"))
                 .as("the compile execution's excludes, not the test-compile execution's")
                 .containsExactly("ProtobufRpcEngine.proto");
-        assertThat(messages(result)).noneMatch(m -> m.contains("`<excludes>`"));
+        assertThat(messages(result)).noneMatch(m -> m.contains("<excludes>"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("exclude = [\"ProtobufRpcEngine.proto\"]");
         assertThat(JkBuildParser.parse(rendered)
@@ -451,16 +451,16 @@ class PomProtobufImportTest {
                 .as("the rule round-trips through jk.toml, its quoted key with the dots inside it")
                 .isEqualTo(protobuf.stringMap("replace"));
         assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .startsWith(
-                        "`replacer` execution `replace-sources` rewrites the files under `src/main/java` in place"));
+                .isEqualTo("replacer execution replace-sources edits src/main/java outside the protobuf output;"
+                        + " not imported"));
         assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .startsWith("`replacer` execution `replace-generated-sources` `<excludes>`"));
-        assertThat(messages(result)).noneMatch(m -> m.contains("`<plugin>replacer</plugin>` was not imported"));
+                .startsWith("replacer execution replace-generated-sources <excludes> ignored"));
+        assertThat(messages(result)).noneMatch(m -> m.startsWith("replacer not imported"));
         assertThat(messages(result))
                 .as("the test protos' output is not the table's, so the execution over it is a row, not a rule")
                 .anySatisfy(m -> assertThat(m)
-                        .startsWith("`replacer` execution `replace-generated-test-sources` rewrites the files under"
-                                + " `target/generated-test-sources` in place, outside the protobuf plugin's output"));
+                        .isEqualTo("replacer execution replace-generated-test-sources edits"
+                                + " target/generated-test-sources outside the protobuf output; not imported"));
     }
 
     private static final String ROOT_WITH_REPLACER = """
@@ -563,6 +563,6 @@ class PomProtobufImportTest {
         PomImporter.Result result = TestImporters.importXml(tempDir, MODULE.formatted(plugin));
 
         assertThat(result.jkBuild().pluginConfig("protobuf")).isEmpty();
-        assertThat(messages(result)).anySatisfy(m -> assertThat(m).contains("no `.proto` sources to fill"));
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m).contains("the module has no .proto files"));
     }
 }

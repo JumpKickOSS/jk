@@ -129,28 +129,29 @@ class PomProfileImportTest {
                 .extracting(d -> d.module() + "=" + d.version().raw(), Dependency::optional)
                 .containsExactly(tuple("org.testcontainers:testcontainers=1.20.4", true));
         assertThat(messages)
-                .anyMatch(m -> m.startsWith("Maven profile `docker`: 2 dependencies → `[features.docker]`"));
+                .anyMatch(m -> m.startsWith("profile docker: 2 dependencies → [features.docker]")
+                        && m.endsWith("enable with --features docker"));
 
         // jdk21-preview: compiler level + compilerArgs → javac, argLine → jvm-args.
         Profile preview = requireNonNull(build.profiles().byName().get("jdk21-preview"));
         assertThat(preview.javacArgs()).containsExactly("--release", "21", "--enable-preview");
         assertThat(preview.jvmArgs()).containsExactly("--enable-preview");
         assertThat(messages)
-                .anyMatch(m -> m.startsWith("Maven profile `jdk21-preview` (activation property=preview")
-                        && m.contains("→ `[profiles.jdk21-preview]` `javac` and `jvm-args`"));
+                .anyMatch(m -> m.startsWith("profile jdk21-preview (activation property=preview")
+                        && m.contains("javac and jvm-args → [profiles.jdk21-preview]; select with -p jdk21-preview"));
 
         // internal: repositories merge into the top-level list.
         assertThat(build.repositories()).extracting(RepositorySpec::name).containsExactly("internal");
         assertThat(messages)
-                .anyMatch(m -> m.startsWith("Maven profile `internal`: `<repositories>` internal → merged"));
+                .anyMatch(m -> m.startsWith("profile internal: repositories internal merged into [repositories]"));
 
         // release: plugins stay a checklist.
-        assertThat(messages).anyMatch(m -> m.startsWith("Maven profile `release`: plugins=[maven-gpg-plugin]"));
+        assertThat(messages).anyMatch(m -> m.startsWith("profile release: plugins maven-gpg-plugin: port by hand"));
 
         // jdk8-native: per-platform deps are a variants proposal, and nothing is written for them.
         assertThat(messages)
-                .anyMatch(m -> m.startsWith("Maven profile `jdk8-native` (activation jdk=[1.8,9)): per-platform"
-                        + " dependencies io.netty:netty-transport-native-epoll:linux-x86_64 → declare a `[variants]`"));
+                .anyMatch(m -> m.startsWith("profile jdk8-native (activation jdk=[1.8,9)): platform dependencies"
+                        + " io.netty:netty-transport-native-epoll:linux-x86_64 dropped; declare a [variants]"));
         assertThat(build.dependencies().of(Scope.MAIN))
                 .noneMatch(d -> d.module().startsWith("io.netty"));
         assertThat(build.features().byName()).doesNotContainKey("jdk8-native");
@@ -224,9 +225,9 @@ class PomProfileImportTest {
         assertThat(requireNonNull(build.features().byName().get("extra")).deps())
                 .containsExactly("widget", "bom");
         List<String> messages = TestImporters.messages(result);
-        assertThat(messages).anyMatch(m -> m.contains("`<scope>system</scope>` is rejected (com.acme:tool)"));
-        assertThat(messages).anyMatch(m -> m.startsWith("`<type>zip</type>` on com.acme:bundle"));
-        assertThat(messages).anyMatch(m -> m.startsWith("Maven profile `extra`: 2 dependencies → `[features.extra]`"));
+        assertThat(messages).anyMatch(m -> m.startsWith("com.acme:tool: system scope refused"));
+        assertThat(messages).anyMatch(m -> m.startsWith("com.acme:bundle: <type>zip</type> not supported"));
+        assertThat(messages).anyMatch(m -> m.startsWith("profile extra: 2 dependencies → [features.extra]"));
         String rendered = JkBuildRenderer.render(build);
         assertThat(JkBuildParser.parse(rendered).dependencies().of(Scope.MAIN))
                 .singleElement()
@@ -279,7 +280,7 @@ class PomProfileImportTest {
                 .extracting(d -> d.module() + "=" + d.version().raw(), Dependency::optional)
                 .containsExactly(tuple("com.h2database:h2=2.3.232", true));
         assertThat(JkBuildRenderer.render(build)).doesNotContain("unresolved");
-        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("`=unresolved`"));
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("=unresolved"));
     }
 
     /**
@@ -399,6 +400,6 @@ class PomProfileImportTest {
                 .extracting(d -> d.module() + "=" + d.version().raw(), Dependency::optional)
                 .containsExactly(tuple("org.springframework.cloud:spring-cloud-starter=4.1.0", true));
         assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("unresolved");
-        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("could not be read"));
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("unreadable"));
     }
 }

@@ -119,16 +119,14 @@ public final class GradleBuildImport {
         GradleImporter.Result scanned = GradleImporter.importFrom(script);
         ImportReport.Builder report = ImportReport.builder();
         if (modelFailure != null) {
-            report.error("Gradle could not evaluate the build (" + modelFailure + "); imported by scanning "
-                    + script.getFileName() + " alone — the subprojects, configurations and tasks the scripts"
-                    + " compute are not in this import.");
+            report.error("Gradle failed (" + modelFailure + "); scanned " + script.getFileName()
+                    + " alone, so computed subprojects, configurations and tasks are missing");
         } else if (settings == null) {
             Path parent = dir.getParent();
             Path parentSettings = parent == null ? null : settingsIn(parent);
             if (parentSettings != null) {
-                report.warning(script.getFileName() + " is one project of the build rooted at " + parent
-                        + "; import " + parentSettings.getFileName() + " there to import every module,"
-                        + " with sibling dependencies as workspace edges.");
+                report.warning(script.getFileName() + " is one project of " + parent + "; import "
+                        + parentSettings.getFileName() + " there for every module");
             }
         }
         for (ImportReport.Issue issue : scanned.report().issues()) {

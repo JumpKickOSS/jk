@@ -49,7 +49,7 @@ class PomPluginImportTest {
         assertThat(build.project().jdk()).isNull();
         assertThat(versions(build.dependencies().of(Scope.PROVIDED)))
                 .containsExactly("org.projectlombok:lombok=1.18.42");
-        assertThat(messages(result)).noneMatch(m -> m.contains("was not imported"));
+        assertThat(messages(result)).noneMatch(m -> m.contains("docs/user/migration.md"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
@@ -83,8 +83,8 @@ class PomPluginImportTest {
                         "org.mapstruct:mapstruct-processor=1.6.3",
                         "com.google.guava:guava=33.4.8-jre");
         assertThat(messages(result))
-                .anyMatch(m -> m.startsWith("AutoValue, Lombok, MapStruct are declared as plain dependencies")
-                        && m.contains("`[processor-dependencies]`"));
+                .anyMatch(m -> m.equals("AutoValue, Lombok, MapStruct are also written to [processor-dependencies];"
+                        + " they run as annotation processors"));
 
         JkBuild reparsed = JkBuildParser.parse(JkBuildRenderer.render(build));
         assertThat(reparsed.dependencies().of(Scope.PROCESSOR)).hasSize(3);
@@ -112,11 +112,10 @@ class PomPluginImportTest {
                 .isEqualTo(BuildBlock.Resources.EMPTY);
         assertThat(messages).noneMatch(m -> m.contains("javadoc"));
         assertThat(messages)
-                .anyMatch(
-                        m -> m.startsWith("`build-helper-maven-plugin` goal `reserve-network-port` was not imported"));
+                .anyMatch(m -> m.startsWith("build-helper-maven-plugin goal reserve-network-port not imported"));
         assertThat(messages)
                 .as("resources, build-helper, jar, source and javadoc each have their own landing place")
-                .noneMatch(m -> m.startsWith("`<plugin>"));
+                .noneMatch(m -> m.contains("docs/user/migration.md"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
@@ -299,12 +298,10 @@ class PomPluginImportTest {
                 .containsExactly("org.mapstruct:mapstruct-processor=1.6.3");
         List<String> messages = messages(result);
         assertThat(messages)
+                .anySatisfy(
+                        m -> assertThat(m).isEqualTo("<compilerArgs> split into [javac] args and [javac.test] args"))
                 .anySatisfy(m -> assertThat(m)
-                        .contains("execution `java-compile`")
-                        .contains("goal `compile`")
-                        .contains("[javac.test]"))
-                .anySatisfy(m -> assertThat(m)
-                        .contains("`testCompile` execution")
+                        .contains("<annotationProcessorPaths> on testCompile")
                         .contains("org.mapstruct:mapstruct-processor")
                         .contains("[test-processor-dependencies]"))
                 .noneSatisfy(m -> assertThat(m).contains("both compiles run them"));
@@ -391,11 +388,7 @@ class PomPluginImportTest {
                 .as("the flags jk grants are gone; the one it does not stays")
                 .containsExactly("-XDcompilePolicy=simple", "-J--add-opens=java.base/java.lang=ALL-UNNAMED");
         assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .contains("3 `-J` lines")
-                .contains("jdk.compiler")
-                .contains("jk grants every compiler worker")
-                .contains("com.sun.tools.javac.api")
-                .contains("not written"));
+                .matches("<compilerArgs>: dropped \\d+ -J jdk.compiler opens jk already grants"));
     }
 
     @Test
@@ -420,7 +413,8 @@ class PomPluginImportTest {
                 """);
         assertThat(pinned.jkBuild().project().jdk()).isEqualTo("temurin-21");
         assertThat(pinned.jkBuild().project().java()).isEqualTo(17);
-        assertThat(messages(pinned)).anyMatch(m -> m.startsWith("`<toolchains>` pins JDK temurin-21"));
+        assertThat(messages(pinned))
+                .anyMatch(m -> m.startsWith("<toolchains> JDK temurin-21 written as jdk = \"temurin-21\""));
 
         PomImporter.Result below = importXml(tempDir, """
                 <project>
@@ -440,8 +434,8 @@ class PomPluginImportTest {
                 .as("a pin below the floor is dropped, not written")
                 .isNull();
         assertThat(below.jkBuild().project().java()).isEqualTo(17);
-        assertThat(messages(below)).anyMatch(m -> m.startsWith("toolchain pin `8` is below jk's floor of 17"));
-        assertThat(messages(below)).anyMatch(m -> m.startsWith("`<target>` declared 8; jk's floor is 17"));
+        assertThat(messages(below)).anyMatch(m -> m.equals("toolchain JDK 8 is below jk's floor 17; no jdk written"));
+        assertThat(messages(below)).anyMatch(m -> m.startsWith("<target> 8 raised to java = 17"));
     }
 
     @Test
@@ -488,7 +482,8 @@ class PomPluginImportTest {
         assertThat(versions(build.dependencies().of(Scope.PROCESSOR)))
                 .as("the table brings Error Prone and NullAway")
                 .containsExactly("org.mapstruct:mapstruct-processor=1.6.3");
-        assertThat(messages(result)).anySatisfy(m -> assertThat(m).contains("writes `[nullness]`"));
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
+                .contains("NullAway via Error Prone became [nullness]; jk now supplies the tools, versions and flags"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)

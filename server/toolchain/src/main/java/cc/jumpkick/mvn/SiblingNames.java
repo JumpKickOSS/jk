@@ -52,16 +52,16 @@ final class SiblingNames {
             for (Map.Entry<String, JkBuild> e : modules.entrySet()) {
                 if (dependsOnAnyOther(e.getValue(), coords)) dependents.add(e.getKey());
             }
-            String all = "`" + String.join("` and `", paths) + "` all carry the name `" + shared.getKey() + "` ("
-                    + String.join(", ", coords) + "); each builds into its own `target/<path>/`";
+            String all = String.join(" and ", paths) + " share the name " + shared.getKey() + " ("
+                    + String.join(", ", coords) + ")";
             if (dependents.isEmpty()) {
-                report.warning(all + ", and no member depends on the name.");
+                report.warning(all + "; nothing depends on it");
                 continue;
             }
-            report.warning(all + ". `" + String.join("`, `", dependents)
-                    + (dependents.size() == 1 ? "` depends" : "` depend")
-                    + " on it, so each edge names the member's group: `" + shared.getKey()
-                    + " = { workspace = true, group = \"…\" }`.");
+            report.warning(all + ". " + String.join(", ", dependents)
+                    + (dependents.size() == 1 ? " depends" : " depend")
+                    + " on it, so edges name the group: `" + shared.getKey()
+                    + " = { workspace = true, group = \"…\" }`");
         }
     }
 

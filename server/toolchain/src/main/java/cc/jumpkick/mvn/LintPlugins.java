@@ -103,18 +103,18 @@ final class LintPlugins {
         Set<String> sources = new LinkedHashSet<>(List.of("src/main/java"));
         Map<String, String> failOn = new LinkedHashMap<>();
         boolean any = false;
-        Plugin checkstyle = bound(em, CHECKSTYLE, "checkstyle:check", report, inherited);
+        Plugin checkstyle = bound(em, CHECKSTYLE, report, inherited);
         if (checkstyle != null) {
             any = true;
             Path reactorRoot = inherited != null ? inherited.rootDir() : reactorRoot(em, baseDir);
             failOn.put("checkstyle", checkstyle(checkstyle, baseDir, reactorRoot, values, sources, report, repos));
         }
-        Plugin pmd = bound(em, PMD, "pmd:check", report, inherited);
+        Plugin pmd = bound(em, PMD, report, inherited);
         if (pmd != null) {
             any = true;
             failOn.put("pmd", pmd(pmd, baseDir, values, sources, report, repos));
         }
-        Plugin spotbugs = bound(em, SPOTBUGS, "spotbugs:check", report, inherited);
+        Plugin spotbugs = bound(em, SPOTBUGS, report, inherited);
         if (spotbugs != null) {
             any = true;
             Path reactorRoot = inherited != null ? inherited.rootDir() : reactorRoot(em, baseDir);
@@ -123,8 +123,7 @@ final class LintPlugins {
         if (!any) return null;
         if (sources.size() > 1) values.put("sources", List.copyOf(sources));
         failOn(failOn, values);
-        report.warning("the lint plugins are `[lint]`: each tool runs as a cached step after compile and its findings"
-                + " are diagnostics in jk-results.md with the rule id; `fail-on` says which severity fails the build.");
+        report.warning("lint plugins: became [lint]; fail-on sets which severity fails the build");
         return new PluginConfig("lint", values);
     }
 
@@ -134,19 +133,14 @@ final class LintPlugins {
      * at the declaring POM, once, when {@code inherited} collects rows.
      */
     private static @Nullable Plugin bound(
-            EffectiveModel em,
-            String artifactId,
-            String goal,
-            ImportReport.Builder report,
-            @Nullable InheritedRows inherited) {
+            EffectiveModel em, String artifactId, ImportReport.Builder report, @Nullable InheritedRows inherited) {
         Plugin plugin = PluginFacts.plugin(em.model(), artifactId).orElse(null);
         if (plugin == null) return null;
         boolean own = InheritedRows.declaresPlugin(em.raw(), artifactId, em.activeProfiles());
         if (own || !plugin.getExecutions().isEmpty()) return plugin;
         String key = artifactId.equals(CHECKSTYLE) ? "checkstyle" : artifactId.equals(PMD) ? "pmd" : "spotbugs";
-        String message = "`" + artifactId + "` binds no `<execution>`, so Maven runs it only by hand (`mvn " + goal
-                + "`); no `[lint] " + key + "` was written for the modules inheriting it. Declare the table on a"
-                + " module to lint it on every build.";
+        String message = artifactId + ": no <execution>, so no [lint] " + key
+                + " for inheriting modules; add it to a module to lint every build";
         if (inherited == null) {
             report.warning(message);
         } else {
@@ -241,8 +235,7 @@ final class LintPlugins {
             Xpp3Dom own = execution.getConfiguration() instanceof Xpp3Dom dom ? new Xpp3Dom(dom) : null;
             Xpp3Dom merged = own == null ? base : Objects.requireNonNull(Xpp3Dom.mergeXpp3Dom(own, base));
             if (EnvValues.parseBool(PluginFacts.child(merged, "skip")).orElse(false)) {
-                report.warning("execution `" + execution.getId() + "` of `" + CHECKSTYLE
-                        + "` is skipped under Maven (`<skip>` is true), so no Checkstyle run was written for it.");
+                report.warning(CHECKSTYLE + " execution " + execution.getId() + ": <skip> is true; not imported");
                 continue;
             }
             String location = PluginFacts.text(merged.getChild("configLocation"));
@@ -421,12 +414,10 @@ final class LintPlugins {
         boolean builtIn = config != null && (config.endsWith("sun_checks.xml") || config.endsWith("google_checks.xml"));
         if (config == null || property || builtIn) {
             String named = config == null ? "sun_checks.xml" : config;
-            report.warning("`" + CHECKSTYLE + "` reads "
-                    + (config == null ? "Checkstyle's default rule set" : "`" + config + "`")
-                    + (property ? ", a path through a property no POM defines" : ", a rule set inside the plugin")
-                    + "; `[lint] checkstyle` names a configuration file in the module,"
-                    + " so copy the rule set in and point the key at it — until then the step lints nothing"
-                    + " and says so.");
+            report.warning(CHECKSTYLE + " "
+                    + (config == null ? "default rule set" : config)
+                    + (property ? " (undefined property)" : " (inside the plugin)")
+                    + ": copy it into the module and point [lint] checkstyle at it; lints nothing until then");
             return named;
         }
         if (url) return config;
@@ -462,9 +453,8 @@ final class LintPlugins {
             values.put(key, resolved);
             return;
         }
-        report.warning("`" + CHECKSTYLE + "` reads its " + what + " from `" + location
-                + "`, a path through a property no POM defines; `[lint] " + key + "` names a file in the module,"
-                + " so copy the " + what + " in and point the key at it.");
+        report.warning(CHECKSTYLE + " " + what + " " + location
+                + ": undefined property; copy the file into the module and set [lint] " + key);
     }
 
     /**
@@ -502,16 +492,12 @@ final class LintPlugins {
                 else if (names.contains(name)) return;
             }
             if (unread.isEmpty()) {
-                report.warning("`" + CHECKSTYLE + "` reads its " + what + " from `" + resource
-                        + "`, a resource none of the plugin's dependency jars holds (" + String.join(", ", coordinates)
-                        + "); `[lint]` names it as written, so the step lints nothing until the jar that ships it"
-                        + " joins `checkstyle-classpath`, or the " + what
-                        + " is copied into the module and the key points at the file.");
+                report.warning(CHECKSTYLE + " " + what + " " + resource + ": in none of "
+                        + String.join(", ", coordinates)
+                        + "; lints nothing until its jar joins checkstyle-classpath or the file is in the module");
             } else {
-                report.warning("`" + CHECKSTYLE + "` reads its " + what + " from `" + resource
-                        + "`, a resource of the plugin's dependency jars this import could not confirm — no repository"
-                        + " serves " + String.join(", ", unread) + "; the step warns `no configuration` if no jar on"
-                        + " `checkstyle-classpath` holds it.");
+                report.warning(CHECKSTYLE + " " + what + " " + resource + ": unconfirmed; no repository serves "
+                        + String.join(", ", unread));
             }
         }
 
@@ -587,10 +573,9 @@ final class LintPlugins {
                     String value = PluginFacts.usable(ruleset.getValue());
                     if (value == null) {
                         if (ruleset.getValue() != null && !ruleset.getValue().isBlank()) {
-                            report.warning("`" + PMD + "` names the ruleset `"
-                                    + ruleset.getValue().trim()
-                                    + "` through a property no POM defines; `rulesets/java/quickstart.xml` stands in —"
-                                    + " point `[lint] pmd` at the module's ruleset file.");
+                            report.warning(
+                                    PMD + " ruleset " + ruleset.getValue().trim()
+                                            + ": undefined property; quickstart.xml stands in. Point [lint] pmd at yours");
                             rulesets.add("rulesets/java/quickstart.xml");
                         }
                         continue;
@@ -609,8 +594,8 @@ final class LintPlugins {
             if (exclude != null) values.put("pmd-exclude", SourceTreePlugins.moduleRelativeFile(exclude, baseDir));
             for (String name : List.of("excludeRoots", "excludes")) {
                 if (dom.getChild(name) != null) {
-                    report.warning("`" + PMD + "` `<" + name + ">` has no `[lint]` key; suppress a finding in the"
-                            + " ruleset or with PMD's own `@SuppressWarnings(\"PMD.Rule\")`.");
+                    report.warning(PMD + " <" + name
+                            + ">: not imported; suppress in the ruleset or with @SuppressWarnings(\"PMD.Rule\")");
                 }
             }
             String priority = PluginFacts.child(dom, "failurePriority");
@@ -646,10 +631,9 @@ final class LintPlugins {
             if (version == null) return;
         }
         if (version.startsWith("6.")) {
-            report.warning("`" + PMD + "` runs PMD " + version + "; the lint step runs PMD 7 ("
+            report.warning(PMD + ": PMD " + version + " became PMD "
                     + PluginFacts.versionOrDefault(null, "lint", "pmd-version")
-                    + " unless `pmd-version` says otherwise), whose rulesets and rule names differ from PMD 6's —"
-                    + " a finding the Maven build did not report may be the newer release's.");
+                    + "; rule names differ, so expect new findings");
             return;
         }
         values.put("pmd-version", version);
@@ -670,7 +654,7 @@ final class LintPlugins {
                         Files.readAllBytes(fetched.get().fetched().cachePath()));
                 String version = PluginFacts.usable(pom.properties().get(PMD_VERSION_PROPERTY));
                 if (version != null) return version;
-                why = "its POM names no `" + PMD_VERSION_PROPERTY + "`";
+                why = "its POM names no " + PMD_VERSION_PROPERTY;
             } else {
                 why = "no repository serves its POM";
             }
@@ -680,10 +664,8 @@ final class LintPlugins {
             Thread.currentThread().interrupt();
             why = "the read of its POM was interrupted";
         }
-        report.warning("`" + PMD + "` " + pluginVersion + " bundles a PMD release this import could not learn — " + why
-                + "; `pmd-version` is left to the step's default ("
-                + PluginFacts.versionOrDefault(null, "lint", "pmd-version") + "), so set it to the PMD the"
-                + " Maven build ran if a finding the build did not report appears.");
+        report.warning(PMD + " " + pluginVersion + ": bundled PMD unknown (" + why + "); pmd-version defaults to "
+                + PluginFacts.versionOrDefault(null, "lint", "pmd-version"));
         return null;
     }
 
@@ -715,8 +697,8 @@ final class LintPlugins {
         for (String file : parameters.excludeFilterFiles()) {
             String path = launcherPath(file, baseDir, reactorRoot);
             if (path.contains("${")) {
-                report.warning("`" + SPOTBUGS + "` excludes the filter file `" + file
-                        + "`, a path through a property no POM defines; add it to `[lint] spotbugs-exclude`.");
+                report.warning(SPOTBUGS + " exclude filter " + file
+                        + ": undefined property; add it to [lint] spotbugs-exclude");
             } else if (!excludes.contains(path)) {
                 excludes.add(path);
             }
@@ -770,10 +752,9 @@ final class LintPlugins {
                 String artifact = PluginFacts.child(entry, "artifactId");
                 String version = PluginFacts.child(entry, "version");
                 if (group == null || artifact == null || version == null) {
-                    report.warning("`" + SPOTBUGS + "` `<plugins>` names " + (group == null ? "?" : group) + ":"
+                    report.warning(SPOTBUGS + " plugin " + (group == null ? "?" : group) + ":"
                             + (artifact == null ? "?" : artifact)
-                            + " without a version the import can read; the step runs SpotBugs's own detectors"
-                            + " without it. Add it to `[lint] spotbugs-plugins` as group:artifact:version.");
+                            + ": no version; add group:artifact:version to [lint] spotbugs-plugins");
                     continue;
                 }
                 String gav = group + ":" + artifact + ":" + version;

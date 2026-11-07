@@ -44,7 +44,7 @@ class GradleImporterShadowTest {
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .noneMatch(m -> m.contains("relocate"))
-                .noneMatch(m -> m.contains("not yet mapped"));
+                .noneMatch(m -> m.contains("Gradle plugin") && m.contains("not mapped"));
     }
 
     @Test
@@ -69,7 +69,7 @@ class GradleImporterShadowTest {
         assertThat(build.relocate()).containsExactly(Map.entry("org.apache.lucene", "org.demo.shaded.lucene9"));
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m -> m.startsWith("Shadow `relocate` org.apache.commons.io → org.demo.shaded.commons.io"
-                        + " (excludes org.apache.commons.io.input.*) —"));
+                .anyMatch(m -> m.startsWith("Shadow relocate org.apache.commons.io → org.demo.shaded.commons.io"
+                        + " (excludes org.apache.commons.io.input.*) not written"));
     }
 }

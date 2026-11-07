@@ -44,7 +44,7 @@ class FrontendImportE2eTest {
 
         Capture.Streams dry = Capture.both(() ->
                 assertThat(run("import", "--dry-run", "-C", dir.toString())).isZero());
-        assertThat(dry.out() + dry.err()).contains("dry run");
+        assertThat(dry.out() + dry.err()).contains("Would write").contains("Dry run");
         try (var listing = Files.walk(dir)) {
             assertThat(dir.resolve("web"))
                     .as(dry.out() + dry.err() + "\n"

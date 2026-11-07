@@ -28,8 +28,7 @@ final class JooqPlugin {
     static final String ARTIFACT = "jooq-codegen-maven";
 
     /** What an {@code add-source} root inside the output is, for the build-helper row. */
-    static final String ADD_SOURCE_ROW = "the jooq preset's output; `[jooq]` folds the generated classes into the"
-            + " compile itself, so no `extra-src` root is written";
+    static final String ADD_SOURCE_ROW = "the [jooq] output; no extra-src needed";
 
     private static final String DEFAULT_OUTPUT = "target/generated-sources/jooq";
     private static final String DDL_DATABASE = "org.jooq.meta.extensions.ddl.DDLDatabase";
@@ -63,15 +62,10 @@ final class JooqPlugin {
         String version = PluginFacts.usable(plugin.getVersion());
         if (version != null) values.put("version", version);
         if (output.startsWith("src/")) {
-            report.warning("`" + ARTIFACT + "` generates into `" + output + "`, a source root; `[jooq]` generates"
-                    + " into the build and folds the classes into the compile, so delete the checked-in copies.");
+            report.warning(ARTIFACT + " generates into source root " + output + "; delete the checked-in copies");
         }
-        report.warning("`" + ARTIFACT + "` is `[jooq]`: the classes are generated into the compile from "
-                + (live
-                        ? "the live database the `jdbc-*` keys name, with the migrations under `sql` as the step's cache key"
-                        : "the DDL scripts `sql` names, applied to an in-memory database")
-                + "; the module's `org.jooq:jooq` dependency stays and is expected at the generator's version ("
-                + PluginFacts.versionOrDefault(version, "jooq", "version") + ").");
+        report.warning(ARTIFACT + " became [jooq]; generates from " + (live ? "the live database" : "the sql DDL")
+                + ". Keep org.jooq:jooq at " + PluginFacts.versionOrDefault(version, "jooq", "version"));
         return new Mapped(new PluginConfig("jooq", values), Map.of(output, ADD_SOURCE_ROW));
     }
 
@@ -133,8 +127,7 @@ final class JooqPlugin {
     private static boolean jdbc(Xpp3Dom jdbc, Map<String, Object> values, ImportReport.Builder report) {
         String url = PluginFacts.child(jdbc, "url");
         if (url == null) {
-            report.warning("`" + ARTIFACT + "` reads a live database whose `<jdbc><url>` is not resolvable here;"
-                    + " `[jooq]` generates from the DDL scripts under `sql` unless `jdbc-url` names the database.");
+            report.warning(ARTIFACT + " <jdbc><url> unresolved; [jooq] uses the sql DDL unless jdbc-url is set");
             return false;
         }
         values.put("jdbc-url", url);
@@ -142,9 +135,8 @@ final class JooqPlugin {
         if (user != null) values.put("jdbc-user", user);
         String password = PluginFacts.child(jdbc, "password");
         if (password != null) values.put("jdbc-password", password);
-        report.warning("`" + ARTIFACT + "` reads a live database; `[jooq]` keeps that as `jdbc-url`, and the"
-                + " driver is `driver = \"group:artifact:version\"` — name the migrations that built the schema in"
-                + " `sql`, since they are the step's cache key.");
+        report.warning(ARTIFACT + " reads a live database; set [jooq] driver = \"group:artifact:version\" and"
+                + " list the schema migrations in sql");
         return true;
     }
 }

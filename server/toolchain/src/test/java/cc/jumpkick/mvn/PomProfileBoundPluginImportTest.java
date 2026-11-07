@@ -125,11 +125,10 @@ class PomProfileBoundPluginImportTest {
                 .isEmpty();
         assertThat(app.pluginConfig("spring-boot")).as("the Boot table stays").isPresent();
         assertThat(rows)
-                .anyMatch(m -> m.startsWith("[examples/app] `native-maven-plugin` is declared without executions or"
-                        + " configuration; Maven profile `native` supplies them, and that profile is not active on"
-                        + " this machine, so the plugin runs only under `-P native`; no `[native]` table is written."));
+                .contains("examples/app: native-maven-plugin is configured only in inactive profile native; no [native]"
+                        + " table. Re-import with -P native or add the table by hand");
         assertThat(result.report().issues().stream()
-                        .filter(i -> i.message().contains("`native-maven-plugin` is declared without"))
+                        .filter(i -> i.message().contains("native-maven-plugin is configured only in inactive profile"))
                         .map(ImportReport.Issue::severity))
                 .containsExactly(ImportReport.Severity.WARNING);
     }
@@ -186,10 +185,10 @@ class PomProfileBoundPluginImportTest {
                 .as("no fat jar without the profile")
                 .isEmpty();
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("`maven-shade-plugin` is declared without executions or configuration;"
-                        + " Maven profile `dist` supplies them"))
-                .anyMatch(m -> m.equals("Maven profile `dist`: plugins=[maven-shade-plugin] — port by hand;"
-                        + " docs/user/migration.md lists where each plugin lands."));
+                .anyMatch(
+                        m -> m.startsWith("maven-shade-plugin is configured only in inactive profile dist; no fat jar"))
+                .anyMatch(m ->
+                        m.equals("profile dist: plugins maven-shade-plugin: port by hand (docs/user/migration.md)"));
     }
 
     @Test
@@ -236,7 +235,7 @@ class PomProfileBoundPluginImportTest {
         assertThat(result.jkBuild().nativeConfigOpt())
                 .as("its own configuration binds it, whatever the profile adds")
                 .hasValueSatisfying(nc -> assertThat(nc.name()).isEqualTo("cli"));
-        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("is declared without executions"));
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("is configured only in inactive profile"));
     }
 
     private static void write(Path root, String path, String xml) throws Exception {

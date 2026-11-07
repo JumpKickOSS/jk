@@ -36,8 +36,7 @@ final class WirePlugin {
     static final String COMPILER_MAIN = "com.squareup.wire.WireCompiler";
 
     /** What an {@code add-source} root inside the output is, for the build-helper row. */
-    static final String ADD_SOURCE_ROW = "the wire recipe's output; `[generate.wire]` folds the generated Java"
-            + " into the compile itself, so no `extra-src` root is written";
+    static final String ADD_SOURCE_ROW = "the [generate.wire] output; no extra-src needed";
 
     private static final String DEFAULT_SRC = "src/main/proto";
     private static final String DEFAULT_OUTPUT = "target/generated-sources/wire";
@@ -97,9 +96,8 @@ final class WirePlugin {
                 if (version != null) return version;
             }
         }
-        report.warning("`" + ARTIFACT + "` runs a wire-compiler release the plugin chooses, and the module has no"
-                + " wire-runtime dependency to take the version from; `[generate.wire] tool` is `" + COMPILER
-                + ":latest` — pin the release the runtime you add matches.");
+        report.warning(ARTIFACT + ": no wire-runtime version; [generate.wire] tool is " + COMPILER
+                + ":latest. Pin it to your runtime's release");
         return "latest";
     }
 
@@ -118,15 +116,14 @@ final class WirePlugin {
             if (output == null || !src.equals(SourceTreePlugins.moduleRelative(output, baseDir))) continue;
             List<String> coordinates = unpackedArtifacts(model, config);
             if (coordinates.isEmpty()) {
-                report.warning("`" + DEPENDENCY_PLUGIN + "` execution `" + execution.getId() + "` unpacks into `" + src
-                        + "`, the wire recipe's proto source, but names no artifact the module depends on;"
-                        + " `[generate.wire]` reads the protos from the directory instead.");
+                report.warning(DEPENDENCY_PLUGIN + " execution " + execution.getId() + " unpacks into " + src
+                        + " but names no dependency; [generate.wire] reads that directory");
                 return null;
             }
             if (coordinates.size() > 1) {
-                report.warning("`" + DEPENDENCY_PLUGIN + "` execution `" + execution.getId() + "` unpacks "
-                        + coordinates.size() + " artifacts into `" + src + "`; `[generate.wire] unpack` names the first"
-                        + " (" + coordinates.getFirst() + ") — a further jar is another `[generate.<name>]` entry.");
+                report.warning(DEPENDENCY_PLUGIN + " execution " + execution.getId() + " unpacks "
+                        + coordinates.size() + " jars into " + src + "; [generate.wire] unpack takes "
+                        + coordinates.getFirst() + ". Add a [generate.<name>] per extra jar");
             }
             return coordinates.getFirst();
         }

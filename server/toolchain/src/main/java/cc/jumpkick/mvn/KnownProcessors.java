@@ -53,7 +53,6 @@ final class KnownProcessors {
         }
         report.warning(String.join(", ", names)
                 + (names.size() == 1 ? " is" : " are")
-                + " declared as plain dependencies and run as annotation processors from the classpath;"
-                + " written to `[processor-dependencies]` too, so the module says what runs.");
+                + " also written to [processor-dependencies]; they run as annotation processors");
     }
 }

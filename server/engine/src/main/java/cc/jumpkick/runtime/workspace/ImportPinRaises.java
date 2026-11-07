@@ -163,12 +163,9 @@ public final class ImportPinRaises {
         }
         String via = parents.isEmpty()
                 ? ""
-                : " (depended on by " + String.join(", ", parents.subList(0, Math.min(PARENTS_NAMED, parents.size())))
-                        + (parents.size() > PARENTS_NAMED ? " and " + (parents.size() - PARENTS_NAMED) + " more" : "")
-                        + ")";
-        return "`" + r.module() + "` " + r.from() + " → " + r.to()
-                + " ([" + r.table() + "]" + (r.moduleLabel().isEmpty() ? "" : " in " + r.moduleLabel()) + ")"
-                + ": the POM's pin sits below what its dependencies need" + via
-                + "; highest wins, so the pin is raised to the version the lock resolves";
+                : "; needed by " + String.join(", ", parents.subList(0, Math.min(PARENTS_NAMED, parents.size())))
+                        + (parents.size() > PARENTS_NAMED ? " and " + (parents.size() - PARENTS_NAMED) + " more" : "");
+        return r.module() + " raised " + r.from() + " → " + r.to()
+                + (r.moduleLabel().isEmpty() ? "" : " in " + r.moduleLabel()) + via;
     }
 }

@@ -53,10 +53,8 @@ final class ReplacerPlugin {
             String declared = PluginFacts.child(config, "basedir");
             String basedir = declared == null ? "" : SourceTreePlugins.moduleRelative(declared, baseDir);
             if (!covers(outputRoots, basedir)) {
-                report.warning("`" + ARTIFACT + "` execution `" + id + "` rewrites the files under `"
-                        + (basedir.isEmpty() ? "." : basedir) + "` in place, outside the protobuf plugin's output;"
-                        + " `[protobuf] replace` rewrites the generated main sources alone and jk edits no other"
-                        + " file, so those compile as written.");
+                report.warning(ARTIFACT + " execution " + id + " edits " + (basedir.isEmpty() ? "." : basedir)
+                        + " outside the protobuf output; not imported");
                 continue;
             }
             rules(config, replace, id, report);
@@ -91,13 +89,13 @@ final class ReplacerPlugin {
         if (config.getChild("token") != null) rule(config, regex, replace);
         for (String form : List.of("tokenValueMap", "file", "xpath", "tokenFile", "valueFile")) {
             if (config.getChild(form) != null) {
-                report.warning("`" + ARTIFACT + "` execution `" + id + "` `<" + form + ">` has no `[protobuf] replace`"
-                        + " form; only `<replacements>` (or one `<token>` and `<value>`) is written.");
+                report.warning(ARTIFACT + " execution " + id + " <" + form + "> has no [protobuf] replace form;"
+                        + " not imported");
             }
         }
         if (config.getChild("excludes") != null) {
-            report.warning("`" + ARTIFACT + "` execution `" + id + "` `<excludes>` have no `[protobuf] replace` key;"
-                    + " every generated file is rewritten. A proto `[protobuf] exclude` names is not generated.");
+            report.warning(ARTIFACT + " execution " + id + " <excludes> ignored; [protobuf] replace rewrites every"
+                    + " generated file");
         }
     }
 

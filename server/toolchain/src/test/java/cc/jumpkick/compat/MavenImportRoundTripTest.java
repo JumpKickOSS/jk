@@ -137,9 +137,8 @@ class MavenImportRoundTripTest {
         assertThat(JkBuildParser.parse(rendered).project().java()).isEqualTo(17);
         assertThat(result.report().issues())
                 .extracting(i -> i.message())
-                .anyMatch(
-                        m -> m.startsWith(
-                                "`maven.compiler.target` declared 8; jk's floor is 17; bytecode level raised — written as `java = 17`. A module whose sources or dependencies need an API a later JDK removed keeps `java = 8` instead"));
+                .contains("maven.compiler.target 8 raised to java = 17 (jk's floor). Set java = 8 back if it needs a"
+                        + " removed API");
     }
 
     private static String levelPom(String properties) {

@@ -48,7 +48,7 @@ class GradleVersionCatalogTest {
                 """);
 
         assertThat(cat.resolveLibrary("orphan")).hasValue("com.example:orphan");
-        assertThat(cat.parseNotes()).anyMatch(n -> n.contains("version.ref `missing`"));
+        assertThat(cat.parseNotes()).anyMatch(n -> n.contains("version.ref missing not in [versions]"));
     }
 
     @Test

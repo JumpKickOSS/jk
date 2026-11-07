@@ -116,7 +116,7 @@ class GradleExporterTest {
         assertThat(result.report().issues()).anySatisfy(i -> assertThat(i.message())
                 .contains("com.google.guava:guava")
                 .contains("*:listenablefuture")
-                .contains("constraint carries no exclusions"));
+                .contains("dropped; add them where the dependency is declared"));
     }
 
     @Test
@@ -225,6 +225,6 @@ class GradleExporterTest {
 
         GradleExporter.Result r = GradleExporter.export(b, Map.of());
 
-        assertThat(r.report().issues()).anyMatch(i -> i.message().contains("git-sourced"));
+        assertThat(r.report().issues()).anyMatch(i -> i.message().contains("git source dropped"));
     }
 }

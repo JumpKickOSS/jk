@@ -44,8 +44,7 @@ final class JavafxGradle {
         Map<String, Object> values = new LinkedHashMap<>();
         if (!modules.isEmpty() && !modules.equals(DEFAULT_MODULES)) values.put("modules", modules);
         if (version.isEmpty()) {
-            report.warning("`" + PLUGIN + "` has no `javafx { version }`, so no OpenJFX dependencies were written;"
-                    + " add `org.openjfx:javafx-<module>` for each module to `[dependencies]`.");
+            report.warning(PLUGIN + " has no javafx { version }; add org.openjfx:javafx-<module> to [dependencies]");
         } else {
             List<Dependency> main = new ArrayList<>(deps.getOrDefault(Scope.MAIN, List.of()));
             for (String module : modules.isEmpty() ? DEFAULT_MODULES : modules) {

@@ -48,8 +48,8 @@ class PomWorkspaceRepositoryIdImportTest {
                 .containsExactly("nexus");
         assertThat(ws.root().repositories()).extracting(RepositorySpec::name).containsExactly("nexus", "nexus-2");
         assertThat(ws.report().issues()).extracting(i -> i.message()).anySatisfy(m -> assertThat(m)
-                .contains("`nexus` is http://localhost:8081/repository/maven-snapshots/ in `b`")
-                .contains("written `nexus-2`"));
+                .contains("repository nexus is http://localhost:8081/repository/maven-snapshots/ in b")
+                .contains("renamed nexus-2 there"));
     }
 
     private static void member(Path root, String name, String url) throws Exception {

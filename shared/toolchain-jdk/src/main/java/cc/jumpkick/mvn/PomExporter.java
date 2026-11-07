@@ -164,28 +164,16 @@ public final class PomExporter {
     /** Git / content-addressed deps have no Maven equivalent — warn and skip. */
     private static boolean warnIfUnmappable(Dependency d, ImportReport.Builder report) {
         if (d.isGit()) {
-            report.warning("dependency `"
-                    + d.module()
-                    + "` is git-sourced; Maven has no git-source"
-                    + " equivalent — dropped. Build & install that project to your local repo"
-                    + " (`mvn install`, or `jk install`) so it resolves by coordinate, then add it"
-                    + " as a normal <dependency>.");
+            report.warning(d.module() + ": git source dropped; jk install it, then add a <dependency>");
             return true;
         }
         if (d.isPath()) {
-            report.warning("dependency `"
-                    + Objects.requireNonNull(d.pathSource()).rawPath()
-                    + "` is a local path dependency; Maven has no path-source"
-                    + " equivalent — dropped. Build & install that project to your local repo"
-                    + " (`mvn install`, or `jk install`) so it resolves by coordinate, then add it"
-                    + " as a normal <dependency>.");
+            report.warning(Objects.requireNonNull(d.pathSource()).rawPath()
+                    + ": path dependency dropped; jk install it, then add a <dependency>");
             return true;
         }
         if (d.isFile()) {
-            report.warning("dependency `"
-                    + d.module()
-                    + "` is content-addressed (sha256); no Maven"
-                    + " equivalent — dropped.");
+            report.warning(d.module() + ": sha256 file dependency dropped");
             return true;
         }
         return false;
@@ -410,12 +398,10 @@ public final class PomExporter {
 
     private static void warnAboutDroppedConcerns(JkBuild jkBuild, ImportReport.Builder report) {
         if (!jkBuild.features().isEmpty()) {
-            report.warning(
-                    "`features` block dropped — features are jk-only consumer-side" + " selectors; not a POM concept.");
+            report.warning("[features] dropped");
         }
         if (jkBuild.profiles() != null && !jkBuild.profiles().byName().isEmpty()) {
-            report.warning("`profiles` block dropped — jk profiles change javac/jvm args at the"
-                    + " consumer side, which doesn't translate to Maven profiles.");
+            report.warning("[profiles] dropped");
         }
     }
 
@@ -427,48 +413,25 @@ public final class PomExporter {
         return switch (v) {
             case VersionSelector.Exact e -> e.version();
             case VersionSelector.Caret c -> {
-                report.warning("dependency `"
-                        + module
-                        + "` was declared as `^"
-                        + c.version()
-                        + "` (caret); pinned to `"
-                        + c.version()
-                        + "` in the exported POM."
-                        + " Consumers using Maven get exact-match semantics.");
+                report.warning(module + ": ^" + c.version() + " pinned to " + c.version());
                 yield c.version();
             }
             case VersionSelector.Tilde t -> {
-                report.warning("dependency `"
-                        + module
-                        + "` was declared as `~"
-                        + t.version()
-                        + "` (tilde); pinned to `"
-                        + t.version()
-                        + "` in the exported POM.");
+                report.warning(module + ": ~" + t.version() + " pinned to " + t.version());
                 yield t.version();
             }
             case VersionSelector.Range r -> {
                 // jk range expressions usually look enough like Maven ranges to pass through,
                 // but emit a warning so the user reviews.
-                report.warning("dependency `"
-                        + module
-                        + "` uses range `"
-                        + r.raw()
-                        + "`; emitted verbatim — Maven range syntax differs in edge cases.");
+                report.warning(module + ": range " + r.raw() + " written as is; check Maven's syntax");
                 yield r.raw();
             }
             case VersionSelector.Latest l -> {
-                report.warning("dependency `"
-                        + module
-                        + "` uses `latest`; emitted as `LATEST` —"
-                        + " note that Maven 3+ has deprecated LATEST/RELEASE in <version>.");
+                report.warning(module + ": latest written as LATEST, which Maven 3 deprecates");
                 yield "LATEST";
             }
             case VersionSelector.Snapshot sn -> {
-                report.warning("dependency `"
-                        + module
-                        + "` uses `snapshot`; emitted as `LATEST` —"
-                        + " note that Maven 3+ has deprecated LATEST/RELEASE in <version>.");
+                report.warning(module + ": snapshot written as LATEST, which Maven 3 deprecates");
                 yield "LATEST";
             }
         };

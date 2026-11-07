@@ -48,26 +48,21 @@ final class DependencyMapping {
      */
     static Optional<Mapped> map(Pom.Dep dep, ImportReport.Builder report) {
         if ("system".equalsIgnoreCase(dep.scope())) {
-            report.error("`<dependency>` with `<scope>system</scope>` is rejected ("
-                    + dep.module()
-                    + "). Move it to a git dependency or a local repository.");
+            report.error(dep.module() + ": system scope refused; use a git dependency or a local repository");
             return Optional.empty();
         }
         String unmappedType = unmappedType(dep);
         if (unmappedType != null) {
-            report.error("`<type>" + unmappedType + "</type>` on " + dep.module()
-                    + " names an artifact jk has no manifest spelling for; the dependency was not written."
-                    + " A jar of the same module is `{ group, name, version }`, a classified jar adds"
-                    + " `classifier`.");
+            report.error(dep.module() + ": <type>" + unmappedType + "</type> not supported; dropped."
+                    + " Declare the jar, with classifier if needed");
             return Optional.empty();
         }
         warnUnresolvedVersion(dep, report);
         warnMetaversion(dep, report);
         Scope scope = scope(dep.scope());
         if (isPom(dep)) {
-            report.warning("`<type>pom</type>` on " + dep.module()
-                    + " is written to [platform-dependencies]: its dependencyManagement governs versions, and"
-                    + " the libraries it lists are not on the classpath — declare the ones the code uses.");
+            report.warning(dep.module() + ": <type>pom</type> moved to [platform-dependencies];"
+                    + " declare the libraries the code uses");
             scope = Scope.PLATFORM;
         }
         Dependency d = raiseToEngineFloor(toDependency(dep), scope, report);
@@ -76,12 +71,9 @@ final class DependencyMapping {
         // kind=tests is only legal under [test-dependencies]/[test-dev-dependencies], so a test-jar
         // declared in another Maven scope moves to TEST or the written jk.toml rejects its own `jk lock`.
         if (d.isTestsKind() && scope != Scope.TEST && scope != Scope.TEST_DEV) {
-            report.warning("`<type>test-jar</type>` on "
-                    + dep.module()
-                    + " is in Maven scope `"
+            report.warning(dep.module() + ": test-jar in scope "
                     + (dep.scope() == null || dep.scope().isBlank() ? "compile" : dep.scope())
-                    + "`; jk models test-jar deps as kind=tests, which is only legal in test"
-                    + " scopes — moved to [test-dependencies].");
+                    + " moved to [test-dependencies]");
             scope = Scope.TEST;
         }
         return Optional.of(new Mapped(scope, d));
@@ -97,16 +89,8 @@ final class DependencyMapping {
         if (d.isPlatformManaged() || !(d.version() instanceof VersionSelector.Exact exact)) return d;
         for (TestEngines.Row row : TestEngines.ROWS) {
             if (!row.trigger().equals(d.module()) || Versions.compare(exact.version(), row.floor()) >= 0) continue;
-            report.warning(d.module()
-                    + " "
-                    + exact.version()
-                    + " raised to "
-                    + row.suggested()
-                    + ": jk runs its suites through "
-                    + row.engine().module()
-                    + ", which needs "
-                    + row.floor()
-                    + " or later.");
+            report.warning(d.module() + " " + exact.version() + " raised to " + row.suggested() + "; "
+                    + row.engine().module() + " needs " + row.floor() + "+");
             return Dependency.of(d.library(), d.module(), VersionSelector.parse(row.suggested()))
                     .withKind(d.kind())
                     .withClassifier(d.classifier());
@@ -208,17 +192,13 @@ final class DependencyMapping {
         String version = dep.version();
         MavenMetaversion meta = MavenMetaversion.of(version);
         if (meta == null || version == null) return;
-        report.warning("`<version>" + version.trim() + "</version>` on " + dep.module()
-                + " floats under Maven; written as the `latest` selector, so `jk lock` pins the newest"
-                + (meta == MavenMetaversion.RELEASE ? " release" : " version")
-                + " and `jk update` moves it.");
+        report.warning(dep.module() + ": " + version.trim() + " written as latest; jk lock pins the newest"
+                + (meta == MavenMetaversion.RELEASE ? " release" : " version"));
     }
 
     static void warnUnresolvedVersion(Pom.Dep dep, ImportReport.Builder report) {
         if (PluginFacts.usable(dep.version()) != null) return;
-        report.warning("`<dependency>` "
-                + dep.module()
-                + " has no resolved `<version>` anywhere in its parent chain; jk wrote `=unresolved`."
-                + " Pin it in the POM and re-import.");
+        report.warning(
+                dep.module() + ": no version in the parent chain; written =unresolved. Pin it and" + " re-import");
     }
 }

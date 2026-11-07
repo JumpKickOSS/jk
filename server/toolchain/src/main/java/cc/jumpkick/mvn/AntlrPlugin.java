@@ -31,8 +31,7 @@ final class AntlrPlugin {
     static final String ARTIFACT = "antlr4-maven-plugin";
 
     /** What an {@code add-source} root inside the output is, for the build-helper row. */
-    static final String ADD_SOURCE_ROW = "the antlr preset's output; `[antlr]` folds the generated parsers into the"
-            + " compile itself, so no `extra-src` root is written";
+    static final String ADD_SOURCE_ROW = "the [antlr] output; no extra-src needed";
 
     private static final String DEFAULT_OUTPUT = "target/generated-sources/antlr4";
     private static final String DEFAULT_SRC = "src/main/antlr4";
@@ -82,7 +81,7 @@ final class AntlrPlugin {
                 }
             }
             for (String name : List.of("includes", "excludes", "generateTestSources")) {
-                if (config.getChild(name) != null) uncovered.add("`<" + name + ">`");
+                if (config.getChild(name) != null) uncovered.add("<" + name + ">");
             }
         }
         if (!src.equals(DEFAULT_SRC)) values.put("src", src);
@@ -92,13 +91,11 @@ final class AntlrPlugin {
         String version = PluginFacts.usable(plugin.getVersion());
         if (version != null) values.put("version", version);
         if (!uncovered.isEmpty()) {
-            report.warning("`" + ARTIFACT + "` " + String.join(", ", uncovered) + " have no `[antlr]` key; the preset"
-                    + " generates from every `.g4` under `" + src + "` into the main compile.");
+            report.warning(ARTIFACT + " " + String.join(", ", uncovered) + " have no [antlr] key; every .g4 under "
+                    + src + " is generated");
         }
-        report.warning("`" + ARTIFACT + "` is `[antlr]`: the parsers are generated into the compile from the grammars"
-                + " under `" + src + "`, a package per grammar directory; the module's `org.antlr:antlr4-runtime`"
-                + " dependency stays and is expected at the tool's version ("
-                + PluginFacts.versionOrDefault(version, "antlr", "version") + ").");
+        report.warning(ARTIFACT + " became [antlr]; generates from " + src + ". Keep org.antlr:antlr4-runtime at "
+                + PluginFacts.versionOrDefault(version, "antlr", "version"));
         return new Mapped(new PluginConfig("antlr", values), Map.of(output, ADD_SOURCE_ROW));
     }
 

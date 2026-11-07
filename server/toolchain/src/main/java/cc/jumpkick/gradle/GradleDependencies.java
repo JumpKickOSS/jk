@@ -74,9 +74,8 @@ final class GradleDependencies {
                 new GradleDependencies(catalog, properties, refreshVersions, report, CatalogShortNames.layered());
         GradleScriptText.extractBlock(script, "dependencies").ifPresent(body -> deps.parseBlock(body, false));
         if (!deps.testCompileOnly.isEmpty()) {
-            report.warning("`testCompileOnly` dependencies " + String.join(", ", deps.testCompileOnly)
-                    + " are written to [test-dependencies]: jk has no test-provided table, so they are on the"
-                    + " test runtime classpath too.");
+            report.warning("testCompileOnly " + String.join(", ", deps.testCompileOnly)
+                    + ": written to [test-dependencies], so also on the test runtime classpath");
         }
         return deps.byScope;
     }
@@ -175,8 +174,7 @@ final class GradleDependencies {
     private void parseEntry(String configuration, String rest, @Nullable String closure, boolean managed, String line) {
         Scope scope = managed ? Scope.MANAGED : mapConfiguration(configuration);
         if (scope == null) {
-            report.error("Gradle configuration `" + configuration + "` is not a recognised jk scope; entry dropped (`"
-                    + line + "`).");
+            report.error("configuration " + configuration + ": no jk scope; dropped " + line);
             return;
         }
         String args = rest;
@@ -251,8 +249,7 @@ final class GradleDependencies {
         }
         Matcher call = CALL.matcher(arg);
         if (!call.matches()) {
-            report.error("complex dependency expression `" + line + "` not understood;"
-                    + " re-state as a string-form coord in jk.toml.");
+            report.error(line + ": not understood; add it to jk.toml as a string coordinate");
             return;
         }
         String inner = call.group("arg").trim();
@@ -262,26 +259,19 @@ final class GradleDependencies {
                 if (s.find())
                     addDependency(Scope.PLATFORM, Objects.requireNonNull(firstNonNull(s.group(1), s.group(2))));
                 else if (CATALOG_ACCESSOR.matcher(inner).matches()) resolveCatalogAccessor(inner, Scope.PLATFORM);
-                else
-                    report.error("complex dependency expression `" + line + "` not understood;"
-                            + " re-state as a string-form coord in jk.toml.");
+                else report.error(line + ": not understood; add it to jk.toml as a string coordinate");
             }
             case "project" ->
-                report.warning(
-                        "Project dependency `" + literal(inner) + "` on configuration `"
-                                + configuration
-                                + "` was not mapped. Convert via a jk workspace module reference once you import the sibling module.");
+                report.warning("project(" + literal(inner) + ") on " + configuration
+                        + ": not mapped; reference the module once it is imported");
             case "kotlin" -> {
                 String token = literal(inner);
-                report.warning("Kotlin shortcut `kotlin(\"" + token + "\")` was not mapped to a concrete coord."
-                        + " Add the explicit `org.jetbrains.kotlin:kotlin-" + token + ":<version>` to jk.toml.");
+                report.warning("kotlin(\"" + token + "\"): not mapped; add org.jetbrains.kotlin:kotlin-" + token
+                        + ":<version> to jk.toml");
             }
             case "files", "fileTree", "testFixtures" ->
-                report.warning("dependency `" + arg + "` on configuration `" + configuration
-                        + "` has no coordinate to import; dropped.");
-            default ->
-                report.error("complex dependency expression `" + line + "` not understood;"
-                        + " re-state as a string-form coord in jk.toml.");
+                report.warning(arg + " on " + configuration + ": no coordinate; dropped");
+            default -> report.error(line + ": not understood; add it to jk.toml as a string coordinate");
         }
     }
 
@@ -291,9 +281,7 @@ final class GradleDependencies {
     }
 
     private void reportNotUnderstood(String line) {
-        report.error("dependencies entry not understood: `" + line
-                + "` — jk import is best-effort and only handles string-form deps."
-                + " Re-state the dep in jk.toml under [dependencies] as `\"g:a\" = { version = \"=v\" }`.");
+        report.error(line + ": not understood; add it to [dependencies] in jk.toml");
     }
 
     void addDependency(Scope scope, String rawCoord) {
@@ -302,14 +290,13 @@ final class GradleDependencies {
         String coord = interpolated.text();
         String[] parts = coord.split(":");
         if (parts.length < 2 || parts[0].isBlank() || parts[1].isBlank()) {
-            report.error("dependency coord `" + coord + "` is not `group:artifact:version`; dropped.");
+            report.error(coord + ": not group:artifact:version; dropped");
             return;
         }
         String module = parts[0] + ":" + parts[1];
         if (module.indexOf('$') >= 0) {
-            report.error("dependency `" + rawCoord + "` names the Gradle propert" + plural(interpolated.unresolved())
-                    + " in its coordinate, which neither gradle.properties nor the build script defines; dropped."
-                    + " Declare the coordinate directly in jk.toml.");
+            report.error(rawCoord + ": undefined propert" + plural(interpolated.unresolved())
+                    + "; dropped. Add the coordinate to jk.toml");
             return;
         }
         String shortName = shortNames.of(module).orElse(parts[1]);
@@ -322,13 +309,11 @@ final class GradleDependencies {
         }
         String versionToken = parts[2];
         if (parts.length > 3) {
-            report.warning("classifier/type on `" + coord + "` dropped; jk support arrives in a later slice.");
+            report.warning(coord + ": classifier/type dropped");
         }
         if (versionToken.indexOf('$') >= 0) {
-            report.warning("dependency `" + module + "` takes its version from the Gradle propert"
-                    + plural(interpolated.unresolved())
-                    + ", which neither gradle.properties nor the build script defines; written without a version"
-                    + " — pin it in jk.toml or supply it from a [platform-dependencies] BOM.");
+            report.warning(module + ": version from undefined propert" + plural(interpolated.unresolved())
+                    + "; pin it in jk.toml or a [platform-dependencies] BOM");
             byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.platformManaged(shortName, module));
             return;
         }
@@ -352,15 +337,12 @@ final class GradleDependencies {
 
     /** The row for a {@code _} version {@code versions.properties} does not settle; {@code pin} names the key read. */
     static String placeholderRow(String module, RefreshVersions.Lookup pin) {
-        return "dependency `" + module + "` has the version `_` (refreshVersions keeps the pin in"
-                + " versions.properties) and versions.properties beside the build has no `" + pin.key()
-                + "` entry for it; written without a version — pin it in jk.toml.";
+        return module + ": no " + pin.key() + " in versions.properties; pin it in jk.toml";
     }
 
-    /** {@code y `a`} or {@code ies `a`, `b`}, finishing the word "propert". */
+    /** {@code y a} or {@code ies a, b}, finishing the word "propert". */
     private static String plural(List<String> names) {
-        List<String> quoted = names.stream().map(n -> "`" + n + "`").toList();
-        return (quoted.size() == 1 ? "y " : "ies ") + String.join(", ", quoted);
+        return (names.size() == 1 ? "y " : "ies ") + String.join(", ", names);
     }
 
     /**
@@ -371,9 +353,7 @@ final class GradleDependencies {
      */
     private void resolveCatalogAccessor(String accessor, Scope scope) {
         if (catalog == null) {
-            report.error("dependency `" + accessor + "` references a Gradle version catalog, but no"
-                    + " gradle/libs.versions.toml was found (searched the project dir and its parent)."
-                    + " Declare the coordinate directly in jk.toml.");
+            report.error(accessor + ": no gradle/libs.versions.toml found; add the coordinate to jk.toml");
             return;
         }
         String rest = accessor.substring(accessor.indexOf('.') + 1);
@@ -382,14 +362,12 @@ final class GradleDependencies {
             return;
         }
         if (rest.startsWith("versions.") || rest.startsWith("plugins.")) {
-            report.warning("catalog accessor `" + accessor + "` refers to a version/plugin, not a"
-                    + " library; jk import only maps library and bundle accessors. Skipped.");
+            report.warning(accessor + ": not a library or bundle; skipped");
             return;
         }
         Optional<String> coord = catalog.resolveLibrary(rest);
         if (coord.isEmpty()) {
-            report.error("library `" + accessor + "` was not found in the version catalog"
-                    + "; dropped. Declare it directly in jk.toml.");
+            report.error(accessor + ": not in the version catalog; dropped. Add it to jk.toml");
             return;
         }
         addDependency(scope, coord.get());
@@ -399,16 +377,15 @@ final class GradleDependencies {
         Optional<GradleVersionCatalog.BundleResolution> resolved =
                 Objects.requireNonNull(catalog).resolveBundle(bundle);
         if (resolved.isEmpty()) {
-            report.error("bundle `" + accessor + "` was not found in the version catalog; dropped.");
+            report.error(accessor + ": bundle not in the version catalog; dropped");
             return;
         }
         GradleVersionCatalog.BundleResolution br = resolved.get();
         for (String missing : br.missingMembers()) {
-            report.warning("bundle `" + accessor + "` member `" + missing
-                    + "` was not found in [libraries] (or had no resolvable module); skipped.");
+            report.warning(accessor + ": member " + missing + " not in [libraries]; skipped");
         }
         if (br.isEmpty()) {
-            report.error("bundle `" + accessor + "` expanded to no libraries; dropped.");
+            report.error(accessor + ": bundle has no libraries; dropped");
             return;
         }
         for (String coord : br.coordinates()) addDependency(scope, coord);

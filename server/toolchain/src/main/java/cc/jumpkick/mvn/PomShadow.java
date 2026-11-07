@@ -69,8 +69,9 @@ public final class PomShadow {
     }
 
     /**
-     * The Tier-3 rows of {@code report} that belong to {@code path}: those prefixed {@code [path] }
-     * with the prefix removed, or for the root ({@code null}) the rows no module path prefixes.
+     * The Tier-3 rows of {@code report} that belong to {@code path}: those whose module prefix
+     * ({@code path: } or {@code path, other: }) starts with it, the prefix removed, or for the root
+     * ({@code null}) the rows no module path prefixes.
      */
     private static List<String> rows(ImportReport report, @Nullable String path, Set<String> paths) {
         List<String> out = new ArrayList<>();
@@ -79,17 +80,16 @@ public final class PomShadow {
             String message = issue.message();
             String owner = ownerOf(message, paths);
             if (path == null ? owner == null : path.equals(owner)) {
-                out.add(owner == null ? message : message.substring(owner.length() + 3));
+                out.add(owner == null ? message : message.substring(message.indexOf(": ") + 2));
             }
         }
         return out;
     }
 
     private static @Nullable String ownerOf(String message, Set<String> paths) {
-        if (!message.startsWith("[")) return null;
-        int close = message.indexOf("] ");
-        if (close < 0) return null;
-        String candidate = message.substring(1, close);
-        return paths.contains(candidate) ? candidate : null;
+        int colon = message.indexOf(": ");
+        if (colon < 0) return null;
+        String first = message.substring(0, colon).split(", ", 2)[0].replaceFirst(" and \\d+ more$", "");
+        return paths.contains(first) ? first : null;
     }
 }

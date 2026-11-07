@@ -49,9 +49,7 @@ public final class ScalaResolver {
      * and what to check. The lock and the build both say it.
      */
     public static String floorNote(String declared) {
-        return "scala " + declared + " is below jk's floor " + FLOOR_VERSION
-                + ", the oldest Scala its compile path drives, so the module compiles with " + DEFAULT_VERSION
-                + " and its library — check the build against Scala 3's source changes, and write scala = \""
-                + DEFAULT_VERSION + "\" to have the manifest say so";
+        return "scala " + declared + " is below jk's floor; compiled with " + DEFAULT_VERSION + ". Write scala = \""
+                + DEFAULT_VERSION + "\"";
     }
 }

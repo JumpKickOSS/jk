@@ -41,15 +41,15 @@ final class GradleNodeImport {
         String nodeDir = group(PROJECT_DIR, block);
         Path ui = nodeDir == null ? dir : dir.resolve(nodeDir).normalize();
         if (!Files.isRegularFile(ui.resolve("package.json"))) {
-            report.warning("plugin `" + PLUGIN + "` is applied but `" + (nodeDir == null ? "." : nodeDir)
-                    + "/package.json` is missing: no node build is written.");
+            report.warning(PLUGIN + ": " + (nodeDir == null ? "." : nodeDir)
+                    + "/package.json is missing; no node build written");
             return null;
         }
         boolean jvm = JVM_ROOTS.stream().anyMatch(r -> Files.isDirectory(dir.resolve(r)));
         if (!jvm) return new NodeImportMapping.Mapped(NodeImportMapping.spec(version, ui), null);
         if (nodeDir == null || ui.equals(dir)) {
-            report.warning("plugin `" + PLUGIN + "` builds a package.json beside the JVM sources: move the front end"
-                    + " into src/main/node (a [node] build beside them) or a module of its own.");
+            report.warning(
+                    PLUGIN + ": package.json sits beside JVM sources; move it to src/main/node or its own" + " module");
             return null;
         }
         String rel = dir.relativize(ui).toString().replace('\\', '/');

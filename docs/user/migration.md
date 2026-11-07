@@ -154,9 +154,8 @@ the module, both versions and the dependencies that reach it. `cryptofs 2.10.0` 
 says so:
 
 ```text
-`jakarta.inject:jakarta.inject-api` 2.0.1 → 2.0.1.MR ([dependencies] in …): the POM's pin sits below
-what its dependencies need (depended on by org.cryptomator:cryptofs 2.10.0); highest wins, so the pin
-is raised to the version the lock resolves
+jakarta.inject:jakarta.inject-api raised 2.0.1 → 2.0.1.MR in …; needed by
+org.cryptomator:cryptofs 2.10.0
 ```
 
 `jk lock` then resolves the project as written. A pin nothing asks above stays where the POM put it; the raise never floats a
@@ -481,12 +480,12 @@ relates to the Maven one.
 | any other `<build><extensions>` entry | — | Tier-3 row naming the coordinate | none |
 
 In a workspace, a row a parent's `<build>` puts on every module — an extension, a plugin with
-no mapping — is said once, at the declaring POM (`the root pom.xml`, `` `build-parent/pom.xml` ``,
-or the published parent) with the count of modules inheriting it; a module's own declaration
-keeps its row at the module. Any other module row whose text is the same in several modules — a
-dependency every module inherits from the workspace parent, a sibling BOM many modules import,
-a Surefire setting a parent puts on each of them — is one row at the first module saying it,
-with the count and the first few modules: `[core] … (12 modules: core, util, api, …)`.
+no mapping — is said once, at the declaring POM (`root pom.xml`, `build-parent/pom.xml`, or the published
+parent) with the count of modules inheriting it; a module's own declaration keeps its row at the
+module. Any other module row whose text is the same in several modules — a dependency every
+module inherits from the workspace parent, a sibling BOM many modules import, a Surefire setting
+a parent puts on each of them — is one row led by the first few modules saying it:
+`core, util, api and 9 more: …`.
 
 **Grades.** *exact*: the imported build does what the plugin did. *approximate*: the common
 configuration maps; unusual configuration lands in the report. *manual*: the report names the

@@ -97,7 +97,7 @@ class PomCiFriendlyImportTest {
 
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .noneMatch(m -> m.contains("could not be resolved"));
+                .noneMatch(m -> m.contains("not resolved"));
         assertThat(result.root().project().version()).isEqualTo("2.583-SNAPSHOT");
         JkBuild core = requireNonNull(result.modules().get("core"));
         assertThat(core.project().version()).isEqualTo("2.583-SNAPSHOT");
@@ -111,8 +111,8 @@ class PomCiFriendlyImportTest {
                 .isEmpty();
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m ->
-                        m.startsWith("[core] `<dependencyManagement>` imports the reactor BOM `bom` (org.demo:bom)"));
+                .anyMatch(
+                        m -> m.startsWith("core") && m.contains(": reactor BOM bom (org.demo:bom): versions applied"));
     }
 
     @Test
@@ -128,6 +128,6 @@ class PomCiFriendlyImportTest {
 
         assertThat(result.jkBuild().project().version()).isEqualTo("0.0.0-SNAPSHOT");
         assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.contains("references revision") && m.contains("0.0.0-SNAPSHOT"));
+                .anyMatch(m -> m.contains("revision is undefined") && m.contains("version = \"0.0.0-SNAPSHOT\""));
     }
 }

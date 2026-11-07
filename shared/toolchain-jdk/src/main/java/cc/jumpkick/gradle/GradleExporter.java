@@ -200,10 +200,8 @@ public final class GradleExporter {
                         .append(kEsc(gav(d, locked, report)))
                         .append("\")\n");
                 if (!d.exclusions().isEmpty()) {
-                    report.warning("managed dependency `" + d.module() + "` excludes "
-                            + String.join(", ", d.exclusions())
-                            + "; a Gradle constraint carries no exclusions, so they were not written —"
-                            + " exclude them on the configuration or on each declaring dependency.");
+                    report.warning(d.module() + ": exclusions " + String.join(", ", d.exclusions())
+                            + " dropped; add them where the dependency is declared");
                 }
             }
             sb.append("    }\n");
@@ -281,24 +279,16 @@ public final class GradleExporter {
 
     private static boolean warnIfUnmappable(Dependency d, ImportReport.Builder report) {
         if (d.isGit()) {
-            report.warning("dependency `"
-                    + d.module()
-                    + "` is git-sourced; Gradle has no built-in"
-                    + " git-source — dropped. Consider `includeBuild` of a local checkout.");
+            report.warning(d.module() + ": git source dropped; includeBuild a local checkout");
             return true;
         }
         if (d.isPath()) {
-            report.warning("dependency `"
-                    + Objects.requireNonNull(d.pathSource()).rawPath()
-                    + "` is a local path dependency; Gradle has no built-in"
-                    + " equivalent — dropped. Consider `includeBuild` of that directory.");
+            report.warning(Objects.requireNonNull(d.pathSource()).rawPath()
+                    + ": path dependency dropped; includeBuild that directory");
             return true;
         }
         if (d.isFile()) {
-            report.warning("dependency `"
-                    + d.module()
-                    + "` is content-addressed (sha256); no Gradle"
-                    + " equivalent — dropped.");
+            report.warning(d.module() + ": sha256 file dependency dropped");
             return true;
         }
         return false;
@@ -312,11 +302,10 @@ public final class GradleExporter {
 
     private static void warnDropped(JkBuild jk, ImportReport.Builder report) {
         if (!jk.features().isEmpty()) {
-            report.warning("`features` block dropped — Gradle has no direct equivalent"
-                    + " (consider feature variants / capabilities).");
+            report.warning("[features] dropped; consider Gradle feature variants");
         }
         if (jk.profiles() != null && !jk.profiles().byName().isEmpty()) {
-            report.warning("`profiles` block dropped — Gradle has no first-class profile concept.");
+            report.warning("[profiles] dropped");
         }
     }
 
@@ -324,34 +313,24 @@ public final class GradleExporter {
         return switch (v) {
             case VersionSelector.Exact e -> e.version();
             case VersionSelector.Caret c -> {
-                report.warning("`"
-                        + module
-                        + "` declared `^"
-                        + c.version()
-                        + "`; pinned to `"
-                        + c.version()
-                        + "` (no jk-lock.toml to resolve against).");
+                report.warning(module + ": ^" + c.version() + " pinned to " + c.version());
                 yield c.version();
             }
             case VersionSelector.Tilde t -> {
-                report.warning("`" + module + "` declared `~" + t.version() + "`; pinned to `" + t.version() + "`.");
+                report.warning(module + ": ~" + t.version() + " pinned to " + t.version());
                 yield t.version();
             }
             case VersionSelector.Range r -> {
-                report.warning("`"
-                        + module
-                        + "` uses range `"
-                        + r.raw()
-                        + "`; emitted verbatim — Gradle range syntax differs.");
+                report.warning(module + ": range " + r.raw() + " written as is; check Gradle's syntax");
                 yield r.raw();
             }
             case VersionSelector.Latest l -> {
-                report.warning("`" + module + "` uses `latest`; emitted as Gradle `latest.release`.");
+                report.warning(module + ": latest written as latest.release");
                 yield "latest.release";
             }
             case VersionSelector.Snapshot s -> {
                 // Gradle's own name for the same intent: newest, pre-releases included.
-                report.warning("`" + module + "` uses `snapshot`; emitted as Gradle `latest.integration`.");
+                report.warning(module + ": snapshot written as latest.integration");
                 yield "latest.integration";
             }
         };

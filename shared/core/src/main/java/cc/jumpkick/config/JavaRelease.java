@@ -26,10 +26,7 @@ public final class JavaRelease {
 
     /** The one sentence a module compiling below the floor gets, once per build. */
     public static String floorNote(int java) {
-        return "java " + java + " is below jk's floor " + FLOOR
-                + ": the toolchain JDK cross-compiles the module with --release "
-                + java
-                + " — keep it while the module's sources or dependencies need an API a later JDK removed, and write java = "
-                + FLOOR + " once they do not";
+        return "java " + java + " is below jk's floor " + FLOOR + "; compiled with --release " + java
+                + ". Raise to java = " + FLOOR + " when you can";
     }
 }

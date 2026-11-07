@@ -39,9 +39,8 @@ final class WorkspaceRepositories {
                 if (first != null && !first.sameRepository(spec)) {
                     String name = spec.name();
                     for (int n = 2; byName.containsKey(name); n++) name = spec.name() + "-" + n;
-                    report.warning("`<repository>` `" + spec.name() + "` is " + spec.url() + " in `" + e.getKey()
-                            + "` and " + first.url() + " elsewhere in the reactor; a workspace resolves against one"
-                            + " repository set keyed by id, so this module's is written `" + name + "`.");
+                    report.warning("repository " + spec.name() + " is " + spec.url() + " in " + e.getKey() + " but "
+                            + first.url() + " elsewhere; renamed " + name + " there");
                     spec = new RepositorySpec(
                             name,
                             spec.url(),

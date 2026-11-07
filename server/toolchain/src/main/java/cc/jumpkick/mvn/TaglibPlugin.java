@@ -30,8 +30,7 @@ final class TaglibPlugin {
     static final String TEST_GOAL = "resolve-test-dependencies";
 
     /** What an {@code add-source} root inside the output is, for the build-helper row. */
-    static final String ADD_SOURCE_ROW = "the taglib preset's output; `[taglib]` folds the generated tag-library"
-            + " interfaces into the compile itself, so no `extra-src` root is written";
+    static final String ADD_SOURCE_ROW = "the [taglib] output; no extra-src needed";
 
     private static final String DEFAULT_OUTPUT = "target/generated-sources/taglib-interface";
     private static final String MAIN_RESOURCES = "src/main/resources";
@@ -81,20 +80,15 @@ final class TaglibPlugin {
             Map<String, Object> values = new LinkedHashMap<>();
             List<String> resourceDirs = LocalizerPlugin.resourceDirs(model, baseDir);
             if (!resourceDirs.equals(List.of(MAIN_RESOURCES))) values.put("resources", resourceDirs);
-            report.warning("`" + ARTIFACT + "` `" + GOAL + "` is `[taglib]`: the typed tag-library interfaces are"
-                    + " generated into the compile from the tag libraries under " + String.join(", ", resourceDirs)
-                    + "; the module's `org.kohsuke.stapler:stapler-groovy` dependency stays, the interfaces read it"
-                    + " at compile time.");
+            report.warning(
+                    ARTIFACT + " " + GOAL + " became [taglib]; generates from " + String.join(", ", resourceDirs));
             taglib = new PluginConfig("taglib", values);
         }
         if (testPlugins) {
-            report.warning("`" + ARTIFACT + "` `" + TEST_GOAL + "` is `[jenkins-test]`: the Jenkins plugins of the"
-                    + " test closure are installed under test-dependencies/ on the test classpath, where JenkinsRule"
-                    + " loads them.");
+            report.warning(ARTIFACT + " " + TEST_GOAL + " became [jenkins-test]");
         }
         for (String goal : otherGoals) {
-            report.warning("`" + ARTIFACT + "` goal `" + goal + "` was not imported; only `" + GOAL + "` and `"
-                    + TEST_GOAL + "` map to jk tables.");
+            report.warning(ARTIFACT + " goal " + goal + " not imported; only " + GOAL + " and " + TEST_GOAL + " map");
         }
         return new Mapped(
                 taglib,

@@ -103,17 +103,17 @@ class PomInheritanceImportTest {
         assertThat(messages)
                 .contains(
                         "versions for com.google.guava:guava, org.junit.jupiter:junit-jupiter managed by parent"
-                                + " org.demo:demo-dependencies:1.0.",
+                                + " org.demo:demo-dependencies:1.0",
                         "versions for com.fasterxml.jackson.core:jackson-databind managed by parent"
-                                + " org.demo:demo-build:1.0.",
-                        "dependencies org.slf4j:slf4j-api inherited from parent org.demo:demo-starter-parent:1.0.")
-                .anyMatch(m ->
-                        m.startsWith("`<dependencyManagement>` inherited from parent org.demo:demo-starter-parent:1.0"))
+                                + " org.demo:demo-build:1.0",
+                        "dependencies org.slf4j:slf4j-api inherited from parent org.demo:demo-starter-parent:1.0")
+                .anyMatch(m -> m.startsWith(
+                        "<dependencyManagement> from parent org.demo:demo-starter-parent:1.0 written as [platform]"))
                 .noneMatch(m -> m.contains("mvn help:effective-pom"))
                 .noneMatch(m -> m.contains("pin was dropped"));
         assertThat(messages)
                 .as("a parent's inactive profile is not this POM's to port")
-                .noneMatch(m -> m.contains("profile `native`"));
+                .noneMatch(m -> m.contains("profile native"));
     }
 
     /** dependencyManagement declared three parents up pins the version of a versionless dependency. */
@@ -177,7 +177,7 @@ class PomInheritanceImportTest {
         assertThat(versions(result.jkBuild().dependencies().of(Scope.PLATFORM))).containsExactly("org.ex:bottom=1");
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .contains("versions for org.apache.commons:commons-lang3 managed by parent org.ex:top:1.");
+                .contains("versions for org.apache.commons:commons-lang3 managed by parent org.ex:top:1");
     }
 
     /**
@@ -485,7 +485,7 @@ class PomInheritanceImportTest {
                 .containsExactly("org.jspecify:jspecify=1.0.0");
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .noneMatch(m -> m.contains("carried as `[platform]`"));
+                .noneMatch(m -> m.contains("written as [platform]"));
     }
 
     /** A parent no repository has is a Tier-3 row; the POM's own declarations still import. */
@@ -523,7 +523,7 @@ class PomInheritanceImportTest {
         assertThat(result.report().issues())
                 .filteredOn(i -> i.severity() == ImportReport.Severity.ERROR)
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m -> m.startsWith("`<parent>` org.nowhere:gone:9 could not be resolved"));
+                .anyMatch(m -> m.startsWith("parent org.nowhere:gone:9 not resolved ("));
         assertThat(result.report().renderMarkdown("pom.xml")).contains("## Tier 3 — not imported");
     }
 
@@ -595,10 +595,9 @@ class PomInheritanceImportTest {
         assertThat(result.report().hasErrors()).isFalse();
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .contains("[app] versions for com.google.guava:guava managed by workspace parent com.ex:parent:1.0.0.")
-                .anyMatch(m -> m.startsWith("`<dependencyManagement>` of the reactor's parent POMs pins 1 version"
-                        + " no module declares (org.slf4j:slf4j-api); written once to the root's"
-                        + " [managed-dependencies]"));
+                .contains("app: versions for com.google.guava:guava managed by workspace parent com.ex:parent:1.0.0")
+                .contains("parent dependencyManagement: 1 unused pin moved to the root's [managed-dependencies]"
+                        + " (org.slf4j:slf4j-api)");
         assertThat(result.root().dependencies().of(Scope.MANAGED))
                 .as("the sibling parent's pin governs every member's transitives from the root")
                 .extracting(d -> d.module() + "=" + d.version().raw())

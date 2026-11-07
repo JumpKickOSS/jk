@@ -80,9 +80,9 @@ class PomDeclaredPinsImportTest {
                 .toList();
         assertThat(errors).hasSize(1);
         assertThat(errors.get(0))
-                .startsWith("`net.java.dev.swing-layout:swing-layout 1.0.2` is pinned by the POM")
+                .startsWith("net.java.dev.swing-layout:swing-layout 1.0.2: no repository lists that version")
                 .contains("fixture lists 1.0.1, 1.0")
-                .contains("`jk lock` refuses it");
+                .endsWith("Pin a listed version or add its repository to [repositories]");
         assertThat(checked.issues()).noneMatch(i -> i.message().contains("junit:junit"));
         assertThat(checked.issues().size()).isEqualTo(result.report().issues().size() + 1);
     }
@@ -135,7 +135,7 @@ class PomDeclaredPinsImportTest {
         assertThat(outcome.exit()).isZero();
         assertThat(Files.readString(report))
                 .contains("## Tier 3")
-                .contains("`net.java.dev.swing-layout:swing-layout 1.0.2` is pinned by the POM");
+                .contains("net.java.dev.swing-layout:swing-layout 1.0.2: no repository lists that version");
         assertThat(Files.readString(pom.resolveSibling("jk.toml")))
                 .as("the pin is still written; the row is the diagnosis, not a rewrite")
                 .contains("swing-layout = \"net.java.dev.swing-layout:swing-layout:1.0.2\"");
@@ -155,13 +155,13 @@ class PomDeclaredPinsImportTest {
             ImportReport checked = DeclaredPins.check(result.root(), result.modules(), result.report(), importer);
 
             assertThat(checked.issues())
-                    .filteredOn(i -> i.message().startsWith("`net.java.dev.swing-layout:swing-layout 1.0.2`"))
+                    .filteredOn(i -> i.message().startsWith("net.java.dev.swing-layout:swing-layout 1.0.2:"))
                     .singleElement()
                     .satisfies(i -> {
                         assertThat(i.severity()).isEqualTo(ImportReport.Severity.WARNING);
                         assertThat(i.message())
                                 .as("whichever walk dials, the row names the dead repository; the other does not ask")
-                                .contains("was not checked against the repositories the lock reads")
+                                .contains(": unchecked (")
                                 .containsAnyOf("dead could not be reached", "dead was not asked again after it");
                     });
             assertThat(checked.hasErrors()).isFalse();
@@ -258,8 +258,8 @@ class PomDeclaredPinsImportTest {
                 .filteredOn(i -> i.message().contains("swing-layout"))
                 .singleElement()
                 .satisfies(i -> assertThat(i.message())
-                        .startsWith("[b] `net.java.dev.swing-layout:swing-layout 1.0.2` is pinned by the POM")
-                        .contains("`jk lock` refuses it"));
+                        .startsWith("b: net.java.dev.swing-layout:swing-layout 1.0.2: no repository lists that version")
+                        .contains("Pin a listed version"));
     }
 
     /**
@@ -286,16 +286,14 @@ class PomDeclaredPinsImportTest {
 
         assertThat(checked.hasErrors()).isFalse();
         assertThat(checked.issues())
-                .filteredOn(i -> i.message().contains("were not checked"))
+                .filteredOn(i -> i.message().contains("unchecked after the"))
                 .singleElement()
                 .satisfies(i -> {
                     assertThat(i.severity()).isEqualTo(ImportReport.Severity.WARNING);
                     assertThat(i.message())
-                            .startsWith("2 pinned versions (2 coordinates) were not checked against the repositories")
-                            .contains("0-second budget after 0 of 2")
-                            .contains("`jk lock` decides whether each version exists");
+                            .isEqualTo("2 pins (2 coordinates) unchecked after the 0s budget; jk lock checks them");
                 });
-        assertThat(checked.issues()).noneMatch(i -> i.message().contains("is pinned by the POM"));
+        assertThat(checked.issues()).noneMatch(i -> i.message().contains("no repository lists"));
     }
 
     /**
@@ -347,13 +345,12 @@ class PomDeclaredPinsImportTest {
                 Duration.ofNanos(10));
 
         assertThat(checked.hasErrors()).isFalse();
-        assertThat(checked.issues()).noneMatch(i -> i.message().contains("is pinned by the POM"));
+        assertThat(checked.issues()).noneMatch(i -> i.message().contains("no repository lists"));
         assertThat(checked.issues())
-                .filteredOn(i -> i.message().contains("were not checked"))
+                .filteredOn(i -> i.message().contains("unchecked after the"))
                 .singleElement()
-                .satisfies(i -> assertThat(i.message())
-                        .startsWith("1 pinned version (1 coordinate) were not checked")
-                        .contains("after 0 of 1"));
+                .satisfies(
+                        i -> assertThat(i.message()).startsWith("1 pin (1 coordinate) unchecked after the 0s budget"));
     }
 
     /**
@@ -397,11 +394,11 @@ class PomDeclaredPinsImportTest {
                     .singleElement()
                     .satisfies(i -> assertThat(i.message())
                             .as("whichever walk dials, the row names the 401; the other does not ask")
-                            .contains("was not checked against the repositories the lock reads")
+                            .contains(": unchecked (")
                             .contains("HTTP 401"));
             assertThat(checked.issues())
                     .as("the pin the fixture lists has no row")
-                    .noneMatch(i -> i.message().startsWith("`net.java.dev.swing-layout"));
+                    .noneMatch(i -> i.message().startsWith("net.java.dev.swing-layout"));
         } finally {
             refusing.stop(0);
         }

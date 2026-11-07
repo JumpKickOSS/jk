@@ -40,14 +40,13 @@ final class JavafxMavenPlugin {
         for (Xpp3Dom config : PluginFacts.configurations(plugin.get())) {
             for (String unmapped : List.of("options", "jlinkImageName", "launcher", "jlinkZipName")) {
                 if (config.getChild(unmapped) != null) {
-                    report.warning("`" + PLUGIN + "` <" + unmapped + "> has no `[javafx]` key and was not imported;"
-                            + " JVM flags for the test JVM go in `[test] jvm-args`.");
+                    report.warning(PLUGIN + " <" + unmapped + "> not imported"
+                            + ("options".equals(unmapped) ? "; put test JVM flags in [test] jvm-args" : ""));
                 }
             }
         }
-        report.warning("`" + PLUGIN + "` is `[javafx]`: the OpenJFX modules ride the module path of the test JVM"
-                + " and `jk run`. A fat jar runs with `java -jar` only through a main class that does not extend"
-                + " `javafx.application.Application`.");
+        report.warning(
+                PLUGIN + " became [javafx]. For java -jar, use a main class that doesn't extend" + " Application");
         return new PluginConfig("javafx", values);
     }
 

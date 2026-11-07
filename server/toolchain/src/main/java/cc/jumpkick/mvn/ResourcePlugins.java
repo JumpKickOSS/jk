@@ -48,8 +48,8 @@ final class ResourcePlugins {
         List<String> filtered = new ArrayList<>();
         List<String> testDirs = new ArrayList<>();
         List<String> testFiltered = new ArrayList<>();
-        collect(build.getResources(), MAIN_RESOURCES, "`<resources>`", baseDir, dirs, filtered, report);
-        collect(build.getTestResources(), TEST_RESOURCES, "`<testResources>`", baseDir, testDirs, testFiltered, report);
+        collect(build.getResources(), MAIN_RESOURCES, "<resources>", baseDir, dirs, filtered, report);
+        collect(build.getTestResources(), TEST_RESOURCES, "<testResources>", baseDir, testDirs, testFiltered, report);
         Set<String> dollar = new TreeSet<>();
         Set<String> at = new TreeSet<>();
         for (String rel : concat(filtered, testFiltered)) referenced(baseDir.resolve(rel), dollar, at);
@@ -65,11 +65,10 @@ final class ResourcePlugins {
             }
         }
         if (!unknown.isEmpty()) {
-            report.warning("filtered resources reference "
+            report.warning("filtered resources: "
                     + String.join(
                             ", ", unknown.stream().map(n -> "${" + n + "}").toList())
-                    + ", which the POM does not define (environment, settings or system properties under Maven) —"
-                    + " set each under [resources.properties], or the file keeps the reference as written.");
+                    + " undefined; set them in [resources.properties]");
         }
         return new BuildBlock.Resources(dirs, filtered, testDirs, testFiltered, properties);
     }
@@ -91,15 +90,15 @@ final class ResourcePlugins {
             if (dir.isEmpty()) {
                 // The module directory itself: as a root it would put the sources and the POM on the
                 // classpath. Maven copies only what its includes name.
-                unsupported.add("the module directory itself (`${basedir}`)");
+                unsupported.add("the module directory (${basedir})");
                 continue;
             }
             if (!resource.isFiltering() && underLayoutAtItsOwnPath(dir, layoutDir, resource.getTargetPath())) continue;
             if (!resource.getIncludes().isEmpty() || !resource.getExcludes().isEmpty()) {
-                unsupported.add("`<includes>`/`<excludes>` on " + dir);
+                unsupported.add("<includes>/<excludes> on " + dir);
             }
             if (resource.getTargetPath() != null && !resource.getTargetPath().isBlank()) {
-                unsupported.add("`<targetPath>` on " + dir);
+                unsupported.add("<targetPath> on " + dir);
             }
             if (resource.isFiltering()) {
                 if (!filtered.contains(dir)) filtered.add(dir);
@@ -109,7 +108,7 @@ final class ResourcePlugins {
         }
         if (!unsupported.isEmpty()) {
             report.warning(element + " " + String.join(", ", unsupported)
-                    + " is not carried into [resources]: jk copies every file of a root to the classpath root.");
+                    + ": not imported; [resources] copies whole roots to the classpath root");
         }
     }
 

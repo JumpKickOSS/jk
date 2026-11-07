@@ -28,8 +28,7 @@ final class LocalizerPlugin {
     static final String ARTIFACT = "localizer-maven-plugin";
 
     /** What an {@code add-source} root inside the output is, for the build-helper row. */
-    static final String ADD_SOURCE_ROW = "the localizer preset's output; `[localizer]` folds the generated"
-            + " `Messages` classes into the compile itself, so no `extra-src` root is written";
+    static final String ADD_SOURCE_ROW = "the [localizer] output; no extra-src needed";
 
     private static final String DEFAULT_OUTPUT = "target/generated-sources/localizer";
     private static final String DEFAULT_MASK = "Messages.properties";
@@ -72,9 +71,7 @@ final class LocalizerPlugin {
         if (!resourceDirs.equals(List.of(MAIN_RESOURCES))) values.put("resources", resourceDirs);
         String version = PluginFacts.usable(plugin.getVersion());
         if (version != null) values.put("version", version);
-        report.warning("`" + ARTIFACT + "` is `[localizer]`: the `Messages` classes are generated into the compile"
-                + " from the bundles under " + String.join(", ", resourceDirs) + "; the module's"
-                + " `org.jvnet.localizer:localizer` dependency stays, the generated classes read it at run time.");
+        report.warning(ARTIFACT + " became [localizer]; generates from " + String.join(", ", resourceDirs));
         return new Mapped(new PluginConfig("localizer", values), Map.of(output, ADD_SOURCE_ROW));
     }
 

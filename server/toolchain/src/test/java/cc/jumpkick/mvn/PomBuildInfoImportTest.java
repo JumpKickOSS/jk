@@ -55,7 +55,7 @@ class PomBuildInfoImportTest {
         List<String> messages = TestImporters.messages(result);
 
         assertThat(build.build().buildInfo()).isEqualTo(new BuildBlock.BuildInfo("apollo-git.properties", false));
-        assertThat(messages).noneMatch(m -> m.startsWith("`<plugin>"));
+        assertThat(messages).noneMatch(m -> m.matches("[\\w.-]+ not imported(; declared by .*)?"));
         assertThat(messages).noneMatch(m -> m.contains("git-commit-id"));
 
         String rendered = JkBuildRenderer.render(build);
@@ -136,8 +136,8 @@ class PomBuildInfoImportTest {
         assertThat(result.jkBuild().build().buildInfo())
                 .as("the file keeps its name inside the jar; the directory outside classes does not travel")
                 .isEqualTo(new BuildBlock.BuildInfo("git.json", false));
-        assertThat(messages).anyMatch(m -> m.contains("`<format>json`"));
-        assertThat(messages).anyMatch(m -> m.contains("`<dateFormat>`"));
-        assertThat(messages).anyMatch(m -> m.contains("`<generateGitPropertiesFilename>`"));
+        assertThat(messages).anyMatch(m -> m.contains("<format> json: not imported"));
+        assertThat(messages).anyMatch(m -> m.contains("<dateFormat>"));
+        assertThat(messages).anyMatch(m -> m.contains("<generateGitPropertiesFilename>"));
     }
 }

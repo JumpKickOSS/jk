@@ -29,8 +29,8 @@ class ScalaResolverTest {
     @Test
     void the_floor_note_names_the_declared_version_the_floor_and_the_key_to_write() {
         assertThat(ScalaResolver.floorNote("2.13.16"))
-                .startsWith("scala 2.13.16 is below jk's floor 3.0")
-                .contains("compiles with " + ScalaResolver.DEFAULT_VERSION)
+                .startsWith("scala 2.13.16 is below jk's floor")
+                .contains("compiled with " + ScalaResolver.DEFAULT_VERSION)
                 .contains("scala = \"" + ScalaResolver.DEFAULT_VERSION + "\"");
     }
 

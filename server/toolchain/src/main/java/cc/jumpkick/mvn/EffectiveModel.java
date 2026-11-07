@@ -312,8 +312,7 @@ final class EffectiveModel {
         List<Declared> out = new ArrayList<>();
         for (Dependency d : model.getDependencies()) {
             if (d.getGroupId() == null || d.getArtifactId() == null) {
-                report.error(
-                        "`<dependency>` without groupId or artifactId (" + d.getManagementKey() + ") was skipped.");
+                report.error(d.getManagementKey() + ": no groupId or artifactId; skipped");
                 continue;
             }
             String key = d.getManagementKey();
