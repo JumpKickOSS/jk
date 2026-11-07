@@ -183,6 +183,23 @@ public final class StoreCasGc {
             long nowMillis,
             boolean dryRun)
             throws IOException {
+        return run(storeCas, pinned, uses, policy, nowMillis, dryRun, SafePoint.NONE);
+    }
+
+    /**
+     * As {@link #run(Cas, Set, Map, Policy, long, boolean)}, asking {@code safePoint} before each
+     * file of the scan (which reads every unpinned blob's head) and before each blob it deletes.
+     * Blobs here are independent of one another, so a stop between two leaves the store whole.
+     */
+    public static Report run(
+            Cas storeCas,
+            Set<String> pinned,
+            Map<String, AccessLedger.Use> uses,
+            Policy policy,
+            long nowMillis,
+            boolean dryRun,
+            SafePoint safePoint)
+            throws IOException {
         Path shaRoot = storeCas.root().resolve("sha256");
         if (!Files.isDirectory(shaRoot)) return new Report(0, 0L, 0, 0);
 
@@ -195,6 +212,7 @@ public final class StoreCasGc {
         int[] pinnedCount = {0};
         long[] total = {0};
         PathUtil.forEachRegularFile(shaRoot, (file, attrs) -> {
+            safePoint.check();
             if (file.getFileName().toString().startsWith(".put-")) return;
             Optional<String> hex = storeCas.hashFromPath(file);
             if (hex.isEmpty()) return;
@@ -232,6 +250,7 @@ public final class StoreCasGc {
                 survivors.add(blob);
                 continue;
             }
+            safePoint.check();
             if (!dryRun) Files.deleteIfExists(blob.file());
             deleted++;
             freed += blob.size();
@@ -246,6 +265,7 @@ public final class StoreCasGc {
                 if (total[0] <= policy.budgetBytes()) break;
                 if (keep.contains(blob.file())
                         || blob.age(nowMillis) < policy.minAge().toMillis()) continue;
+                safePoint.check();
                 if (!dryRun) Files.deleteIfExists(blob.file());
                 remaining.remove(blob);
                 deleted++;

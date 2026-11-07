@@ -188,9 +188,10 @@ public final class ActionCachePrune {
         Path actionsDir = CacheTree.ACTIONS.under(cacheRoot);
         if (!Files.isDirectory(actionsDir)) return Report.EMPTY;
 
-        // Each Zinc tree goes whole and alone; the tier is a few dozen trees, so it runs unbroken.
+        // Each Zinc tree goes whole and alone: the pass stops between trees and between files of
+        // the read-only measuring walk, never inside a tree it has begun to delete.
         yield.check();
-        Incremental incremental = pruneIncremental(actionsDir, policy, now, grace, dryRun);
+        Incremental incremental = pruneIncremental(actionsDir, policy, now, grace, dryRun, yield);
 
         Blobs blobs = new Blobs();
         long used = scanCas(cacheCas, alreadyFreedShas, blobs, yield);
@@ -595,30 +596,33 @@ public final class ActionCachePrune {
      * by any engine on the machine is inside the grace window. The prune holds only this engine's
      * locks; that stamp is what keeps it off another engine's compile.
      */
-    private static Incremental pruneIncremental(Path actionsDir, Policy policy, long now, long grace, boolean dryRun)
-            throws IOException {
+    private static Incremental pruneIncremental(
+            Path actionsDir, Policy policy, long now, long grace, boolean dryRun, PruneYield yield) throws IOException {
         record Tree(Path dir, long bytes, long mtime) {}
         List<Tree> trees = new ArrayList<>();
         long used = 0L;
         for (Path root : ActionTree.incrementalUnder(actionsDir)) {
-            if (!Files.isDirectory(root)) continue;
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(root)) {
-                for (Path dir : stream) {
-                    if (!Files.isDirectory(dir)) continue;
-                    long[] size = {0L};
-                    long[] newest = {0L};
-                    try (Stream<Path> walk = Files.walk(dir)) {
-                        for (Path entry : (Iterable<Path>) walk::iterator) {
-                            newest[0] = Math.max(
-                                    newest[0], Files.getLastModifiedTime(entry).toMillis());
-                            if (Files.isRegularFile(entry)) size[0] += Files.size(entry);
-                        }
-                    } catch (NoSuchFileException vanished) {
-                        continue;
-                    }
-                    trees.add(new Tree(dir, size[0], newest[0]));
-                    used += size[0];
-                }
+            List<Path> dirs = new ArrayList<>();
+            PathUtil.forEachChild(root, (child, attrs) -> {
+                if (attrs.isDirectory()) dirs.add(child);
+                return true;
+            });
+            for (Path dir : dirs) {
+                yield.check();
+                long[] size = {0L};
+                long[] newest = {0L};
+                boolean[] seen = {false};
+                // Directories count toward the age: a compile creates them before it writes a file.
+                PathUtil.forEachEntry(dir, skip -> false, (entry, attrs) -> {
+                    yield.check();
+                    seen[0] = true;
+                    newest[0] = Math.max(newest[0], attrs.lastModifiedTime().toMillis());
+                    if (attrs.isRegularFile()) size[0] += attrs.size();
+                    return true;
+                });
+                if (!seen[0]) continue; // taken by another engine since the listing
+                trees.add(new Tree(dir, size[0], newest[0]));
+                used += size[0];
             }
         }
         if (trees.isEmpty()) return new Incremental(0, 0L, 0L);
@@ -635,6 +639,7 @@ public final class ActionCachePrune {
             boolean overBudget = budget > 0 && used > budget;
             if (!stale && !overBudget) continue;
             if (now - tree.mtime() < grace) continue;
+            yield.check();
             deletedFiles += dryRun ? countFiles(tree.dir()) : deleteTree(tree.dir());
             freed += tree.bytes();
             used -= tree.bytes();

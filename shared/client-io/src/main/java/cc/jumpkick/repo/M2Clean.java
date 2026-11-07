@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.cache.SafePoint;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.Lockfile;
@@ -71,6 +72,24 @@ public final class M2Clean {
     public static Report run(
             Path storeRoot, Path m2Root, Duration olderThan, Set<String> pinned, long nowMillis, boolean dryRun)
             throws IOException {
+        return run(storeRoot, m2Root, olderThan, pinned, nowMillis, dryRun, SafePoint.NONE);
+    }
+
+    /**
+     * As {@link #run(Path, Path, Duration, Set, long, boolean)}, asking {@code safePoint} before each
+     * tree, each file of the memo walk and each memo it weighs (weighing one hashes its artifact). A
+     * file goes with its memo, checksums and {@code _remote.repositories} line in one step, so a stop
+     * lands between files, never inside one.
+     */
+    public static Report run(
+            Path storeRoot,
+            Path m2Root,
+            Duration olderThan,
+            Set<String> pinned,
+            long nowMillis,
+            boolean dryRun,
+            SafePoint safePoint)
+            throws IOException {
         Path repos = storeRoot.resolve("repos");
         List<Removed> removed = new ArrayList<>();
         long[] freed = {0};
@@ -84,15 +103,18 @@ public final class M2Clean {
         });
         Path m2 = m2Root.toAbsolutePath().normalize();
         for (Path tree : trees) {
+            safePoint.check();
             // A tree that keeps its own artifacts is not the local repository's: those are the store's to age.
             if (tree.toAbsolutePath().normalize().equals(m2)) continue;
             Map<String, AccessLedger.Use> uses =
                     AccessLedger.at(tree.resolve(RepoArtifactStore.ACCESS_DIR)).load();
             List<Path> memos = new ArrayList<>();
             PathUtil.forEachRegularFile(tree, RepoArtifactStore::isAccessDir, (file, attrs) -> {
+                safePoint.check();
                 if (file.getFileName().toString().endsWith(".jk")) memos.add(file);
             });
             for (Path memoFile : memos) {
+                safePoint.check();
                 consider(tree, memoFile, m2, olderThan, pinned, uses, nowMillis, dryRun, removed, freed, counts);
             }
             // The ledger follows the tree: a key whose memo is gone has nothing left to count.

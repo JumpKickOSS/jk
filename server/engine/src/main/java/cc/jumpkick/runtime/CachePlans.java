@@ -183,7 +183,7 @@ public final class CachePlans {
             // What the GC collects, the next sync stages again rather than trusting its memo.
             if (!dryRun) BuildForks.forgetStaged();
             yield.check();
-            var toolsGc = ToolsGc.run(toolsRoot, toolFamilies(), toolLedger.load(), pressure, now, dryRun);
+            var toolsGc = ToolsGc.run(toolsRoot, toolFamilies(), toolLedger.load(), pressure, now, dryRun, yield);
             totalFiles += toolsGc.deleted();
             totalBytes += toolsGc.freedBytes();
             yield.check();
@@ -197,7 +197,7 @@ public final class CachePlans {
             yield.check();
             Path scratch = JkDirs.tmp();
             AccessLedger scratchLedger = ToolUse.ledger(scratch);
-            var unpackedGc = ToolsGc.run(scratch, Set.of(), scratchLedger.load(), pressure, now, dryRun);
+            var unpackedGc = ToolsGc.run(scratch, Set.of(), scratchLedger.load(), pressure, now, dryRun, yield);
             totalFiles += unpackedGc.deleted();
             totalBytes += unpackedGc.freedBytes();
             if (!dryRun) {
@@ -212,7 +212,8 @@ public final class CachePlans {
                     blobLedger.load(),
                     StoreCasGc.Policy.defaults(pressure).withBudget(DiskPressure.budgetBytes(space)),
                     now,
-                    dryRun);
+                    dryRun,
+                    yield);
             if (!dryRun) {
                 Cas untracked = new Cas(storeRoot);
                 blobLedger.compact(key -> key.startsWith("cas:") && untracked.contains(key.substring(4)));
@@ -220,18 +221,18 @@ public final class CachePlans {
             totalFiles += storeGc.deleted();
             totalBytes += storeGc.freedBytes();
             yield.check();
-            var repoGc = StoreRepoGc.run(storeRoot, pressure, now, dryRun);
+            var repoGc = StoreRepoGc.run(storeRoot, pressure, now, dryRun, yield);
             totalFiles += repoGc.deleted();
             totalBytes += repoGc.freedBytes();
             yield.check();
-            SweepReport shadowed = reclaimShadowedArtifacts(dryRun);
+            SweepReport shadowed = reclaimShadowedArtifacts(dryRun, yield);
             totalFiles += shadowed.files();
             totalBytes += shadowed.bytes();
             // Only on an admin's say-so: the local repository is shared, and jk never reclaims it
             // on its own account.
             yield.check();
             if (JkM2Config.resolve().autoClean()) {
-                M2Clean.Report m2 = cleanM2(null, 0, dryRun);
+                M2Clean.Report m2 = cleanM2(null, 0, dryRun, yield);
                 totalFiles += m2.removed().size();
                 totalBytes += m2.freedBytes();
             }
@@ -284,10 +285,22 @@ public final class CachePlans {
     /** One {@link M2Clean} pass over the machine's local repository, with the window and pins a request or the config names. */
     public static M2Clean.Report cleanM2(@Nullable Path projectDir, int olderThanDays, boolean dryRun)
             throws IOException {
+        return cleanM2(projectDir, olderThanDays, dryRun, PruneYield.NEVER);
+    }
+
+    /** As {@link #cleanM2(Path, int, boolean)}, stopping inside the walk at {@code yield}'s say-so. */
+    private static M2Clean.Report cleanM2(
+            @Nullable Path projectDir, int olderThanDays, boolean dryRun, PruneYield yield) throws IOException {
         int days = olderThanDays > 0 ? olderThanDays : JkM2Config.resolve().cleanAfterDays();
         Set<String> pins = projectDir == null ? Set.of() : M2Clean.pinsOf(projectDir.resolve(ManifestNames.LOCK));
         return M2Clean.run(
-                JkStores.store(), M2Dirs.localRepository(), Duration.ofDays(days), pins, Clock.SYSTEM.millis(), dryRun);
+                JkStores.store(),
+                M2Dirs.localRepository(),
+                Duration.ofDays(days),
+                pins,
+                Clock.SYSTEM.millis(),
+                dryRun,
+                yield);
     }
 
     /**
@@ -425,12 +438,18 @@ public final class CachePlans {
      * the local repository (a test sandbox), are left alone.
      */
     public static SweepReport reclaimShadowedArtifacts(boolean dryRun) throws IOException {
+        return reclaimShadowedArtifacts(dryRun, PruneYield.NEVER);
+    }
+
+    /** As {@link #reclaimShadowedArtifacts(boolean)}, stopping between trees and files at {@code yield}'s say-so. */
+    private static SweepReport reclaimShadowedArtifacts(boolean dryRun, PruneYield yield) throws IOException {
         long files = 0;
         long bytes = 0;
         Path m2 = M2Dirs.localRepository();
         Path m2Real =
                 Files.isDirectory(m2) ? m2.toRealPath() : m2.toAbsolutePath().normalize();
         for (RepoArtifactStore.Origin origin : RepoArtifactStore.describeAll(JkStores.store())) {
+            yield.check();
             String canonical = origin.origin();
             if (origin.isLegacy() || canonical == null) continue;
             if (M2Backing.rootFor(URI.create(canonical), true).isEmpty()) continue;
@@ -438,10 +457,12 @@ public final class CachePlans {
             if (tree.toRealPath().equals(m2Real)) continue;
             List<Path> stray = new ArrayList<>();
             PathUtil.forEachRegularFile(tree, RepoArtifactStore::isAccessDir, (file, attrs) -> {
+                yield.check();
                 String name = file.getFileName().toString();
                 if (!name.endsWith(".jk") && !RepoArtifactStore.ORIGIN_FILE.equals(name)) stray.add(file);
             });
             for (Path file : stray) {
+                yield.check();
                 files++;
                 bytes += Files.size(file);
                 if (!dryRun) Files.deleteIfExists(file);
