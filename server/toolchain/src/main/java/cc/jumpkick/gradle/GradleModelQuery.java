@@ -166,6 +166,8 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
                 Files.copy(in, init, StandardCopyOption.REPLACE_EXISTING);
             }
             Path out = work.resolve("model.json");
+            Path rules = work.resolve("rules.json");
+            Files.writeString(rules, PluginRules.readsJson(PluginRules.installed()), StandardCharsets.UTF_8);
             List<String> command = new ArrayList<>(launch.command());
             command.addAll(List.of(
                     "--init-script",
@@ -177,6 +179,7 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
                     "-Dorg.gradle.welcome=never",
                     "-Pjk.import.out=" + out,
                     "-Pjk.import.plugins=" + String.join(",", pluginIds),
+                    "-Pjk.import.rules=" + rules,
                     MODEL_TASK));
             progress.milestone(launch.label() + " · evaluating " + buildRoot.getFileName());
             progress.detail("configuring " + buildRoot.getFileName());

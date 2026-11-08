@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.guard.eval;
+package cc.jumpkick.util;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,12 +12,12 @@ import org.jspecify.annotations.Nullable;
  * streams, which a workflow or a config file does not use for its top-level shape. Comments and
  * blank lines are skipped; a scalar value is kept as text, a nested mapping or sequence as {@code ""}.
  */
-final class MinimalYaml {
+public final class MinimalYaml {
 
     private MinimalYaml() {}
 
     /** Keys → scalar text of the mapping at {@code path} ({@code ""} = the document), or {@code null} when absent. */
-    static @Nullable Map<String, String> keysAt(String text, String path) {
+    public static @Nullable Map<String, String> keysAt(String text, String path) {
         List<String> lines = text.lines().toList();
         int start = 0;
         int indent = -1;

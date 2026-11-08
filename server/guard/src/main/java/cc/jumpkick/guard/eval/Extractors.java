@@ -21,6 +21,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.util.MinimalYaml;
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.file.Files;

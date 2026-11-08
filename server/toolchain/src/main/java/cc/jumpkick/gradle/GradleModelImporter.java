@@ -160,7 +160,7 @@ final class GradleModelImporter {
     private final CatalogShortNames shortNames = CatalogShortNames.layered();
     private final ImportReport.Builder report = ImportReport.builder();
     private final ModuleRows rows = new ModuleRows();
-    private final Map<String, GradleImporter.PluginImportRule> importRules = GradleImporter.pluginImportRules();
+    private final Map<String, PluginRules.Rule> importRules = PluginRules.installed();
     /** Gradle project path → the jk module name the sibling edge uses. */
     private final Map<String, String> namesByPath = new LinkedHashMap<>();
 
@@ -187,7 +187,7 @@ final class GradleModelImporter {
     /** The plugin ids the model query asks each project about. */
     static List<String> probedPluginIds() {
         Set<String> ids = new LinkedHashSet<>(KNOWN_PLUGINS);
-        ids.addAll(GradleImporter.pluginImportRules().keySet());
+        ids.addAll(PluginRules.installed().keySet());
         return List.copyOf(ids);
     }
 
@@ -337,12 +337,13 @@ final class GradleModelImporter {
         boolean platformed = bomPlatforms(p, applied, deps, local);
         for (GradleModel.Configuration c : p.configurations()) mapConfiguration(p, c, deps, local, platformed);
         for (GradleModel.Repository r : p.repositories()) repository(r);
-        List<PluginConfig> plugins =
-                new ArrayList<>(GradleImporter.mapPluginTables(applied, p.pluginVersions(), importRules, local));
+        List<PluginConfig> plugins = new ArrayList<>(PluginRules.map(
+                applied, p.pluginVersions(), p.ruled(), buildRoot.resolve(p.dir()), importRules, local));
         GradleModel.Xjc xjc = p.xjc();
         if (xjc != null) plugins.add(jaxbTable(xjc, local));
         GradleModel.Avro avro = p.avro();
         if (avro != null) plugins.add(avroTable(p, avro, local));
+        plugins = merged(plugins);
         String groovy = applied.contains("groovy") ? groovyVersion(p, local) : null;
         Set<String> unreported = new LinkedHashSet<>(applied);
         unreported.remove("groovy");
@@ -525,9 +526,9 @@ final class GradleModelImporter {
     }
 
     /**
-     * The Avro plugin as the {@code [avro]} table: the schema directory, the generator options and
-     * the Avro version the project resolves, each written only where it differs from the table's
-     * default. A schema directory under the build directory is filled by another task, which jk
+     * The Avro plugin's schema directory and the Avro version the project resolves, as {@code [avro]}
+     * keys, each written only where it differs from the table's default; the generator options come
+     * from the plugin's import rule. A schema directory under the build directory is filled by another task, which jk
      * cannot run, so it is a row instead.
      */
     private static PluginConfig avroTable(GradleModel.Project p, GradleModel.Avro avro, ImportReport.Builder local) {
@@ -543,21 +544,19 @@ final class GradleModelImporter {
         }
         if (!sources.isEmpty() && !sources.getFirst().equals(AVRO_DEFAULT_SRC)) table.put("src", sources.getFirst());
         if (sources.size() > 1) local.warning("Avro: imported " + sources.getFirst() + " only");
-        if (avro.stringType() != null && !avro.stringType().equals("String"))
-            table.put("string-type", avro.stringType());
-        String visibility =
-                avro.fieldVisibility() == null ? null : avro.fieldVisibility().toUpperCase(Locale.ROOT);
-        if ("PUBLIC".equals(visibility)) table.put("field-visibility", "PUBLIC");
-        else if (visibility != null && !visibility.equals("PRIVATE")) {
-            local.warning("Avro fieldVisibility " + avro.fieldVisibility() + ": not imported");
-        }
-        if (Boolean.FALSE.equals(avro.setters())) table.put("setters", false);
-        if (Boolean.TRUE.equals(avro.optionalGetters())) table.put("optional-getters", true);
-        if (Boolean.TRUE.equals(avro.decimalLogicalType())) table.put("decimal-logical-type", true);
-        if (avro.encoding() != null) table.put("encoding", avro.encoding());
         String version = p.resolved().get("org.apache.avro:avro");
         if (version != null && !version.equals(AVRO_DEFAULT_VERSION)) table.put("version", version);
         return new PluginConfig("avro", table);
+    }
+
+    /** One table per plugin, the keys of every config for it in order. */
+    private static List<PluginConfig> merged(List<PluginConfig> configs) {
+        Map<String, Map<String, Object>> byId = new LinkedHashMap<>();
+        for (PluginConfig c : configs)
+            byId.computeIfAbsent(c.id(), k -> new LinkedHashMap<>()).putAll(c.values());
+        List<PluginConfig> out = new ArrayList<>();
+        byId.forEach((id, values) -> out.add(new PluginConfig(id, values)));
+        return out;
     }
 
     /** The {@code [avro]} table's own defaults. */
@@ -835,8 +834,7 @@ final class GradleModelImporter {
 
     private static void reportPlugins(GradleModel.Project p, Set<String> applied, ImportReport.Builder local) {
         for (String id : applied) {
-            if (SILENT_PLUGINS.contains(id)
-                    || GradleImporter.pluginImportRules().containsKey(id)) continue;
+            if (SILENT_PLUGINS.contains(id) || PluginRules.installed().containsKey(id)) continue;
             switch (id) {
                 case "groovy", "scala" ->
                     local.warning(id + ": set project." + id + " to the build's compiler version");

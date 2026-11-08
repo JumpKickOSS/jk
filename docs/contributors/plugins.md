@@ -415,7 +415,27 @@ that tree (`jk new -t spring-boot/hello`).
 [[import.gradle-plugin]]
 id         = "org.springframework.boot"
 version-to = "version"
+
+[[import.gradle-plugin]]
+id         = "com.github.davidmc24.gradle.plugin.avro"
+extension  = "avro"                               # or task = "<name>"
+properties = { stringType = "string-type", createSetters = "setters" }
+
+[[import.gradle-plugin]]
+id         = "com.acme.kafka-helper"              # a company's private Gradle plugin
+table      = "schema-registry"                    # another plugin's table; default: your own
+task       = "sharedSchemasLoader"
+properties = { sourceSchemaRegistry = "url" }
+files      = { "src/main/resources/kafka/shared-schema.yaml#schemas" = "subjects" }
 ```
+
+A rule maps a Gradle plugin a project applies into a jk table. `version-to` takes the plugin's
+declared version. `properties` reads properties of the `extension` or `task` the rule names: the
+model query's init script reads them off the evaluated project, a `Provider` as its value and a file
+as a module-relative path. `files` reads a file the plugin reads, module-relative, with `#dotted.key`
+selecting a value or mapping inside a YAML, JSON or properties file. Each value takes its key's
+`[schema]` type, and a value equal to the key's default is not written. A rule with none of these
+only marks the id as handled.
 
 ### Code layer
 

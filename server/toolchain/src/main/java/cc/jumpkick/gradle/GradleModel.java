@@ -3,6 +3,7 @@ package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.RelocationRules;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.version.Versions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -89,7 +90,9 @@ record GradleModel(
             @Nullable TestTask test,
             /** {@code base.archivesName}; null without the base plugin. */
             @Nullable String archivesName,
-            List<Publication> publications) {
+            List<Publication> publications,
+            /** Per Gradle plugin id, the properties its import rule asked the init script to read. */
+            Map<String, Map<String, Object>> ruled) {
 
         boolean isRoot() {
             return dir.isEmpty();
@@ -136,18 +139,10 @@ record GradleModel(
 
     /**
      * The {@code com.github.davidmc24.gradle.plugin.avro} extension and its {@code generateAvroJava}
-     * task: the directories it reads schemas from and the project's build directory (both
-     * project-relative), and each generator option the build sets, null when it leaves the default.
+     * task: the directories it reads schemas from and the project's build directory, both
+     * project-relative. Its generator options are the plugin's import rule's to read.
      */
-    record Avro(
-            List<String> sources,
-            @Nullable String buildDir,
-            @Nullable String stringType,
-            @Nullable String fieldVisibility,
-            @Nullable String encoding,
-            @Nullable Boolean setters,
-            @Nullable Boolean optionalGetters,
-            @Nullable Boolean decimalLogicalType) {}
+    record Avro(List<String> sources, @Nullable String buildDir) {}
 
     record SourceSet(String name, List<String> java, List<String> resources, List<String> kotlin) {}
 
@@ -276,12 +271,7 @@ record GradleModel(
     static final String AVRO = "avro";
     static final String AVRO_SOURCES = "sources";
     static final String AVRO_BUILD_DIR = "buildDir";
-    static final String AVRO_STRING_TYPE = "stringType";
-    static final String AVRO_FIELD_VISIBILITY = "fieldVisibility";
-    static final String AVRO_ENCODING = "outputCharacterEncoding";
-    static final String AVRO_SETTERS = "createSetters";
-    static final String AVRO_OPTIONAL_GETTERS = "createOptionalGetters";
-    static final String AVRO_DECIMAL = "enableDecimalLogicalType";
+    static final String RULED = "ruled";
 
     /** The {@code test} task's system properties with string values, and its JVM arguments. */
     record TestTask(Map<String, String> systemProperties, List<String> jvmArgs) {}
@@ -416,7 +406,8 @@ record GradleModel(
                         ? null
                         : new TestTask(Jsonl.strMap(testJson, SYSTEM_PROPERTIES), Jsonl.strArray(testJson, JVM_ARGS)),
                 Jsonl.topStr(p, ARCHIVES_NAME),
-                publications);
+                publications,
+                ruled(Jsonl.nested(p, RULED)));
     }
 
     private static @Nullable Xjc xjc(@Nullable String json) {
@@ -430,20 +421,20 @@ record GradleModel(
 
     private static @Nullable Avro avro(@Nullable String json) {
         if (json == null) return null;
-        return new Avro(
-                Jsonl.strArray(json, AVRO_SOURCES),
-                Jsonl.topStr(json, AVRO_BUILD_DIR),
-                Jsonl.topStr(json, AVRO_STRING_TYPE),
-                Jsonl.topStr(json, AVRO_FIELD_VISIBILITY),
-                Jsonl.topStr(json, AVRO_ENCODING),
-                flag(json, AVRO_SETTERS),
-                flag(json, AVRO_OPTIONAL_GETTERS),
-                flag(json, AVRO_DECIMAL));
+        return new Avro(Jsonl.strArray(json, AVRO_SOURCES), Jsonl.topStr(json, AVRO_BUILD_DIR));
     }
 
-    /** The boolean at {@code key}, null when the init script wrote none. */
-    private static @Nullable Boolean flag(String json, String key) {
-        return Jsonl.has(json, key) ? Jsonl.bool(json, key, false) : null;
+    /** Per plugin id, each read property's value as the init script wrote it. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Map<String, Object>> ruled(@Nullable String json) {
+        if (json == null) return Map.of();
+        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        if (MiniJson.parse(json) instanceof Map<?, ?> byId) {
+            byId.forEach((id, values) -> {
+                if (values instanceof Map<?, ?> m) out.put(String.valueOf(id), (Map<String, Object>) m);
+            });
+        }
+        return out;
     }
 
     /** {@code group:artifact@version} rows as each module's highest version. */

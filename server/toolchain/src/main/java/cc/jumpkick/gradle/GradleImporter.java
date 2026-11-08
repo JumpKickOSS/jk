@@ -18,7 +18,6 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
-import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -61,53 +60,6 @@ public final class GradleImporter {
     private static final Pattern KOTLIN_ID = Pattern.compile("id\\s*\\(?\\s*[\"']org\\.jetbrains\\.kotlin[^\"']*[\"']");
     private static final Pattern KOTLIN_ID_VERSION =
             Pattern.compile("id\\s*\\(\\s*[\"']org\\.jetbrains\\.kotlin[^\"']*[\"']\\s*\\)\\s*version\\s*" + STR);
-
-    /** One installed plugin's Gradle-import mapping: which table + config key a plugin id feeds. */
-    record PluginImportRule(
-            String manifestId,
-            @Nullable String versionTo,
-            @Nullable String missingVersionWarning) {}
-
-    /** Gradle plugin id → import rule, from every installed manifest's [[import.gradle-plugin]]. */
-    static Map<String, PluginImportRule> pluginImportRules() {
-        Map<String, PluginImportRule> rules = new LinkedHashMap<>();
-        for (var manifest : PluginTableRegistry.manifests()) {
-            for (var rule : manifest.gradleImports()) {
-                rules.put(
-                        rule.id(), new PluginImportRule(manifest.id(), rule.versionTo(), rule.missingVersionWarning()));
-            }
-        }
-        return rules;
-    }
-
-    /**
-     * Evaluate the import rules against the plugins a build applies: a rule with {@code version-to}
-     * maps the Gradle plugin's version into the owned table's config (only that key — schema
-     * defaults are exactly what the renderer omits, so the round trip stays minimal); applied
-     * without a version, the rule's warning is reported instead. Version-less rules are
-     * recognition-only (their construct is absorbed by another contribution, e.g. Boot's BOM
-     * auto-import covering dependency-management).
-     */
-    static List<PluginConfig> mapPluginTables(
-            Set<String> applied,
-            Map<String, String> versions,
-            Map<String, PluginImportRule> rules,
-            ImportReport.Builder report) {
-        List<PluginConfig> out = new ArrayList<>();
-        for (Map.Entry<String, PluginImportRule> e : rules.entrySet()) {
-            if (!applied.contains(e.getKey())) continue;
-            PluginImportRule rule = e.getValue();
-            String versionTo = rule.versionTo();
-            if (versionTo == null) continue; // recognition-only
-            String version = versions.get(e.getKey());
-            if (version != null) {
-                out.add(new PluginConfig(rule.manifestId(), Map.of(versionTo, version)));
-            } else if (rule.missingVersionWarning() != null) {
-                report.warning(rule.missingVersionWarning());
-            }
-        }
-        return out;
-    }
 
     /** The plugin ids the block applies, each with its inline version when one is spelled. */
     private static Map<String, @Nullable String> pluginsApplied(String pluginsBody) {
@@ -232,7 +184,7 @@ public final class GradleImporter {
         // `springBoot { buildInfo() }`: both are the [build-info] table.
         BuildBlock.BuildInfo buildInfo = BOOT_BUILD_INFO.matcher(stripped).find() ? BuildBlock.BuildInfo.DEFAULT : null;
         BuildBlock.Dokka dokkaTable = BuildBlock.Dokka.DEFAULT;
-        Map<String, PluginImportRule> importRules = pluginImportRules();
+        Map<String, PluginRules.Rule> importRules = PluginRules.installed();
         for (Matcher m = PLUGIN_ID.matcher(pluginsBody); m.find(); ) {
             String pluginId = firstNonNull(m.group(1), m.group(2));
             if (pluginId == null || pluginId.isBlank()) continue;
@@ -283,7 +235,8 @@ public final class GradleImporter {
             String pin = v != null ? v : refreshVersions.pluginVersion(id).version();
             if (pin != null) pluginVersions.put(id, pin);
         });
-        List<PluginConfig> pluginConfigs = mapPluginTables(applied.keySet(), pluginVersions, importRules, report);
+        List<PluginConfig> pluginConfigs =
+                new ArrayList<>(PluginRules.map(applied.keySet(), pluginVersions, Map.of(), null, importRules, report));
         PluginConfig hibernate = HibernateGradle.map(applied.keySet(), stripped, report);
         if (hibernate != null) pluginConfigs.add(hibernate);
 
