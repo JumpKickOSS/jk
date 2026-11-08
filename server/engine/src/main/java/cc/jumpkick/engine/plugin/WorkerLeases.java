@@ -928,6 +928,29 @@ public final class WorkerLeases {
             });
         }
 
+        /**
+         * Move a held lease to {@code bytes}, at least one byte and at most the budget. A lease that
+         * grows past what is free is not refused: the process already holds the memory, and charging
+         * it is what makes the next fork wait. A lease that shrinks lets queued forks in at once.
+         */
+        private void resize(Waiter waiter, long bytes) {
+            synchronized (lock) {
+                if (waiter.released || !waiter.granted) return;
+                long next = Math.max(1, Math.min(bytes, Math.max(1, capacityBytes())));
+                if (next == waiter.demand.bytes) return;
+                excess = Math.max(0, excess - waiter.excess());
+                leased = Math.max(0, leased + next - waiter.demand.bytes);
+                waiter.demand = waiter.demand.withBytes(next);
+                excess += waiter.excess();
+                boolean over = WorkerRss.farOverLease(next, waiter.rss);
+                if (over != waiter.overLease) overLeaseCount = Math.max(0, overLeaseCount + (over ? 1 : -1));
+                waiter.overLease = over;
+                publish();
+                grantQueued();
+                lock.notifyAll();
+            }
+        }
+
         private void close(Waiter waiter) {
             synchronized (lock) {
                 release(waiter);
@@ -1002,6 +1025,11 @@ public final class WorkerLeases {
         Demand resident() {
             return new Demand(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, false, worstBytes, pin);
         }
+
+        /** The same demand leasing {@code next} bytes. */
+        Demand withBytes(long next) {
+            return new Demand(next, xmxBytes, jvm, clamped, userPinned, overBudget, cpuSlot, next, pin);
+        }
     }
 
     /** {@link #OVERBOOK_CAP_FACTOR} times {@code cap}, saturating. */
@@ -1039,7 +1067,9 @@ public final class WorkerLeases {
     }
 
     private static final class Waiter {
-        final Demand demand;
+        /** What is leased; only {@link Ledger#resize} replaces it, under the ledger's lock. */
+        Demand demand;
+
         final @Nullable Long requestId;
         final @Nullable Resident resident;
         /** The resident has been asked to exit for the head of the queue. */
@@ -1152,6 +1182,15 @@ public final class WorkerLeases {
          */
         public void watch(long pid, String what, @Nullable TaskContext step) {
             ledger.watch(waiter, pid, Objects.requireNonNull(what, "what"), step);
+        }
+
+        /**
+         * Lease {@code bytes} from now on instead: for a worker whose use is reported while it runs,
+         * so the ledger charges what it holds rather than the most it could. A closed grant ignores
+         * this.
+         */
+        public void resize(long bytes) {
+            ledger.resize(waiter, bytes);
         }
 
         @Override

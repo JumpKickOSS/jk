@@ -157,6 +157,14 @@ public final class JvmOptions {
      * shell that started it, and reading that shell's {@code JK_JVM_ARGS} here handed its flags to
      * every later terminal until {@code jk engine stop}.
      */
+    /**
+     * The JVM tuning the current request asks for: its flags and environment layers with the
+     * project's {@code [jvm]} table over them. A worker that outlives the request captures it here.
+     */
+    public static PluginTuning currentTuning() {
+        return tuning();
+    }
+
     private static PluginTuning tuning() {
         var session = SessionContext.current();
         PluginTuning t = session.jvm();
@@ -252,6 +260,63 @@ public final class JvmOptions {
     public static List<String> batchFlags(int concurrency, int hostFeature) {
         List<String> out = new ArrayList<>(workerFlags(concurrency, BATCH_DEFAULT_GC, Role.BATCH, List.of()));
         appendJep498AllowIfSupported(out, hostFeature);
+        return out;
+    }
+
+    /** The share of RAM the resident compiler worker may grow its heap to; the JVM reads the cgroup limit. */
+    public static final double COMPILER_MAX_RAM_PERCENT = 68.0;
+
+    /** The resident compiler worker's metaspace cap: processor class loaders of many modules share it. */
+    static final int COMPILER_MAX_METASPACE_MB = 1024;
+
+    /**
+     * The flags of the resident Java compiler worker, which runs every module's compile on threads
+     * of one JVM. Unlike {@link #batchFlags} it is not a share of the host: it starts at a 64 MiB
+     * heap, may grow to {@link #COMPILER_MAX_RAM_PERCENT} of RAM, and gives memory back. G1 runs a
+     * full, compacting collection after 30 idle seconds and keeps the heap within 10–30% free of
+     * what is live, so a worker between builds holds about its live set. It sees every core, since
+     * it runs one compile per core, and names no stack size, since its compile threads set their
+     * own. An out-of-memory error still exits the JVM: what is left after one compile ran out is
+     * not trusted with the others, and the engine runs them again. {@code [jvm] args} come last and
+     * win; a heap flag among them, or {@code --ram-percent}, replaces jk's heap sizing.
+     */
+    public static List<String> compilerWorkerFlags() {
+        return compilerWorkerFlags(tuning(), null);
+    }
+
+    /**
+     * As {@link #compilerWorkerFlags()} under {@code s}, the tuning of the request that made the
+     * worker's pool, with {@code xmxBytes} as an explicit heap ceiling in place of {@link
+     * #COMPILER_MAX_RAM_PERCENT} when it is not null — the worker's cgroup cap, or what other workers
+     * leave of the budget, is then lower than its share of RAM.
+     */
+    public static List<String> compilerWorkerFlags(PluginTuning s, @Nullable Long xmxBytes) {
+        List<String> extra = s.extraArgs();
+        List<String> out = new ArrayList<>();
+        if (!anyPinsHeap(extra)) {
+            out.add("-Xms64m");
+            if (xmxBytes != null && s.maxRamPercent() == null) {
+                out.add("-Xmx" + Math.max(64, xmxBytes >> 20) + "m");
+            } else {
+                double percent = s.maxRamPercent() != null ? ramPercent(s.maxRamPercent()) : COMPILER_MAX_RAM_PERCENT;
+                out.add("-XX:MaxRAMPercentage=" + fmt(percent));
+            }
+        }
+        if (!namesCollector("default", extra)) out.add("-XX:+UseG1GC");
+        out.add("-XX:G1PeriodicGCInterval=30000");
+        out.add("-XX:-G1PeriodicGCInvokesConcurrent");
+        out.add("-XX:MinHeapFreeRatio=10");
+        out.add("-XX:MaxHeapFreeRatio=30");
+        if (!hasArgPrefix(extra, "-XX:MaxMetaspaceSize", "-XX:MetaspaceSize")) {
+            out.add("-XX:MaxMetaspaceSize=" + COMPILER_MAX_METASPACE_MB + "m");
+        }
+        if (!hasArgPrefix(extra, "-D" + PreferIpv4.PROPERTY)) out.add(PreferIpv4.JVM_FLAG);
+        if (!hasArgPrefix(
+                extra, "-XX:+ExitOnOutOfMemoryError", "-XX:-ExitOnOutOfMemoryError", "-XX:+CrashOnOutOfMemoryError")) {
+            out.add("-XX:+ExitOnOutOfMemoryError");
+        }
+        out.addAll(extra);
+        appendJep498AllowIfSupported(out, Runtime.version().feature());
         return out;
     }
 

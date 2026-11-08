@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -58,6 +59,16 @@ public final class PluginProcess {
 
         /** Close the plugin's command channel, signalling end-of-input (EOF). */
         void closeInput();
+
+        /**
+         * Send {@code line} only if the plugin is connected now; false, with nothing sent, when it is
+         * not. Never waits for the connection, so a caller tearing a worker down cannot hang on one
+         * that never connected.
+         */
+        default boolean offer(String line) {
+            send(line);
+            return true;
+        }
     }
 
     /**
@@ -116,7 +127,16 @@ public final class PluginProcess {
             throws IOException, InterruptedException {
         ProcessBuilder pb = builder(command, env);
         if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
-        return fork(pb, prefix, onProtocol, onPassthrough, null, 0L, heaps, ORPHAN_DRAIN_GRACE_MS);
+        return fork(
+                pb,
+                prefix,
+                onProtocol,
+                onPassthrough,
+                null,
+                0L,
+                (p, heap) -> JobWorkers.start(p, heap, heaps),
+                ORPHAN_DRAIN_GRACE_MS,
+                process -> null);
     }
 
     /**
@@ -244,6 +264,99 @@ public final class PluginProcess {
                 orphanDrainGraceMs);
     }
 
+    /** How a fork is started and leased. Production is {@link JobWorkers#start(ProcessBuilder, JvmOptions.HeapChoice, LearnedHeaps)}. */
+    @FunctionalInterface
+    public interface Starter {
+        Process start(ProcessBuilder pb, JvmOptions.HeapChoice heap) throws IOException;
+    }
+
+    /**
+     * Fork {@code command} for a worker that answers on its command channel instead of its stdout.
+     * {@code onOpen} receives the channel before the fork, for the commands the caller sends; each
+     * line the worker writes back on it goes to {@code onFrame}, from a platform thread of its own
+     * that does nothing else, so a caller that never blocks in {@code onFrame} always hears the
+     * worker. Everything on stdout and stderr is {@code onPassthrough}'s. {@code starter} forks and
+     * leases the process. Returns the exit code once the process and its output have ended.
+     *
+     * <p>{@code env} is composed when the fork happens. A caller forking on a thread of its own for
+     * a request composes the request's environment on the request's thread and passes it whole
+     * ({@link WorkerEnv#with}), or the worker would read the forking thread's request instead.
+     *
+     * <p>A frame handler that throws ends the conversation as a {@link HandlerFailure}: the worker is
+     * stopped, because nobody would read what it answers next.
+     */
+    public static int converseOnChannel(
+            List<String> command,
+            WorkerEnv env,
+            Starter starter,
+            Consumer<Conversation> onOpen,
+            Consumer<String> onFrame,
+            @Nullable Consumer<String> onPassthrough)
+            throws IOException, InterruptedException {
+        ProcessBuilder pb = builder(command, env);
+        WorkerCommands commands = WorkerCommands.open();
+        List<String> withChannel = new ArrayList<>(pb.command());
+        withChannel.addAll(commands.args());
+        pb.command(withChannel);
+        onOpen.accept(commands);
+        AtomicReference<RuntimeException> frameError = new AtomicReference<>();
+        try {
+            int exit = fork(
+                    pb,
+                    "\u0000",
+                    line -> {
+                        if (onPassthrough != null) onPassthrough.accept(line);
+                    },
+                    onPassthrough,
+                    commands,
+                    0L,
+                    starter,
+                    ORPHAN_DRAIN_GRACE_MS,
+                    process -> readFrames(commands, process, onFrame, frameError));
+            RuntimeException handler = frameError.get();
+            if (handler != null) throw new HandlerFailure(handler);
+            return exit;
+        } finally {
+            commands.close();
+        }
+    }
+
+    /**
+     * The channel reader of {@link #converseOnChannel}: every line the worker answers, in order, until
+     * the channel closes. A handler that throws stops the worker; its exception is the conversation's
+     * failure. A worker still running two seconds after its channel ends is stopped too.
+     */
+    private static Thread readFrames(
+            WorkerCommands commands,
+            Process process,
+            Consumer<String> onFrame,
+            AtomicReference<RuntimeException> error) {
+        return SessionContext.startPlatform("jk-worker-frames", () -> {
+            try {
+                BufferedReader frames = commands.input();
+                String line;
+                while ((line = frames.readLine()) != null) {
+                    if (line.isEmpty()) continue;
+                    onFrame.accept(line);
+                }
+            } catch (IOException e) {
+                // The channel closed or never opened: the process's own end says why.
+            } catch (RuntimeException e) {
+                error.set(e);
+                forceStop(process);
+                return;
+            }
+            // Nobody hears the worker any more. One that does not exit on its own is stopped, so
+            // whatever it was running is reported as its death instead of waiting forever.
+            try {
+                if (!process.waitFor(2, TimeUnit.SECONDS)) forceStop(process);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                forceStop(process);
+            }
+        });
+    }
+
     /**
      * The one {@code ProcessBuilder} a worker is forked from: stderr merged, and the environment
      * replaced wholesale by what {@code env} composes — never the engine's own plus extras.
@@ -278,8 +391,9 @@ public final class PluginProcess {
                     onPassthrough,
                     commands,
                     idleTimeoutMs,
-                    heaps,
-                    orphanDrainGraceMs);
+                    (p, heap) -> JobWorkers.start(p, heap, heaps),
+                    orphanDrainGraceMs,
+                    process -> null);
         } finally {
             commands.close();
         }
@@ -297,8 +411,9 @@ public final class PluginProcess {
             @Nullable Consumer<String> onPassthrough,
             @Nullable WorkerCommands commands,
             long idleTimeoutMs,
-            LearnedHeaps heaps,
-            long orphanDrainGraceMs)
+            Starter starter,
+            long orphanDrainGraceMs,
+            Function<Process, @Nullable Thread> onStarted)
             throws IOException, InterruptedException {
         // Every worker forks through here, so this is where it loses the engine's terminal.
         pb.command(WorkerSession.detached(pb.command()));
@@ -309,11 +424,12 @@ public final class PluginProcess {
         pb.command(argfile.command());
         Process process;
         try {
-            process = JobWorkers.start(pb, heap, heaps);
+            process = starter.start(pb, heap);
         } catch (IOException e) {
             argfile.delete();
             throw e;
         }
+        Thread sideReader = onStarted.apply(process);
         // Commands, if any, travel on their own channel: code the worker runs that reads System.in,
         // and every child that inherits it, reads end-of-input instead of hanging on an open pipe.
         closeStdin(process);
@@ -404,6 +520,10 @@ public final class PluginProcess {
                     break;
                 }
             }
+            // A worker that answers on its channel wrote its last frames there before it exited; the
+            // channel closes when this block ends, so its reader finishes first. The worker's end of
+            // the socket closed with the process, so the reader is at end of input already.
+            if (sideReader != null) sideReader.join(orphanDrainGraceMs);
             RuntimeException handler = handlerError.get();
             if (handler != null) {
                 // The finally below stops the worker; the exit code of a kill we asked for says

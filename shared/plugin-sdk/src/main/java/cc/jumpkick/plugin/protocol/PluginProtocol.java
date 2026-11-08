@@ -132,6 +132,42 @@ public final class PluginProtocol {
 
     public static final String ERROR = "error"; // {code,message}
 
+    // ---- the Java compiler worker's channel ----------------------------------------------------
+    //
+    // The compiler worker runs many compiles at once and answers on its command channel, one JSON
+    // object per line each way. Engine to worker: {"op":"hello"[,"threads":N]}, then
+    // {"op":"compile"|"plan","id":n,"spec":path}, {"op":"cancel","id":n}, {"op":"trim"} and
+    // {"op":"done"}. Worker to engine: hello{threads,pid,jdk}; diagnostic, provenance, result and
+    // error frames that carry the compile's id; cancelled{id}; heap{used_after_gc,committed,max,
+    // gc_frac,metaspace,inflight} about once a second and after each old collection; trimmed{used_after_gc}.
+
+    /** The opening exchange, both ways; the worker's answer names its thread count, pid and JDK. */
+    public static final String HELLO = "hello";
+
+    /** The compile a frame belongs to, on every frame about one compile. */
+    public static final String ID = "id";
+
+    /** Stop the compile named by {@link #ID}; answered {@link #CANCELLED} unless it finished first. */
+    public static final String OP_CANCEL = "cancel";
+
+    /** Collect garbage now that nothing is in flight; answered {@link #TRIMMED}. */
+    public static final String OP_TRIM = "trim";
+
+    /** Finish what is in flight, then exit. */
+    public static final String OP_DONE = "done";
+
+    /** A compile stopped by {@link #OP_CANCEL} before it answered. */
+    public static final String CANCELLED = "cancelled";
+
+    /** The worker's heap: what survived the last collection, committed, max, GC share of wall time. */
+    public static final String HEAP = "heap";
+
+    /** The answer to {@link #OP_TRIM}: what the heap holds after the collection. */
+    public static final String TRIMMED = "trimmed";
+
+    /** The heap bytes that survived the most recent collection, in {@link #HEAP} and {@link #TRIMMED}. */
+    public static final String USED_AFTER_GC = "used_after_gc";
+
     // ---- common field names ---------------------------------------------------------------
 
     public static final String NAME = "name";

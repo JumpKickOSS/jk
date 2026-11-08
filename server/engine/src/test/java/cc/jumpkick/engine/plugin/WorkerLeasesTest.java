@@ -166,6 +166,34 @@ class WorkerLeasesTest {
     }
 
     @Test
+    void a_resized_lease_charges_what_the_worker_reports_and_a_shrink_lets_a_waiter_in() throws Exception {
+        WorkerLeases.Ledger ledger = ledger(100, 4);
+        try (WorkerLeases.Grant worker = ledger.acquireBytes(20, true, null)) {
+            worker.resize(70);
+            assertThat(ledger.snapshot().leasedBytes()).isEqualTo(70);
+            CompletableFuture<WorkerLeases.Grant> waiting = new CompletableFuture<>();
+            Thread.ofVirtual().start(() -> {
+                try {
+                    waiting.complete(ledger.acquireBytes(50, false, null));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    waiting.completeExceptionally(e);
+                }
+            });
+            awaitQueued(ledger, 1);
+            worker.resize(30);
+            try (WorkerLeases.Grant fork = waiting.get(5, TimeUnit.SECONDS)) {
+                assertThat(ledger.snapshot().leasedBytes()).isEqualTo(80);
+                worker.resize(1_000);
+                assertThat(ledger.snapshot().leasedBytes())
+                        .as("a lease grows at most to the budget")
+                        .isEqualTo(150);
+            }
+        }
+        assertThat(ledger.snapshot().leasedBytes()).isZero();
+    }
+
+    @Test
     void waiters_are_granted_in_arrival_order() throws Exception {
         WorkerLeases.Ledger ledger = ledger(100, 4);
         try (WorkerLeases.Grant held = ledger.acquireBytes(60, false, null)) {

@@ -3,10 +3,12 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.plugin.process.CommandChannel;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
@@ -44,6 +46,7 @@ public final class WorkerCommands implements PluginProcess.Conversation, AutoClo
     private final Object connecting = new Object();
     private volatile @Nullable Socket socket;
     private volatile @Nullable BufferedWriter out;
+    private @Nullable BufferedReader in;
 
     private WorkerCommands(ServerSocket listener, String token) {
         this.listener = listener;
@@ -102,15 +105,45 @@ public final class WorkerCommands implements PluginProcess.Conversation, AutoClo
         }
     }
 
+    /**
+     * Whether the first line on {@code s} is the token. Read a byte at a time, never through a
+     * buffered reader: a worker that answers on this channel may write its first frame right behind
+     * the token, and a buffer would swallow it.
+     */
     private boolean proves(Socket s) {
         try {
             s.setSoTimeout(HELLO_WAIT_MS);
-            String first =
-                    new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.US_ASCII)).readLine();
+            InputStream in = s.getInputStream();
+            StringBuilder first = new StringBuilder();
+            int b;
+            while ((b = in.read()) >= 0 && b != '\n') {
+                if (first.length() > token.length() + 1) return false;
+                if (b != '\r') first.append((char) b);
+            }
             s.setSoTimeout(0);
-            return token.equals(first);
+            return token.contentEquals(first);
         } catch (IOException e) {
             return false;
+        }
+    }
+
+    /**
+     * The worker's own lines on this channel, for a worker that answers here rather than on its
+     * stdout. Waits up to {@link #CONNECT_WAIT} for the worker to connect.
+     *
+     * @throws IOException when the worker never connects or the channel is closed
+     */
+    public BufferedReader input() throws IOException {
+        if (out == null && !connect(CONNECT_WAIT)) throw new SocketTimeoutException("the worker never connected");
+        Socket s = socket;
+        if (s == null) throw new IOException("worker command channel closed");
+        synchronized (connecting) {
+            BufferedReader r = in;
+            if (r == null) {
+                r = new BoundedLineReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
+                in = r;
+            }
+            return r;
         }
     }
 
@@ -140,6 +173,13 @@ public final class WorkerCommands implements PluginProcess.Conversation, AutoClo
                 // The worker is gone; its output's end says so.
             }
         }
+    }
+
+    @Override
+    public boolean offer(String line) {
+        if (out == null) return false;
+        send(line);
+        return true;
     }
 
     /** Close the channel: the worker reads end-of-input, as at {@code DONE}. */

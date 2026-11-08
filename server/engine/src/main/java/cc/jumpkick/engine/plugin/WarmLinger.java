@@ -7,7 +7,7 @@ import java.time.Duration;
 import org.jspecify.annotations.Nullable;
 
 /**
- * How long a warm worker stays up after its last request: the Java compiler's lanes, the
+ * How long a warm worker stays up after its last request: the Java compiler's workers, the
  * build-script host and every {@link WarmWorkers served plugin}. {@link #DEFAULT}, or {@value #ENV}
  * in whole minutes, where {@code 0} keeps none up. A warm worker still exits at once when a fork is
  * waiting for its memory, whatever the linger.
@@ -24,7 +24,7 @@ public final class WarmLinger {
 
     public static final Duration DEFAULT = Duration.ofMinutes(30);
 
-    /** The Java compiler's warm lanes, as {@link #keepsLatest} names them. */
+    /** The Java compiler's resident workers, as {@link #keepsLatest} names them. */
     public static final String JAVA_COMPILER = "java compiler";
 
     /** kotlinc's served workers, as {@link #keepsLatest} names them. */
@@ -36,6 +36,11 @@ public final class WarmLinger {
 
     /** The linger in milliseconds; {@code 0} means a worker exits after its request. */
     public static long millis() {
+        return millis(DEFAULT);
+    }
+
+    /** As {@link #millis()} for a worker whose own linger, when nothing pins one, is {@code fallback}. */
+    public static long millis(Duration fallback) {
         long pinned = forTests;
         if (pinned >= 0) return pinned;
         String v = ProcessEnv.get(ENV);
@@ -47,7 +52,7 @@ public final class WarmLinger {
                 // an unreadable pin is no pin
             }
         }
-        return DEFAULT.toMillis();
+        return fallback.toMillis();
     }
 
     /** Whether the most recently used warm worker of {@code tool} ignores the linger. */

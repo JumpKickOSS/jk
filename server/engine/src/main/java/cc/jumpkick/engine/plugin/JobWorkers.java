@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -300,6 +301,56 @@ public final class JobWorkers {
                 WorkerLeases.engine(),
                 JvmOptions.HeapChoice.inspect(pb.command()),
                 LearnedHeaps.engine());
+    }
+
+    /**
+     * As {@link #start} for a worker whose memory is measured while it runs rather than read off its
+     * command: it is leased {@code bytes} to begin with, its command is never resized, and {@code
+     * onGrant} receives the lease so the caller can move it to what the worker reports using. Its
+     * cgroup cap is {@code capBytes}, chosen with its heap ceiling, or the shared group when that is
+     * not positive. The lease takes a JVM slot, is charged to {@code leaseRequest} (null: the engine,
+     * for a worker that outlives requests) under the name {@code what}, and is released when the
+     * process is gone. {@code track} registers the process with the current request, so that
+     * request's cancel stops it.
+     */
+    public static Process startMeasured(
+            ProcessBuilder pb,
+            long bytes,
+            long capBytes,
+            @Nullable Long leaseRequest,
+            String what,
+            boolean track,
+            Consumer<WorkerLeases.Grant> onGrant)
+            throws IOException {
+        WorkerLeases.Ledger leases = WorkerLeases.engine();
+        if (leaseRequest != null) awaitReleased(leaseRequest);
+        WorkerLeases.Grant grant;
+        try {
+            grant = leases.acquireBytes(bytes, true, leaseRequest);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("cancelled while waiting for memory");
+        } catch (WorkerLeases.LeaseRefused e) {
+            Log.warn("jk engine: " + e.getMessage());
+            throw new IOException(e.getMessage(), e);
+        }
+        Process process;
+        try {
+            process = pb.start();
+        } catch (IOException | RuntimeException e) {
+            grant.close();
+            throw e;
+        }
+        ExecutionSpeed.child(process);
+        process.onExit().whenComplete((code, error) -> {
+            grant.close();
+            WorkerContainment.sweep();
+        });
+        WorkerContainment.contain(process, capBytes, what);
+        grant.watch(process.pid(), what, leaseRequest == null ? null : StepScope.current());
+        onGrant.accept(grant);
+        if (track) register(process);
+        return process;
     }
 
     private static Process launch(
