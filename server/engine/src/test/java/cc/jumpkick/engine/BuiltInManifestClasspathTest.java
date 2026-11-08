@@ -37,6 +37,7 @@ class BuiltInManifestClasspathTest {
                         "avro",
                         "schema-registry",
                         "json-schema",
+                        "asyncapi",
                         "jaxb",
                         "jooq",
                         "lint",

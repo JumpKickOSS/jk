@@ -1,0 +1,15 @@
+# An AsyncAPI document's message payloads as generated classes: [asyncapi] writes each payload and
+# components.schemas entry as a JSON Schema and runs jsonschema2pojo over them in the generate stage.
+name    = "orders-events"
+group   = "com.acme"
+version = "1.0.0"
+java    = 25
+
+[application]
+main = "com.acme.Main"
+
+[asyncapi]
+package = "com.acme.orders"
+
+[dependencies]
+jackson-databind = { group = "com.fasterxml.jackson.core", version = "2.23.0" }
