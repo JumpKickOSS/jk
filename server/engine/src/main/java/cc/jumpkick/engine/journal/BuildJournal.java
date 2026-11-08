@@ -938,8 +938,9 @@ public final class BuildJournal {
             if (record.map(BuildRecord::running).orElse(false)) continue;
             entries.add(new Entry(dir, entryMillis(dir, record, nowMillis), sizeOf(dir)));
         }
-        // Ended sessions share the runs' age and disk budgets.
+        // Ended sessions and settled decisions share the runs' age and disk budgets.
         entries.addAll(SessionJournal.prunable(buildsRoot, nowMillis, (dir, at) -> new Entry(dir, at, sizeOf(dir))));
+        entries.addAll(SessionJournal.prunableDecisions(buildsRoot, nowMillis, Entry::new));
         int removed = 0;
         long removedBytes = 0;
         List<Entry> kept = new ArrayList<>();

@@ -29,7 +29,8 @@ import org.jspecify.annotations.Nullable;
  * [history]} budgets ({@link BuildJournal#prune}).
  *
  * <p>Beside the session directories, {@code <builds>/decisions/<id>.json} holds one decision of the
- * engine's queue each, written under the same one-writer rule; the queue bounds how many it keeps.
+ * engine's queue each, written under the same one-writer rule. The queue bounds how many it keeps,
+ * and a settled one is pruned with the sessions, under the same budgets.
  */
 public final class SessionJournal {
 
@@ -73,6 +74,43 @@ public final class SessionJournal {
             if (ended(dir)) out.add(entry.apply(dir, millis(dir, nowMillis)));
         }
         return out;
+    }
+
+    /**
+     * Every settled decision under {@code buildsRoot} as a prune entry, made by {@code entry} from
+     * its file, when it last changed and its size. An open decision is prunable only once its deadline has
+     * passed, which means the engine that held it stopped before it could settle it expired; until
+     * then a successor may still adopt and answer it. A record that does not parse is prunable.
+     */
+    static <T> List<T> prunableDecisions(Path buildsRoot, long nowMillis, PruneEntry<T> entry) {
+        Path dir = under(buildsRoot).decisions;
+        List<T> out = new ArrayList<>();
+        try {
+            PathUtil.forEachChild(dir, (p, attrs) -> {
+                if (attrs.isRegularFile() && p.getFileName().toString().endsWith(".json") && settled(p, nowMillis)) {
+                    out.add(entry.of(p, attrs.lastModifiedTime().toMillis(), attrs.size()));
+                }
+                return true;
+            });
+        } catch (IOException e) {
+            Log.debug("decisions unreadable: " + dir, e);
+        }
+        return out;
+    }
+
+    /** Makes a prune entry from a path, when it last changed, and its size in bytes. */
+    @FunctionalInterface
+    interface PruneEntry<T> {
+        T of(Path path, long millis, long size);
+    }
+
+    /** False only for a decision still open before its deadline. */
+    private static boolean settled(Path file, long nowMillis) {
+        return readJson(file)
+                .map(doc -> !"open".equals(doc.get("state"))
+                        || !(doc.get("deadline") instanceof Number deadline)
+                        || nowMillis >= deadline.longValue())
+                .orElse(true);
     }
 
     public Path root() {

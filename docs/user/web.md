@@ -253,6 +253,7 @@ notification carries the link under `[ui] ask = notify`, and a `NEEDS-YOU` resul
   one-time key (`k=`, scrubbed from the address bar like the token), and with it the page accepts.
 
 The first answer wins, wherever it came from; the page then says how and where it was settled.
+Settled decisions are kept under the same `[history]` retention as sessions.
 `GET /api/decisions` lists open decisions first, then recently settled ones; `GET
 /api/decisions/<id>` returns one; `POST /api/decisions/<id>` answers it; every change is an SSE
 `decision` event ([contributor HTTP](../contributors/http.md#decisions)).

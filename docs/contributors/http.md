@@ -388,7 +388,8 @@ session as before.
 ### Decisions
 
 `GET /api/decisions`: `{ decisions: [...] }`, open decisions first, then settled ones, newest first
-within each (the queue keeps 200). `GET /api/decisions/<id>` is one, or a **404**. A decision is
+within each (the queue keeps 200; a settled decision's record is also pruned with the sessions under
+the `[history]` age and disk budgets, an open one never before its deadline). `GET /api/decisions/<id>` is one, or a **404**. A decision is
 `{ id, kind, question, detail, command, trust, form, session?, label?, episode?, project?,
 createdAt, deadline, state, answers?, answeredBy?, answeredAt?, route }`: `kind` names the
 operation (`update`, `deps-add`, `disk-clean`, …), `command` is `jk decide <id>`, `form` the shared
