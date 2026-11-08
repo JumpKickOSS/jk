@@ -370,7 +370,7 @@ class LearnedHeapRetryTest {
                 for a in "$@"; do
                   case "$a" in
                     -Xmx*) mx="$a" ;;
-                    -Xlog:gc:file=*) gc="${a#-Xlog:gc:file=}" ;;
+                    -Xlog:gc:file=*) gc="${a#-Xlog:gc:file=}"; gc="${gc%%::*}" ;;
                   esac
                 done
                 echo "$mx" >> "$(dirname "$0")/../heaps"

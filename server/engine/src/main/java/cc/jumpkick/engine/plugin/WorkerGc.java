@@ -3,12 +3,16 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -64,15 +68,49 @@ public final class WorkerGc {
         }
     }
 
-    /** A log file under the state temp dir, created empty. */
+    /** Logs left behind by a worker that died before its watch deleted them: older than this go. */
+    static final Duration STALE = Duration.ofDays(1);
+
+    private static final AtomicBoolean SWEPT = new AtomicBoolean();
+
+    /**
+     * A log file under the state temp dir, created empty. The first call in an engine also sweeps
+     * logs older than {@link #STALE}: a worker killed with its engine never reached the delete.
+     */
     public static Path create() throws IOException {
         Path dir = JkDirs.tmp().resolve("worker-gc");
         OwnerOnlyFiles.createDirectories(dir);
+        if (SWEPT.compareAndSet(false, true)) sweep(dir, Clock.SYSTEM.instant().minus(STALE));
         return Files.createTempFile(dir, "gc-", ".log");
     }
 
+    /** Delete every {@code gc-*} file in {@code dir} last written before {@code cutoff}. Best-effort. */
+    static void sweep(Path dir, Instant cutoff) {
+        try {
+            PathUtil.forEachChild(dir, (log, attrs) -> {
+                if (attrs.isRegularFile()
+                        && log.getFileName().toString().startsWith("gc-")
+                        && attrs.lastModifiedTime().toInstant().isBefore(cutoff)) {
+                    try {
+                        Files.deleteIfExists(log);
+                    } catch (IOException e) {
+                        Log.debug("worker gc log sweep: " + e.getMessage());
+                    }
+                }
+                return true;
+            });
+        } catch (IOException e) {
+            Log.debug("worker gc log sweep: " + e.getMessage());
+        }
+    }
+
+    /**
+     * The flag that logs to {@code log}, with rotation off: the JVM's default keeps five rotated
+     * files and moves the existing (empty) file aside as {@code <log>.0} at startup, which the watch
+     * never knew to delete, so every worker left one behind.
+     */
     public static String flag(Path log) {
-        return FLAG_PREFIX + log.toAbsolutePath();
+        return FLAG_PREFIX + log.toAbsolutePath() + "::filecount=0";
     }
 
     static boolean logged(List<String> command) {

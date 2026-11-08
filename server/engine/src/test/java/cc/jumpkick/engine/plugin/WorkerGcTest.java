@@ -3,7 +3,13 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The GC log's largest before-occupancy, not region counts. */
 class WorkerGcTest {
@@ -34,5 +40,26 @@ class WorkerGcTest {
                 .isEqualTo(204800L * 1024L);
         assertThat(WorkerGc.vmHwmBytes("")).isZero();
         assertThat(WorkerGc.vmHwmBytes(null)).isZero();
+    }
+
+    /** The JVM's default rotation moved the empty log aside as {@code <log>.0}, which nothing deleted. */
+    @Test
+    void the_log_flag_turns_rotation_off() {
+        assertThat(WorkerGc.flag(Path.of("/t/gc-1.log"))).endsWith("/t/gc-1.log::filecount=0");
+    }
+
+    @Test
+    void the_sweep_drops_day_old_logs_and_keeps_fresh_ones(@TempDir Path dir) throws Exception {
+        Path old = Files.createFile(dir.resolve("gc-1.log.0"));
+        Path fresh = Files.createFile(dir.resolve("gc-2.log"));
+        Path other = Files.createFile(dir.resolve("keep.txt"));
+        Instant now = Instant.now();
+        FileTime twoDaysAgo = FileTime.from(now.minus(Duration.ofDays(2)));
+        Files.setLastModifiedTime(old, twoDaysAgo);
+        Files.setLastModifiedTime(other, twoDaysAgo);
+        WorkerGc.sweep(dir, now.minus(WorkerGc.STALE));
+        assertThat(old).doesNotExist();
+        assertThat(fresh).exists();
+        assertThat(other).exists();
     }
 }
