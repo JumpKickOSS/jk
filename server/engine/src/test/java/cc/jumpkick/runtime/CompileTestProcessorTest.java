@@ -250,7 +250,8 @@ class CompileTestProcessorTest {
                 false,
                 null,
                 null,
-                null);
+                null,
+                false);
 
         assertThat(PlannerCompile.mainCompileRequest(in).processorPath()).containsExactly(procDir, pluginProcDir);
     }
@@ -290,7 +291,8 @@ class CompileTestProcessorTest {
                                 Path.of(System.getProperty("java.home")),
                                 null,
                                 null,
-                                discover),
+                                discover,
+                                false),
                         dir.resolve("gen"),
                         new Cas(dir.resolve("cas")),
                         dir.resolve("cache"),

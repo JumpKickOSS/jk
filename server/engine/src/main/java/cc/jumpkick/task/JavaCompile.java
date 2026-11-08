@@ -171,7 +171,7 @@ public final class JavaCompile {
         ForkedJavac.Result wr;
         try {
             wr = ForkedJavac.compile(new ForkedJavac.Request(
-                            request.javaHome(),
+                            request.compilerHome(),
                             Objects.requireNonNull(workerJar, "workerJar"),
                             request.sources(),
                             request.classpath(),
@@ -361,7 +361,7 @@ public final class JavaCompile {
             ForkedJavac.@Nullable Plan plan;
             try {
                 ForkedJavac.Request planned = new ForkedJavac.Request(
-                                request.javaHome(),
+                                request.compilerHome(),
                                 workerJar,
                                 request.sources(),
                                 request.classpath(),

@@ -96,7 +96,8 @@ class ForecastKeyOwnerTest {
                 false,
                 null,
                 null,
-                resources));
+                resources,
+                false));
     }
 
     @Test
@@ -138,7 +139,8 @@ class ForecastKeyOwnerTest {
                 true,
                 groovyJar,
                 scala,
-                null));
+                null,
+                false));
 
         assertThat(full.javaHome()).isEqualTo(jdk);
         assertThat(full.scalaVersion()).isEqualTo("3.8.4");
@@ -167,7 +169,8 @@ class ForecastKeyOwnerTest {
                 false,
                 null,
                 null,
-                null));
+                null,
+                false));
         assertThat(ActionKey.forJavac("compile-main", full, "0.1.0"))
                 .isNotEqualTo(ActionKey.forJavac("compile-main", bare, "0.1.0"));
     }
@@ -260,7 +263,8 @@ class ForecastKeyOwnerTest {
                 false,
                 null,
                 null,
-                null));
+                null,
+                false));
         assertThat(main.extraOptions())
                 .containsExactly("-Xlint:all", plugin, "-XDcompilePolicy=simple", "--should-stop=ifError=FLOW");
         assertThat(PlannerCompile.pluginNames(main)).containsExactly("ErrorProne");
@@ -297,7 +301,8 @@ class ForecastKeyOwnerTest {
                 false,
                 null,
                 null,
-                null));
+                null,
+                false));
         assertThat(ActionKey.forJavac("compile-main", main, "0.1.0"))
                 .isNotEqualTo(ActionKey.forJavac("compile-main", relaxed, "0.1.0"));
     }
@@ -346,7 +351,8 @@ class ForecastKeyOwnerTest {
                 false,
                 null,
                 null,
-                null));
+                null,
+                false));
     }
 
     @Test

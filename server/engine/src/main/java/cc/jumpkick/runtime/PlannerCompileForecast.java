@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.CompilerJdk;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
@@ -90,7 +92,8 @@ final class PlannerCompileForecast {
                 prepared.mixedGroovy(),
                 groovyJar,
                 scalaSetup,
-                new ProcessorResources(s.dir, s.project, prepared.compact())));
+                new ProcessorResources(s.dir, s.project, prepared.compact()),
+                CompilerJdk.pinned(s.project, SessionContext.current())));
         Optional<FreshnessStamp.Stamp> fresh = Optional.empty();
         // A stamp over generated sources the KSP round is about to restore answers for the old ones.
         if (!s.compileDepDirty && !s.force && !groovyJarUnavailable && !round.rewrites(mainSrc)) {

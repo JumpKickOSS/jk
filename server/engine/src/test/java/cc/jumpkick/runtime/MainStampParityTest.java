@@ -166,7 +166,8 @@ class MainStampParityTest {
                 true,
                 groovyJar,
                 null,
-                null));
+                null,
+                false));
 
         assertThat(ActionKey.javacClasspathTokens(req))
                 .containsExactlyInAnyOrder(
@@ -227,6 +228,7 @@ class MainStampParityTest {
                 false,
                 null,
                 null,
-                null);
+                null,
+                false);
     }
 }

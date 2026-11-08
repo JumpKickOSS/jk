@@ -34,12 +34,20 @@ already have a modern JDK. Prefer **language level**, not extra runtime download
 | Field | Meaning | Prefer |
 |-------|---------|--------|
 | **`java = N`** | Language + bytecode (`--release N`) | **Yes** — default 25; 17 and 21 are fine (host JDK 25 cross-compiles). Below 17 the build warns once per module — keep it only while the module needs an API a later JDK removed |
-| **`jdk = …`** | Which JDK *install* to use / provision | **Rare** — only when you truly need that runtime (Graal, a vendor pin, a major newer than the host) |
+| **`jdk = …`** | Which JDK *install* to use / provision, and the JDK whose javac compiles the module | **Rare** — only when you truly need that runtime (Graal, a vendor pin, a major newer than the host, a specific javac) |
 
 Do **not** write `jdk = 17` or `jdk = 21` just to emit older bytecode. That forces an obsolete
 runtime download. Use `java = 17` / `java = 21` instead.
 
 `java = 26` (newer than the host LTS) may provision a 26 toolchain.
+
+Which javac compiles a module follows the same split. A language level alone compiles on jk's own
+JDK 25 whenever that javac can emit it (`java = 17`, `21` or `25`), in the compiler worker that is
+already warm, and on the project's JDK only for a newer level (`java = 27`). A JDK pin (`jdk = 21`,
+`jdk-vendor` / `jdk-version`, `--jdk`) is a choice of compiler: the module compiles on that JDK even
+when JDK 25 could have emitted its level, in a worker of its own. The pinned JDK must be 21 or newer
+to host the compiler worker; a `jdk = 17` pin still runs that JDK for tests and `jk run`, and its
+compile runs on jk's JDK with `--release 17`. Each JDK's worker idles out on its own.
 
 Details: [JDK](jdk.md), [Projects](projects.md).
 

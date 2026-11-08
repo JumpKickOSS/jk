@@ -18,6 +18,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathProcessors;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.CompilerJdk;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -233,7 +234,8 @@ public final class PlannerCompile {
             boolean mixedGroovy,
             @Nullable Path groovyJar,
             ScalaCompile.@Nullable Setup scala,
-            @Nullable ProcessorResources resources) {}
+            @Nullable ProcessorResources resources,
+            boolean pinnedJdk) {}
 
     /** compile-main's request — the build's javac invocation and the forecast's key, from one body. */
     public static CompileRequest mainCompileRequest(MainCompile in) {
@@ -272,6 +274,7 @@ public final class PlannerCompile {
                 .release(in.release())
                 .extraOptions(javacOpts)
                 .javaHome(in.javaHome())
+                .pinnedJdk(in.pinnedJdk())
                 .processorPath(processorPath);
         if (in.resources() != null && ActionKey.processorsMayRun(processorPath, javacOpts)) {
             req.resourcesDigest(resourcesDigest(in.resources(), in.layout()));
@@ -337,7 +340,8 @@ public final class PlannerCompile {
             Path javaHome,
             ScalaCompile.@Nullable Setup scala,
             @Nullable Path mainClasses,
-            boolean discover) {
+            boolean discover,
+            boolean pinnedJdk) {
 
         /** A compile-test that discovers classpath processors when it declares none. */
         public TestCompile(
@@ -364,7 +368,8 @@ public final class PlannerCompile {
                     javaHome,
                     scala,
                     mainClasses,
-                    true);
+                    true,
+                    false);
         }
     }
 
@@ -400,6 +405,7 @@ public final class PlannerCompile {
                 .release(in.release())
                 .extraOptions(ModularCompile.testOptions(testJavacOptions(in), in.mainClasses(), in.sources()))
                 .javaHome(in.javaHome())
+                .pinnedJdk(in.pinnedJdk())
                 .processorPath(
                         in.discover() || !in.processorPath().isEmpty()
                                 ? effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath)
@@ -526,7 +532,6 @@ public final class PlannerCompile {
         boolean hasScala = sources.stream().anyMatch(p -> p.toString().endsWith(".scala"));
         ScalaCompile.Setup scalaSetup =
                 hasScala ? ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas) : null;
-        List<String> javacArgs = ctx.require(JAVAC_ARGS);
         CompileRequest request = mainCompileRequest(new MainCompile(
                 sources,
                 baseClasspath,
@@ -535,14 +540,15 @@ public final class PlannerCompile {
                 ctx.require(LAYOUT),
                 javaOut,
                 ctx.require(RELEASE),
-                javacArgs,
+                ctx.require(JAVAC_ARGS),
                 ctx.require(PROJECT).javac(),
                 ctx.require(JAVA_HOME),
                 cx.mixed(),
                 cx.mixedGroovy(),
                 groovyJar,
                 scalaSetup,
-                new ProcessorResources(in.dir(), ctx.require(PROJECT), cx.compact())));
+                new ProcessorResources(in.dir(), ctx.require(PROJECT), cx.compact()),
+                CompilerJdk.pinned(ctx.require(PROJECT), in.session())));
         // The stamp gates on the option-bearing inputs too — [build] lint/debug, [javac] args and
         // plugins, --profile args, the JDK — through the digest of the very request the action
         // key hashes, and on the classpath through the token lines that key hashes (the ABI of

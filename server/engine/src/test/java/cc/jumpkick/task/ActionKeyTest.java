@@ -13,6 +13,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Settled;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.BuildIdentity;
@@ -426,8 +427,8 @@ class ActionKeyTest {
                 assertThat(key).isNotBlank();
                 assertThat(snap).containsKey(PortablePath.key(src));
                 assertThat(FileHashMemo.contentReads())
-                        .as("forJavac + snapshotInputs share one content read")
-                        .isEqualTo(1);
+                        .as("forJavac + snapshotInputs read the source and the compiling JDK's release once each")
+                        .isEqualTo(2);
                 assertThat(FileHashMemo.memoHits()).isGreaterThanOrEqualTo(1);
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -608,9 +609,9 @@ class ActionKeyTest {
         for (String token : WorkerClosure.tokens(PluginJar.JAVA_COMPILER))
             worker.append("worker:").append(token).append('\n');
         assertThat(ActionKey.forJavac("compile-main", request, "0.1.0"))
-                .isEqualTo(Hashing.sha256Hex(
-                        "task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:none\noptions:\n" + worker
-                                + "mirrored:excluded-unless-rewritten\n"));
+                .isEqualTo(Hashing.sha256Hex("task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:"
+                        + ActionKey.jdkToken(JavaHomes.runningJavaHome()) + "\noptions:\n" + worker
+                        + "mirrored:excluded-unless-rewritten\n"));
     }
 
     /** The worker that drives javac is part of what it compiled with: its bytes key the compile. */
@@ -778,21 +779,21 @@ class ActionKeyTest {
 
     @Test
     void javac_jdk_home_is_part_of_action_key(@TempDir Path tempDir) throws IOException {
-        // The same defect forKotlinc had, one lane over: jk.toml moves `jdk = 17` to
-        // `jdk = 21` and leaves `java = 17` alone, so --release does not move. ForkedJavac launches
-        // javac out of this very home, so the compiler AND the platform classes change under a key
-        // that never did — the build restores 17-compiled bytecode and calls it up to date.
+        // The same defect forKotlinc had, one lane over: jk.toml moves `jdk = 21` to
+        // `jdk = 23` and leaves `java = 17` alone, so --release does not move. A pinned JDK runs
+        // javac, so the compiler AND the platform classes change under a key that never did —
+        // the build would restore 21-compiled bytecode and call it up to date.
         Path src = tempDir.resolve("Hello.java");
         Files.writeString(src, "class Hello {}");
-        Path jdk17 = jdk(tempDir.resolve("temurin-17"), "17.0.12+7");
         Path jdk21 = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
+        Path jdk23 = jdk(tempDir.resolve("temurin-23"), "23.0.1+11");
 
-        assertThat(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk17), "0.1.0"))
-                .isNotEqualTo(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk21), "0.1.0"));
-        // …and a request that names no JDK is its own value, not whichever home happened to be
-        // resolved last: `none` is a token no real home can produce.
-        assertThat(ActionKey.forJavac("compile-main", javac(src, tempDir, null), "0.1.0"))
-                .isNotEqualTo(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk17), "0.1.0"));
+        assertThat(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk21), "0.1.0"))
+                .isNotEqualTo(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk23), "0.1.0"));
+        // A level-only module compiles on jk's runtime whatever JDK it resolved: the same compiler,
+        // the same key.
+        assertThat(ActionKey.forJavac("compile-main", unpinned(src, tempDir, jdk21), "0.1.0"))
+                .isEqualTo(ActionKey.forJavac("compile-main", unpinned(src, tempDir, jdk23), "0.1.0"));
         assertThat(ActionKey.jdkToken(null)).isEqualTo("none");
     }
 
@@ -803,8 +804,8 @@ class ActionKeyTest {
         // the action key hashes, and on nothing the stamp already compares by mtime.
         Path src = tempDir.resolve("Hello.java");
         Files.writeString(src, "class Hello {}");
-        Path jdk17 = jdk(tempDir.resolve("temurin-17"), "17.0.12+7");
-        Path jdk21 = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
+        Path jdk17 = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
+        Path jdk21 = jdk(tempDir.resolve("temurin-23"), "23.0.1+11");
         String digest = ActionKey.javacOptionsDigest(optioned(src, tempDir, jdk17, 17, List.of(), List.of()));
 
         assertThat(ActionKey.javacOptionsDigest(optioned(src, tempDir, jdk17, 17, List.of(), List.of())))
@@ -848,6 +849,7 @@ class ActionKeyTest {
                 .release(release)
                 .extraOptions(options)
                 .javaHome(javaHome)
+                .pinnedJdk(true)
                 .build();
     }
 
@@ -887,11 +889,23 @@ class ActionKeyTest {
         return home;
     }
 
+    /** A module that pins {@code javaHome}, which therefore runs javac. */
     private static CompileRequest javac(Path src, Path tempDir, @Nullable Path javaHome) {
         return CompileRequest.builder()
                 .sources(List.of(src))
                 .outputDir(tempDir.resolve("out"))
                 .release(17) // held fixed on purpose: only the JDK moves
+                .javaHome(javaHome)
+                .pinnedJdk(true)
+                .build();
+    }
+
+    /** A module whose level alone chose {@code javaHome}: jk's runtime runs javac. */
+    private static CompileRequest unpinned(Path src, Path tempDir, Path javaHome) {
+        return CompileRequest.builder()
+                .sources(List.of(src))
+                .outputDir(tempDir.resolve("out"))
+                .release(17)
                 .javaHome(javaHome)
                 .build();
     }

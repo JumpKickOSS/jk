@@ -10,7 +10,9 @@ runs, installs the way `jk jdk install` does. [Machine output](machine-output.md
 has the `-O jsonl` shape.
 
 Supported **project** floor: **JDK 17+** (no Java 8 or 11). 17 and 21 compile with the
-host JDK 25 via `--release` — do **not** download those obsolete runtimes for bytecode.
+host JDK 25 via `--release` — do **not** download those obsolete runtimes for bytecode. A `jdk`
+pin also chooses the compiler: `jdk = 21` compiles with JDK 21's javac (see
+[Concepts](concepts.md#java--vs-jdk-)).
 
 ```bash
 jk jdk list

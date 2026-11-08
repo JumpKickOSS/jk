@@ -185,12 +185,13 @@ public final class ActionKey {
     private static void appendJavacOptions(StringBuilder sb, CompileRequest request) throws IOException {
         sb.append("release:").append(request.release()).append('\n');
         sb.append("encoding:").append(SOURCE_ENCODING).append('\n');
-        // The project JDK is a compile INPUT, not a consequence of --release: ForkedJavac launches
-        // javac out of this very home, so it is where the platform classes (and the compiler) come
-        // from. Switching jdk = 17 to 21 leaves --release alone, so without this the key never
-        // moves and the build restores bytecode compiled by the old javac against the old
-        // platform. Same reasoning, same rendering, as forKotlinc's `jdk:`.
-        sb.append("jdk:").append(jdkToken(request.javaHome())).append('\n');
+        // The JDK that runs javac is a compile INPUT, not a consequence of --release: the compiler
+        // and the platform classes it compiles against (its ct.sym for --release) come from it.
+        // That is jk's runtime for a level it can emit and the module's own JDK for a pin or a
+        // newer level (CompilerJdk), so it is that home, not the module's resolved JDK, the key
+        // names: a level-only module whose JDK moves compiles the same bytes on the same runtime,
+        // and pinning jdk = 21 moves the key because javac 21 is a different compiler.
+        sb.append("jdk:").append(jdkToken(request.compilerHome())).append('\n');
         // In argv order, never sorted: options pair with the value that follows them, so
         // `--add-modules a --limit-modules b` and `--add-modules b --limit-modules a` hold the
         // same words and are different compiles.
@@ -443,9 +444,9 @@ public final class ActionKey {
         snapshotEntries(result, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         result.put("release", Integer.toString(request.release()));
         result.put("options", optionsToken(request.extraOptions()));
-        // The key hashes the JDK, so the why-rebuilt diff has to be able to name it: without this
-        // a JDK switch reads as "nothing changed, rebuilt anyway".
-        result.put("jdk", jdkToken(request.javaHome()));
+        // The key hashes the compiling JDK, so the why-rebuilt diff has to be able to name it:
+        // without this a JDK switch reads as "nothing changed, rebuilt anyway".
+        result.put("jdk", jdkToken(request.compilerHome()));
         return result;
     }
 

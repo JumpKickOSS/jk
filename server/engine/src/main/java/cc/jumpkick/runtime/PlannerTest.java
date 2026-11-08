@@ -10,6 +10,7 @@ import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.compile.CompilerJdk;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TierTags;
@@ -415,7 +416,8 @@ public final class PlannerTest {
                         ctx.require(JAVA_HOME),
                         scalaSetup,
                         ctx.require(MAIN_CLASSES),
-                        ProcessorPaths.discovers(ctx.require(PROJECT))),
+                        ProcessorPaths.discovers(ctx.require(PROJECT)),
+                        CompilerJdk.pinned(ctx.require(PROJECT), in.session())),
                 genDir,
                 cas,
                 in.cache(),

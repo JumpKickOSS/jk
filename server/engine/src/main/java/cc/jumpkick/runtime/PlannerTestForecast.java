@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.CompilerJdk;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
@@ -90,7 +92,8 @@ final class PlannerTestForecast {
                     prepared.javaHome(),
                     testScala,
                     layout.classesDir(),
-                    ProcessorPaths.discovers(s.project)));
+                    ProcessorPaths.discovers(s.project),
+                    CompilerJdk.pinned(s.project, SessionContext.current())));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
             Path stateDir = ActionKey.stateDir(
                     ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(s.cache)),

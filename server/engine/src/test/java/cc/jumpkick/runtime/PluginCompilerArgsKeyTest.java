@@ -109,7 +109,8 @@ class PluginCompilerArgsKeyTest {
                 false,
                 null,
                 null,
-                null));
+                null,
+                false));
         return ActionKey.forJavac("compile-java", request, "test");
     }
 

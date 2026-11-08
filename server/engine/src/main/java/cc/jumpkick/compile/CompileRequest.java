@@ -30,7 +30,9 @@ public record CompileRequest(
         @Nullable Path scalaLibraryJar,
         @Nullable Path scalaCompilerJar,
         @Nullable Path scalaBridgeJar,
-        @Nullable String resourcesDigest) {
+        @Nullable String resourcesDigest,
+        /** The module named its JDK ({@code jdk = …} or {@code --jdk}): javac runs on it ({@link CompilerJdk}). */
+        boolean pinnedJdk) {
 
     public CompileRequest {
         Objects.requireNonNull(sources, "sources");
@@ -88,7 +90,13 @@ public record CompileRequest(
                 null,
                 null,
                 null,
-                null);
+                null,
+                false);
+    }
+
+    /** The JDK that runs javac for this request: see {@link CompilerJdk}. */
+    public Path compilerHome() {
+        return CompilerJdk.home(javaHome, release, pinnedJdk);
     }
 
     /** True when this request is a mixed Java+Scala Zinc session. */

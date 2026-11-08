@@ -86,18 +86,13 @@ public final class ForkedJavac {
     }
 
     /**
-     * The JDK the compiler worker runs on: jk's own runtime, or the project's JDK when the
-     * project's {@code java} level is above what the runtime's javac can emit. A javac cannot
-     * target a release newer than itself, so a {@code java = 26} project on an engine running
-     * JDK 25 compiles on the JDK its manifest resolved.
+     * The JDK the compiler worker runs on: the request's {@link Request#javaHome()}, which the
+     * engine set to the compiler's JDK ({@link CompileRequest#compilerHome()}, the {@link
+     * CompilerJdk} rule), else jk's own runtime.
      */
     static Path workerJavaHome(Request req) {
-        Path host = JavaHomes.runningJavaHome();
-        Path project = req.javaHome();
-        if (project == null || req.release() <= 0) return host;
-        int hostFeature = JvmOptions.hostFeature(host);
-        if (req.release() <= hostFeature) return host;
-        return JvmOptions.hostFeature(project) >= req.release() ? project : host;
+        Path home = req.javaHome();
+        return home != null ? home : JavaHomes.runningJavaHome();
     }
 
     public record Request(
