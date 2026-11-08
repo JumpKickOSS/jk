@@ -75,9 +75,22 @@ final class CompileWork {
     @Nullable
     Map<String, String> shell;
 
+    /**
+     * The heap this compile is estimated to hold in a worker shared with others: {@link
+     * WorkerHeap#demandBytes}, less the base a whole JVM needs, which the worker pays once. Read by
+     * admission, never part of a key.
+     */
+    long demandBytes;
+
     private CompileWork(ForkedJavac.Request req, boolean plan) {
         this.req = req;
         this.plan = plan;
+        this.demandBytes = sharedDemand(req);
+    }
+
+    /** {@code req}'s share of a shared worker's heap; see {@link #demandBytes}. */
+    static long sharedDemand(ForkedJavac.Request req) {
+        return Math.max(WorkerHeap.MIB * 64, WorkerHeap.demandBytes(req) - WorkerHeap.BASE_BYTES);
     }
 
     static CompileWork compile(ForkedJavac.Request req) {

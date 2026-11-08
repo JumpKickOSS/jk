@@ -58,4 +58,17 @@ class CompilerBudgetTest {
                 JvmOptions.compilerWorkerFlags(new PluginTuning(null, null, null, List.of("-Xmx2g")), 3 * GIB);
         assertThat(pinned).contains("-Xmx2g").doesNotContain("-Xmx3072m", "-Xms64m");
     }
+
+    /** The heap follows the compiles the worker can run at once, not the host's RAM. */
+    @Test
+    void the_ceiling_follows_the_compiles_a_worker_runs() {
+        CompilerBudget.Heap wide = CompilerBudget.plan(64 * GIB, 48 * GIB, 0, true, 24);
+        assertThat(wide.ceilingBytes()).isEqualTo(12 * GIB);
+        assertThat(wide.xmxBytes()).isEqualTo(12 * GIB);
+        CompilerBudget.Heap few = CompilerBudget.plan(64 * GIB, 48 * GIB, 0, false, 2);
+        assertThat(few.ceilingBytes()).as("never below the least working heap").isEqualTo(4 * GIB);
+        assertThat(few.xmxBytes())
+                .as("an explicit -Xmx below the JVM's own share")
+                .isEqualTo(4 * GIB);
+    }
 }

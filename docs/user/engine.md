@@ -494,7 +494,13 @@ formats every file again but counts each file once.
 ### Compiler worker heap
 
 The Java compiler worker is not sized per module. It starts with a 64 MiB heap and may grow to
-68% of the memory it sees (the cgroup limit in a container), on G1. Where the engine gives each
+512 MiB for each compile it can run at once (one per core; at least 4 GiB), and never past 68% of
+the memory it sees (the cgroup limit in a container), on G1. A ceiling far above what its compiles
+hold only lets the collector wait until the worker meets its memory cap. It takes another compile
+only while the compiles in flight, each estimated from its classpath and sources, fit in 70% of
+that ceiling, and holds new ones back while its heap stays above 70% after a collection or
+collections take over a tenth of its time; with nothing in flight it always takes the next one, so
+a compile larger than any budget runs alone. Where the engine gives each
 worker a cgroup of its own, the compiler worker's cap is the whole worker budget and its heap is an
 explicit `-Xmx` 1.5 GiB below that, so metaspace, code cache and stacks fit under the cap; a second
 compiler worker (another JDK, a module with its own `-J` flags) gets what the first leaves of the

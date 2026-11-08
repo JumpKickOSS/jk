@@ -304,14 +304,45 @@ final class CompilerPool {
      * Whether {@code worker} may be sent another item now. This is the one place that decides it:
      * a free thread on the worker (half of them for a while after a death by running out of heap,
      * one while compiles a death put back have not answered), and a free compile slot engine-wide
-     * ({@link CompilerBudget}). Admission by each compile's memory demand joins here.
+     * ({@link CompilerBudget}), and room for {@code next} in the worker's heap ({@link #heapAdmits}).
      */
-    synchronized boolean mayAdmit(CompilerWorker worker) {
+    synchronized boolean mayAdmit(CompilerWorker worker, CompileWork next) {
         if (!worker.ready()) return false;
         int credits = worker.threads();
         if (CLOCK.nanos() - halvedUntilNanos < 0) credits = Math.max(1, credits / 2);
         if (revivedPending > 0) credits = 1;
-        return worker.inflight.size() < credits && CompilerBudget.slotFree();
+        return worker.inflight.size() < credits && CompilerBudget.slotFree() && heapAdmits(worker, next);
+    }
+
+    /** The share of a worker's heap ceiling the compiles in flight may be estimated to hold together. */
+    static final double HEAP_ADMIT_FRACTION = 0.7;
+
+    /** GC time over this share of the worker's last interval holds new compiles back. */
+    static final double GC_PRESSURE_FRACTION = 0.10;
+
+    /**
+     * Whether {@code worker}'s heap has room for {@code next}. A worker with nothing in flight always
+     * takes one, however large, so a compile bigger than any budget still runs, alone. Otherwise the
+     * in-flight compiles' estimated demand plus {@code next}'s must fit in {@link
+     * #HEAP_ADMIT_FRACTION} of the ceiling the worker reports, and the worker must not be under
+     * pressure: a heap left above that fraction after its last collection, or collections taking
+     * more than {@link #GC_PRESSURE_FRACTION} of its time, admits nothing more until it eases.
+     * Before the first heap report there is nothing to measure against, and credits alone decide.
+     */
+    static boolean heapAdmits(CompilerWorker worker, CompileWork next) {
+        long inflightDemand = 0;
+        for (CompileWork w : worker.inflight.values()) inflightDemand += w.demandBytes;
+        return heapAdmits(worker.inflight.size(), inflightDemand, next.demandBytes, worker.heap());
+    }
+
+    /** {@link #heapAdmits(CompilerWorker, CompileWork)} over its readings. */
+    static boolean heapAdmits(
+            int inflight, long inflightDemand, long nextDemand, CompilerWorker.@Nullable HeapReading heap) {
+        if (inflight == 0) return true;
+        if (heap == null || heap.max() <= 0) return true;
+        long room = (long) (heap.max() * HEAP_ADMIT_FRACTION);
+        if (heap.usedAfterGc() > room || heap.gcFrac() > GC_PRESSURE_FRACTION) return false;
+        return inflightDemand + nextDemand <= room;
     }
 
     /** Something a dispatcher waits on changed: a worker said hello, or a credit came back. */
@@ -338,7 +369,7 @@ final class CompilerPool {
         while (true) {
             if (worker.dead() || worker.retiring() || closed) return null;
             dropEnded();
-            if (!queue.isEmpty() && mayAdmit(worker)) {
+            if (!queue.isEmpty() && mayAdmit(worker, queue.peekFirst())) {
                 CompileWork next = queue.pollFirst();
                 worker.inflight.put(next.id, next);
                 CompilerBudget.took();

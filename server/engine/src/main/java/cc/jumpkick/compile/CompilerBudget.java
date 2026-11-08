@@ -33,6 +33,17 @@ final class CompilerBudget {
     /** The least heap a worker is started with, however little is left. */
     static final long LEAST_HEAP_BYTES = 512L << 20;
 
+    /**
+     * Heap per compile the worker can run at once. Helidon's 223 modules compiling 24 at a time held
+     * a little under 8 GiB live; a ceiling far above that lets G1 put off collecting until the
+     * committed heap and everything beside it reach the worker's cgroup cap, and the kernel kills the
+     * worker with every compile in flight.
+     */
+    static final long HEAP_PER_COMPILE_BYTES = 512L << 20;
+
+    /** The least ceiling the per-compile rule gives, for hosts with few cores. */
+    static final long LEAST_WORK_HEAP_BYTES = 4L << 30;
+
     private static final AtomicInteger INFLIGHT = new AtomicInteger();
     private static final Map<CompilerWorker, Long> CEILINGS = new ConcurrentHashMap<>();
     private static volatile int slotsForTests;
@@ -86,7 +97,7 @@ final class CompilerBudget {
             for (Map.Entry<CompilerWorker, Long> e : CEILINGS.entrySet()) {
                 if (e.getKey() != worker) others += e.getValue();
             }
-            Heap heap = plan(ramBytes, budgetBytes, others, contained);
+            Heap heap = plan(ramBytes, budgetBytes, others, contained, slots());
             CEILINGS.put(worker, heap.ceilingBytes());
             return heap;
         }
@@ -104,8 +115,19 @@ final class CompilerBudget {
      * an explicit {@code -Xmx} whenever it is not simply the JVM's own share of RAM.
      */
     static Heap plan(long ramBytes, long budgetBytes, long otherCeilings, boolean contained) {
+        return plan(ramBytes, budgetBytes, otherCeilings, contained, 0);
+    }
+
+    /**
+     * As above for a worker that runs {@code compiles} at once: its heap is also held to {@link
+     * #HEAP_PER_COMPILE_BYTES} per compile, never below {@link #LEAST_WORK_HEAP_BYTES}. {@code 0}
+     * applies no such bound.
+     */
+    static Heap plan(long ramBytes, long budgetBytes, long otherCeilings, boolean contained, int compiles) {
         long natural = (long) (Math.max(0, ramBytes) * MAX_RAM_FRACTION);
         long ceiling = natural;
+        if (compiles > 0)
+            ceiling = Math.min(ceiling, Math.max(LEAST_WORK_HEAP_BYTES, HEAP_PER_COMPILE_BYTES * compiles));
         if (contained && budgetBytes > 0) ceiling = Math.min(ceiling, budgetBytes - NATIVE_HEADROOM_BYTES);
         if (budgetBytes > 0) ceiling = Math.min(ceiling, budgetBytes - Math.max(0, otherCeilings));
         ceiling = Math.max(LEAST_HEAP_BYTES, ceiling);
