@@ -928,48 +928,23 @@ public final class BuildJournal {
         return delete(idOrLocator);
     }
 
-    public PruneResult prune(long maxAgeMillis, long maxDiskBytes, long nowMillis) {
-        List<Entry> entries = new ArrayList<>();
+    /**
+     * Delete the runs, ended sessions and settled decisions past the age or disk budget, oldest
+     * first. A decision goes through {@code dropDecision}, its one writer, which answers false to
+     * keep it.
+     */
+    public PruneResult prune(long maxAgeMillis, long maxDiskBytes, long nowMillis, Predicate<String> dropDecision) {
+        List<JournalPrune.Entry> runs = new ArrayList<>();
         for (Path dir : entryDirs()) {
             // Never reap a run that has not finished: the idle gate is checked before this call,
             // so a build admitted in between would otherwise have its `running` stub deleted out
             // from under it.
             Optional<BuildRecord> record = readHead(dir).map(Head::record);
             if (record.map(BuildRecord::running).orElse(false)) continue;
-            entries.add(new Entry(dir, entryMillis(dir, record, nowMillis), sizeOf(dir)));
+            runs.add(JournalPrune.Entry.dir(dir, entryMillis(dir, record, nowMillis)));
         }
-        // Ended sessions and settled decisions share the runs' age and disk budgets.
-        entries.addAll(SessionJournal.prunable(buildsRoot, nowMillis, (dir, at) -> new Entry(dir, at, sizeOf(dir))));
-        entries.addAll(SessionJournal.prunableDecisions(buildsRoot, nowMillis, Entry::new));
-        int removed = 0;
-        long removedBytes = 0;
-        List<Entry> kept = new ArrayList<>();
-        for (Entry e : entries) {
-            if (maxAgeMillis > 0 && nowMillis - e.millis > maxAgeMillis) {
-                PathUtil.deleteRecursively(e.dir);
-                removed++;
-                removedBytes += e.size;
-            } else {
-                kept.add(e);
-            }
-        }
-        if (maxDiskBytes > 0) {
-            long total = kept.stream().mapToLong(Entry::size).sum();
-            if (total > maxDiskBytes) {
-                kept.sort(Comparator.comparingLong(Entry::millis));
-                for (Entry e : kept) {
-                    if (total <= maxDiskBytes) break;
-                    PathUtil.deleteRecursively(e.dir);
-                    removed++;
-                    removedBytes += e.size;
-                    total -= e.size;
-                }
-            }
-        }
-        return new PruneResult(removed, removedBytes);
+        return JournalPrune.prune(buildsRoot, runs, maxAgeMillis, maxDiskBytes, nowMillis, dropDecision);
     }
-
-    private record Entry(Path dir, long millis, long size) {}
 
     private Optional<Path> resolveForComplete(String locator, BuildRecord finished) {
         return runDir(locator, finished);
@@ -1153,18 +1128,6 @@ public final class BuildJournal {
         } catch (IOException e) {
             return fallback;
         }
-    }
-
-    private static long sizeOf(Path dir) {
-        // Guard G45: the walk already read each entry's size, so the old
-        // walk-then-Files.size(p) asked the filesystem twice per file for one answer.
-        long[] total = {0L};
-        try {
-            PathUtil.forEachRegularFile(dir, (f, attrs) -> total[0] += attrs.size());
-        } catch (IOException e) {
-            return 0L;
-        }
-        return total[0];
     }
 
     private static void move(Path from, Path to) throws IOException {

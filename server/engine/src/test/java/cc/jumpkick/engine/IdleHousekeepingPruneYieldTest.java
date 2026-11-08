@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -285,6 +286,7 @@ class IdleHousekeepingPruneYieldTest {
                 gate,
                 new JkHistoryConfig(false, 30, 512),
                 new BuildJournal(roots.resolve("builds")),
+                new DecisionQueue(),
                 () -> roots.resolve("metrics.jsonl"),
                 () -> BuildMetrics.Limits.DEFAULTS,
                 roots.resolve("engine"),

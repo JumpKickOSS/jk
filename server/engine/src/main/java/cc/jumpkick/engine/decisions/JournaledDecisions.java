@@ -26,8 +26,8 @@ public final class JournaledDecisions implements DecisionQueue.Store {
     }
 
     @Override
-    public void drop(String id) {
-        log.whileWriting("decision " + id, journal -> journal.deleteDecision(id));
+    public boolean drop(String id) {
+        return log.whileWriting("decision " + id, journal -> journal.deleteDecision(id));
     }
 
     @Override

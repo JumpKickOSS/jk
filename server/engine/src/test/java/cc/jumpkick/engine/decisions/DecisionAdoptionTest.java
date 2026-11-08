@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionExpiry;
+import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.SessionLog;
@@ -13,6 +14,7 @@ import cc.jumpkick.host.time.Clock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -135,6 +137,31 @@ class DecisionAdoptionTest {
         try (Stream<Path> files = Files.list(state.resolve(SessionJournal.DECISIONS_DIR))) {
             assertThat(files.count()).isEqualTo(DecisionQueue.MAX_KEPT);
         }
+    }
+
+    @Test
+    void a_decision_the_history_prune_removes_leaves_the_queue_and_stays_gone() throws Exception {
+        DecisionQueue q = queue(new AtomicBoolean(true));
+        Decision settled = q.open(ask(false));
+        q.decline(settled.id(), DecisionSurface.CLI, null);
+        Decision open = q.open(ask(false));
+        long day = Duration.ofDays(1).toMillis();
+        for (String id : List.of(settled.id(), open.id())) {
+            Files.setLastModifiedTime(record(id), FileTime.fromMillis(now.get() - 10 * day));
+        }
+
+        BuildJournal.PruneResult r = new BuildJournal(state).prune(2 * day, 0, now.get(), q::prune);
+
+        assertThat(r.removedEntries()).isEqualTo(1);
+        assertThat(q.list()).extracting(Decision::id).containsExactly(open.id());
+        assertThat(q.find(settled.id())).isEmpty();
+        assertThat(q.hostKey(settled.id())).isNull();
+        q.call(settled.id(), Map.of("tool", "update"));
+        assertThat(record(settled.id()))
+                .as("no later write brings the record back")
+                .doesNotExist();
+        assertThat(q.prune(open.id())).as("an open decision stays").isFalse();
+        assertThat(record(open.id())).exists();
     }
 
     private Path record(String id) {

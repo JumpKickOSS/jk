@@ -5,6 +5,8 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -563,7 +565,7 @@ class BuildJournalTest {
         long day = 86_400_000L;
         j.append(record(now - 10 * day, true, "old"), BuildJournal.Snapshot.NONE);
         String fresh = j.append(record(now - 1, true, "new"), BuildJournal.Snapshot.NONE);
-        BuildJournal.PruneResult r = j.prune(2 * day, 0, now);
+        BuildJournal.PruneResult r = j.prune(2 * day, 0, now, id -> false);
         assertThat(r.removedEntries()).isEqualTo(1);
         assertThat(j.list()).hasSize(1);
         assertThat(j.list().get(0).buildNumber()).isEqualTo(Long.parseLong(fresh));
@@ -579,7 +581,7 @@ class BuildJournalTest {
         j.append(record(now - 2000, true, "g:a"), new BuildJournal.Snapshot(null, null, big));
         String newest = j.append(record(now - 1000, true, "g:a"), new BuildJournal.Snapshot(null, null, big));
         // Budget below the 3-entry total forces at least the oldest out.
-        BuildJournal.PruneResult r = j.prune(0, 6000, now);
+        BuildJournal.PruneResult r = j.prune(0, 6000, now, id -> false);
         assertThat(r.removedEntries()).isGreaterThanOrEqualTo(1);
         List<Long> numbers = j.list().stream().map(BuildRecord::buildNumber).toList();
         assertThat(numbers).contains(Long.parseLong(newest)).doesNotContain(Long.parseLong(oldest));
@@ -602,10 +604,24 @@ class BuildJournalTest {
             Files.setLastModifiedTime(decisions.resolve(id + ".json"), FileTime.fromMillis(old));
         }
         Files.setLastModifiedTime(decisions.resolve("recent.json"), FileTime.fromMillis(now - 1));
+        Path stray = decisions.resolve("-stray.json");
+        Files.writeString(stray, "{\"id\":\"-stray\",\"state\":\"accepted\",\"deadline\":" + (old + 60_000) + "}");
+        Files.setLastModifiedTime(stray, FileTime.fromMillis(old));
 
-        BuildJournal.PruneResult r = j.prune(2 * day, 0, now);
+        List<String> dropped = new ArrayList<>();
+        BuildJournal.PruneResult r = j.prune(2 * day, 0, now, id -> {
+            dropped.add(id);
+            try {
+                sessions.deleteDecision(id);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            return true;
+        });
 
-        assertThat(r.removedEntries()).isEqualTo(2);
+        assertThat(r.removedEntries()).isEqualTo(3);
+        assertThat(dropped).as("decisions go through their writer").containsExactlyInAnyOrder("settled", "expired");
+        assertThat(stray).as("a file no decision id names is deleted outright").doesNotExist();
         assertThat(sessions.decisions()).extracting(d -> d.get("id")).containsExactlyInAnyOrder("waiting", "recent");
     }
 
@@ -624,7 +640,7 @@ class BuildJournalTest {
         // Old enough that any age budget would sweep it, but still running.
         String live = requireNonNull(j.begin(BuildRecord.running(1, "build", "/proj", "g:a", null, 1L, "9.9", "cli")));
         assertThat(live).isNotNull();
-        BuildJournal.PruneResult r = j.prune(1, 1, 1_700_000_000_000L);
+        BuildJournal.PruneResult r = j.prune(1, 1, 1_700_000_000_000L, id -> false);
         assertThat(r.removedEntries()).isZero();
         assertThat(j.get(live)).isPresent();
     }

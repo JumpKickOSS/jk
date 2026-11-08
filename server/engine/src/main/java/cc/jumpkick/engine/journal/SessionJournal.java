@@ -98,6 +98,13 @@ public final class SessionJournal {
         return out;
     }
 
+    /** The id of the decision whose record is {@code file}. */
+    static @Nullable String decisionId(Path file) {
+        String name = file.getFileName().toString();
+        String id = name.endsWith(".json") ? name.substring(0, name.length() - ".json".length()) : name;
+        return validId(id) ? id : null;
+    }
+
     /** Makes a prune entry from a path, when it last changed, and its size in bytes. */
     @FunctionalInterface
     interface PruneEntry<T> {

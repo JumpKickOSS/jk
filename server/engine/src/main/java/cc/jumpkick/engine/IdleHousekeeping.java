@@ -5,6 +5,7 @@ import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.jobs.LastBuiltRoot;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
@@ -66,6 +67,9 @@ public final class IdleHousekeeping {
     private final ReentrantReadWriteLock cacheGate;
     private final JkHistoryConfig historyConfig;
     private final BuildJournal journal;
+    /** The decisions the journal prune drops settled ones from, so they leave the live queue with their files. */
+    private final DecisionQueue decisions;
+
     private final Supplier<Path> metricsFile;
     /** The metrics store's size and age budget, read at each prune: the engine's config, not the process's. */
     private final Supplier<BuildMetrics.Limits> metricsLimits;
@@ -347,7 +351,8 @@ public final class IdleHousekeeping {
         if (!historyConfig.enabled()) return;
         try {
             long now = clock.getAsLong();
-            BuildJournal.PruneResult r = journal.prune(historyConfig.maxAgeMillis(), historyConfig.maxDiskBytes(), now);
+            BuildJournal.PruneResult r =
+                    journal.prune(historyConfig.maxAgeMillis(), historyConfig.maxDiskBytes(), now, decisions::prune);
             if (r.removedEntries() > 0) {
                 log.accept("jk engine: build journal prune removed " + r.removedEntries() + " entries ("
                         + r.removedBytes() + " bytes)");

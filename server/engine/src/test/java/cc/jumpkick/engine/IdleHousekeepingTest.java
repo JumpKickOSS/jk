@@ -7,6 +7,7 @@ import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.TestClassWalls;
@@ -115,6 +116,7 @@ class IdleHousekeepingTest {
                 new ReentrantReadWriteLock(),
                 new JkHistoryConfig(false, 30, 512),
                 new BuildJournal(roots.resolve("builds")),
+                new DecisionQueue(),
                 () -> roots.resolve("metrics.jsonl"),
                 () -> BuildMetrics.Limits.DEFAULTS,
                 roots.resolve("engine"),
@@ -144,6 +146,7 @@ class IdleHousekeepingTest {
                 new ReentrantReadWriteLock(),
                 new JkHistoryConfig(false, 30, 512),
                 new BuildJournal(roots.resolve("builds")),
+                new DecisionQueue(),
                 () -> roots.resolve("metrics.jsonl"),
                 () -> BuildMetrics.Limits.DEFAULTS,
                 engineDir,

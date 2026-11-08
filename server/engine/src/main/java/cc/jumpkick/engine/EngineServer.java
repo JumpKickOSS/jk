@@ -464,6 +464,7 @@ public final class EngineServer implements AutoCloseable {
                 cacheGate,
                 historyConfig,
                 journal,
+                decisions,
                 () -> metricsFile,
                 () -> BuildMetrics.Limits.resolve(userConfig, ProcessEnv::get),
                 paths.dir(),

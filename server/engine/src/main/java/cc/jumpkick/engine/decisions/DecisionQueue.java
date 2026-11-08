@@ -78,7 +78,9 @@ public final class DecisionQueue {
             }
 
             @Override
-            public void drop(String id) {}
+            public boolean drop(String id) {
+                return true;
+            }
 
             @Override
             public List<Map<String, Object>> load() {
@@ -89,8 +91,8 @@ public final class DecisionQueue {
         /** Replace {@code id}'s record; false when this engine no longer writes decisions. */
         boolean save(String id, Map<String, Object> record);
 
-        /** Forget {@code id}'s record. */
-        void drop(String id);
+        /** Forget {@code id}'s record; false when this engine no longer writes decisions. */
+        boolean drop(String id);
 
         /** Every stored record, once the engine this one displaced has stopped writing them. */
         List<Map<String, Object>> load();
@@ -457,6 +459,24 @@ public final class DecisionQueue {
             Entry e = entries.get(id);
             return e == null ? Optional.empty() : Optional.ofNullable(e.call);
         }
+    }
+
+    /**
+     * Forget {@code id} and its record, for the history prune: it leaves {@link #list} and no later
+     * write brings the record back. One past its deadline settles expired first; false for one
+     * still open before it, which stays, and when the store refuses.
+     */
+    public boolean prune(String id) {
+        List<Decision> expired;
+        boolean dropped;
+        synchronized (this) {
+            expired = expire();
+            Entry e = entries.get(id);
+            dropped = (e == null || !e.decision.open()) && store.drop(id);
+            if (dropped) entries.remove(id);
+        }
+        expired.forEach(changed);
+        return dropped;
     }
 
     private static boolean keyMatches(Entry e, @Nullable String key) {
