@@ -610,7 +610,7 @@ class ActionKeyTest {
         assertThat(ActionKey.forJavac("compile-main", request, "0.1.0"))
                 .isEqualTo(Hashing.sha256Hex(
                         "task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:none\noptions:\n" + worker
-                                + "mirrored:excluded\n"));
+                                + "mirrored:excluded-unless-rewritten\n"));
     }
 
     /** The worker that drives javac is part of what it compiled with: its bytes key the compile. */
