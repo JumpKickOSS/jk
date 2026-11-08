@@ -280,89 +280,134 @@ public final class BuildEta {
                 jobsBudget,
                 "share",
                 share);
-        List<EffortWeights.ModuleCost> costs = new ArrayList<>();
+        List<TaskForecast.Module> priced = new ArrayList<>();
         for (TaskForecast.Module m : plan.modules()) {
-            if (!distrust && !m.dirty()) continue;
-            Path mdir = m.dir();
-            Set<Path> prereqs = plan.edges().getOrDefault(mdir, Set.of());
-            // Local *compile* content only — resource drift must not unlock suite walls.
-            boolean localCompile = hasLocalCompileContent(m);
-            boolean resourceDrift = hasResourceDriftWork(m);
-            boolean testResourceDrift = hasTestResourceDriftWork(m);
-            // Native/assembly in the forecast keeps run-tests full (cli ← engine test-dep) even
-            // when native itself is cascade-discounted below.
-            // Full suite price only when this module owns evidence of change: its own compile
-            // content, a heavy packaging tail, or other material work that is not the suite.
-            // A suite-only dirty step is a drifted run-tests stamp key, not work — price a
-            // recheck. Cascade-forced steps ("dependency changed", "main changed", "compile
-            // changed") are a sibling's consequence, not evidence here. The exception is a
-            // suite whose last run under these inputs was red: the forecaster marks it, and the
-            // live run never skips it.
-            boolean otherMaterialWork = m.steps().stream()
-                    .anyMatch(s -> (distrust || !s.cached())
-                            && !TaskNames.RUN_TESTS.equals(s.name())
-                            && !isCascadeForcedStep(s));
-            boolean redRerun = m.steps().stream().anyMatch(BuildEta::isRedRerun);
-            boolean keepFullTests = localCompile || hasHeavyPackagingTail(m) || otherMaterialWork || redRerun;
-            List<String> running = new ArrayList<>();
-            int cascadeRecheck = 0;
-            for (TaskForecast.Task s : m.steps()) {
-                if (!distrust && s.cached()) continue;
-                if (!distrust
-                        && shouldDiscountCascadeStep(
-                                s, localCompile, resourceDrift, keepFullTests, testResourceDrift)) {
-                    cascadeRecheck++;
-                    continue;
-                }
-                running.add(s.name());
-            }
-            // Rebuild with an empty step list still means "all work" — fall back to plan shape.
-            if (running.isEmpty() && distrust) {
-                BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
-                        mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
-                for (Task s : ModulePipeline.throughPackage(inputs).steps()) running.add(s.name());
-            }
-            if (running.isEmpty()) {
-                // Resource-only producer or pure cascade recheck — milliseconds, not suite walls.
-                int w = Math.max(EffortWeights.TOKEN, cascadeRecheck + (m.dirty() ? 1 : 0));
-                costs.add(EffortWeights.costOf(mdir, prereqs, w, 0));
+            if (distrust || m.dirty()) priced.add(m);
+        }
+        CostInputs in = new CostInputs(
+                plan,
+                cache,
+                workers,
+                jdksDir,
+                profile,
+                skipTests,
+                verbose,
+                projectModules,
+                projectDirs,
+                distrust,
+                metrics,
+                timings,
+                share);
+        List<EffortWeights.ModuleCost> costs = ModuleCosting.each(priced, m -> moduleCost(in, m));
+        return costs;
+    }
+
+    /** What pricing one module reads; shared, read-only, by every module priced in one estimate. */
+    private record CostInputs(
+            ExplainPlan plan,
+            Path cache,
+            int workers,
+            @Nullable Path jdksDir,
+            @Nullable String profile,
+            boolean skipTests,
+            boolean verbose,
+            Set<Path> projectModules,
+            List<String> projectDirs,
+            boolean distrust,
+            BuildMetrics metrics,
+            StepTimings timings,
+            int share) {}
+
+    /** The ETA cost of one scheduled module {@code m}. */
+    private static EffortWeights.ModuleCost moduleCost(CostInputs in, TaskForecast.Module m) {
+        ExplainPlan plan = in.plan();
+        Path cache = in.cache();
+        int workers = in.workers();
+        Path jdksDir = in.jdksDir();
+        String profile = in.profile();
+        boolean skipTests = in.skipTests();
+        boolean verbose = in.verbose();
+        Set<Path> projectModules = in.projectModules();
+        List<String> projectDirs = in.projectDirs();
+        boolean distrust = in.distrust();
+        BuildMetrics metrics = in.metrics();
+        StepTimings timings = in.timings();
+        int share = in.share();
+        Path mdir = m.dir();
+        Set<Path> prereqs = plan.edges().getOrDefault(mdir, Set.of());
+        // Local *compile* content only — resource drift must not unlock suite walls.
+        boolean localCompile = hasLocalCompileContent(m);
+        boolean resourceDrift = hasResourceDriftWork(m);
+        boolean testResourceDrift = hasTestResourceDriftWork(m);
+        // Native/assembly in the forecast keeps run-tests full (cli ← engine test-dep) even
+        // when native itself is cascade-discounted below.
+        // Full suite price only when this module owns evidence of change: its own compile
+        // content, a heavy packaging tail, or other material work that is not the suite.
+        // A suite-only dirty step is a drifted run-tests stamp key, not work — price a
+        // recheck. Cascade-forced steps ("dependency changed", "main changed", "compile
+        // changed") are a sibling's consequence, not evidence here. The exception is a
+        // suite whose last run under these inputs was red: the forecaster marks it, and the
+        // live run never skips it.
+        boolean otherMaterialWork = m.steps().stream()
+                .anyMatch(s ->
+                        (distrust || !s.cached()) && !TaskNames.RUN_TESTS.equals(s.name()) && !isCascadeForcedStep(s));
+        boolean redRerun = m.steps().stream().anyMatch(BuildEta::isRedRerun);
+        boolean keepFullTests = localCompile || hasHeavyPackagingTail(m) || otherMaterialWork || redRerun;
+        List<String> running = new ArrayList<>();
+        int cascadeRecheck = 0;
+        for (TaskForecast.Task s : m.steps()) {
+            if (!distrust && s.cached()) continue;
+            if (!distrust
+                    && shouldDiscountCascadeStep(s, localCompile, resourceDrift, keepFullTests, testResourceDrift)) {
+                cascadeRecheck++;
                 continue;
             }
-            Map<String, Integer> counts = new HashMap<>();
-            if (m.testCount() > 0) counts.put(TaskNames.RUN_TESTS, m.testCount());
-            if (m.sourceCount() > 0) {
-                counts.put(TaskNames.COMPILE_JAVA, m.sourceCount());
-                counts.put(TaskNames.COMPILE_TEST, m.sourceCount());
-            }
-            // The share is a cap, not a demand: a suite with fewer classes than runners gets fewer.
-            // The class count comes from the ledger when the module has run here; a cold module
-            // is guessed at three methods a class.
-            int knownClasses = EffortWeights.knownClassCount(BuildMetrics.slashKey(mdir.toString()));
-            int classGuess = knownClasses > 0 ? knownClasses : m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
-            int testW = pricedTestWorkers(mdir, workers, share, classGuess);
-            EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
-                    mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
-            // resolve-deps runs on every scheduled module and the forecast lists it as bookkeeping,
-            // so it is priced from its own recorded wall: a Spring Boot module resolves for a
-            // second, jk's own modules for a tenth of that. Dependents wait on it too.
-            long resolveMs = StepWalls.stepOkAvgMillisOwn(
-                    metrics, BuildMetrics.slashKey(mdir.toString()), TaskNames.RESOLVE_DEPS);
-            if (resolveMs > 0) priced = priced.plusGated(EffortWeights.flatWeight(resolveMs));
-            // This module's own `.jk/` scripts, for the anchors this build will actually reach.
-            // They are prefix work — before-compile/after-compile/before-package all land ahead of
-            // the suite-vs-tail split — so they go on `weight` and not on either branch.
-            long logicMs = BuildLogicEffort.moduleMillis(mdir, m, metrics);
-            if (logicMs > 0) {
-                priced = priced.withWeight(priced.weight() + EffortWeights.flatWeight(logicMs));
-            }
-            if (cascadeRecheck > 0) {
-                // withWeight, not costOf: the four-argument form zeroes tailWeight, which reprices
-                // the module as the sum of its steps instead of its longer branch.
-                priced = priced.withWeight(priced.weight() + cascadeRecheck);
-            }
-            costs.add(priced);
+            running.add(s.name());
         }
-        return costs;
+        // Rebuild with an empty step list still means "all work" — fall back to plan shape.
+        if (running.isEmpty() && distrust) {
+            BuildPlanner.Inputs inputs = TaskForecaster.inputsFor(
+                    mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
+            for (Task s : ModulePipeline.throughPackage(inputs).steps()) running.add(s.name());
+        }
+        if (running.isEmpty()) {
+            // Resource-only producer or pure cascade recheck — milliseconds, not suite walls.
+            int w = Math.max(EffortWeights.TOKEN, cascadeRecheck + (m.dirty() ? 1 : 0));
+            return EffortWeights.costOf(mdir, prereqs, w, 0);
+        }
+        Map<String, Integer> counts = new HashMap<>();
+        if (m.testCount() > 0) counts.put(TaskNames.RUN_TESTS, m.testCount());
+        if (m.sourceCount() > 0) {
+            counts.put(TaskNames.COMPILE_JAVA, m.sourceCount());
+            counts.put(TaskNames.COMPILE_TEST, m.sourceCount());
+        }
+        // The share is a cap, not a demand: a suite with fewer classes than runners gets fewer.
+        // The class count comes from the ledger when the module has run here; a cold module
+        // is guessed at three methods a class.
+        int knownClasses = EffortWeights.knownClassCount(BuildMetrics.slashKey(mdir.toString()));
+        int classGuess = knownClasses > 0 ? knownClasses : m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
+        int testW = pricedTestWorkers(mdir, workers, share, classGuess);
+        EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
+                mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
+        // resolve-deps runs on every scheduled module and the forecast lists it as bookkeeping,
+        // so it is priced from its own recorded wall: a Spring Boot module resolves for a
+        // second, jk's own modules for a tenth of that. Dependents wait on it too.
+        long resolveMs =
+                StepWalls.stepOkAvgMillisOwn(metrics, BuildMetrics.slashKey(mdir.toString()), TaskNames.RESOLVE_DEPS);
+        if (resolveMs > 0) priced = priced.plusGated(EffortWeights.flatWeight(resolveMs));
+        // This module's own `.jk/` scripts, for the anchors this build will actually reach.
+        // They are prefix work — before-compile/after-compile/before-package all land ahead of
+        // the suite-vs-tail split — so they go on `weight` and not on either branch.
+        long logicMs = BuildLogicEffort.moduleMillis(mdir, m, metrics);
+        if (logicMs > 0) {
+            priced = priced.withWeight(priced.weight() + EffortWeights.flatWeight(logicMs));
+        }
+        if (cascadeRecheck > 0) {
+            // withWeight, not costOf: the four-argument form zeroes tailWeight, which reprices
+            // the module as the sum of its steps instead of its longer branch.
+            priced = priced.withWeight(priced.weight() + cascadeRecheck);
+        }
+        return priced;
     }
 
     /**
