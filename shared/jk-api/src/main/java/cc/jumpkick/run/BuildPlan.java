@@ -187,17 +187,18 @@ public final class BuildPlan {
     /**
      * Sum of step weights without running; a throwing estimate contributes 0. Each step keeps the
      * answer, so {@link #run} sizes the bar from this evaluation rather than asking again.
+     *
+     * <p>On the caller's thread, one step after another. A workspace prepares its modules side by
+     * side already, and a virtual thread per step (a thousand on a 223-module workspace) loading
+     * planner classes on a fresh engine pinned every carrier: a virtual thread waiting inside class
+     * loading keeps its carrier, and the thread that held the lock could never be scheduled.
      */
     public int estimatedTotalWeight() {
-        List<CompletableFuture<Integer>> futures = new ArrayList<>(steps.size());
-        for (Task p : steps) {
-            futures.add(CompletableFuture.supplyAsync(p::estimateWeight, JkThreads.io()));
-        }
         int total = 0;
-        for (CompletableFuture<Integer> f : futures) {
+        for (Task p : steps) {
             try {
-                total += f.get();
-            } catch (Exception e) {
+                total += p.estimateWeight();
+            } catch (RuntimeException e) {
                 // best-effort estimate; a failing step just contributes 0
                 Log.debug("estimatedTotalWeight: best-effort estimate", e);
             }
@@ -212,24 +213,19 @@ public final class BuildPlan {
     public BuildPlanResult run() {
         Instant planStart = clock.instant();
 
-        // Step 1: ticks estimation (parallel on IO). `initialTicks` is each step's
+        // Step 1: ticks estimation, on this thread (see estimatedTotalWeight). `initialTicks` is each step's
         // internal unit count (how granularly it ticks); `weights` is its share of
         // the bar (time-proportional). The denominator sums weights, not units, so a
         // file-count-scoped compile can't dwarf a quick step. A step without an
         // explicit weight reuses its ticks, so the denominator is unchanged for it.
         // A step already estimated by estimatedTotalWeight answers from that estimate.
-        List<CompletableFuture<Integer>> tickFutures = new ArrayList<>(steps.size());
-        for (Task p : steps) {
-            tickFutures.add(CompletableFuture.supplyAsync(p::estimateTicks, JkThreads.io()));
-        }
         Map<String, Integer> initialTicks = new HashMap<>();
         Map<String, Integer> weights = new HashMap<>();
-        for (int i = 0; i < steps.size(); i++) {
-            Task p = steps.get(i);
+        for (Task p : steps) {
             int s = 0;
             try {
-                s = tickFutures.get(i).get();
-            } catch (Exception e) {
+                s = p.estimateTicks();
+            } catch (RuntimeException e) {
                 // best-effort; a failing estimate contributes 0
                 Log.debug("run: best-effort", e);
             }

@@ -65,8 +65,8 @@ final class WorkspaceResourcePhase {
         // The ETA walks the forecast of every scheduled module (seconds on a large workspace) and
         // nothing scheduling needs comes from it, so it is priced beside the build.
         WorkspaceRequest priced = request;
-        BackgroundEta eta =
-                BackgroundEta.start(() -> estimate(preflight, priced, incoming, dirtyUnits, parallelTests), model -> {
+        BackgroundEta eta = BackgroundEta.deferred(
+                () -> estimate(preflight, priced, incoming, dirtyUnits, parallelTests), model -> {
                     List<ModuleWorkCost> ordered = BuildEta.orderCostsLikeUnits(dirtyUnits, model.costs());
                     listener.onWorkModel(
                             WorkModel.of(model.etaMs(), model.concurrency(), model.serial(), parallelTests, ordered));

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /** The build's ETA is priced beside the build: published when ready, never after the build ends. */
@@ -74,5 +75,37 @@ class BackgroundEtaTest {
         BackgroundEta eta = BackgroundEta.of(model(7), heard::add);
         assertThat(heard).hasSize(1);
         assertThat(eta.close()).isPresent();
+    }
+
+    /** A deferred estimate prices nothing until the build has prepared its modules. */
+    @Test
+    void a_deferred_estimate_waits_for_begin_and_a_closed_one_never_starts() throws Exception {
+        AtomicInteger priced = new AtomicInteger();
+        List<BuildService.EtaModel> heard = new CopyOnWriteArrayList<>();
+        BackgroundEta waiting = BackgroundEta.deferred(
+                () -> {
+                    priced.incrementAndGet();
+                    return model(5);
+                },
+                heard::add);
+        Thread.sleep(50);
+        assertThat(priced).hasValue(0);
+        waiting.begin();
+        waiting.begin();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (heard.isEmpty() && System.nanoTime() < deadline) Thread.sleep(10);
+        assertThat(heard).hasSize(1);
+        assertThat(priced).as("begin twice prices once").hasValue(1);
+
+        BackgroundEta closed = BackgroundEta.deferred(
+                () -> {
+                    priced.incrementAndGet();
+                    return model(6);
+                },
+                heard::add);
+        closed.close();
+        closed.begin();
+        Thread.sleep(50);
+        assertThat(priced).hasValue(1);
     }
 }

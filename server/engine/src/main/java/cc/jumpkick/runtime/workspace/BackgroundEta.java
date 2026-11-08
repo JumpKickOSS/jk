@@ -48,14 +48,41 @@ final class BackgroundEta {
      * scope; the scoped plan-worker limit does not ride the hop, so it is bound here.
      */
     static BackgroundEta start(Supplier<BuildService.EtaModel> estimate, Consumer<BuildService.EtaModel> publish) {
+        BackgroundEta eta = deferred(estimate, publish);
+        eta.begin();
+        return eta;
+    }
+
+    /**
+     * An estimate priced only once {@link #begin} is called: the build starts it when its modules
+     * are prepared. Preparing and pricing both load most of the planner's classes, and on a fresh
+     * engine the two loading at once could leave a pricing thread holding one class-loading lock
+     * while every virtual-thread carrier waited on another.
+     */
+    static BackgroundEta deferred(Supplier<BuildService.EtaModel> estimate, Consumer<BuildService.EtaModel> publish) {
         BackgroundEta eta = new BackgroundEta(publish);
+        eta.estimate = estimate;
+        return eta;
+    }
+
+    private volatile @Nullable Supplier<BuildService.EtaModel> estimate;
+
+    /** Start pricing; a second call, or one after {@link #close}, does nothing. */
+    void begin() {
+        Supplier<BuildService.EtaModel> what;
+        synchronized (lock) {
+            what = estimate;
+            estimate = null;
+            if (what == null || !open) return;
+        }
+        BackgroundEta eta = this;
+        Supplier<BuildService.EtaModel> priced = what;
         eta.pricing = JkThreads.io().submit(() -> {
             BuildService.EtaModel model = ScopedValue.where(JavaCompile.PLAN_WORKERS, JavaCompile.PlanWorkers.NONE)
-                    .call(estimate::get);
+                    .call(priced::get);
             eta.publish(model);
             return model;
         });
-        return eta;
     }
 
     /** An estimate already in hand, published at once: for callers that priced synchronously, and tests. */

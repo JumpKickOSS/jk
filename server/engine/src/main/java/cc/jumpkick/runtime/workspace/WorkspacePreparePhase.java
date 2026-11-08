@@ -84,6 +84,8 @@ final class WorkspacePreparePhase {
         if (SessionCancel.cancelled()) {
             return new Completed(new WorkspaceResult(false, 1, List.of(), List.of(), true));
         }
+        // Price the ETA now that the modules are prepared, never beside the preparation itself.
+        resources.eta().begin();
         listener.onPlan(List.copyOf(plans.values()));
         listener.onModuleGraph(resources.preflight().graph().edges());
         return new Ready(new Prepared(resources, Collections.unmodifiableMap(new LinkedHashMap<>(plans)), siblings));
@@ -163,7 +165,7 @@ final class WorkspacePreparePhase {
                                     "Preparing " + unit.coord() + " (" + complete + "/" + count + ")");
                         }
                     },
-                    JkThreads.io()));
+                    JkThreads.cpu()));
         }
         try {
             CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
