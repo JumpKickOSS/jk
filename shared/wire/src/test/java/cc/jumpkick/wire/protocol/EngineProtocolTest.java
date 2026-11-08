@@ -345,7 +345,7 @@ class EngineProtocolTest {
     @Test
     void update_rewrite_event_round_trips() {
         String line = ProtoEvents.updateRewrite(
-                "/work/lib", "dependencies", "jackson", "com.acme:jackson", "2.18.0", "2.18.2");
+                "/work/lib", "dependencies", "jackson", "com.acme:jackson", "2.18.0", "2.18.2", false);
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.UPDATE_REWRITE);
         UpdateRewriteEvent e = UpdateRewriteEvent.decode(line);
         assertThat(e.dir()).isEqualTo("/work/lib");
@@ -354,6 +354,11 @@ class EngineProtocolTest {
         assertThat(e.module()).isEqualTo("com.acme:jackson");
         assertThat(e.from()).isEqualTo("2.18.0");
         assertThat(e.to()).isEqualTo("2.18.2");
+        assertThat(e.held()).isFalse();
+        assertThat(UpdateRewriteEvent.decode(ProtoEvents.updateRewrite(
+                                "/work/lib", "dependencies", "jackson", "com.acme:jackson", "2.18.2", "2.19.0", true))
+                        .held())
+                .isTrue();
     }
 
     @Test

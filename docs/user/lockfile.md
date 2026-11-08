@@ -112,7 +112,8 @@ A move across a minor or a major (`1.0.4 → 1.1.0`, `2.18.2 → 3.0.0`) is your
 terminal `jk update` lists those moves and asks before it writes anything. Without a terminal it
 holds them: every other move applies, a held pin moves only to the newest patch on its minor, and
 the run ends naming each held move and `jk update -y takes them`, also in `jk-results.md`, and
-exits 0. When every move is held, nothing is written or relocked. `-y` takes them all, at a
+exits 0. A held move starts where its pin landed: a pin that took `1.0.0 → 1.0.1` is named once
+more only as held, `1.0.1 → 1.1.0`. When every move is held, nothing is written or relocked. `-y` takes them all, at a
 terminal or not. MCP [`update`](mcp.md#decisions) asks the user instead.
 
 ```text

@@ -167,13 +167,11 @@ public final class UpdateCommand implements CliCommand {
     /**
      * The request to send: accepting when {@code --yes} said so, or when a terminal user accepted
      * the moves across a minor or a major the preview names (or there are none). Empty when they
-     * declined. Without a terminal the request goes unaccepted: the engine holds such moves, and
-     * {@code held} receives them for the verdict to name.
+     * declined. Without a terminal the request goes unaccepted, unpreviewed: the engine holds such
+     * moves and names each in a held event.
      */
-    private Optional<EngineRequests.UpdateRequest> decided(EngineRequests.UpdateRequest req, List<Moved> held)
-            throws IOException {
-        if (req.accept() || global.outputIsJson()) return Optional.of(req);
-        boolean ask = Interactivity.canPrompt();
+    private Optional<EngineRequests.UpdateRequest> decided(EngineRequests.UpdateRequest req) throws IOException {
+        if (req.accept() || global.outputIsJson() || !Interactivity.canPrompt()) return Optional.of(req);
         List<Moved> crossing = new ArrayList<>();
         EngineRequests.LockHandler preview = new EngineRequests.LockHandler() {
             @Override
@@ -188,10 +186,6 @@ public final class UpdateCommand implements CliCommand {
             }
         };
         EngineRequests.LockOutcome looked = EngineClient.runUpdate(EnginePaths.current(), req.previewing(), preview);
-        if (!ask) {
-            if (looked.success()) held.addAll(crossing);
-            return Optional.of(req);
-        }
         if (!looked.success() || crossing.isEmpty()) return Optional.of(req.accepting());
         CliOutput.out(RichText.parse("[bold]" + crossing.size() + "[/] pin"
                         + (crossing.size() == 1 ? " moves" : "s move") + " across a minor or a major:")
@@ -216,6 +210,11 @@ public final class UpdateCommand implements CliCommand {
                     String moduleDir, String table, String handle, String module, String from, String to) {
                 rewritten.add(new Moved(module, from, to, List.of()));
                 if (!global.outputIsJson()) printRewrite(Path.of(moduleDir), table, handle, from, to, dir);
+            }
+
+            @Override
+            public void onHeld(String moduleDir, String table, String handle, String module, String from, String to) {
+                held.add(new Moved(handle, from, to, List.of()));
             }
 
             @Override
@@ -253,7 +252,7 @@ public final class UpdateCommand implements CliCommand {
 
         EngineRequests.LockOutcome outcome;
         try {
-            Optional<EngineRequests.UpdateRequest> req = decided(updateRequest(dir, cache), held);
+            Optional<EngineRequests.UpdateRequest> req = decided(updateRequest(dir, cache));
             if (req.isEmpty()) {
                 CommandWedge.printFail("Update", "declined; nothing changed");
                 return Exit.FAILURE;

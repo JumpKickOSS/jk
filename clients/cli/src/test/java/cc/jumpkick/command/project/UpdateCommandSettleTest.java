@@ -80,6 +80,20 @@ class UpdateCommandSettleTest {
     }
 
     @Test
+    void a_pin_patched_and_held_shows_its_patch_then_its_held_move_from_the_patch() {
+        String out = TestAnsi.strip(Capture.stdout(() -> {
+            UpdateCommand.printRewrite(Path.of("/p"), "dependencies", "other", "1.0.0", "1.0.1", Path.of("/p"));
+            UpdateCommand.printHeld(List.of(new UpdateCommand.Moved("other", "1.0.1", "1.1.0", List.of())), true);
+        }));
+        assertThat(out)
+                .contains("  other  1.0.0 → 1.0.1")
+                .contains("held 1 pin across a minor or a major; jk update -y takes them")
+                .contains("  other  1.0.1 → 1.1.0")
+                .doesNotContain("1.0.0 → 1.1.0");
+        assertThat(out.indexOf("1.0.0 → 1.0.1")).isLessThan(out.indexOf("1.0.1 → 1.1.0"));
+    }
+
+    @Test
     void printChange_shows_a_move_an_addition_a_removal_and_a_member_row() {
         String out = Capture.stdout(() -> {
             UpdateCommand.printChange(new UpdateCommand.Moved("com.acme:a", "1.0", "1.1", List.of()));

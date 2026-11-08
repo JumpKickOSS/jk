@@ -7,8 +7,11 @@ import cc.jumpkick.jsonl.Jsonl;
  * One declared pin {@code jk update} moved (or, in preview, would move): {@code handle} in the
  * {@code table} of the manifest under {@code dir} goes {@code from} → {@code to} (see {@link
  * EngineProtocol#UPDATE_REWRITE}). {@code module} is the {@code group:artifact} behind the handle.
+ * {@code held} marks a move not taken, a person's to accept: {@code from} is where the pin stands
+ * after the run.
  */
-public record UpdateRewriteEvent(String dir, String table, String handle, String module, String from, String to) {
+public record UpdateRewriteEvent(
+        String dir, String table, String handle, String module, String from, String to, boolean held) {
 
     public String encode() {
         return RequestJson.request(EngineProtocol.UPDATE_REWRITE)
@@ -18,6 +21,7 @@ public record UpdateRewriteEvent(String dir, String table, String handle, String
                 .string("module", module)
                 .string("from", from)
                 .string("to", to)
+                .bool("held", held)
                 .finish();
     }
 
@@ -28,6 +32,7 @@ public record UpdateRewriteEvent(String dir, String table, String handle, String
                 Jsonl.requiredStr(json, "handle"),
                 Jsonl.requiredStr(json, "module"),
                 Jsonl.requiredStr(json, "from"),
-                Jsonl.requiredStr(json, "to"));
+                Jsonl.requiredStr(json, "to"),
+                Jsonl.bool(json, "held", false));
     }
 }

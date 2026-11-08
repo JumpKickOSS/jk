@@ -248,6 +248,13 @@ public final class EngineRequests {
         default void onRewrite(String dir, String table, String handle, String module, String from, String to) {}
 
         /**
+         * One move {@code jk update} held for a person to accept: {@code handle} in {@code table} of
+         * the manifest under {@code dir} stays at {@code from}, where the run left it, short of
+         * {@code to}; fires with the rewrites.
+         */
+        default void onHeld(String dir, String table, String handle, String module, String from, String to) {}
+
+        /**
          * One package {@code jk update}'s relock changed in the lockfile under {@code dir}: {@code
          * from} null when added, {@code to} null when removed, {@code members} the workspace members
          * a member-override row serves. Fires before that module's {@link #onModuleFinish}.

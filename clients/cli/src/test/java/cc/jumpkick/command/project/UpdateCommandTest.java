@@ -146,7 +146,7 @@ class UpdateCommandTest {
     @Test
     void update_without_a_terminal_holds_moves_across_a_minor_and_yes_takes_them(@TempDir Path tempDir)
             throws Exception {
-        for (String artifact : new String[] {"patchy", "minory"}) {
+        for (String artifact : new String[] {"patchy", "minory", "bothy"}) {
             for (String v : new String[] {"1.0.0", "1.0.1", "1.1.0"}) {
                 maven.registerPom("com.foo.update", artifact, v, pom("com.foo.update", artifact, v, ""));
                 maven.registerJar("com.foo.update", artifact, v, artifact.getBytes(StandardCharsets.UTF_8));
@@ -154,13 +154,15 @@ class UpdateCommandTest {
         }
         maven.registerMetadata("com.foo.update", "patchy", "1.0.0", "1.0.1");
         maven.registerMetadata("com.foo.update", "minory", "1.0.1", "1.1.0");
+        maven.registerMetadata("com.foo.update", "bothy", "1.0.0", "1.0.1", "1.1.0");
         BlankProject.write(tempDir.toString());
         Path manifest = tempDir.resolve("jk.toml");
         Files.writeString(
                 manifest,
                 Files.readString(manifest)
                         + "\n[dependencies]\npatchy = \"com.foo.update:patchy:1.0.0\"\n"
-                        + "minory = \"com.foo.update:minory:1.0.1\"\n");
+                        + "minory = \"com.foo.update:minory:1.0.1\"\n"
+                        + "bothy = \"com.foo.update:bothy:1.0.0\"\n");
         String[] update = {
             "update",
             "-C",
@@ -176,23 +178,30 @@ class UpdateCommandTest {
         assertThat(exit[0]).isZero();
         assertThat(Files.readString(manifest))
                 .contains("com.foo.update:patchy:1.0.1")
-                .contains("com.foo.update:minory:1.0.1");
+                .contains("com.foo.update:minory:1.0.1")
+                .contains("com.foo.update:bothy:1.0.1");
         assertThat(mixed)
-                .contains("held 1 pin across a minor or a major; jk update -y takes them")
+                .contains("held 2 pins across a minor or a major; jk update -y takes them")
                 .contains("minory  1.0.1 → 1.1.0")
+                .contains("bothy  1.0.0 → 1.0.1")
+                .as("a pin that takes its patch is held from the patch, and named once as held")
+                .contains("bothy  1.0.1 → 1.1.0")
+                .doesNotContain("bothy  1.0.0 → 1.1.0")
                 .doesNotContain("nothing moved");
 
         String lock = Files.readString(tempDir.resolve("jk-lock.toml"));
         String held = TestAnsi.strip(Capture.stdout(() -> exit[0] = run(update)));
         assertThat(exit[0]).isZero();
-        assertThat(held).contains("nothing moved; held 1 pin across a minor or a major; jk update -y takes them");
+        assertThat(held).contains("nothing moved; held 2 pins across a minor or a major; jk update -y takes them");
         assertThat(Files.readString(tempDir.resolve("jk-lock.toml"))).isEqualTo(lock);
 
         String[] yes = Arrays.copyOf(update, update.length + 1);
         yes[update.length] = "-y";
         String taken = TestAnsi.strip(Capture.stdout(() -> exit[0] = run(yes)));
         assertThat(exit[0]).isZero();
-        assertThat(Files.readString(manifest)).contains("com.foo.update:minory:1.1.0");
+        assertThat(Files.readString(manifest))
+                .contains("com.foo.update:minory:1.1.0")
+                .contains("com.foo.update:bothy:1.1.0");
         assertThat(taken).doesNotContain("held");
     }
 

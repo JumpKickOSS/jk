@@ -62,8 +62,9 @@ final class LockCascade {
      * first moving the declared exact pins {@code rewrite} selects ({@code jk update}): each move
      * streams as an {@code update-rewrite} event, the manifests are written, and the resolve then
      * runs against the rewritten tree. Unless {@code accept}, a move across a minor or a major is a
-     * decision for a person: such pins move only to their newest patch, and a run notice names the
-     * moves held and the flag that takes them. When every move is held nothing is written or
+     * decision for a person: such pins move only to their newest patch, each held move streams as a
+     * held {@code update-rewrite} event from the version its pin lands on, and a run notice names
+     * the moves held and the command that takes them. When every move is held nothing is written or
      * relocked.
      */
     static JobOutcome run(
@@ -103,17 +104,15 @@ final class LockCascade {
             @Nullable Lockfile before = LockDiff.current(lockDir);
             if (rewrite != null) {
                 try {
-                    ManifestUpdates.Plan plan = ManifestUpdates.plan(lockDir, repoUrl, rewrite);
-                    String held = accept ? null : held(plan);
-                    if (held != null) {
-                        plan = ManifestUpdates.plan(lockDir, repoUrl, rewrite.holding());
-                        RunNotices.warnOnce(HELD_NOTICE, () -> held);
-                        if (plan.isEmpty()) {
-                            host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
-                            return JobOutcome.ok();
-                        }
-                    }
+                    ManifestUpdates.Plan plan =
+                            ManifestUpdates.plan(lockDir, repoUrl, accept ? rewrite : rewrite.holding());
+                    String held = held(plan);
+                    if (held != null) RunNotices.warnOnce(HELD_NOTICE, () -> held);
                     sendRewrites(host, writer, plan);
+                    if (plan.isEmpty() && !plan.held().isEmpty()) {
+                        host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
+                        return JobOutcome.ok();
+                    }
                     ManifestUpdates.apply(plan);
                     // The manifests just changed: the merged model the resolve sees must be theirs.
                     if (!plan.isEmpty())
@@ -213,8 +212,7 @@ final class LockCascade {
      * null when it has none.
      */
     static @Nullable String held(ManifestUpdates.Plan plan) {
-        List<String> crossing = plan.rewrites().stream()
-                .filter(ManifestUpdates.Rewrite::crossesMinor)
+        List<String> crossing = plan.held().stream()
                 .map(r -> r.handle() + " " + r.from() + " → " + r.to())
                 .toList();
         if (crossing.isEmpty()) return null;
@@ -228,12 +226,17 @@ final class LockCascade {
     /** The {@link RunNotices} key of the held-moves notice. */
     private static final String HELD_NOTICE = "update-held";
 
-    /** One {@code update-rewrite} event per planned pin move. */
+    /** One {@code update-rewrite} event per planned pin move, then one held event per move held. */
     static void sendRewrites(VerbHost host, @Nullable BufferedWriter writer, ManifestUpdates.Plan plan) {
-        for (ManifestUpdates.Rewrite r : plan.rewrites()) {
-            host.sendQuiet(
-                    writer,
-                    ProtoEvents.updateRewrite(r.dir().toString(), r.table(), r.handle(), r.module(), r.from(), r.to()));
-        }
+        for (ManifestUpdates.Rewrite r : plan.rewrites()) sendRewrite(host, writer, r, false);
+        for (ManifestUpdates.Rewrite r : plan.held()) sendRewrite(host, writer, r, true);
+    }
+
+    private static void sendRewrite(
+            VerbHost host, @Nullable BufferedWriter writer, ManifestUpdates.Rewrite r, boolean held) {
+        host.sendQuiet(
+                writer,
+                ProtoEvents.updateRewrite(
+                        r.dir().toString(), r.table(), r.handle(), r.module(), r.from(), r.to(), held));
     }
 }
