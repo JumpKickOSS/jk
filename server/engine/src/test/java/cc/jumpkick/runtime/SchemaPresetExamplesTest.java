@@ -99,6 +99,43 @@ class SchemaPresetExamplesTest {
         assertThat(step(third, "generate-asyncapi").status()).isEqualTo(TaskStatus.SUCCESS);
     }
 
+    /** A Protobuf payload compiles with protoc beside the JSON ones once the table names a protobuf release. */
+    @Test
+    void the_asyncapi_example_compiles_a_protobuf_payload_with_protoc(@TempDir Path tmp) throws Exception {
+        Path project = example(tmp, PluginJar.ASYNCAPI, "plugins/asyncapi");
+        Path cache = TestCaches.dir("asyncapi-example-cache");
+        Files.writeString(
+                project.resolve("jk.toml"),
+                Files.readString(project.resolve("jk.toml"))
+                                .replace(
+                                        "package = \"com.acme.orders\"",
+                                        "package = \"com.acme.orders\"\nprotobuf = \"4.33.1\"")
+                        + "protobuf-java = { group = \"com.google.protobuf\", version = \"4.33.1\" }\n");
+        Path doc = project.resolve("src/main/asyncapi/asyncapi.yaml");
+        Files.writeString(doc, Files.readString(doc).replace("""
+                      orderCreated:
+                        $ref: '#/components/messages/OrderCreated'
+                """, """
+                      orderCreated:
+                        $ref: '#/components/messages/OrderCreated'
+                      orderShipped:
+                        payload:
+                          schemaFormat: application/vnd.google.protobuf;version=3
+                          schema: |
+                            syntax = "proto3";
+                            package acme;
+                            import "google/protobuf/timestamp.proto";
+                            option java_package = "com.acme.pb";
+                            message OrderShipped { int64 id = 1; google.protobuf.Timestamp at = 2; }
+                """));
+        lock(project, cache);
+
+        BuildPlanResult first = build(project, cache);
+        assertThat(first.errors()).isEmpty();
+        assertThat(anyFile(project.resolve("target"), "Order.class")).isTrue();
+        assertThat(anyFile(project.resolve("target"), "Ordershipped.class")).isTrue();
+    }
+
     @Test
     void the_jaxb_example_generates_compiles_and_hits(@TempDir Path tmp) throws Exception {
         Path project = example(tmp, PluginJar.JAXB, "plugins/jaxb");

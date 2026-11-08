@@ -26,7 +26,8 @@ import org.jspecify.annotations.Nullable;
  * runs jsonschema2pojo over them. Messages are read from {@code components.messages} and from the
  * channels, AsyncAPI 2.x ({@code publish} / {@code subscribe}) and 3.x ({@code messages}) alike. An
  * Avro payload is compiled by {@code AvroMain} when {@value #AVRO} says the Avro compiler is on the
- * classpath; a payload in another {@code schemaFormat} is skipped with a warning. Runs in the
+ * classpath, and a Protobuf payload by protoc when {@value #PROTOC} names it; a payload in another
+ * {@code schemaFormat}, or one whose tool is not named, is skipped with a warning. Runs in the
  * generator step's forked JVM over jsonschema2pojo's closure, whose Jackson reads the documents.
  */
 public final class AsyncApiMain {
@@ -40,19 +41,40 @@ public final class AsyncApiMain {
     /** The flag saying the Avro compiler is on the classpath, so Avro payloads are generated. */
     static final String AVRO = "--avro";
 
+    /** The flag naming the protoc binary Protobuf payloads compile with. */
+    static final String PROTOC = "--protoc";
+
+    /** The flag naming the protobuf-java jar, whose well-known types protoc imports. */
+    static final String PROTOBUF_JAVA = "--protobuf-java";
+
     public static void main(String[] args) throws Exception {
         int split = List.of(args).indexOf("--");
         List<String> flags = new ArrayList<>(List.of(args).subList(0, split < 0 ? args.length : split));
         List<String> documents = split < 0 ? List.of() : List.of(args).subList(split + 1, args.length);
         boolean avro = flags.remove(AVRO);
+        String protoc = take(flags, PROTOC);
+        String protobufJava = take(flags, PROTOBUF_JAVA);
         Path schemas = Files.createTempDirectory("jk-asyncapi-");
         Path avsc = Files.createTempDirectory("jk-asyncapi-avro-");
+        Path protos = Files.createTempDirectory("jk-asyncapi-proto-");
         List<String> avroFiles = new ArrayList<>();
+        List<String> protoFiles = new ArrayList<>();
         boolean json = false;
         for (String document : documents) {
-            for (Path written : extract(Path.of(document), schemas, avsc)) {
-                if (written.toString().endsWith(".avsc")) avroFiles.add(written.toString());
+            for (Path written : extract(Path.of(document), schemas, avsc, protos)) {
+                String file = written.toString();
+                if (file.endsWith(".avsc")) avroFiles.add(file);
+                else if (file.endsWith(".proto")) protoFiles.add(file);
                 else json = true;
+            }
+        }
+        String out = flags.get(flags.indexOf("-t") + 1);
+        if (!protoFiles.isEmpty()) {
+            if (protoc == null || protobufJava == null) {
+                System.err.println("jk-asyncapi: " + protoFiles.size()
+                        + " Protobuf payloads not generated; set [asyncapi] protobuf");
+            } else {
+                Protoc.run(Path.of(protoc), Path.of(protobufJava), protos, protoFiles, Path.of(out));
             }
         }
         if (!avroFiles.isEmpty() && !avro) {
@@ -60,7 +82,7 @@ public final class AsyncApiMain {
                     "jk-asyncapi: " + avroFiles.size() + " Avro payloads not generated; set [asyncapi] avro");
         }
         if (!avroFiles.isEmpty() && avro) {
-            List<String> avroArgs = new ArrayList<>(List.of("--out", flags.get(flags.indexOf("-t") + 1)));
+            List<String> avroArgs = new ArrayList<>(List.of("--out", out));
             avroArgs.addAll(avroFiles);
             AvroMain.main(avroArgs.toArray(String[]::new));
         }
@@ -73,17 +95,27 @@ public final class AsyncApiMain {
         }
     }
 
-    /** As {@link #extract(Path, Path, Path)}, with Avro payloads dropped. */
+    /** The value after {@code flag}, both removed from {@code flags}; null when it is not there. */
+    private static @Nullable String take(List<String> flags, String flag) {
+        int at = flags.indexOf(flag);
+        if (at < 0 || at + 1 >= flags.size()) return null;
+        String value = flags.get(at + 1);
+        flags.subList(at, at + 2).clear();
+        return value;
+    }
+
+    /** As {@link #extract(Path, Path, Path, Path)}, with Avro and Protobuf payloads dropped. */
     static List<Path> extract(Path document, Path out) throws IOException {
-        return extract(document, out, null);
+        return extract(document, out, null, null);
     }
 
     /**
      * Writes {@code document}'s JSON schemas and payloads into {@code out}, one {@code <Name>.json}
-     * each, and its Avro payloads into {@code avro}, one {@code <Name>.avsc} each, when it is not null.
-     * Returns the files written.
+     * each, its Avro payloads into {@code avro}, one {@code <Name>.avsc} each, and its Protobuf
+     * payloads into {@code proto}, one {@code <name>.proto} each, each when it is not null. Returns
+     * the files written.
      */
-    static List<Path> extract(Path document, Path out, @Nullable Path avro) throws IOException {
+    static List<Path> extract(Path document, Path out, @Nullable Path avro, @Nullable Path proto) throws IOException {
         List<Path> written = new ArrayList<>();
         String name = document.getFileName().toString().toLowerCase(Locale.ROOT);
         ObjectMapper mapper = name.endsWith(".json") ? new ObjectMapper() : new ObjectMapper(new YAMLFactory());
@@ -113,9 +145,15 @@ public final class AsyncApiMain {
             }
         }
         Map<String, JsonNode> avroFiles = new LinkedHashMap<>();
+        Map<String, String> protoFiles = new LinkedHashMap<>();
         messages.forEach((key, message) -> {
             String messageName = message.path("name").asText(key);
             String format = message.path("schemaFormat").asText("");
+            String protoText = protoOf(message.path("payload"), format);
+            if (protoText != null) {
+                protoFiles.putIfAbsent(className(messageName), protoText);
+                return;
+            }
             JsonNode avroSchema = avroOf(message.path("payload"), format);
             if (avroSchema != null) {
                 avroFiles.putIfAbsent(className(messageName), avroSchema);
@@ -126,6 +164,15 @@ public final class AsyncApiMain {
             if (payload.has("$ref") && payload.get("$ref").asText().startsWith(SCHEMAS)) return;
             files.putIfAbsent(className(messageName), payload);
         });
+        if (proto != null) {
+            Files.createDirectories(proto);
+            for (Map.Entry<String, String> f : protoFiles.entrySet()) {
+                // protoc names the outer class after the file; a lower-case file keeps it from the message.
+                Path file = proto.resolve(f.getKey().toLowerCase(Locale.ROOT) + ".proto");
+                Files.writeString(file, f.getValue());
+                written.add(file);
+            }
+        }
         if (avro != null) {
             Files.createDirectories(avro);
             for (Map.Entry<String, JsonNode> f : avroFiles.entrySet()) {
@@ -174,6 +221,17 @@ public final class AsyncApiMain {
                 || format.contains("schema+yaml")) return schema;
         System.err.println("jk-asyncapi: " + key + ": " + format + " payload not generated");
         return null;
+    }
+
+    /** The Protobuf text a payload is, its own or a 3.x multi-format object's; null for any other format. */
+    private static @Nullable String protoOf(JsonNode payload, String messageFormat) {
+        String format = messageFormat;
+        JsonNode schema = payload;
+        if (payload.has("schemaFormat") && payload.has("schema")) {
+            format = payload.get("schemaFormat").asText();
+            schema = payload.get("schema");
+        }
+        return format.contains("protobuf") && schema.isTextual() ? schema.asText() : null;
     }
 
     /** The Avro schema a payload is, its own or a 3.x multi-format object's; null for any other format. */

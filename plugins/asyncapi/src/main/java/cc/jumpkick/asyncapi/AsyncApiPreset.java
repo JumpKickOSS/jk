@@ -59,6 +59,10 @@ public final class AsyncApiPreset implements Plugin, BuildExtension {
         if (config.bool("jakarta-validation", false)) args.add("--useJakartaValidation");
         if (config.bool("additional-properties", true)) args.add("-D");
         if (config.stringOpt("avro").isPresent()) args.add(AsyncApiMain.AVRO);
+        if (config.stringOpt("protobuf").isPresent()) {
+            args.addAll(List.of(
+                    AsyncApiMain.PROTOC, "${extra:protoc}", AsyncApiMain.PROTOBUF_JAVA, "${extra:protobuf-java}"));
+        }
         args.add("--");
         args.add("${inputs}");
         return new GeneratorEntry(
