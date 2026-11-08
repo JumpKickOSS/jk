@@ -25,6 +25,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.TimelineEvent;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkModel;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
@@ -109,8 +110,15 @@ public final class EngineListeners {
             @Override
             public void workModel(WorkModel model) {
                 if (rid <= 0) return;
-                sessions.remaining(rid, model.toRemainingWork());
-                sessions.tracker(rid).seedWall(model.R0(), model.costs().size());
+                RemainingWork rw = model.toRemainingWork();
+                sessions.remaining(rid, rw);
+                var tracker = sessions.tracker(rid);
+                tracker.seedWall(model.R0(), model.costs().size());
+                // A model that arrives mid-build already had the finished modules drained from it:
+                // the residual, not the from-scratch R0, is what is left.
+                synchronized (rw) {
+                    tracker.noteRemaining(rw.remaining(), model.R0());
+                }
                 sse.emitWorkspaceProgress(rid, writer, true);
             }
 

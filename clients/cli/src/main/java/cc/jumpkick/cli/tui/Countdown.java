@@ -55,12 +55,24 @@ final class Countdown {
      */
     private boolean seedLocked;
 
+    /**
+     * Elapsed ms when execute began ({@code -1} before). The build prices its ETA beside the work,
+     * so the first seed can land seconds into execute; it is anchored here, not at its arrival,
+     * or the clock would read 0% at takeover and count only the time after it.
+     */
+    private long executeStartElapsedMs = -1;
+
     /** The three numbers the header paints. {@code remainingSec}/{@code overrunSec} are exclusive. */
     record Face(boolean seeded, long remainingSec, long overrunSec) {}
 
     /** Freeze the seed path: a provisional lock-window figure must not thrash mid-run. */
     void lockSeed() {
         if (r0 >= 0) seedLocked = true;
+    }
+
+    /** Execute began at {@code elapsedMillis}; the first call wins. */
+    void executeStarted(long elapsedMillis) {
+        if (executeStartElapsedMs < 0) executeStartElapsedMs = Math.max(0, elapsedMillis);
     }
 
     boolean seeded() {
@@ -92,13 +104,15 @@ final class Countdown {
         if (seedLocked) return false;
         long rem = Math.max(0, remainingMillis);
         if (rem == 0) return false; // unknown → unknown, or seeded → do not clear R0
+        // R0 prices the whole execute phase: a seed arriving after execute began counts from there.
+        long anchor = executeStartElapsedMs >= 0 ? Math.min(elapsedMillis, executeStartElapsedMs) : elapsedMillis;
         r0 = rem;
-        r0SetAtElapsedMs = elapsedMillis;
-        etaEstimateMs = elapsedMillis + rem;
+        r0SetAtElapsedMs = anchor;
+        etaEstimateMs = anchor + rem;
         // A pre-execute re-seed also refreshes residual so the countdown tracks the refined R0
         // until live RemainingWork updates arrive (provisional → post-forecast).
         residualMs = rem;
-        residualSetAtElapsedMs = elapsedMillis;
+        residualSetAtElapsedMs = anchor;
         faceElapsedSec = -1; // a seed is intentional, not jitter: re-sample on the next paint
         return true;
     }

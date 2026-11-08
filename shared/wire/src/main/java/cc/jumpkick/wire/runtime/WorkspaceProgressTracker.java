@@ -48,6 +48,8 @@ public final class WorkspaceProgressTracker {
     private long annotatedR0ms;
     /** Elapsed base when R0 was seeded (millis, same clock as {@link #elapsedClockMs}). */
     private long seedAtElapsedMs;
+    /** Elapsed ms when execute was calibrated ({@code -1} before): where a late seed's clock starts. */
+    private long executeStartElapsedMs = -1;
 
     private long elapsedClockMs;
     private boolean settled;
@@ -125,6 +127,7 @@ public final class WorkspaceProgressTracker {
         this.executeCalibrated = true;
         this.preflightNum = PREFLIGHT_UNITS;
         tickElapsed();
+        if (executeStartElapsedMs < 0) executeStartElapsedMs = elapsedClockMs;
         return recompute();
     }
 
@@ -143,8 +146,17 @@ public final class WorkspaceProgressTracker {
         // guard conflated "never seeded" with "seeded at elapsed 0": a provisional → refined
         // re-seed kept the stale anchor iff the first seed landed later than tracker-elapsed 0,
         // and SSE percent silently diverged from the TUI bar.
-        if (r0 > 0) seedAtElapsedMs = elapsedClockMs;
+        if (r0 > 0) seedAtElapsedMs = seedAnchor();
         return recompute();
+    }
+
+    /**
+     * Where the clock counts from: execute's start once it began, else now. The ETA is priced beside
+     * the build, so its seed can arrive seconds into execute; anchored at its arrival, the clock
+     * read 0% at takeover, the floor held the bar flat, and it then counted only the time after.
+     */
+    private long seedAnchor() {
+        return executeStartElapsedMs >= 0 ? Math.min(elapsedClockMs, executeStartElapsedMs) : elapsedClockMs;
     }
 
     /** Annotate residual remaining (wire only for countdown clients). */
@@ -155,7 +167,7 @@ public final class WorkspaceProgressTracker {
                 // First R0 via residual path — treat as seed.
                 this.annotatedR0ms = R0ms;
                 tickElapsed();
-                seedAtElapsedMs = elapsedClockMs;
+                seedAtElapsedMs = seedAnchor();
             } else {
                 this.annotatedR0ms = R0ms;
             }

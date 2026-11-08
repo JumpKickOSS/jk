@@ -41,11 +41,27 @@ class WorkspaceProgressTrackerTest {
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
         t.elapsedEpochNanos = System.nanoTime() - 2_000_000_000L; // first seed at ~2s elapsed
         t.seedWall(10_000, 2);
-        t.calibrate(100, 2);
-        t.elapsedEpochNanos = System.nanoTime() - 30_000_000_000L; // ~30s elapsed at re-seed
+        t.elapsedEpochNanos = System.nanoTime() - 30_000_000_000L; // ~30s elapsed at re-seed, still preflight
         t.seedWall(60_000, 2); // provisional → refined
+        t.calibrate(100, 2);
         // Re-anchored: since-seed ≈ 0 of a 60s R0, not ~28s inherited from the stale anchor.
         assertThat(t.snapshot().percent()).isLessThan(10.0);
+    }
+
+    /**
+     * The ETA is priced beside the build, so its seed can land well into execute. The clock counts
+     * from execute's start and reads the residual, so the bar shows how far the build really is
+     * rather than restarting at 0% at the seed.
+     */
+    @Test
+    void a_seed_that_lands_mid_execute_counts_from_execute_start() {
+        WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        t.calibrate(100, 4); // execute starts at ~0
+        t.elapsedEpochNanos = System.nanoTime() - 6_000_000_000L; // the model arrives ~6s in
+        t.seedWall(10_000, 4);
+        t.noteRemaining(4_000, 10_000); // two of four modules already finished
+        assertThat(t.progressStrategyId()).isEqualTo("clock");
+        assertThat(t.snapshot().percent()).isBetween(55.0, 65.0); // 6s / (6s + 4s)
     }
 
     @Test

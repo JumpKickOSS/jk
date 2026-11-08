@@ -101,6 +101,7 @@ final class HeaderProgress {
      * module total alone. Must hold {@code lock}.
      */
     void lockSeed() {
+        countdown.executeStarted(elapsed.getAsLong());
         countdown.lockSeed();
     }
 
@@ -173,7 +174,10 @@ final class HeaderProgress {
             // modulesTotal alone arrives with the work model *before* the engine's real
             // post-forecast seed (`eta` line), so it must not lock. Residual
             // re-anchors for display still apply after lock.
-            if (this.modulesComplete > 0) countdown.lockSeed();
+            if (this.modulesComplete > 0) {
+                countdown.executeStarted(elapsed.getAsLong());
+                countdown.lockSeed();
+            }
         }
     }
 
