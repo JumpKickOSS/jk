@@ -23,6 +23,7 @@ class WhyLinesTest {
                 List.of("app@1.0.0>com.google.guava:guava@33.4.0"),
                 List.of("\t"),
                 List.of(""),
+                List.of(""),
                 List.of(),
                 null);
         String text = WhyLines.of(report, "guava");
@@ -44,6 +45,7 @@ class WhyLinesTest {
                 List.of("app@1.0.0>io.quarkus:quarkus-rest@3.40.1.1>io.quarkus:quarkus-rest-kotlin@3.40.1.1"),
                 List.of("\t\t"),
                 List.of(""),
+                List.of(""),
                 List.of(),
                 null);
         assertThat(WhyLines.of(report, "quarkus-rest-kotlin"))
@@ -52,12 +54,33 @@ class WhyLinesTest {
     }
 
     @Test
+    void a_root_jk_added_names_its_rule() {
+        WhyReport report = new WhyReport(
+                null,
+                List.of("org.junit.jupiter:junit-jupiter-engine"),
+                List.of("5.12.2"),
+                List.of(""),
+                List.of(""),
+                List.of(""),
+                List.of("0"),
+                List.of("org.junit.jupiter:junit-jupiter-engine@5.12.2"),
+                List.of(""),
+                List.of("com.example:svc"),
+                List.of("junit-jupiter-api 5.12.2 is on the test graph without an engine (Surefire parity)"),
+                List.of(),
+                null);
+        assertThat(WhyLines.of(report, "junit-jupiter-engine"))
+                .contains("org.junit.jupiter:junit-jupiter-engine 5.12.2 · added by jk for com.example:svc:"
+                        + " junit-jupiter-api 5.12.2 is on the test graph without an engine (Surefire parity)");
+    }
+
+    @Test
     void more_than_five_matches_are_capped() {
         List<String> names = new ArrayList<>();
         for (int i = 0; i < 8; i++) names.add("g:a" + i);
         WhyReport report = new WhyReport(
                 null, names, names, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), null);
+                List.of(), List.of(), null);
         assertThat(WhyLines.of(report, "a").lines().count()).isLessThanOrEqualTo(WhyLines.MAX_LINES);
     }
 
@@ -65,6 +88,7 @@ class WhyLinesTest {
     void an_exclusion_is_one_line() {
         WhyReport report = new WhyReport(
                 null,
+                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),
@@ -84,6 +108,7 @@ class WhyLinesTest {
     void a_workspace_sibling_is_named_as_one() {
         WhyReport report = new WhyReport(
                 null,
+                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),

@@ -112,6 +112,8 @@ public final class WhyCommand implements CliCommand {
             for (int j = 0; j < report.paths().size(); j++) {
                 if (!report.pathOwners().get(j).equals(Integer.toString(i))) continue;
                 any = true;
+                String reason = report.rootReasonOf(j);
+                if (reason != null) CliOutput.out("  " + WhyReport.addedByJkLine(reason, report.rootOf(j)));
                 CliOutput.out("  " + renderPath(report.paths().get(j), report.selectorsOf(j), report.rootOf(j)));
             }
             if (!any) {

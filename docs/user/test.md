@@ -608,6 +608,14 @@ be your own pin, and `jk lock` refuses it with the pin that aligns them. In a wo
 is judged on the rows it reads: a member whose tests reach no Jupiter gets no Jupiter engine, and
 the refusal names the member.
 
+`jk why` names what jk added and why, then the path from it as usual:
+
+```text
+org.junit.jupiter:junit-jupiter-engine:5.12.2 is pulled in by:
+  added by jk for com.example:svc: junit-jupiter-api 5.12.2 is on the test graph without an engine (Surefire parity)
+  org.junit.jupiter:junit-jupiter-engine:5.12.2
+```
+
 A run that discovers no test where test classes declare one fails the `run-tests` step with the
 count (`no tests discovered in 3 classes under …`): an engine missing from the classpath, a
 framework classloader that failed. Tag filters do not trip it — a tier with nothing in it is

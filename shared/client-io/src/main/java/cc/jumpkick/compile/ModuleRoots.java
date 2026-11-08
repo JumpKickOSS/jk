@@ -67,7 +67,7 @@ final class ModuleRoots {
      * the module's test declarations and its main and provided ones stand for, as Surefire reads a
      * Jupiter off the whole test classpath.
      */
-    private static List<String> testPlatform(JkBuild module, @Nullable Path moduleDir, List<Lockfile.Artifact> rows) {
+    static List<String> testPlatform(JkBuild module, @Nullable Path moduleDir, List<Lockfile.Artifact> rows) {
         Set<String> declared = new LinkedHashSet<>();
         for (Scope scope : TEST_SCOPES) {
             for (Dependency dep : module.dependencies().of(scope)) addDeclared(declared, dep, moduleDir, rows);

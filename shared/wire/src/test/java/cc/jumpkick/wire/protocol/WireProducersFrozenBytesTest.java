@@ -143,13 +143,14 @@ class WireProducersFrozenBytesTest {
                                 List.of("root>g:a"),
                                 List.of("^1\t1.0"),
                                 List.of("g:app"),
+                                List.of("jk adds it"),
                                 List.of("g:b\tjk.toml:a\tg:a@1.0"),
                                 "lib")
                         .encode())
                 .isEqualTo(
                         "{\"type\":\"why-ack\",\"error\":null,\"matchNames\":[\"g:a\"],\"matchVersions\":[\"1.0\"],"
                                 + "\"matchMembers\":[\"app,lib\"],\"matchPinnedBy\":[\"jk.toml:a\"],\"matchAddedBy\":[\"g:c when g:d\"],\"pathOwners\":[\"0\"],\"paths\":[\"root>g:a\"],\"pathSelectors\":[\"^1\\t1.0\"],"
-                                + "\"pathRoots\":[\"g:app\"],\"exclusions\":[\"g:b\\tjk.toml:a\\tg:a@1.0\"],\"sibling\":\"lib\"}");
+                                + "\"pathRoots\":[\"g:app\"],\"pathRootReasons\":[\"jk adds it\"],\"exclusions\":[\"g:b\\tjk.toml:a\\tg:a@1.0\"],\"sibling\":\"lib\"}");
         assertThat(new PluginCommandReport("oops", false, 3, List.of("x")).encode())
                 .isEqualTo(
                         "{\"type\":\"plugin-command-ack\",\"error\":\"oops\",\"found\":false,\"exit\":3,\"output\":[\"x\"]}");

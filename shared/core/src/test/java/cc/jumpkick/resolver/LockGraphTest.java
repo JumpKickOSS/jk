@@ -66,9 +66,9 @@ class LockGraphTest {
         Lockfile lock = lockOf(pkg("com.foo:root", "1.0", List.of()));
         LockGraph g = LockGraph.of(project, lock, null);
 
-        assertThat(g.isDeclaredRoot("com.foo:root")).isTrue();
-        assertThat(g.isDeclaredRoot("com.foo:other")).isFalse();
-        assertThat(LockGraph.forLock(lock).isDeclaredRoot("com.foo:root")).isFalse();
+        assertThat(g.isRoot("com.foo:root")).isTrue();
+        assertThat(g.isRoot("com.foo:other")).isFalse();
+        assertThat(LockGraph.forLock(lock).isRoot("com.foo:root")).isFalse();
     }
 
     private static JkBuild projectWithMainDeps(String... modules) {

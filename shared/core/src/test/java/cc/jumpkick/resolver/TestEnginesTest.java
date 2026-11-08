@@ -187,6 +187,22 @@ class TestEnginesTest {
                 .containsExactly(LAUNCHER, key("org.junit.support:testng-engine"));
     }
 
+    @Test
+    void each_injected_key_names_the_rule_that_added_it() {
+        JkBuild api = project(Map.of(Scope.TEST, List.of(dep(JupiterLine.API, "5.12.2"))));
+        JkBuild junit4 = project(Map.of(Scope.TEST, List.of(dep("junit:junit", "4.13.2"))));
+        JkBuild none = project(Map.of());
+
+        assertThat(TestEngines.injectedReason(api, ENGINE, "5.12.2"))
+                .isEqualTo("junit-jupiter-api 5.12.2 is on the test graph without an engine (Surefire parity)");
+        assertThat(TestEngines.injectedReason(api, LAUNCHER, "5.12.2"))
+                .isEqualTo("jk test runs every suite through the JUnit Platform launcher");
+        assertThat(TestEngines.injectedReason(junit4, VINTAGE, null))
+                .isEqualTo("junit:junit is declared without an engine of its own");
+        assertThat(TestEngines.injectedReason(none, key(TestEngines.JUPITER.module()), null))
+                .isEqualTo("no test dependencies are declared, so tests run on JUnit Jupiter");
+    }
+
     /** Each injected root as {@code group:artifact selector}. */
     private static List<String> roots(JkBuild project, Graph graph) {
         return TestEngines.injectedRoots(project, graph::reach, graph.versions::get).stream()

@@ -45,6 +45,12 @@ public record WhyReport(
         List<String> pathSelectors,
         /** Per path, the workspace units that declared its root ({@code group:name}, comma-joined); {@code ""} when the project's one manifest did. */
         List<String> pathRoots,
+        /**
+         * Per path, why jk added its root to a test graph the manifest does not declare it in (the
+         * JUnit Platform launcher, an engine a framework needs, as Surefire adds them); {@code ""}
+         * when a manifest declared the root. The units it was added for ride in {@code pathRoots}.
+         */
+        List<String> pathRootReasons,
         List<String> exclusions,
         /** When nothing matched and the query names a workspace member: its directory from the root; else {@code null}. */
         @Nullable String sibling) {
@@ -61,13 +67,21 @@ public record WhyReport(
     public static WhyReport error(String message) {
         return new WhyReport(
                 message, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), null);
+                List.of(), List.of(), List.of(), null);
     }
 
     /** What a query that names workspace member {@code dir} gets in place of a lock row. */
     public static String siblingLine(String query, String dir) {
         return query + " is workspace module " + dir + "/, built from source; jk tree " + dir
                 + " shows its dependencies";
+    }
+
+    /**
+     * What a path whose root jk added says of that root: {@code added by jk: <reason>}, with the
+     * workspace members it was added for when {@code units} names them.
+     */
+    public static String addedByJkLine(String reason, String units) {
+        return "added by jk" + (units.isEmpty() ? "" : " for " + units) + ": " + reason;
     }
 
     /** The three fields of pruned edge {@code index}: child, origin, and the row that dropped it. */
@@ -87,6 +101,7 @@ public record WhyReport(
                 .array("paths", paths)
                 .array("pathSelectors", pathSelectors)
                 .array("pathRoots", pathRoots)
+                .array("pathRootReasons", pathRootReasons)
                 .array("exclusions", exclusions)
                 .string("sibling", sibling)
                 .finish();
@@ -110,12 +125,18 @@ public record WhyReport(
         return List.of(matchMembers.get(index).split(","));
     }
 
-    /** The per-step selectors of path {@code index}, {@code ""} where none is known; empty when the wire had none. */
     /** The units that declared path {@code index}'s root, or {@code ""} for the project's own manifest. */
     public String rootOf(int index) {
         return index < pathRoots.size() ? pathRoots.get(index) : "";
     }
 
+    /** Why jk added path {@code index}'s root, or {@code null} when a manifest declared it. */
+    public @Nullable String rootReasonOf(int index) {
+        if (index >= pathRootReasons.size() || pathRootReasons.get(index).isEmpty()) return null;
+        return pathRootReasons.get(index);
+    }
+
+    /** The per-step selectors of path {@code index}, {@code ""} where none is known; empty when the wire had none. */
     public List<String> selectorsOf(int index) {
         if (index >= pathSelectors.size()) return List.of();
         return List.of(pathSelectors.get(index).split(STEP_SELECTOR_SEPARATOR, -1));
@@ -145,16 +166,20 @@ public record WhyReport(
             List<String> mine = new ArrayList<>();
             List<List<String>> declared = new ArrayList<>();
             List<String> declaredBy = new ArrayList<>();
+            List<String> addedByJk = new ArrayList<>();
             String idx = Integer.toString(i);
             for (int p = 0; p < paths.size(); p++) {
                 if (!idx.equals(pathOwners.get(p))) continue;
                 mine.add(paths.get(p));
                 declared.add(selectorsOf(p));
                 declaredBy.add(rootOf(p));
+                String reason = rootReasonOf(p);
+                addedByJk.add(reason == null ? "" : reason);
             }
             row.put("paths", mine);
             row.put("declared", declared);
             row.put("declaredBy", declaredBy);
+            if (addedByJk.stream().anyMatch(r -> !r.isEmpty())) row.put("addedByJk", addedByJk);
             matches.add(row);
         }
         m.put("matches", matches);
@@ -184,6 +209,7 @@ public record WhyReport(
                 Jsonl.strArray(line, "paths"),
                 Jsonl.strArray(line, "pathSelectors"),
                 Jsonl.strArray(line, "pathRoots"),
+                Jsonl.strArray(line, "pathRootReasons"),
                 Jsonl.strArray(line, "exclusions"),
                 Jsonl.str(line, "sibling"));
     }

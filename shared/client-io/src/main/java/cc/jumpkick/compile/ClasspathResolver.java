@@ -207,6 +207,15 @@ public final class ClasspathResolver {
     }
 
     /**
+     * The roots {@code jk lock} added to {@code module}'s test graph that its manifest does not
+     * declare (the JUnit Platform launcher, the engines its frameworks need), as lock row names: the
+     * roots its test classpath grows from beside its declarations. {@code lock} is the module's view.
+     */
+    public static List<String> addedTestRoots(Lockfile lock, JkBuild module, @Nullable Path moduleDir) {
+        return ModuleRoots.testPlatform(module, moduleDir, lock.artifacts());
+    }
+
+    /**
      * A resolved classpath element with the lockfile artifact it came from. {@code container} is
      * the exploded archive dir for artifacts whose packaging is a container (an AAR: res/,
      * AndroidManifest.xml, R.txt live there; {@code jar} is its {@code classes.jar}) — null for

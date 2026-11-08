@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +36,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class LockGraph {
 
-    private static final LockGraph EMPTY = new LockGraph(Map.of(), Map.of(), Map.of(), Set.of(), Map.of());
+    private static final LockGraph EMPTY = new LockGraph(Map.of(), Map.of(), Map.of(), Set.of(), Map.of(), Map.of());
 
     /** Module → the members-annotation of every partition row its subtree reaches; see {@link #subtreeKey}. */
     private final Map<String, String> subtreeMembers = new HashMap<>();
@@ -49,6 +50,8 @@ public final class LockGraph {
     private final Set<String> declaredRoots;
     /** Declared root GA → the selector the manifest wrote for it and the units that declared it. */
     private final Map<String, RootDeclaration> rootDeclarations;
+    /** Root GA jk added to a test graph (the manifest does not declare it) → why, and for which units. */
+    private final Map<String, AddedRoot> addedRoots;
     /** Dep module (and its GA alias) → parent artifact names; built on first reverse walk. */
     private @Nullable Map<String, Set<String>> reverse;
 
@@ -57,12 +60,14 @@ public final class LockGraph {
             Map<String, List<String>> forward,
             Map<String, List<String>> forwardSorted,
             Set<String> declaredRoots,
-            Map<String, RootDeclaration> rootDeclarations) {
+            Map<String, RootDeclaration> rootDeclarations,
+            Map<String, AddedRoot> addedRoots) {
         this.byModule = byModule;
         this.forward = forward;
         this.forwardSorted = forwardSorted;
         this.declaredRoots = declaredRoots;
         this.rootDeclarations = rootDeclarations;
+        this.addedRoots = addedRoots;
     }
 
     /**
@@ -75,6 +80,31 @@ public final class LockGraph {
         RootDeclaration withUnit(String unit) {
             return new RootDeclaration(selector, units == null ? unit : units + ", " + unit);
         }
+    }
+
+    /**
+     * A root jk adds to a module's test graph without the manifest declaring it: {@code reason} says
+     * why, {@code units} are the workspace units it was added for as {@link RootDeclaration#units()}.
+     */
+    public record AddedRoot(String reason, @Nullable String units) {}
+
+    /**
+     * This graph with {@code added} (root {@code group:artifact} → why jk added it) as roots too, so
+     * a walk to a row only jk's own roots reach ends at one of them. A declared root stays declared.
+     */
+    public LockGraph withAddedRoots(Map<String, AddedRoot> added) {
+        if (added.isEmpty()) return this;
+        Map<String, AddedRoot> kept = new LinkedHashMap<>();
+        added.forEach((module, root) -> {
+            if (!isRoot(module)) kept.put(ga(module), root);
+        });
+        return new LockGraph(byModule, forward, forwardSorted, declaredRoots, rootDeclarations, Map.copyOf(kept));
+    }
+
+    /** Why jk added root {@code module}, or null when it is not a root jk added. */
+    public @Nullable String addedReason(String module) {
+        AddedRoot added = addedRoots.get(ga(module));
+        return added == null ? null : added.reason();
     }
 
     /**
@@ -126,7 +156,7 @@ public final class LockGraph {
             sorted.sort(null);
             forwardSorted.put(pkg.name(), List.copyOf(sorted));
         }
-        return new LockGraph(byModule, forward, forwardSorted, roots, rootDeclarations);
+        return new LockGraph(byModule, forward, forwardSorted, roots, rootDeclarations, Map.of());
     }
 
     /** The selector the manifest declares for root {@code module}, or null when it is not a declared root. */
@@ -136,12 +166,14 @@ public final class LockGraph {
     }
 
     /**
-     * The workspace units that declare root {@code module}, as {@link RootDeclaration#units()};
-     * null for a single project or a module that is not a declared root.
+     * The workspace units that declare root {@code module}, as {@link RootDeclaration#units()}, or
+     * that jk added it for; null for a single project or a module that is not a root.
      */
     public @Nullable String rootUnits(String module) {
         RootDeclaration d = rootDeclarations.get(ga(module));
-        return d == null ? null : d.units();
+        if (d != null) return d.units();
+        AddedRoot added = addedRoots.get(ga(module));
+        return added == null ? null : added.units();
     }
 
     /** The lock row for {@code moduleOrGa} (name / package key / GA alias), or null. */
@@ -225,8 +257,12 @@ public final class LockGraph {
         return declaredRoots;
     }
 
-    /** True when {@code module} is a declared root, matching package key or GA form. */
-    public boolean isDeclaredRoot(String module) {
+    /**
+     * True when {@code module} is a root, matching package key or GA form: declared, or added by jk
+     * ({@link #withAddedRoots}).
+     */
+    public boolean isRoot(String module) {
+        if (addedRoots.containsKey(ga(module))) return true;
         if (declaredRoots.contains(module)) return true;
         String moduleGa = ga(module);
         if (declaredRoots.contains(moduleGa)) return true;

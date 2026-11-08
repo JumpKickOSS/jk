@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceScan;
@@ -18,14 +19,18 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.DependencyTree;
 import cc.jumpkick.resolver.DependencyTreeStyle;
 import cc.jumpkick.resolver.EdgeSelectors;
+import cc.jumpkick.resolver.JupiterLine;
 import cc.jumpkick.resolver.LockGraph;
 import cc.jumpkick.resolver.Provenance;
+import cc.jumpkick.resolver.TestEngines;
 import cc.jumpkick.wire.protocol.WhyReport;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -62,10 +67,12 @@ public final class GraphOps {
             Path dir, @Nullable String query, FeatureSelection selection, Function<JkBuild, RepoGroup> repositories) {
         try {
             JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
-            Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
+            Path lockFile = LockPaths.lockFile(dir);
+            Lockfile lock = LockfileReader.read(lockFile);
             // One LockGraph per request: a fuzzy query with many matches must not rebuild the
             // whole reverse adjacency per match.
-            LockGraph graph = LockGraph.of(project, lock, dir, selection);
+            LockGraph graph = LockGraph.of(project, lock, dir, selection)
+                    .withAddedRoots(addedRoots(project, lock, lockFile, dir, selection));
             EdgeSelectors edgeSelectors = edgeSelectors(project, lock, repositories);
             List<Lockfile.Artifact> matches = lock.artifacts().stream()
                     .filter(p -> matchesQuery(p.name(), query))
@@ -79,6 +86,7 @@ public final class GraphOps {
             List<String> paths = new ArrayList<>();
             List<String> selectors = new ArrayList<>();
             List<String> roots = new ArrayList<>();
+            List<String> rootReasons = new ArrayList<>();
             for (int i = 0; i < matches.size(); i++) {
                 Lockfile.Artifact target = matches.get(i);
                 // Display GA form to users (not g:a:jar:).
@@ -99,6 +107,8 @@ public final class GraphOps {
                     }
                     paths.add(String.join(">", steps));
                     roots.add(path.rootUnit() == null ? "" : path.rootUnit());
+                    String reason = graph.addedReason(path.steps().getFirst().module());
+                    rootReasons.add(reason == null ? "" : reason);
                     selectors.add(String.join(
                             WhyReport.STEP_SELECTOR_SEPARATOR, stepSelectors(path, target, graph, edgeSelectors)));
                 }
@@ -114,11 +124,55 @@ public final class GraphOps {
                     paths,
                     selectors,
                     roots,
+                    rootReasons,
                     prunedEdges(lock, query),
                     matches.isEmpty() ? siblingNamed(dir, query) : null);
         } catch (IOException | RuntimeException e) {
             return WhyReport.error(Errors.text(e));
         }
+    }
+
+    /**
+     * The roots {@code jk lock} added to the test graph of each unit at {@code dir} (the project, or
+     * every member of a workspace root) by the rule its test classpath reads them with ({@link
+     * ClasspathResolver#addedTestRoots}), by {@code group:artifact}, each with why and, in a
+     * workspace, the members it was added for.
+     */
+    static Map<String, LockGraph.AddedRoot> addedRoots(
+            JkBuild declared, Lockfile lock, Path lockFile, Path dir, FeatureSelection selection) throws IOException {
+        JkBuild project = selection.apply(declared);
+        boolean workspace = project.isWorkspaceRoot();
+        Map<Path, JkBuild> units = new LinkedHashMap<>();
+        if (workspace) {
+            WorkspaceLoader.loadModules(dir, project).forEach((d, m) -> units.put(d, selection.apply(m)));
+        } else {
+            units.put(dir, project);
+        }
+        Map<String, LockGraph.AddedRoot> out = new LinkedHashMap<>();
+        for (Map.Entry<Path, JkBuild> unit : units.entrySet()) {
+            JkBuild build = unit.getValue();
+            Lockfile view = MemberRows.view(lock, lockFile, unit.getKey());
+            String coordinate = build.project().group() + ":" + build.project().name();
+            for (String key : ClasspathResolver.addedTestRoots(view, build, unit.getKey())) {
+                String ga = ga(key);
+                LockGraph.AddedRoot known = out.get(ga);
+                if (known == null) {
+                    String reason = TestEngines.injectedReason(build, key, testVersion(view, JupiterLine.API));
+                    out.put(ga, new LockGraph.AddedRoot(reason, workspace ? coordinate : null));
+                } else if (workspace) {
+                    out.put(ga, new LockGraph.AddedRoot(known.reason(), known.units() + ", " + coordinate));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The version of {@code ga} on {@code lock}'s test classpath, or null when it holds none. */
+    private static @Nullable String testVersion(Lockfile lock, String ga) {
+        for (Lockfile.Artifact row : lock.artifacts()) {
+            if (row.inAnyScope(ClasspathResolver.TEST) && ga(row.packageKey()).equals(ga)) return row.version();
+        }
+        return null;
     }
 
     /**

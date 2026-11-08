@@ -145,6 +145,27 @@ public final class TestEngines {
         return keys;
     }
 
+    /**
+     * Why jk adds {@code key}, one of {@link #injectedKeys}, to {@code project}'s test graph: the line
+     * {@code jk why} prints after "added by jk". {@code api} is the Jupiter API version the test
+     * classpath holds, or null.
+     */
+    public static String injectedReason(JkBuild project, String key, @Nullable String api) {
+        String ga = PackageId.isMavenPackageKey(key) ? PackageId.parse(key).ga() : key;
+        if (ga.equals(JupiterLine.ENGINE)) {
+            String name = JupiterLine.API.substring(JupiterLine.API.indexOf(':') + 1);
+            return name + (api == null ? "" : " " + api) + " is on the test graph without an engine (Surefire parity)";
+        }
+        if (ga.equals(LAUNCHER.module())) return "jk test runs every suite through the JUnit Platform launcher";
+        if (ga.equals(JUPITER.module())) return "no test dependencies are declared, so tests run on JUnit Jupiter";
+        for (Row row : ROWS) {
+            if (row.engine().module().equals(ga) && row.declaredIn(project) != null) {
+                return row.trigger() + " is declared without an engine of its own";
+            }
+        }
+        return "jk test needs it on the test graph";
+    }
+
     /** The package keys of {@code project}'s declared test and test-dev dependencies. */
     public static Set<String> declaredTestKeys(JkBuild project) {
         return keysOf(project, Scope.TEST, Scope.TEST_DEV);

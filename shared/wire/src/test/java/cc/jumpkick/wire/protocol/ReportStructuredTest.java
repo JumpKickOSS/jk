@@ -25,6 +25,7 @@ class ReportStructuredTest {
                 List.of("root>g:a@1.0", "root>g:b@2.0", "other>g:a@1.0"),
                 List.of("^1\t1.0", "\t[2.0,3.0)", "\t"),
                 List.of("g:app, g:lib", "", "g:lib"),
+                List.of("", "", ""),
                 List.of("g:c\tjk.toml:a\tg:a@1.0"),
                 null);
         Map<String, Object> m = r.toStructured();

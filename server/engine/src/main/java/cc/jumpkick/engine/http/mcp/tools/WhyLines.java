@@ -47,7 +47,7 @@ final class WhyLines {
 
     /**
      * What selected the row: the conditional dependency that brought it in when one did, a pin when
-     * one exists, otherwise the selector on the path.
+     * one exists, otherwise the selector on the path, else why jk added the path's root.
      */
     private static String rule(WhyReport report, int match) {
         List<String> added = report.addedByOf(match);
@@ -69,6 +69,12 @@ final class WhyLines {
                         : report.rootOf(p).isEmpty() ? ManifestPaths.MANIFEST : report.rootOf(p);
                 return "declared " + selector + " by " + by;
             }
+        }
+        for (int p = 0; p < report.paths().size(); p++) {
+            if (!idx.equals(report.pathOwners().get(p))) continue;
+            String reason = report.rootReasonOf(p);
+            if (reason == null) continue;
+            return WhyReport.addedByJkLine(reason, report.rootOf(p));
         }
         return "";
     }

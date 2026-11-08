@@ -73,7 +73,7 @@ public final class Provenance {
      * root. Nodes are visited once, so diamond graphs do not explode into combinatorial paths.
      */
     private static List<Path> shortestPathsPerRoot(String target, LockGraph graph) {
-        if (graph.isDeclaredRoot(target)) {
+        if (graph.isRoot(target)) {
             return List.of(singleStep(target, graph));
         }
 
@@ -90,7 +90,7 @@ public final class Provenance {
         while (!queue.isEmpty()) {
             String current = queue.poll();
             Set<String> parents = graph.parents(current);
-            boolean declared = graph.isDeclaredRoot(current);
+            boolean declared = graph.isRoot(current);
             boolean lockTop = parents.isEmpty() && !current.equals(target);
 
             if (declared || lockTop) {
