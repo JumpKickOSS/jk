@@ -281,28 +281,38 @@ def curve_table(points: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def claims(questions: list[dict], renames: list[dict], points: list[dict], link: str | None) -> str:
+def claims(questions: list[dict], renames: list[dict], points: list[dict], link: str | None,
+           html: bool = False) -> str:
+    """The plain-English summary a reader meets first: what was asked, and how much less work it took.
+    Each takeaway is emphasized in the target's own markup: <strong> on the website, ** in Markdown."""
+    def em(text):
+        return f"<strong>{text}</strong>" if html else f"**{text}**"
+
     def cut(rows, key):
         return [1 - r["jk"][key] / r["off"][key] for r in rows if r["jk"][key] is not None and r["off"][key]]
-    parts = []
+
+    def span(xs, what):
+        return em(f"{min(xs) * 100:.0f}–{max(xs):.0%} {what}")
+    sentences = []
     if questions:
         t, k = cut(questions, "turns"), cut(questions, "tokens")
-        parts.append(f"Asked who calls a method or what can end up running it, agents from {len(questions)} vendors "
-                     f"answered from the graph in {min(t):.0%}–{max(t):.0%} fewer turns and {min(k):.0%}–{max(k):.0%} "
-                     f"fewer tokens than with no graph")
+        sentences.append(f"We asked coding agents from {len(questions)} vendors questions like \"who calls this method?\" "
+                         f"With jk's code graph, they answered in {span(t, 'fewer back-and-forth turns')} and used "
+                         f"{span(k, 'fewer tokens')} than without it.")
     if renames:
         t, k = cut(renames, "turns"), cut(renames, "tokens")
-        parts.append(f"renaming a method and every caller took {min(t):.0%}–{max(t):.0%} fewer turns and "
-                     f"{min(k):.0%}–{max(k):.0%} fewer tokens")
+        sentences.append(f"Renaming a method everywhere it is used took {span(t, 'fewer turns')} and "
+                         f"{span(k, 'fewer tokens')}.")
     small = [p for p in points if all(a["tokens"] is not None and b["tokens"] is not None and a["tokens"] < b["tokens"]
                                       for a, b in p["drivers"].values())]
     if small:
         p = small[0]
-        parts.append(f"down to the smallest repository measured, {p['repo']} at {p['loc']:,} lines")
-    if not parts:
+        size = em(f"{p['loc']:,} lines of code")
+        sentences.append(f"The graph pays off even on tiny projects: the smallest we tested, {p['repo']}, "
+                         f"has just {size}.")
+    if not sentences:
         return "_No change-task results with and without the graph yet._"
-    text = "; ".join(parts) + "."
-    return text[0].upper() + text[1:] + (f" ([The tables]({link}).)" if link else "")
+    return " ".join(sentences) + (f" ([The tables]({link}).)" if link else "")
 
 
 def models(prescription_only: bool = True) -> list[dict]:
@@ -377,7 +387,7 @@ def render(board: list[dict], host: str) -> None:
     by = cells()
     questions, renames, points = comparison(by, "questions"), comparison(by, "renames"), curve(by)
     for doc, link in CLAIM_DOCS.items():
-        _splice(doc, "claims", claims(questions, renames, points, link))
+        _splice(doc, "claims", claims(questions, renames, points, link, html=doc.suffix == ".html"))
         _splice(doc, "questions", comparison_table(questions, "questions"))
         _splice(doc, "renames", comparison_table(renames, "renames"))
         _splice(doc, "curve", curve_table(points))

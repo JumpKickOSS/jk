@@ -756,6 +756,14 @@
       font-size: 0.8rem !important;
       color: var(--tx) !important;
     }
+    .row-proof strong {
+      color: var(--bright);
+      font-weight: 800;
+      background: linear-gradient(transparent 58%, color-mix(in srgb, var(--accent, var(--cn)) 38%, transparent) 58%);
+      text-shadow: 0 0 14px color-mix(in srgb, var(--accent, var(--cn)) 70%, transparent);
+      padding: 0 0.1em;
+      white-space: nowrap;
+    }
 
     .viz {
       position: relative;
@@ -1358,7 +1366,7 @@
           <h3>Give your agent understanding — not another search expedition.</h3>
           <p>Built-in semantic navigation and MCP connect your agent directly to your code and development tools. Find callers. Follow relationships. Make informed changes.</p>
           <p class="row-proof"><!-- agents-claims:begin -->
-Asked who calls a method or what can end up running it, agents from 6 vendors answered from the graph in 66%–91% fewer turns and 72%–98% fewer tokens than with no graph; renaming a method and every caller took 75%–91% fewer turns and 78%–98% fewer tokens; down to the smallest repository measured, gs-multi-module at 83 lines.
+We asked coding agents from 6 vendors questions like "who calls this method?" With jk's code graph, they answered in <strong>66–91% fewer back-and-forth turns</strong> and used <strong>72–98% fewer tokens</strong> than without it. Renaming a method everywhere it is used took <strong>75–91% fewer turns</strong> and <strong>78–98% fewer tokens</strong>. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just <strong>83 lines of code</strong>.
 <!-- agents-claims:end --></p>
         </div>
         <div class="viz" aria-hidden="true">
