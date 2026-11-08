@@ -261,6 +261,25 @@ public final class ManifestUpdates {
     }
 
     /**
+     * The plan that moves each of {@code moves} back, {@code to} → {@code from}, in the manifests of
+     * the lock scope at {@code lockDir} as they stand once {@code moves} are written. Reads no
+     * repository.
+     */
+    public static Plan revert(Path lockDir, List<Rewrite> moves) throws IOException {
+        Map<List<Object>, String> back = new HashMap<>();
+        for (Rewrite r : moves) back.put(List.of(r.dir().toAbsolutePath().normalize(), r.module(), r.to()), r.from());
+        return plan(
+                lockDir,
+                null,
+                Selection.ALL,
+                (dir, module, current, available) -> {
+                    String from = back.get(List.of(dir.toAbsolutePath().normalize(), module, current));
+                    return from == null ? Step.NONE : new Step(from, null);
+                },
+                new HashMap<>());
+    }
+
+    /**
      * The highest version {@code probe} holds for {@code module} as the manifest under {@code dir}
      * reads it: a member its own view, the root the workspace's plain rows.
      */

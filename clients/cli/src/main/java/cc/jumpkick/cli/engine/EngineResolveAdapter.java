@@ -239,8 +239,9 @@ final class EngineResolveAdapter {
                 }
                 case EngineProtocol.UPDATE_REWRITE -> {
                     UpdateRewriteEvent e = UpdateRewriteEvent.decode(line);
-                    if (e.held()) handler.onHeld(e.dir(), e.table(), e.handle(), e.module(), e.from(), e.to());
-                    else handler.onRewrite(e.dir(), e.table(), e.handle(), e.module(), e.from(), e.to());
+                    if (e.held())
+                        handler.onHeld(e.dir(), e.table(), e.handle(), e.module(), e.from(), e.to(), e.adds());
+                    else handler.onRewrite(e.dir(), e.table(), e.handle(), e.module(), e.from(), e.to(), e.adds());
                 }
                 case EngineProtocol.UPDATE_CHANGE -> {
                     UpdateChangeEvent e = UpdateChangeEvent.decode(line);

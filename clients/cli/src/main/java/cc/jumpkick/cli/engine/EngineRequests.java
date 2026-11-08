@@ -243,16 +243,21 @@ public final class EngineRequests {
 
         /**
          * One declared pin {@code jk update} moved in the manifest under {@code dir} ({@code handle}
-         * in {@code table}, {@code from} → {@code to}); fires before that module's plan starts.
+         * in {@code table}, {@code from} → {@code to}); fires before that module's plan starts. In a
+         * preview {@code adds} names the packages, {@code coordinate version}, the move's relock
+         * would add to the lock.
          */
-        default void onRewrite(String dir, String table, String handle, String module, String from, String to) {}
+        default void onRewrite(
+                String dir, String table, String handle, String module, String from, String to, List<String> adds) {}
 
         /**
          * One move {@code jk update} held for a person to accept: {@code handle} in {@code table} of
          * the manifest under {@code dir} stays at {@code from}, where the run left it, short of
-         * {@code to}; fires with the rewrites.
+         * {@code to}, because the move crosses a minor or a major or, when {@code adds} is not
+         * empty, because its relock adds those packages; fires with the rewrites.
          */
-        default void onHeld(String dir, String table, String handle, String module, String from, String to) {}
+        default void onHeld(
+                String dir, String table, String handle, String module, String from, String to, List<String> adds) {}
 
         /**
          * One package {@code jk update}'s relock changed in the lockfile under {@code dir}: {@code
