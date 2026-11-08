@@ -195,6 +195,43 @@ The step is `generate-avro`; a schema edit re-runs it, and the classes join the 
 writes the table from a POM's `avro-maven-plugin`
 ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
+## `[json-schema]` — JSON Schema through jsonschema2pojo
+
+[jsonschema2pojo](https://www.jsonschema2pojo.org/) generates a class per object schema, with the
+annotations of the library the module serializes with. The preset runs it over the module's schema
+directory the way its Maven and Gradle plugins do: a subdirectory is a subpackage, and a `$ref`
+names another file by its relative path.
+
+```toml
+[json-schema]
+# src                   = "src/main/resources/json"   # the Gradle plugin's default
+package                 = "com.acme.events"
+# source-type           = "jsonschema"   # json (example documents), yamlschema or yaml
+# annotation-style      = "jackson"      # Jackson 2; jackson3, jsonb1, jsonb2, gson, moshi1 or none
+# builders              = false          # a with-method per property
+# constructors          = false
+# jsr303                = false          # Bean Validation annotations from the schema's rules
+# jakarta-validation    = false          # from jakarta.validation, not javax.validation
+# serializable          = false
+# optional-getters      = false          # Optional from the getter of a property not required
+# long-integers         = false          # integer as long
+# big-decimals          = false          # number as BigDecimal
+# title-as-classname    = false
+# additional-properties = true           # keep unnamed properties in an additionalProperties map
+# date-time-type        = "java.time.OffsetDateTime"
+# date-type             = "java.time.LocalDate"
+# time-type             = "java.time.LocalTime"
+# encoding              = "UTF-8"
+# version               = "1.3.3"        # the jsonschema2pojo release; a bare version is exact
+
+[dependencies]
+jackson-databind = "2.23.0"              # the annotations the generated classes carry
+```
+
+The step is `generate-json-schema`; a schema edit re-runs it, and the classes join the compile.
+`jk import` writes the table from the `jsonschema2pojo-maven-plugin` and the Gradle plugin
+(`org.jsonschema2pojo`) ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
+
 ## `[schema-registry]` — schemas from a registry
 
 A Kafka service often keeps its schemas in a registry rather than the tree. `[schema-registry]`

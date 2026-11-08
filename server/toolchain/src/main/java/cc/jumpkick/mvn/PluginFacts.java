@@ -53,6 +53,7 @@ final class PluginFacts {
     static final Set<String> MAPPED_PLUGINS = Set.of(
             "maven-compiler-plugin",
             SchemaRegistryPlugin.ARTIFACT,
+            JsonSchemaPlugin.ARTIFACT,
             FormatPlugins.SPOTLESS,
             FormatPlugins.FMT,
             "frontend-maven-plugin",

@@ -171,7 +171,7 @@ final class PluginRules {
                     return;
                 }
                 Object typed = typed(value, schema.type());
-                if (typed != null && !typed.equals(schema.defaultValue())) table.put(key, typed);
+                if (typed != null && !isDefault(typed, schema.defaultValue())) table.put(key, typed);
             });
         }
         List<PluginConfig> out = new ArrayList<>();
@@ -267,10 +267,20 @@ final class PluginRules {
         return node;
     }
 
+    /** Whether {@code typed} is the key's default; a string in any case, as an enum's name is. */
+    private static boolean isDefault(Object typed, @Nullable Object defaultValue) {
+        if (typed instanceof String s && defaultValue instanceof String d) return s.equalsIgnoreCase(d);
+        return typed.equals(defaultValue);
+    }
+
     /** {@code value} as a key of {@code type} holds it, or null when it cannot be one. */
     static @Nullable Object typed(Object value, PluginDescriptor.SchemaKey.Type type) {
         return switch (type) {
-            case STRING, COORDINATE -> value instanceof Map<?, ?> || value instanceof List<?> ? null : scalar(value);
+            case STRING, COORDINATE -> {
+                // One directory of a file collection is that directory.
+                if (value instanceof List<?> list) yield list.size() == 1 ? scalar(list.getFirst()) : null;
+                yield value instanceof Map<?, ?> ? null : scalar(value);
+            }
             case BOOL -> value instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(value));
             case INT -> {
                 if (value instanceof Number n) yield n.longValue();

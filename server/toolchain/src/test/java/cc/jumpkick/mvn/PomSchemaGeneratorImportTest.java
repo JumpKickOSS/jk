@@ -90,6 +90,64 @@ class PomSchemaGeneratorImportTest {
                 .noneMatch(m -> m.contains("kafka-schema-registry-maven-plugin not imported"));
     }
 
+    /** jsonschema2pojo's Maven plugin: its source directory, package and the options that differ. */
+    @Test
+    void jsonschema2pojo_plugin_becomes_the_json_schema_preset(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>events</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.jsonschema2pojo</groupId>
+                        <artifactId>jsonschema2pojo-maven-plugin</artifactId>
+                        <version>1.3.3</version>
+                        <executions><execution><goals><goal>generate</goal></goals></execution></executions>
+                        <configuration>
+                          <sourceDirectory>${basedir}/src/main/resources/schema</sourceDirectory>
+                          <targetPackage>com.acme.events</targetPackage>
+                          <annotationStyle>jackson2</annotationStyle>
+                          <generateBuilders>true</generateBuilders>
+                          <includeAdditionalProperties>false</includeAdditionalProperties>
+                          <dateTimeType>java.time.OffsetDateTime</dateTimeType>
+                        </configuration>
+                      </plugin>
+                      <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                          <execution>
+                            <goals><goal>add-source</goal></goals>
+                            <configuration>
+                              <sources><source>${project.build.directory}/generated-sources/jsonschema2pojo</source></sources>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().pluginConfig("json-schema").orElseThrow().values())
+                .containsOnly(
+                        Map.entry("src", "src/main/resources/schema"),
+                        Map.entry("package", "com.acme.events"),
+                        Map.entry("builders", true),
+                        Map.entry("additional-properties", false),
+                        Map.entry("date-time-type", "java.time.OffsetDateTime"),
+                        Map.entry("version", "1.3.3"));
+        assertThat(messages(result))
+                .contains("jsonschema2pojo-maven-plugin became [json-schema]; generates from src/main/resources/schema")
+                .contains("build-helper-maven-plugin adds target/generated-sources/jsonschema2pojo, the [json-schema]"
+                        + " output; no extra-src needed")
+                .noneMatch(m -> m.contains("jsonschema2pojo-maven-plugin not imported"));
+    }
+
     /** The Baeldung Kafka module's shape: the plugin bound to `schema` with the Maven defaults. */
     @Test
     void avro_plugin_becomes_the_avro_preset(@TempDir Path tempDir) throws Exception {

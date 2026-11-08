@@ -866,7 +866,8 @@ final class GradleModelImporter {
             String avroOut = avro == null || avro.buildDir() == null
                     ? null
                     : avro.buildDir() + "/generated-" + s.name() + "-avro-java";
-            for (String dir : s.java()) if (!dir.equals(prefix + "java") && !dir.equals(avroOut)) odd.add(dir);
+            for (String dir : s.java())
+                if (!dir.equals(prefix + "java") && !dir.equals(avroOut) && !writtenByMapped(p, dir)) odd.add(dir);
             for (String dir : s.kotlin())
                 if (!dir.equals(prefix + "kotlin") && !dir.equals(prefix + "java")) odd.add(dir);
             for (String dir : s.resources()) if (!dir.equals(prefix + "resources")) odd.add(dir);
@@ -876,6 +877,14 @@ final class GradleModelImporter {
                         + ", outside jk's layout; move them or generate them");
             }
         }
+    }
+
+    /** Whether a task of a plugin an import rule maps writes {@code dir}: that table generates it. */
+    private boolean writtenByMapped(GradleModel.Project p, String dir) {
+        for (GradleModel.Producer w : p.producers().getOrDefault(dir, List.of())) {
+            if (w.plugin() != null && importRules.containsKey(w.plugin())) return true;
+        }
+        return false;
     }
 
     /** Whether a regular file sits anywhere under {@code dir}. */

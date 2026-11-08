@@ -40,7 +40,8 @@ import org.jspecify.annotations.Nullable;
  * plugins {@link JaxbPlugin}'s {@code [jaxb]}, {@code jooq-codegen-maven} {@link JooqPlugin}'s
  * {@code [jooq]}, {@code wire-maven-plugin} {@link WirePlugin}'s
  * {@code [generate.wire]} entry, {@code kafka-schema-registry-maven-plugin} {@link SchemaRegistryPlugin}'s
- * {@code [schema-registry]}; the GraphQL codegen plugins are a row naming the recipe.
+ * {@code [schema-registry]}, {@code jsonschema2pojo-maven-plugin} {@link JsonSchemaPlugin}'s
+ * {@code [json-schema]}; the GraphQL codegen plugins are a row naming the recipe.
  */
 final class GeneratorPlugins {
 
@@ -62,6 +63,7 @@ final class GeneratorPlugins {
             @Nullable PluginConfig jooq,
             @Nullable PluginConfig generate,
             @Nullable PluginConfig schemaRegistry,
+            @Nullable PluginConfig jsonSchema,
             /** The registry's credential table; null when the build sends none. */
             UserConfigEditor.@Nullable CredentialTable registryCredential,
             Map<String, String> outputRoots,
@@ -72,7 +74,18 @@ final class GeneratorPlugins {
         List<PluginConfig> tables() {
             List<PluginConfig> tables = new ArrayList<>();
             for (PluginConfig table : new PluginConfig[] {
-                openapi, protobuf, localizer, antlr, taglib, jenkinsTest, avro, jaxb, jooq, generate, schemaRegistry
+                openapi,
+                protobuf,
+                localizer,
+                antlr,
+                taglib,
+                jenkinsTest,
+                avro,
+                jaxb,
+                jooq,
+                generate,
+                schemaRegistry,
+                jsonSchema
             }) {
                 if (table != null) tables.add(table);
             }
@@ -131,6 +144,8 @@ final class GeneratorPlugins {
         outputRoots.putAll(taglib.outputRoots());
         AvroPlugin.Mapped avro = AvroPlugin.map(model, report);
         outputRoots.putAll(avro.outputRoots());
+        JsonSchemaPlugin.Mapped jsonSchema = JsonSchemaPlugin.map(model, report);
+        outputRoots.putAll(jsonSchema.outputRoots());
         SchemaRegistryPlugin.Mapped registry = SchemaRegistryPlugin.map(model, report);
         PluginConfig avroTable = avro.table();
         // Schemas the registry plugin downloads come from the store; [avro] keeps its own root.
@@ -166,6 +181,7 @@ final class GeneratorPlugins {
                 jooq.table(),
                 generate,
                 registry.table(),
+                jsonSchema.table(),
                 registry.credential(),
                 Collections.unmodifiableMap(outputRoots),
                 Collections.unmodifiableSet(consumed));

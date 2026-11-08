@@ -104,6 +104,7 @@ class SelfHostingTomlTest {
                         "plugins/jenkins-test",
                         "plugins/avro",
                         "plugins/schema-registry",
+                        "plugins/json-schema",
                         "plugins/jaxb",
                         "plugins/jooq",
                         "plugins/lint",

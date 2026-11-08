@@ -1,0 +1,15 @@
+# JSON Schemas as generated classes: [json-schema] runs jsonschema2pojo over src/main/resources/json
+# in the generate stage, a schema refers to another file by $ref, and the classes join the compile.
+name    = "json-events"
+group   = "com.acme"
+version = "1.0.0"
+java    = 25
+
+[application]
+main = "com.acme.Main"
+
+[json-schema]
+package = "com.acme.events"
+
+[dependencies]
+jackson-databind = { group = "com.fasterxml.jackson.core", version = "2.23.0" }
