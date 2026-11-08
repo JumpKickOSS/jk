@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -137,6 +138,12 @@ public final class MavenRepo {
 
     /** What put a repository out of the job, and whether the resolve goes on without it. */
     private record OutOfJob(String fault, boolean passedOver) {}
+
+    /**
+     * The sha256 of each store file verified in this job, by relative path, so a copy still holding
+     * those bytes is not confirmed again (a caller can reach the store before the group's memo).
+     */
+    private final ConcurrentHashMap<String, String> verified = new ConcurrentHashMap<>();
 
     /** Why every request to this repository is refused before it is sent; null when requests go out. */
     private volatile @Nullable String refusal;
@@ -858,6 +865,7 @@ public final class MavenRepo {
             Path placed = stored.path();
             if (mirror) {
                 placed = placeArtifact(coord, relativePath, stored.path(), stored.sha256());
+                verified.put(relativePath, stored.sha256());
                 if (!placed.equals(stored.path())) {
                     try {
                         Files.deleteIfExists(stored.path());
@@ -1099,6 +1107,7 @@ public final class MavenRepo {
                 && repoStore.readSha256Sidecar(relativePath).isEmpty();
         Optional<Fetched> local = tryLocalMirror(relativePath, expectedSha256);
         if (local.isEmpty() || expectedSha256 != null || (leg != Leg.ARTIFACT && !unvouched)) return local;
+        if (local.get().sha256().equalsIgnoreCase(verified.get(relativePath))) return local;
         return confirmed(coord, relativePath, local.get(), leg, abort, unvouched);
     }
 
@@ -1132,6 +1141,7 @@ public final class MavenRepo {
                     local.sha256(),
                     leg,
                     requirePublished)) {
+                verified.put(relativePath, local.sha256());
                 return Optional.of(local);
             }
             repoStore.evict(relativePath);
