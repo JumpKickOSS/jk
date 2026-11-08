@@ -200,8 +200,11 @@ writes the table from a POM's `avro-maven-plugin`
 A Kafka service often keeps its schemas in a registry rather than the tree. `[schema-registry]`
 downloads subjects from any registry that serves the Confluent API (Confluent Schema Registry and
 Cloud, Redpanda, Karapace, Apicurio's `/apis/ccompat/v7`) and hands them to the generator of
-their type. Avro subjects join `[avro]`'s inputs beside `src`, so the module still declares
-`[avro]`:
+their type. Avro subjects join `[avro]`'s inputs beside `src`, and Protobuf subjects are one
+more `[protobuf]` root, each file at the import path the schemas that use it name, so protoc finds
+it. A well-known type (`google/protobuf/*.proto`) is never downloaded: protoc reads it from
+`protobuf-java`, as it does for a proto in the tree. The module still declares the generator's own
+table:
 
 ```toml
 [avro]

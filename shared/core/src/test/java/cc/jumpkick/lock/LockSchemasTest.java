@@ -16,7 +16,14 @@ class LockSchemasTest {
     private static final String REGISTRY = "https://registry.example.com";
 
     private static final SchemaEntry ORDER = new SchemaEntry(
-            null, REGISTRY, "orders-value", 3, 101, "AVRO", "sha256:" + "a".repeat(64), List.of("money@1"));
+            null,
+            REGISTRY,
+            "orders-value",
+            3,
+            101,
+            "AVRO",
+            "sha256:" + "a".repeat(64),
+            List.of(new SchemaEntry.Ref("acme.Money", "money", 1)));
     private static final SchemaEntry MONEY =
             new SchemaEntry(null, REGISTRY, "money", 1, 7, "avro", "sha256:" + "b".repeat(64), List.of());
 
@@ -27,7 +34,7 @@ class LockSchemasTest {
         String text = LockfileWriter.render(lock);
 
         assertThat(text).contains("[[schema]]\nregistry = \"" + REGISTRY + "\"\nsubject  = \"money\"\nversion  = 1\n");
-        assertThat(text).contains("references = [\"money@1\"]");
+        assertThat(text).contains("references = [{ name = \"acme.Money\", subject = \"money\", version = 1 }]");
         assertThat(LockfileReader.parse(text).schemas()).containsExactly(MONEY, ORDER);
     }
 

@@ -20,10 +20,12 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -38,7 +40,7 @@ public final class SchemaFiles {
     public static final String EXTRA = "schema-registry";
 
     /** The plugin that generates code from each schema type. */
-    private static final Map<String, String> TYPE_BY_PLUGIN = Map.of("avro", "avro");
+    private static final Map<String, String> TYPE_BY_PLUGIN = Map.of("avro", "avro", "protobuf", "protobuf");
 
     /** A laid-out set: its directory and the digest the reading step is keyed by. */
     public record Dir(Path dir, String token) {}
@@ -82,9 +84,15 @@ public final class SchemaFiles {
                 dir.getFileName() + "." + ProcessHandle.current().pid() + ".tmp");
         PathUtil.deleteRecursivelyOrThrow(staging);
         for (SchemaEntry row : rows) {
-            Path file = staging.resolve(row.type()).resolve(fileName(row));
-            Files.createDirectories(file.getParent());
-            AtomicWrites.replace(file, text(row, declared, cas));
+            byte[] text = text(row, declared, cas);
+            Path root = staging.resolve(row.type());
+            for (String name : paths(row, rows)) {
+                Path file = root.resolve(name).normalize();
+                if (!file.startsWith(root))
+                    throw new IOException(row.subject() + ": reference name " + name + " leaves its directory");
+                Files.createDirectories(file.getParent());
+                AtomicWrites.replace(file, text);
+            }
         }
         AtomicWrites.replace(staging.resolve(COMPLETE), new byte[0]);
         PathUtil.deleteRecursivelyOrThrow(dir);
@@ -111,6 +119,24 @@ public final class SchemaFiles {
         }
         cas.put(served, sha);
         return served;
+    }
+
+    /**
+     * Where {@code row} is laid out: an Avro schema at its subject's file name; a Protobuf or JSON
+     * schema also at every name a schema of the set imports it by, since protoc and a {@code $ref}
+     * find a file by the path written in the schema.
+     */
+    static Set<String> paths(SchemaEntry row, List<SchemaEntry> rows) {
+        Set<String> out = new LinkedHashSet<>();
+        if (!row.type().equals("avro")) {
+            for (SchemaEntry other : rows) {
+                for (SchemaEntry.Ref ref : other.references()) {
+                    if (ref.key().equals(row.key())) out.add(ref.name());
+                }
+            }
+        }
+        if (out.isEmpty()) out.add(fileName(row));
+        return out;
     }
 
     /** The subject as a file name, with the type's extension. */

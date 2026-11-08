@@ -14,6 +14,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The {@code protoc} step: fork the fetched protoc binary over every {@code .proto} under the
@@ -64,6 +65,9 @@ final class ProtocStep {
         return matchers;
     }
 
+    /** The extra holding the Protobuf schemas the module's {@code [schema-registry]} table pins. */
+    static final String REGISTRY_SCHEMAS = "schema-registry";
+
     static void run(TaskExec exec) throws Exception {
         List<Path> protoDirs = new ArrayList<>();
         List<Path> protos = new ArrayList<>();
@@ -72,6 +76,12 @@ final class ProtocStep {
             Path protoDir = exec.moduleDir().resolve(root);
             protoDirs.add(protoDir);
             protos.addAll(protoFiles(protoDir, excluded));
+        }
+        // The subjects a [schema-registry] table pins, each at its import path, are one more root.
+        Optional<Path> registry = exec.extra(REGISTRY_SCHEMAS);
+        if (registry.isPresent()) {
+            protoDirs.add(registry.get());
+            protos.addAll(protoFiles(registry.get(), List.of()));
         }
         Path gen = exec.outputDir("gen");
         if (protos.isEmpty()) {

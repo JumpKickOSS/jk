@@ -27,6 +27,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class SchemaPins {
 
+    /** The import path prefix of Protobuf's well-known types. */
+    static final String WELL_KNOWN = "google/protobuf/";
+
     private SchemaPins() {}
 
     /**
@@ -75,9 +78,11 @@ public final class SchemaPins {
             byte[] text = served.schema().getBytes(StandardCharsets.UTF_8);
             String sha = Hashing.sha256Hex(text);
             cas.put(text, sha);
-            List<String> refs = new ArrayList<>();
+            List<SchemaEntry.Ref> refs = new ArrayList<>();
             for (RegistryClient.Reference ref : served.references()) {
-                refs.add(ref.key());
+                // Protobuf's well-known types come from protoc's includes, never from the registry.
+                if (ref.name().startsWith(WELL_KNOWN)) continue;
+                refs.add(new SchemaEntry.Ref(ref.name(), ref.subject(), ref.version()));
                 work.add(new String[] {ref.subject(), Integer.toString(ref.version())});
             }
             SchemaEntry row = new SchemaEntry(
