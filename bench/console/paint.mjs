@@ -9,10 +9,7 @@
 //
 // Prints `{ "samples": [ms, …] }`. Needs Node 22+ (the global WebSocket).
 
-import { spawn } from 'node:child_process';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { launch, sleep } from './cdp.mjs';
 
 const [chrome, url, runsArg] = process.argv.slice(2);
 if (!chrome || !url) {
@@ -20,48 +17,6 @@ if (!chrome || !url) {
   process.exit(2);
 }
 const runs = Number(runsArg || 10);
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'jk-paint-'));
-const browser = spawn(chrome, ['--headless=new', '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check',
-  '--disable-extensions', '--user-data-dir=' + profile, 'about:blank'], { stdio: 'ignore' });
-
-const exceptions = [];
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function devtoolsPort() {
-  const file = path.join(profile, 'DevToolsActivePort');
-  for (let i = 0; i < 200; i++) {
-    if (fs.existsSync(file)) {
-      const port = fs.readFileSync(file, 'utf8').split('\n')[0].trim();
-      if (port) return port;
-    }
-    await sleep(50);
-  }
-  throw new Error('chrome never wrote DevToolsActivePort');
-}
-
-function connect(wsUrl) {
-  const ws = new WebSocket(wsUrl);
-  let id = 0;
-  const pending = new Map();
-  ws.onmessage = (m) => {
-    const msg = JSON.parse(m.data);
-    if (msg.method === 'Runtime.exceptionThrown') exceptions.push(JSON.stringify(msg.params.exceptionDetails).slice(0, 600));
-    if (msg.id && pending.has(msg.id)) {
-      pending.get(msg.id)(msg);
-      pending.delete(msg.id);
-    }
-  };
-  const send = (method, params = {}) =>
-    new Promise((resolve) => {
-      const n = ++id;
-      pending.set(n, resolve);
-      ws.send(JSON.stringify({ id: n, method, params }));
-    });
-  return new Promise((resolve, reject) => {
-    ws.onopen = () => resolve({ send, close: () => ws.close() });
-    ws.onerror = reject;
-  });
-}
 
 const origin = new URL(url).origin;
 const token = (/[#&?]t=([^&]+)/.exec(new URL(url).hash) || [])[1] || '';
@@ -101,14 +56,11 @@ async function paintOnce(cdp) {
     expression: 'JSON.stringify((() => { const p = document.querySelector("#app").__vue_app__._container._vnode.component.proxy; return { sel: p.selectedSessionId, auto: p.consoleAutoSession, detail: p.sessionDetail && p.sessionDetail.session.id, view: p.view, conn: p.connection, loaded: p.sessionsLoaded, inflight: Object.keys(p._inflight), n: p.sessions.length, res: performance.getEntriesByType("resource").filter((e) => e.name.includes("/api/")).map((e) => e.name.split("/api/")[1].slice(0, 40) + "@" + Math.round(e.responseEnd)) }; })())',
     returnByValue: true,
   });
-  throw new Error('the console never marked its first paint: ' + JSON.stringify(why.result) + ' ' + exceptions.join(' | '));
+  throw new Error('the console never marked its first paint: ' + JSON.stringify(why.result) + ' ' + cdp.exceptions.join(' | '));
 }
 
+const cdp = await launch(chrome);
 try {
-  const port = await devtoolsPort();
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-  const page = targets.find((t) => t.type === 'page');
-  const cdp = await connect(page.webSocketDebuggerUrl);
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
   baseline = await activeRequests();
@@ -118,10 +70,7 @@ try {
     samples.push(await paintOnce(cdp));
     process.stderr.write(samples.length + ' ');
   }
-  cdp.close();
   console.log(JSON.stringify({ samples }));
 } finally {
-  browser.kill();
-  await sleep(200);
-  fs.rmSync(profile, { recursive: true, force: true });
+  await cdp.close();
 }

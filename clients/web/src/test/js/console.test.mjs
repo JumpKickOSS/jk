@@ -27,6 +27,7 @@ const {
   foldEpisodeIntoRail,
   foldIntoDetail,
   foldSessionFrame,
+  frameStamp,
   hostLabel,
   projectSessionRows,
   runAttempt,
@@ -39,6 +40,7 @@ const {
 } = await spa('console.js');
 const { historyCard } = await spa('fold.js');
 const { buildConsoleHash, buildProjectHash, routeFromHash } = await spa('route.js');
+const { consoleMethods } = await spa('consoleview.js');
 
 const NOW = 1_800_000_000_000;
 const ep = (over) => ({
@@ -348,4 +350,55 @@ test('routes: the console is the landing page and selects a session; the project
   assert.equal(routeFromHash('#project/p1').tab, 'runs');
   assert.equal(buildProjectHash({ projectId: 'p1', sessions: true }), '#project/p1/sessions');
   assert.equal(buildProjectHash({ projectId: 'p1', run: 4 }), '#project/p1/run/4');
+});
+
+test('an action or decision frame names when the engine published it; nothing else does', () => {
+  const action = { session: 'mcp-3f9a', action: { seq: 7, at: NOW, millis: 40, kind: 'find' } };
+  assert.deepEqual(frameStamp('action', action), { kind: 'action', id: 'mcp-3f9a#7', publishedAt: NOW + 40 });
+  assert.equal(frameStamp('action', { session: 'mcp-3f9a', action: { seq: 1 } }), null, 'no start time, no stamp');
+  const opened = { id: 'd1', question: 'Clean the cache?', createdAt: NOW, state: 'open' };
+  assert.deepEqual(frameStamp('decision', opened), { kind: 'decision', id: 'd1', publishedAt: NOW });
+  assert.deepEqual(frameStamp('decision', { change: 'opened', decision: opened }).id, 'd1');
+  assert.equal(frameStamp('decision', { ...opened, state: 'declined' }), null, 'a settled decision is not a new one');
+  assert.equal(frameStamp('episode', { episode: ep() }), null);
+  assert.equal(frameStamp('action', null), null);
+});
+
+test('a painted action or decision frame leaves a jk-console-event mark saying whether it is on screen', async () => {
+  const marks = [];
+  const saved = { performance: globalThis.performance, raf: globalThis.requestAnimationFrame, document: globalThis.document };
+  globalThis.performance = { mark: (name, opts) => marks.push({ name, detail: opts.detail }), clearMarks: () => {} };
+  globalThis.requestAnimationFrame = (f) => setTimeout(f, 0);
+  globalThis.document = { hidden: false };
+  try {
+    const vm = {
+      ...consoleMethods,
+      view: 'console',
+      decisions: [],
+      sessions: [],
+      sessionDetail: { session: { id: 'mcp-3f9a' }, episodes: [], actions: [] },
+      get needsYou() {
+        return this.decisions.map((d) => ({ id: d.id }));
+      },
+      $nextTick: (f) => f(),
+    };
+    vm.applyConsoleEvent({ type: 'action', data: { session: 'mcp-3f9a', action: { seq: 1, at: Date.now() - 30, millis: 10 } } });
+    vm.applyConsoleEvent({ type: 'action', data: { session: 'other', action: { seq: 2, at: Date.now(), millis: 0 } } });
+    vm.applyConsoleEvent({ type: 'decision', data: { id: 'd1', createdAt: Date.now(), state: 'open' } });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(marks.map((m) => m.name), ['jk-console-event', 'jk-console-event', 'jk-console-event']);
+    const [mine, other, decision] = marks.map((m) => m.detail);
+    assert.deepEqual([mine.kind, mine.id, mine.shown], ['action', 'mcp-3f9a#1', true]);
+    assert.ok(mine.latencyMs >= 20 && mine.paintedAt - mine.publishedAt === mine.latencyMs, JSON.stringify(mine));
+    assert.equal(other.shown, false, "another session's action is not on the selected timeline");
+    assert.deepEqual([decision.kind, decision.id, decision.shown], ['decision', 'd1', true]);
+    globalThis.document = { hidden: true };
+    vm.applyConsoleEvent({ type: 'decision', data: { id: 'd2', createdAt: Date.now(), state: 'open' } });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(marks.length, 3, 'a hidden tab marks nothing');
+  } finally {
+    globalThis.performance = saved.performance;
+    globalThis.requestAnimationFrame = saved.raf;
+    globalThis.document = saved.document;
+  }
 });

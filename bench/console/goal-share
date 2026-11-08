@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""How often agents name a goal, from the local session journal: episodes and their runs by title
+source (goal, lastGoal, inferred), per MCP client. Reads only; run it after normal use.
+
+    bench/console/goal-share                  # $JK_STATE_DIR, else $JK_HOME/state, else ~/.jk/state
+    bench/console/goal-share --days 7         # sessions active in the last week
+    bench/console/goal-share --state DIR      # another engine's state dir
+    bench/console/goal-share --json
+
+An episode's title source says how it got its title: `goal` when a call named one, `lastGoal` when
+work with no goal started it and it took the session's last goal, `inferred` when the session had
+none. The PRD measure is the share of MCP `run` calls carrying `goal` (target 90%); the journal
+records episodes, not each call's arguments, so the `runs` share counts the runs in episodes a goal
+titled. A run without a goal that joins such an episode counts as one with, so read the share as
+an upper bound, and the `lastGoal` and `inferred` runs as calls that certainly carried none.
+Episodes without runs (a session that only asked the graph) are listed but carry no run.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from collections import defaultdict
+from pathlib import Path
+
+SOURCES = ("goal", "lastGoal", "inferred")
+TARGET = 0.90
+
+
+def state_dir(arg: str | None) -> Path:
+    if arg:
+        return Path(arg).expanduser()
+    if os.environ.get("JK_STATE_DIR"):
+        return Path(os.environ["JK_STATE_DIR"]).expanduser()
+    return Path(os.environ.get("JK_HOME", Path.home() / ".jk")).expanduser() / "state"
+
+
+def tally(sessions_dir: Path, since_ms: int) -> dict[str, dict]:
+    """Per client: sessions, and episodes and runs by title source."""
+    out: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "episodes": dict.fromkeys(SOURCES, 0),
+                                                "runs": dict.fromkeys(SOURCES, 0)})
+    for doc in sorted(sessions_dir.glob("*/session.json")):
+        try:
+            data = json.loads(doc.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        s = data.get("session") or {}
+        if s.get("origin") != "mcp" or (s.get("lastActiveAt") or 0) < since_ms:
+            continue
+        row = out[s.get("client") or "unnamed"]
+        row["sessions"] += 1
+        for ep in data.get("episodes") or []:
+            src = ep.get("titleSource") if ep.get("titleSource") in SOURCES else "inferred"
+            row["episodes"][src] += 1
+            row["runs"][src] += int(ep.get("runs") or 0)
+    return dict(out)
+
+
+def share(counts: dict) -> float | None:
+    total = sum(counts.values())
+    return counts["goal"] / total if total else None
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--state", help="the engine state dir to read (default: $JK_STATE_DIR, else $JK_HOME/state)")
+    ap.add_argument("--days", type=float, help="only sessions active in the last N days")
+    ap.add_argument("--json", action="store_true")
+    ns = ap.parse_args(argv)
+    sessions = state_dir(ns.state) / "builds" / "sessions"
+    if not sessions.is_dir():
+        print(f"no session journal at {sessions}", file=sys.stderr)
+        return 1
+    since = int((time.time() - ns.days * 86400) * 1000) if ns.days else 0
+    rows = tally(sessions, since)
+    if ns.json:
+        print(json.dumps({c: {**r, "goalShareOfRuns": share(r["runs"])} for c, r in rows.items()}, indent=1))
+        return 0
+    if not rows:
+        print(f"no MCP sessions in {sessions}")
+        return 0
+    head = f"{'client':<20} {'sessions':>8}  {'episodes goal/last/inferred':>27}  {'runs goal/last/inferred':>23}  goal share of runs"
+    print(head)
+    for client, r in sorted(rows.items(), key=lambda x: -sum(x[1]["runs"].values())):
+        e, n = r["episodes"], r["runs"]
+        s = share(n)
+        verdict = "—" if s is None else f"{s:.0%} {'≥' if s >= TARGET else '<'} {TARGET:.0%}"
+        print(f"{client:<20} {r['sessions']:>8}  {'/'.join(str(e[k]) for k in SOURCES):>27}  "
+              f"{'/'.join(str(n[k]) for k in SOURCES):>23}  {verdict}")
+    print("\nA run that joined a goal's episode without its own goal counts as one with: the share is an upper bound.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -26,7 +26,7 @@ stopped providing.
 | `failure.js` | Diagnostics → the test and compile failure report models (CLI parity) |
 | `cards.js` | A run card's methods for the console's live builds and the run page: progress, ETA, badge, diagnostics |
 | `console.js` | The console's view models: the sessions rail, the session log's frames folded, an episode's timeline, its header and arc, earlier episodes, the right rail, the run page's attempt, the project's Sessions tab |
-| `consoleview.js` | The console's root-component mixins: `/api/sessions`, one session's page, `/api/decisions`, the log and decision frames, the first-paint mark |
+| `consoleview.js` | The console's root-component mixins: `/api/sessions`, one session's page, `/api/decisions`, the log and decision frames, the first-paint and event marks |
 | `needs.js` | The Needs-you banner: open decisions, the `decision` frame folded, a 404 read as "no queue" |
 | `strip.js` | A run as one line: what it is doing, one cell per module, and which modules the run page opens (failed, slow) |
 | `status.js` | The Status view: the `/api/{status,cache,metrics,log,config}` reads and its meters |
@@ -143,6 +143,16 @@ navigation start), once per load. The scoreboard's `console` dimension
 the DevTools protocol against a private engine serving this tree's `web/` and banks the median as
 `console.paint.p50`; the PRD target is 500 ms. The mounted hook starts the console's reads before
 the history and status reads so the paint does not wait on them.
+
+**Event marks.** Each `action` frame and each `decision` frame that opens one, once Vue has patched
+it in and the browser has painted it, leaves `performance.mark('jk-console-event', { detail })`
+(`markConsoleEvent`). `detail` holds the frame's `kind`, `id` and `publishedAt` (`frameStamp` in
+`console.js`: an action's `at + millis`, a decision's `createdAt`), `paintedAt`, `latencyMs`
+between them, and `shown`: the console is up and the frame is on it (the selected session's
+timeline, the Needs-you banner). A hidden tab marks nothing, and a page clears its marks every 500.
+The same dimension's `bench/console/live.mjs` reads them for `console.event.p95` (target 250 ms) and
+`console.decision.p50` (target 2 s), and times the supervisor checklist's five answers on fresh
+loads for `console.checklist.max` (target 5 s each).
 
 ## Project routes
 

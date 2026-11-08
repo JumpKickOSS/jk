@@ -14,6 +14,7 @@ import {
   foldEpisodeIntoRail,
   foldIntoDetail,
   foldSessionFrame,
+  frameStamp,
   projectSessionRows,
   runAttempt,
   sessionChanges,
@@ -32,6 +33,8 @@ const RAIL_LIMIT = 50;
 const PROJECT_LIMIT = 200;
 /** Session pages the Sessions tab loads to list each one's episodes on the project. */
 const PROJECT_PAGES = 20;
+/** Event marks a page keeps before it clears them, so a tab left open for days does not grow. */
+const EVENT_MARKS = 500;
 
 /** The data the console adds to the root component. */
 export function consoleData(route) {
@@ -173,13 +176,49 @@ export const consoleMethods = {
     if (type === SSE.decision) {
       this.decisions = foldDecision(this.decisions, data);
       this.decisionEvent = data; // the open #decision/<id> page follows it too
+      const stamp = frameStamp(type, data);
+      if (stamp) this.markConsoleEvent(stamp, () => this.needsYou.some((d) => d.id === stamp.id));
       return true;
     }
     if (type !== LOG.session && type !== LOG.episode && type !== LOG.action) return false;
     if (type === LOG.session) this.sessions = foldSessionFrame(this.sessions, data);
     if (type === LOG.episode) this.sessions = foldEpisodeIntoRail(this.sessions, data);
     this.sessionDetail = foldIntoDetail(this.sessionDetail, type, data);
+    const stamp = frameStamp(type, data);
+    if (stamp) {
+      const shown = () => {
+        const detail = this.sessionDetail;
+        return !!detail && !!detail.session && detail.session.id === data.session && (detail.actions || []).some((a) => a.seq === data.action.seq);
+      };
+      this.markConsoleEvent(stamp, shown);
+    }
     return true;
+  },
+  /**
+   * An action or decision frame on screen: once Vue has patched it in and the browser has painted
+   * it, `performance.mark('jk-console-event', { detail })` with the frame's `kind`, `id` and
+   * `publishedAt`, the wall clock it painted at (`paintedAt`), `latencyMs` between the two, and
+   * `shown`: whether the console is up and the frame is on it (the selected session's timeline,
+   * the Needs-you banner). The scoreboard's console dimension reads these. A hidden tab, which
+   * gets no frames to paint, marks nothing.
+   */
+  markConsoleEvent(stamp, shown) {
+    if (typeof performance === 'undefined' || typeof performance.mark !== 'function') return;
+    if (typeof requestAnimationFrame !== 'function' || typeof document === 'undefined' || document.hidden) return;
+    this.$nextTick(() =>
+      requestAnimationFrame(() =>
+        setTimeout(() => {
+          this._eventMarks = (this._eventMarks || 0) + 1;
+          if (this._eventMarks > EVENT_MARKS) {
+            performance.clearMarks('jk-console-event');
+            this._eventMarks = 1;
+          }
+          const paintedAt = Date.now();
+          const detail = { ...stamp, paintedAt, latencyMs: paintedAt - stamp.publishedAt, shown: this.view === 'console' && shown() };
+          performance.mark('jk-console-event', { detail });
+        }, 0),
+      ),
+    );
   },
   /**
    * Runs are not action frames: a finished run reaches the selected session's page on its next
