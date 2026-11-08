@@ -287,6 +287,26 @@ class PomTestPluginImportTest {
     }
 
     @Test
+    void compiler_proc_none_becomes_a_javac_arg(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>svc</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                    <configuration><proc>none</proc></configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().javac().args()).contains("-proc:none");
+    }
+
+    @Test
     void failsafe_includes_and_excludes_are_the_integration_suites_classes(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
                 <project>

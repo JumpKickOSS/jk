@@ -317,7 +317,17 @@ final class PluginFacts {
                     .orElse(false);
             if (on && !args.contains(e.getValue())) args.add(e.getValue());
         }
+        // <proc> is javac's -proc: none, only, full; a later configuration's value replaces an
+        // earlier one, as an execution's does the plugin's.
+        String proc = usable(text(config.getChild("proc")));
+        if (proc != null && PROC_VALUES.contains(proc)) {
+            args.removeIf(a -> a.startsWith("-proc:"));
+            args.add("-proc:" + proc);
+        }
     }
+
+    /** The values of maven-compiler-plugin's {@code <proc>}: javac's own. */
+    private static final Set<String> PROC_VALUES = Set.of("none", "only", "full");
 
     static void collectCompilerArgs(Xpp3Dom config, List<String> args) {
         Xpp3Dom list = config.getChild("compilerArgs");
