@@ -40,6 +40,14 @@ final class PluginConditions {
             }
             return new PluginDescriptor.Condition.ConfigVersion(key, bound, atLeast);
         }
+        if (when.contains("config") && when.contains("set")) {
+            String key = when.getString("config");
+            Boolean set = when.getBoolean("set");
+            if (key == null || set == null) {
+                throw new JkBuildParseException(where + ".when needs `config = \"<key>\"` and `set = true|false`");
+            }
+            return new PluginDescriptor.Condition.ConfigSet(key, set);
+        }
         if (when.contains("config")) {
             String key = when.getString("config");
             String equals = when.getString("equals");
@@ -58,7 +66,7 @@ final class PluginConditions {
             return new PluginDescriptor.Condition.KotlinProject();
         }
         throw new JkBuildParseException(where + ".when has no known predicate (classpath-has, config/equals,"
-                + " config/at-least, config/below, native-declared, kotlin-project)");
+                + " config/at-least, config/below, config/set, native-declared, kotlin-project)");
     }
 
     private static void requireTrue(TomlTable when, String key, String where) {

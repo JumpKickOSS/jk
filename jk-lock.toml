@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.50.4-SNAPSHOT"
-generated-by-build = "13fc90e6191b"
-generated-by-build-time = "2026-11-08T05:43:17Z"
+generated-by-build = "d3a09574a5a9"
+generated-by-build-time = "2026-11-08T05:49:34Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "92c86d9c22c14925c6d88a2162beea090cc5796f15ac4246b3c1dcd6c32ce4a1"
+manifests-sha256 = "420d2ef4d74a7e9c1c4acaacd43ea88ccf7ee92798c14087e52f6838061b55f2"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -1027,7 +1027,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:5c3881e4f556855e9c532927ee0c9dfde94cc66760d5805c031a59887070af5f"
 scopes   = ["main", "test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/avro", "plugins/image-builder"]
+members  = ["plugins/asyncapi", "plugins/avro", "plugins/image-builder"]
 
 [[artifact]]
 name     = "commons-codec:commons-codec:jar:"
@@ -4580,7 +4580,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:44508fd1576500688c790b190acdd16fec4f8c79a3e0b900afd70503cf055f55"
 scopes   = ["test"]
 licenses = ["MIT"]
-members  = ["plugins/avro"]
+members  = ["plugins/asyncapi", "plugins/avro"]
 
 [[artifact]]
 name     = "org.slf4j:slf4j-api:jar:"

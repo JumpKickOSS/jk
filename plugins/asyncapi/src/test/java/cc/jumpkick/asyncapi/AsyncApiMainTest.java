@@ -89,12 +89,7 @@ class AsyncApiMainTest {
         Path doc = tmp.resolve("asyncapi.yaml");
         Files.writeString(doc, V2);
 
-        AsyncApiMain.extract(doc, tmp.resolve("out"));
-
-        assertThat(tmp.resolve("out/UserSignedUp.json")).exists();
-        try (var files = Files.list(tmp.resolve("out"))) {
-            assertThat(files).hasSize(1);
-        }
+        assertThat(AsyncApiMain.extract(doc, tmp.resolve("out"))).containsExactly(tmp.resolve("out/UserSignedUp.json"));
     }
 
     @Test
@@ -111,6 +106,24 @@ class AsyncApiMainTest {
         assertThat(Files.readString(out.resolve("com/acme/orders/Order.java"))).contains("private Money total;");
     }
 
+    /** An Avro payload compiles with the Avro compiler when the table sets avro. */
+    @Test
+    void an_avro_payload_compiles_beside_the_json_ones(@TempDir Path tmp) throws Exception {
+        Path doc = tmp.resolve("asyncapi.yaml");
+        Files.writeString(
+                doc,
+                V2.replace(
+                        "payload: { type: record, name: Avro, fields: [] }",
+                        "payload: { type: record, name: UserAvro, namespace: com.acme.avro, fields: [{ name: id, type: long }] }"));
+        Path out = tmp.resolve("gen");
+
+        AsyncApiMain.main(
+                new String[] {"-t", out.toString(), "-p", "com.acme.users", AsyncApiMain.AVRO, "--", doc.toString()});
+
+        assertThat(out.resolve("com/acme/users/UserSignedUp.java")).exists();
+        assertThat(out.resolve("com/acme/avro/UserAvro.java")).exists();
+    }
+
     @Test
     void the_table_names_its_documents_and_flags() {
         GeneratorEntry entry = AsyncApiPreset.entry(
@@ -121,6 +134,10 @@ class AsyncApiMainTest {
         assertThat(entry.inputs()).containsExactly("src/main/asyncapi/asyncapi.yaml");
         assertThat(entry.args())
                 .containsExactly("-t", "${out}", "-a", "JACKSON", "-p", "com.acme", "-303", "-D", "--", "${inputs}");
+        assertThat(entry.classpath()).hasSize(2);
+        assertThat(AsyncApiPreset.entry(new PluginConfig("asyncapi", Map.of("avro", "1.12.2")), List.of())
+                        .args())
+                .contains(AsyncApiMain.AVRO);
     }
 
     @Test

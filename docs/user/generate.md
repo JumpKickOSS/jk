@@ -251,13 +251,15 @@ package                 = "com.acme.orders"
 # additional-properties = true
 # date-time-type        = "java.time.OffsetDateTime"
 # version               = "1.3.3"        # the jsonschema2pojo release
+# avro                  = "1.12.2"       # compile Avro payloads with this Avro; keep the avro dependency at it
 
 [dependencies]
 jackson-databind = "2.23.0"
 ```
 
-The step is `generate-asyncapi`. A payload in another `schemaFormat` (Avro, Protobuf) is skipped
-with a warning, and channel, operation and listener code is not generated: jk makes the payload
+The step is `generate-asyncapi`. An Avro payload (`schemaFormat: application/vnd.apache.avro…`)
+compiles with Avro's own compiler when `avro` names a release, and is skipped with a warning when
+it does not; a Protobuf payload is skipped with a warning, and channel, operation and listener code is not generated: jk makes the payload
 classes your own code sends and receives.
 
 ## `[schema-registry]` — schemas from a registry

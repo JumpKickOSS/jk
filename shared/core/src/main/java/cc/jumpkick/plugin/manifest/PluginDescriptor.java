@@ -491,6 +491,9 @@ public record PluginDescriptor(
          */
         record ConfigVersion(String key, String bound, boolean atLeast) implements Condition {}
 
+        /** Owned-table key is set ({@code set}) or left out: a contribution only some tables need. */
+        record ConfigSet(String key, boolean set) implements Condition {}
+
         /** Project declares {@code [native]}. */
         record NativeDeclared() implements Condition {}
 
