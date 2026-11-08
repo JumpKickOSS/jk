@@ -4,15 +4,12 @@ package cc.jumpkick.repo;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.ConnectFaults;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
-import java.net.SocketTimeoutException;
-import java.net.http.HttpTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -155,12 +152,6 @@ public final class RepoGroup {
      * change no answer a memo holds.
      */
     private final List<RepositorySpec> blocked;
-
-    /**
-     * Repositories that gave no answer in time this run: asked only after every other candidate
-     * missed, so a coordinate another repository serves stops waiting out their timeout.
-     */
-    private final Set<MavenRepo> silent = ConcurrentHashMap.newKeySet();
 
     public RepoGroup(List<MavenRepo> repos) {
         this(repos, null);
@@ -561,13 +552,13 @@ public final class RepoGroup {
         // order: the answer a repo-by-repo walk gives, at the wall of the slowest remote rather than
         // the sum of them.
         boolean fanOut = asked.size() > 1 && (!wanted.isEmpty() || snapshots);
-        // A repository that gave no answer this run is asked on its own turn, if it comes to that.
-        List<MavenRepo> fanned =
-                fanOut ? asked.stream().filter(r -> !silent.contains(r)).toList() : List.of();
         List<RepoLegs.Leg<List<String>>> catalogs =
-                fanOut ? RepoLegs.legs(fanned, repo -> repo.availableVersions(coord)) : List.of();
+                fanOut ? RepoLegs.legs(asked, repo -> repo.availableVersions(coord)) : List.of();
         LinkedHashSet<String> union = new LinkedHashSet<>();
         boolean releaseFound = false;
+        // A repository passed over said nothing about the coordinate, so the walk's answer is this
+        // resolve's alone: the next one asks it again, and must not read this answer from the memo.
+        boolean passedOver = false;
         IOException firstFailure = null;
         try {
             for (int i = 0; i < asked.size(); i++) {
@@ -575,20 +566,19 @@ public final class RepoGroup {
                 if (releaseFound && union.containsAll(wanted) && !(snapshots && repo.servesSnapshots())) continue;
                 List<String> found;
                 try {
-                    int leg = fanned.indexOf(repo);
-                    found = leg >= 0 ? RepoLegs.await(catalogs.get(leg).future()) : repo.availableVersions(coord);
+                    found = fanOut ? RepoLegs.await(catalogs.get(i).future()) : repo.availableVersions(coord);
                 } catch (MavenRepo.RepositoryUnreachableException dead) {
                     // Nothing answers there: the resolve stops, as on the POM leg, unless the
-                    // repository is one it can do without.
-                    if (!repo.passable()) throw dead;
+                    // repository is one it goes on without.
+                    if (!repo.passedOver()) throw dead;
                     passOver(repo);
+                    passedOver = true;
                     continue;
                 } catch (IOException transport) {
                     // One remote's 429, 5xx or reset is that remote's problem, not an answer about the
                     // coordinate: the remaining candidates are still asked. Said once per run per
                     // repository, because a warm multi-repo lock asks this hundreds of times.
                     if (firstFailure == null) firstFailure = transport;
-                    noAnswer(repo, transport);
                     RunNotices.warnOnce(
                             "repo-unreachable:" + repo.name(),
                             () -> "jk: warning: repository " + repo.name() + " is unreachable (" + describe(transport)
@@ -615,7 +605,7 @@ public final class RepoGroup {
         // every expand. Expires like any other entry: an artifact that does not exist yet may exist
         // later.
         List<String> immutable = List.copyOf(union);
-        if (memoable) {
+        if (memoable && !passedOver) {
             long now = Clock.SYSTEM.nanos();
             long swept = VERSIONS_SWEPT_AT.get();
             if (now - swept >= VERSIONS_TTL_NANOS && VERSIONS_SWEPT_AT.compareAndSet(swept, now)) {
@@ -693,12 +683,12 @@ public final class RepoGroup {
         }
         int before = out.size();
         for (int i = priorityCount; i < repos.size(); i++) {
-            if (unbound(i) && !silent.contains(repos.get(i))) out.add(repos.get(i));
+            if (unbound(i)) out.add(repos.get(i));
         }
         // Safety: if every trailing repo is bound and none claimed this group, fall back to
         // all of them (otherwise unbound coords would be unresolvable).
         if (out.size() == before) {
-            for (MavenRepo r : repos.subList(priorityCount, repos.size())) if (!silent.contains(r)) out.add(r);
+            out.addAll(repos.subList(priorityCount, repos.size()));
         }
         return out;
     }
@@ -729,32 +719,9 @@ public final class RepoGroup {
         }
         for (int i = priorityCount; i < repos.size(); i++) {
             MavenRepo r = repos.get(i);
-            if (!unbound(i) && !alreadyAsked.contains(r) && !silent.contains(r)) out.add(r);
-        }
-        for (MavenRepo r : repos.subList(priorityCount, repos.size())) {
-            if (silent.contains(r) && !alreadyAsked.contains(r) && !out.contains(r)) out.add(r);
+            if (!unbound(i) && !alreadyAsked.contains(r)) out.add(r);
         }
         return out;
-    }
-
-    /**
-     * Records that {@code repo} gave no answer in time (a timeout anywhere in the cause chain): for
-     * the rest of this run it is asked only after the others missed. Said once.
-     */
-    private void noAnswer(MavenRepo repo, IOException failure) {
-        boolean silence = false;
-        for (Throwable c = failure; c != null && !silence; c = c.getCause() == c ? null : c.getCause()) {
-            silence = c instanceof Http.NoAnswerException
-                    || c instanceof HttpTimeoutException
-                    || c instanceof SocketTimeoutException;
-        }
-        if (!silence) return;
-        if (silent.add(repo)) {
-            RunNotices.warnOnce(
-                    "repo-silent:" + repo.name(),
-                    () -> "jk: warning: repository " + repo.name() + " gave no answer; asked last for the rest of"
-                            + " this run");
-        }
     }
 
     /**
@@ -890,7 +857,7 @@ public final class RepoGroup {
                     // repository is passable, which is then a miss like a blocked one. Pinned bytes
                     // still fall through — the lock's sha256 says what is accepted.
                     MavenRepo repo = wave.get(i);
-                    if (resolve && repo.passable()) {
+                    if (resolve && repo.passedOver()) {
                         passOver(repo);
                         continue;
                     }
@@ -901,7 +868,6 @@ public final class RepoGroup {
                     // arrives is still checked against the lock's sha256, so where it came from does
                     // not change what is accepted. If nobody answers, the fan-out settles on the failure.
                     fanOut.failed(wave.get(i), transport);
-                    noAnswer(wave.get(i), transport);
                 }
             }
         } finally {
@@ -910,7 +876,10 @@ public final class RepoGroup {
         return Optional.empty();
     }
 
-    /** Said once per run: a passable repository nothing answers at, or that refuses access, is asked nothing more. */
+    /**
+     * Said once per run: a repository the resolve goes on without — one that got no answer in time,
+     * or a passable one nothing answers at or that refuses access — is asked nothing more.
+     */
     private static void passOver(MavenRepo repo) {
         RunNotices.warnOnce(
                 "repo-passed-over:" + repo.name(),
@@ -919,13 +888,13 @@ public final class RepoGroup {
     }
 
     /**
-     * The passable repositories here that nothing answered at or that refused access: asked
+     * The repositories here the resolve went on without ({@link MavenRepo#passedOver}): asked
      * nothing more, named when a package resolves nowhere.
      */
     public List<MavenRepo> passedOver() {
         List<MavenRepo> out = new ArrayList<>();
         for (MavenRepo repo : repos) {
-            if (repo.passable() && repo.unreachableFault() != null) out.add(repo);
+            if (repo.passedOver()) out.add(repo);
         }
         return List.copyOf(out);
     }

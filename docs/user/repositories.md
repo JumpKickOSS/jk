@@ -63,10 +63,12 @@ coordinate, and a miss there is asked of the other remotes. Declared `groups` on
 
 ### A repository that does not answer
 
-A repository that gives no answer within the request timeout (60 s) is asked last for the rest of
-the run, and jk says so once: a coordinate another repository serves no longer waits on it, and
-one only it serves still reaches it. A GitLab project package registry asked for Central's
-artifacts is the usual case.
+A repository that gives no answer within the request timeout (60 s) is passed over for the rest of
+the resolve, as a blocked one is, and jk says so once: the timeout is paid once, not once per
+coordinate, and a package only it serves fails naming it. The next resolve asks it again. A GitLab
+project package registry asked for Central's artifacts is the usual case. A repository a mirror
+stands in for is the exception: the mirror is the only route to it, so its silence stops the
+resolve.
 
 ### When Central refuses this host
 

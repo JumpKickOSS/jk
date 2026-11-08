@@ -331,8 +331,11 @@ public final class Http {
                 Objects.requireNonNull(authorization, "authorization"));
     }
 
-    /** Visible for tests — this client with another {@link #REQUEST_TIMEOUT}, so a silent server is proven in milliseconds. */
-    Http withRequestTimeout(Duration timeout) {
+    /**
+     * This client waiting {@code timeout} rather than {@link #REQUEST_TIMEOUT} for a response to
+     * start, so a test proves a silent server in milliseconds.
+     */
+    public Http withRequestTimeout(Duration timeout) {
         return new Http(
                 client,
                 backoffs,

@@ -101,6 +101,7 @@ public final class MavenMetadataCache {
     private final Path dir;
     private final Duration ttl;
     private final HostRateLimiter limiter;
+    private final RequestGate gate;
 
     /** A cache whose GETs run under the process-wide per-host limiter. */
     public MavenMetadataCache(Http http, Path dir, Duration ttl) {
@@ -109,10 +110,16 @@ public final class MavenMetadataCache {
 
     /** A cache whose GETs run under {@code limiter}'s per-host permits. */
     public MavenMetadataCache(Http http, Path dir, Duration ttl, HostRateLimiter limiter) {
+        this(http, dir, ttl, limiter, RequestGate.OPEN);
+    }
+
+    /** As above, each GET sent through {@code gate} once it holds its permit. */
+    MavenMetadataCache(Http http, Path dir, Duration ttl, HostRateLimiter limiter, RequestGate gate) {
         this.http = Objects.requireNonNull(http, "http");
         this.dir = Objects.requireNonNull(dir, "dir");
         this.ttl = Objects.requireNonNull(ttl, "ttl");
         this.limiter = Objects.requireNonNull(limiter, "limiter");
+        this.gate = Objects.requireNonNull(gate, "gate");
     }
 
     /**
@@ -230,7 +237,7 @@ public final class MavenMetadataCache {
 
     /** One GET under the host's permit: a catalog read is bounded per host as an artifact download is. */
     private HttpResponse<byte[]> get(URI uri, Map<String, String> headers) throws IOException, InterruptedException {
-        return limiter.run(uri, () -> http.get(uri, headers));
+        return limiter.run(uri, () -> gate.send(() -> http.get(uri, headers)));
     }
 
     /** A cached body worth validating: present and non-empty. */

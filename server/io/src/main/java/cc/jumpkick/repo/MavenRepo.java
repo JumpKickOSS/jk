@@ -9,6 +9,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.http.ConnectFaults;
+import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.HttpStatusException;
 import cc.jumpkick.http.SafeUri;
@@ -126,12 +127,16 @@ public final class MavenRepo {
 
     /**
      * The fault that put this repository out of the job, once a request met one — nothing answers
-     * at its address, or a {@linkplain #passable passable} one refuses access — so it is asked
-     * nothing more for the rest of the job; else null. An address that answers nothing is also
-     * remembered process-wide by {@link ConnectFaults}, so a fresh object over the same URL is
-     * refused before it dials as well.
+     * at its address, a request got no answer within the timeout, or a {@linkplain #passable
+     * passable} one refuses access — so it is asked nothing more for the rest of the job; else null.
+     * The job is this object's life: a resolve builds its repositories afresh, so the next one asks
+     * again. An address that refuses connections is also remembered process-wide by {@link
+     * ConnectFaults}, so a fresh object over the same URL is refused before it dials as well.
      */
-    private final AtomicReference<@Nullable String> unreachable = new AtomicReference<>();
+    private final AtomicReference<@Nullable OutOfJob> unreachable = new AtomicReference<>();
+
+    /** What put a repository out of the job, and whether the resolve goes on without it. */
+    private record OutOfJob(String fault, boolean passedOver) {}
 
     /** Why every request to this repository is refused before it is sent; null when requests go out. */
     private volatile @Nullable String refusal;
@@ -420,6 +425,11 @@ public final class MavenRepo {
         this.servesSnapshots = servesSnapshots;
         this.optional = optional;
         this.http = httpOrNull;
+        // Under the permit, a request is refused once this repository is out of the job, and its
+        // silence puts the repository out before the permit goes to a request queued behind it.
+        RequestGate gate = new RequestGate(this::refuseIfUnreachable, failure -> {
+            if (outOfJobSilence(failure) != null) unreachableOr(failure);
+        });
         // The metadata cache speaks HTTP directly (conditional GET), so it only
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
         // with an Http client but must keep enumerating via the transport. A loopback port names
@@ -428,10 +438,13 @@ public final class MavenRepo {
         Duration ttl =
                 RepositorySpec.loopback(this.fetchBase.getHost()) ? Duration.ZERO : MavenMetadataCache.DEFAULT_TTL;
         this.metadataCache = (httpOrNull != null && isHttp(this.fetchBase))
-                ? new MavenMetadataCache(httpOrNull, metadataDir(), ttl)
+                ? new MavenMetadataCache(httpOrNull, metadataDir(), ttl, HostRateLimiter.shared(), gate)
                 : null;
-        this.download = new DownloadLeg(name, this.fetchBase, transport, credential, storeDir(), allowUnverified);
-        if (mirror != null && mirror.refusal() != null) unreachable.set("jk refuses it: " + mirror.refusal());
+        this.download =
+                new DownloadLeg(name, this.fetchBase, gate.over(transport), credential, storeDir(), allowUnverified);
+        if (mirror != null && mirror.refusal() != null) {
+            unreachable.set(new OutOfJob("jk refuses it: " + mirror.refusal(), false));
+        }
     }
 
     /**
@@ -482,7 +495,18 @@ public final class MavenRepo {
 
     /** The fault that put this repository out of the rest of the job, or null. */
     public @Nullable String unreachableFault() {
-        return unreachable.get();
+        OutOfJob out = unreachable.get();
+        return out == null ? null : out.fault();
+    }
+
+    /**
+     * True once this repository is out of the job and the resolve goes on without it, as it does
+     * without a blocked one: a {@linkplain #passable passable} one, or any but a mirrored one that
+     * got no answer within the timeout. Otherwise its fault stops the resolve.
+     */
+    public boolean passedOver() {
+        OutOfJob out = unreachable.get();
+        return out != null && out.passedOver();
     }
 
     /** True when {@code version} is of a kind this repository is asked for; see {@link #servesSnapshots()}. */
@@ -949,8 +973,8 @@ public final class MavenRepo {
             throw new IOException(
                     "repository " + name + " at " + SafeUri.forMessage(baseUrl) + " is not asked: " + why);
         }
-        String fault = unreachable.get();
-        if (fault != null) throw unreachableFailure(fault, null);
+        OutOfJob out = unreachable.get();
+        if (out != null) throw unreachableFailure(out.fault(), null);
     }
 
     /** The failure for {@code fault}: naming the mirror when one stands in for this repository. */
@@ -962,33 +986,34 @@ public final class MavenRepo {
 
     /**
      * {@code transport} as this repository's unreachable failure when its cause is connect-level,
-     * or — for a {@linkplain #passable passable} one, or one a mirror stands in for — when it got no
-     * HTTP answer at all (reset, dropped, timed out) or an answer refusing access (401, 403), which
-     * Maven passes over as well: remembered, so the repository is asked nothing more. Else {@code
-     * transport} itself.
+     * when it waited out the request timeout, or — for a {@linkplain #passable passable} one, or one
+     * a mirror stands in for — when it got no HTTP answer at all (reset, dropped) or an answer
+     * refusing access (401, 403), which Maven passes over as well: remembered, so the repository is
+     * asked nothing more. Else {@code transport} itself.
      */
     private IOException unreachableOr(IOException transport) {
         boolean answersMatter = passable() || mirror != null;
         String fault = ConnectFaults.describe(transport);
-        if (fault == null && answersMatter) fault = silence(transport);
+        String silent = fault == null ? outOfJobSilence(transport) : null;
+        if (silent != null) fault = silent;
         if (fault == null && answersMatter) fault = refusal(transport);
         if (fault == null) return transport;
         String unrefreshed = notRefreshed(transport);
         if (unrefreshed != null) fault = fault + "; " + unrefreshed;
-        unreachable.compareAndSet(null, fault);
+        unreachable.compareAndSet(null, new OutOfJob(fault, mirror == null && (silent != null || passable())));
         return unreachableFailure(fault, transport);
     }
 
-    /** The no-answer failure in {@code failure}'s cause chain as one line naming what it met, or null. */
-    private static @Nullable String silence(Throwable failure) {
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
-            if (t instanceof Http.NoAnswerException noAnswer) {
-                Throwable met = noAnswer.getCause() == null ? noAnswer : noAnswer.getCause();
-                String detail = met.getMessage();
-                return met.getClass().getSimpleName() + (detail == null || detail.isBlank() ? "" : ": " + detail);
-            }
-        }
-        return null;
+    /**
+     * The silence in {@code failure} that puts this repository out of the job, as one line, or null.
+     * A timeout does for any repository: asked again, it would only wait as long, and a GitLab
+     * registry asked for Central's artifacts would cost the timeout per coordinate. A reset or a
+     * dropped request does only for a passable or mirrored one; elsewhere it is that request's alone.
+     */
+    private @Nullable String outOfJobSilence(Throwable failure) {
+        if (ConnectFaults.describe(failure) != null) return null;
+        if (!RequestGate.timedOut(failure) && !passable() && mirror == null) return null;
+        return RequestGate.silence(failure);
     }
 
     /**
