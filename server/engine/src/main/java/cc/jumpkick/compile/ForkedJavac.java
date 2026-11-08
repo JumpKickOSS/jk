@@ -2,26 +2,17 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.config.BuildEnv;
-import cc.jumpkick.engine.plugin.HeapFlags;
-import cc.jumpkick.engine.plugin.HeapLadder;
-import cc.jumpkick.engine.plugin.HeapNotes;
-import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.engine.plugin.LearnedHeaps;
-import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
-import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
-import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.jdk.JavaHomes;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,17 +21,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Drives the {@code jk-java-compiler} plugin. Inside a job request the same pull-mode JVM is
- * reused for every module ({@link JavaCompilerHost}); otherwise this is a one-shot {@code @spec}
- * fork.
+ * Drives the {@code jk-java-compiler} plugin: the request a compile hands the worker, the spec file
+ * it is written as, and the worker JVM's command line. The compile itself runs on the resident
+ * worker of its pool ({@link JavaCompilerHost}), many modules at once on threads of one JVM.
  *
- * <p>Launched as {@code java -cp <workerJar+POM>} {@code PluginMain --pull} or {@code @<spec>};
- * streams {@value #PREFIX} JSONL on stdout.
+ * <p>Launched as {@code java -cp <workerJar+POM>} {@code PluginMain --pull}, answering on its
+ * command channel; the AOT trainer runs it as {@code @<spec>}, answering {@value #PREFIX} JSONL on
+ * stdout.
  */
 public final class ForkedJavac {
 
@@ -327,163 +317,6 @@ public final class ForkedJavac {
         return JavaCompilerHost.planIfWarm(request);
     }
 
-    static Result oneshot(Request req) {
-        try {
-            return run(req);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("java worker interrupted", e);
-        }
-    }
-
-    static Plan oneshotPlan(Request req) {
-        try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
-            return JavaCompilerHost.plan(req);
-        }
-    }
-
-    /**
-     * One-shot fork, sized by {@link WorkerHeap}. A jk-planned worker that runs out of heap is
-     * forked again up the {@link HeapLadder}; one the kernel killed for memory is forked once more
-     * at the same size. Running out of the last rung is the failure, naming the module and every
-     * heap tried. A pinned heap is not resized.
-     */
-    private static Result run(Request req) throws IOException, InterruptedException {
-        Long heap = WorkerHeap.forRequest(req);
-        HeapScope.Key key = heap == null ? null : WorkerHeap.key(req);
-        WorkerTranscript transcript = new WorkerTranscript();
-        Attempt first = scoped(key, () -> run(req, heap, transcript));
-        String output = transcript.render();
-        if (first.result.success()) return first.result;
-        WorkerFate.Cause cause = WorkerFate.classify(first.exit, output);
-        if (heap == null) {
-            if (cause == WorkerFate.Cause.HEAP_EXHAUSTED && !first.answered) {
-                throw WorkerHeap.pinned(req.label(), pinOf(req), output);
-            }
-            return first.result;
-        }
-        if (first.answered && cause != WorkerFate.Cause.HEAP_EXHAUSTED) return first.result;
-        if (cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
-            HeapNotes.note(HeapNotes.line(heap, heap, true));
-            transcript.reset();
-            Attempt again = scoped(key, () -> run(req, heap, transcript));
-            return again.result;
-        }
-        if (cause != WorkerFate.Cause.HEAP_EXHAUSTED) return first.result;
-        List<Long> ranOut = new ArrayList<>(List.of(heap));
-        while (true) {
-            long failed = ranOut.getLast();
-            LearnedHeaps.engine().note(key, failed);
-            Long bigger = HeapLadder.next(ranOut);
-            if (bigger == null) throw WorkerHeap.exhausted(req.label(), ranOut, transcript.render());
-            HeapNotes.note(HeapNotes.line(bigger, failed, false));
-            transcript.reset();
-            Attempt next = scoped(key, () -> run(req, bigger, transcript));
-            if (next.answered || !WorkerFate.heapExhausted(next.exit, transcript.render())) {
-                LearnedHeaps.engine().good(key, bigger);
-                return next.result;
-            }
-            ranOut.add(bigger);
-        }
-    }
-
-    private static Attempt scoped(HeapScope.@Nullable Key key, ScopedAttempt body)
-            throws IOException, InterruptedException {
-        try {
-            if (key == null) return body.get();
-            return HeapScope.call(key, body::get);
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IOException(e);
-        }
-    }
-
-    @FunctionalInterface
-    private interface ScopedAttempt {
-        Attempt get() throws Exception;
-    }
-
-    private static String pinOf(Request req) {
-        for (String arg : req.jvmArgs()) {
-            if (JvmOptions.pinsHeap(arg)) return arg;
-        }
-        return JvmOptions.userPinLabel(List.of());
-    }
-
-    /** One fork's outcome; {@code answered} is false when the worker died before its RESULT line. */
-    private record Attempt(Result result, boolean answered, int exit) {}
-
-    private static Attempt run(Request req, @Nullable Long heapBytes, WorkerTranscript transcript)
-            throws IOException, InterruptedException {
-        Path spec = writeSpec(req);
-        try {
-            List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
-            Map<Path, Set<Path>> generated = new TreeMap<>();
-            List<Path> compiledSources = new ArrayList<>();
-            @Nullable String[] status = {null};
-
-            // Fork the java-compiler plugin on jk's own runtime, like every plugin, with
-            // --release carrying the project's target semantics — unless the project's level is
-            // above what this runtime's javac can emit, in which case the worker runs on the
-            // project's JDK (workerJavaHome). It's a thin, JDK-only plugin (the compile classpath
-            // travels in the spec, not on the plugin's classpath), so its own jar is the whole
-            // classpath.
-            Path hostJavaHome = workerJavaHome(req);
-            // Thin worker + Maven runtime closure from its POM.
-            String workerCp = workerClasspath(req);
-            // The startup cache for this *java* process (ToolProvider host) — not bare `javac`.
-            List<String> jvmFlags = workerJvmFlags(
-                    WorkerAotCache.flags(
-                            "java-compiler",
-                            hostJavaHome,
-                            workerCp,
-                            aotKeyFlags(req),
-                            (aotOutput, scratch) -> trainerCommand(req, workerCp, hostJavaHome, aotOutput, scratch)),
-                    heapBytes,
-                    req.jvmArgs());
-            List<String> command =
-                    PluginLoader.command(hostJavaHome, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
-            int exit = new PluginClient(PREFIX)
-                    .passthrough(transcript::record)
-                    .on(PluginProtocol.DIAGNOSTIC, json -> {
-                        // Same contract as the pull-mode host: the locus must live in the
-                        // message text (WorkerDiagnostics), not only in the record fields.
-                        diagnostics.add(WorkerDiagnostics.located(
-                                Jsonl.str(json, "sev"),
-                                Jsonl.str(json, "file"),
-                                Jsonl.longValue(json, "line", 0),
-                                Jsonl.longValue(json, "col", 0),
-                                Jsonl.str(json, "msg"),
-                                Jsonl.str(json, "key")));
-                    })
-                    .on(PluginProtocol.PROVENANCE, json -> {
-                        String genStr = Jsonl.str(json, "gen");
-                        if (genStr == null) return;
-                        Path gen = Path.of(genStr);
-                        Set<Path> origins = new TreeSet<>();
-                        for (String s : Jsonl.strArray(json, "src")) origins.add(Path.of(s));
-                        generated.put(gen, origins);
-                    })
-                    .on(PluginProtocol.RESULT, json -> {
-                        status[0] = Jsonl.str(json, "status");
-                        for (String s : Jsonl.strArray(json, "compiled")) {
-                            compiledSources.add(Path.of(s));
-                        }
-                    })
-                    .run(command, req.env().withJavaHome(hostJavaHome));
-            boolean success = exit == 0 && "OK".equals(status[0]);
-            return new Attempt(
-                    new Result(success, diagnostics, generated, compiledSources, 0L),
-                    exit == 0 || status[0] != null,
-                    exit);
-        } finally {
-            Files.deleteIfExists(spec);
-        }
-    }
-
     /** Renders {@code req} and seals the network policy — its forks bypass {@code PluginLaunch}. */
     public static Path writeSpec(Request req) throws IOException {
         Classpaths.requireArchivesOnDisk(req.classpath(), "the javac classpath");
@@ -537,10 +370,8 @@ public final class ForkedJavac {
     }
 
     /**
-     * glibc keeps what javac's native allocations freed; trimmed every minute the idle javac
-     * worker is ~10 MiB smaller, with no measurable cost to a compile. The collector stays the
-     * batch one: G1 with a periodic full GC gave back ~80 MiB idle but made every warm compile
-     * 5–10 ms slower, and the warm compile is the inner loop.
+     * glibc keeps what javac's native allocations freed; trimmed every minute the idle javac worker
+     * is ~10 MiB smaller, with no measurable cost to a compile.
      */
     static final String TRIM_NATIVE_HEAP = "-XX:TrimNativeHeapInterval=60000";
 
@@ -548,13 +379,20 @@ public final class ForkedJavac {
     static final String TRAINING = "train:sources-2";
 
     /**
-     * What a worker's startup cache is keyed by beyond its classpath and collector: the module's
-     * own JVM flags, and {@link #TRAINING}, what the cache was recorded on — a new fixture is a new
-     * key, so a cache recorded on the old one is never mapped again.
+     * What a worker's startup cache is keyed by beyond its classpath: the module's own JVM flags,
+     * {@link #TRAINING}, what the cache was recorded on — a new fixture is a new key, so a cache
+     * recorded on the old one is never mapped again — and the worker's own flags, whose collector
+     * and heap the cache was recorded under.
      */
     static List<String> aotKeyFlags(Request req) {
+        return aotKeyFlags(req, JvmOptions.currentTuning());
+    }
+
+    /** As {@link #aotKeyFlags(Request)} under {@code tuning}, the tuning the worker starts with. */
+    static List<String> aotKeyFlags(Request req, PluginTuning tuning) {
         List<String> key = new ArrayList<>(novelJvmArgs(req));
         key.add(TRAINING);
+        key.addAll(JvmOptions.compilerWorkerFlags(tuning, null));
         return key;
     }
 
@@ -565,8 +403,15 @@ public final class ForkedJavac {
      */
     static List<String> trainerCommand(Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch)
             throws IOException {
+        return trainerCommand(req, JvmOptions.currentTuning(), workerCp, hostJavaHome, aotOutput, scratch);
+    }
+
+    /** As above, the trainer started under {@code tuning}, the tuning its worker starts with. */
+    static List<String> trainerCommand(
+            Request req, PluginTuning tuning, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch)
+            throws IOException {
         return trainerCommand(
-                hostJavaHome, workerCp, aotOutput, scratch, trainingRelease(req.release()), novelJvmArgs(req));
+                hostJavaHome, workerCp, aotOutput, scratch, trainingRelease(req.release()), novelJvmArgs(req), tuning);
     }
 
     /**
@@ -582,6 +427,18 @@ public final class ForkedJavac {
     /** The trainer argv for a flag set the caller names; the compile path derives it from its request. */
     public static List<String> trainerCommand(
             Path hostJavaHome, String workerCp, Path aotOutput, Path scratch, int release, List<String> module)
+            throws IOException {
+        return trainerCommand(hostJavaHome, workerCp, aotOutput, scratch, release, module, JvmOptions.currentTuning());
+    }
+
+    private static List<String> trainerCommand(
+            Path hostJavaHome,
+            String workerCp,
+            Path aotOutput,
+            Path scratch,
+            int release,
+            List<String> module,
+            PluginTuning tuning)
             throws IOException {
         Path classes = scratch.resolve("out");
         Files.createDirectories(classes);
@@ -601,40 +458,35 @@ public final class ForkedJavac {
         Path trainSpec = scratch.resolve("train.spec");
         Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);
         PluginLoader.sealNetworkPolicy(trainSpec);
-        List<String> jvmFlags = workerJvmFlags(List.of("-XX:AOTCacheOutput=" + aotOutput), null, module);
+        List<String> jvmFlags = workerJvmFlags(List.of("-XX:AOTCacheOutput=" + aotOutput), module, tuning, null);
         // Same classpath as the real fork: the classpath is part of the AOT key, and a
         // thin worker jar alone would CNFE on PluginMain, silently never training.
         return PluginLoader.command(hostJavaHome, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
     }
 
     /**
-     * The worker JVM's flags, for the compile fork, the pull-mode host and the AOT trainer alike:
-     * {@code aot} (the cache to use or record), the {@code jdk.compiler} access javac plugins need,
-     * and the batch-sized heap. One body: a trainer that ran with a different module graph than
-     * the compile would record a cache the compile cannot use.
+     * The worker JVM's flags, for the resident worker and the AOT trainer alike: {@code aot} (the
+     * cache to use or record), the {@code jdk.compiler} access javac plugins need, the {@link
+     * JvmOptions#compilerWorkerFlags resident worker's} heap, collector and limits, then the
+     * module's own {@link Request#jvmArgs() -J flags} last, so what the module wrote wins over jk's
+     * tuning; one jk already passes is not passed twice. One body: a trainer that ran with a
+     * different module graph or collector than the worker would record a cache it cannot use.
      */
-    static List<String> workerJvmFlags(List<String> aot) {
-        return workerJvmFlags(aot, null, List.of());
+    static List<String> workerJvmFlags(List<String> aot, List<String> module) {
+        return workerJvmFlags(aot, module, JvmOptions.currentTuning(), null);
     }
 
     /**
-     * {@link #workerJvmFlags(List)} with the worker's {@link WorkerHeap} as {@code -Xmx}, after the
-     * batch flags so it wins over the plan's share ({@code null} leaves the plan's heap in force),
-     * then the module's own {@link Request#jvmArgs() -J flags} last, so what the module wrote wins
-     * over jk's tuning; one jk already passes is not passed twice.
+     * As {@link #workerJvmFlags(List, List)} under {@code tuning}, with {@code xmxBytes} as the heap
+     * ceiling when it is not null ({@link CompilerBudget}).
      */
-    static List<String> workerJvmFlags(List<String> aot, @Nullable Long heapBytes, List<String> module) {
+    static List<String> workerJvmFlags(
+            List<String> aot, List<String> module, PluginTuning tuning, @Nullable Long xmxBytes) {
         List<String> flags = new ArrayList<>(aot);
         flags.addAll(JdkCompilerAccess.JVM_FLAGS);
-        flags.addAll(JvmOptions.batchFlags(1));
-        // A worker can wait minutes for its next build (WarmLanes); give back what malloc holds.
+        flags.addAll(JvmOptions.compilerWorkerFlags(tuning, xmxBytes));
+        // A worker can wait minutes for its next build; give back what malloc holds.
         flags.add(TRIM_NATIVE_HEAP);
-        if (heapBytes != null) {
-            // The plan's -Xms and SoftMaxHeapSize can sit above a learned -Xmx; HotSpot refuses that.
-            flags.add("-Xmx" + WorkerHeap.mib(heapBytes) + "m");
-            flags = new ArrayList<>(HeapFlags.rewriteHeap(flags, heapBytes));
-            JvmOptions.notePlannedCommand(flags);
-        }
         for (String flag : module) {
             if (!flags.contains(flag)) flags.add(flag);
         }

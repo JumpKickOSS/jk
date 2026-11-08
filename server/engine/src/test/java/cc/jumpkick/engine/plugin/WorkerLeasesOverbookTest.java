@@ -329,7 +329,7 @@ class WorkerLeasesOverbookTest {
 
     @Test
     void the_engine_log_line_names_the_grant_and_the_sample() {
-        String line = WorkerLeases.overbookedLine(
+        String line = OverbookSignals.overbookedLine(
                 672L << 20,
                 14 * GIB + (700L << 20),
                 13 * GIB + GIB / 2,

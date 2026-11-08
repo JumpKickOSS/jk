@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -292,5 +293,24 @@ public final class OverbookSignals {
         private boolean fresh(long now) {
             return now >= atNanos && now - atNanos < ttlNanos;
         }
+    }
+
+    /**
+     * The engine-log line for one overbooked grant, after the bytes have been taken: what is leased
+     * against the budget and its cap, and the sample that allowed it.
+     */
+    static String overbookedLine(long grantBytes, long leasedBytes, long budgetBytes, OverbookSignals.Reading reading) {
+        long budget = Math.max(0, budgetBytes);
+        long over = Math.max(0, leasedBytes - budget);
+        return "overbooked " + WorkerLeases.format(grantBytes)
+                + ": leased " + WorkerLeases.format(leasedBytes)
+                + " of the " + WorkerLeases.format(budget) + " budget, " + WorkerLeases.format(over)
+                + " over, inside the "
+                + WorkerLeases.format(WorkerLeases.overbookCeiling(budget))
+                + " cap (twice the budget); allowed because free "
+                + WorkerLeases.format(Math.max(0, reading.freeBytes())) + " covers the lease plus "
+                + WorkerLeases.format(WorkerLeases.headroomBytes(budget)) + " headroom and pressure is low (psi some "
+                + String.format(Locale.ROOT, "%.2f", reading.someAvg10())
+                + " full " + String.format(Locale.ROOT, "%.2f", reading.fullAvg10()) + ")";
     }
 }

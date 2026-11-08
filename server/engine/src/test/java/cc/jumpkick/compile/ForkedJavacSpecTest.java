@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -73,7 +74,7 @@ class ForkedJavacSpecTest {
         Path spec = SessionContext.where(Session.defaults(), () -> ForkedJavac.writeSpec(req));
         assertThat(PluginSpec.read(spec).args()).containsExactly("-Xlint:all");
 
-        List<String> flags = ForkedJavac.workerJvmFlags(List.of(), null, req.jvmArgs());
+        List<String> flags = ForkedJavac.workerJvmFlags(List.of(), req.jvmArgs());
         assertThat(flags).contains("--add-opens=java.base/java.lang=ALL-UNNAMED", "-Dprobe=1");
         assertThat(flags.stream().filter(JdkCompilerAccess.JVM_FLAGS.getFirst()::equals))
                 .as("a flag the worker grants anyway is not passed twice")
@@ -108,8 +109,33 @@ class ForkedJavacSpecTest {
     }
 
     @Test
-    void the_aot_key_names_what_the_cache_was_trained_on(@TempDir Path dir) {
-        assertThat(ForkedJavac.aotKeyFlags(request(dir))).containsExactly(ForkedJavac.TRAINING);
+    void the_aot_key_names_what_the_cache_was_trained_on_and_the_workers_own_flags(@TempDir Path dir) {
+        List<String> key = ForkedJavac.aotKeyFlags(request(dir));
+        assertThat(key).first().isEqualTo(ForkedJavac.TRAINING);
+        assertThat(key).containsAll(JvmOptions.compilerWorkerFlags());
+    }
+
+    /**
+     * The resident worker grows from a small heap to a share of RAM and gives memory back, on G1;
+     * none of the batch worker's per-compile sizing reaches it.
+     */
+    @Test
+    void the_worker_starts_small_grows_to_a_share_of_ram_and_gives_memory_back() throws Exception {
+        List<String> flags =
+                SessionContext.where(Session.defaults(), () -> ForkedJavac.workerJvmFlags(List.of(), List.of()));
+        assertThat(flags)
+                .contains(
+                        "-Xms64m",
+                        "-XX:MaxRAMPercentage=68",
+                        "-XX:+UseG1GC",
+                        "-XX:G1PeriodicGCInterval=30000",
+                        "-XX:-G1PeriodicGCInvokesConcurrent",
+                        "-XX:MinHeapFreeRatio=10",
+                        "-XX:MaxHeapFreeRatio=30",
+                        "-XX:+ExitOnOutOfMemoryError")
+                .noneMatch(
+                        f -> f.startsWith("-Xmx") || f.startsWith("-Xss") || f.startsWith("-XX:ActiveProcessorCount"))
+                .noneMatch(f -> f.equals("-XX:MaxMetaspaceSize=256m"));
     }
 
     /** The trainer compiles the bundled module, with the worker's own jars as its classpath. */

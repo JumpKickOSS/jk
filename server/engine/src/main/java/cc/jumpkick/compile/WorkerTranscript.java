@@ -8,9 +8,11 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  * first lines (where a stack trace names its exception) and the most recent ones (where it ends).
  * A tail alone kept fifty frames of scalac internals and dropped the one line that said why.
  *
- * <p>The record is per work item, not per worker: {@link #reset} runs at each dispatch, because a
- * head that filled during the worker's first compile would otherwise describe every later crash
- * with the JVM's startup chatter instead of the exception that ended the item in flight.
+ * <p>The record covers the worker's current burst of work, not its whole life: {@link #reset} runs
+ * each time the worker runs out of compiles, because a head that filled during the worker's first
+ * build would otherwise describe every later crash with the JVM's startup chatter instead of the
+ * exception that ended the compiles in flight. The worker's output cannot be told apart by compile,
+ * so a death attaches the record to every compile it fails.
  *
  * <p>Lines are recorded from the process reader thread; {@link #render} may run on another thread
  * after the process has exited, which is what the concurrent deques are for.

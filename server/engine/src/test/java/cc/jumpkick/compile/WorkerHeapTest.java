@@ -6,8 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.engine.plugin.LearnedHeaps;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,9 +16,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A compiler worker's heap follows the module: a wide classpath asks for more than the memory
- * plan's share, a small module keeps the share, nothing exceeds what the host can give one worker,
- * and a user who pinned worker memory keeps their number.
+ * A compile's estimated heap demand follows its inputs, and a worker that ran out of heap names the
+ * module and every heap it tried.
  */
 class WorkerHeapTest {
 
@@ -46,34 +43,7 @@ class WorkerHeapTest {
     }
 
     @Test
-    void a_small_module_keeps_the_plans_share_and_a_wide_one_rounds_up_to_a_step() {
-        long share = 700 * MIB;
-        long ceiling = 8192 * MIB;
-        assertThat(WorkerHeap.sizeBytes(WorkerHeap.demandBytes(10, 20 * MIB, 500 * 1024), share, ceiling))
-                .isEqualTo(share);
-        long wide = WorkerHeap.sizeBytes(WorkerHeap.demandBytes(379, 170 * MIB, 22 * MIB), share, ceiling);
-        assertThat(wide).isGreaterThan(share);
-        assertThat(wide % WorkerHeap.STEP)
-                .as("sizes round to a step so modules of one size share a worker")
-                .isZero();
-    }
-
-    @Test
-    void the_ceiling_caps_a_demand_and_a_floor_above_it_still_wins() {
-        long ceiling = 1024 * MIB;
-        assertThat(WorkerHeap.sizeBytes(WorkerHeap.demandBytes(2000, 4096 * MIB, 200 * MIB), 512 * MIB, ceiling))
-                .isEqualTo(ceiling);
-        assertThat(WorkerHeap.sizeBytes(256 * MIB, 1500 * MIB, ceiling)).isEqualTo(1500 * MIB);
-    }
-
-    @Test
-    void a_user_who_pinned_worker_memory_keeps_it(@TempDir Path dir) {
-        SessionContext.install(SessionContext.current().withJvm(new PluginTuning(null, null, null, List.of("-Xmx2g"))));
-        assertThat(WorkerHeap.forRequest(request(dir, List.of()))).isNull();
-    }
-
-    @Test
-    void the_request_is_sized_from_its_classpath_on_disk(@TempDir Path dir) throws IOException {
+    void the_demand_is_read_off_the_classpath_on_disk(@TempDir Path dir) throws IOException {
         SessionContext.install(SessionContext.current().withJvm(PluginTuning.NONE));
         List<Path> jars = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
@@ -84,22 +54,6 @@ class WorkerHeapTest {
         Files.writeString(dir.resolve("C.java"), "class C {}");
         long expected = WorkerHeap.demandBytes(4, 4 * 64 * 1024, Files.size(dir.resolve("C.java")));
         assertThat(WorkerHeap.demandBytes(request(dir, jars))).isEqualTo(expected);
-        Long heap = WorkerHeap.forRequest(request(dir, jars));
-        assertThat(heap).isNotNull();
-        assertThat(heap)
-                .as("a compile jk has not seen starts generously above its estimate")
-                .isEqualTo(LearnedHeaps.firstHeap(
-                        WorkerHeap.sizeBytes(expected, 0L, WorkerHeap.ceilingBytes()),
-                        WorkerLeases.engine().capacityBytes()));
-    }
-
-    @Test
-    void the_heap_is_the_last_jvm_flag_so_it_wins_over_the_plans_share() {
-        SessionContext.install(SessionContext.current().withJvm(PluginTuning.NONE));
-        List<String> flags = ForkedJavac.workerJvmFlags(List.of("-XX:AOTCache=x.aot"), 1536 * MIB, List.of());
-        assertThat(flags).first().isEqualTo("-XX:AOTCache=x.aot");
-        assertThat(flags).last().isEqualTo("-Xmx1536m");
-        assertThat(ForkedJavac.workerJvmFlags(List.of(), null, List.of())).noneMatch(f -> f.equals("-Xmx1536m"));
     }
 
     @Test

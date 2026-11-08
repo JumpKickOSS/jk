@@ -135,6 +135,7 @@ final class ProvenanceJavac implements JavaCompiler {
             JavacTask task = (JavacTask) javac.getTask(written, manager, diags, Arrays.asList(options), null, units);
             if (loader != null) task.setProcessors(ZincJavaCompiler.freshProcessors(loader));
             if (constants != null) constants.listen(task);
+            CompileCancel.listen(task);
             References refs = References.ENABLED ? new References(task) : null;
             if (refs != null) task.addTaskListener(refs);
             boolean ok = task.call();

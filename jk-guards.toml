@@ -1279,8 +1279,12 @@ in     = "server/engine/src/main/java/cc/jumpkick/runtime/base/KtsSession.java"
 reason = "the .kts host outlives any one build: its reader, reaper and shutdown hook carry no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/compile/WarmLanes.java"
-reason = "warm compiler lanes outlive any one build: their linger reaper and shutdown hook carry no request; each item brings its own session"
+in     = "server/engine/src/main/java/cc/jumpkick/compile/CompilerWorker.java"
+reason = "a resident compiler worker's threads start with no inherited context on purpose: they belong to the pool, not to the request that first needed it; each item brings its own session"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/compile/CompilerPool.java"
+reason = "resident compiler workers outlive any one build: their linger reaper, retire and shutdown hook carry no request; each item brings its own session"
 
 [[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/WarmWorkers.java"

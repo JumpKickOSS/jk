@@ -803,7 +803,7 @@ public final class WorkerLeases {
         private void logOverbook(Waiter waiter) {
             long cap = capacityBytes();
             Log.info("jk engine: "
-                    + overbookedLine(
+                    + OverbookSignals.overbookedLine(
                             waiter.demand.bytes,
                             hostCharged(),
                             cap,
@@ -984,23 +984,6 @@ public final class WorkerLeases {
             long bytes = Math.min(cap, jvmLease(fitted));
             return new Demand(bytes, fitted, true, fitted < xmx || bytes < jvmLease(xmx), false, false);
         }
-    }
-
-    /**
-     * The engine-log line for one overbooked grant, after the bytes have been taken: what is leased
-     * against the budget and its cap, and the sample that allowed it.
-     */
-    static String overbookedLine(long grantBytes, long leasedBytes, long budgetBytes, OverbookSignals.Reading reading) {
-        long budget = Math.max(0, budgetBytes);
-        long over = Math.max(0, leasedBytes - budget);
-        return "overbooked " + format(grantBytes)
-                + ": leased " + format(leasedBytes)
-                + " of the " + format(budget) + " budget, " + format(over) + " over, inside the "
-                + format(overbookCeiling(budget)) + " cap (twice the budget); allowed because free "
-                + format(Math.max(0, reading.freeBytes())) + " covers the lease plus "
-                + format(headroomBytes(budget)) + " headroom and pressure is low (psi some "
-                + String.format(Locale.ROOT, "%.2f", reading.someAvg10())
-                + " full " + String.format(Locale.ROOT, "%.2f", reading.fullAvg10()) + ")";
     }
 
     /**

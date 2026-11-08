@@ -10,7 +10,6 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
-import java.io.BufferedReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -19,11 +18,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Child-JVM Java compile worker: Zinc incremental compile, streaming diagnostics, AP provenance,
- * and status as JSONL. {@code --pull} keeps the JVM for many COMPILE/PLAN specs on one job.
+ * Child-JVM Java compile worker: Zinc incremental compile, diagnostics, AP provenance and status as
+ * JSONL. {@code --pull} keeps the JVM resident and runs many compiles and plans at once on threads
+ * ({@link CompileServer}), answering on the command channel; a spec argument runs one compile and
+ * answers on stdout, which is how the startup-cache trainer runs it.
  */
 public final class JavaIncrementalCompiler implements Plugin {
 
@@ -35,8 +37,8 @@ public final class JavaIncrementalCompiler implements Plugin {
     @Override
     public int run(List<String> args, ProtocolWriter out) throws Exception {
         if (!args.isEmpty() && "--pull".equals(args.get(0))) {
-            try (BufferedReader commands = CommandChannel.connect(args)) {
-                return pull(out, commands);
+            try (CommandChannel.Duplex channel = CommandChannel.connectDuplex(args)) {
+                return new CompileServer(channel.in(), channel::send, JavaIncrementalCompiler::runSpec).serve();
             }
         }
         if (args.size() != 1) {
@@ -49,45 +51,19 @@ public final class JavaIncrementalCompiler implements Plugin {
         return compileSpec(Path.of(spec), out);
     }
 
-    /**
-     * Job-scoped loop: emit {@code ready}, read {@code COMPILE}/{@code PLAN} {@code <spec>} or
-     * {@code DONE} from the engine's command channel. Stays up across modules so Zinc's startup is
-     * paid once per job.
-     */
-    static int pull(ProtocolWriter out, BufferedReader in) throws Exception {
-        int worst = 0;
-        while (true) {
-            out.emit(PluginReply.ready());
-            String line = in.readLine();
-            if (line == null) return worst;
-            String cmd = line.trim();
-            if (cmd.isEmpty()) continue;
-            if ("DONE".equals(cmd)) return worst;
-            int space = cmd.indexOf(' ');
-            String op = space < 0 ? cmd : cmd.substring(0, space);
-            String spec = space < 0 ? "" : cmd.substring(space + 1).trim();
-            if (spec.isEmpty()) {
-                out.emit(PluginReply.error("usage", "COMPILE|PLAN <spec-file>"));
-                worst = Math.max(worst, Exit.USAGE);
-                continue;
-            }
-            int code =
-                    switch (op) {
-                        case "COMPILE" -> compileSpec(Path.of(spec), out);
-                        case "PLAN" -> planSpec(Path.of(spec), out);
-                        default -> {
-                            out.emit(PluginReply.error("unknown", op));
-                            yield Exit.USAGE;
-                        }
-                    };
-            // Keep the worst (highest) exit code: a later compile error (1) must not overwrite an
-            // earlier usage/unknown error (Exit.USAGE).
-            worst = Math.max(worst, code);
-        }
+    /** One compile or plan of the resident worker, its frames sent through {@code emit}. */
+    static int runSpec(boolean plan, Path spec, Consumer<String> emit) throws Exception {
+        return plan ? planSpec(spec, emit) : compileSpec(spec, emit);
+    }
+
+    /** As {@link #compileSpec(Path, Consumer)}, emitting through {@code out}. */
+    static int compileSpec(Path specFile, ProtocolWriter out) throws Exception {
+        return compileSpec(specFile, out::emit);
     }
 
     /** Run a compile from {@code specFile}, emitting JSONL to {@code out}; returns the exit code. */
-    static int compileSpec(Path specFile, ProtocolWriter out) throws Exception {
+    static int compileSpec(Path specFile, Consumer<String> out) throws Exception {
+        CompileCancel.checkpoint();
         PluginSpec spec = PluginSpec.read(specFile);
         Path specWorkdir = spec.workdir();
         boolean tempWork = specWorkdir == null;
@@ -107,11 +83,11 @@ public final class JavaIncrementalCompiler implements Plugin {
                                     spec.extra("scala-compiler").orElse(null))
                             : ZincJavaCompiler.compileJava(job);
             for (ZincJavaCompiler.Diag d : r.diagnostics()) {
-                out.emit(PluginReply.diagnostic(
+                out.accept(PluginReply.diagnostic(
                         d.kind(), d.file(), (int) d.line(), (int) d.col(), d.message(), d.key()));
             }
             for (Map.Entry<Path, Set<Path>> e : r.generated().entrySet()) {
-                out.emit(PluginReply.provenance(
+                out.accept(PluginReply.provenance(
                         e.getKey().toString(),
                         e.getValue().stream().map(Path::toString).toList()));
             }
@@ -122,7 +98,7 @@ public final class JavaIncrementalCompiler implements Plugin {
                     r.compiledSources().stream()
                             .map(p -> p.toAbsolutePath().normalize().toString())
                             .toList());
-            out.emit(PluginReply.result(fields));
+            out.accept(PluginReply.result(fields));
             return r.success() ? 0 : 1;
         } finally {
             if (tempWork) {
@@ -149,7 +125,8 @@ public final class JavaIncrementalCompiler implements Plugin {
                 spec.classpathAnalyses());
     }
 
-    static int planSpec(Path specFile, ProtocolWriter out) throws Exception {
+    static int planSpec(Path specFile, Consumer<String> out) throws Exception {
+        CompileCancel.checkpoint();
         PluginSpec spec = PluginSpec.read(specFile);
         Path workdir = spec.workdir();
         int release = (int) spec.config().intValue("release", 0);
@@ -166,7 +143,7 @@ public final class JavaIncrementalCompiler implements Plugin {
         }
         fields.put("compiled", compiled);
         fields.put("whys", whys);
-        out.emit(PluginReply.result(fields));
+        out.accept(PluginReply.result(fields));
         return 0;
     }
 

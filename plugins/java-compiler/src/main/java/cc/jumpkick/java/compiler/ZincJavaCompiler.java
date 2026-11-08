@@ -163,7 +163,11 @@ public final class ZincJavaCompiler {
      * under {@code workdir} plus current source/library stamps.
      */
     public static Plan planJava(JavaCompileJob job) {
-        return plan(job);
+        Path workdir = job.workdir();
+        if (workdir == null) return plan(job);
+        synchronized (workdirLock(workdir)) {
+            return plan(job);
+        }
     }
 
     /**
@@ -278,9 +282,7 @@ public final class ZincJavaCompiler {
      */
     private static Result compile(JavaCompileJob job, @Nullable MixedScala mixed) {
         Path workdir = job.workdir();
-        Object lock = workdir == null
-                ? new Object()
-                : WORKDIR_LOCKS.computeIfAbsent(workdir.toAbsolutePath().normalize(), k -> new Object());
+        Object lock = workdir == null ? new Object() : workdirLock(workdir);
         Thread thread = Thread.currentThread();
         ClassLoader contextLoader = thread.getContextClassLoader();
         synchronized (lock) {
@@ -290,6 +292,11 @@ public final class ZincJavaCompiler {
                 thread.setContextClassLoader(contextLoader);
             }
         }
+    }
+
+    /** The lock every compile and plan of {@code workdir} holds. */
+    private static Object workdirLock(Path workdir) {
+        return WORKDIR_LOCKS.computeIfAbsent(workdir.toAbsolutePath().normalize(), k -> new Object());
     }
 
     private static Result compileHeld(JavaCompileJob job, @Nullable MixedScala mixed) {
@@ -419,6 +426,7 @@ public final class ZincJavaCompiler {
                     List.of(new Diag("ERROR", null, 0, 0, "incremental compile I/O failed: " + Errors.text(e))),
                     List.of());
         } catch (CompileFailed failed) {
+            CompileCancel.rethrowIfCancelled(failed);
             // The reporter's own rows carry javac's keys; the problems on the throw are the same
             // rows without them, so they stand in only when the reporter logged nothing.
             List<Diag> diags = new ArrayList<>(reporter.diagnostics());
@@ -431,6 +439,7 @@ public final class ZincJavaCompiler {
             }
             return new Result(false, diags, javac == null ? List.of() : javac.compiledSources());
         } catch (RuntimeException e) {
+            CompileCancel.rethrowIfCancelled(e);
             return new Result(false, List.of(new Diag("ERROR", null, 0, 0, crashed(e))), List.of());
         } finally {
             processors.release();
@@ -531,6 +540,11 @@ public final class ZincJavaCompiler {
         Optional<AnalysisContents> prev = zinced.readAnalysis(zinced.store());
         if (prev.isEmpty()) {
             return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
+        }
+        if (sources.stream().anyMatch(ZincJavaCompiler::isDescriptorSource)
+                && !Files.isRegularFile(classOutput.resolve(MODULE_DESCRIPTOR_CLASS))) {
+            // The compile goes whole when the descriptor's class is missing; the forecast says so.
+            return new Plan(true, "module-info.class missing", allSources(sources, "module-info.class missing"));
         }
         MiniSetup setup = prev.get().getMiniSetup();
         String[] wantOpts = javacOptions(release, extraOptions, sourceOutput, processorPath, sources, classpath);
@@ -952,6 +966,12 @@ public final class ZincJavaCompiler {
     }
 
     /** The main {@code module-info.java} among {@code sources}, or null when the module declares none. */
+    /** Whether {@code source} is a module descriptor, {@code module-info.java}. */
+    private static boolean isDescriptorSource(Path source) {
+        Path name = source.getFileName();
+        return name != null && name.toString().equals("module-info.java");
+    }
+
     private static @Nullable VirtualFile descriptor(VirtualFile[] sources, FileConverter converter) {
         for (VirtualFile vf : sources) {
             Path name = converter.toPath(vf).getFileName();
