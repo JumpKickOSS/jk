@@ -467,9 +467,11 @@ PREPARED = HOME.parent / "prepared"
 
 
 def jk_build_id() -> str:
-    """The installed jk, client and engine, as file stats: a new install is a new build."""
+    """The jk this run uses (`$JK_HOME`, else ~/.jk), client and engine, as file stats: a new install
+    is a new build, and a side run against a scratch home is its own build."""
     parts = []
-    for f in [Path.home() / ".jk/bin/jk", *sorted((Path.home() / ".jk/lib/jk-engine").glob("*.jar"))]:
+    home = benchtools.jk_home()
+    for f in [home / "bin/jk", *sorted((home / "lib/jk-engine").glob("*.jar"))]:
         if f.exists():
             st = f.stat()
             parts.append(f"{f.name}:{st.st_size}:{st.st_mtime_ns}")
