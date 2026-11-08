@@ -92,10 +92,27 @@ record GradleModel(
             @Nullable String archivesName,
             List<Publication> publications,
             /** Per Gradle plugin id, the properties its import rule asked the init script to read. */
-            Map<String, Map<String, Object>> ruled) {
+            Map<String, Map<String, Object>> ruled,
+            /** Per source or schema directory under the build directory, the tasks that write it. */
+            Map<String, List<Producer>> producers) {
 
         boolean isRoot() {
             return dir.isEmpty();
+        }
+
+        /** The tasks known to write {@code dir}, as {@code task y (plugin)}; null when none is. */
+        @Nullable
+        String writersOf(String dir) {
+            List<Producer> writers = producers.getOrDefault(dir, List.of());
+            return writers.isEmpty()
+                    ? null
+                    : String.join(", ", writers.stream().map(Producer::describe).toList());
+        }
+
+        /** {@code dir}, followed by the tasks known to write it in parentheses. */
+        String withWriters(String dir) {
+            String writers = writersOf(dir);
+            return writers == null ? dir : dir + " (" + writers + ")";
         }
 
         boolean applies(String pluginId) {
@@ -143,6 +160,18 @@ record GradleModel(
      * project-relative. Its generator options are the plugin's import rule's to read.
      */
     record Avro(List<String> sources, @Nullable String buildDir) {}
+
+    /**
+     * A task whose outputs hold a generated directory: its name, declared type and the id of the
+     * plugin whose jar holds the type, null when no applied plugin's does.
+     */
+    record Producer(String task, String type, @Nullable String plugin) {
+
+        /** {@code task sharedSchemasLoader (kafka-helper)}: the plugin id's last segment. */
+        String describe() {
+            return "task " + task + (plugin == null ? "" : " (" + plugin.substring(plugin.lastIndexOf('.') + 1) + ")");
+        }
+    }
 
     record SourceSet(String name, List<String> java, List<String> resources, List<String> kotlin) {}
 
@@ -272,6 +301,7 @@ record GradleModel(
     static final String AVRO_SOURCES = "sources";
     static final String AVRO_BUILD_DIR = "buildDir";
     static final String RULED = "ruled";
+    static final String PRODUCERS = "producers";
 
     /** The {@code test} task's system properties with string values, and its JVM arguments. */
     record TestTask(Map<String, String> systemProperties, List<String> jvmArgs) {}
@@ -407,7 +437,31 @@ record GradleModel(
                         : new TestTask(Jsonl.strMap(testJson, SYSTEM_PROPERTIES), Jsonl.strArray(testJson, JVM_ARGS)),
                 Jsonl.topStr(p, ARCHIVES_NAME),
                 publications,
-                ruled(Jsonl.nested(p, RULED)));
+                ruled(Jsonl.nested(p, RULED)),
+                producers(Jsonl.nested(p, PRODUCERS)));
+    }
+
+    private static Map<String, List<Producer>> producers(@Nullable String json) {
+        if (json == null) return Map.of();
+        Map<String, List<Producer>> out = new LinkedHashMap<>();
+        if (MiniJson.parse(json) instanceof Map<?, ?> byDir) {
+            byDir.forEach((dir, rows) -> {
+                List<Producer> list = new ArrayList<>();
+                if (rows instanceof List<?> l) {
+                    for (Object row : l) {
+                        if (row instanceof Map<?, ?> r && r.get("task") != null) {
+                            Object plugin = r.get("plugin");
+                            list.add(new Producer(
+                                    String.valueOf(r.get("task")),
+                                    String.valueOf(r.get("type")),
+                                    plugin == null ? null : String.valueOf(plugin)));
+                        }
+                    }
+                }
+                out.put(String.valueOf(dir), List.copyOf(list));
+            });
+        }
+        return out;
     }
 
     private static @Nullable Xjc xjc(@Nullable String json) {

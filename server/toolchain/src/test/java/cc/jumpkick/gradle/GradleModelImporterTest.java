@@ -833,7 +833,7 @@ class GradleModelImporterTest {
                "pluginClasses":["com.github.davidmc24.gradle.plugin.avro.AvroPlugin","com.github.davidmc24.gradle.plugin.avro.AvroBasePlugin"],
                "pluginVersions":{},"bootBuildInfo":false,"repositories":[],"configurations":[],"tasks":[],
                "sourceSets":[{"name":"main","java":["src/main/java","build/generated-main-avro-java"],"resources":["src/main/resources"],"kotlin":[]}],
-               "avro":{"sources":["src/main/avro"],"buildDir":"build"},
+               "avro":{"sources":["src/main/avro","build/generated-main-avro-avpr"],"buildDir":"build"},
                "ruled":{"com.github.davidmc24.gradle.plugin.avro":{"stringType":"String","fieldVisibility":"PRIVATE",
                        "createSetters":true,"createOptionalGetters":false,"enableDecimalLogicalType":true}},
                "resolved":["org.apache.avro:avro@1.11.5"]},
@@ -864,7 +864,26 @@ class GradleModelImporterTest {
                 .contains(
                         "flags: Avro schemas are generated into build/generated/avro/shared; put them in src/main/avro")
                 .noneMatch(m -> m.contains("davidmc24"))
-                .noneMatch(m -> m.contains("generated-main-avro-java"));
+                .noneMatch(m -> m.contains("generated-main-avro-java"))
+                .noneMatch(m -> m.contains("avpr") || m.contains("imported src/main/avro only"));
+    }
+
+    @Test
+    void schemas_under_build_name_the_task_and_plugin_that_write_them() {
+        String model = AVRO_MODULES.replace(
+                "\"avro\":{\"sources\":[\"build/generated/avro/shared\"],\"buildDir\":\"build\"},",
+                "\"avro\":{\"sources\":[\"build/generated/avro/shared\"],\"buildDir\":\"build\"},"
+                        + "\"producers\":{\"build/generated/avro/shared\":[{\"task\":\"sharedSchemasLoader\","
+                        + "\"type\":\"com.acme.loader.SharedSchemasLoaderTask\",\"plugin\":\"com.acme.kafka-helper\"}]},");
+        assertThat(model).isNotEqualTo(AVRO_MODULES);
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
+
+        assertThat(messages(result.report()))
+                .contains(
+                        "flags: Avro schemas come from task sharedSchemasLoader (kafka-helper); see [schema-registry]")
+                .noneMatch(m -> m.contains("put them in src/main/avro"));
     }
 
     private static JkBuild module(GradleBuildImport.Result result, String path) {

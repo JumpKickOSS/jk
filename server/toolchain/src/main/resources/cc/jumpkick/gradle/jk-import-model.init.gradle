@@ -254,14 +254,26 @@ def describeProject(Project p, Project root, List<String> probeIds) {
         if (avro != null && gen != null) {
             def a = [:]
             def roots = [] as LinkedHashSet
+            // The tree's roots, read off its structure so an empty or not yet downloaded directory counts.
             try {
+                def loader = gen.source.class.classLoader
+                def visitorType = loader.loadClass('org.gradle.api.internal.file.FileCollectionStructureVisitor')
+                def visit = loader.loadClass('org.gradle.api.internal.file.FileCollectionStructureVisitor$VisitType').Visit
+                gen.source.visitStructure([
+                        startVisit: { s, fc -> true },
+                        prepareForVisit: { s -> visit },
+                        visitCollection: { s, contents -> contents.each { roots << it } },
+                        visitFileTree: { treeRoot, patterns, tree -> roots << treeRoot },
+                        visitFileTreeBackedByFile: { file, tree, st -> roots << file.parentFile },
+                ].asType(visitorType))
+            } catch (Throwable ignored) {
                 gen.source.visit { d ->
                     if (!d.directory) {
                         String path = d.file.path
                         roots << new File(path.substring(0, path.length() - d.relativePath.pathString.length() - 1))
                     }
                 }
-            } catch (Throwable ignored) { }
+            }
             a.sources = relDirs(p, roots)
             a.buildDir = relDirs(p, [p.layout.buildDirectory.get().asFile])[0]
             m.avro = a
@@ -384,7 +396,62 @@ def describeProject(Project p, Project root, List<String> probeIds) {
         m.importedBoms = importedBoms(p)
     }
     m.tasks = p.tasks.findAll { isScriptTask(it) }.collect { [name: it.name, type: taskType(it), group: it.group ?: ''] }
+    try {
+        def producers = producers(p, m)
+        if (producers) m.producers = producers
+    } catch (Throwable ignored) { }
     return m
+}
+
+// For each source or schema directory under the build directory, the tasks whose outputs hold it or
+// write into it: [dir: [[task, type, plugin?]]]. A generated directory names who fills it.
+def producers(Project p, Map m) {
+    def build = p.layout.buildDirectory.get().asFile.toPath()
+    def dirs = [] as LinkedHashSet
+    (m.avro?.sources ?: []).each { dirs << it }
+    (m.sourceSets ?: []).each { s -> (s.java + s.resources + s.kotlin).each { dirs << it } }
+    def wanted = dirs.findAll { p.projectDir.toPath().resolve(it).normalize().startsWith(build) }
+    if (!wanted) return [:]
+    // A task writing the directory or inside it; one writing a parent of it only when none does.
+    def inside = [:]
+    def above = [:]
+    p.tasks.each { task ->
+        def outputs
+        try { outputs = task.outputs.files.files.collect { it.toPath().normalize() } } catch (Throwable ignored) { return }
+        for (def dir : wanted) {
+            def at = p.projectDir.toPath().resolve(dir).normalize()
+            def row = null
+            if (outputs.any { it.startsWith(at) }) row = inside
+            else if (outputs.any { at.startsWith(it) }) row = above
+            if (row == null) continue
+            def r = [task: task.name, type: taskType(task)]
+            def plugin = pluginIdOf(p, task)
+            if (plugin) r.plugin = plugin
+            row.computeIfAbsent(dir) { [] } << r
+        }
+    }
+    def out = [:]
+    for (def dir : wanted) {
+        def rows = inside[dir] ?: above[dir]
+        if (rows) out[dir] = rows
+    }
+    return out
+}
+
+// The id of the applied plugin loaded from the same jar as the task's class, or null.
+def pluginIdOf(Project p, Object task) {
+    try {
+        def type = task.class
+        if (type.name.endsWith('_Decorated') && type.superclass != null) type = type.superclass
+        def jar = type.protectionDomain?.codeSource?.location
+        if (jar == null) return null
+        for (def plugin : p.plugins) {
+            if (plugin.class.protectionDomain?.codeSource?.location != jar) continue
+            def id = p.pluginManager.findPluginIdForClass(plugin.class)
+            if (id != null && id.isPresent()) return id.get().id
+        }
+    } catch (Throwable ignored) { }
+    return null
 }
 
 // The BOMs a `dependencyManagement { imports { mavenBom … } }` block names for this project. The
