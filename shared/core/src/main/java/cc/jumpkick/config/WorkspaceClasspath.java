@@ -10,6 +10,7 @@ import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -255,42 +256,17 @@ public final class WorkspaceClasspath {
         Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
         Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
         Set<String> relocating = new HashSet<>();
-        // One load for the whole workspace, not one parse per sibling.
-        // loadModules returns every member with root inheritance applied — the index below. It
-        // throws for a member with no manifest; applyWorkspace already rethrows for any module
-        // carrying workspace deps, so a caller never reaches here with a broken workspace.
-        // WorkspaceClasspathTest pins that from both sides.
-        Map<Path, JkBuild> members = WorkspaceLoader.loadModules(root, rootManifest);
-        Map<Path, JkBuild> units = new LinkedHashMap<>(members);
-        units.put(root, rootManifest); // the root is a unit too
-        for (Map.Entry<Path, JkBuild> unit0 : units.entrySet()) {
-            Path unitDir = unit0.getKey();
-            if (unitDir.toAbsolutePath().normalize().equals(self)) continue; // exclude self
-            JkBuild unit = unit0.getValue();
-            String coord = unit.project().group() + ":" + unit.project().name();
-            // The root is known here: every unit is one of its members or the root itself. Locating
-            // it again per unit walks the unit's ancestors and scans the root manifest's module list
-            // each time — a thousand-module reactor asked this for every module of a forecast paid
-            // a million such walks.
-            BuildLayout layout = BuildLayout.of(root, unitDir, unit);
-            siblingDirByModule.put(coord, unitDir);
-            if (unit.relocates()) {
-                // The shaded names exist only in the fat jar: it is the sibling in both views.
-                relocating.add(coord);
-                siblingJarByModule.put(coord, layout.assemblyJar());
-                siblingClassesByModule.put(coord, layout.assemblyJar());
-            } else if (NodeShape.kind(unit, unitDir) == NodeShape.Kind.MODULE) {
-                // A node module compiles nothing; its resource jar is the sibling in both views.
-                siblingJarByModule.put(coord, layout.mainJar());
-                siblingClassesByModule.put(coord, layout.mainJar());
-            } else {
-                siblingJarByModule.put(coord, layout.mainJar());
-                siblingClassesByModule.put(coord, layout.classesDir());
-            }
-            siblingTestClassesByModule.put(coord, layout.testClassesDir());
-            siblingFixturesByModule.put(coord, layout.testFixturesClassesDir());
-            siblingManifestByCoord.put(coord, unit);
-            siblingCoordByName.put(unit.project().name(), coord);
+        for (Unit unit : units(root, rootManifest)) {
+            if (unit.normDir().equals(self)) continue; // exclude self
+            String coord = unit.coord();
+            siblingDirByModule.put(coord, unit.dir());
+            if (unit.relocates()) relocating.add(coord);
+            siblingJarByModule.put(coord, unit.jar());
+            siblingClassesByModule.put(coord, unit.classes());
+            siblingTestClassesByModule.put(coord, unit.testClasses());
+            siblingFixturesByModule.put(coord, unit.fixtures());
+            siblingManifestByCoord.put(coord, unit.manifest());
+            siblingCoordByName.put(unit.manifest().project().name(), coord);
         }
         return new Siblings(
                 siblingDirByModule,
@@ -301,6 +277,94 @@ public final class WorkspaceClasspath {
                 siblingManifestByCoord,
                 siblingCoordByName,
                 relocating);
+    }
+
+    /** One build unit as a sibling reads it: its coordinate and where its outputs land. */
+    private record Unit(
+            Path dir,
+            Path normDir,
+            JkBuild manifest,
+            String coord,
+            boolean relocates,
+            Path jar,
+            Path classes,
+            Path testClasses,
+            Path fixtures) {}
+
+    /** The members' key ({@link WorkspaceLoader#requestKey}): the units are a function of it. */
+    private record UnitsKey(Object members) {}
+
+    /**
+     * Every build unit of the workspace at {@code root}, the root last, asked once per request:
+     * each module's resolve indexed every member again, which made a 223-module build's resolves
+     * quadratic in the member count. Keyed by value, as the member list is: a member's parse hands
+     * in a fresh root object each time.
+     */
+    private static List<Unit> units(Path root, JkBuild rootManifest) throws IOException {
+        Object members = WorkspaceLoader.requestKey(root, rootManifest);
+        if (members == null) return computeUnits(root, rootManifest);
+        try {
+            return RequestScope.current()
+                    .get(
+                            new UnitsKey(members),
+                            k -> {
+                                try {
+                                    return computeUnits(root, rootManifest);
+                                } catch (IOException e) {
+                                    throw new UncheckedIOException(e);
+                                }
+                            },
+                            u -> 512L * u.size());
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
+
+    private static List<Unit> computeUnits(Path root, JkBuild rootManifest) throws IOException {
+        // One load for the whole workspace, not one parse per sibling.
+        // loadModules returns every member with root inheritance applied — the index below. It
+        // throws for a member with no manifest; applyWorkspace already rethrows for any module
+        // carrying workspace deps, so a caller never reaches here with a broken workspace.
+        // WorkspaceClasspathTest pins that from both sides.
+        Map<Path, JkBuild> members = WorkspaceLoader.loadModules(root, rootManifest);
+        Map<Path, JkBuild> all = new LinkedHashMap<>(members);
+        all.put(root, rootManifest); // the root is a unit too
+        List<Unit> out = new ArrayList<>(all.size());
+        for (Map.Entry<Path, JkBuild> e : all.entrySet()) {
+            Path unitDir = e.getKey();
+            JkBuild unit = e.getValue();
+            String coord = unit.project().group() + ":" + unit.project().name();
+            // The root is known here: every unit is one of its members or the root itself. Locating
+            // it again per unit walks the unit's ancestors and scans the root manifest's module list
+            // each time — a thousand-module reactor asked this for every module of a forecast paid
+            // a million such walks.
+            BuildLayout layout = BuildLayout.of(root, unitDir, unit);
+            Path jar;
+            Path classes;
+            if (unit.relocates()) {
+                // The shaded names exist only in the fat jar: it is the sibling in both views.
+                jar = layout.assemblyJar();
+                classes = layout.assemblyJar();
+            } else if (NodeShape.kind(unit, unitDir) == NodeShape.Kind.MODULE) {
+                // A node module compiles nothing; its resource jar is the sibling in both views.
+                jar = layout.mainJar();
+                classes = layout.mainJar();
+            } else {
+                jar = layout.mainJar();
+                classes = layout.classesDir();
+            }
+            out.add(new Unit(
+                    unitDir,
+                    unitDir.toAbsolutePath().normalize(),
+                    unit,
+                    coord,
+                    unit.relocates(),
+                    jar,
+                    classes,
+                    layout.testClassesDir(),
+                    layout.testFixturesClassesDir()));
+        }
+        return List.copyOf(out);
     }
 
     /** The transitive workspace closure in discovery order, plus the direct tests/fixtures asks. */

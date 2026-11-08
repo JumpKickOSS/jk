@@ -3,9 +3,10 @@ package cc.jumpkick.wire.runtime;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,30 +56,61 @@ public final class WorkSchedule {
     /**
      * Rolling-window list schedule: first-ready admission (list order), every dirty prereq past
      * its artifact point, at most {@code concurrency} in flight.
+     *
+     * <p>Linear in the graph up to the heaps' logarithm. The engine re-prices the residual schedule
+     * on every module progress event under the build's lock, so a schedule that rescanned the
+     * remaining list for each admission was cubic over a build: on a 223-module workspace it was a
+     * third of the engine's samples and held module threads on that lock for seconds. A module's
+     * unready dirty prereqs are counted instead, a prereq is ready once the clock reaches its
+     * artifact point, and the ready modules are kept in list order, which picks exactly the module
+     * the scan picked.
      */
     static long listSchedule(List<ModuleWorkCost> mods, int concurrency) {
         if (mods == null || mods.isEmpty()) return 0;
         int slots = Math.max(1, concurrency);
+        // Caller order, first occurrence — same as live WorkspaceScheduler's unit list; a dir
+        // listed twice is priced by its last cost.
+        Map<Path, Integer> index = new LinkedHashMap<>();
         Map<Path, ModuleWorkCost> byDir = new HashMap<>();
-        // LinkedHashSet preserves the caller’s order — same as live WorkspaceScheduler’s unit list.
-        Set<Path> remaining = new LinkedHashSet<>();
         for (ModuleWorkCost m : mods) {
             if (m == null || m.dir() == null) continue;
             byDir.put(m.dir(), m);
-            remaining.add(m.dir());
+            index.putIfAbsent(m.dir(), index.size());
         }
-        if (byDir.isEmpty()) return 0;
+        int n = index.size();
+        if (n == 0) return 0;
+        ModuleWorkCost[] cost = new ModuleWorkCost[n];
+        for (Map.Entry<Path, Integer> e : index.entrySet())
+            cost[e.getValue()] = Objects.requireNonNull(byDir.get(e.getKey()));
+        // A prereq outside the schedule is clean — already built — and waits on nothing.
+        int[] unready = new int[n];
+        List<List<Integer>> waiters = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) waiters.add(new ArrayList<>(2));
+        for (int i = 0; i < n; i++) {
+            Set<Path> prereqs = cost[i].prereqs();
+            if (prereqs == null) continue;
+            for (Path p : prereqs) {
+                Integer j = index.get(p);
+                if (j == null) continue;
+                unready[i]++;
+                waiters.get(j).add(i);
+            }
+        }
+        BitSet ready = new BitSet(n);
+        for (int i = 0; i < n; i++) if (unready[i] == 0) ready.set(i);
+        boolean[] admitted = new boolean[n];
+        // Artifact points not yet reached by the clock, soonest first.
+        PriorityQueue<long[]> landing = new PriorityQueue<>(Comparator.comparingLong((long[] l) -> l[0]));
 
         // Phase-gated admission: dependents wait on the upstream's classes publish (its compile
         // prefix, or the whole non-suite non-tail prefix when the cost did not split it), never
         // on the upstream's full plan. The slot stays occupied until the module's own finish,
         // which is its longer branch rather than the sum of its steps (see below).
-        Map<Path, Long> artifactAt = new HashMap<>();
         // Three event kinds: an artifact landing (wakes admission, frees nothing), a suite
         // dispatching (prices the suite at the share the machine has to give right then), and a
         // flight finishing (frees the slot). Without artifact events a dependent could only start
         // at some unrelated module's finish, overestimating exactly the overlap this models.
-        record Event(long at, Path dir, Kind kind) {}
+        record Event(long at, int module, Kind kind) {}
         // Same instant: a finish frees its slot and leaves the in-flight count before a suite
         // reads its share, and an artifact admits its dependents before that read too — the
         // executor counts a module admitted at that moment as running.
@@ -88,20 +120,16 @@ public final class WorkSchedule {
         long end = 0;
         int free = slots;
         int flying = 0;
-        Set<Path> dirtyDirs = byDir.keySet();
+        int left = n;
 
-        while (!remaining.isEmpty() || flying > 0) {
-            while (free > 0 && !remaining.isEmpty()) {
-                Path next = null;
-                for (Path d : remaining) {
-                    ModuleWorkCost m = Objects.requireNonNull(byDir.get(d));
-                    if (!prereqArtifactsReady(m, dirtyDirs, artifactAt, t)) continue;
-                    next = d; // first ready in order
-                    break;
-                }
-                if (next == null) break;
-                remaining.remove(next);
-                ModuleWorkCost m = Objects.requireNonNull(byDir.get(next));
+        while (left > 0 || flying > 0) {
+            while (free > 0) {
+                int next = ready.nextSetBit(0); // first ready in order
+                if (next < 0) break;
+                ready.clear(next);
+                admitted[next] = true;
+                left--;
+                ModuleWorkCost m = cost[next];
                 // A module's own wall is its LONGER branch, not the sum of its steps. Inside a
                 // plan, `run-tests` is a leaf and packaging requires only the jar, so the suite
                 // and the packaging tail (assembly, native-image, sources) run at the same time —
@@ -116,7 +144,8 @@ public final class WorkSchedule {
                 // Dependents compile against the classes tree, which lands at the gate — before
                 // test compile, packaging and either branch.
                 long art = t + m.artifactPoint();
-                artifactAt.put(next, art);
+                if (art <= t) land(next, waiters, unready, ready);
+                else landing.add(new long[] {art, next});
                 // Always an event, even when the gate and the dispatch coincide: the dependents it
                 // admits are in flight before this module's suite reads its share.
                 events.add(new Event(art, next, Kind.ARTIFACT));
@@ -126,18 +155,20 @@ public final class WorkSchedule {
             }
             if (events.isEmpty()) {
                 long extra = 0;
-                for (Path d : remaining)
-                    extra += Math.max(0, Objects.requireNonNull(byDir.get(d)).weight());
+                for (int i = 0; i < n; i++) if (!admitted[i]) extra += Math.max(0, cost[i].weight());
                 return t + extra;
             }
             Event e = events.poll();
             t = e.at();
+            while (!landing.isEmpty() && landing.peek()[0] <= t) {
+                land((int) landing.poll()[1], waiters, unready, ready);
+            }
             switch (e.kind()) {
                 case ARTIFACT -> {}
                 case DISPATCH -> {
-                    ModuleWorkCost m = Objects.requireNonNull(byDir.get(e.dir()));
+                    ModuleWorkCost m = cost[e.module()];
                     long fin = t + Math.max(m.suiteAt(shareAt(slots, flying, m)), m.tailWeight());
-                    events.add(new Event(fin, e.dir(), Kind.FINISH));
+                    events.add(new Event(fin, e.module(), Kind.FINISH));
                     end = Math.max(end, fin);
                 }
                 case FINISH -> {
@@ -147,6 +178,13 @@ public final class WorkSchedule {
             }
         }
         return end;
+    }
+
+    /** {@code module}'s classes landed: every module waiting on it has one prereq fewer. */
+    private static void land(int module, List<List<Integer>> waiters, int[] unready, BitSet ready) {
+        for (int w : waiters.get(module)) {
+            if (--unready[w] == 0) ready.set(w);
+        }
     }
 
     /** Declaration order is the tie-break order at one instant. */
@@ -184,17 +222,6 @@ public final class WorkSchedule {
     /** {@link #moduleWall} with the suite re-sharded for {@code runners}. */
     public static long moduleWallAt(ModuleWorkCost m, int runners) {
         return m.prefix() + Math.max(m.suiteAt(runners), m.tailWeight());
-    }
-
-    private static boolean prereqArtifactsReady(
-            ModuleWorkCost m, Set<Path> dirtyDirs, Map<Path, Long> artifactAt, long now) {
-        if (m.prereqs() == null) return true;
-        for (Path p : m.prereqs()) {
-            if (!dirtyDirs.contains(p)) continue; // clean prereq — already built
-            Long at = artifactAt.get(p);
-            if (at == null || at > now) return false;
-        }
-        return true;
     }
 
     /** Copy costs into a mutable list (defensive). */

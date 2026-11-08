@@ -4,8 +4,10 @@ package cc.jumpkick.lock;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.task.IoLedger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -367,5 +369,37 @@ class LockFreshnessTest {
         assertThat(LockFreshness.isValidDigest("0".repeat(64))).isTrue();
         assertThat(LockFreshness.isValidDigest("a".repeat(63) + "G")).isFalse();
         assertThat(LockFreshness.isValidDigest("AbCdEf0123456789".repeat(4))).isTrue();
+    }
+
+    /**
+     * Within one request the answer is the owner's and is asked once; a lock the request rewrites
+     * (a keep-pins re-lock) has a new stamp and is asked again, so a re-locked build reads fresh.
+     */
+    @Test
+    void a_request_asks_once_and_asks_again_after_the_lock_is_rewritten(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        Files.writeString(lockFile, LockfileWriter.render(Lockfile.empty("test").withManifestsSha256("0".repeat(64))));
+        IoLedger.open(new IoLedger());
+        try {
+            assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+            assertThat(LockFreshness.isStale(dir, lockFile))
+                    .as("the request's answer")
+                    .isTrue();
+            String live = LockManifestDigest.compute(dir);
+            Files.writeString(
+                    lockFile, LockfileWriter.render(Lockfile.empty("test").withManifestsSha256(live)));
+            Files.setLastModifiedTime(lockFile, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+            assertThat(LockFreshness.isStale(dir, lockFile))
+                    .as("re-locked: a new stamp, asked again")
+                    .isFalse();
+        } finally {
+            RequestScope.release();
+            IoLedger.close();
+        }
     }
 }

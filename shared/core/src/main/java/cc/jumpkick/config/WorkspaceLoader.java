@@ -77,6 +77,14 @@ public final class WorkspaceLoader {
     }
 
     /**
+     * The request-scoped key of {@code root}'s module list, or {@code null} when it is not
+     * remembered: what a fact derived from the members and the root path alone may key on too.
+     */
+    static @Nullable Object requestKey(Path workspaceRoot, JkBuild root) {
+        return MemoKey.of(workspaceRoot, root);
+    }
+
+    /**
      * What one module list is a function of: the root directory, the root manifest as it stands
      * (its stat identity — a request's inputs are fixed at launch, so a stamp is enough), and the two
      * parts of the parsed root the load reads, its project and its module entries. Two callers in one

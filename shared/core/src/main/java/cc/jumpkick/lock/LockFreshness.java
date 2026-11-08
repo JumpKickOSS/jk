@@ -2,6 +2,7 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.layout.Languages;
@@ -13,6 +14,7 @@ import cc.jumpkick.plugin.manifest.PluginContributions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -85,6 +87,31 @@ public final class LockFreshness {
      * (fail closed).
      */
     public static boolean isStale(Path dir, Path lockFile) {
+        Path buildFile = ManifestPaths.manifestIn(dir);
+        if (!Files.exists(buildFile) || !Files.exists(lockFile)) return false;
+        BasicFileAttributes lockAttrs;
+        try {
+            lockAttrs = Files.readAttributes(lockFile, BasicFileAttributes.class);
+        } catch (IOException e) {
+            return true; // unreadable lock → re-lock
+        }
+        // The answer is the owner's: every member of a workspace reads the root's lock against every
+        // manifest, so it is asked once per request rather than once per module and step — the
+        // walk over every member's pins was a third of a 223-module build's engine time. A lock the
+        // request rewrites (a keep-pins re-lock) has a new stamp and is asked again.
+        Path owner = LockPaths.lockOwnerDir(dir).toAbsolutePath().normalize();
+        StaleKey key = new StaleKey(
+                owner,
+                lockFile.toAbsolutePath().normalize(),
+                lockAttrs.lastModifiedTime().toMillis(),
+                lockAttrs.size());
+        return RequestScope.current().get(key, k -> computeStale(dir, lockFile));
+    }
+
+    /** One owner's lock as it stood: the request-scoped key of {@link #isStale}. */
+    private record StaleKey(Path owner, Path lockFile, long lockMtimeMillis, long lockSize) {}
+
+    private static boolean computeStale(Path dir, Path lockFile) {
         try {
             Path buildFile = ManifestPaths.manifestIn(dir);
             if (!Files.exists(buildFile) || !Files.exists(lockFile)) return false;

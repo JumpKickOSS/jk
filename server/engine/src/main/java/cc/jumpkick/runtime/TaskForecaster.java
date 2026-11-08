@@ -51,11 +51,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -205,21 +207,15 @@ public final class TaskForecaster {
                 seeds.add(u.dir());
             }
         };
-        // A test edge orders the walk too: the consumer's suite re-runs when the sibling's output moves.
-        for (List<Path> wave : BuildGraph.waves(byDir.keySet(), graph.readOrder())) {
-            List<BuildGraph.BuildUnit> members = new ArrayList<>(wave.size());
-            for (Path d : wave) {
-                BuildGraph.BuildUnit u = byDir.get(d);
-                if (u != null) members.add(u);
-            }
-            walkWave(members, one);
-            // Published between waves rather than inside one: only a later wave reads it, and
-            // holding it back keeps the dirty set a value every member of a wave agrees on.
-            for (BuildGraph.BuildUnit u : members) {
-                if (seeds.contains(u.dir())) dirty.add(u.dir());
-            }
-        }
-        // Anything the waves could not reach — a cycle the graph resolve should already have
+        // A test edge orders the walk too: the consumer's suite re-runs when the sibling's output
+        // moves. A module's verdict is published before any consumer starts, so a consumer reads
+        // its prereqs' dirtiness complete.
+        List<BuildGraph.BuildUnit> walked = new ArrayList<>(byDir.values());
+        ForecastLanes.walk(walked, graph.readOrder(), lanes(walked.size()), laneContext(), u -> {
+            one.accept(u);
+            if (seeds.contains(u.dir())) dirty.add(u.dir());
+        });
+        // Anything the walk could not reach — a cycle the graph resolve should already have
         // refused — is still forecast, in dependency order, rather than silently missing.
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
             if (forecast.containsKey(u.dir())) continue;
@@ -235,54 +231,34 @@ public final class TaskForecaster {
     }
 
     /**
-     * Ceiling on lanes per wave. The arms wait on the filesystem far more than on the CPU, so the
+     * Ceiling on forecast lanes. The arms wait on the filesystem far more than on the CPU, so the
      * useful width is what the device absorbs rather than the core count; past this the lanes queue
-     * on the device and only add contention. Under {@link JkThreads#CPU_THREADS} on purpose, so a
-     * wave never takes the whole shared pool.
+     * on the device and only add contention. At most half of {@link JkThreads#CPU_THREADS}: an idle
+     * lane holds its pool thread while it waits for a module to become ready, and the rest of the
+     * pool stays free for what a visit itself hands to it.
      */
-    private static final int WAVE_LANES = 16;
+    private static final int MAX_LANES = 16;
 
-    /** Modules a lane must be worth before one is opened; below this the wave runs on the caller. */
-    private static final int MIN_MODULES_PER_WAVE_LANE = 2;
+    /** Modules a lane must be worth before one is opened; below this the walk runs on the caller. */
+    private static final int MIN_MODULES_PER_LANE = 2;
+
+    static int lanes(int modules) {
+        return Math.clamp(modules / MIN_MODULES_PER_LANE, 1, Math.min(MAX_LANES, JkThreads.CPU_THREADS / 2));
+    }
 
     /**
-     * Forecast every member of one wave, concurrently when the wave is wide enough to pay for it.
-     *
-     * <p>Nothing in a wave depends on anything else in it (see {@link BuildGraph#waves}), so no
-     * member reads what another writes: each publishes its own trees to the restore ledger, its own
-     * API hint and its own verdict. Every lane is joined before the caller starts the next wave,
-     * which is what makes that wave's reads of the ledger, the hints and the dirty set complete.
-     *
-     * <p>{@link JkThreads#cpu()}, whose threads are platform threads, rather than the io pool: an
-     * arm's dominant cost is reading directories, and a directory read is a native call the
-     * virtual-thread scheduler does not compensate for, so a wave of them on virtual threads would
-     * hold a carrier each and leave the engine's own virtual threads — the ones answering hello and
-     * status — unscheduled for as long as the wave lasts. Either pool carries the ambient context a
-     * lane needs: the session and its cancel token, the run's io ledger, and the request scope a
-     * compile prediction forks its plan worker under, so the lanes share one worker pool rather
-     * than starting one each. The entry memo is a {@code ScopedValue}, which does not ride a pool
-     * hop, so it and {@link JavaCompile#PLAN_WORKERS} are handed across explicitly.
+     * What a lane carries over from the caller. {@link JkThreads#cpu()}, whose threads are platform
+     * threads, rather than the io pool: an arm's dominant cost is reading directories, a native call
+     * the virtual-thread scheduler does not compensate for. The pool carries the session and its
+     * cancel token, the run's io ledger and the request scope a compile prediction forks its plan
+     * worker under; the entry memo is a {@code ScopedValue}, which does not ride a pool hop, so it
+     * and {@link JavaCompile#PLAN_WORKERS} are handed across explicitly.
      */
-    private static void walkWave(List<BuildGraph.BuildUnit> members, Consumer<BuildGraph.BuildUnit> one) {
-        int lanes = Math.clamp(members.size() / MIN_MODULES_PER_WAVE_LANE, 1, WAVE_LANES);
-        if (lanes == 1) {
-            for (BuildGraph.BuildUnit u : members) one.accept(u);
-            return;
-        }
+    private static UnaryOperator<Callable<@Nullable Void>> laneContext() {
         Map<Path, String> memo = ClasspathFingerprint.entryMemo();
         JavaCompile.PlanWorkers planWorkers = JavaCompile.PLAN_WORKERS.orElse(JavaCompile.PlanWorkers.ANY);
-        int chunk = (members.size() + lanes - 1) / lanes;
-        List<Future<?>> pending = new ArrayList<>(lanes);
-        for (int lane = 0; lane < lanes; lane++) {
-            List<BuildGraph.BuildUnit> slice = members.subList(
-                    Math.min(lane * chunk, members.size()), Math.min((lane + 1) * chunk, members.size()));
-            pending.add(JkThreads.cpu().submit(() -> ScopedValue.where(JavaCompile.PLAN_WORKERS, planWorkers)
-                    .call(() -> ClasspathFingerprint.withEntryMemo(memo, () -> {
-                        for (BuildGraph.BuildUnit u : slice) one.accept(u);
-                        return null;
-                    }))));
-        }
-        joinWave(pending);
+        return body -> () -> ScopedValue.where(JavaCompile.PLAN_WORKERS, planWorkers)
+                .call(() -> ClasspathFingerprint.withEntryMemo(memo, body));
     }
 
     /** Wait for every lane of a wave, re-raising the first failure as the serial walk would have. */
