@@ -40,6 +40,26 @@ class LockSchemasTest {
     }
 
     @Test
+    void latest_takes_the_newest_pinned_version_of_the_subject() {
+        SchemaEntry moneyTwo =
+                new SchemaEntry(null, REGISTRY, "money", 2, 9, "avro", "sha256:" + "c".repeat(64), List.of());
+        LockSchemas.Declared declared = new LockSchemas.Declared(null, REGISTRY, Map.of("money", "latest"), null);
+
+        assertThat(LockSchemas.closure(List.of(MONEY, moneyTwo), declared)).containsExactly(moneyTwo);
+    }
+
+    @Test
+    void two_versions_of_one_subject_in_a_module_name_the_subject_and_both() {
+        SchemaEntry moneyTwo =
+                new SchemaEntry(null, REGISTRY, "money", 2, 9, "avro", "sha256:" + "c".repeat(64), List.of());
+        LockSchemas.Declared declared =
+                new LockSchemas.Declared(null, REGISTRY, Map.of("orders-value", "3", "money", "latest"), null);
+
+        assertThatThrownBy(() -> LockSchemas.closure(List.of(MONEY, moneyTwo, ORDER), declared))
+                .hasMessage("money: v1 and v2 both reach one module; keep one");
+    }
+
+    @Test
     void a_declared_version_the_lock_does_not_pin_names_the_subject() {
         LockSchemas.Declared declared = new LockSchemas.Declared(null, REGISTRY, Map.of("orders-value", "4"), null);
 
