@@ -8,6 +8,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.PluginConfig;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,73 @@ import org.junit.jupiter.api.io.TempDir;
  * what the preset has no key for.
  */
 class PomSchemaGeneratorImportTest {
+
+    /**
+     * Confluent's schema-registry plugin downloading two subjects into the Avro plugin's source
+     * directory: [schema-registry] carries them, [avro] keeps its own root, and the key and secret
+     * the POM reads from the environment become a credential table naming the variables.
+     */
+    @Test
+    void schema_registry_download_becomes_the_schema_registry_table(@TempDir Path tempDir) throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("project"));
+        Files.writeString(project.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>orders</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.apache.avro</groupId>
+                        <artifactId>avro-maven-plugin</artifactId>
+                        <version>1.12.2</version>
+                        <configuration><sourceDirectory>${project.basedir}/src/main/avro/registry</sourceDirectory></configuration>
+                      </plugin>
+                      <plugin>
+                        <groupId>io.confluent</groupId>
+                        <artifactId>kafka-schema-registry-maven-plugin</artifactId>
+                        <version>8.0.0</version>
+                        <executions>
+                          <execution><goals><goal>download</goal></goals></execution>
+                          <execution><id>check</id><goals><goal>test-compatibility</goal></goals></execution>
+                        </executions>
+                        <configuration>
+                          <schemaRegistryUrls><param>https://registry.example.com</param></schemaRegistryUrls>
+                          <userInfoConfig>${env.SR_KEY}:${env.SR_SECRET}</userInfoConfig>
+                          <outputDirectory>${project.basedir}/src/main/avro/registry</outputDirectory>
+                          <subjectPatterns>
+                            <param>orders-value</param>
+                            <param>money</param>
+                            <param>payments-.*</param>
+                          </subjectPatterns>
+                          <versions><param>3</param></versions>
+                        </configuration>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PomImporter.WorkspaceImportResult result =
+                TestImporters.offline(tempDir).importWorkspace(project.resolve("pom.xml"));
+
+        assertThat(result.root().pluginConfig("schema-registry").orElseThrow().values())
+                .containsOnly(
+                        Map.entry("url", "https://registry.example.com"),
+                        Map.entry("subjects", Map.of("orders-value", "3", "money", "latest")),
+                        Map.entry("repository", "schema-registry"));
+        assertThat(result.root().pluginConfig("avro").orElseThrow().values()).doesNotContainKey("src");
+        assertThat(result.machineCredentials()).singleElement().satisfies(c -> assertThat(c.credential())
+                .containsEntry("username", "${env:SR_KEY}")
+                .containsEntry("password", "${env:SR_SECRET}"));
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .contains(
+                        "kafka-schema-registry-maven-plugin: pattern payments-.* not imported; list its subjects",
+                        "kafka-schema-registry-maven-plugin test-compatibility: not run; jk only downloads")
+                .noneMatch(m -> m.contains("kafka-schema-registry-maven-plugin not imported"));
+    }
 
     /** The Baeldung Kafka module's shape: the plugin bound to `schema` with the Maven defaults. */
     @Test

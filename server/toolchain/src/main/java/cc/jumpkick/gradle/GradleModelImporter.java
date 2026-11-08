@@ -87,7 +87,8 @@ final class GradleModelImporter {
             "io.github.goooler.shadow",
             AVRO_PLUGIN,
             AVRO_BASE_PLUGIN,
-            XJC_PLUGIN);
+            XJC_PLUGIN,
+            GradleSchemaRegistry.PLUGIN);
 
     /** Plugin ids whose effect needs no row: implicit in jk, or absorbed by another mapping. */
     private static final Set<String> SILENT_PLUGINS = Set.of(
@@ -113,7 +114,8 @@ final class GradleModelImporter {
             "java-test-fixtures",
             AVRO_PLUGIN,
             AVRO_BASE_PLUGIN,
-            XJC_PLUGIN);
+            XJC_PLUGIN,
+            GradleSchemaRegistry.PLUGIN);
 
     /** Plugin class-name prefixes the probed ids already account for. */
     private static final List<String> MAPPED_PLUGIN_CLASSES = List.of(
@@ -129,7 +131,8 @@ final class GradleModelImporter {
             "com.diffplug.gradle.spotless",
             "com.github.jengelman.gradle.plugins.shadow",
             "com.github.bjornvester.xjc",
-            "com.github.davidmc24.gradle.plugin.avro");
+            "com.github.davidmc24.gradle.plugin.avro",
+            "com.github.imflog.schema.registry");
 
     /** Configurations Gradle and its plugins declare for their own tooling, not the build's dependencies. */
     private static final List<String> TOOL_CONFIGURATION_PREFIXES = List.of(
@@ -352,10 +355,15 @@ final class GradleModelImporter {
                 local,
                 this::ruleCredential));
         GradleModel.Xjc xjc = p.xjc();
-        if (xjc != null) plugins.add(jaxbTable(xjc, local));
+        if (xjc != null) plugins.add(GradleSchemaTables.jaxb(xjc, local));
+        GradleModel.SchemaRegistry sr = p.schemaRegistry();
+        GradleSchemaRegistry.Mapped registry = sr == null
+                ? GradleSchemaRegistry.Mapped.NONE
+                : GradleSchemaRegistry.map(sr, local, this::ruleCredential);
+        if (registry.table() != null) plugins.add(registry.table());
         GradleModel.Avro avro = p.avro();
-        if (avro != null)
-            plugins.add(avroTable(p, avro, plugins.stream().anyMatch(c -> c.id().equals("schema-registry")), local));
+        boolean fromRegistry = plugins.stream().anyMatch(c -> c.id().equals("schema-registry"));
+        if (avro != null) plugins.add(GradleSchemaTables.avro(p, avro, fromRegistry, registry.outputs(), local));
         plugins = merged(plugins);
         String groovy = applied.contains("groovy") ? groovyVersion(p, local) : null;
         Set<String> unreported = new LinkedHashSet<>(applied);
@@ -521,48 +529,6 @@ final class GradleModelImporter {
         return version;
     }
 
-    /**
-     * The xjc plugin's extension as the {@code [jaxb]} table: {@code xsdDir} is {@code src}, {@code
-     * defaultPackage} is {@code package}, {@code bindingFiles} are {@code bindings} and {@code
-     * options} are {@code arguments}.
-     */
-    private static PluginConfig jaxbTable(GradleModel.Xjc xjc, ImportReport.Builder local) {
-        Map<String, Object> table = new LinkedHashMap<>();
-        String src = xjc.xsdDir() == null ? "src/main/resources" : xjc.xsdDir();
-        if (!src.equals(JAXB_DEFAULT_SRC)) table.put("src", src);
-        if (xjc.defaultPackage() != null) table.put("package", xjc.defaultPackage());
-        if (!xjc.bindingFiles().isEmpty()) table.put("bindings", xjc.bindingFiles());
-        if (!xjc.options().isEmpty()) table.put("arguments", xjc.options());
-        local.warning(XJC_PLUGIN + " became [jaxb] over the schemas in " + src
-                + "; kept jakarta.xml.bind-api and jaxb-runtime");
-        return new PluginConfig("jaxb", table);
-    }
-
-    /**
-     * {@code [avro]}'s {@code src} and {@code version} where they differ from the defaults. A schema
-     * directory under the build directory is another task's output: a row naming the task, unless
-     * a rule already brought the module's schemas in through {@code [schema-registry]}. The plugin's
-     * own IDL output is skipped: {@code [avro]} compiles IDL itself.
-     */
-    private static PluginConfig avroTable(
-            GradleModel.Project p, GradleModel.Avro avro, boolean fromRegistry, ImportReport.Builder local) {
-        Map<String, Object> table = new LinkedHashMap<>();
-        String build = avro.buildDir() == null ? null : avro.buildDir() + "/";
-        List<String> sources = new ArrayList<>();
-        for (String dir : avro.sources()) {
-            String writers = p.writersOf(dir);
-            if (build == null || !(dir + "/").startsWith(build)) sources.add(dir);
-            else if (fromRegistry || dir.matches(".*/generated-\\w+-avro-avpr")) continue;
-            else if (writers != null) local.warning("Avro schemas come from " + writers + "; see [schema-registry]");
-            else local.warning("Avro schemas are generated into " + dir + "; put them in src/main/avro");
-        }
-        if (!sources.isEmpty() && !sources.getFirst().equals(AVRO_DEFAULT_SRC)) table.put("src", sources.getFirst());
-        if (sources.size() > 1) local.warning("Avro: imported " + sources.getFirst() + " only");
-        String version = p.resolved().get("org.apache.avro:avro");
-        if (version != null && !version.equals(AVRO_DEFAULT_VERSION)) table.put("version", version);
-        return new PluginConfig("avro", table);
-    }
-
     /** One table per plugin, the keys of every config for it in order. */
     private static List<PluginConfig> merged(List<PluginConfig> configs) {
         Map<String, Map<String, Object>> byId = new LinkedHashMap<>();
@@ -572,14 +538,6 @@ final class GradleModelImporter {
         byId.forEach((id, values) -> out.add(new PluginConfig(id, values)));
         return out;
     }
-
-    /** The {@code [avro]} table's own defaults. */
-    private static final String AVRO_DEFAULT_SRC = "src/main/avro";
-
-    private static final String AVRO_DEFAULT_VERSION = "1.12.2";
-
-    /** The {@code [jaxb]} table's own default schema directory. */
-    private static final String JAXB_DEFAULT_SRC = "src/main/xsd";
 
     /**
      * The BOMs the project's {@code dependencyManagement { imports { mavenBom … } } } block names are

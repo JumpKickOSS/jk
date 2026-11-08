@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.model.PluginConfig;
 import java.io.IOException;
 import java.net.URI;
@@ -38,7 +39,8 @@ import org.jspecify.annotations.Nullable;
  * {@code [taglib]}, {@code avro-maven-plugin} {@link AvroPlugin}'s {@code [avro]}, the JAXB compiler
  * plugins {@link JaxbPlugin}'s {@code [jaxb]}, {@code jooq-codegen-maven} {@link JooqPlugin}'s
  * {@code [jooq]}, {@code wire-maven-plugin} {@link WirePlugin}'s
- * {@code [generate.wire]} entry; the GraphQL codegen plugins are a row naming the recipe.
+ * {@code [generate.wire]} entry, {@code kafka-schema-registry-maven-plugin} {@link SchemaRegistryPlugin}'s
+ * {@code [schema-registry]}; the GraphQL codegen plugins are a row naming the recipe.
  */
 final class GeneratorPlugins {
 
@@ -59,6 +61,9 @@ final class GeneratorPlugins {
             @Nullable PluginConfig jaxb,
             @Nullable PluginConfig jooq,
             @Nullable PluginConfig generate,
+            @Nullable PluginConfig schemaRegistry,
+            /** The registry's credential table; null when the build sends none. */
+            UserConfigEditor.@Nullable CredentialTable registryCredential,
             Map<String, String> outputRoots,
             /** Plugins another mapping consumed, which get no "not imported" row of their own. */
             Set<String> consumedPlugins) {
@@ -67,7 +72,7 @@ final class GeneratorPlugins {
         List<PluginConfig> tables() {
             List<PluginConfig> tables = new ArrayList<>();
             for (PluginConfig table : new PluginConfig[] {
-                openapi, protobuf, localizer, antlr, taglib, jenkinsTest, avro, jaxb, jooq, generate
+                openapi, protobuf, localizer, antlr, taglib, jenkinsTest, avro, jaxb, jooq, generate, schemaRegistry
             }) {
                 if (table != null) tables.add(table);
             }
@@ -126,6 +131,16 @@ final class GeneratorPlugins {
         outputRoots.putAll(taglib.outputRoots());
         AvroPlugin.Mapped avro = AvroPlugin.map(model, report);
         outputRoots.putAll(avro.outputRoots());
+        SchemaRegistryPlugin.Mapped registry = SchemaRegistryPlugin.map(model, report);
+        PluginConfig avroTable = avro.table();
+        // Schemas the registry plugin downloads come from the store; [avro] keeps its own root.
+        if (avroTable != null
+                && registry.output() != null
+                && registry.output().equals(avroTable.values().get("src"))) {
+            Map<String, Object> values = new LinkedHashMap<>(avroTable.values());
+            values.remove("src");
+            avroTable = new PluginConfig("avro", values);
+        }
         JaxbPlugin.Mapped jaxb = JaxbPlugin.map(model, report);
         outputRoots.putAll(jaxb.outputRoots());
         JooqPlugin.Mapped jooq = JooqPlugin.map(model, report);
@@ -146,10 +161,12 @@ final class GeneratorPlugins {
                 antlr.table(),
                 taglib.table(),
                 taglib.testPlugins(),
-                avro.table(),
+                avroTable,
                 jaxb.table(),
                 jooq.table(),
                 generate,
+                registry.table(),
+                registry.credential(),
                 Collections.unmodifiableMap(outputRoots),
                 Collections.unmodifiableSet(consumed));
     }

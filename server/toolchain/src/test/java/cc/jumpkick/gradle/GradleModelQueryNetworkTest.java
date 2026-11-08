@@ -456,6 +456,68 @@ class GradleModelQueryNetworkTest {
         assertThat(String.join("\n", rows)).doesNotContain("0123456789").doesNotContain("kafka-helper: not imported");
     }
 
+    /** The Confluent schema-registry Gradle plugin's download block, read off the evaluated extension. */
+    @Test
+    void the_registry_plugin_s_download_block_imports_as_schema_registry(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("orders"));
+        Files.createDirectories(root.resolve("gradle/wrapper"));
+        Files.writeString(
+                root.resolve("gradle/wrapper/gradle-wrapper.properties"),
+                "distributionUrl=https\\://services.gradle.org/distributions/gradle-" + GradleResolver.DEFAULT_VERSION
+                        + "-bin.zip\n");
+        Files.writeString(root.resolve("settings.gradle.kts"), """
+                pluginManagement {
+                    repositories {
+                        gradlePluginPortal()
+                        maven("https://packages.confluent.io/maven/")
+                    }
+                }
+                rootProject.name = "orders"
+                """);
+        Files.writeString(root.resolve("build.gradle.kts"), """
+                plugins {
+                    java
+                    id("com.github.imflog.kafka-schema-registry-gradle-plugin") version "2.7.0"
+                }
+                group = "com.acme"
+                version = "1.0"
+                schemaRegistry {
+                    url.set("https://registry.example.com")
+                    clientConfig.set(mapOf(
+                        "basic.auth.credentials.source" to "USER_INFO",
+                        "basic.auth.user.info" to "${System.getenv("ACME_SR_KEY")}:${System.getenv("ACME_SR_SECRET")}"))
+                    download {
+                        subject("orders-value", "src/main/avro/registry", 3)
+                        subject("money", "src/main/avro/registry")
+                    }
+                }
+                """);
+        Map<String, String> shell = new HashMap<>(System.getenv());
+        shell.put("ACME_SR_KEY", "key-0123456789");
+        shell.put("ACME_SR_SECRET", "secret-0123456789");
+        GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
+                JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
+
+        GradleBuildImport.Result result = RequestShell.where(
+                shell, () -> gradle.importBuild(root.resolve("settings.gradle.kts"), ImportProgress.NONE));
+
+        List<String> rows = result.report().issues().stream()
+                .map(ImportReport.Issue::message)
+                .toList();
+        assertThat(result.report().hasErrors())
+                .as("Gradle evaluated the build: " + rows)
+                .isFalse();
+        assertThat(result.root().pluginConfig("schema-registry").orElseThrow().values())
+                .containsOnly(
+                        Map.entry("url", "https://registry.example.com"),
+                        Map.entry("subjects", Map.of("orders-value", "3", "money", "latest")),
+                        Map.entry("repository", "schema-registry"));
+        assertThat(result.machineCredentials()).singleElement().satisfies(c -> assertThat(c.credential())
+                .containsExactly(
+                        Map.entry("username", "${env:ACME_SR_KEY}"), Map.entry("password", "${env:ACME_SR_SECRET}")));
+        assertThat(String.join("\n", rows)).doesNotContain("0123456789").doesNotContain("SchemaRegistryPlugin");
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }

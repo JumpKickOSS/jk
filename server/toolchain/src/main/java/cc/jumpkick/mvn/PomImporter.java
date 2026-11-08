@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ImportedKotlin;
 import cc.jumpkick.compat.NodeImportMapping;
+import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.InFlightRequests;
@@ -76,7 +77,12 @@ public final class PomImporter {
      * tree the import read (the root, each module's, the ones inactive profiles list included).
      */
     public record WorkspaceImportResult(
-            JkBuild root, Map<String, JkBuild> modules, ImportReport report, Set<Path> pomFiles) {}
+            JkBuild root,
+            Map<String, JkBuild> modules,
+            ImportReport report,
+            Set<Path> pomFiles,
+            /** The {@code ~/.jk/config.toml} tables naming the variables the build's credentials come from. */
+            List<UserConfigEditor.CredentialTable> machineCredentials) {}
 
     /** Fetches a file the POM names by URL (a generator's remote spec); an {@link IOException} is the row's reason. */
     @FunctionalInterface
@@ -86,6 +92,9 @@ public final class PomImporter {
 
     /** How a refusal for a POM read that stopped advancing opens. */
     public static final String BUDGET_EXCEEDED = "Resolution budget exceeded: ";
+
+    /** The credential tables the POMs' plugins read from the environment, once per id. */
+    private final List<UserConfigEditor.CredentialTable> machineCredentials = new ArrayList<>();
 
     final RepoModelResolver resolver;
     private final RemoteFile remote;
@@ -271,6 +280,10 @@ public final class PomImporter {
         ImportReport.Builder report = ImportReport.builder();
         reportInheritanceFailure(em, report);
         GeneratorPlugins.Generators generators = GeneratorPlugins.map(em.model(), remote, report);
+        UserConfigEditor.CredentialTable registryCredential = generators.registryCredential();
+        if (registryCredential != null
+                && machineCredentials.stream().noneMatch(c -> c.name().equals(registryCredential.name())))
+            machineCredentials.add(registryCredential);
         Set<String> consumedPlugins = new HashSet<>(generators.consumedPlugins());
         consumedPlugins.addAll(BuildExtensions.extensionPlugins(em.model()));
         // hibernate-maven-plugin is the table only when it enhances; its other goals keep the row.
@@ -487,6 +500,7 @@ public final class PomImporter {
     }
 
     private WorkspaceImportResult importReactor(Path rootPom) throws IOException {
+        machineCredentials.clear();
         Path rootFile = rootPom.toAbsolutePath();
         byte[] rootXml = Files.readAllBytes(rootFile);
         Model rootRaw = EffectiveModel.rawModel(rootXml);
@@ -498,7 +512,8 @@ public final class PomImporter {
                             null,
                             null)
                     .platformManaged();
-            return new WorkspaceImportResult(single.jkBuild(), Map.of(), single.report(), Set.of(rootFile));
+            return new WorkspaceImportResult(
+                    single.jkBuild(), Map.of(), single.report(), Set.of(rootFile), List.copyOf(machineCredentials));
         }
 
         ImportReport.Builder report = ImportReport.builder();
@@ -603,7 +618,8 @@ public final class PomImporter {
         }
         FrontendImport.Relocated placed = frontends.place(
                 rootModel.model(), Objects.requireNonNull(rootFile.getParent()), rootJkBuild, rewritten, report);
-        return new WorkspaceImportResult(placed.root(), placed.members(), report.build(), found.pomFiles());
+        return new WorkspaceImportResult(
+                placed.root(), placed.members(), report.build(), found.pomFiles(), List.copyOf(machineCredentials));
     }
 
     /**
