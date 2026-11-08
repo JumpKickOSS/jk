@@ -79,6 +79,8 @@ final class BuildFields {
     @Nullable
     Jlink jlink;
 
+    boolean moduleServices;
+
     private BuildFields(BuildBlock b) {
         orderAfter = b.orderAfter();
         testPluginJars = b.testPluginJars();
@@ -121,6 +123,7 @@ final class BuildFields {
         resources = b.resources();
         nullness = b.nullness();
         jlink = b.jlink();
+        moduleServices = b.moduleServices();
     }
 
     BuildBlock build() {
@@ -165,6 +168,7 @@ final class BuildFields {
                 node,
                 resources,
                 nullness,
-                jlink);
+                jlink,
+                moduleServices);
     }
 }

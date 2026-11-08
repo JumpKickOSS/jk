@@ -95,14 +95,15 @@ public final class JkBuildRenderer {
     }
 
     /**
-     * {@code [build] extra-src}; {@code [test]} extra source roots and source excludes, the baseline
+     * {@code [build] extra-src} and {@code module-services}; {@code [test]} extra source roots and source excludes, the baseline
      * tag filters, the excluded classes and dependencies, the test JVM's flags and system properties,
      * and a {@code [test.suites.<name>]} table per class-pattern suite.
      */
     private static void renderBuild(StringBuilder sb, BuildBlock build) {
-        if (!build.extraSrc().isEmpty()) {
-            sb.append("\n[build]\nextra-src = ").append(list(build.extraSrc())).append('\n');
-        }
+        if (!build.extraSrc().isEmpty() || build.moduleServices()) sb.append("\n[build]\n");
+        if (!build.extraSrc().isEmpty())
+            sb.append("extra-src = ").append(list(build.extraSrc())).append('\n');
+        if (build.moduleServices()) sb.append("module-services = true\n");
         renderTest(sb, build);
         build.testClassSuites().forEach((suite, spec) -> {
             sb.append("\n[test.suites.")

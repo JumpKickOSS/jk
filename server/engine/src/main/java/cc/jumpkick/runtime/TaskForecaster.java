@@ -653,7 +653,10 @@ public final class TaskForecaster {
                     TaskNames.COMPILE_GROOVY,
                     TaskNames.ASSEMBLE_CLASSES,
                     TaskNames.COMPILE_VERSIONS -> 0;
-            case TaskNames.COPY_RESOURCES, TaskNames.BUILD_INFO, TaskNames.COMPILE_TEST_FIXTURES -> 1;
+            case TaskNames.COPY_RESOURCES,
+                    TaskNames.BUILD_INFO,
+                    TaskNames.MODULE_SERVICES,
+                    TaskNames.COMPILE_TEST_FIXTURES -> 1;
             default -> 2;
         };
     }

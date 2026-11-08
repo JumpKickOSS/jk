@@ -184,7 +184,14 @@ public record BuildBlock(
         /** {@code [nullness]} as written; {@code null} when the table is absent. */
         @Nullable NullnessConfig nullness,
         /** {@code [jlink]} — the custom runtime image the module packages; {@code null} for none. */
-        @Nullable Jlink jlink) {
+        @Nullable Jlink jlink,
+        /**
+         * {@code [build] module-services}: whether the {@code module-services} step writes a
+         * {@code META-INF/services/<service>} file into the classes tree for every {@code provides}
+         * the compiled {@code module-info} declares, so a {@code ServiceLoader} on a class path or a
+         * processor path finds what the module path would. Default {@code false}.
+         */
+        boolean moduleServices) {
 
     /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
     public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -230,7 +237,8 @@ public record BuildBlock(
             null,
             Resources.EMPTY,
             null,
-            null);
+            null,
+            false);
 
     public BuildBlock {
         resources = resources == null ? Resources.EMPTY : resources;
@@ -401,6 +409,11 @@ public record BuildBlock(
     /** The same block with the {@code [build-info]} table set. */
     public BuildBlock withBuildInfo(@Nullable BuildInfo info) {
         return with(f -> f.buildInfo = info);
+    }
+
+    /** The same block with {@code [build] module-services} set. */
+    public BuildBlock withModuleServices(boolean on) {
+        return with(f -> f.moduleServices = on);
     }
 
     /** The same block with the {@code [multi-release]} table set. */

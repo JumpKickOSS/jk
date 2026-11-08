@@ -279,7 +279,7 @@ public final class PlannerResources {
     }
 
     /** Anchor {@code BEFORE_PACKAGE}: stem-script tasks immediately before jar/image. */
-    static Task buildLogicBeforePackageStep(BuildPlanner.Ctx cx, boolean buildInfo) {
+    static Task buildLogicBeforePackageStep(BuildPlanner.Ctx cx, boolean buildInfo, boolean moduleServices) {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
@@ -289,7 +289,7 @@ public final class PlannerResources {
                 .stage(BuildLogicAnchor.BEFORE_PACKAGE.stage())
                 .label("Build logic (before package)")
                 .kind(TaskKind.CPU)
-                .requires(beforePackageRequires(buildInfo))
+                .requires(beforePackageRequires(buildInfo, moduleServices))
                 .weight(() -> plan.get().fullyCached() ? 0 : 1)
                 .ticks(1)
                 .execute(ctx -> {
@@ -447,11 +447,25 @@ public final class PlannerResources {
     /**
      * BEFORE_PACKAGE waits on resources only — never on tests. Packaging needs a complete
      * classes tree, which tests do not contribute to. A failing suite still fails the build;
-     * the artifact is built concurrently. {@code [build-info]} is the last writer of that tree
-     * when the module declares it.
+     * the artifact is built concurrently. {@code [build-info]} and {@code [build] module-services}
+     * write that tree after the copy, each its own files, so either one present is a last writer
+     * to wait for; without them the copy is.
      */
-    static String[] beforePackageRequires(boolean buildInfo) {
-        return new String[] {buildInfo ? TaskNames.BUILD_INFO : TaskNames.COPY_RESOURCES};
+    static String[] beforePackageRequires(boolean buildInfo, boolean moduleServices) {
+        return lastClassesWriters(buildInfo, moduleServices).toArray(String[]::new);
+    }
+
+    /**
+     * The steps that finish the main classes tree after the compile: {@code build-info} and {@code
+     * module-services} when planned (both follow {@code copy-resources} and write disjoint files),
+     * else {@code copy-resources} itself.
+     */
+    static List<String> lastClassesWriters(boolean buildInfo, boolean moduleServices) {
+        List<String> out = new ArrayList<>();
+        if (buildInfo) out.add(TaskNames.BUILD_INFO);
+        if (moduleServices) out.add(TaskNames.MODULE_SERVICES);
+        if (out.isEmpty()) out.add(TaskNames.COPY_RESOURCES);
+        return out;
     }
 
     // ---- forecast ---------------------------------------------------------------------------
@@ -474,6 +488,12 @@ public final class PlannerResources {
             // jar is forecast as the resource drift it is.
             s.buildInfoDrift = PlannerBuildInfo.outOfSync(s.dir, s.project, buildInfo, classes, Clock.SYSTEM);
             s.mainResourceDrift |= s.buildInfoDrift;
+        }
+        if (s.project.build().moduleServices()) {
+            // Services files written from module-info change the tree package-jar keys on, too.
+            s.moduleServicesDrift =
+                    PlannerModuleServices.outOfSync(classes, PlannerModuleServices.incremental(p.layout()));
+            s.mainResourceDrift |= s.moduleServicesDrift;
         }
         s.knownResourceDrift = s.mainResourceDrift;
         return s.mainResourceDrift

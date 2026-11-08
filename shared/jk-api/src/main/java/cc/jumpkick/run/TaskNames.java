@@ -55,6 +55,9 @@ public final class TaskNames {
     /** {@code [build-info]}: {@code git.properties} (and Boot's {@code build-info.properties}) into the classes tree. */
     public static final String BUILD_INFO = "build-info";
 
+    /** {@code [build] module-services}: {@code META-INF/services} files from {@code module-info}'s {@code provides}. */
+    public static final String MODULE_SERVICES = "module-services";
+
     /** Forecast-only: test-resource drift. Never discounts {@link #RUN_TESTS}. */
 
     /** Forecast-only: a sibling ordered-after this module is rebuilding. */

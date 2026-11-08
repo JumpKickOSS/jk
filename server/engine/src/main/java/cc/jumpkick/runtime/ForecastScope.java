@@ -118,6 +118,9 @@ public final class ForecastScope implements StepForecast.Scope {
     /** {@code [build-info]} would rewrite its files: the checkout moved since the classes tree was written. */
     boolean buildInfoDrift;
 
+    /** {@code [build] module-services} would write or remove a services file, or fail on a conflicting one. */
+    boolean moduleServicesDrift;
+
     /** The native binary this build must bring back: absent on disk while its step forecasts a restore. */
     boolean nativeBinaryToRestore;
 

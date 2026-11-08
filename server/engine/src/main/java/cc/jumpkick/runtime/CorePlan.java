@@ -290,6 +290,7 @@ final class CorePlan {
             Task compileGroovy,
             Task copyResources,
             @Nullable Task buildInfo,
+            @Nullable Task moduleServices,
             boolean hasFixtures,
             Task compileTestFixtures,
             boolean hasGuardSuite,
@@ -313,6 +314,8 @@ final class CorePlan {
         Task copyResources = PlannerResources.copyResourcesStep(cx);
         Task buildInfo =
                 parsedBuild != null && parsedBuild.build().buildInfo() != null ? PlannerBuildInfo.step(cx) : null;
+        Task moduleServices =
+                parsedBuild != null && parsedBuild.build().moduleServices() ? PlannerModuleServices.step(cx) : null;
         boolean hasFixtures = parsedBuild != null && PlannerFixtures.declared(parsedBuild);
         Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
         boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), compactLayout);
@@ -324,6 +327,8 @@ final class CorePlan {
         List<String> testStampRequires = new ArrayList<>();
         // A test that reads git.properties off the classpath (Boot's /info) waits for its writer.
         if (buildInfo != null) testStampRequires.add(TaskNames.BUILD_INFO);
+        // As does a test that loads the module's services off the class path.
+        if (moduleServices != null) testStampRequires.add(TaskNames.MODULE_SERVICES);
         // The suite reads the versioned classes ahead of the main ones.
         if (PlannerVersions.declared(parsedBuild)) testStampRequires.add(TaskNames.COMPILE_VERSIONS);
         if (testNode) testStampRequires.add(TaskNames.ENSURE_NODE);
@@ -367,6 +372,7 @@ final class CorePlan {
                 compileGroovy,
                 copyResources,
                 buildInfo,
+                moduleServices,
                 hasFixtures,
                 compileTestFixtures,
                 hasGuardSuite,
@@ -535,6 +541,11 @@ final class CorePlan {
         }
         if (PlannerVersions.declared(parsedBuild)) leaves.add(TaskNames.COMPILE_VERSIONS);
         leaves.add(TaskNames.COPY_RESOURCES);
+        // A processor sibling is found through the services files module-services writes.
+        if (s.moduleServices() != null) {
+            b.addTask(s.moduleServices());
+            leaves.add(TaskNames.MODULE_SERVICES);
+        }
         // Every plugin step joins the plan, and the terminal keeps the ones the compile requires:
         // the source generators the compiles read. A classes transform (bytecode enhancement)
         // makes the module's classes what they are, so a recompile runs it too: `jk dev` launches
@@ -561,6 +572,7 @@ final class CorePlan {
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
         b.addTask(s.copyResources());
         if (s.buildInfo() != null) b.addTask(s.buildInfo());
+        if (s.moduleServices() != null) b.addTask(s.moduleServices());
         if (!skipJUnit) {
             if (s.hasFixtures()) b.addTask(s.compileTestFixtures());
             b.addTask(s.compileTest()).addTask(s.runTests());
@@ -577,7 +589,8 @@ final class CorePlan {
         // packages a jar, so the packaging plugin steps fall away with package-jar.
         for (Task p : s.pluginSteps()) b.addTask(p);
         if (!in.testOnly()) {
-            b.addTask(PlannerResources.buildLogicBeforePackageStep(cx, s.buildInfo() != null));
+            b.addTask(PlannerResources.buildLogicBeforePackageStep(
+                    cx, s.buildInfo() != null, s.moduleServices() != null));
             b.addTask(s.packageJar());
         }
         // write-stamp is the Java-compile freshness companion; only when Java ran.

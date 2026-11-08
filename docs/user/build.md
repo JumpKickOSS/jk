@@ -159,6 +159,24 @@ Zinc unchanged: its analysis tracks classes, not modules, and a descriptor chang
 module like any other source. javac's own module diagnostics (`module not found`, `package is not
 visible`) land in the results as compile errors.
 
+A library that declares its services only in the descriptor (`provides S with I1, I2;`) is found
+by `ServiceLoader` on the module path, but not on a class path or an annotation processor path,
+which read `META-INF/services` files. `[build] module-services = true` writes those files:
+
+```toml
+[build]
+module-services = true    # default false
+```
+
+The `module-services` step runs after the resource copy and reads the compiled `module-info.class`.
+Each `provides` becomes `META-INF/services/<S>` in the classes tree, and so in the jar, naming the
+providers one per line in declaration order. The file is rewritten only when its bytes would
+change, so an unchanged descriptor is a skip and leaves the jar alone. A file of the same name the
+module's resources (or a processor) already put in the tree is left alone when it names the same
+providers and fails the step, naming the file and both lists, when it names others. A `provides`
+removed from the descriptor removes the file the step wrote, never a resource's. `jk import` writes
+the key for a module that runs Helidon's `helidon-services-plugin` ([Migration](migration.md)).
+
 ## Null checking (`[nullness]`)
 
 One table turns on compile-time null checking: [NullAway](https://github.com/uber/NullAway),

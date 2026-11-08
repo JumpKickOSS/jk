@@ -323,6 +323,10 @@
           "type": "boolean",
           "description": "false is the same as test-workers = 1."
         },
+        "module-services": {
+          "type": "boolean",
+          "description": "Write META-INF/services/<service> into the classes tree for every provides in the compiled module-info, so ServiceLoader on a class path or processor path finds the providers (default false)."
+        },
         "logic": {
           "type": "string",
           "description": "Build-logic directory (default .jk/scripts), or \"off\"."

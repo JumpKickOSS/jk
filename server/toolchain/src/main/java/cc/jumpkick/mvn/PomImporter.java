@@ -352,6 +352,7 @@ public final class PomImporter {
         List<ReleaseSources> releases = MultiReleasePlugins.map(em.model(), report);
         JkBuild jkBuild = builder.build(buildBlock(em.model(), sourceTree, tests, report)
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))
+                        .withModuleServices(ModuleServicesPlugin.map(em, report))
                         .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(BuildBlock.Dokka.DEFAULT))
                         .withMultiRelease(releases)
                         .withWar(packaging.war())

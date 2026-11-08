@@ -301,7 +301,8 @@ final class WorkspaceRunPhase {
      * language compile in the plan, the classes assembler of a mixed module, and the resource
      * copy — resources are not compiled against, but they land in the same tree, and a dependent
      * that fingerprints the tree while they are being written would memoize a token under an
-     * identity no later build will see. A module that {@code relocates} packages is compiled
+     * identity no later build will see. {@code module-services} joins them: a dependent's processor
+     * path finds a sibling's processors through the services files it writes. A module that {@code relocates} packages is compiled
      * against through its {@code -all.jar}, so its {@code package-assembly} joins the set. A plan
      * with none of these (a sourceless root) publishes on completion.
      */
@@ -314,7 +315,8 @@ final class WorkspaceRunPhase {
                 TaskNames.COMPILE_KOTLIN,
                 TaskNames.COMPILE_GROOVY,
                 TaskNames.ASSEMBLE_CLASSES,
-                TaskNames.COPY_RESOURCES)) {
+                TaskNames.COPY_RESOURCES,
+                TaskNames.MODULE_SERVICES)) {
             if (present.contains(step)) wait.add(step);
         }
         if (relocates && present.contains(TaskNames.PACKAGE_ASSEMBLY)) wait.add(TaskNames.PACKAGE_ASSEMBLY);

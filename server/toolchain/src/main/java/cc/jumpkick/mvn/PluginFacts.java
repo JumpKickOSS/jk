@@ -91,6 +91,7 @@ final class PluginFacts {
             "git-commit-id-maven-plugin",
             "git-commit-id-plugin",
             "dokka-maven-plugin",
+            ModuleServicesPlugin.ARTIFACT,
             "quarkus-maven-plugin",
             "native-maven-plugin",
             "jib-maven-plugin",

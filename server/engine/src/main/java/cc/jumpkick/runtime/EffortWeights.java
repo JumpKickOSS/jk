@@ -503,6 +503,7 @@ public final class EffortWeights {
                     TaskNames.ENSURE_NODE,
                     TaskNames.COPY_RESOURCES,
                     TaskNames.BUILD_INFO,
+                    TaskNames.MODULE_SERVICES,
                     TaskNames.WRITE_STAMP,
                     TaskNames.WRITE_STAMP_KOTLIN,
                     TaskNames.WRITE_STAMP_GROOVY,
