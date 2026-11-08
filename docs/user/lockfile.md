@@ -384,7 +384,8 @@ and in no scope. It *is* an input to `native-image`, so it is pinned like one. S
 Each subject a `[schema-registry]` table downloads ([Generate](generate.md#schema-registry--schemas-from-a-registry)),
 and each subject version a schema references, is a `[[schema]]` row: the version and schema id the
 registry served, the type, and the digest of the schema text. `references` names the rows a schema
-needs as `<subject>@<version>`:
+needs, each under the name the schema uses for it (an Avro type's full name, a Protobuf import
+path):
 
 ```toml
 [[schema]]
@@ -395,7 +396,7 @@ version  = 3
 id       = 101
 type     = "avro"
 checksum = "sha256:…"
-references = ["money@1"]
+references = [{ name = "acme.Money", subject = "money", version = 1 }]
 ```
 
 `jk sync` puts every pinned schema in the store, so an offline build generates from them. A

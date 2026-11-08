@@ -117,9 +117,10 @@ public final class LockSchemas {
             SchemaEntry row = work.poll();
             if (!seen.add(row.key())) continue;
             out.add(row);
-            for (String ref : row.references()) {
-                SchemaEntry referenced = byKey.get(ref);
-                if (referenced == null) throw new IllegalStateException(ref + ": not in jk-lock.toml; run jk lock");
+            for (SchemaEntry.Ref ref : row.references()) {
+                SchemaEntry referenced = byKey.get(ref.key());
+                if (referenced == null)
+                    throw new IllegalStateException(ref.key() + ": not in jk-lock.toml; run jk lock");
                 work.add(referenced);
             }
         }

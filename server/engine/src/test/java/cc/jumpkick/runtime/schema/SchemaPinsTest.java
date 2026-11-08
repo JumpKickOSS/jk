@@ -101,7 +101,7 @@ class SchemaPinsTest {
         assertThat(lock.schemas())
                 .extracting(SchemaEntry::key, SchemaEntry::id, SchemaEntry::type, SchemaEntry::references)
                 .containsExactly(
-                        tuple("orders-value@3", 101L, "avro", List.of("money@1")),
+                        tuple("orders-value@3", 101L, "avro", List.of(new SchemaEntry.Ref("acme.Money", "money", 1))),
                         tuple("money@1", 7L, "avro", List.of()));
         assertThat(lock.schemas().getFirst().sha256Hex())
                 .isEqualTo(Hashing.sha256Hex(ORDER.getBytes(StandardCharsets.UTF_8)));
@@ -158,6 +158,48 @@ class SchemaPinsTest {
                                 project.resolve("jk-lock.toml"),
                                 new Cas(tmp.resolve("fresh")))))
                 .hasMessage("money v1: registry changed it since jk lock; run jk lock -F");
+    }
+
+    @Test
+    void a_protobuf_subject_and_what_it_imports_land_at_their_import_paths_without_well_known_types() throws Exception {
+        String money = "syntax = \"proto3\";\npackage acme;\nmessage Money { int64 cents = 1; }\n";
+        String order = "syntax = \"proto3\";\npackage acme;\nimport \"common/money.proto\";\n"
+                + "import \"google/protobuf/timestamp.proto\";\n"
+                + "message Order { Money total = 1; google.protobuf.Timestamp at = 2; }\n";
+        served.put("/subjects/money/versions/2", protobuf("money", 2, 8, money, ""));
+        served.put(
+                "/subjects/orders-value/versions/latest",
+                protobuf(
+                        "orders-value",
+                        5,
+                        102,
+                        order,
+                        "{\"name\":\"common/money.proto\",\"subject\":\"money\",\"version\":2},"
+                                + "{\"name\":\"google/protobuf/timestamp.proto\",\"subject\":\"timestamp\",\"version\":1}"));
+        Cas cas = new Cas(tmp.resolve("store"));
+        Path project = project();
+        Lockfile lock = RequestShell.where(
+                shell,
+                () -> SchemaPins.pin(
+                        Lockfile.empty("0.0.0"), null, project, Map.of(project, build()), cas, label -> {}));
+        LockfileWriter.write(lock, project.resolve("jk-lock.toml"));
+
+        assertThat(lock.schemas()).extracting(SchemaEntry::key).containsExactly("orders-value@5", "money@2");
+        assertThat(lock.schemas().getFirst().references())
+                .containsExactly(new SchemaEntry.Ref("common/money.proto", "money", 2));
+        SchemaFiles.Dir dir = SchemaFiles.forPlugin("protobuf", build(), project, project.resolve("jk-lock.toml"), cas)
+                .orElseThrow();
+        assertThat(Files.readString(dir.dir().resolve("orders-value.proto"))).isEqualTo(order);
+        assertThat(Files.readString(dir.dir().resolve("common/money.proto"))).isEqualTo(money);
+        assertThat(dir.dir().resolve("google")).doesNotExist();
+        assertThat(SchemaFiles.forPlugin("avro", build(), project, project.resolve("jk-lock.toml"), cas))
+                .isEmpty();
+    }
+
+    private static String protobuf(String subject, int version, long id, String schema, String references) {
+        return "{\"subject\":" + MiniJson.write(subject) + ",\"version\":" + version + ",\"id\":" + id
+                + ",\"schemaType\":\"PROTOBUF\",\"schema\":" + MiniJson.write(schema) + ",\"references\":["
+                + references + "]}";
     }
 
     private Lockfile pin(@Nullable Lockfile previous, Cas cas) throws Exception {

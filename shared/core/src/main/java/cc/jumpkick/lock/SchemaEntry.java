@@ -12,8 +12,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * One {@code [[schema]]} row: a schema a module's {@code [schema-registry]} table downloads, pinned
  * as the registry served it at lock time. {@code checksum} ({@code sha256:<hex>}) is the digest of
- * the schema text; {@code references} names every subject version the schema refers to as {@code
- * <subject>@<version>}, each a row of its own.
+ * the schema text; {@code references} are the subject versions the schema refers to, each a row of
+ * its own, under the name the schema uses for it: an Avro type's full name, a Protobuf import path,
+ * a JSON Schema {@code $ref}.
  *
  * @param module the module path under the lock, or null for the lock's own project
  * @param registry the registry's base URL
@@ -27,7 +28,16 @@ public record SchemaEntry(
         long id,
         String type,
         String checksum,
-        List<String> references) {
+        List<Ref> references) {
+
+    /** A reference: the name the schema refers to it by, and the subject version it is. */
+    public record Ref(String name, String subject, int version) {
+
+        /** {@code <subject>@<version>}: the row it is. */
+        public String key() {
+            return subject + "@" + version;
+        }
+    }
 
     public SchemaEntry {
         Objects.requireNonNull(registry, "registry");
@@ -64,10 +74,16 @@ public record SchemaEntry(
         if (array == null) return out;
         for (int i = 0; i < array.size(); i++) {
             LockToml t = array.getTable(i);
-            List<String> refs = new ArrayList<>();
+            List<Ref> refs = new ArrayList<>();
             LockToml.Array refArray = t.getArray("references");
             if (refArray != null) {
-                for (int j = 0; j < refArray.size(); j++) refs.add(refArray.getString(j));
+                for (int j = 0; j < refArray.size(); j++) {
+                    LockToml ref = refArray.getTable(j);
+                    refs.add(new Ref(
+                            require(ref, "name"),
+                            require(ref, "subject"),
+                            Math.toIntExact(requireLong(ref, "version"))));
+                }
             }
             out.add(new SchemaEntry(
                     t.getString("module"),
@@ -99,8 +115,15 @@ public record SchemaEntry(
             if (!s.references.isEmpty()) {
                 out.append("references = [");
                 for (int i = 0; i < s.references.size(); i++) {
-                    if (i > 0) out.append(", ");
-                    out.append(quote(s.references.get(i)));
+                    Ref ref = s.references.get(i);
+                    out.append(i > 0 ? ", " : "")
+                            .append("{ name = ")
+                            .append(quote(ref.name()))
+                            .append(", subject = ")
+                            .append(quote(ref.subject()))
+                            .append(", version = ")
+                            .append(ref.version())
+                            .append(" }");
                 }
                 out.append("]\n");
             }
