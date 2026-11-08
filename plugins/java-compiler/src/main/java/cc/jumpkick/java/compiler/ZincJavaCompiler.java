@@ -284,6 +284,7 @@ public final class ZincJavaCompiler {
             Compilers compilers = ScalaBridge.compilersFor(javac, mixed);
 
             VirtualFile[] sourceFiles = ZincSetup.virtual(sources, converter);
+            javac.alwaysCompiling(descriptor(sourceFiles, converter));
             List<Path> cp = new ArrayList<>(classpath);
             // Scala 3.8+ ships the stdlib as scala-library (same version as the compiler);
             // scala3-library_3 is an empty stub. Zinc's ClasspathOptions only move a library
@@ -850,6 +851,15 @@ public final class ZincJavaCompiler {
      */
     static URLClassLoader processorClassLoader(URL[] urls) {
         return new URLClassLoader(urls, ClassLoader.getPlatformClassLoader());
+    }
+
+    /** The main {@code module-info.java} among {@code sources}, or null when the module declares none. */
+    private static @Nullable VirtualFile descriptor(VirtualFile[] sources, FileConverter converter) {
+        for (VirtualFile vf : sources) {
+            Path name = converter.toPath(vf).getFileName();
+            if (name != null && MODULE_INFO.equals(name.toString())) return vf;
+        }
+        return null;
     }
 
     /** javac's spelling of a module descriptor source. */
