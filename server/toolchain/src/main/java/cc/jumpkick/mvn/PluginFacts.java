@@ -54,6 +54,8 @@ final class PluginFacts {
             "maven-compiler-plugin",
             SchemaRegistryPlugin.ARTIFACT,
             JsonSchemaPlugin.ARTIFACT,
+            AsyncApiPlugins.SCS,
+            AsyncApiPlugins.ZENWAVE,
             FormatPlugins.SPOTLESS,
             FormatPlugins.FMT,
             "frontend-maven-plugin",

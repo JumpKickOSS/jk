@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.gradle;
 
+import cc.jumpkick.compat.AsyncApiTable;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.PluginConfig;
 import java.util.ArrayList;
@@ -8,8 +9,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
-/** The schema compiler plugins of a Gradle project as their jk tables: xjc's {@code [jaxb]}, Avro's {@code [avro]}. */
+/**
+ * The schema compiler plugins of a Gradle project as their jk tables: xjc's {@code [jaxb]}, Avro's
+ * {@code [avro]}, scs-multiapi's AsyncAPI specs' {@code [asyncapi]}.
+ */
 final class GradleSchemaTables {
 
     /** The {@code [avro]} table's own defaults. */
@@ -20,7 +25,20 @@ final class GradleSchemaTables {
     /** The {@code [jaxb]} table's own default schema directory. */
     private static final String JAXB_DEFAULT_SRC = "src/main/xsd";
 
+    /** sngular's scs-multiapi Gradle plugin, which generates from AsyncAPI and OpenAPI specs. */
+    static final String SCS_MULTIAPI = "com.sngular.scs-multiapi-gradle-plugin";
+
     private GradleSchemaTables() {}
+
+    /** The scs-multiapi plugin's AsyncAPI specs as {@code [asyncapi]}; null without any in the tree. */
+    static @Nullable PluginConfig asyncApi(GradleModel.Project p, ImportReport.Builder local) {
+        if (p.asyncApiSpecs().isEmpty()) return null;
+        List<AsyncApiTable.Spec> specs = new ArrayList<>();
+        for (GradleModel.AsyncApiSpec s : p.asyncApiSpecs()) {
+            specs.add(new AsyncApiTable.Spec(s.path(), s.modelPackages(), s.generatesCode(), s.artifact()));
+        }
+        return AsyncApiTable.of("scs-multiapi", specs, local);
+    }
 
     /**
      * The xjc plugin's extension as the {@code [jaxb]} table: {@code xsdDir} is {@code src}, {@code

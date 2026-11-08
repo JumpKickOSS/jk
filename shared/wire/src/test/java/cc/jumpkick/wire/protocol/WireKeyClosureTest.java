@@ -52,7 +52,7 @@ import org.junit.jupiter.api.Test;
  * </ul>
  *
  * <p>Measured when written: 1,244 production sources, 1,017 literal-key reads, 443 distinct read
- * keys, 824 distinct written keys, <strong>11</strong> read with no writer; every orphan is listed below.
+ * keys, 824 distinct written keys, <strong>15</strong> read with no writer; every orphan is listed below.
  */
 class WireKeyClosureTest {
 
@@ -77,7 +77,11 @@ class WireKeyClosureTest {
             Map.entry("auth", GROOVY),
             Map.entry("usernameEnv", GROOVY),
             Map.entry("passwordEnv", GROOVY),
-            Map.entry("registers", GROOVY));
+            Map.entry("registers", GROOVY),
+            Map.entry("specPath", GROOVY),
+            Map.entry("modelPackages", GROOVY),
+            Map.entry("generatesCode", GROOVY),
+            Map.entry("specArtifact", GROOVY));
 
     /**
      * Production sources on the day this landed (re-measured at 1,244 once the walk stopped

@@ -88,7 +88,8 @@ final class GradleModelImporter {
             AVRO_PLUGIN,
             AVRO_BASE_PLUGIN,
             XJC_PLUGIN,
-            GradleSchemaRegistry.PLUGIN);
+            GradleSchemaRegistry.PLUGIN,
+            GradleSchemaTables.SCS_MULTIAPI);
 
     /** Plugin ids whose effect needs no row: implicit in jk, or absorbed by another mapping. */
     private static final Set<String> SILENT_PLUGINS = Set.of(
@@ -115,7 +116,8 @@ final class GradleModelImporter {
             AVRO_PLUGIN,
             AVRO_BASE_PLUGIN,
             XJC_PLUGIN,
-            GradleSchemaRegistry.PLUGIN);
+            GradleSchemaRegistry.PLUGIN,
+            GradleSchemaTables.SCS_MULTIAPI);
 
     /** Plugin class-name prefixes the probed ids already account for. */
     private static final List<String> MAPPED_PLUGIN_CLASSES = List.of(
@@ -132,7 +134,8 @@ final class GradleModelImporter {
             "com.github.jengelman.gradle.plugins.shadow",
             "com.github.bjornvester.xjc",
             "com.github.davidmc24.gradle.plugin.avro",
-            "com.github.imflog.schema.registry");
+            "com.github.imflog.schema.registry",
+            "com.sngular.api.generator");
 
     /** Configurations Gradle and its plugins declare for their own tooling, not the build's dependencies. */
     private static final List<String> TOOL_CONFIGURATION_PREFIXES = List.of(
@@ -375,6 +378,8 @@ final class GradleModelImporter {
                 ? GradleSchemaRegistry.Mapped.NONE
                 : GradleSchemaRegistry.map(sr, local, this::ruleCredential);
         if (registry.table() != null) plugins.add(registry.table());
+        PluginConfig asyncApi = GradleSchemaTables.asyncApi(p, local);
+        if (asyncApi != null) plugins.add(asyncApi);
         GradleModel.Avro avro = p.avro();
         boolean fromRegistry = plugins.stream().anyMatch(c -> c.id().equals("schema-registry"));
         if (avro != null) plugins.add(GradleSchemaTables.avro(p, avro, fromRegistry, registry.outputs(), local));

@@ -566,6 +566,51 @@ class GradleModelQueryNetworkTest {
         assertThat(rows).noneMatch(r -> r.contains("jsonschema2pojo") || r.contains("outside jk's layout"));
     }
 
+    /** sngular's scs-multiapi Gradle plugin's AsyncAPI spec imports as [asyncapi]. */
+    @Test
+    void the_scs_multiapi_plugin_s_asyncapi_spec_imports_as_asyncapi(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("orders"));
+        Files.createDirectories(root.resolve("gradle/wrapper"));
+        Files.writeString(
+                root.resolve("gradle/wrapper/gradle-wrapper.properties"),
+                "distributionUrl=https\\://services.gradle.org/distributions/gradle-" + GradleResolver.DEFAULT_VERSION
+                        + "-bin.zip\n");
+        Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'orders'\n");
+        Files.writeString(root.resolve("build.gradle"), """
+                plugins {
+                    id 'java'
+                    id 'com.sngular.scs-multiapi-gradle-plugin' version '8.4.0'
+                }
+                group = 'com.acme'
+                version = '1.0'
+                asyncapimodel {
+                    specFile {
+                        filePath = './src/main/resources/api/event-api.yml'
+                        consumer {
+                            ids = 'publishOperation'
+                            modelPackage = 'com.acme.orders.model'
+                        }
+                    }
+                }
+                """);
+        GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
+                JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
+
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle"), ImportProgress.NONE);
+
+        List<String> rows = result.report().issues().stream()
+                .map(ImportReport.Issue::message)
+                .toList();
+        assertThat(result.report().hasErrors())
+                .as("Gradle evaluated the build: " + rows)
+                .isFalse();
+        assertThat(result.root().pluginConfig("asyncapi").orElseThrow().values())
+                .containsOnly(
+                        Map.entry("src", "src/main/resources/api/event-api.yml"),
+                        Map.entry("package", "com.acme.orders.model"));
+        assertThat(rows).noneMatch(r -> r.contains("ScsMultiApi") || r.contains("scs-multiapi-gradle-plugin"));
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }

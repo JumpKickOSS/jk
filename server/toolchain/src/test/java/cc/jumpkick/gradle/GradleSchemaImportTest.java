@@ -174,6 +174,34 @@ class GradleSchemaImportTest {
                 .noneMatch(m -> m.contains("kafka-schema-registry-gradle-plugin"));
     }
 
+    @Test
+    void scs_multiapi_s_asyncapi_specs_import_as_asyncapi() {
+        String model = """
+                {"gradle":"9.8.0","rootName":"orders","settingsRepositories":[],"projects":[
+                  {"path":":","projectName":"orders","dir":"","group":"com.acme","version":"1.0",
+                   "plugins":["java","com.sngular.scs-multiapi-gradle-plugin"],"pluginClasses":[],"pluginVersions":{},
+                   "bootBuildInfo":false,"repositories":[],"configurations":[],"tasks":[],
+                   "asyncApiSpecs":[
+                     {"specPath":"src/main/resources/api/event-api.yml","modelPackages":["com.acme.orders.model"],
+                      "generatesCode":true},
+                     {"modelPackages":[],"generatesCode":false,"specArtifact":"shared-events"}]}
+                ]}
+                """;
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(model, Path.of("/tmp/orders"), RefreshVersions.NONE);
+
+        assertThat(result.root().pluginConfig("asyncapi").orElseThrow().values())
+                .containsOnly(
+                        Map.entry("src", "src/main/resources/api/event-api.yml"),
+                        Map.entry("package", "com.acme.orders.model"));
+        assertThat(messages(result.report()))
+                .contains(
+                        "scs-multiapi: spec from shared-events not imported; copy it into the tree",
+                        "scs-multiapi: consumer and producer code not generated; [asyncapi] makes the models")
+                .noneMatch(m -> m.contains("scs-multiapi-gradle-plugin"));
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }

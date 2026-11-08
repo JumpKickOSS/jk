@@ -317,6 +317,23 @@ def describeProject(Project p, Project root, List<String> probeIds) {
         }
     } catch (Throwable ignored) { }
 
+    // sngular's scs-multiapi plugin: each AsyncAPI spec file, the model packages its consumer,
+    // supplier and streamBridge blocks name, whether any of them generates code, and a spec read
+    // from a published artifact instead of the tree.
+    try {
+        def am = p.extensions.findByName('asyncapimodel')
+        if (am != null) {
+            m.asyncApiSpecs = (am.specFiles ?: []).collect { s ->
+                def roles = [s.consumer, s.supplier, s.streamBridge].findAll { it != null }
+                def spec = [specPath: s.filePath ? relDirs(p, [p.file(s.filePath)])[0] : null,
+                            modelPackages: roles.collect { it.modelPackage }.findAll { it }.collect { it.toString() },
+                            generatesCode: !roles.isEmpty() && !s.generateModelOnly,
+                            specArtifact: s.fromArtifactId]
+                spec
+            }
+        }
+    } catch (Throwable ignored) { }
+
     def ruled = [:]
     for (def r : RULE_READS) {
         try {

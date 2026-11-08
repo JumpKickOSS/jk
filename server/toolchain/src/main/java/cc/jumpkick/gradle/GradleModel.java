@@ -96,7 +96,9 @@ record GradleModel(
             /** Per source or schema directory under the build directory, the tasks that write it. */
             Map<String, List<Producer>> producers,
             /** The Confluent schema-registry plugin's configuration; null when the project does not apply it. */
-            @Nullable SchemaRegistry schemaRegistry) {
+            @Nullable SchemaRegistry schemaRegistry,
+            /** The AsyncAPI spec files sngular's scs-multiapi plugin generates from; empty without it. */
+            List<AsyncApiSpec> asyncApiSpecs) {
 
         boolean isRoot() {
             return dir.isEmpty();
@@ -194,6 +196,17 @@ record GradleModel(
      * the latest; the project-relative directory the plugin writes it to.
      */
     record Download(String subject, @Nullable Integer version, boolean regex, String output) {}
+
+    /**
+     * One AsyncAPI spec a code generator reads: its project-relative path (null when it comes from a
+     * published artifact, named by {@code artifact}), the model packages its settings name, and
+     * whether it also generates consumer or producer code.
+     */
+    record AsyncApiSpec(
+            @Nullable String path,
+            List<String> modelPackages,
+            boolean generatesCode,
+            @Nullable String artifact) {}
 
     record SourceSet(String name, List<String> java, List<String> resources, List<String> kotlin) {}
 
@@ -462,7 +475,20 @@ record GradleModel(
                 publications,
                 ruled(Jsonl.nested(p, RULED)),
                 producers(Jsonl.nested(p, PRODUCERS)),
-                schemaRegistry(Jsonl.nested(p, SCHEMA_REGISTRY)));
+                schemaRegistry(Jsonl.nested(p, SCHEMA_REGISTRY)),
+                asyncApiSpecs(p));
+    }
+
+    private static List<AsyncApiSpec> asyncApiSpecs(String project) {
+        List<AsyncApiSpec> out = new ArrayList<>();
+        for (String s : Jsonl.objectArray(project, "asyncApiSpecs")) {
+            out.add(new AsyncApiSpec(
+                    Jsonl.topStr(s, "specPath"),
+                    Jsonl.strArray(s, "modelPackages"),
+                    Jsonl.bool(s, "generatesCode", false),
+                    Jsonl.topStr(s, "specArtifact")));
+        }
+        return out;
     }
 
     private static @Nullable SchemaRegistry schemaRegistry(@Nullable String json) {
