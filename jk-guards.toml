@@ -130,6 +130,29 @@ reason = "executableBit wants the POSIX bit itself and is already skipped on Win
 in     = "cc.jumpkick.engine.plugin.WorkerSession"
 reason = "probes /usr/bin/setsid once at class load, behind Os.isWindows(); the text guard exempted the same line by that shape"
 
+# G122. A virtual thread that loads a class or computes pins its carrier; a fresh engine preparing a
+# wide workspace on them deadlocked. The engine and the plan executor never use io(); the
+# repository layer's network fan-outs are the waiters it is for, each listed.
+[guards.engine-off-virtual-threads]
+kind       = "forbid"
+signatures = ["cc.jumpkick.run.JkThreads#io(**)"]
+scope      = ["server/engine", "shared/jk-api", "server/io"]
+owner      = "cc.jumpkick.repo.ArtifactFanOut"
+instead    = "JkThreads.cpu() for work that computes; JkThreads.platform() for a body that also waits on other work"
+why        = "a virtual thread that loads a class or computes pins its carrier, and with every carrier pinned the engine stops"
+
+[[guards.engine-off-virtual-threads.allow]]
+in     = "cc.jumpkick.repo.RepoLegs"
+reason = "one leg per repository host, each waiting on its HTTP response"
+
+[[guards.engine-off-virtual-threads.allow]]
+in     = "cc.jumpkick.repo.ChecksumSidecars"
+reason = "fetches the .sha256 and .sha1 sidecars beside the artifact download: a wait on the network"
+
+[[guards.engine-off-virtual-threads.allow]]
+in     = "cc.jumpkick.repo.EffectivePomBuilder"
+reason = "fetches parent and import POMs concurrently: a wait on the network per POM"
+
 # G45. A blind walk discards the attributes it already read and re-resolves each path to ask again;
 # a ratchet, because two hundred sites each need their own read (directories, depth, ordering).
 [guards.blind-tree-walks]

@@ -98,7 +98,7 @@ public final class KotlinAbiWarmup {
             return none;
         }
         Warmup[] holder = new Warmup[1];
-        Warmup warmup = new Warmup(() -> JkThreads.io().execute(() -> {
+        Warmup warmup = new Warmup(() -> JkThreads.platform().execute(() -> {
             try {
                 warm(producer, consumer, cache, cas);
             } catch (IOException | RuntimeException e) {

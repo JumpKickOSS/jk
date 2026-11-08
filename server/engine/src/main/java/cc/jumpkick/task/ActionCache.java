@@ -276,8 +276,9 @@ public final class ActionCache {
      * joined before the caller writes the record — a record naming a blob that is not on disk is not
      * recoverable by re-running.
      *
-     * <p>{@link JkThreads#io()} rather than {@code cpu()}: this waits on the filesystem, and the CPU
-     * pool is what the compile lanes want.
+     * <p>{@link JkThreads#platform()} rather than {@code cpu()}: this waits on the filesystem, and the
+     * CPU pool is what the compile lanes want; not {@code io()}, because hashing a file is a native
+     * read the virtual-thread scheduler does not compensate for.
      */
     private void deposit(List<Path> files, Path outputDir, Map<String, String> outputs, Set<String> executables)
             throws IOException {
@@ -292,7 +293,7 @@ public final class ActionCache {
             for (int lane = 0; lane < lanes; lane++) {
                 List<Path> slice =
                         files.subList(Math.min(lane * chunk, files.size()), Math.min((lane + 1) * chunk, files.size()));
-                pending.add(JkThreads.io().submit(() -> {
+                pending.add(JkThreads.platform().submit(() -> {
                     for (Path file : slice) depositOne(file, outputDir, hashes, executableRel);
                     return null;
                 }));

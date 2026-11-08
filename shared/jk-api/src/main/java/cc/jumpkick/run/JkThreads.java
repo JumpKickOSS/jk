@@ -9,8 +9,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Shared lazy CLI executors: {@link #cpu()} (bounded FJP, max(8, cores)) and {@link #io()} (virtual threads),
- * each wrapped once in {@link ContextPropagatingExecutorService}. Shutdown hook on first use;
+ * Shared lazy executors: {@link #cpu()} (bounded FJP, max(8, cores)), {@link #platform()} (a platform
+ * thread per task) and {@link #io()} (virtual threads), each wrapped once in {@link
+ * ContextPropagatingExecutorService}.
+ *
+ * <p>{@link #io()} is for waiting only: a socket, a download, a child process. A virtual thread that
+ * loads a class, or blocks in a native call the scheduler does not compensate for, pins its carrier,
+ * and with every carrier pinned no virtual thread in the engine runs; a fresh engine preparing a wide
+ * workspace on virtual threads deadlocked that way. Planning, hashing, packaging, a module's
+ * build and anything else that computes or loads classes runs on {@link #cpu()}, or, when it also
+ * waits on others for long stretches, on {@link #platform()}. Shutdown hook on first use;
  * Ctrl-C {@code halt} kills both pools.
  */
 public final class JkThreads {
@@ -28,6 +36,8 @@ public final class JkThreads {
     private static volatile @Nullable ExecutorService cpuReal;
 
     private static volatile @Nullable ExecutorService ioReal;
+    private static volatile @Nullable ExecutorService platformReal;
+    private static volatile @Nullable ExecutorService platform;
     private static volatile @Nullable ExecutorService cpu;
     private static volatile @Nullable ExecutorService io;
     private static final Object LOCK = new Object();
@@ -63,6 +73,27 @@ public final class JkThreads {
         }
     }
 
+    /**
+     * A platform thread per task, daemon, named {@code jk-run-N}: for a body that computes or loads
+     * classes and also waits on other work for long stretches — a module's build waiting on its
+     * steps, a step waiting on a tool, an estimate priced beside the build. Unbounded like {@link
+     * #io()}, so a body may wait on another body here without starving it; bound the callers, not
+     * the pool.
+     */
+    public static ExecutorService platform() {
+        ExecutorService local = platform;
+        if (local != null) return local;
+        synchronized (LOCK) {
+            if (platform == null) {
+                platformReal = Executors.newThreadPerTaskExecutor(
+                        Thread.ofPlatform().daemon().name("jk-run-", 0).factory());
+                platform = new ContextPropagatingExecutorService(platformReal);
+                registerShutdownHook();
+            }
+            return platform;
+        }
+    }
+
     private static ExecutorService newCpuPool() {
         AtomicInteger counter = new AtomicInteger();
         ForkJoinPool.ForkJoinWorkerThreadFactory factory = pool -> {
@@ -89,5 +120,7 @@ public final class JkThreads {
         if (localCpu != null) localCpu.shutdown();
         ExecutorService localIo = ioReal;
         if (localIo != null) localIo.shutdown();
+        ExecutorService localPlatform = platformReal;
+        if (localPlatform != null) localPlatform.shutdown();
     }
 }

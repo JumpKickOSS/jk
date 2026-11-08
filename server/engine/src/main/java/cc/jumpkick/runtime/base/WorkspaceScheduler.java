@@ -37,7 +37,7 @@ public final class WorkspaceScheduler {
     /** A finished unit's result (or the throwable that ended it) — the bounded path's completion queue item. */
     private record Done<U, R>(U unit, R result, Throwable error) {}
 
-    /** Build one unit, producing its result. Run concurrently on {@link JkThreads#io()}. */
+    /** Build one unit, producing its result. Run concurrently on {@link JkThreads#platform()}: a unit plans, loads classes and waits on its steps. */
     @FunctionalInterface
     public interface UnitTask<U, R> {
         R run(U unit);
@@ -275,7 +275,7 @@ public final class WorkspaceScheduler {
                     if (published.add(unitDir)) events.add(unitDir);
                 };
                 CompletableFuture<R> f =
-                        CompletableFuture.supplyAsync(() -> gated(stop, task, unit, publish), JkThreads.io());
+                        CompletableFuture.supplyAsync(() -> gated(stop, task, unit, publish), JkThreads.platform());
                 inflight.add(f);
                 unitOf.put(f, unit);
                 f.whenComplete((r, ex) -> {
@@ -418,7 +418,7 @@ public final class WorkspaceScheduler {
                     return null;
                 }
                 // Batch-per-level path: no early admission to feed, publish is a no-op.
-                futures.add(CompletableFuture.supplyAsync(() -> gated(stop, task, u, () -> {}), JkThreads.io()));
+                futures.add(CompletableFuture.supplyAsync(() -> gated(stop, task, u, () -> {}), JkThreads.platform()));
             }
             List<R> results = new ArrayList<>(futures.size());
             for (CompletableFuture<R> f : futures) {

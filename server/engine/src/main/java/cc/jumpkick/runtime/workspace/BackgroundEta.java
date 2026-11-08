@@ -44,7 +44,7 @@ final class BackgroundEta {
 
     /**
      * Price {@code estimate} on a background thread, handing the result to {@code publish} unless
-     * the build closed first. The io pool carries the session, its cancel token and the request
+     * the build closed first. The platform pool carries the session, its cancel token and the request
      * scope; the scoped plan-worker limit does not ride the hop, so it is bound here.
      */
     static BackgroundEta start(Supplier<BuildService.EtaModel> estimate, Consumer<BuildService.EtaModel> publish) {
@@ -77,7 +77,7 @@ final class BackgroundEta {
         }
         BackgroundEta eta = this;
         Supplier<BuildService.EtaModel> priced = what;
-        eta.pricing = JkThreads.io().submit(() -> {
+        eta.pricing = JkThreads.platform().submit(() -> {
             BuildService.EtaModel model = ScopedValue.where(JavaCompile.PLAN_WORKERS, JavaCompile.PlanWorkers.NONE)
                     .call(priced::get);
             eta.publish(model);

@@ -642,7 +642,7 @@ public final class BuildPlan {
 
     private static Executor executorFor(TaskKind kind) {
         return switch (kind) {
-            case IO -> JkThreads.io();
+            case IO -> JkThreads.platform();
             case CPU -> JkThreads.cpu();
             case SYNC -> Runnable::run; // not used; SYNC runs inline
         };
