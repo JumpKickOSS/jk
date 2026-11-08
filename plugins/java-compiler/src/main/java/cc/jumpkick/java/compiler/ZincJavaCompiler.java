@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.processing.Processor;
 import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
@@ -253,7 +254,35 @@ public final class ZincJavaCompiler {
         return new Result(false, diags, List.of());
     }
 
+    /**
+     * One lock per incremental workdir: two compiles (or a plan and a compile) of the same module
+     * would read and rewrite the same analysis and ledgers. The engine's graph never schedules that,
+     * but the worker is shared, so it does not rely on it.
+     */
+    private static final ConcurrentHashMap<Path, Object> WORKDIR_LOCKS = new ConcurrentHashMap<>();
+
+    /**
+     * Compile {@code job} under its workdir's lock, restoring the thread's context class loader after:
+     * a processor that sets it and never puts it back would otherwise reach the next compile run on
+     * this thread.
+     */
     private static Result compile(JavaCompileJob job, @Nullable MixedScala mixed) {
+        Path workdir = job.workdir();
+        Object lock = workdir == null
+                ? new Object()
+                : WORKDIR_LOCKS.computeIfAbsent(workdir.toAbsolutePath().normalize(), k -> new Object());
+        Thread thread = Thread.currentThread();
+        ClassLoader contextLoader = thread.getContextClassLoader();
+        synchronized (lock) {
+            try {
+                return compileHeld(job, mixed);
+            } finally {
+                thread.setContextClassLoader(contextLoader);
+            }
+        }
+    }
+
+    private static Result compileHeld(JavaCompileJob job, @Nullable MixedScala mixed) {
         List<Path> sources = job.sources();
         List<Path> classpath = job.classpath();
         Path classOutput = job.classOutput();
@@ -392,6 +421,8 @@ public final class ZincJavaCompiler {
             return new Result(false, diags, javac == null ? List.of() : javac.compiledSources());
         } catch (RuntimeException e) {
             return new Result(false, List.of(new Diag("ERROR", null, 0, 0, crashed(e))), List.of());
+        } finally {
+            processors.release();
         }
     }
 
@@ -725,15 +756,59 @@ public final class ZincJavaCompiler {
     }
 
     /**
-     * The processor path's classloader, held for the life of the worker. Holds no {@link Processor}
-     * instances: each javac round loads its own (see {@link #freshProcessors}).
+     * The processor path's classloader, shared by every compile that asks for that path. Holds no
+     * {@link Processor} instances: each javac round loads its own (see {@link #freshProcessors}).
+     *
+     * <p>Leased, because compiles share a worker: a compile {@link #acquire acquires} the loader for
+     * its whole run and {@link #release releases} it at the end, and a loader the cache drops (an
+     * evicted path, a path whose contents changed) is {@link #retire retired} and closes only when
+     * its last lease ends, never under a compile still loading processor classes from it.
      */
-    record ProcessorLoad(boolean any, @Nullable URLClassLoader loader) {
-        static ProcessorLoad none() {
-            return new ProcessorLoad(false, null);
+    static final class ProcessorLoad {
+        private static final ProcessorLoad NONE = new ProcessorLoad(false, null);
+
+        private final boolean any;
+        private final @Nullable URLClassLoader loader;
+        private int leases;
+        private boolean retired;
+
+        ProcessorLoad(boolean any, @Nullable URLClassLoader loader) {
+            this.any = any;
+            this.loader = loader;
         }
 
-        void discard() {
+        static ProcessorLoad none() {
+            return NONE;
+        }
+
+        boolean any() {
+            return any;
+        }
+
+        @Nullable
+        URLClassLoader loader() {
+            return loader;
+        }
+
+        /** Hold the loader open for one compile; pair with {@link #release}. */
+        synchronized ProcessorLoad acquire() {
+            leases++;
+            return this;
+        }
+
+        /** End one compile's hold; a retired loader with no holds left closes now. */
+        synchronized void release() {
+            if (leases > 0) leases--;
+            if (retired && leases == 0) close();
+        }
+
+        /** The cache no longer hands this loader out: close it once nothing holds it. */
+        synchronized void retire() {
+            retired = true;
+            if (leases == 0) close();
+        }
+
+        private void close() {
             if (loader == null) return;
             try {
                 loader.close();
@@ -743,8 +818,12 @@ public final class ZincJavaCompiler {
         }
     }
 
-    /** How many distinct processor paths a worker keeps loaders for before evicting the oldest. */
-    private static final int PROCESSOR_LOADER_CAP = 4;
+    /**
+     * How many distinct processor paths a worker keeps loaders for before evicting the oldest. A
+     * workspace compiling many modules at once can have that many paths in flight; an evicted one
+     * is only reloaded, never closed under a compile.
+     */
+    private static final int PROCESSOR_LOADER_CAP = 16;
 
     /**
      * One loader per processor path, reused by every compile in the job that asks for that path.
@@ -755,16 +834,16 @@ public final class ZincJavaCompiler {
      * path components to canonicalise it, at roughly 92 µs an open against 4 µs on ext4.
      *
      * <p>Bounded and evicting, because a workspace may use several processor paths and a loader that
-     * nothing will ask for again should not be held open. Access is synchronized: a worker compiles
-     * one module at a time today, but the protocol allows concurrent items and a classloader shared
-     * by accident is worse than a lock nobody contends.
+     * nothing will ask for again should not be held open. Access is synchronized, and the loader
+     * handed out is leased ({@link ProcessorLoad#acquire}): compiles share the worker, and a loader
+     * dropped from the cache closes only after the last compile using it has finished.
      */
     private static final LinkedHashMap<List<Path>, LoadedProcessors> PROCESSOR_LOADERS =
             new LinkedHashMap<>(8, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(Map.Entry<List<Path>, LoadedProcessors> eldest) {
                     if (size() <= PROCESSOR_LOADER_CAP) return false;
-                    eldest.getValue().load().discard();
+                    eldest.getValue().load().retire();
                     return true;
                 }
             };
@@ -786,11 +865,12 @@ public final class ZincJavaCompiler {
         if (processorPath == null || processorPath.isEmpty()) return ProcessorLoad.none();
         List<Path> key = List.copyOf(processorPath);
         LoadedProcessors cached = PROCESSOR_LOADERS.get(key);
-        if (cached != null && cached.digest().equals(processorDigest)) return cached.load();
-        if (cached != null) cached.load().discard();
+        if (cached != null && cached.digest().equals(processorDigest))
+            return cached.load().acquire();
+        if (cached != null) cached.load().retire();
         ProcessorLoad load = loadProcessors(key);
         PROCESSOR_LOADERS.put(key, new LoadedProcessors(processorDigest, load));
-        return load;
+        return load.acquire();
     }
 
     private static ProcessorLoad loadProcessors(List<Path> processorPath) {

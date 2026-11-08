@@ -3,9 +3,11 @@ package cc.jumpkick.java.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -79,6 +81,29 @@ class ZincProcessorLoaderCacheTest {
         Files.writeString(procDir.resolve("note.txt"), "rewritten");
 
         assertThat(load(procDir).loader()).isNotSameAs(first.loader());
+    }
+
+    /**
+     * Compiles share a worker: a loader the cache replaces while one compile still holds it must stay
+     * open for that compile, and close once its hold ends.
+     */
+    @Test
+    void a_replaced_loader_stays_open_until_the_compile_holding_it_releases_it(@TempDir Path tmp) throws Exception {
+        Path procDir = writeGeneratingProcessor(tmp.resolve("proc"));
+        ZincJavaCompiler.ProcessorLoad held = load(procDir);
+        Files.writeString(procDir.resolve("note.txt"), "rewritten");
+        ZincJavaCompiler.ProcessorLoad replacement = load(procDir);
+        assertThat(replacement.loader()).isNotSameAs(held.loader());
+
+        URLClassLoader heldLoader = Objects.requireNonNull(held.loader());
+        // Still loadable: the holder can keep resolving processor classes after the swap.
+        assertThat(heldLoader.getResource("META-INF/services/javax.annotation.processing.Processor"))
+                .isNotNull();
+        held.release();
+        assertThat(heldLoader.getResource("META-INF/services/javax.annotation.processing.Processor"))
+                .as("closed once its last holder released it")
+                .isNull();
+        replacement.release();
     }
 
     private static ZincJavaCompiler.ProcessorLoad load(Path procDir) throws Exception {
