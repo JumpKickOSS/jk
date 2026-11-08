@@ -4,8 +4,10 @@ package cc.jumpkick.gradle;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.plugin.manifest.GradleImports;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MinimalYaml;
 import java.io.IOException;
 import java.io.StringReader;
@@ -20,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -47,6 +50,23 @@ final class PluginRules {
 
     private PluginRules() {}
 
+    /**
+     * The installed rules, then the user's {@code ~/.jk/import.toml}, then the build's own {@code
+     * .jk/import.toml}: a later rule for a Gradle plugin id replaces an earlier one.
+     */
+    static Map<String, Rule> forBuild(Path buildRoot) throws IOException {
+        Map<String, Rule> rules = installed();
+        for (Path file : List.of(
+                JkDirs.home().resolve(IMPORT_TOML), buildRoot.resolve(".jk").resolve(IMPORT_TOML))) {
+            for (PluginDescriptor.GradleImport rule : GradleImports.read(file)) {
+                rules.put(rule.id(), new Rule(file.toString(), rule));
+            }
+        }
+        return rules;
+    }
+
+    private static final String IMPORT_TOML = "import.toml";
+
     /** Gradle plugin id → its rule, from every installed manifest. */
     static Map<String, Rule> installed() {
         Map<String, Rule> rules = new LinkedHashMap<>();
@@ -60,18 +80,21 @@ final class PluginRules {
 
     /**
      * What the init script reads for the rules: per rule naming an extension or task, the plugin
-     * id, the object and its property names, as JSON.
+     * id, the object, its property names and the properties holding secrets, whose values it
+     * reports only as the environment variable holding each, as JSON.
      */
     static String readsJson(Map<String, Rule> rules) {
         List<Map<String, Object>> reads = new ArrayList<>();
         for (Rule rule : rules.values()) {
             PluginDescriptor.GradleImport spec = rule.spec();
-            if (spec.properties().isEmpty()) continue;
+            if (spec.properties().isEmpty() && spec.credentials().isEmpty()) continue;
             Map<String, Object> read = new LinkedHashMap<>();
             read.put("id", spec.id());
             if (spec.extension() != null) read.put("extension", spec.extension());
             if (spec.task() != null) read.put("task", spec.task());
             read.put("properties", List.copyOf(spec.properties().keySet()));
+            if (!spec.credentials().isEmpty())
+                read.put("secrets", List.copyOf(spec.credentials().values()));
             reads.add(read);
         }
         return MiniJson.write(reads);
@@ -89,6 +112,28 @@ final class PluginRules {
             @Nullable Path moduleDir,
             Map<String, Rule> rules,
             ImportReport.Builder report) {
+        return map(applied, versions, read, moduleDir, rules, report, credential -> {});
+    }
+
+    /**
+     * A credential a rule found: the repository id its table names, the table's {@code url}, and
+     * the environment variables holding the username and password, null where none is known.
+     */
+    record Credential(
+            String id,
+            String url,
+            @Nullable String usernameEnv,
+            @Nullable String passwordEnv) {}
+
+    /** As {@link #map}, handing each credential a rule finds to {@code credentials}. */
+    static List<PluginConfig> map(
+            Set<String> applied,
+            Map<String, String> versions,
+            Map<String, Map<String, Object>> read,
+            @Nullable Path moduleDir,
+            Map<String, Rule> rules,
+            ImportReport.Builder report,
+            Consumer<Credential> credentials) {
         Map<String, Map<String, Object>> tables = new LinkedHashMap<>();
         for (Map.Entry<String, Rule> e : rules.entrySet()) {
             if (!applied.contains(e.getKey())) continue;
@@ -117,6 +162,7 @@ final class PluginRules {
                 report.warning(spec.id() + ": no installed plugin owns [" + spec.table() + "]");
                 continue;
             }
+            if (!spec.credentials().isEmpty()) credential(spec, props, raw, target, report, credentials);
             Map<String, Object> table = tables.computeIfAbsent(target.id(), k -> new LinkedHashMap<>());
             raw.forEach((key, value) -> {
                 PluginDescriptor.SchemaKey schema = target.schema().get(key);
@@ -133,6 +179,36 @@ final class PluginRules {
             if (!values.isEmpty()) out.add(new PluginConfig(id, values));
         });
         return out;
+    }
+
+    /**
+     * The credential a rule's {@code credentials} name, for the table's {@code url}, under the
+     * repository id its {@code repository} key takes: the Gradle plugin id's last segment.
+     */
+    private static void credential(
+            PluginDescriptor.GradleImport spec,
+            Map<String, Object> props,
+            Map<String, Object> raw,
+            PluginDescriptor target,
+            ImportReport.Builder report,
+            Consumer<Credential> credentials) {
+        Object url = raw.get("url");
+        if (url == null || !target.schema().containsKey("repository")) {
+            report.warning(spec.id() + ": [" + target.table() + "] takes no credential; set it by hand");
+            return;
+        }
+        String id = spec.id().substring(spec.id().lastIndexOf('.') + 1);
+        raw.put("repository", id);
+        credentials.accept(new Credential(
+                id,
+                String.valueOf(url),
+                envOf(props.get(spec.credentials().get("username"))),
+                envOf(props.get(spec.credentials().get("password")))));
+    }
+
+    /** The variable the init script found holding a secret property's value. */
+    private static @Nullable String envOf(@Nullable Object read) {
+        return read instanceof Map<?, ?> m && m.get("env") instanceof String env ? env : null;
     }
 
     /**

@@ -21,6 +21,7 @@ import cc.jumpkick.model.Workspace;
 import cc.jumpkick.mvn.ModuleRows;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
@@ -160,7 +161,7 @@ final class GradleModelImporter {
     private final CatalogShortNames shortNames = CatalogShortNames.layered();
     private final ImportReport.Builder report = ImportReport.builder();
     private final ModuleRows rows = new ModuleRows();
-    private final Map<String, PluginRules.Rule> importRules = PluginRules.installed();
+    private final Map<String, PluginRules.Rule> importRules;
     /** Gradle project path → the jk module name the sibling edge uses. */
     private final Map<String, String> namesByPath = new LinkedHashMap<>();
 
@@ -182,12 +183,17 @@ final class GradleModelImporter {
         this.model = model;
         this.buildRoot = buildRoot;
         this.refreshVersions = refreshVersions;
+        try {
+            this.importRules = PluginRules.forBuild(buildRoot);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
-    /** The plugin ids the model query asks each project about. */
-    static List<String> probedPluginIds() {
+    /** The plugin ids the model query asks each project of the build at {@code buildRoot} about. */
+    static List<String> probedPluginIds(Path buildRoot) throws IOException {
         Set<String> ids = new LinkedHashSet<>(KNOWN_PLUGINS);
-        ids.addAll(PluginRules.installed().keySet());
+        ids.addAll(PluginRules.forBuild(buildRoot).keySet());
         return List.copyOf(ids);
     }
 
@@ -243,7 +249,7 @@ final class GradleModelImporter {
             rootRows.warning("root project " + root.name() + " has its own sources or dependencies; move them into a"
                     + " module");
         }
-        reportPlugins(root, new LinkedHashSet<>(root.plugins()), rootRows);
+        reportPlugins(root, new LinkedHashSet<>(root.plugins()), importRules, rootRows);
         reportTasks(root, rootRows);
         for (GradleModel.Repository r : root.repositories()) repository(r);
         rows.addAll("", rootRows.build());
@@ -338,7 +344,13 @@ final class GradleModelImporter {
         for (GradleModel.Configuration c : p.configurations()) mapConfiguration(p, c, deps, local, platformed);
         for (GradleModel.Repository r : p.repositories()) repository(r);
         List<PluginConfig> plugins = new ArrayList<>(PluginRules.map(
-                applied, p.pluginVersions(), p.ruled(), buildRoot.resolve(p.dir()), importRules, local));
+                applied,
+                p.pluginVersions(),
+                p.ruled(),
+                buildRoot.resolve(p.dir()),
+                importRules,
+                local,
+                this::ruleCredential));
         GradleModel.Xjc xjc = p.xjc();
         if (xjc != null) plugins.add(jaxbTable(xjc, local));
         GradleModel.Avro avro = p.avro();
@@ -348,7 +360,7 @@ final class GradleModelImporter {
         String groovy = applied.contains("groovy") ? groovyVersion(p, local) : null;
         Set<String> unreported = new LinkedHashSet<>(applied);
         unreported.remove("groovy");
-        reportPlugins(p, unreported, local);
+        reportPlugins(p, unreported, importRules, local);
         reportTasks(p, local);
         reportSourceSets(p, local);
 
@@ -834,9 +846,13 @@ final class GradleModelImporter {
 
     // --- rows ---------------------------------------------------------------
 
-    private static void reportPlugins(GradleModel.Project p, Set<String> applied, ImportReport.Builder local) {
+    private static void reportPlugins(
+            GradleModel.Project p,
+            Set<String> applied,
+            Map<String, PluginRules.Rule> rules,
+            ImportReport.Builder local) {
         for (String id : applied) {
-            if (SILENT_PLUGINS.contains(id) || PluginRules.installed().containsKey(id)) continue;
+            if (SILENT_PLUGINS.contains(id) || rules.containsKey(id)) continue;
             switch (id) {
                 case "groovy", "scala" ->
                     local.warning(id + ": set project." + id + " to the build's compiler version");
@@ -960,6 +976,15 @@ final class GradleModelImporter {
         }
         machineCredentials.add(new UserConfigEditor.CredentialTable(name, url, keys));
         report.warning(name + ": credential added to ~/.jk/config.toml");
+    }
+
+    /** A credential an import rule found, once per repository id however many modules name it. */
+    private void ruleCredential(PluginRules.Credential c) {
+        if (credentialed.contains(c.id())) return;
+        credential(
+                c.id(),
+                URI.create(c.url()),
+                new GradleModel.Credential("password", c.passwordEnv(), c.usernameEnv(), null));
     }
 
     private static String envReference(String variable) {

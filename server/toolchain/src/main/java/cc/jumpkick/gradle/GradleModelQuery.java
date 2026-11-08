@@ -167,7 +167,7 @@ public final class GradleModelQuery implements GradleBuildImport.ModelSource {
             }
             Path out = work.resolve("model.json");
             Path rules = work.resolve("rules.json");
-            Files.writeString(rules, PluginRules.readsJson(PluginRules.installed()), StandardCharsets.UTF_8);
+            Files.writeString(rules, PluginRules.readsJson(PluginRules.forBuild(buildRoot)), StandardCharsets.UTF_8);
             List<String> command = new ArrayList<>(launch.command());
             command.addAll(List.of(
                     "--init-script",

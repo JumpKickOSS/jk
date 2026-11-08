@@ -224,7 +224,8 @@ declared subject and a reference to it name different versions, `jk lock` refuse
 The credential comes from the repository chain under the `repository` id: `JK_REPO_<ID>_USERNAME`
 and `JK_REPO_<ID>_PASSWORD` (a Confluent Cloud API key and secret), or a table in
 `~/.jk/config.toml` ([Repositories](repositories.md)). Only a download is supported: jk does not
-register schemas or check compatibility.
+register schemas or check compatibility. `jk import` writes the table from a private Gradle plugin that downloads
+subjects once a rule teaches it the plugin ([Migration](migration.md#teaching-import-a-private-gradle-plugin)).
 
 ## `[jaxb]` — XML schemas through xjc
 

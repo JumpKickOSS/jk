@@ -379,6 +379,83 @@ class GradleModelQueryNetworkTest {
         assertThat(rows).contains("Avro schemas come from task downloadSchemas; see [schema-registry]");
     }
 
+    /**
+     * A private plugin, here a precompiled script plugin in buildSrc, taught to the import by the
+     * build's .jk/import.toml: its task's URL and the subjects file become [schema-registry], and
+     * the key and secret its task reads from the environment become variable references.
+     */
+    @Test
+    void a_build_s_import_rule_maps_a_private_plugin_s_task_and_credential(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("flags"));
+        Files.createDirectories(root.resolve("gradle/wrapper"));
+        Files.writeString(
+                root.resolve("gradle/wrapper/gradle-wrapper.properties"),
+                "distributionUrl=https\\://services.gradle.org/distributions/gradle-" + GradleResolver.DEFAULT_VERSION
+                        + "-bin.zip\n");
+        Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'flags'\n");
+        Files.createDirectories(root.resolve("buildSrc/src/main/groovy"));
+        Files.writeString(root.resolve("buildSrc/build.gradle"), "plugins { id 'groovy-gradle-plugin' }\n");
+        Files.writeString(root.resolve("buildSrc/src/main/groovy/com.acme.kafka-helper.gradle"), """
+                abstract class Loader extends DefaultTask {
+                    @Input abstract Property<String> getRegistry()
+                    @Input @Optional abstract Property<String> getApiKey()
+                    @Input @Optional abstract Property<String> getApiSecret()
+                    @TaskAction void load() { }
+                }
+                tasks.register('sharedSchemasLoader', Loader)
+                """);
+        Files.writeString(root.resolve("build.gradle"), """
+                plugins {
+                    id 'java'
+                    id 'com.acme.kafka-helper'
+                }
+                group = 'com.acme'
+                version = '1.0'
+                tasks.named('sharedSchemasLoader') {
+                    registry = 'https://registry.example.com'
+                    apiKey = System.getenv('ACME_REGISTRY_KEY')
+                    apiSecret = System.getenv('ACME_REGISTRY_SECRET')
+                }
+                """);
+        Files.createDirectories(root.resolve("src/main/resources/kafka"));
+        Files.writeString(root.resolve("src/main/resources/kafka/shared-schema.yaml"), "schemas:\n  flags-value: 18\n");
+        Files.createDirectories(root.resolve(".jk"));
+        Files.writeString(root.resolve(".jk/import.toml"), """
+                [[import.gradle-plugin]]
+                id          = "com.acme.kafka-helper"
+                table       = "schema-registry"
+                task        = "sharedSchemasLoader"
+                properties  = { registry = "url" }
+                files       = { "src/main/resources/kafka/shared-schema.yaml#schemas" = "subjects" }
+                credentials = { username = "apiKey", password = "apiSecret" }
+                """);
+        Map<String, String> shell = new HashMap<>(System.getenv());
+        shell.put("ACME_REGISTRY_KEY", "key-0123456789");
+        shell.put("ACME_REGISTRY_SECRET", "secret-0123456789");
+        GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
+                JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
+
+        GradleBuildImport.Result result = RequestShell.where(
+                shell, () -> gradle.importBuild(root.resolve("settings.gradle"), ImportProgress.NONE));
+
+        List<String> rows = result.report().issues().stream()
+                .map(ImportReport.Issue::message)
+                .toList();
+        assertThat(result.report().hasErrors())
+                .as("Gradle evaluated the build: " + rows)
+                .isFalse();
+        assertThat(result.root().pluginConfig("schema-registry").orElseThrow().values())
+                .containsOnly(
+                        Map.entry("url", "https://registry.example.com"),
+                        Map.entry("subjects", Map.of("flags-value", "18")),
+                        Map.entry("repository", "kafka-helper"));
+        assertThat(result.machineCredentials()).singleElement().satisfies(c -> assertThat(c.credential())
+                .containsExactly(
+                        Map.entry("username", "${env:ACME_REGISTRY_KEY}"),
+                        Map.entry("password", "${env:ACME_REGISTRY_SECRET}")));
+        assertThat(String.join("\n", rows)).doesNotContain("0123456789").doesNotContain("kafka-helper: not imported");
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }
