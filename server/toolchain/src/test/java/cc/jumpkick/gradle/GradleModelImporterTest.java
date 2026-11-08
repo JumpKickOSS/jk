@@ -150,15 +150,16 @@ class GradleModelImporterTest {
         assertThat(result.report().hasErrors()).isFalse();
     }
 
+    /** Central stays ahead of a repository the build asks after it, so that one is not asked for Central's. */
     @Test
-    void a_repository_other_than_central_is_hoisted_onto_the_root() {
+    void a_repository_other_than_central_is_hoisted_onto_the_root_behind_central() {
         GradleBuildImport.Result result =
                 GradleModelImporter.importModel(THREE_MODULES, Path.of("/tmp/shop"), RefreshVersions.NONE);
 
         assertThat(result.root().repositories())
                 .extracting(r -> r.url().toString())
-                .containsExactly("https://maven.acme.example/releases/");
-        assertThat(result.root().repositories().getFirst().name()).isEqualTo("repo1");
+                .containsExactly("https://repo.maven.apache.org/maven2/", "https://maven.acme.example/releases/");
+        assertThat(result.root().repositories().get(1).name()).isEqualTo("repo1");
         assertThat(module(result, "api").repositories()).isEmpty();
         assertThat(messages(result.report())).anySatisfy(m -> assertThat(m).contains("mavenLocal()"));
         assertThat(result.machineCredentials()).isEmpty();
@@ -180,7 +181,7 @@ class GradleModelImporterTest {
         GradleBuildImport.Result result =
                 GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
 
-        assertThat(result.root().repositories()).singleElement().satisfies(r -> {
+        assertThat(result.root().repositories()).hasSize(2).last().satisfies(r -> {
             assertThat(r.name()).isEqualTo("gitlab");
             assertThat(r.url()).hasToString("https://gitlab.example/api/v4/projects/7/packages/maven/");
             assertThat(r.groups()).containsExactly("com.acme.internal");
@@ -207,7 +208,7 @@ class GradleModelImporterTest {
         GradleBuildImport.Result result =
                 GradleModelImporter.importModel(model, Path.of("/tmp/shop"), RefreshVersions.NONE);
 
-        assertThat(result.root().repositories()).singleElement().satisfies(r -> {
+        assertThat(result.root().repositories()).hasSize(2).last().satisfies(r -> {
             assertThat(r.releases()).isTrue();
             assertThat(r.snapshots()).isFalse();
         });

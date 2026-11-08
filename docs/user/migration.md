@@ -570,7 +570,8 @@ nothing is not a module, a `java-platform` project is a row — `jk export bom` 
 member's manifest carries its own coordinates, `project(":sibling")` is a workspace edge on the
 sibling (two projects sharing a name are each named by their path, with a row), and every
 repository other than Central is hoisted onto the root under its Gradle `name` (`repoN` for
-Gradle's generated `maven`, `maven2`, …), the groups its `content { includeGroup … }` filter
+Gradle's generated `maven`, `maven2`, …), in the build's order (when the build asks Central first,
+`central` is written first, since jk otherwise asks it after every declared repository), the groups its `content { includeGroup … }` filter
 includes as its `groups` (`includeGroupAndSubgroups` adds `g.*`; a filter narrower than a group is
 a row), and `mavenContent { releasesOnly() }` / `snapshotsOnly()` as `snapshots = false` /
 `releases = false`. A repository credential the build reads from an environment variable
