@@ -672,52 +672,43 @@
     /* demo */
     .demo-frame {
       position: relative;
-      max-width: 920px;
+      max-width: 1040px;
       margin: 0 auto;
       aspect-ratio: 16 / 9;
       border-radius: var(--r-xl);
-      border: 1px solid rgba(var(--cn-rgb), 0.22);
-      background:
-        radial-gradient(ellipse at 50% 40%, rgba(var(--cn-rgb), 0.1), transparent 60%),
-        radial-gradient(ellipse at 80% 90%, rgba(var(--vi-rgb), 0.1), transparent 55%),
-        var(--s1);
-      box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.95), 0 0 80px -30px rgba(var(--cn-rgb), 0.3);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 1rem;
-      text-align: center;
-      padding: 1.5rem;
+      border: 1px solid rgba(var(--cn-rgb), 0.24);
+      background: var(--bg);
+      box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.95), 0 0 90px -30px rgba(var(--cn-rgb), 0.35);
       overflow: hidden;
     }
-    .demo-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-    .demo-frame::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(var(--cn-rgb), 0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(var(--cn-rgb), 0.05) 1px, transparent 1px);
-      background-size: 32px 32px;
-      pointer-events: none;
-    }
-    .demo-steps { position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.5rem; }
-    .demo-steps .node { font-size: 12.5px; padding: 7px 13px; }
-    .demo-play {
-      position: relative;
-      width: 76px;
-      height: 76px;
-      border-radius: 50%;
-      border: 1px solid rgba(var(--cn-rgb), 0.45);
-      background: rgba(var(--cn-rgb), 0.1);
+    .demo-frame video { display: block; width: 100%; height: 100%; object-fit: contain; background: var(--bg); }
+    .demo-frame video[hidden] { display: none; }
+    .demo-tabs {
       display: flex;
-      align-items: center;
       justify-content: center;
-      box-shadow: 0 0 34px rgba(var(--cn-rgb), 0.3);
+      gap: 0.4rem;
+      margin: 0 auto 1rem;
+      padding: 0.3rem;
+      width: max-content;
+      max-width: 100%;
+      border: 1px solid rgba(var(--cn-rgb), 0.2);
+      border-radius: var(--r-pill);
+      background: rgba(var(--cn-rgb), 0.04);
     }
-    .demo-play svg { width: 26px; height: 26px; fill: var(--cn); margin-left: 4px; }
-    .demo-label { position: relative; font: 700 12px var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--mu); }
+    .demo-tab {
+      padding: 0.45rem 1.1rem;
+      border: 0;
+      border-radius: var(--r-pill);
+      background: transparent;
+      color: var(--mu);
+      font: 700 12.5px var(--mono);
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .demo-tab:hover { color: var(--bright); }
+    .demo-tab[aria-selected="true"] { background: var(--cn); color: #041014; box-shadow: 0 0 18px rgba(var(--cn-rgb), 0.35); }
+    .demo-tab:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.35); }
+    .demo-note { margin: 0.9rem 0 0; text-align: center; font-size: 0.76rem; color: var(--dim); }
 
     /* benefit rows */
     .rows { display: grid; gap: 5rem; }
@@ -1315,19 +1306,25 @@
     <div class="section-head">
       <span class="kicker-label">See it move</span>
       <h2>Change it. Rebuild. Re-test. <span class="grad-text">Green.</span></h2>
-      <p>One loop, start to finish, with the dashboard following every step.</p>
+      <p>A one-line bug in spring-petclinic. Hand it to your agent and watch the dashboard follow every run, or drive it yourself from the terminal.</p>
+    </div>
+    <div class="demo-tabs" role="tablist" aria-label="Demo">
+      <button type="button" role="tab" class="demo-tab" id="tab-agent" aria-controls="demo-agent" aria-selected="true">Agent + dashboard</button>
+      <button type="button" role="tab" class="demo-tab" id="tab-terminal" aria-controls="demo-terminal" aria-selected="false">Terminal</button>
     </div>
     <div class="demo-frame">
-      <!-- When the recording lands: <video src="demo.webm" poster="demo.webp" controls playsinline muted></video> -->
-      <div class="demo-steps" aria-hidden="true">
-        <span class="node success"><span class="g">✓</span>edit</span><span class="edge on"></span>
-        <span class="node success"><span class="g">✓</span>rebuild</span><span class="edge on"></span>
-        <span class="node success"><span class="g">✓</span>re-test</span><span class="edge on"></span>
-        <span class="node success"><span class="g">✓</span>green</span>
-      </div>
-      <div class="demo-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
-      <div class="demo-label">Demo video · coming soon</div>
+      <video id="demo-agent" class="demo-video" role="tabpanel" aria-labelledby="tab-agent" muted loop playsinline preload="metadata" poster="agent-demo-poster.webp"
+             aria-label="Recording: Claude Code is asked to fix a failing test; it calls jk over MCP, the dashboard beside it shows the red run, the fix, and the green runs, each credited to the agent">
+        <source src="agent-demo.webm" type="video/webm" />
+        <source src="agent-demo.mp4" type="video/mp4" />
+      </video>
+      <video id="demo-terminal" class="demo-video" role="tabpanel" aria-labelledby="tab-terminal" muted loop playsinline preload="none" poster="demo-poster.webp" hidden
+             aria-label="Recording: jk test fails on a one-line bug in spring-petclinic, the fix is made in vim, the tests go green, and switching back to main restores the build from cache">
+        <source src="demo.webm" type="video/webm" />
+        <source src="demo.mp4" type="video/mp4" />
+      </video>
     </div>
+    <p class="demo-note">Unedited recordings at real speed · spring-petclinic, warm engine</p>
   </section>
 
   <!-- ============================== BENEFITS ============================== -->
@@ -1691,6 +1688,37 @@ jk web</code></pre>
         });
       }, { rootMargin: "0px 0px -8% 0px" });
       els.forEach(function (el) { io.observe(el); });
+    })();
+
+    /* Demo videos: two tabs; the shown one plays while on screen; no autoplay for reduced motion. */
+    (function () {
+      var frame = document.querySelector(".demo-frame");
+      if (!frame) return;
+      var tabs = Array.prototype.slice.call(document.querySelectorAll(".demo-tab"));
+      var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var onScreen = false;
+      function current() { return frame.querySelector(".demo-video:not([hidden])"); }
+      function sync() {
+        frame.querySelectorAll(".demo-video").forEach(function (v) {
+          if (v.hidden || !onScreen || reduce) v.pause();
+          else v.play().catch(function () { v.controls = true; });
+        });
+      }
+      if (reduce) frame.querySelectorAll(".demo-video").forEach(function (v) { v.controls = true; });
+      tabs.forEach(function (tab) {
+        tab.addEventListener("click", function () {
+          tabs.forEach(function (t) {
+            var on = t === tab;
+            t.setAttribute("aria-selected", on ? "true" : "false");
+            document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+          });
+          var v = current();
+          if (v) { v.preload = "auto"; v.currentTime = 0; }
+          sync();
+        });
+      });
+      if (!("IntersectionObserver" in window)) { onScreen = true; sync(); return; }
+      new IntersectionObserver(function (es) { onScreen = es[0].isIntersecting; sync(); }, { threshold: 0.35 }).observe(frame);
     })();
 
     /* The hero loop: edit → compile → test fails → agent fixes → green. Illustration only. */
