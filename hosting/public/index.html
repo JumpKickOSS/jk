@@ -1309,16 +1309,16 @@
       <p>A one-line bug in spring-petclinic. Hand it to your agent and watch the dashboard follow every run, or drive it yourself from the terminal.</p>
     </div>
     <div class="demo-tabs" role="tablist" aria-label="Demo">
-      <button type="button" role="tab" class="demo-tab" id="tab-agent" aria-controls="demo-agent" aria-selected="true">Agent + dashboard</button>
-      <button type="button" role="tab" class="demo-tab" id="tab-terminal" aria-controls="demo-terminal" aria-selected="false">Terminal</button>
+      <button type="button" role="tab" class="demo-tab" id="tab-agent" data-hash="demo-agent" aria-controls="video-agent" aria-selected="true">Agent + dashboard</button>
+      <button type="button" role="tab" class="demo-tab" id="tab-terminal" data-hash="demo-terminal" aria-controls="video-terminal" aria-selected="false">Terminal</button>
     </div>
     <div class="demo-frame">
-      <video id="demo-agent" class="demo-video" role="tabpanel" aria-labelledby="tab-agent" muted loop playsinline preload="metadata" poster="agent-demo-poster.webp"
+      <video id="video-agent" class="demo-video" role="tabpanel" aria-labelledby="tab-agent" muted loop playsinline preload="metadata" poster="agent-demo-poster.webp"
              aria-label="Recording: Claude Code is asked to fix a failing test; it calls jk over MCP, the dashboard beside it shows the red run, the fix, and the green runs, each credited to the agent">
         <source src="agent-demo.webm" type="video/webm" />
         <source src="agent-demo.mp4" type="video/mp4" />
       </video>
-      <video id="demo-terminal" class="demo-video" role="tabpanel" aria-labelledby="tab-terminal" muted loop playsinline preload="none" poster="demo-poster.webp" hidden
+      <video id="video-terminal" class="demo-video" role="tabpanel" aria-labelledby="tab-terminal" muted loop playsinline preload="none" poster="demo-poster.webp" hidden
              aria-label="Recording: jk test fails on a one-line bug in spring-petclinic, the fix is made in vim, the tests go green, and switching back to main restores the build from cache">
         <source src="demo.webm" type="video/webm" />
         <source src="demo.mp4" type="video/mp4" />
@@ -1717,6 +1717,18 @@ jk web</code></pre>
           sync();
         });
       });
+      // #demo-agent / #demo-terminal (the README's play links) open that tab and bring the demo up;
+      // no element carries those ids, so the browser's own fragment jump never fights this scroll.
+      function fromHash() {
+        var tab = document.querySelector('.demo-tab[data-hash="' + location.hash.slice(1) + '"]');
+        if (!tab) return;
+        tab.click();
+        var demo = document.getElementById("demo");
+        demo.classList.add("in");
+        demo.scrollIntoView({ block: "start" });
+      }
+      window.addEventListener("hashchange", fromHash);
+      fromHash();
       if (!("IntersectionObserver" in window)) { onScreen = true; sync(); return; }
       new IntersectionObserver(function (es) { onScreen = es[0].isIntersecting; sync(); }, { threshold: 0.35 }).observe(frame);
     })();

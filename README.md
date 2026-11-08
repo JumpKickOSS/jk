@@ -27,6 +27,15 @@ an existing project, run `jk agents`.
 
 Open source. Apache 2.0. Java, Kotlin, and Groovy. **[jumpkick.build](https://jumpkick.build)**
 
+## See it move
+
+<p align="center">
+  <a href="https://jumpkick.build/#demo-agent"><img width="49%" alt="Play: Claude Code fixes a failing test in spring-petclinic through jk's MCP tools while the jk web dashboard beside it follows the red run, the fix, and the green runs" src="docs/assets/demo/agent-demo-play.webp" /></a>
+  <a href="https://jumpkick.build/#demo-terminal"><img width="49%" alt="Play: jk test fails on a one-line bug in spring-petclinic at file:line, the fix goes in, the tests go green, and switching back to main restores the build from cache" src="docs/assets/demo/terminal-demo-play.webp" /></a>
+</p>
+
+<p align="center"><b>Your agent fixes it</b>, and the dashboard follows every run · <b>You fix it</b>, red to green from the terminal</p>
+
 ---
 
 ## Spend your time making progress. Not waiting for it.
