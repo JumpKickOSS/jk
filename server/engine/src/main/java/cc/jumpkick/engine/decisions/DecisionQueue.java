@@ -6,6 +6,7 @@ import cc.jumpkick.form.Form;
 import cc.jumpkick.form.FormCheck;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jsonl.MiniJson;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -36,6 +37,12 @@ import org.jspecify.annotations.Nullable;
  * may decline a trust-changing decision but never accept it, since an agent can read the bearer
  * token and drive a browser.
  *
+ * <p>Decisions outlive the engine. Every change is written to the {@link Store} before it takes
+ * effect, and a new engine {@link #adopt adopts} what a previous one left, so a decision opened on
+ * one engine is answered on its successor and its operation still runs once. The store holds only
+ * the SHA-256 of a host key, never the key. A store that refuses a write (this engine was displaced)
+ * refuses the answer or the use it would record.
+ *
  * <p>Ids are 24 hex digits from {@link SecureRandom}: unguessable, never reused.
  */
 public final class DecisionQueue {
@@ -51,16 +58,83 @@ public final class DecisionQueue {
     private final Clock clock;
     private final Map<String, Entry> entries = new LinkedHashMap<>();
     private volatile Consumer<Decision> changed = d -> {};
+    private volatile Store store = Store.MEMORY;
+
+    /** Whether {@link #adopt} has run. */
+    private boolean adopted;
+
+    /**
+     * Where decisions outlive the engine: one record per decision, each the decision's {@link
+     * Decision#toMap} plus {@code keys} (host-key hashes), {@code spent} and {@code call}.
+     */
+    public interface Store {
+        /** Keeps nothing and refuses nothing: an engine with no journal. */
+        Store MEMORY = new Store() {
+            @Override
+            public boolean save(String id, Map<String, Object> record) {
+                return true;
+            }
+
+            @Override
+            public void drop(String id) {}
+
+            @Override
+            public List<Map<String, Object>> load() {
+                return List.of();
+            }
+        };
+
+        /** Replace {@code id}'s record; false when this engine no longer writes decisions. */
+        boolean save(String id, Map<String, Object> record);
+
+        /** Forget {@code id}'s record. */
+        void drop(String id);
+
+        /** Every stored record, once the engine this one displaced has stopped writing them. */
+        List<Map<String, Object>> load();
+    }
 
     private static final class Entry {
         Decision decision;
-        final String hostKey;
+
+        /** The key itself; null for a decision adopted from the store until {@link #hostKey} mints one. */
+        @Nullable
+        String hostKey;
+
+        /** The SHA-256 of every key this decision has handed out; one of them proves the host. */
+        final List<String> keyHashes = new ArrayList<>();
+
         final CompletableFuture<Decision> settled = new CompletableFuture<>();
         boolean spent;
 
-        Entry(Decision decision, String hostKey) {
+        /** The call this decision continues, as its asker stored it; null for none. */
+        @Nullable
+        Map<String, Object> call;
+
+        Entry(Decision decision) {
             this.decision = decision;
-            this.hostKey = hostKey;
+        }
+
+        /** This entry as the store keeps it, with {@code d} for its decision and {@code spent}. */
+        Map<String, Object> record(Decision d, boolean spent) {
+            Map<String, Object> m = new LinkedHashMap<>(d.toMap());
+            m.remove("route");
+            m.put("keys", List.copyOf(keyHashes));
+            m.put("spent", spent);
+            if (call != null) m.put("call", call);
+            return m;
+        }
+
+        @SuppressWarnings("unchecked")
+        static @Nullable Entry of(Map<String, Object> record) {
+            Decision d = Decision.of(record).orElse(null);
+            if (d == null) return null;
+            Entry e = new Entry(d);
+            for (Object h : MiniJson.list(record, "keys")) e.keyHashes.add(String.valueOf(h));
+            e.spent = Boolean.TRUE.equals(record.get("spent"));
+            if (record.get("call") instanceof Map<?, ?> c) e.call = (Map<String, Object>) c;
+            if (!d.open()) e.settled.complete(d);
+            return e;
         }
     }
 
@@ -112,6 +186,39 @@ public final class DecisionQueue {
         this.changed = Objects.requireNonNull(changed);
     }
 
+    /** Keep decisions in {@code store} and adopt what it holds. Before the queue is first used. */
+    public void store(Store store) {
+        this.store = Objects.requireNonNull(store);
+    }
+
+    /**
+     * Take over every decision the store holds, as a previous engine left it: open ones stay open
+     * until their deadline, and one whose deadline passed meanwhile settles expired here. Runs once;
+     * every other entry point runs it first. Answers how many it adopted.
+     */
+    public int adopt() {
+        List<Decision> expired;
+        int n = 0;
+        synchronized (this) {
+            if (adopted) return 0;
+            adopted = true;
+            for (Map<String, Object> record : store.load()) {
+                Entry e = Entry.of(record);
+                if (e == null || entries.containsKey(e.decision.id())) continue;
+                entries.put(e.decision.id(), e);
+                n++;
+            }
+            List<Entry> byAge = new ArrayList<>(entries.values());
+            byAge.sort(Comparator.comparingLong(x -> x.decision.createdAt()));
+            entries.clear();
+            byAge.forEach(x -> entries.put(x.decision.id(), x));
+            trim();
+            expired = expire();
+        }
+        expired.forEach(changed);
+        return n;
+    }
+
     /** Opens a decision that expires {@link #DEADLINE} from now. */
     public Decision open(Ask ask) {
         return open(ask, DEADLINE);
@@ -119,6 +226,7 @@ public final class DecisionQueue {
 
     /** Opens a decision that expires {@code within} from now. */
     public Decision open(Ask ask, Duration within) {
+        adopt();
         Decision d;
         List<Decision> expired;
         synchronized (this) {
@@ -143,7 +251,11 @@ public final class DecisionQueue {
                     Map.of(),
                     null,
                     0);
-            entries.put(id, new Entry(d, random(16)));
+            Entry e = new Entry(d);
+            e.hostKey = random(16);
+            e.keyHashes.add(Hashing.sha256Hex(e.hostKey));
+            entries.put(id, e);
+            save(e, d, false);
             trim();
         }
         expired.forEach(changed);
@@ -153,6 +265,7 @@ public final class DecisionQueue {
 
     /** The decision {@code id} as it stands now. */
     public Optional<Decision> find(String id) {
+        adopt();
         List<Decision> expired;
         Optional<Decision> found;
         synchronized (this) {
@@ -165,7 +278,12 @@ public final class DecisionQueue {
     }
 
     /** An open decision of {@code kind} that {@code label}'s session raised about {@code project}. */
-    public synchronized Optional<Decision> openFor(String kind, @Nullable String label, @Nullable String project) {
+    public Optional<Decision> openFor(String kind, @Nullable String label, @Nullable String project) {
+        adopt();
+        return openAmong(kind, label, project);
+    }
+
+    private synchronized Optional<Decision> openAmong(String kind, @Nullable String label, @Nullable String project) {
         for (Entry e : entries.values()) {
             Decision d = e.decision;
             if (d.open()
@@ -181,6 +299,7 @@ public final class DecisionQueue {
 
     /** Open decisions first, newest first within each group. */
     public List<Decision> list() {
+        adopt();
         List<Decision> expired;
         List<Decision> all;
         synchronized (this) {
@@ -209,6 +328,7 @@ public final class DecisionQueue {
 
     private Result answer(
             String id, Map<String, ?> answers, boolean accept, DecisionSurface surface, @Nullable String hostKey) {
+        adopt();
         List<Decision> expired;
         Result result;
         synchronized (this) {
@@ -244,9 +364,11 @@ public final class DecisionQueue {
             return new Result.Refused("this decision changes what the project trusts, so the dashboard can"
                     + " decline it but not accept it; accept it in a terminal with " + e.decision.command());
         }
-        e.decision = e.decision.settled(state, values, from, clock.millis());
-        e.settled.complete(e.decision);
-        return new Result.Settled(e.decision);
+        Decision settled = e.decision.settled(state, values, from, clock.millis());
+        if (!save(e, settled, e.spent)) return new Result.Missing();
+        e.decision = settled;
+        e.settled.complete(settled);
+        return new Result.Settled(settled);
     }
 
     /**
@@ -254,6 +376,7 @@ public final class DecisionQueue {
      * when there is no such decision. A deadline that passes meanwhile settles it expired.
      */
     public Optional<Decision> await(String id, Duration timeout) {
+        adopt();
         Entry e;
         long until;
         synchronized (this) {
@@ -275,32 +398,76 @@ public final class DecisionQueue {
      * Marks an accepted decision used by the operation that asked it; true only the first time, so a
      * decision proceeds one operation once.
      */
-    public synchronized boolean spend(String id) {
-        Entry e = entries.get(id);
-        if (e == null || !e.decision.accepted() || e.spent) return false;
-        e.spent = true;
-        return true;
+    public boolean spend(String id) {
+        adopt();
+        synchronized (this) {
+            Entry e = entries.get(id);
+            if (e == null || !e.decision.accepted() || e.spent) return false;
+            if (!save(e, e.decision, true)) return false;
+            e.spent = true;
+            return true;
+        }
     }
 
     /** True once {@link #spend} took {@code id}. */
-    public synchronized boolean spent(String id) {
-        Entry e = entries.get(id);
-        return e != null && e.spent;
+    public boolean spent(String id) {
+        adopt();
+        synchronized (this) {
+            Entry e = entries.get(id);
+            return e != null && e.spent;
+        }
     }
 
     /**
      * The one-time key the URL elicitation link for {@code id} carries; null when there is no such
-     * decision. Never put it in a tool result or a notification: the agent reads those.
+     * decision. A decision adopted from the store gets a fresh key here, since the store keeps only
+     * hashes. Never put it in a tool result or a notification: the agent reads those.
      */
-    public synchronized @Nullable String hostKey(String id) {
-        Entry e = entries.get(id);
-        return e == null ? null : e.hostKey;
+    public @Nullable String hostKey(String id) {
+        adopt();
+        synchronized (this) {
+            Entry e = entries.get(id);
+            if (e == null) return null;
+            if (e.hostKey == null) {
+                e.hostKey = random(16);
+                e.keyHashes.add(Hashing.sha256Hex(e.hostKey));
+                save(e, e.decision, e.spent);
+            }
+            return e.hostKey;
+        }
+    }
+
+    /** Remember {@code call} as what {@code id} continues; null forgets it. Nothing when there is no such decision. */
+    public void call(String id, @Nullable Map<String, Object> call) {
+        adopt();
+        synchronized (this) {
+            Entry e = entries.get(id);
+            if (e == null) return;
+            e.call = call == null ? null : Map.copyOf(call);
+            save(e, e.decision, e.spent);
+        }
+    }
+
+    /** The call {@code id} continues, as {@link #call(String, Map)} stored it; empty for none. */
+    public Optional<Map<String, Object>> call(String id) {
+        adopt();
+        synchronized (this) {
+            Entry e = entries.get(id);
+            return e == null ? Optional.empty() : Optional.ofNullable(e.call);
+        }
     }
 
     private static boolean keyMatches(Entry e, @Nullable String key) {
         if (key == null || key.isBlank()) return false;
-        return MessageDigest.isEqual(
-                e.hostKey.getBytes(StandardCharsets.UTF_8), key.strip().getBytes(StandardCharsets.UTF_8));
+        byte[] hash = Hashing.sha256Hex(key.strip()).getBytes(StandardCharsets.UTF_8);
+        boolean match = false;
+        for (String h : e.keyHashes) match |= MessageDigest.isEqual(h.getBytes(StandardCharsets.UTF_8), hash);
+        return match;
+    }
+
+    /** Write {@code e} as it stands with {@code d} and {@code spent}; false when the store refused it. */
+    private boolean save(Entry e, Decision d, boolean spent) {
+        return store.save(d.id(), e.record(d, spent));
     }
 
     /** Settles every open decision past its deadline; answers them for {@link #changed}. */
@@ -310,6 +477,7 @@ public final class DecisionQueue {
         for (Entry e : entries.values()) {
             if (e.decision.open() && now >= e.decision.deadline()) {
                 e.decision = e.decision.settled(Decision.State.EXPIRED, Map.of(), null, now);
+                save(e, e.decision, e.spent);
                 e.settled.complete(e.decision);
                 out.add(e.decision);
             }
@@ -326,6 +494,7 @@ public final class DecisionQueue {
                     .findFirst()
                     .orElseGet(() -> entries.keySet().iterator().next());
             entries.remove(victim);
+            store.drop(victim);
         }
     }
 

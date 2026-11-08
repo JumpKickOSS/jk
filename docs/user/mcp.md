@@ -354,6 +354,15 @@ Every rung answers before the client's own tool timeout (55 s for Cursor, 240 s 
 question nobody has answered yet becomes a `NEEDS-YOU` with the decision still open, not a
 cancelled call. A decision expires as declined 30 minutes after it opened.
 
+Decisions outlive the engine, as [sessions](web.md#sessions-and-episodes) do. Each one is kept
+beside the session records with the call it continues, and an engine that replaces another (an
+upgrade, a restart) takes over every decision with its deadline: the answer and `run(decision=<id>)`
+both reach the new engine, the first answer still wins, and the operation still runs once. One whose
+deadline passed while no engine ran is `EXPIRED`. When the decision a continuation names is gone,
+the answer is `ASK-AGAIN`: repeat the original call without `decision` to be asked anew. The record
+keeps only a hash of the link's `k=` key, so a link the host opened still works on the new engine
+and the state directory holds nothing that accepts a decision.
+
 **Who may accept.** A trust-changing decision is accepted only where a person is known to answer:
 the host's form, the page the host opened (its key), or `jk decide` at a terminal. The dashboard
 shows it, with the command that accepts it, and may decline it, but a bearer-token answer never

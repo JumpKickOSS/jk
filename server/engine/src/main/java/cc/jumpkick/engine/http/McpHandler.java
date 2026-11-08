@@ -96,6 +96,7 @@ public final class McpHandler {
                 liveRuns,
                 admissionYield,
                 finishedRecords);
+        ctx.toolNamed(name -> tools.tool(name));
     }
 
     /** Wire the journal's {@code details.jsonl} locator for {@code details}. Optional. */

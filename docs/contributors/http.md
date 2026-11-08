@@ -103,6 +103,16 @@ the fields the session log folds), and the successor folds it into its episode a
 finished there. A drained engine sends whatever runs the ticks have not carried in one last
 `drain-status`, and only then `drain-done`.
 
+Decisions cross the hand-off the same way. `DecisionQueue` writes each change through its store
+(`JournaledDecisions`, `<builds>/decisions/<id>.json`) before it takes effect, under the session
+log's write gate (`SessionLog.whileWriting`), and loads the store once the session log has adopted
+(`DecisionQueue.adopt`, which every queue entry point runs first). A record is the decision as `GET
+/api/decisions` shows it, the SHA-256 of each host key it handed out (never a key), whether its
+operation has run (`spent`), and the call it continues (tool and arguments, the goal masked). A
+displaced engine's store refuses every write, so it records no answer and runs no operation; an
+answer or a run there is refused rather than lost. The successor mints a fresh host key when it
+needs one for an adopted decision, and the predecessor's link still matches its hash.
+
 The successor takes the sessions over rather than ending them: see [`GET /api/sessions`](#get-apisessions)
 and [MCP sessions](#mcp-sessions-and-server-requests).
 

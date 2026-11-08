@@ -206,6 +206,11 @@ public final class McpTools {
         return new McpTools(tools, LOOP);
     }
 
+    /** The tool registered as {@code name}; null for none. */
+    public @Nullable McpTool tool(String name) {
+        return byName.get(name);
+    }
+
     /** Every tool name, in registration order. */
     public List<String> names() {
         return List.copyOf(byName.keySet());

@@ -3,10 +3,12 @@ package cc.jumpkick.engine.decisions;
 
 import cc.jumpkick.form.Form;
 import cc.jumpkick.jsonl.MiniJson;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -58,6 +60,13 @@ public record Decision(
         public String wire() {
             return name().toLowerCase(Locale.ROOT);
         }
+
+        static Optional<State> parse(@Nullable String wire) {
+            for (State s : values()) {
+                if (s.wire().equals(wire)) return Optional.of(s);
+            }
+            return Optional.empty();
+        }
     }
 
     public Decision {
@@ -107,5 +116,46 @@ public record Decision(
         if (answeredAt > 0) m.put("answeredAt", answeredAt);
         m.put("route", route());
         return m;
+    }
+
+    /** Reads {@link #toMap}'s shape back; empty when {@code m} is not a whole decision. */
+    static Optional<Decision> of(Map<?, ?> m) {
+        String id = MiniJson.str(m, "id");
+        String kind = MiniJson.str(m, "kind");
+        String question = MiniJson.str(m, "question");
+        String command = MiniJson.str(m, "command");
+        State state = State.parse(MiniJson.str(m, "state")).orElse(null);
+        if (id == null || kind == null || question == null || command == null || state == null) return Optional.empty();
+        if (!(m.get("form") instanceof Map<?, ?> form)) return Optional.empty();
+        List<String> detail = new ArrayList<>();
+        for (Object line : MiniJson.list(m, "detail")) detail.add(String.valueOf(line));
+        Map<String, Object> answers = new LinkedHashMap<>();
+        if (m.get("answers") instanceof Map<?, ?> a) a.forEach((k, v) -> answers.put(String.valueOf(k), v));
+        try {
+            return Optional.of(new Decision(
+                    id,
+                    kind,
+                    question,
+                    detail,
+                    command,
+                    Form.fromJson(MiniJson.write(form)),
+                    Boolean.TRUE.equals(m.get("trust")),
+                    MiniJson.str(m, "session"),
+                    MiniJson.str(m, "label"),
+                    MiniJson.str(m, "episode"),
+                    MiniJson.str(m, "project"),
+                    millis(m, "createdAt"),
+                    millis(m, "deadline"),
+                    state,
+                    answers,
+                    DecisionSurface.parse(MiniJson.str(m, "answeredBy")).orElse(null),
+                    millis(m, "answeredAt")));
+        } catch (RuntimeException unreadable) {
+            return Optional.empty();
+        }
+    }
+
+    private static long millis(Map<?, ?> m, String key) {
+        return m.get(key) instanceof Number n ? n.longValue() : 0;
     }
 }

@@ -27,6 +27,9 @@ import org.jspecify.annotations.Nullable;
  * removed when the session ends. The shapes are the session log's; this class only
  * stores and reads them as {@link MiniJson} objects. Pruned with the runs, under the same {@code
  * [history]} budgets ({@link BuildJournal#prune}).
+ *
+ * <p>Beside the session directories, {@code <builds>/decisions/<id>.json} holds one decision of the
+ * engine's queue each, written under the same one-writer rule; the queue bounds how many it keeps.
  */
 public final class SessionJournal {
 
@@ -39,13 +42,18 @@ public final class SessionJournal {
 
     static final String CONNECTION_JSON = "connection.json";
 
+    /** The directory beside {@link #DIR} that holds one {@code <id>.json} per decision. */
+    public static final String DECISIONS_DIR = "decisions";
+
     /** A session id is one path segment of letters, digits, dot, dash and underscore. */
     private static final Pattern ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
 
     private final Path root;
+    private final Path decisions;
 
     public SessionJournal(Path root) {
         this.root = root.normalize();
+        this.decisions = this.root.resolveSibling(DECISIONS_DIR);
     }
 
     /** The session records beside the runs of the journal under {@code buildsRoot}. */
@@ -99,6 +107,33 @@ public final class SessionJournal {
     public Optional<Map<String, Object>> connection(String id) {
         if (!validId(id)) return Optional.empty();
         return readJson(root.resolve(id).resolve(CONNECTION_JSON));
+    }
+
+    /** Replace decision {@code id}'s record with {@code doc}. */
+    public void writeDecision(String id, Map<String, Object> doc) throws IOException {
+        if (!validId(id)) throw new IllegalArgumentException("invalid decision id: " + id);
+        OwnerOnlyFiles.createDirectories(decisions);
+        AtomicWrites.replace(decisions.resolve(id + ".json"), MiniJson.write(doc) + "\n");
+    }
+
+    /** Remove decision {@code id}'s record, when there is one. */
+    public void deleteDecision(String id) throws IOException {
+        if (validId(id)) Files.deleteIfExists(decisions.resolve(id + ".json"));
+    }
+
+    /** Every stored decision record that parses, in no particular order. */
+    public List<Map<String, Object>> decisions() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        try {
+            PathUtil.forEachChild(decisions, (p, attrs) -> {
+                if (attrs.isRegularFile() && p.getFileName().toString().endsWith(".json"))
+                    readJson(p).ifPresent(out::add);
+                return true;
+            });
+        } catch (IOException e) {
+            Log.debug("decisions unreadable: " + decisions, e);
+        }
+        return out;
     }
 
     /** Append one action line to session {@code id}. */
