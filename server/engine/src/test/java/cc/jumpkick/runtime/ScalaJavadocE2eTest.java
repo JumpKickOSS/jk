@@ -163,6 +163,7 @@ class ScalaJavadocE2eTest {
                 version = "1.0.0"
                 scala   = "3.8.4"
                 java    = 25
+                javadoc = true
 
                 [workspace]
                 modules = ["lib"]

@@ -128,7 +128,14 @@ public record Session(
          * {@code jk snapshot}: every module's effective version is its declared one plus {@code
          * -SNAPSHOT}, in the model the build plans from; {@code jk.toml} is never touched.
          */
-        @With boolean snapshot) {
+        @With boolean snapshot,
+        /**
+         * {@code jk publish} / {@code jk javadoc}: write the javadoc jar of every library whose
+         * manifest leaves {@code javadoc} unset ({@link cc.jumpkick.model.JavadocMode#PUBLISH}). A
+         * plain {@code jk build} leaves it off, so only a module that opted in documents itself on
+         * every build.
+         */
+        @With boolean javadoc) {
 
     public Session {
         Objects.requireNonNull(config, "config");
@@ -175,7 +182,8 @@ public record Session(
                 affected,
                 affectedChanged,
                 io,
-                snapshot);
+                snapshot,
+                javadoc);
     }
 
     /**
@@ -296,6 +304,7 @@ public record Session(
                 false,
                 new AffectedChanged(),
                 IoLedger.currentOrNew(),
+                false,
                 false);
     }
 
@@ -330,7 +339,8 @@ public record Session(
                 affected,
                 affectedChanged,
                 io,
-                snapshot);
+                snapshot,
+                javadoc);
     }
 
     /** A copy with the given JVM tuning ({@code null} → {@link PluginTuning#NONE}). */
@@ -364,7 +374,8 @@ public record Session(
                 affected,
                 affectedChanged,
                 io,
-                snapshot);
+                snapshot,
+                javadoc);
     }
 
     /**
@@ -403,7 +414,8 @@ public record Session(
                 affected,
                 affectedChanged,
                 io,
-                snapshot);
+                snapshot,
+                javadoc);
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {

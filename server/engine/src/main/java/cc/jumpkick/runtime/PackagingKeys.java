@@ -6,6 +6,7 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
@@ -13,6 +14,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.plugin.build.In;
@@ -731,6 +733,19 @@ public final class PackagingKeys {
 
     /** Plugin {@code exec-mode}s whose artifact is run, not depended on. */
     private static final Set<String> RUNNABLE = Set.of("jar", "binary", "device");
+
+    /**
+     * Whether this build writes {@code project}'s javadoc jar: a library whose manifest opted in
+     * ({@code javadoc = true} or {@code "strict"}), or one that left {@code javadoc} unset in a build
+     * that asked for docs ({@code jk publish}, {@code jk javadoc}; {@link Session#javadoc()}). A
+     * plain {@code jk build} of an unset module writes none: on a large workspace javadoc costs as
+     * much as the compile, and Maven's {@code package} writes none either.
+     */
+    public static boolean javadocJar(JkBuild project, Path moduleDir, Session session) {
+        JavadocMode mode = project.project().javadocMode();
+        boolean wanted = mode.enabled() || (session.javadoc() && mode.whenAsked());
+        return wanted && libraryArtifacts(project, moduleDir);
+    }
 
     /**
      * Whether {@code jk package} writes the sources and javadoc jars beside the module jar. A

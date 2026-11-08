@@ -9,14 +9,31 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.ProjectInherit;
 import org.junit.jupiter.api.Test;
 
-/** The {@code javadoc} key: absent → lenient, {@code false} → no jar, {@code "strict"} → doclint on. */
+/**
+ * The {@code javadoc} key: absent → only for publish / {@code jk javadoc}, {@code true} → every
+ * build, {@code false} → no jar, {@code "strict"} → every build with doclint on.
+ */
 class ManifestProjectJavadocTest {
 
     private static final String HEAD = "group = \"com.example\"\nname = \"lib\"\nversion = \"1.0.0\"\njava = 25\n";
 
     @Test
-    void absent_is_lenient() {
-        assertThat(JkBuildParser.parse(HEAD).project().javadocMode()).isEqualTo(JavadocMode.LENIENT);
+    void absent_documents_only_when_published_or_asked() {
+        JavadocMode mode = JkBuildParser.parse(HEAD).project().javadocMode();
+        assertThat(mode).isEqualTo(JavadocMode.PUBLISH);
+        assertThat(mode.enabled()).as("a plain jk build writes no javadoc jar").isFalse();
+        assertThat(mode.whenAsked()).as("jk publish / jk javadoc write it").isTrue();
+    }
+
+    @Test
+    void true_documents_every_build() {
+        JavadocMode mode =
+                JkBuildParser.parse(HEAD + "javadoc = true\n").project().javadocMode();
+        assertThat(mode).isEqualTo(JavadocMode.LENIENT);
+        assertThat(mode.enabled()).isTrue();
+        assertThat(JavadocMode.DISABLED.whenAsked())
+                .as("false is never, even for publish")
+                .isFalse();
     }
 
     @Test

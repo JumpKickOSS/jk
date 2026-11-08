@@ -164,11 +164,11 @@ public final class ManifestProject {
             }
         }
 
-        // javadoc = false → DISABLED; javadoc = "strict" → STRICT; absent/true → LENIENT
+        // javadoc = false → DISABLED; "strict" → STRICT; true → LENIENT; absent → PUBLISH
         JavadocMode javadocMode;
         if (isWorkspaceInherit(root, "javadoc") || (!workspaceRoot && !root.contains("javadoc"))) {
             inherits.add(ProjectInherit.JAVADOC);
-            javadocMode = JavadocMode.LENIENT;
+            javadocMode = JavadocMode.PUBLISH;
         } else {
             javadocMode = parseJavadocMode(root.get("javadoc"));
         }
@@ -222,8 +222,12 @@ public final class ManifestProject {
                 nodeSpec);
     }
 
-    /** {@code javadoc}: {@code false} → no javadoc jar, {@code "strict"} → doclint on, else lenient. */
+    /**
+     * {@code javadoc}: {@code false} → never, {@code "strict"} → every build with doclint on, {@code
+     * true} → every build, absent → only when published or asked for.
+     */
     static JavadocMode parseJavadocMode(@Nullable Object raw) {
+        if (raw == null) return JavadocMode.PUBLISH;
         if (raw instanceof Boolean b) return b ? JavadocMode.LENIENT : JavadocMode.DISABLED;
         if (raw instanceof String str) {
             if ("strict".equalsIgnoreCase(str.trim())) return JavadocMode.STRICT;

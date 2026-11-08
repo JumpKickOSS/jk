@@ -122,7 +122,7 @@ public final class PlannerTails {
             if (deliver && PackagingKeys.libraryArtifacts(project, in.dir())) {
                 b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_SOURCES);
-                if (project.project().javadocMode().enabled()) {
+                if (PackagingKeys.javadocJar(project, in.dir(), in.session())) {
                     b.addTask(javadocStep(in.cache(), !in.ephemeralActions()));
                     leaves.add(TaskNames.PACKAGE_JAVADOC);
                 }

@@ -37,6 +37,7 @@ work on what the build just produced. No command needs another one run first: `j
 | `jk compile` | compile | — | |
 | `jk test` | test | always | |
 | `jk build` | package | unless `-S` | the deliveries `jk.toml` declares (fat jar, native when `always`, sources/javadoc) |
+| `jk javadoc` | package | never | the javadoc jar of every library in scope (unless `javadoc = false`) |
 | `jk install` | package | unless `-S` | the local repo and the launcher on `PATH` |
 | `jk native` | package | unless `-S` | `native-image` |
 | `jk image` | package | unless `-S` | the OCI image |

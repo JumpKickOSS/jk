@@ -25,6 +25,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk explain` | Forecast rebuilds / ETA | [Explain](explain.md) |
 | `jk tasks` / `jk show` / `jk inspect` | Task catalog | [Explain](explain.md) |
 | `jk assemble` | Fat / minified jar | [Packaging](packaging.md) |
+| `jk javadoc` | Javadoc jar of every library, no tests (`jk build` writes it only where `javadoc = true`) | [Packaging](packaging.md#library-artefacts-sources-and-javadoc-jars) |
 | `jk native` | GraalVM native-image | [Native](native.md) |
 | `jk image` | OCI image | [Images](images.md) |
 | `jk train` | Observe a run for reachability / AOT | [Dynamic surface](dynamic-surface.md) |

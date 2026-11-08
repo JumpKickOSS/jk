@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JavadocTool;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.InstallDestination;
@@ -78,8 +79,7 @@ final class ForecastPackagingTails {
             Cas cas,
             boolean compileDirty)
             throws IOException, InterruptedException {
-        if (!PackagingKeys.libraryArtifacts(project, dir)
-                || !project.project().javadocMode().enabled()) return null;
+        if (!PackagingKeys.javadocJar(project, dir, SessionContext.current())) return null;
         if (compileDirty) {
             return new TaskForecast.Task(
                     TaskNames.PACKAGE_JAVADOC, TaskForecast.Status.RUN, "javadoc · compile changed", null);

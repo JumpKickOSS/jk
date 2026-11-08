@@ -186,6 +186,27 @@ public record BuildFlags(
                 affectedWip);
     }
 
+    /** These flags with the test run skipped: a verb that packages without testing ({@code jk javadoc}). */
+    BuildFlags withSkipTests() {
+        return new BuildFlags(
+                global,
+                profile,
+                workers,
+                true,
+                testSelection,
+                testFailures,
+                skipNode,
+                verifyCache,
+                verifySample,
+                keepGoing,
+                parallelTests,
+                jdksDir,
+                cache,
+                modulesSpec,
+                affectedSince,
+                affectedWip);
+    }
+
     /** These flags with the test selection replaced; {@code --exclusive} narrows it to the selection. */
     BuildFlags withTestSelection(TestSelection selection) {
         return new BuildFlags(

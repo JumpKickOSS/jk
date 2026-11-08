@@ -318,6 +318,15 @@ public final class WorkspaceBuildVerb implements HostedVerb {
         return homes;
     }
 
+    /**
+     * The request's session as {@code target} plans it. A publish ships what Central requires: the
+     * javadoc jar of every library that did not say {@code javadoc = false}, whether or not a plain
+     * build writes it.
+     */
+    static Session forTarget(Session session, WorkspaceTarget target) {
+        return target == WorkspaceTarget.PUBLISH ? session.withJavadoc(true) : session;
+    }
+
     private static WorkspaceTarget target(BuildRequest body) {
         String named = body.workspaceTarget();
         if (named != null) return WorkspaceTarget.valueOf(named.toUpperCase(Locale.ROOT));
@@ -376,7 +385,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                             .collect(Collectors.toUnmodifiableSet());
                 }
             }
-            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
+            Session session = forTarget(ProtoSession.sessionOf(requestLine, cancelToken), target);
             WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);
             // The client found a GraalVM home for each module whose build links a native image, or
             // decided one is installed: that install is the run's, here, under the request's session

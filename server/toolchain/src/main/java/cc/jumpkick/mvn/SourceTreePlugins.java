@@ -72,11 +72,30 @@ final class SourceTreePlugins {
                 ? SourcesMode.ALWAYS
                 : SourcesMode.DISABLED;
         JavadocMode javadoc = PluginFacts.plugin(model, "maven-javadoc-plugin")
-                .filter(SourceTreePlugins::failsOnDoclint)
-                .map(p -> JavadocMode.STRICT)
-                .orElse(JavadocMode.LENIENT);
+                .filter(SourceTreePlugins::documentsEveryBuild)
+                .map(p -> failsOnDoclint(p) ? JavadocMode.STRICT : JavadocMode.LENIENT)
+                .orElse(JavadocMode.PUBLISH);
         reportUnmappedPlugins(em, consumedPlugins, report, inherited, isRoot);
         return new SourceTree(extraSrc, testExtraSrc, sources, javadoc, resources);
+    }
+
+    /** The javadoc plugin's goals that write docs when an execution binds them to the build. */
+    private static final Set<String> DOC_GOALS =
+            Set.of("jar", "javadoc", "aggregate", "aggregate-jar", "javadoc-no-fork", "aggregate-no-fork");
+
+    /**
+     * Whether {@code mvn package} documents this module: an execution of the plugin, outside any
+     * profile, binds a goal that writes docs. A plugin that is only configured (for {@code mvn
+     * javadoc:javadoc} or a release profile) documents on demand, which is jk's default: {@code jk
+     * publish} and {@code jk javadoc} write the jar and {@code jk build} does not.
+     */
+    private static boolean documentsEveryBuild(Plugin javadoc) {
+        for (PluginExecution execution : javadoc.getExecutions()) {
+            for (String goal : execution.getGoals()) {
+                if (DOC_GOALS.contains(goal)) return true;
+            }
+        }
+        return false;
     }
 
     /**

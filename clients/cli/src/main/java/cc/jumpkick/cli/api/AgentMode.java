@@ -43,6 +43,7 @@ public final class AgentMode {
             "guard",
             "format",
             "assemble",
+            "javadoc",
             "native",
             "image",
             "publish",

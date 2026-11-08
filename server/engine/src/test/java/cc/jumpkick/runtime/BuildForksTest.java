@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
@@ -81,13 +82,20 @@ class BuildForksTest {
         modules.put(a, parse(a));
         modules.put(b, parse(b));
 
+        // A plain build writes no javadoc jar for a library that left javadoc unset: no Dokka.
         assertThat(keys(modules))
                 .containsExactly(
                         "worker:jk-java-compiler",
                         "worker:jk-test-runner",
                         "worker:jk-kotlin-compiler",
+                        "kotlin:" + KotlinResolver.floored("2.1.0"));
+        // A build that asks for docs: both are libraries, their javadoc jar is Dokka's, staged once.
+        assertThat(SessionContext.where(SessionContext.current().withJavadoc(true), () -> keys(modules)))
+                .containsExactly(
+                        "worker:jk-java-compiler",
+                        "worker:jk-test-runner",
+                        "worker:jk-kotlin-compiler",
                         "kotlin:" + KotlinResolver.floored("2.1.0"),
-                        // Both are libraries: their javadoc jar is Dokka's, staged once.
                         "dokka:javadoc:" + DokkaResolver.DEFAULT_VERSION);
     }
 

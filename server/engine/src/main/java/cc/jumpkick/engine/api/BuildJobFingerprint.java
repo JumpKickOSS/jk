@@ -57,7 +57,8 @@ public final class BuildJobFingerprint {
                 Jsonl.bool(requestLine, "testOnly", false),
                 Jsonl.str(requestLine, "modules"),
                 Jsonl.str(requestLine, "variant"),
-                Jsonl.str(requestLine, "assemblyOverride"));
+                Jsonl.str(requestLine, "assemblyOverride"),
+                Jsonl.bool(requestLine, "javadoc", false));
     }
 
     /**
@@ -84,6 +85,21 @@ public final class BuildJobFingerprint {
             @Nullable String modules,
             @Nullable String variant,
             @Nullable String assemblyOverride) {
+        return of(kind, dir, rebuild, offline, skipTests, testOnly, modules, variant, assemblyOverride, false);
+    }
+
+    /** As above; {@code javadoc} is a build that asked for docs ({@code jk javadoc}), a different plan. */
+    public static String of(
+            @Nullable String kind,
+            @Nullable String dir,
+            boolean rebuild,
+            boolean offline,
+            boolean skipTests,
+            boolean testOnly,
+            @Nullable String modules,
+            @Nullable String variant,
+            @Nullable String assemblyOverride,
+            boolean javadoc) {
         String canon = canonicalDir(dir);
         StringBuilder sb = new StringBuilder(256);
         sb.append("kind=").append(kind == null ? "" : kind).append('\n');
@@ -95,6 +111,7 @@ public final class BuildJobFingerprint {
         sb.append("modules=").append(normalizeModules(modules)).append('\n');
         sb.append("variant=").append(nullToEmpty(variant)).append('\n');
         sb.append("assembly=").append(nullToEmpty(assemblyOverride)).append('\n');
+        if (javadoc) sb.append("javadoc=true\n");
         return Hashing.sha256Hex(sb.toString());
     }
 

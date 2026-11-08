@@ -130,8 +130,9 @@ class PomPluginImportTest {
         assertThat(reparsed.project().javadocMode()).isEqualTo(JavadocMode.STRICT);
     }
 
+    /** A docs goal bound to the build means {@code mvn package} documents the module every time. */
     @Test
-    void a_plain_javadoc_plugin_is_satisfied_by_the_library_default(@TempDir Path tempDir) throws Exception {
+    void a_javadoc_plugin_bound_to_the_build_documents_every_build(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = importXml(tempDir, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -147,6 +148,31 @@ class PomPluginImportTest {
                 </project>
                 """);
         assertThat(result.jkBuild().project().javadocMode()).isEqualTo(JavadocMode.LENIENT);
+        assertThat(JkBuildRenderer.render(result.jkBuild())).contains("javadoc  = true");
+        assertThat(messages(result)).noneMatch(m -> m.contains("javadoc"));
+    }
+
+    /**
+     * A plugin that is only configured documents on demand ({@code mvn javadoc:javadoc}, a release
+     * profile): jk's default, which writes the jar for {@code jk publish} and {@code jk javadoc}.
+     */
+    @Test
+    void a_javadoc_plugin_with_no_bound_goal_is_the_publish_only_default(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>3.11.2</version>
+                    <configuration><doclint>all</doclint></configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        assertThat(result.jkBuild().project().javadocMode()).isEqualTo(JavadocMode.PUBLISH);
         assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("javadoc");
         assertThat(messages(result)).noneMatch(m -> m.contains("javadoc"));
     }
@@ -173,7 +199,7 @@ class PomPluginImportTest {
                 </project>
                 """);
         assertThat(result.jkBuild().project().javadocMode()).isEqualTo(JavadocMode.LENIENT);
-        assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("javadoc");
+        assertThat(JkBuildRenderer.render(result.jkBuild())).contains("javadoc  = true");
     }
 
     @Test
@@ -190,6 +216,7 @@ class PomPluginImportTest {
                     <artifactId>maven-javadoc-plugin</artifactId>
                     <version>3.12.0</version>
                     <configuration>%s</configuration>
+                    <executions><execution><goals><goal>jar</goal></goals></execution></executions>
                   </plugin></plugins></build>
                 </project>
                 """;

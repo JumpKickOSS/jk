@@ -83,9 +83,7 @@ public final class BuildForks {
                                 "kotlin:" + version, () -> KotlinPluginSetup.prepare(repos(build, cas), cas, version)));
             }
             // A Kotlin library's javadoc jar is Dokka's, at the release its [dokka] table selects.
-            if (langs.kotlin()
-                    && PackagingKeys.libraryArtifacts(build, dir)
-                    && build.project().javadocMode().enabled()) {
+            if (langs.kotlin() && PackagingKeys.javadocJar(build, dir, SessionContext.current())) {
                 var dokka = build.build().dokka();
                 String key = "dokka:" + dokka.format().wireName() + ":"
                         + dokka.version().raw();

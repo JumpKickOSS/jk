@@ -21,6 +21,7 @@ final class PackageVerb implements BuildVerb {
     private static final String AOT_CACHE = "aot-cache";
 
     private final Words words;
+    private final boolean docs;
     private boolean aotCache;
 
     /** Client-resolved GraalVM home per always-native member; empty when the workspace links none. */
@@ -32,7 +33,21 @@ final class PackageVerb implements BuildVerb {
 
     /** A build told under another name: the dev loop's {@code Watch}. */
     PackageVerb(String name) {
-        this.words = new Words(name, "building", "build", "Building");
+        this(new Words(name, "building", "build", "Building"), false);
+    }
+
+    private PackageVerb(Words words, boolean docs) {
+        this.words = words;
+        this.docs = docs;
+    }
+
+    /**
+     * {@code jk javadoc}: the build, with the javadoc jar of every library that did not say
+     * {@code javadoc = false}, and no test run. A plain build writes javadoc only where a module
+     * opted in.
+     */
+    static PackageVerb javadoc() {
+        return new PackageVerb(new Words("Javadoc", "documenting", "document", "Documenting"), true);
     }
 
     @Override
@@ -63,6 +78,7 @@ final class PackageVerb implements BuildVerb {
     @Override
     public void parse(Invocation in, BuildRun run) {
         this.aotCache = in.isSet(AOT_CACHE);
+        if (docs) run.flags(run.flags().withSkipTests());
     }
 
     @Override

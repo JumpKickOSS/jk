@@ -32,6 +32,7 @@ import cc.jumpkick.command.pipeline.BuildVerbCommand;
 import cc.jumpkick.command.pipeline.DevCommand;
 import cc.jumpkick.command.pipeline.FormatCommand;
 import cc.jumpkick.command.pipeline.GuardCommand;
+import cc.jumpkick.command.pipeline.JavadocCommand;
 import cc.jumpkick.command.pipeline.JshellCommand;
 import cc.jumpkick.command.pipeline.PublishCommand;
 import cc.jumpkick.command.pipeline.ReleaseCommand;
@@ -197,6 +198,7 @@ public final class CommandDispatch {
             new WatchCommand(),
             BuildVerbCommand.build(),
             new AssemblyCommand(),
+            new JavadocCommand(),
             new BspCommand(),
             new McpCommand(),
             new SelectiveCommand(Jk::execute),

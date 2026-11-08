@@ -80,4 +80,15 @@ class BuildJobFingerprintTest {
         assertThat(image).isEqualTo(compile);
         assertThat(image).isEqualTo(BuildJobFingerprint.ofProject("build", dir.toString()));
     }
+
+    /** {@code jk javadoc} plans a javadoc step {@code jk build} does not: two jobs, not one. */
+    @Test
+    void a_build_that_asks_for_docs_is_another_job(@TempDir Path dir) throws Exception {
+        String plain = BuildJobFingerprint.of("build", dir.toString(), false, false, true, false, null, null, null);
+        String docs =
+                BuildJobFingerprint.of("build", dir.toString(), false, false, true, false, null, null, null, true);
+        assertThat(docs).isNotEqualTo(plain);
+        assertThat(BuildJobFingerprint.of("build", dir.toString(), false, false, true, false, null, null, null, false))
+                .isEqualTo(plain);
+    }
 }

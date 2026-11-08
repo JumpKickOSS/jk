@@ -25,6 +25,7 @@ public final class UsageGroups {
                     List.of(
                             "build",
                             "assemble",
+                            "javadoc",
                             "run",
                             "clean",
                             "image",

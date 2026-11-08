@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -41,7 +42,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A library ({@code lib}: main sources, no {@code [application]}) packages {@code -sources.jar}
- * and {@code -javadoc.jar} beside its jar; an application ({@code app}) does not. A javadoc
+ * beside its jar on every build, and {@code -javadoc.jar} when the build asks for docs ({@code jk
+ * publish}, {@code jk javadoc}) or the module opted in; an application ({@code app}) does neither. A javadoc
  * warning rides the run's diagnostics with its file and line; the second build restores both jars
  * from the action cache and {@code jk explain} forecasts the javadoc step as cached.
  */
@@ -59,8 +61,14 @@ class LibraryArtifactsE2eTest {
         BuildLayout lib = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")));
         BuildLayout app = BuildLayout.of(ws, ws.resolve("app"), JkBuildParser.parse(ws.resolve("app/jk.toml")));
 
-        Steps first = build(ws, cache, "first");
+        // A plain build: the sources jar, and no javadoc jar for a module that left javadoc unset.
+        Steps plain = build(ws, cache, "plain", null, false);
         assertThat(lib.sourcesJar()).isRegularFile();
+        assertThat(lib.javadocJar()).doesNotExist();
+        assertThat(plain.status("lib", TaskNames.PACKAGE_JAVADOC)).isNull();
+
+        // A build that asks for docs, as jk publish and jk javadoc do.
+        Steps first = build(ws, cache, "first", null, true);
         assertThat(lib.javadocJar()).isRegularFile();
         assertThat(entries(lib.sourcesJar())).contains("com/example/One.java", "com/example/Two.java");
         assertThat(entries(lib.javadocJar()))
@@ -86,12 +94,15 @@ class LibraryArtifactsE2eTest {
 
         // A second build is a cache hit for both library jars, and explain agrees. lib is
         // scheduled by hand: left to the forecast, an up-to-date module runs no plan at all.
-        Steps second = build(ws, cache, "second", Set.of(ws.resolve("lib")));
+        Steps second = build(ws, cache, "second", Set.of(ws.resolve("lib")), true);
         assertThat(second.status("lib", TaskNames.PACKAGE_JAVADOC)).isEqualTo(TaskStatus.SKIPPED);
         assertThat(second.status("lib", TaskNames.PACKAGE_SOURCES)).isEqualTo(TaskStatus.SKIPPED);
         assertThat(second.labels("lib", TaskNames.PACKAGE_JAVADOC)).anyMatch(l -> l.contains("up-to-date"));
         assertThat(second.warnings("lib", TaskNames.PACKAGE_JAVADOC)).isEmpty();
-        assertThat(forecast(ws, cache, "lib", TaskNames.PACKAGE_JAVADOC).cached())
+        assertThat(SessionContext.where(
+                                SessionContext.current().withJavadoc(true),
+                                () -> forecast(ws, cache, "lib", TaskNames.PACKAGE_JAVADOC))
+                        .cached())
                 .isTrue();
     }
 
@@ -147,15 +158,17 @@ class LibraryArtifactsE2eTest {
                 .orElseThrow(() -> new AssertionError(module + " forecasts no " + step + ": " + m.steps()));
     }
 
-    private static Steps build(Path ws, Path cache, String what) {
-        return build(ws, cache, what, null);
-    }
-
-    /** {@code dirty} names the modules to schedule regardless of the forecast; null forecasts. */
-    private static Steps build(Path ws, Path cache, String what, @Nullable Set<Path> dirty) {
+    /**
+     * {@code dirty} names the modules to schedule regardless of the forecast; null forecasts.
+     * {@code docs} builds as {@code jk publish} / {@code jk javadoc} do.
+     */
+    private static Steps build(Path ws, Path cache, String what, @Nullable Set<Path> dirty, boolean docs)
+            throws Exception {
         Steps steps = new Steps();
-        WorkspaceResult result = WorkspaceExecute.buildWorkspace(
-                new WorkspaceRequest(ws, cache, null, 0, null, true, false, 2, dirty, false, false), steps);
+        WorkspaceResult result = SessionContext.where(
+                SessionContext.current().withJavadoc(docs),
+                () -> WorkspaceExecute.buildWorkspace(
+                        new WorkspaceRequest(ws, cache, null, 0, null, true, false, 2, dirty, false, false), steps));
         assertThat(result.errors()).as("errors, build " + what).isEmpty();
         assertThat(result.success()).as("success, build " + what).isTrue();
         return steps;
@@ -245,7 +258,7 @@ class LibraryArtifactsE2eTest {
                     [repositories]
                     central = "https://repo.maven.apache.org/maven2/"
                     """.formatted(
-                            module, module.equals("strict") ? "javadoc = \"strict\"\n" : ""));
+                            module, module.equals("strict") ? "javadoc = \"strict\"\n" : "javadoc = true\n"));
             Path src = Files.createDirectories(dir.resolve("src/com/example/" + module));
             Files.writeString(src.resolve("Doc.java"), """
                     package com.example.%s;

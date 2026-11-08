@@ -308,7 +308,8 @@ public final class Publisher implements Plugin, PublishExtension {
         if (!Files.isRegularFile(javadocOnDisk)) missing.add(javadocOnDisk.toString());
         if (!missing.isEmpty()) {
             throw new IOException("Maven Central needs sources and javadoc jars: " + String.join(", ", missing)
-                    + "\n  run jk build; an application also needs sources = \"always\"");
+                    + "\n  jk publish writes both for a library; an application also needs sources = \"always\","
+                    + " and a module that says javadoc = false never has a javadoc jar");
         }
         List<String> gaps = project.pomMetadata().centralGaps(project.project().description());
         if (!gaps.isEmpty()) {

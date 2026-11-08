@@ -192,10 +192,10 @@ class GuardLanePlanTest {
         Files.writeString(project.resolve("jk-guards.toml"), RULES + OUTPUT_RULES);
         Map<String, Task> with = index(plan(project, dir.resolve("cache"), TestSelection.DEFAULT));
         assertThat(with).containsKey(TaskNames.GUARD_OUTPUT);
-        // The fixture is a library: the lane reads what the sources and javadoc tails wrote, so it
-        // hangs off those packaging leaves (each downstream of package-jar), not the jar alone.
-        assertThat(task(with, TaskNames.GUARD_OUTPUT).requires())
-                .containsExactlyInAnyOrder(TaskNames.PACKAGE_SOURCES, TaskNames.PACKAGE_JAVADOC);
+        // The fixture is a library: the lane reads what the sources tail wrote, so it hangs off that
+        // packaging leaf (downstream of package-jar), not the jar alone. A plain build writes no
+        // javadoc jar for a library that left javadoc unset.
+        assertThat(task(with, TaskNames.GUARD_OUTPUT).requires()).containsExactlyInAnyOrder(TaskNames.PACKAGE_SOURCES);
         // a test-only plan packages nothing: the lane follows the root lanes instead
         BuildPlanner.Inputs testOnly = inputs(project, dir.resolve("cache"), TestSelection.DEFAULT);
         BuildPlan.Builder b = BuildPlanner.coreBuilder(new BuildPlanner.Inputs(

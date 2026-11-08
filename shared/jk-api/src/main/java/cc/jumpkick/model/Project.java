@@ -53,7 +53,7 @@ public record Project(
         }
         if (jdk != null && jdk.isBlank()) jdk = null;
         if (sourcesMode == null) sourcesMode = SourcesMode.DISABLED;
-        if (javadocMode == null) javadocMode = JavadocMode.LENIENT;
+        if (javadocMode == null) javadocMode = JavadocMode.PUBLISH;
         if (layout == null) layout = Layout.AUTO;
         if (description != null && description.isBlank()) description = null;
         workspaceInherits =
@@ -91,7 +91,7 @@ public record Project(
                 groovy,
                 scala,
                 sourcesMode,
-                JavadocMode.LENIENT,
+                JavadocMode.PUBLISH,
                 description,
                 m2integration,
                 installDestination,
@@ -101,7 +101,7 @@ public record Project(
                 ToolchainSpec.NONE);
     }
 
-    /** Lenient javadoc; every other component as given. */
+    /** Javadoc only when published or asked for (the default); every other component as given. */
     public Project(
             String group,
             String name,
@@ -128,7 +128,7 @@ public record Project(
                 groovy,
                 scala,
                 sourcesMode,
-                JavadocMode.LENIENT,
+                JavadocMode.PUBLISH,
                 description,
                 m2integration,
                 installDestination,
@@ -426,7 +426,7 @@ public record Project(
         private @Nullable VersionSelector groovy;
         private @Nullable VersionSelector scala;
         private SourcesMode sourcesMode = SourcesMode.DISABLED;
-        private JavadocMode javadocMode = JavadocMode.LENIENT;
+        private JavadocMode javadocMode = JavadocMode.PUBLISH;
         private @Nullable String description;
         private boolean m2integration = true;
         private @Nullable InstallDestination installDestination;

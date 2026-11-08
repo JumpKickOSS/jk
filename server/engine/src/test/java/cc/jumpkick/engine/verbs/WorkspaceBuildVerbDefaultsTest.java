@@ -3,9 +3,11 @@ package cc.jumpkick.engine.verbs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -73,5 +75,17 @@ class WorkspaceBuildVerbDefaultsTest {
         // Explicit wire values (any client, any age) win verbatim.
         assertThat(WorkspaceBuildVerb.effectiveModuleConcurrency(1)).isEqualTo(1);
         assertThat(WorkspaceBuildVerb.effectiveModuleConcurrency(7)).isEqualTo(7);
+    }
+
+    /** Central refuses a release without a javadoc jar: a publish build asks for docs, a build does not. */
+    @Test
+    void a_publish_build_asks_for_docs_and_a_plain_build_does_not() {
+        Session session = Session.defaults();
+        assertThat(WorkspaceBuildVerb.forTarget(session, WorkspaceTarget.PUBLISH)
+                        .javadoc())
+                .isTrue();
+        assertThat(WorkspaceBuildVerb.forTarget(session, WorkspaceTarget.PACKAGE)
+                        .javadoc())
+                .isFalse();
     }
 }

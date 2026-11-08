@@ -110,7 +110,7 @@
       ]
     },
     "javadoc": {
-      "description": "Javadoc jar for a library: false → not built; \"strict\" → javadoc's doclint checks fail the step; default lenient (-Xdoclint:none, warnings in the results).",
+      "description": "Javadoc jar for a library. Unset (default): written by jk publish and jk javadoc, not by jk build; true: every build, lenient (-Xdoclint:none, warnings in the results); \"strict\": every build, javadoc's doclint checks fail the step; false: never.",
       "type": [
         "boolean",
         "string"

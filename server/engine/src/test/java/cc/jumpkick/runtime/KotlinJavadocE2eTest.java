@@ -161,6 +161,7 @@ class KotlinJavadocE2eTest {
                 version = "1.0.0"
                 kotlin  = "latest"
                 java    = 25
+                javadoc = true
 
                 [workspace]
                 modules = ["kt", "mixed"]

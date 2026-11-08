@@ -194,11 +194,16 @@ final class MemoInputs {
      * tag flags) reads a different header and misses. Keying on the selection is what lets a
      * workspace that declares {@code [test] exclude-tags} hit at all: its selection is never
      * {@link TestSelection#DEFAULT}, and refusing the memo whenever it differed from that zero
-     * value made every build of such a workspace pay the whole forecast walk.
+     * value made every build of such a workspace pay the whole forecast walk. A build that asks
+     * for docs covers the javadoc steps too, and reads a header of its own.
      */
     static String selectionHeader() {
         TestSelection selection = SessionContext.current().testSelection();
-        if (selection.equals(TestSelection.DEFAULT)) return "default";
-        return Hashing.sha256Hex(selection.toString()).substring(0, 16);
+        String tests = selection.equals(TestSelection.DEFAULT)
+                ? "default"
+                : Hashing.sha256Hex(selection.toString()).substring(0, 16);
+        // A build that asks for docs (jk publish, jk javadoc) runs a javadoc step a plain build's
+        // clean claim never covered: right after `jk build`, `jk javadoc` must not read "clean".
+        return SessionContext.current().javadoc() ? tests + "+javadoc" : tests;
     }
 }

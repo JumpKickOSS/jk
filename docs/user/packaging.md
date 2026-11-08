@@ -11,7 +11,7 @@ R8 minification is **opt-in**, never the default.
 | Thin jar `target/<name>-<version>.jar` | always | `jk build` |
 | Multi-release entries `META-INF/versions/<N>/` | `[multi-release]` | `jk build` |
 | Sources jar `*-sources.jar` | library (no `[application]`, nothing runnable), or `sources = "always"` | `jk build` / `jk package` |
-| Javadoc jar `*-javadoc.jar` | library, unless `javadoc = false` | `jk build` / `jk package` |
+| Javadoc jar `*-javadoc.jar` | library: `javadoc = true` or `"strict"` on every build; unset, only when asked | `jk javadoc` / `jk publish`; `jk build` when opted in |
 | Fat jar `*-all.jar` | `[application] assembly = true` | `jk assemble` / `jk build` |
 | Runnable `target/<name>.jar` + `target/libs/` | `[application] lib-dir = true` | `jk build` |
 | Runtime image `target/<name>-jri/` (jlink, with a startup cache) | `[jlink]` | `jk build` |
@@ -46,14 +46,19 @@ Frameworks: [Frameworks](frameworks.md). Native / OCI: [Native](native.md), [Ima
 A **library** is a module with main sources, no `[application]` table, and no plugin packaging
 that builds something to run (an Android APK, a Spring Boot, Quarkus or Grails jar); an Android
 library's AAR is a library. `jk package` (and so `jk build`) writes
-`<name>-<version>-sources.jar` and `<name>-<version>-javadoc.jar` beside its jar, which is
-what Maven Central requires of a release. Both are cached engine steps (`package-sources`,
-`package-javadoc`) that run beside the tests, and `jk explain` forecasts the javadoc step.
+`<name>-<version>-sources.jar` beside its jar, and `jk publish` adds
+`<name>-<version>-javadoc.jar`: the pair Maven Central requires of a release. `jk build` writes
+the javadoc jar only for a module that says `javadoc = true` (or `"strict"`). On a large
+workspace javadoc costs as much as the compile, for a jar nobody reads locally, and Maven's
+`package` writes none either. `jk javadoc` writes it on demand, for every library in scope, without
+running tests. Both are cached engine steps (`package-sources`, `package-javadoc`) that run beside
+the tests, and `jk explain` forecasts the javadoc step when the build will write it.
 
 ```toml
 sources = "always"   # an application that also publishes: force both jars
-javadoc = false      # a library that never publishes: skip the javadoc jar
-javadoc = "strict"   # javadoc's own doclint checks fail the step instead of warning
+javadoc = true       # write the javadoc jar on every jk build, not only for jk publish / jk javadoc
+javadoc = "strict"   # every build, and javadoc's own doclint checks fail the step instead of warning
+javadoc = false      # never, not even for jk publish (Central will refuse the release)
 ```
 
 - `sources = true` keeps its publish-only meaning for an application: `jk publish` assembles
