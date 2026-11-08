@@ -134,7 +134,8 @@ final class HelidonPlugins {
                     tests.excludeDependencies(),
                     tests.integration(),
                     new TestJvm(jvm.jvmArgs(), properties),
-                    tests.failures());
+                    tests.failures(),
+                    tests.env());
         }
 
         /** {@code libDir}, or {@code null} when it is the layout the table lays out by default. */

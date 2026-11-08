@@ -5,6 +5,7 @@ import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
+import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
@@ -129,7 +130,8 @@ public final class JkBuildRenderer {
                 && build.testExcludeDependencies().isEmpty()
                 && build.testFailures() == TestFailureMode.FAIL
                 && build.testFastMethodBudgetMs() == 0
-                && build.testJvm().isEmpty()) {
+                && build.testJvm().isEmpty()
+                && build.testEnv().isEmpty()) {
             return;
         }
         sb.append("\n[test]\n");
@@ -172,6 +174,21 @@ public final class JkBuildRenderer {
                     .append(inlineTable(build.testJvm().systemProperties()))
                     .append('\n');
         }
+        if (!build.testEnv().isEmpty())
+            sb.append("env = ").append(envArray(build.testEnv())).append('\n');
+    }
+
+    /** {@code [test] env}: a bare name forwards, a one-entry table sets. */
+    private static String envArray(List<EnvDecl> decls) {
+        List<String> items = new ArrayList<>();
+        for (EnvDecl d : decls) {
+            items.add(
+                    switch (d) {
+                        case EnvDecl.Forward f -> quote(f.name());
+                        case EnvDecl.Set set -> inlineTable(Map.of(set.name(), set.value()));
+                    });
+        }
+        return "[" + String.join(", ", items) + "]";
     }
 
     /** {@code [build-info]} — the table itself is the declaration; only keys off their defaults are written. */

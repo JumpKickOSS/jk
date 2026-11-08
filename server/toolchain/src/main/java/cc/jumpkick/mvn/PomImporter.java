@@ -425,6 +425,7 @@ public final class PomImporter {
             build = build.withTestClassSuites(Map.of(TestSuites.INTEGRATION, tests.integration()));
         }
         if (!tests.jvm().isEmpty()) build = build.withTestJvm(tests.jvm());
+        if (!tests.env().isEmpty()) build = build.withTestEnv(tests.env());
         List<String> testExcludes = PluginFacts.compilerSourceGlobs(model, "testExcludes", true);
         if (!testExcludes.isEmpty()) build = build.withTestExcludeSrc(testExcludes);
         reportCompilerGlobs(model, "testIncludes", true, report);

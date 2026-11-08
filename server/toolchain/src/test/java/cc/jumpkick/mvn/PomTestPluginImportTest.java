@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -203,6 +204,86 @@ class PomTestPluginImportTest {
                         + " is an absolute path outside the module"))
                 .noneMatch(m -> m.contains("java.util.logging.config.file"))
                 .noneMatch(m -> m.contains("data.dir"));
+    }
+
+    @Test
+    void surefire_environment_variables_become_test_env(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>svc</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.2</version>
+                    <configuration>
+                      <environmentVariables>
+                        <JAVA_HOME>${java.home}</JAVA_HOME>
+                        <FOO_BAR>mapped-env-value</FOO_BAR>
+                        <SPACED>value with a newline
+                        </SPACED>
+                        <DATA_DIR>${project.basedir}/data</DATA_DIR>
+                      </environmentVariables>
+                    </configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().build().testEnv())
+                .containsExactly(
+                        new EnvDecl.Set("FOO_BAR", "mapped-env-value"),
+                        new EnvDecl.Set("SPACED", "value with a newline"),
+                        new EnvDecl.Set("DATA_DIR", "data"));
+        assertThat(TestImporters.messages(result))
+                .anyMatch(
+                        m -> m.contains("environment variable JAVA_HOME") && m.contains("the JDK running the import"));
+        assertThat(JkBuildRenderer.render(result.jkBuild()))
+                .contains(
+                        "env = [{ FOO_BAR = \"mapped-env-value\" }, { SPACED = \"value with a newline\" }, { DATA_DIR = \"data\" }]");
+    }
+
+    @Test
+    void a_surefire_execution_running_its_own_includes_keeps_its_settings_out_of_test(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>svc</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.2</version>
+                    <configuration>
+                      <systemPropertyVariables><mode>test</mode></systemPropertyVariables>
+                    </configuration>
+                    <executions>
+                      <execution>
+                        <id>default-test</id>
+                        <configuration><excludes><exclude>**/TestGlobalTags.java</exclude></excludes></configuration>
+                      </execution>
+                      <execution>
+                        <id>check-top-level-tags-only</id>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                          <systemPropertyVariables><metrics.tags>myTag=myValue</metrics.tags></systemPropertyVariables>
+                          <environmentVariables><tags>topLevel=topValue</tags></environmentVariables>
+                          <includes><include>**/TestGlobalTags.java</include></includes>
+                        </configuration>
+                      </execution>
+                    </executions>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().build().testJvm().systemProperties()).containsExactly(Map.entry("mode", "test"));
+        assertThat(result.jkBuild().build().testEnv()).isEmpty();
+        assertThat(result.jkBuild().build().testExcludeClasses()).containsExactly("TestGlobalTags");
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.contains("execution check-top-level-tags-only runs **/TestGlobalTags.java"));
     }
 
     @Test
