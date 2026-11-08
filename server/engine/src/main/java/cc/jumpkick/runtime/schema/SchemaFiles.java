@@ -40,7 +40,8 @@ public final class SchemaFiles {
     public static final String EXTRA = "schema-registry";
 
     /** The plugin that generates code from each schema type. */
-    private static final Map<String, String> TYPE_BY_PLUGIN = Map.of("avro", "avro", "protobuf", "protobuf");
+    private static final Map<String, String> TYPE_BY_PLUGIN =
+            Map.of("avro", "avro", "protobuf", "protobuf", "json-schema", "json");
 
     /** A laid-out set: its directory and the digest the reading step is keyed by. */
     public record Dir(Path dir, String token) {}
@@ -87,6 +88,10 @@ public final class SchemaFiles {
             byte[] text = text(row, declared, cas);
             Path root = staging.resolve(row.type());
             for (String name : paths(row, rows)) {
+                if (name.contains("://")) {
+                    throw new IOException(
+                            row.subject() + ": referenced as " + name + "; jk lays out relative names only");
+                }
                 Path file = root.resolve(name).normalize();
                 if (!file.startsWith(root))
                     throw new IOException(row.subject() + ": reference name " + name + " leaves its directory");

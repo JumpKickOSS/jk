@@ -240,7 +240,9 @@ Cloud, Redpanda, Karapace, Apicurio's `/apis/ccompat/v7`) and hands them to the 
 their type. Avro subjects join `[avro]`'s inputs beside `src`, and Protobuf subjects are one
 more `[protobuf]` root, each file at the import path the schemas that use it name, so protoc finds
 it. A well-known type (`google/protobuf/*.proto`) is never downloaded: protoc reads it from
-`protobuf-java`, as it does for a proto in the tree. The module still declares the generator's own
+`protobuf-java`, as it does for a proto in the tree. JSON Schema subjects join `[json-schema]`'s
+inputs, each file at the `$ref` the schemas that use it name; a `$ref` that is a URL is refused,
+since jsonschema2pojo would fetch it. The module still declares the generator's own
 table:
 
 ```toml

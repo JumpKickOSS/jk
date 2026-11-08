@@ -385,7 +385,7 @@ Each subject a `[schema-registry]` table downloads ([Generate](generate.md#schem
 and each subject version a schema references, is a `[[schema]]` row: the version and schema id the
 registry served, the type, and the digest of the schema text. `references` names the rows a schema
 needs, each under the name the schema uses for it (an Avro type's full name, a Protobuf import
-path):
+path, a JSON Schema `$ref`):
 
 ```toml
 [[schema]]
