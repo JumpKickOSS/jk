@@ -454,6 +454,8 @@ install writes lands under it, and the `jk` on your PATH keeps running the defau
 ```bash
 jk build -S                                   # target/dist/: client, engine jar, shelf
 export JK_HOME=$HOME/src/scratch/jk-home                # any absolute path that is not ~/.jk
+export JK_SELF_UPDATE=never                             # keep the dist build: no self-update
+mkdir -p "$JK_HOME" && printf '[http]\nport = 0\n' > "$JK_HOME/config.toml"   # a fresh home: leave 8910 to ~/.jk
 bash install.sh target/dist/jk                          # copies the binary, materializes the engine,
                                                         # shelves repos/jk-local, starts that engine
 cd /path/to/another-project
@@ -466,6 +468,36 @@ zsh)"`) and writes no rc block: a scratch home is not the jk every new shell run
 ([install](../user/install.md#environment-overrides)). Calling the binary by its path, as above, needs
 neither. To try a change, rebuild in the checkout with the PATH jk and install again: `install.sh`
 stops the private engine, swaps the binary, the engine jar and the shelf, and starts the new engine.
+
+### Beside the default home
+
+A private home runs its own engine next to the default home's, and two settings keep it from
+fighting that engine or replacing itself. Both have to be in place before `install.sh`, which
+starts the private engine.
+
+- **`[http] port = 0`** in `$JK_HOME/config.toml`. Every engine binds the same fixed loopback port
+  (8910) for its Web UI and MCP endpoint, and the default home's engine already holds it, so a second
+  engine on the default port reports `Address already in use` and runs with no Web UI and no MCP
+  over HTTP. Port 0 takes a free port; `JK_HOME=… jk engine status` prints the Web UI and MCP URLs on it.
+- **`JK_SELF_UPDATE=never`** in the environment of whatever starts the private engine. A `jk build`
+  dist carries a release version, not `-SNAPSHOT`, and only development builds are exempt from
+  self-update; before 1.0 the config file's `self-update = "never"` is ignored, so a fresh home
+  would replace the dist's binary and engine with the latest published release on its first check
+  ([updates](../user/install.md#updates)). The engine takes the setting from the client that starts
+  it: the shell running `install.sh`, a later `jk` command, or an MCP server.
+
+An agent's MCP server has to carry both `JK_HOME` and `JK_SELF_UPDATE`. A client whose home comes
+from no `JK_HOME` is the default home's client, whatever path it was started from, so it talks to
+`~/.jk`'s engine. Some agents start an MCP server with only a short allowlist of environment
+variables (PATH, HOME and a few more), not the shell's environment. Put both variables in the
+server's `env` entry of the agent's MCP config when it has one; otherwise point the server's
+command at a wrapper that sets them:
+
+```bash
+#!/bin/sh
+export JK_HOME=$HOME/src/scratch/jk-home JK_SELF_UPDATE=never
+exec "$JK_HOME/bin/jk" "$@"
+```
 
 | Under `$JK_HOME` (private) | Shared with `~/.jk` |
 |---|---|
