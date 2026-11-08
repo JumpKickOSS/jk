@@ -3735,18 +3735,84 @@ host-id = "1a8c211a203d"
 
 [[row]]
 dim = "console"
+subject = "console.checklist.max"
+project = "generated"
+tool = "jk"
+kind = "absolute-wall"
+value = 53
+unit = "ms"
+band = 0.15
+target = 5000
+runs = 5
+date = "2026-11-07"
+commit = "800b0d08a"
+host-id = "d7ad360c1bc7"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 2.88
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+slowest = "goal"
+
+[[row]]
+dim = "console"
+subject = "console.decision.p50"
+project = "generated"
+tool = "jk"
+kind = "absolute-wall"
+value = 26
+unit = "ms"
+band = 0.15
+target = 2000
+runs = 5
+date = "2026-11-07"
+commit = "800b0d08a"
+host-id = "d7ad360c1bc7"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 2.88
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "console"
+subject = "console.event.p95"
+project = "generated"
+tool = "jk"
+kind = "absolute-wall"
+value = 34
+unit = "ms"
+band = 0.15
+target = 250
+runs = 20
+date = "2026-11-07"
+commit = "800b0d08a"
+host-id = "d7ad360c1bc7"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 2.88
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
+
+[[row]]
+dim = "console"
 subject = "console.paint.p50"
 project = "generated"
 tool = "jk"
 kind = "absolute-wall"
-value = 232.0
+value = 50
 unit = "ms"
 band = 0.15
 target = 500
 runs = 15
 date = "2026-11-07"
-commit = "b26208738"
+commit = "800b0d08a"
 host-id = "d7ad360c1bc7"
+cpu-psi-avg10-end = 0.0
+cpu-psi-avg60-end = 0.0
+load-end = 2.88
+memory-psi-avg10-end = 0.0
+memory-psi-avg60-end = 0.0
 
 [[row]]
 dim = "dogfood"
