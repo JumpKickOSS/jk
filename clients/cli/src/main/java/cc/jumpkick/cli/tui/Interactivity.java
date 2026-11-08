@@ -6,8 +6,8 @@ import cc.jumpkick.terminal.Terminals;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Interactive probes split: {@link #canPrompt()} (controlling TTY for input) vs {@link
- * #stdoutIsTty()} (animate stdout). {@code CI}/{@code JK_NONINTERACTIVE}/{@code TERM=dumb} force off.
+ * Interactive probes split: {@link #canPrompt()} (controlling TTY for input), {@link #canAsk()}
+ * (that, with stdin a terminal: a form's answers) and {@link #stdoutIsTty()} (animate stdout). {@code CI}/{@code JK_NONINTERACTIVE}/{@code TERM=dumb} force off.
  *
  * <p>The controlling TTY lives in {@link Terminals}. This class is the {@code :cli} policy layer
  * (forced-noninteractive env) on top of that leaf.
@@ -47,6 +47,15 @@ public final class Interactivity {
             canPromptCache = result;
             return result;
         }
+    }
+
+    /**
+     * Whether a form can take its answers from a person: {@link #canPrompt()} and stdin is a terminal.
+     * With stdin redirected ({@code < /dev/null}, {@code < NUL}, a pipe) the answers are the flags
+     * and the defaults, even when a terminal or a Windows console is attached.
+     */
+    public static boolean canAsk() {
+        return canPrompt() && Terminals.stdinIsTty();
     }
 
     /**

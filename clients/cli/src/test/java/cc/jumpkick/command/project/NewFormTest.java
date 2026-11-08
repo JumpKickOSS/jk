@@ -285,8 +285,50 @@ class NewFormTest {
                                 jk new: database must be one of none, postgres; got 'mysql' (-p database=none|postgres)"""));
     }
 
+    @Test
+    void at_end_of_input_every_question_left_takes_its_default() throws Exception {
+        NewForm.Given given = new NewForm.Given(null, null, "demo", null, null, null, Map.of("motto", "hi"));
+        List<String> transcripts = new ArrayList<>();
+
+        NewForm.Answered walked =
+                walk(Mode.PLAIN, "", "", new Engine(), given, transcripts).orElseThrow();
+
+        NewForm.Answered settled = NewForm.settle(new Engine(), given, DERIVED, "jk new", FLAGS);
+        assertThat(walked.values()).isEqualTo(settled.values());
+        assertThat(walked.params()).isEqualTo(settled.params());
+        assertThat(walked.command()).isEqualTo("jk new demo -t java/none/app -p motto=hi");
+        assertThat(transcripts.getFirst())
+                .contains("Group (Maven groupId and package) [com.acme]: \n-> com.acme\n")
+                .contains("Equivalent command: jk new demo -t java/none/app -p motto=hi\n");
+    }
+
+    @Test
+    void end_of_input_takes_the_default_after_the_lines_given() throws Exception {
+        NewForm.Given given = new NewForm.Given(null, "app", "demo", null, null, null, Map.of());
+
+        NewForm.Answered a = walk(Mode.PLAIN, "", "org.x\n\n\nhi\n", new Engine(), given, new ArrayList<>())
+                .orElseThrow();
+
+        assertThat(a.text("group")).isEqualTo("org.x");
+        assertThat(a.params())
+                .containsEntry("motto", "hi")
+                .containsEntry("native", "false")
+                .containsEntry("database", "none");
+    }
+
+    @Test
+    void end_of_input_on_a_question_with_no_default_fails_naming_its_flag() {
+        NewForm.Given given = new NewForm.Given(null, "app", "demo", null, null, null, Map.of());
+
+        assertThatThrownBy(() -> walk(Mode.PLAIN, "", "", new Engine(), given, new ArrayList<>()))
+                .isInstanceOfSatisfying(NewForm.Unsettled.class, e -> assertThat(e.lines())
+                        .isEqualTo("jk new: motto needs a value: -p motto=…"));
+    }
+
     @ParameterizedTest
-    @EnumSource(Mode.class)
+    @EnumSource(
+            value = Mode.class,
+            names = {"NERD", "ANSI"})
     void backing_out_answers_nothing(Mode mode) throws Exception {
         assertThat(walk(mode, ENTER + CTRL_C, "1\n", new Engine(), nothing(), new ArrayList<>()))
                 .isEmpty();

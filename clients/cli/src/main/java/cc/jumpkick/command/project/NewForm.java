@@ -82,7 +82,8 @@ final class NewForm {
     }
 
     /**
-     * Walks the form; empty when the user backed out.
+     * Walks the form; empty when the user backed out. Once input ends every question left takes its
+     * default, and one without a default ends the walk as {@link #settle} would, naming its flag.
      *
      * @param command the command the summary spells, positional arguments included
      * @param flags how each step-1 field is spelled on that command
@@ -106,7 +107,7 @@ final class NewForm {
         Map<String, Object> presets = presets(form, given);
         if (given.template() == null) {
             Optional<Map<String, Object>> project = renderer.run(form, presets);
-            if (project.isEmpty()) return Optional.empty();
+            if (project.isEmpty()) return unanswered(asker, forms, given, derived, command, flags);
             settled.putAll(project.get());
             NewProjectFormAck second =
                     served(forms.fetch((String) settled.get("template"), (String) settled.get("lang")));
@@ -119,10 +120,26 @@ final class NewForm {
             presets.putAll(resolved);
         }
         Optional<Map<String, Object>> values = renderer.run(form, settled, presets);
-        if (values.isEmpty()) return Optional.empty();
+        if (values.isEmpty()) return unanswered(asker, forms, given, derived, command, flags);
         String line = FormCommand.render(command, form, values.get(), flags, derived);
         renderer.summary(line);
         return Optional.of(new Answered(values.get(), params(form, values.get(), given), line));
+    }
+
+    /**
+     * A walk that ended unanswered: empty when the user backed out; once input ended, the form
+     * {@link #settle}d from the flags and defaults, which names the flag a required field lacks.
+     */
+    private static Optional<Answered> unanswered(
+            Asker asker,
+            Forms forms,
+            Given given,
+            DerivedDefaults derived,
+            String command,
+            Map<String, FormCommand.Flag> flags)
+            throws IOException {
+        if (!asker.ended()) return Optional.empty();
+        return Optional.of(settle(forms, given, derived, command, flags));
     }
 
     /**

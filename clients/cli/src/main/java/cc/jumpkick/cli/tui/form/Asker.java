@@ -28,8 +28,9 @@ import org.jspecify.annotations.Nullable;
  * Asks one {@link Question} at a time. Under ANSI (nerd or not) the question is a live region on
  * {@code out}: {@link InputMode#PROMPT}, keys from the TTY, repainted cell by cell, replaced by its
  * settled row when answered. Under plain mode it is cooked lines: the label, any menu, a prompt, and
- * a whole line read from {@code in}; the answer re-prints as {@code -> answer}. Either way an empty
- * result means the user backed out.
+ * a whole line read from {@code in}; the answer re-prints as {@code -> answer}, and end of input
+ * answers with the question's default. Either way an empty result means the user backed out, or,
+ * once {@link #ended()}, that a question with no default met end of input.
  */
 public final class Asker {
 
@@ -44,6 +45,9 @@ public final class Asker {
     private final BufferedReader in;
     private final RenderContext ctx;
 
+    /** Set once a cooked read meets end of input; every question after it takes its default. */
+    private boolean ended;
+
     public Asker(TerminalSession tty, PrintStream out, BufferedReader in, RenderContext ctx) {
         this.tty = tty;
         this.out = out;
@@ -53,10 +57,11 @@ public final class Asker {
 
     /**
      * The asker for this process's controlling terminal, painting on stderr; {@code null} when no
-     * human can answer (no TTY, {@code CI}, {@code JK_NONINTERACTIVE}).
+     * human can answer ({@link Interactivity#canAsk()}: no TTY, stdin redirected, {@code CI}, {@code
+     * JK_NONINTERACTIVE}).
      */
     public static @Nullable Asker interactive() {
-        if (!Interactivity.canPrompt()) return null;
+        if (!Interactivity.canAsk()) return null;
         TerminalSession tty = Terminals.controlling();
         if (!tty.isLive()) return null;
         var in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
@@ -65,6 +70,14 @@ public final class Asker {
 
     public RenderContext context() {
         return ctx;
+    }
+
+    /**
+     * True once input ended: an empty answer since then is a required question with no default, not
+     * a person backing out.
+     */
+    public boolean ended() {
+        return ended;
     }
 
     /** Prints one line of chrome outside any question. */
@@ -157,14 +170,22 @@ public final class Asker {
         while (true) {
             out.print(prompt + ": ");
             out.flush();
-            String line;
-            try {
-                line = in.readLine();
-            } catch (IOException e) {
-                line = null;
+            String line = null;
+            if (!ended) {
+                try {
+                    line = in.readLine();
+                } catch (IOException e) {
+                    line = null;
+                }
             }
             if (line == null) {
+                ended = true;
                 out.println();
+                // End of input takes the default; a question without one has no answer.
+                if (q.line("") instanceof Question.Done<T> d) {
+                    out.println(SETTLED_PREFIX + q.settled(d.value()));
+                    return Optional.of(d.value());
+                }
                 return Optional.empty();
             }
             switch (q.line(line.strip())) {

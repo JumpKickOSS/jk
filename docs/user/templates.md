@@ -32,10 +32,12 @@ which makes the same project without asking:
 Equivalent command  jk new my-app -t kotlin/none/app -L simple -p native=true
 ```
 
-**Without a terminal** (a pipe, `CI`, `JK_NONINTERACTIVE`), the same form is settled from the
-flags, and every field they leave open takes its default, so `jk new my-app` is `app` with its
-defaults. A required field with no default (the name, when no argument gives it) is an error naming
-the flag that answers it, one line per field:
+**Without a terminal** (stdin redirected from a file or a pipe, `< /dev/null` or `< NUL`, even
+with a terminal or a Windows console attached; `CI`; `JK_NONINTERACTIVE`), or with `--yes`, the same
+form is settled from the flags, and every field they leave open takes its default, so `jk new
+my-app` is `app` with its defaults. On a plain terminal, end of input (Ctrl-D) answers the question
+it lands on and every one after it with its default. A required field with no default (the name,
+when no argument gives it) is an error naming the flag that answers it, one line per field:
 
 ```text
 jk new: database needs a value: -p database=none|postgres|mysql

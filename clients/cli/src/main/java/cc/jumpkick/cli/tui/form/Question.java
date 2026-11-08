@@ -24,7 +24,7 @@ public sealed interface Question<T> permits LinePrompt, ListSelect, ToggleList, 
     /** The answer. */
     record Done<T>(T value) implements Reply<T> {}
 
-    /** The user backed out (Esc, Ctrl-C, end of input). */
+    /** The user backed out (Esc, Ctrl-C, a terminal that went away). */
     record Cancelled<T>() implements Reply<T> {}
 
     /** A cooked line that is not an answer: print {@code lines}, then ask again. */

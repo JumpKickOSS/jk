@@ -5,6 +5,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.terminal.posix.PosixTty;
 import cc.jumpkick.terminal.windows.WindowsConsole;
 import cc.jumpkick.terminal.windows.WindowsUtf8;
+import java.io.Console;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.foreign.Arena;
@@ -23,6 +24,9 @@ public final class Terminals {
     private static volatile Runnable beforeForeground = () -> {};
 
     private static final int STD_ERROR_HANDLE = -12;
+
+    /** Windows {@code STD_INPUT_HANDLE}: the process's stdin, not the console {@code CONIN$} opens. */
+    static final int STD_INPUT_HANDLE = -10;
 
     private Terminals() {}
 
@@ -64,6 +68,47 @@ public final class Terminals {
     public static boolean controllingIsTty() {
         TerminalSession s = controlling();
         return s.isLive();
+    }
+
+    /**
+     * Stdin axis: whether the process's own stdin is a terminal. POSIX {@code isatty(0)}; Windows
+     * {@code GetConsoleMode} on {@code STD_INPUT_HANDLE}. Unlike {@link #controllingIsTty()} this is
+     * false under {@code < file} or a pipe even when a terminal or console is attached, which on
+     * Windows (Git Bash, PowerShell) it nearly always is.
+     */
+    public static boolean stdinIsTty() {
+        return stdinIsTty(Os.isWindows(), new Probe() {
+            @Override
+            public boolean windowsIsConsole(int stdHandle) throws Throwable {
+                return Terminals.windowsIsConsole(stdHandle);
+            }
+
+            @Override
+            public boolean posixIsatty(int fd) throws Throwable {
+                return Terminals.posixIsatty(fd);
+            }
+        });
+    }
+
+    /** The native checks {@link #stdinIsTty(boolean, Probe)} makes; a seam for the platform it is not on. */
+    interface Probe {
+        boolean windowsIsConsole(int stdHandle) throws Throwable;
+
+        boolean posixIsatty(int fd) throws Throwable;
+    }
+
+    /**
+     * {@link #stdinIsTty()} on Windows or POSIX through {@code probe}. When the native check cannot
+     * run, a {@link java.io.Console} that is a terminal: on JDK 22+ {@code System.console()} is
+     * non-null even with stdin redirected, so its presence alone says nothing.
+     */
+    static boolean stdinIsTty(boolean windows, Probe probe) {
+        try {
+            return windows ? probe.windowsIsConsole(STD_INPUT_HANDLE) : probe.posixIsatty(0);
+        } catch (Throwable ignored) {
+            Console console = System.console();
+            return console != null && console.isTerminal();
+        }
     }
 
     /**

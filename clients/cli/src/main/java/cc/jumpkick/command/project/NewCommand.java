@@ -377,9 +377,12 @@ public final class NewCommand implements CliCommand {
         return runForm(asker, cwd, params);
     }
 
-    /** The asker for the form, or {@code null} when no human can answer or the output is for a program. */
+    /**
+     * The asker for the form, or {@code null} when no human can answer (stdin redirected included),
+     * the output is for a program, or {@code --yes} takes the defaults.
+     */
     private @Nullable Asker formAsker() {
-        if (!Interactivity.canPrompt() || global.outputIsJson()) return null;
+        if (global.yes || !Interactivity.canAsk() || global.outputIsJson()) return null;
         return Asker.interactive();
     }
 
