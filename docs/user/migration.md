@@ -414,6 +414,30 @@ true` when the build names a main and `[library] assembly = true` when it does n
 `relocate("from", "to")` — with an `include` / `exclude` block or without — becomes a `relocate`
 rule where it agrees with jk's whole-package rule, else a row naming the construct.
 
+### Teaching import a private Gradle plugin
+
+A company's own Gradle plugin is unknown to jk, so a module that applies one gets a row naming it,
+and a row naming the task that writes any schema or source directory under `build/`. To import
+it, write a rule in the build's `.jk/import.toml` (kept with the build) or in `~/.jk/import.toml`
+(every build on the machine), in the grammar plugin manifests use
+([Plugins](../contributors/plugins.md#templates-and-import)), naming the jk table it writes:
+
+```toml
+[[import.gradle-plugin]]
+id          = "com.acme.kafka-helper"
+table       = "schema-registry"
+task        = "sharedSchemasLoader"
+properties  = { sourceSchemaRegistry = "url" }
+files       = { "src/main/resources/kafka/shared-schema.yaml#schemas" = "subjects" }
+credentials = { username = "sourceSchemaRegistryAPIKey", password = "sourceSchemaRegistryAPISecret" }
+```
+
+`credentials` names the properties that hold a credential the build reads from the environment.
+The import never reads those values. It finds the variables that hold them and writes a
+`~/.jk/config.toml` table referencing them as `${env:NAME}`, and the table's `repository` is the
+plugin id's last segment (`kafka-helper`). A rule in the build's file replaces one in yours, and
+both replace an installed plugin's rule for the same id.
+
 ### Which Maven plugins import, and how well
 
 Counted across 66 public repositories cloned for the Maven corpus and the agent-loop corpus on

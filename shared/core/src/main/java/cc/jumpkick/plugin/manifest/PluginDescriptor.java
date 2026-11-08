@@ -73,8 +73,10 @@ public record PluginDescriptor(
      * declared version becomes, and {@code missingVersionWarning} is said when it declares none.
      * {@code properties} maps a property of the {@code extension} or {@code task} the rule names to
      * a table key; {@code files} maps a module-relative file the plugin reads, with an optional
-     * {@code #dotted.key} into a YAML, JSON or properties file, to a table key. A rule with none of
-     * these only recognizes the id.
+     * {@code #dotted.key} into a YAML, JSON or properties file, to a table key. {@code credentials}
+     * maps {@code username} and {@code password} to the properties holding them: the import names
+     * the environment variable each value comes from, never the value. A rule with none of these
+     * only recognizes the id.
      */
     public record GradleImport(
             String id,
@@ -84,15 +86,17 @@ public record PluginDescriptor(
             @Nullable String extension,
             @Nullable String task,
             Map<String, String> properties,
-            Map<String, String> files) {
+            Map<String, String> files,
+            Map<String, String> credentials) {
         public GradleImport {
             Objects.requireNonNull(id, "id");
             properties = properties == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(properties));
             files = files == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(files));
+            credentials = credentials == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(credentials));
         }
 
         public GradleImport(String id, @Nullable String versionTo, @Nullable String missingVersionWarning) {
-            this(id, versionTo, missingVersionWarning, null, null, null, Map.of(), Map.of());
+            this(id, versionTo, missingVersionWarning, null, null, null, Map.of(), Map.of(), Map.of());
         }
     }
 

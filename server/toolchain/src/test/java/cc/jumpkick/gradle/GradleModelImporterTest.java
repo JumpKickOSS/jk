@@ -886,6 +886,62 @@ class GradleModelImporterTest {
                 .noneMatch(m -> m.contains("put them in src/main/avro"));
     }
 
+    /**
+     * A private plugin a rule in the build's .jk/import.toml teaches the import: the task's registry
+     * URL and the subjects file become [schema-registry], and the key and secret the task reads
+     * from the environment a credential table naming those variables.
+     */
+    @Test
+    void a_build_s_own_rule_imports_a_private_plugin_and_its_credential(@TempDir Path shop) throws Exception {
+        Files.createDirectories(shop.resolve(".jk"));
+        Files.writeString(shop.resolve(".jk/import.toml"), """
+                [[import.gradle-plugin]]
+                id          = "com.acme.kafka-helper"
+                table       = "schema-registry"
+                task        = "sharedSchemasLoader"
+                properties  = { sourceSchemaRegistry = "url" }
+                files       = { "src/main/resources/kafka/shared-schema.yaml#schemas" = "subjects" }
+                credentials = { username = "apiKey", password = "apiSecret" }
+                """);
+        Path yaml = shop.resolve("flags/src/main/resources/kafka/shared-schema.yaml");
+        Files.createDirectories(yaml.getParent());
+        Files.writeString(yaml, "schemas:\n  flags-value: 18\n");
+        String model = AVRO_MODULES
+                .replace(
+                        "\"plugins\":[\"java\",\"com.github.davidmc24.gradle.plugin.avro\"],",
+                        "\"plugins\":[\"java\",\"com.github.davidmc24.gradle.plugin.avro\",\"com.acme.kafka-helper\"],")
+                .replace(
+                        "\"fieldVisibility\":\"PUBLIC\",",
+                        "\"fieldVisibility\":\"PUBLIC\",\"x\":1},\"com.acme.kafka-helper\":{"
+                                + "\"sourceSchemaRegistry\":\"https://registry.example.com\","
+                                + "\"apiKey\":{\"env\":\"REGISTRY_KEY\"},\"apiSecret\":{\"env\":\"REGISTRY_SECRET\"},");
+        assertThat(model).contains("REGISTRY_SECRET").contains("\"com.acme.kafka-helper\"]");
+
+        GradleBuildImport.Result result = GradleModelImporter.importModel(model, shop, RefreshVersions.NONE);
+
+        assertThat(module(result, "flags")
+                        .pluginConfig("schema-registry")
+                        .orElseThrow()
+                        .values())
+                .containsOnly(
+                        Map.entry("url", "https://registry.example.com"),
+                        Map.entry("subjects", Map.of("flags-value", "18")),
+                        Map.entry("repository", "kafka-helper"));
+        assertThat(result.machineCredentials()).singleElement().satisfies(c -> {
+            assertThat(c.name()).isEqualTo("kafka-helper");
+            assertThat(c.credential())
+                    .containsExactly(
+                            Map.entry("username", "${env:REGISTRY_KEY}"),
+                            Map.entry("password", "${env:REGISTRY_SECRET}"));
+        });
+        assertThat(messages(result.report()))
+                .contains(
+                        "kafka-helper: credential added to ~/.jk/config.toml",
+                        "on CI, set JK_REPO_<ID>_* for kafka-helper")
+                .noneMatch(m -> m.contains("Avro schemas"))
+                .noneMatch(m -> m.contains("kafka-helper: not imported"));
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }

@@ -8,6 +8,7 @@ import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,7 +33,8 @@ class PluginRulesTest {
                     null,
                     "sharedSchemasLoader",
                     Map.of("sourceSchemaRegistry", "url"),
-                    Map.of("src/main/resources/kafka/shared-schema.yaml#schemas", "subjects")));
+                    Map.of("src/main/resources/kafka/shared-schema.yaml#schemas", "subjects"),
+                    Map.of()));
 
     @Test
     void a_private_plugin_s_task_and_the_file_it_reads_become_schema_registry_keys(@TempDir Path module)
@@ -85,7 +87,8 @@ class PluginRulesTest {
                                 "setters",
                                 "decimal",
                                 "decimal-logical-type"),
-                        Map.of("avro.properties#encoding", "encoding")));
+                        Map.of("avro.properties#encoding", "encoding"),
+                        Map.of()));
 
         List<PluginConfig> tables = PluginRules.map(
                 Set.of("com.acme.avro"),
@@ -116,5 +119,44 @@ class PluginRulesTest {
         assertThat(PluginRules.readsJson(Map.of(KAFKA_HELPER, KAFKA_HELPER_RULE)))
                 .isEqualTo("[{\"id\":\"" + KAFKA_HELPER
                         + "\",\"task\":\"sharedSchemasLoader\",\"properties\":[\"sourceSchemaRegistry\"]}]");
+    }
+
+    @Test
+    void credential_properties_become_the_table_s_repository_and_name_their_variables(@TempDir Path module) {
+        PluginRules.Rule rule = new PluginRules.Rule(
+                "import.toml",
+                new PluginDescriptor.GradleImport(
+                        KAFKA_HELPER,
+                        null,
+                        null,
+                        "schema-registry",
+                        null,
+                        "sharedSchemasLoader",
+                        Map.of("sourceSchemaRegistry", "url"),
+                        Map.of(),
+                        Map.of("username", "apiKey", "password", "apiSecret")));
+        List<PluginRules.Credential> found = new ArrayList<>();
+
+        List<PluginConfig> tables = PluginRules.map(
+                Set.of(KAFKA_HELPER),
+                Map.of(),
+                Map.of(
+                        KAFKA_HELPER,
+                        Map.of(
+                                "sourceSchemaRegistry", "https://registry.example.com",
+                                "apiKey", Map.of("env", "REGISTRY_KEY"),
+                                "apiSecret", Map.of())),
+                module,
+                Map.of(KAFKA_HELPER, rule),
+                ImportReport.builder(),
+                found::add);
+
+        assertThat(tables.getFirst().values())
+                .containsEntry("url", "https://registry.example.com")
+                .containsEntry("repository", "kafka-helper");
+        assertThat(found)
+                .containsExactly(new PluginRules.Credential(
+                        "kafka-helper", "https://registry.example.com", "REGISTRY_KEY", null));
+        assertThat(PluginRules.readsJson(Map.of(KAFKA_HELPER, rule))).contains("\"secrets\":[");
     }
 }

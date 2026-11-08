@@ -105,7 +105,7 @@ public final class GradleBuildImport {
         if (settings != null && model != null) {
             RefreshVersions refreshVersions = RefreshVersions.beside(dir);
             try {
-                String json = model.read(dir, GradleModelImporter.probedPluginIds(), progress);
+                String json = model.read(dir, GradleModelImporter.probedPluginIds(dir), progress);
                 return GradleModelImporter.importModel(json, dir, refreshVersions);
             } catch (IOException e) {
                 String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();

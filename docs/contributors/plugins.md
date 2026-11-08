@@ -427,6 +427,7 @@ table      = "schema-registry"                    # another plugin's table; defa
 task       = "sharedSchemasLoader"
 properties = { sourceSchemaRegistry = "url" }
 files      = { "src/main/resources/kafka/shared-schema.yaml#schemas" = "subjects" }
+credentials = { username = "sourceSchemaRegistryAPIKey", password = "sourceSchemaRegistryAPISecret" }
 ```
 
 A rule maps a Gradle plugin a project applies into a jk table. `version-to` takes the plugin's
@@ -434,8 +435,12 @@ declared version. `properties` reads properties of the `extension` or `task` the
 model query's init script reads them off the evaluated project, a `Provider` as its value and a file
 as a module-relative path. `files` reads a file the plugin reads, module-relative, with `#dotted.key`
 selecting a value or mapping inside a YAML, JSON or properties file. Each value takes its key's
-`[schema]` type, and a value equal to the key's default is not written. A rule with none of these
-only marks the id as handled.
+`[schema]` type, and a value equal to the key's default is not written. `credentials` names the
+properties holding a username and password: the init script reports only the environment variable
+each value comes from, and the import writes a `~/.jk/config.toml` table of `${env:NAME}` references
+for the table's `url`, setting its `repository`. A rule with none of these only marks the id as
+handled. A build's `.jk/import.toml` and the user's `~/.jk/import.toml` hold rules in the same
+grammar, each naming its `table`; the build's replace the user's, which replace installed ones.
 
 ### Code layer
 

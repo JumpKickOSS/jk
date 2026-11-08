@@ -197,7 +197,9 @@ def describeProject(Project p, Project root, List<String> probeIds) {
     m.version = p.version.toString()
     if (p.description) m.description = p.description
     m.plugins = probeIds.findAll { p.pluginManager.hasPlugin(it) }
-    m.pluginClasses = p.plugins.collect { taskType(it) }.findAll { !it.startsWith('org.gradle.') }
+    // The other plugins by class: a probed id's plugin is the import's to report or map.
+    def probedClasses = m.plugins.collect { id -> try { taskType(p.plugins.findPlugin(id)) } catch (Throwable ignored) { null } } as Set
+    m.pluginClasses = p.plugins.collect { taskType(it) }.findAll { !it.startsWith('org.gradle.') && !probedClasses.contains(it) }
     def versions = [:]
     for (String id : m.plugins) {
         try {
@@ -291,6 +293,11 @@ def describeProject(Project p, Project root, List<String> probeIds) {
             for (def k : r.properties) {
                 def v = ruleValue(p, target, k as String)
                 if (v != null) values[k] = v
+            }
+            // A secret is reported as the variable holding it, never as its value.
+            for (def k : (r.secrets ?: [])) {
+                def v = ruleValue(p, target, k as String)
+                values[k] = [env: v instanceof String ? envHolding(v) : null]
             }
             ruled[r.id] = values
         } catch (Throwable ignored) { }
