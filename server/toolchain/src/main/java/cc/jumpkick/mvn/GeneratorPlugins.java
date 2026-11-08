@@ -41,7 +41,8 @@ import org.jspecify.annotations.Nullable;
  * {@code [jooq]}, {@code wire-maven-plugin} {@link WirePlugin}'s
  * {@code [generate.wire]} entry, {@code kafka-schema-registry-maven-plugin} {@link SchemaRegistryPlugin}'s
  * {@code [schema-registry]}, {@code jsonschema2pojo-maven-plugin} {@link JsonSchemaPlugin}'s
- * {@code [json-schema]}; the GraphQL codegen plugins are a row naming the recipe.
+ * {@code [json-schema]}, the AsyncAPI generators {@link AsyncApiPlugins}' {@code [asyncapi]}; the
+ * GraphQL codegen plugins are a row naming the recipe.
  */
 final class GeneratorPlugins {
 
@@ -64,6 +65,7 @@ final class GeneratorPlugins {
             @Nullable PluginConfig generate,
             @Nullable PluginConfig schemaRegistry,
             @Nullable PluginConfig jsonSchema,
+            @Nullable PluginConfig asyncApi,
             /** The registry's credential table; null when the build sends none. */
             UserConfigEditor.@Nullable CredentialTable registryCredential,
             Map<String, String> outputRoots,
@@ -85,7 +87,8 @@ final class GeneratorPlugins {
                 jooq,
                 generate,
                 schemaRegistry,
-                jsonSchema
+                jsonSchema,
+                asyncApi
             }) {
                 if (table != null) tables.add(table);
             }
@@ -144,6 +147,8 @@ final class GeneratorPlugins {
         outputRoots.putAll(taglib.outputRoots());
         AvroPlugin.Mapped avro = AvroPlugin.map(model, report);
         outputRoots.putAll(avro.outputRoots());
+        AsyncApiPlugins.Mapped asyncApi = AsyncApiPlugins.map(model, report);
+        outputRoots.putAll(asyncApi.outputRoots());
         JsonSchemaPlugin.Mapped jsonSchema = JsonSchemaPlugin.map(model, report);
         outputRoots.putAll(jsonSchema.outputRoots());
         SchemaRegistryPlugin.Mapped registry = SchemaRegistryPlugin.map(model, report);
@@ -182,6 +187,7 @@ final class GeneratorPlugins {
                 generate,
                 registry.table(),
                 jsonSchema.table(),
+                asyncApi.table(),
                 registry.credential(),
                 Collections.unmodifiableMap(outputRoots),
                 Collections.unmodifiableSet(consumed));

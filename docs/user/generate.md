@@ -260,7 +260,9 @@ jackson-databind = "2.23.0"
 The step is `generate-asyncapi`. An Avro payload (`schemaFormat: application/vnd.apache.avro…`)
 compiles with Avro's own compiler when `avro` names a release, and is skipped with a warning when
 it does not; a Protobuf payload is skipped with a warning, and channel, operation and listener code is not generated: jk makes the payload
-classes your own code sends and receives.
+classes your own code sends and receives. `jk import` writes the table from sngular's
+scs-multiapi plugin (Maven and Gradle) and ZenWave's Maven plugin
+([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
 ## `[schema-registry]` — schemas from a registry
 
