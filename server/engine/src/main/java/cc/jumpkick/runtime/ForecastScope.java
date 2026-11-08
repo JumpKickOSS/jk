@@ -248,9 +248,9 @@ public final class ForecastScope implements StepForecast.Scope {
             return kspPlanned ? KspProcessors.split(processorCp).javac() : processorCp;
         }
 
-        /** compile-test's processor path: the shared table's javac half, then the test table's own. */
-        List<Path> javacTestProcessorCp() {
-            return ProcessorPaths.forTest(processorCp, javacProcessorCp(), testProcessorCp);
+        /** compile-test's processor path as {@link ProcessorPaths#forTest} derives the build's. */
+        List<Path> javacTestProcessorCp(JkBuild project) {
+            return ProcessorPaths.forTest(project, processorCp, javacProcessorCp(), testProcessorCp);
         }
 
         /** Whether the main KSP round's output joins the module: the build runs one with a KSP processor. */

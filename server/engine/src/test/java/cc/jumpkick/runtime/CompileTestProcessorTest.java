@@ -10,6 +10,7 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JavacConfig;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.CompileSupport;
@@ -52,6 +53,12 @@ class CompileTestProcessorTest {
     /** A second processor, standing in for one a plugin contributes: {@code @gen2.Gen2} makes {@code <Type>Gen2}. */
     private static Path pluginProcDir;
 
+    /**
+     * A processor that fails the compile on every type it sees, standing in for a main-only one such
+     * as Helidon's API-stability enforcer, which rejects any public class without its annotation.
+     */
+    private static Path enforcerDir;
+
     /** One job scope for the class, so every case compiles on the warm worker a build's compile-test uses. */
     private static JavaCompilerHost.Scope job;
 
@@ -61,6 +68,7 @@ class CompileTestProcessorTest {
     static void buildProcessor(@TempDir Path shared) throws IOException {
         procDir = sourceGenProcessor(shared.resolve("proc"), "gen", "Gen");
         pluginProcDir = sourceGenProcessor(shared.resolve("plugin-proc"), "gen2", "Gen2");
+        enforcerDir = enforcer(shared.resolve("enforcer"));
         job = JavaCompilerHost.open();
         JobWorkers.close();
     }
@@ -173,6 +181,45 @@ class CompileTestProcessorTest {
     }
 
     @Test
+    void aNonInheritingTestTableKeepsTheMainOnlyProcessorOffTheTests(@TempDir Path dir) throws Exception {
+        // [processor-dependencies] holds the enforcer, [test-processor-dependencies] the generator:
+        // inheriting, compile-test runs both and the enforcer fails it; inherit = false runs the
+        // generator alone, as Maven's testCompile runs its own annotationProcessorPaths.
+        Path testSrc = dir.resolve("test").resolve("src");
+        write(testSrc, "app/WidgetTest.java", TEST_SRC);
+        List<Path> shared = List.of(enforcerDir);
+        String tables = """
+                name = "m"
+                group = "g"
+                version = "1"
+
+                [test-processor-dependencies]
+                """;
+        JkBuild inheriting = JkBuildParser.parse(tables);
+        JkBuild own = JkBuildParser.parse(tables + "inherit = false\n");
+
+        List<Path> inherited = ProcessorPaths.forTest(inheriting, shared, shared, List.of(enforcerDir, procDir));
+        assertThat(compile(dir.resolve("a"), testSrc, List.of(procDir), inherited, dir.resolve("a/out")))
+                .as("the inherited enforcer runs over the tests")
+                .isFalse();
+
+        Path out = dir.resolve("b/out");
+        List<Path> ownPath = ProcessorPaths.forTest(own, shared, shared, List.of(procDir));
+        assertThat(ownPath).containsExactly(procDir);
+        assertThat(compile(dir.resolve("b"), testSrc, List.of(procDir), ownPath, out))
+                .isTrue();
+        assertThat(out.resolve("app/WidgetTestGen.class")).isRegularFile();
+
+        // The key alone: no declared path, so the test classpath's processor is discovered and the
+        // enforcer, which only the main table names, still stays off.
+        Path discovered = dir.resolve("c/out");
+        List<Path> nonePath = ProcessorPaths.forTest(own, shared, shared, List.of());
+        assertThat(compile(dir.resolve("c"), testSrc, List.of(procDir), nonePath, discovered))
+                .isTrue();
+        assertThat(discovered.resolve("app/WidgetTestGen.class")).isRegularFile();
+    }
+
+    @Test
     void compileMainHandsJavacTheDeclaredPathThenTheContributedOne(@TempDir Path dir) {
         PlannerCompile.MainCompile in = new PlannerCompile.MainCompile(
                 List.of(dir.resolve("src/A.java")),
@@ -273,6 +320,34 @@ class CompileTestProcessorTest {
                 Files.createDirectories(proc.resolve("META-INF/services"))
                         .resolve("javax.annotation.processing.Processor"),
                 pkg + "." + ann + "Proc\n");
+        return proc;
+    }
+
+    /** A processor that reports an error on every root type, as a stability enforcer does on an unannotated API. */
+    private static Path enforcer(Path proc) throws IOException {
+        compile(proc, Map.of("enforce.EnforcerProc", """
+                        package enforce;
+                        import javax.annotation.processing.*;
+                        import javax.lang.model.SourceVersion;
+                        import javax.lang.model.element.*;
+                        import javax.tools.Diagnostic;
+                        import java.util.Set;
+                        @SupportedAnnotationTypes("*")
+                        public class EnforcerProc extends AbstractProcessor {
+                            public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                            public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
+                                for (Element e : r.getRootElements()) {
+                                    processingEnv.getMessager().printMessage(
+                                            Diagnostic.Kind.ERROR, "Public API is missing stability annotation", e);
+                                }
+                                return false;
+                            }
+                        }
+                        """));
+        Files.writeString(
+                Files.createDirectories(proc.resolve("META-INF/services"))
+                        .resolve("javax.annotation.processing.Processor"),
+                "enforce.EnforcerProc\n");
         return proc;
     }
 

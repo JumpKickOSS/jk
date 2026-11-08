@@ -677,8 +677,8 @@ public final class LockPlans {
                                     value.pluginOverlays())));
             dimensions.add(new Variants.Dimension(dimension.name(), dimension.defaultValue(), values));
         }
-        return member.withDependencies(new JkBuild.Dependencies(rootRelativePaths(
-                        wsRoot, memberDir, member.dependencies().byScope())))
+        return member.withDependencyScopes(rootRelativePaths(
+                        wsRoot, memberDir, member.dependencies().byScope()))
                 .withVariants(new Variants(dimensions));
     }
 

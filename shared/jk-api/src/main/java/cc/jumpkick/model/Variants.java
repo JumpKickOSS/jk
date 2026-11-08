@@ -118,7 +118,7 @@ public record Variants(List<Dimension> dimensions) {
         }
         Map<Scope, List<Dependency>> out = new EnumMap<>(Scope.class);
         merged.forEach((scope, deps) -> out.put(scope, List.copyOf(deps)));
-        return build.withDependencies(new JkBuild.Dependencies(out));
+        return build.withDependencyScopes(out);
     }
 
     private static void note(Map<String, String[]> seen, Scope scope, Dependency d, String origin) {

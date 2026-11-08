@@ -65,8 +65,14 @@ public final class NullnessImport {
                 processor.stream().filter(d -> !TOOLS.contains(d.module())).toList();
         if (kept.isEmpty()) byScope.remove(Scope.PROCESSOR);
         else byScope.put(Scope.PROCESSOR, kept);
+        // A test path of its own names the tools too; [nullness] supplies them there as well.
+        List<Dependency> testKept = build.dependencies().of(Scope.TEST_PROCESSOR).stream()
+                .filter(d -> !TOOLS.contains(d.module()))
+                .toList();
+        if (testKept.isEmpty()) byScope.remove(Scope.TEST_PROCESSOR);
+        else byScope.put(Scope.TEST_PROCESSOR, testKept);
         report.warning("NullAway via Error Prone became [nullness]; jk now supplies the tools, versions and flags");
-        return build.withDependencies(new JkBuild.Dependencies(byScope))
+        return build.withDependencyScopes(byScope)
                 .withBuild(build.build().withJavac(rest).withNullness(nullness));
     }
 

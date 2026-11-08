@@ -57,7 +57,7 @@ public final class ManifestDeps {
         addScopeDeps(byScope, root, Scope.TEST, workspace, catalog);
         addScopeDeps(byScope, root, Scope.PROVIDED, workspace, catalog);
         addScopeDeps(byScope, root, Scope.PROCESSOR, workspace, catalog);
-        addScopeDeps(byScope, root, Scope.TEST_PROCESSOR, workspace, catalog);
+        boolean testProcessorsInherit = addTestProcessorDeps(byScope, root, workspace, catalog);
         addScopeDeps(byScope, root, Scope.EXPORT, workspace, catalog);
         addScopeDeps(byScope, root, Scope.RUNTIME, workspace, catalog);
         // [platform-dependencies] — BOM imports (version constraints, not classpath entries).
@@ -69,7 +69,39 @@ public final class ManifestDeps {
         addScopeDeps(byScope, root, Scope.DEV, workspace, catalog);
         addScopeDeps(byScope, root, Scope.TEST_DEV, workspace, catalog);
 
-        return new JkBuild.Dependencies(byScope);
+        return new JkBuild.Dependencies(byScope, testProcessorsInherit);
+    }
+
+    /** The one key {@code [test-processor-dependencies]} reserves: whether the shared processor path rides along. */
+    static final String TEST_PROCESSOR_INHERIT = "inherit";
+
+    /**
+     * {@code [test-processor-dependencies]}, whose {@code inherit} key is a setting rather than a
+     * dependency: {@code inherit = false} makes the table compile-test's whole processor path, the
+     * way Maven's {@code testCompile} reads its own {@code annotationProcessorPaths}. Returns that
+     * setting, true when the key or the table is absent.
+     */
+    static boolean addTestProcessorDeps(
+            EnumMap<Scope, List<Dependency>> byScope,
+            TomlTable root,
+            @Nullable Workspace workspace,
+            LibraryCatalog catalog) {
+        Scope scope = Scope.TEST_PROCESSOR;
+        TomlTable table = root.getTable(scope.tomlSection());
+        if (table == null) return true;
+        boolean inherit = true;
+        List<String> keys = new ArrayList<>(table.keySet());
+        if (keys.remove(TEST_PROCESSOR_INHERIT)) {
+            if (!(table.get(List.of(TEST_PROCESSOR_INHERIT)) instanceof Boolean b)) {
+                throw new JkBuildParseException(scope.tomlSection() + "." + TEST_PROCESSOR_INHERIT
+                        + " must be true or false; it says whether compile-test also runs ["
+                        + Scope.PROCESSOR.tomlSection() + "]");
+            }
+            inherit = b;
+        }
+        List<Dependency> parsed = parseScopeTable(table, keys, scope, workspace, catalog);
+        if (!parsed.isEmpty()) byScope.put(scope, parsed);
+        return inherit;
     }
 
     /**

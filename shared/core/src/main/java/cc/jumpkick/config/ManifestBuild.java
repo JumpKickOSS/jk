@@ -204,7 +204,7 @@ public final class ManifestBuild {
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         deps.byScope().forEach(byScope::put);
         byScope.put(Scope.PLATFORM, platform);
-        return new JkBuild.Dependencies(byScope);
+        return deps.withByScope(byScope);
     }
 
     /** The keys {@code [native]} may carry. */

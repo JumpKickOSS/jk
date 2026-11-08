@@ -106,7 +106,7 @@ public final class PathSourceResolution {
         }
         rewritten.put(Scope.MAIN, main);
 
-        JkBuild project = effective.withDependencies(new JkBuild.Dependencies(rewritten));
+        JkBuild project = effective.withDependencyScopes(rewritten);
 
         // Path artifact repos first: the pinned coordinate is built locally, so the file:// repo
         // answers before any remote is consulted. Preserve exclusive group bindings on baseRepos

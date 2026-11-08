@@ -634,7 +634,7 @@ public final class LockOrchestrator {
         byScope.putAll(project.dependencies().byScope());
         replace(byScope, Scope.PLATFORM, sharedBoms);
         replace(byScope, Scope.MANAGED, sharedManaged);
-        return project.withDependencies(new JkBuild.Dependencies(byScope));
+        return project.withDependencyScopes(byScope);
     }
 
     private static void replace(EnumMap<Scope, List<Dependency>> byScope, Scope scope, List<Dependency> entries) {

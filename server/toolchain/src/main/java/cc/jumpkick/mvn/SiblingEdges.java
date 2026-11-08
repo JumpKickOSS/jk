@@ -150,7 +150,7 @@ final class SiblingEdges {
             rows.addAll(moduleKey, handles.build());
         }
         for (List<Dependency> deps : byScope.values()) for (Dependency d : deps) dropped.remove(d.library());
-        JkBuild rewritten = module.withDependencies(new JkBuild.Dependencies(byScope));
+        JkBuild rewritten = module.withDependencyScopes(byScope);
         return dropped.isEmpty() ? rewritten : rewritten.withFeatures(withoutHandles(module.features(), dropped));
     }
 

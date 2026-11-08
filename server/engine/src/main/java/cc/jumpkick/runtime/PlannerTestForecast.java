@@ -81,7 +81,7 @@ final class PlannerTestForecast {
             CompileRequest req = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
                     testSrc,
                     javacCp,
-                    prepared.javacTestProcessorCp(),
+                    prepared.javacTestProcessorCp(s.project),
                     prepared.contributedProcessors().test(),
                     testOut,
                     s.project.javac().testRelease(release),

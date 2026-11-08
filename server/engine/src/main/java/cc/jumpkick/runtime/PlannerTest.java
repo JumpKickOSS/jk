@@ -386,11 +386,13 @@ public final class PlannerTest {
         Path javaTestOut = testClasses; // javac always writes to java/test/
         List<String> javacArgs = ctx.require(JAVAC_ARGS);
         // The declared annotation processors run over test sources — the shared table's javac
-        // half, then the test table's own; the request builder discovers classpath processors
+        // half, then the test table's own, or that table alone under its inherit = false; the
+        // request builder discovers classpath processors
         // when none are declared, exactly as compile-main does, so a Lombok-using test sees its
         // generated members.
         List<Path> shared = ctx.require(PROCESSOR_CP);
         List<Path> processorCp = ProcessorPaths.forTest(
+                ctx.require(PROJECT),
                 shared,
                 ctx.get(JAVAC_PROCESSOR_CP).orElse(shared),
                 ctx.get(TEST_PROCESSOR_CP).orElse(shared));

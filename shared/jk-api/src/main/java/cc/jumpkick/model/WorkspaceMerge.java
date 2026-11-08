@@ -132,7 +132,7 @@ public final class WorkspaceMerge {
             resolvedByScope.put(Scope.MANAGED, managed);
         }
 
-        return new Applied(module.withDependencies(new JkBuild.Dependencies(resolvedByScope)), carried);
+        return new Applied(module.withDependencyScopes(resolvedByScope), carried);
     }
 
     /** Add a BOM or managed entry to a member's table unless an earlier entry already manages that module. */
@@ -182,7 +182,7 @@ public final class WorkspaceMerge {
         }
         if (!rewroteAny) return module;
 
-        return module.withDependencies(new JkBuild.Dependencies(byScope));
+        return module.withDependencyScopes(byScope);
     }
 
     /**
@@ -216,7 +216,7 @@ public final class WorkspaceMerge {
             }
             byScope.put(scope, out);
         }
-        return rewroteAny ? module.withDependencies(new JkBuild.Dependencies(byScope)) : module;
+        return rewroteAny ? module.withDependencyScopes(byScope) : module;
     }
 
     /**
@@ -276,8 +276,7 @@ public final class WorkspaceMerge {
         }
         // The root as written, with the folded dependencies and joined repositories: every other
         // table rides along unchanged.
-        return root.withDependencies(new JkBuild.Dependencies(mergedByScope))
-                .withRepositories(joinRepositories(root, modules));
+        return root.withDependencyScopes(mergedByScope).withRepositories(joinRepositories(root, modules));
     }
 
     /**

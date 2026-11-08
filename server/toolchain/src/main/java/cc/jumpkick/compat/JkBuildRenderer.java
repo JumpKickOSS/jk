@@ -772,9 +772,14 @@ public final class JkBuildRenderer {
             List<Dependency> deps = byScope.getOrDefault(scope, List.of()).stream()
                     .filter(d -> d.impliedBy() == null)
                     .toList();
-            if (deps.isEmpty()) continue;
+            // inherit = false is the test table's whole meaning even when it lists nothing: compile-test
+            // then runs no declared processor, as Maven's testCompile without annotationProcessorPaths.
+            boolean ownTestPath =
+                    scope == Scope.TEST_PROCESSOR && !jkBuild.dependencies().testProcessorsInherit();
+            if (deps.isEmpty() && !ownTestPath) continue;
             sb.append('\n');
             sb.append('[').append(scope.tomlSection()).append("]\n");
+            if (ownTestPath) sb.append("inherit = false\n");
             for (Dependency d : ordered(scope, deps)) {
                 sb.append(renderEntry(d, catalog)).append('\n');
             }

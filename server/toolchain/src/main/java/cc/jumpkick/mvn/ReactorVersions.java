@@ -71,7 +71,7 @@ final class ReactorVersions {
             }
             byScope.put(e.getKey(), deps);
         }
-        return member.withDependencies(new JkBuild.Dependencies(byScope));
+        return member.withDependencyScopes(byScope);
     }
 
     private static boolean sharable(

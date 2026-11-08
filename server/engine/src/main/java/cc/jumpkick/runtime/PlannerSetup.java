@@ -333,7 +333,7 @@ public final class PlannerSetup {
         // lock, so a lock-only path silently yields no processors at all.
         WorkspaceClasspath.Result processorSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.PROCESSOR));
-        // The test compile runs the shared table's processors and the test table's own.
+        // Every sibling either table names, for the unresolved-processor check below.
         WorkspaceClasspath.Result testProcessorSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, ClasspathResolver.PROCESSOR_PATH);
         // A declared processor that cannot be found generates nothing, and a build
@@ -350,16 +350,9 @@ public final class PlannerSetup {
         ctx.put(
                 PROCESSOR_CP,
                 PlannerSupport.processorClasspath(in.dir(), project, lock, resolver, processorSiblings, true));
-        ctx.put(
-                TEST_PROCESSOR_CP,
-                PlannerSupport.processorClasspath(
-                        in.dir(),
-                        project,
-                        lock,
-                        resolver,
-                        testProcessorSiblings,
-                        ClasspathResolver.PROCESSOR_PATH,
-                        true));
+        // compile-test's declared closure: both tables', or the test table's alone under its
+        // inherit = false (ProcessorPaths, which the forecast derives it through too).
+        ctx.put(TEST_PROCESSOR_CP, ProcessorPaths.testClosure(project, lock, resolver, in.dir(), true));
         // The processors the module's plugins contribute, appended to whichever path the module's
         // own is (PlannerCompile.effectiveProcessorPath). Each is a closure the lock pins; one the
         // lock lacks fails here, as a declared processor the lock lacks does above.

@@ -339,10 +339,13 @@ public final class PlannerKsp {
                 && CompileSupport.resolveLanguages(project.project(), dir).kotlin();
     }
 
-    /** Whether a Kotlin module declares any processor a test round could run: either table's. */
+    /**
+     * Whether a Kotlin module declares any processor a test round could run: either table's, or the
+     * test table's alone under its {@code inherit = false}.
+     */
     private static boolean mayRunTestRound(JkBuild project, boolean kotlinModule) {
         if (!kotlinModule) return false;
-        for (Scope scope : List.of(Scope.PROCESSOR, Scope.TEST_PROCESSOR)) {
+        for (Scope scope : ProcessorPaths.testScopes(project)) {
             List<Dependency> declared = project.dependencies().byScope().get(scope);
             if (declared != null && !declared.isEmpty()) return true;
         }
@@ -607,8 +610,9 @@ public final class PlannerKsp {
      * less {@code [test] exclude-src}, into {@code target/ksp-test}. {@code classpath} is the test
      * compile classpath, so the main classes (and the main round's output already mirrored into
      * them) are what the processors resolve against. The processors are the shared table's
-     * closure plus what {@code [test-processor-dependencies]} adds, so a module whose only KSP
-     * processor is a test one still gets its round. Its generated sources join {@link
+     * closure plus what {@code [test-processor-dependencies]} adds (that table's alone under its
+     * {@code inherit = false}), so a module whose only KSP processor is a test one still gets its
+     * round. Its generated sources join {@link
      * TestSources}; its bytecode and resources are mirrored into the test classes with
      * the test resources. A module with no KSP processor keeps no test round output.
      */
@@ -623,10 +627,9 @@ public final class PlannerKsp {
         BuildLayout layout = ctx.require(LAYOUT);
         if (!cx.kotlinModule()) return dropped(dropTestRound(layout));
         Path outBase = kspTestOutBase(layout);
-        List<Path> processorCp = new ArrayList<>(ctx.require(PROCESSOR_CP));
-        for (Path p : ctx.get(TEST_PROCESSOR_CP).orElse(List.of())) {
-            if (!processorCp.contains(p)) processorCp.add(p);
-        }
+        List<Path> shared = ctx.require(PROCESSOR_CP);
+        List<Path> processorCp = ProcessorPaths.forTest(
+                ctx.require(PROJECT), shared, shared, ctx.get(TEST_PROCESSOR_CP).orElse(List.of()));
         List<Path> kspJars = KspProcessors.split(processorCp).ksp();
         List<Path> roots =
                 testSourceRoots(ctx.require(PROJECT), cx.in().dir(), cx.compact(), compiledSuites, layout, decls);

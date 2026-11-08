@@ -79,8 +79,10 @@ public final class ManifestNullness {
     /**
      * {@code deps} with the jars {@code [nullness]} brings: JSpecify on the compile classpath unless
      * any scope declares it, Error Prone and NullAway on the processor path unless that path does.
+     * A test processor path that does not inherit the shared one gets the two as well when {@code
+     * tests} checks the tests, or compile-test would ask javac for a plugin it cannot load.
      */
-    static JkBuild.Dependencies withImplied(JkBuild.Dependencies deps) {
+    static JkBuild.Dependencies withImplied(JkBuild.Dependencies deps, boolean tests) {
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         deps.byScope().forEach(byScope::put);
         boolean jspecifyDeclared = deps.byScope().values().stream()
@@ -89,7 +91,11 @@ public final class ManifestNullness {
         if (!jspecifyDeclared) add(byScope, Scope.MAIN, JSPECIFY);
         add(byScope, Scope.PROCESSOR, ERROR_PRONE);
         add(byScope, Scope.PROCESSOR, NULLAWAY);
-        return new JkBuild.Dependencies(byScope);
+        if (tests && !deps.testProcessorsInherit()) {
+            add(byScope, Scope.TEST_PROCESSOR, ERROR_PRONE);
+            add(byScope, Scope.TEST_PROCESSOR, NULLAWAY);
+        }
+        return deps.withByScope(byScope);
     }
 
     private static void add(EnumMap<Scope, List<Dependency>> byScope, Scope scope, String coordinate) {

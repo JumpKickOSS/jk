@@ -66,6 +66,23 @@ class JkBuildParserNullnessTest {
     }
 
     @Test
+    void a_test_path_of_its_own_gets_the_tools_when_the_tests_are_checked() {
+        String own = JkBuildParserFixtures.PROJECT + """
+
+                [test-processor-dependencies]
+                inherit = false
+
+                [nullness]
+                """;
+        assertThat(JkBuildParser.parse(own).dependencies().of(Scope.TEST_PROCESSOR))
+                .as("unchecked tests need no plugin")
+                .isEmpty();
+        assertThat(coordinates(JkBuildParser.parse(own + "tests = true\n"), Scope.TEST_PROCESSOR))
+                .as("compile-test runs Error Prone, so its own path carries it")
+                .containsExactly("com.google.errorprone:error_prone_core=2.51.0", "com.uber.nullaway:nullaway=0.14.3");
+    }
+
+    @Test
     void the_keys_name_the_packages_severity_extra_options_and_the_tests() {
         JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 

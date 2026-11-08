@@ -721,6 +721,45 @@ class JkBuildParserDependencyTest {
     }
 
     @Test
+    void test_processor_inherit_is_a_setting_not_a_dependency() {
+        JkBuild inheriting = JkBuildParser.parse(PROJECT + """
+                [test-processor-dependencies]
+                mapstruct-processor = "org.mapstruct:mapstruct-processor:1.6.3"
+                """);
+        assertThat(inheriting.dependencies().testProcessorsInherit())
+                .as("the default keeps the shared path on compile-test")
+                .isTrue();
+
+        JkBuild own = JkBuildParser.parse(PROJECT + """
+                [test-processor-dependencies]
+                inherit = false
+                mapstruct-processor = "org.mapstruct:mapstruct-processor:1.6.3"
+                """);
+        assertThat(own.dependencies().testProcessorsInherit()).isFalse();
+        assertThat(own.dependencies().of(Scope.TEST_PROCESSOR))
+                .extracting(Dependency::module)
+                .containsExactly("org.mapstruct:mapstruct-processor");
+
+        JkBuild none = JkBuildParser.parse(PROJECT + """
+                [test-processor-dependencies]
+                inherit = false
+                """);
+        assertThat(none.dependencies().testProcessorsInherit())
+                .as("the key alone is a whole table: compile-test declares no processor")
+                .isFalse();
+        assertThat(none.dependencies().of(Scope.TEST_PROCESSOR)).isEmpty();
+    }
+
+    @Test
+    void test_processor_inherit_must_be_a_boolean() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [test-processor-dependencies]
+                        inherit = "no"
+                        """))
+                .hasMessageContaining("test-processor-dependencies.inherit must be true or false");
+    }
+
+    @Test
     void versionless_dep_with_group_parses_as_platform_managed() {
         JkBuild b = JkBuildParser.parse("""
                 group = "com.example"

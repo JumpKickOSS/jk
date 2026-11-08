@@ -913,7 +913,14 @@
     },
     "test-processor-dependencies": {
       "type": "object",
-      "description": "[test-processor-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), \"managed\" on a catalog short name a platform BOM covers, or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",
+      "description": "[test-processor-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), \"managed\" on a catalog short name a platform BOM covers, or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in. The reserved key inherit (default true) says whether compile-test also runs [processor-dependencies]; inherit = false makes this table compile-test's whole processor path.",
+      "properties": {
+        "inherit": {
+          "type": "boolean",
+          "default": true,
+          "description": "true: compile-test runs [processor-dependencies] plus this table. false: this table alone, as Maven's testCompile runs only its own annotationProcessorPaths; with no entries, compile-test discovers processors on its classpath."
+        }
+      },
       "additionalProperties": {
         "oneOf": [
           {

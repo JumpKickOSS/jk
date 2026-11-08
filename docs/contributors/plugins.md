@@ -240,7 +240,7 @@ build fetches the pinned jars and resolves nothing, and a contribution the lock 
 makes the lock stale. `classpath-has` reads the module's locked rows, as it does for compiler args.
 A module that declares the same `group:artifact` itself keeps its own: in `[processor-dependencies]`
 the contribution steps aside from both compiles, in `[test-processor-dependencies]` from compile-test
-— the rule `[[contribute.platform-dependency]]` follows against `[platform-dependencies]`. The
+(under that table's `inherit = false` a contribution either table names stays off compile-test) — the rule `[[contribute.platform-dependency]]` follows against `[platform-dependencies]`. The
 build and `jk explain` derive the contributed jars from one body, so a forecast keys the
 `-processorpath` the build hands javac.
 

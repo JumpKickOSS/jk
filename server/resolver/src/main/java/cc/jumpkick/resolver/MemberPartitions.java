@@ -732,7 +732,7 @@ final class MemberPartitions {
             }
             if (!kept.isEmpty()) byScope.put(e.getKey(), kept);
         }
-        return dropped ? manifest.withDependencies(new JkBuild.Dependencies(byScope)) : manifest;
+        return dropped ? manifest.withDependencyScopes(byScope) : manifest;
     }
 
     /**

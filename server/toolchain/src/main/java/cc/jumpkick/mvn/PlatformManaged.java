@@ -36,6 +36,6 @@ final class PlatformManaged {
             }
             byScope.put(e.getKey(), deps);
         }
-        return build.withDependencies(new JkBuild.Dependencies(byScope));
+        return build.withDependencyScopes(byScope);
     }
 }

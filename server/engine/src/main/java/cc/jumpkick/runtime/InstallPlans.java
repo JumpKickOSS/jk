@@ -725,7 +725,7 @@ public final class InstallPlans {
             if (!kept.isEmpty()) by.put(scope, List.copyOf(kept.values()));
             else changed = true;
         }
-        return changed ? project.withDependencies(new JkBuild.Dependencies(by)) : project;
+        return changed ? project.withDependencyScopes(by) : project;
     }
 
     /**
