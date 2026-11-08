@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JavacLevel;
+import cc.jumpkick.host.ModulePath;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.JavadocMode;
@@ -115,12 +116,16 @@ public final class JavadocTool {
             lines.add("-classpath");
             lines.add(joined);
             // A module's descriptor reads its requires from the module path, as the compile's does:
-            // the classpath rides there too, a jar an automatic or explicit module, a classes tree
-            // with a descriptor an explicit one. Here and not in options(), which the cache keys on
-            // and which must not carry this machine's paths.
+            // the entries its requires reach ride there too, chosen as the compile chooses them.
+            // Here and not in options(), which the cache keys on and which must not carry this
+            // machine's paths.
             if (declaresModule(sources)) {
-                lines.add("--module-path");
-                lines.add(joined);
+                List<Path> modulePath = new ArrayList<>();
+                for (Path p : ModulePath.forCompile(sources, List.of(), classpath)) modulePath.add(p.toAbsolutePath());
+                if (!modulePath.isEmpty()) {
+                    lines.add("--module-path");
+                    lines.add(quote(Classpaths.join(modulePath)));
+                }
             }
         }
         for (Path src : sources) lines.add(quote(src.toAbsolutePath().toString()));

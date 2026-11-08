@@ -4,6 +4,7 @@ package cc.jumpkick.java.compiler;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JavacLevel;
+import cc.jumpkick.host.ModulePath;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.java.compiler.ScalaBridge.MixedScala;
 import cc.jumpkick.java.compiler.ZincSetup.ClasspathLookup;
@@ -909,8 +910,11 @@ public final class ZincJavaCompiler {
             opts.add(Classpaths.join(processorPath));
         }
         if (!classpath.isEmpty() && modular(sources, extra) && !containsFlag(extra, "--module-path")) {
-            opts.add("--module-path");
-            opts.add(Classpaths.join(classpath));
+            List<Path> modulePath = ModulePath.forCompile(sources, extra == null ? List.of() : extra, classpath);
+            if (!modulePath.isEmpty()) {
+                opts.add("--module-path");
+                opts.add(Classpaths.join(modulePath));
+            }
         }
         if (extra != null) opts.addAll(extra);
         return opts.toArray(String[]::new);
