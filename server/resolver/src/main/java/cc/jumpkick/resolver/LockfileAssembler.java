@@ -82,10 +82,16 @@ final class LockfileAssembler {
             String jkVersion,
             LockProgress progress)
             throws IOException, InterruptedException {
-        Map<String, EnumSet<Scope>> mainTags = tagScopes(project, solved.main(), LockRoots.MAIN_SCOPES, false);
-        Map<String, EnumSet<Scope>> testTags = tagScopes(project, solved.test(), LockRoots.TEST_SCOPES, true);
+        // The rule the classpath reader applies to the rows, here applied to the solve.
+        List<String> injected = TestEngines.injectedKeys(
+                project,
+                TestEngines.declaredTestKeys(project),
+                TestEngines.declaredClasspathKeys(project),
+                keys -> reachableFrom(keys, solved.main(), solved.test()));
+        Map<String, EnumSet<Scope>> mainTags = tagScopes(project, solved.main(), LockRoots.MAIN_SCOPES, List.of());
+        Map<String, EnumSet<Scope>> testTags = tagScopes(project, solved.test(), LockRoots.TEST_SCOPES, injected);
         Map<String, EnumSet<Scope>> processorTags =
-                tagScopes(project, solved.processor(), LockRoots.PROCESSOR_SCOPES, false);
+                tagScopes(project, solved.processor(), LockRoots.PROCESSOR_SCOPES, List.of());
 
         MavenRepo first = repos.repos().getFirst();
         String fallbackSource = first.name() + "+" + first.baseUrl();
@@ -178,7 +184,7 @@ final class LockfileAssembler {
     }
 
     private Map<String, EnumSet<Scope>> tagScopes(
-            JkBuild project, Resolution resolution, List<Scope> scopes, boolean includeJunitSeeds) {
+            JkBuild project, Resolution resolution, List<Scope> scopes, List<String> injected) {
         Map<String, EnumSet<Scope>> tagsByModule = new HashMap<>();
         if (resolution.modules().isEmpty()) return tagsByModule;
         for (Scope scope : scopes) {
@@ -187,11 +193,7 @@ final class LockfileAssembler {
                 // packageKey: kind=tests → g:a:jar:tests; else g:a:jar:
                 rootModules.add(d.packageKey());
             }
-            if (includeJunitSeeds && scope == Scope.TEST) {
-                // The rule the classpath reader applies to the rows, here applied to the solve.
-                rootModules.addAll(TestEngines.injectedKeys(
-                        project, TestEngines.declaredTestKeys(project), keys -> reachableFrom(keys, resolution)));
-            }
+            if (scope == Scope.TEST) rootModules.addAll(injected);
             if (rootModules.isEmpty()) continue;
             for (String module : reachableFrom(rootModules, resolution)) {
                 tagsByModule
@@ -364,6 +366,13 @@ final class LockfileAssembler {
         }
         return new IllegalStateException("artifact " + display + " not found at " + rel + " (tried: " + reposTried
                 + "); its POM exists, so check the coordinate and repositories");
+    }
+
+    /** The package keys {@code first} or {@code second} reaches from {@code roots}, each walked on its own. */
+    static Set<String> reachableFrom(Set<String> roots, Resolution first, Resolution second) {
+        Set<String> reached = reachableFrom(roots, first);
+        reached.addAll(reachableFrom(roots, second));
+        return reached;
     }
 
     /** BFS through the resolved graph starting from {@code roots}. */

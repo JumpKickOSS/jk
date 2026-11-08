@@ -845,12 +845,16 @@ public final class LockOrchestrator {
     }
 
     /**
-     * The roots jk adds to {@code project}'s test graph, read off the solved graph as Surefire reads
-     * the resolved test classpath ({@link TestEngines#injectedRoots(JkBuild, Function, Function)}).
+     * The roots jk adds to {@code project}'s test graph, read off the solved main and test graphs as
+     * Surefire reads the resolved test classpath ({@link TestEngines#injectedRoots(JkBuild,
+     * Function, Function)}); main's version of a module is the one that classpath holds.
      */
     private static ScopeSolves.TestRoots testRoots(JkBuild project) {
-        return test -> TestEngines.injectedRoots(
-                project, keys -> LockfileAssembler.reachableFrom(keys, test), ga -> versionOf(test, ga));
+        return (main, test) ->
+                TestEngines.injectedRoots(project, keys -> LockfileAssembler.reachableFrom(keys, main, test), ga -> {
+                    String held = versionOf(main, ga);
+                    return held != null ? held : versionOf(test, ga);
+                });
     }
 
     /** The version {@code graph} resolved for {@code group:artifact}'s jar, or null. */

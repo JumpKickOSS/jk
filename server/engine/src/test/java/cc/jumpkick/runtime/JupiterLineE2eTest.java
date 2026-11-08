@@ -111,8 +111,32 @@ class JupiterLineE2eTest {
         assertThat(tests.succeeded()).isEqualTo(1);
     }
 
+    @Test
+    void a_provided_jupiter_api_with_no_test_dependencies_runs_on_its_line(@TempDir Path tmp) throws Exception {
+        Path project = suite(tmp, "provided-api", "provided-dependencies", """
+                junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version = "5.12.2" }  # off the train: Helidon 27's Jupiter line is the point of this fixture
+                """);
+
+        BuildPlan plan = lockAndPlan(project);
+        BuildPlanResult result = plan.run();
+        assertThat(Files.readString(project.resolve("jk-lock.toml")))
+                .as(
+                        "Surefire reads the provided API off the test classpath: Jupiter, engine and launcher ride its line")
+                .contains("org.junit.jupiter:junit-jupiter:jar:\"\nversion  = \"5.12.2\"")
+                .contains("org.junit.jupiter:junit-jupiter-engine:jar:\"\nversion  = \"5.12.2\"")
+                .contains("org.junit.platform:junit-platform-launcher:jar:\"\nversion  = \"1.12.2\"");
+        assertThat(result.errors()).isEmpty();
+        TestSummary tests = plan.get(BuildPlanner.TEST_RESULT).orElseThrow();
+        assertThat(tests.succeeded()).isEqualTo(1);
+    }
+
     /** A project named {@code name} whose {@code [test-dependencies]} are {@code testDependencies}, with one passing test. */
     private static Path suite(Path tmp, String name, String testDependencies) throws IOException {
+        return suite(tmp, name, "test-dependencies", testDependencies);
+    }
+
+    /** A project named {@code name} whose {@code [table]} holds {@code dependencies}, with one passing test. */
+    private static Path suite(Path tmp, String name, String table, String dependencies) throws IOException {
         Path project = Files.createDirectories(tmp.resolve(name));
         Files.writeString(project.resolve("jk.toml"), """
                 name    = "%s"
@@ -120,8 +144,8 @@ class JupiterLineE2eTest {
                 version = "1.0.0"
                 java    = 25
 
-                [test-dependencies]
-                %s""".formatted(name, testDependencies) + REPOSITORIES);
+                [%s]
+                %s""".formatted(name, table, dependencies) + REPOSITORIES);
         Path test = Files.createDirectories(project.resolve("test/src/com/example"));
         Files.writeString(test.resolve("ApiTest.java"), """
                 package com.example;

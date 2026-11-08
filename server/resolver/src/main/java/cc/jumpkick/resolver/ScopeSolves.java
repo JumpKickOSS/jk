@@ -84,16 +84,17 @@ final class ScopeSolves {
     }
 
     /**
-     * The roots jk adds to the test graph, read off a solved test graph ({@link
+     * The roots jk adds to the test graph, read off the solved main graph and a solved test graph,
+     * which together are the test classpath ({@link
      * TestEngines#injectedRoots(cc.jumpkick.model.JkBuild, java.util.function.Function,
-     * java.util.function.Function)}). The graph is solved again with them only when it does not
-     * already hold each at the version it names.
+     * java.util.function.Function)}). The test graph is solved again with them only when it does
+     * not already hold each at the version it names.
      */
     interface TestRoots {
-        List<Dependency> derive(Resolution test);
+        List<Dependency> derive(Resolution main, Resolution test);
 
         /** Adds nothing: the test graph is solved once, with the roots it was given. */
-        TestRoots NONE = test -> List.of();
+        TestRoots NONE = (main, test) -> List.of();
     }
 
     /** How many times the test graph may be solved before its derived roots are taken as they stand. */
@@ -162,8 +163,10 @@ final class ScopeSolves {
             Resolution resolution = solveGraph(graph, graphRoots, main, inherited, prefs, progress);
             if (test) {
                 for (int pass = 1; ; pass++) {
-                    List<Dependency> derived =
-                            mainGoverned(testRoots.derive(resolution), Objects.requireNonNull(main), false);
+                    List<Dependency> derived = mainGoverned(
+                            testRoots.derive(Objects.requireNonNull(main), resolution),
+                            Objects.requireNonNull(main),
+                            false);
                     if (holds(resolution, derived) || pass == TEST_PASSES) {
                         settledTestRoots = withRoots(roots.test(), derived);
                         break;
