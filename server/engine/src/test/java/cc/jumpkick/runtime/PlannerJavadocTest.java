@@ -183,6 +183,63 @@ class PlannerJavadocTest {
         assertThat(PlannerJavadoc.verdict(JavadocMode.STRICT, r, true)).isEqualTo(PlannerJavadoc.Verdict.DOCUMENTED);
     }
 
+    /**
+     * A named module documents against the types an annotation processor generated into its own
+     * classes: javadoc builds the module from source, so they are reached by patching the module
+     * with its compiled classes, and strict javadoc passes without documenting them.
+     */
+    @Test
+    @Tag("integration")
+    void a_modular_module_documents_against_types_only_its_compiled_classes_hold(@TempDir Path tmp) throws Exception {
+        Path src = Files.createDirectories(tmp.resolve("lib/src/lib"));
+        Path info = Files.writeString(tmp.resolve("lib/src/module-info.java"), """
+                /** The library. */
+                module ex.gen { exports lib; }
+                """);
+        Path generated = Files.writeString(
+                Files.createDirectories(tmp.resolve("gen/lib")).resolve("Made.java"), """
+                package lib;
+                /** Generated. */
+                public class Made {
+                    /** Makes one. */
+                    public Made() {}
+                }
+                """);
+        Path type = Files.writeString(src.resolve("Uses.java"), """
+                package lib;
+                /** Uses a generated type. */
+                public class Uses {
+                    /** Makes one. */
+                    public Uses() {}
+                    /** @return a generated type */
+                    public Made made() { return new Made(); }
+                }
+                """);
+        Path classes = Files.createDirectories(tmp.resolve("lib/classes"));
+        assertThat(ToolProvider.getSystemJavaCompiler()
+                        .run(
+                                null,
+                                null,
+                                null,
+                                "-d",
+                                classes.toString(),
+                                info.toString(),
+                                type.toString(),
+                                generated.toString()))
+                .isZero();
+        Path out = Files.createDirectories(tmp.resolve("out-gen"));
+
+        JavadocTool.Result r = JavadocTool.run(
+                JavaHomes.runningJavaHome(),
+                out,
+                List.of(info, type),
+                List.of(classes),
+                JavadocTool.options(JavadocMode.STRICT, 0, List.of()),
+                tmp);
+
+        assertThat(r.success()).as(r.output()).isTrue();
+    }
+
     /** The running JDK plus every {@code ~/.jdks/<vendor>-<major>} line that ships a javadoc. */
     private static List<Path> javaHomes() {
         List<Path> homes = new ArrayList<>();

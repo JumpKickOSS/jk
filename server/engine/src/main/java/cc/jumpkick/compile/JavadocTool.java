@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JavacLevel;
+import cc.jumpkick.host.ModuleDescriptors;
 import cc.jumpkick.host.ModulePath;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -126,10 +127,34 @@ public final class JavadocTool {
                     lines.add("--module-path");
                     lines.add(quote(Classpaths.join(modulePath)));
                 }
+                lines.addAll(patchOwnClasses(sources, classpath));
             }
         }
         for (Path src : sources) lines.add(quote(src.toAbsolutePath().toString()));
         return lines;
+    }
+
+    /**
+     * javadoc builds the module it documents from source, and a named module does not read the
+     * classpath's copy of its own classes, so the types an annotation processor generated into them
+     * are not found. Patching the module with its compiled classes resolves them without
+     * documenting them, as javac's own output already holds them.
+     */
+    private static List<String> patchOwnClasses(List<Path> sources, List<Path> classpath) {
+        for (Path source : sources) {
+            Path name = source.getFileName();
+            if (name == null || !name.toString().equals("module-info.java")) continue;
+            ModulePath.Declared declared = ModulePath.declared(source);
+            if (declared == null) return List.of();
+            for (Path entry : classpath) {
+                var d = ModuleDescriptors.of(entry);
+                if (d.isPresent() && d.get().name().equals(declared.name())) {
+                    return List.of("--patch-module", quote(declared.name() + "=" + entry.toAbsolutePath()));
+                }
+            }
+            return List.of();
+        }
+        return List.of();
     }
 
     private static boolean declaresModule(List<Path> sources) {
