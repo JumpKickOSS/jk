@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,13 +44,17 @@ final class GeneratedProvenance {
 
     private final Path file;
 
-    private GeneratedProvenance(Path file) {
+    /** The resources copied into the class output: a generated file at one goes back to its resource. */
+    private final CopiedResources copied;
+
+    private GeneratedProvenance(Path file, CopiedResources copied) {
         this.file = file;
+        this.copied = copied;
     }
 
     /** The ledger of what processors generated into {@code classOutput} and its source output. */
     static GeneratedProvenance of(Path classOutput) {
-        return new GeneratedProvenance(ledgerFor(classOutput));
+        return new GeneratedProvenance(ledgerFor(classOutput), CopiedResources.of(classOutput));
     }
 
     /** {@code target/incremental/classes-generated.tsv} for {@code target/classes}: beside the references. */
@@ -88,6 +93,7 @@ final class GeneratedProvenance {
         Set<Path> present = canon.all(sources);
         Set<Path> recompiled = canon.all(compiledSources);
         Set<Path> regenerated = canon.all(newProv.keySet()); // this run's generated files
+        Map<Path, Path> copies = copied.byCanonical(canon);
 
         Map<Path, Set<Path>> merged = new LinkedHashMap<>();
         for (Map.Entry<Path, Set<Path>> e : prev.entrySet()) {
@@ -96,7 +102,7 @@ final class GeneratedProvenance {
             if (regenerated.contains(gen)) continue; // regenerated this run — newProv is authoritative
             if (origins.isEmpty()) continue; // nothing attributes it — drop the row
             if (origins.stream().allMatch(o -> recompiled.contains(o) || !present.contains(o))) {
-                deleteOutputs(gen, srcRoot, classRoot); // no origin can vouch for it any more → prune
+                remove(gen, srcRoot, classRoot, copies); // no origin can vouch for it any more → prune
             } else {
                 merged.put(gen, origins); // owned by a present source that was not recompiled — keep
             }
@@ -113,16 +119,41 @@ final class GeneratedProvenance {
      * every processor over every source, so each file that is still wanted is written again; one left
      * in place is a file a processor can read back through the {@code Filer} and merge this run's
      * rows into, which carries a deleted source's row into a full build and into the action cache
-     * that stores it. The map itself is left for {@link #reconcile} to rewrite.
+     * that stores it. A generated file at a copied resource's path goes back to the resource: that
+     * is what the processor reads and merges into. The map itself is left for {@link #reconcile}
+     * to rewrite.
      */
     void deletePrevious(@Nullable Path sourceOutput, Path classOutput) throws IOException {
         Canon canon = new Canon(sourceOutput == null ? List.of(classOutput) : List.of(sourceOutput, classOutput));
         Path srcRoot = sourceOutput == null ? null : canon.canonical(sourceOutput);
         Path classRoot = canon.canonical(classOutput);
+        Map<Path, Path> copies = copied.byCanonical(canon);
         for (Path gen : read(canon).keySet()) {
             boolean ours = gen.startsWith(classRoot) || (srcRoot != null && gen.startsWith(srcRoot));
-            if (ours) deleteOutputs(gen, srcRoot, classRoot);
+            if (ours) remove(gen, srcRoot, classRoot, copies);
         }
+    }
+
+    /**
+     * The files under {@code classOutput} a processor reads as resources this compile: every copied
+     * resource after a compile of every source ({@link #deletePrevious} put each back), else those
+     * no processor wrote in an earlier run, which still hold the resource's bytes. Reading one back
+     * is not a merge into last run's output.
+     */
+    Predicate<Path> pristine(@Nullable Path sourceOutput, Path classOutput, boolean full) throws IOException {
+        Canon canon = new Canon(sourceOutput == null ? List.of(classOutput) : List.of(sourceOutput, classOutput));
+        Set<Path> out = new HashSet<>(copied.byCanonical(canon).keySet());
+        if (!full) out.removeAll(read(canon).keySet());
+        if (out.isEmpty()) return p -> false;
+        return p -> out.contains(canon.canonical(p));
+    }
+
+    /** {@link #deleteOutputs}, except that a copied resource goes back to its resource's bytes. */
+    private static void remove(Path gen, @Nullable Path srcRoot, Path classRoot, Map<Path, Path> copies)
+            throws IOException {
+        Path source = copies.get(gen);
+        if (source != null) CopiedResources.reset(gen, source);
+        else deleteOutputs(gen, srcRoot, classRoot);
     }
 
     /**

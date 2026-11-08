@@ -12,7 +12,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Input to Java / mixed Java+Scala compile: sources, classpath, release, and optional {@code .class}
- * output. A null {@link #outputDir()} is check-only ({@code jk check}).
+ * output. A null {@link #outputDir()} is check-only ({@code jk check}). {@code resourcesDigest} is
+ * the digest of the main resources copied into the output ahead of a compile that runs processors,
+ * which can read them back; null when none run, or for a compile that has no such resources.
  */
 @Builder
 public record CompileRequest(
@@ -27,7 +29,8 @@ public record CompileRequest(
         List<Path> compilerClasspath,
         @Nullable Path scalaLibraryJar,
         @Nullable Path scalaCompilerJar,
-        @Nullable Path scalaBridgeJar) {
+        @Nullable Path scalaBridgeJar,
+        @Nullable String resourcesDigest) {
 
     public CompileRequest {
         Objects.requireNonNull(sources, "sources");
@@ -82,6 +85,7 @@ public record CompileRequest(
                 processorPath,
                 null,
                 List.of(),
+                null,
                 null,
                 null,
                 null);

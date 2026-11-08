@@ -73,7 +73,8 @@ final class PlannerBuildInfo {
                 .stage(BuildLogicAnchor.AFTER_RESOURCES.stage())
                 .label("Build info")
                 .kind(TaskKind.IO)
-                .requires(TaskNames.COPY_RESOURCES)
+                // After the compile, whose cache restore prunes what it does not own, and the resource copy.
+                .requires(PlannerResources.CLASSES_WHOLE)
                 .weight(W_RESOURCES)
                 .ticks(1)
                 .execute(ctx -> {

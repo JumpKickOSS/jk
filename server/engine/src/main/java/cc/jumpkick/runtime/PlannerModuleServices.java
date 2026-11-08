@@ -69,7 +69,8 @@ final class PlannerModuleServices {
                 .stage(BuildLogicAnchor.AFTER_RESOURCES.stage())
                 .label("Module services")
                 .kind(TaskKind.IO)
-                .requires(TaskNames.COPY_RESOURCES)
+                // After the compile that writes module-info.class, and the resource copy ahead of it.
+                .requires(PlannerResources.CLASSES_WHOLE)
                 .weight(W_RESOURCES)
                 .ticks(1)
                 .execute(ctx -> {

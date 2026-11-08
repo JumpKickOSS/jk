@@ -30,6 +30,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.ProcessedResources;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
@@ -674,20 +675,29 @@ public final class TaskForecaster {
                 .orElseGet(() -> JavaHomes.resolveJavaHome(dir));
     }
 
-    /** Main resource roots (or a module-root {@code jk-plugin.toml}) differ from copies under {@code classesDir}. */
+    /**
+     * Main resource roots (or a module-root {@code jk-plugin.toml}) differ from copies under {@code
+     * classesDir}. A copy a processor rewrote is the compile's while its resource is unchanged.
+     */
     static boolean mainResourcesOutOfSync(Path dir, JkBuild project, boolean compact, Path classesDir) {
         if (flattenedPluginCatalogPresent(classesDir)) return true;
+        Set<String> held;
+        try {
+            held = ProcessedResources.unchanged(classesDir);
+        } catch (IOException e) {
+            return true;
+        }
         for (Path ksp : PlannerKsp.liveOutputRoots(project, dir)) {
-            if (resourcesOutOfSync(ksp, classesDir)) return true;
+            if (resourcesOutOfSync(ksp, classesDir, held)) return true;
         }
         if (!FilteredResources.layoutRootFiltered(dir, project, compact)
-                && resourcesOutOfSync(ModuleLayout.mainResourcesDir(dir, compact), classesDir)) {
+                && resourcesOutOfSync(ModuleLayout.mainResourcesDir(dir, compact), classesDir, held)) {
             return true;
         }
         for (Path extra : FilteredResources.extraMainDirs(dir, project)) {
-            if (resourcesOutOfSync(extra, classesDir)) return true;
+            if (resourcesOutOfSync(extra, classesDir, held)) return true;
         }
-        if (FilteredResources.mainOutOfSync(dir, project, classesDir)) return true;
+        if (FilteredResources.mainOutOfSync(dir, project, classesDir, held)) return true;
         return pluginManifestOutOfSync(dir, classesDir);
     }
 
@@ -743,6 +753,11 @@ public final class TaskForecaster {
     }
 
     static boolean resourcesOutOfSync(Path resDir, Path outDir) {
+        return resourcesOutOfSync(resDir, outDir, Set.of());
+    }
+
+    /** As {@link #resourcesOutOfSync(Path, Path)}, passing over the tree-relative paths in {@code skip}. */
+    static boolean resourcesOutOfSync(Path resDir, Path outDir, Set<String> skip) {
         Map<String, String> projected = ProjectedFiles.at(resDir);
         if (projected != null) return projectedOutOfSync(projected, outDir);
         // Two readAttributes per resource, not six metadata ops. The source's come from the walk for
@@ -751,7 +766,8 @@ public final class TaskForecaster {
         boolean[] dirty = {false};
         try {
             PathUtil.forEachRegularFile(resDir, (source, attrs) -> {
-                if (dirty[0]) return;
+                if (dirty[0]
+                        || skip.contains(resDir.relativize(source).toString().replace('\\', '/'))) return;
                 Path copy = outDir.resolve(resDir.relativize(source));
                 Optional<BasicFileAttributes> target = PathUtil.stat(copy);
                 if (target.isEmpty() || !target.get().isRegularFile()) {

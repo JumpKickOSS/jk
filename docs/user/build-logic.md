@@ -42,9 +42,15 @@ Top-level files under `.jk/scripts/` (not recursive). Same stems for `.groovy` a
 | File | When |
 |------|------|
 | `before-compile.groovy` / `.kts` | Before compile (generated-source root) |
+| `after-resources.groovy` / `.kts` | After the main resources are copied, which is before compile |
 | `after-compile.groovy` / `.kts` | After compile |
-| `after-resources.groovy` / `.kts` | After resources |
 | `before-package.groovy` / `.kts` | Before package |
+
+The module stems run in that order. Main resources are copied before the compile, as Maven's
+`process-resources` runs before `compile` ([Layout](layout.md#when-resources-are-copied)), so
+`after-resources` runs after `before-compile` and before any compiled class exists: an
+`after-resources` script's output is in the class output when annotation processors read it, and
+a script that needs the compiled classes belongs in `after-compile`.
 
 Suffixes allowed: `before-compile-collections.groovy`. Underscores are aliases. A
 `.kts` and `.groovy` with the same stem name: **the `.kts` runs**, the `.groovy` is

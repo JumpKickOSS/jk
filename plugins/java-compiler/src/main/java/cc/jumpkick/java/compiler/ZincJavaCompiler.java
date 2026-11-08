@@ -272,7 +272,7 @@ public final class ZincJavaCompiler {
             if (sourceOutput != null) Files.createDirectories(sourceOutput);
             ZincWorkdir zinced = ZincWorkdir.of(workdir);
             zinced.discardAnalysisIfAggregating();
-            String processorDigest = ZincWorkdir.processorDigest(processorPath);
+            String processorDigest = ZincWorkdir.processorDigest(processorPath, classOutput);
             zinced.discardAnalysisIfProcessorsChanged(processorDigest);
 
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
@@ -333,6 +333,8 @@ public final class ZincJavaCompiler {
             Optional<AnalysisContents> prev = zinced.readAnalysis(store);
             phases.mark("read-analysis");
             clearOutput(prev, converter, classOutput, workdir, sourceOutput);
+            provenance.pristine(
+                    GeneratedProvenance.of(classOutput).pristine(sourceOutput, classOutput, prev.isEmpty()));
             phases.mark("clear-output");
             PreviousResult previous = prev.isPresent()
                     ? PreviousResult.of(prev.get().getAnalysis(), prev.get().getMiniSetup())
@@ -475,7 +477,7 @@ public final class ZincJavaCompiler {
                     "aggregating annotation processors",
                     allSources(sources, "aggregating annotation processors"));
         }
-        if (zinced.processorsChanged(processorPath)) {
+        if (zinced.processorsChanged(processorPath, classOutput)) {
             return new Plan(
                     true, "annotation processors changed", allSources(sources, "annotation processors changed"));
         }

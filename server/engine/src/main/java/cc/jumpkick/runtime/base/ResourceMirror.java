@@ -4,14 +4,19 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.host.TreeContent;
+import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -61,26 +66,57 @@ public final class ResourceMirror {
     public static Set<String> sync(
             List<Path> resourceDirs, Path classes, Path ledger, boolean adoptUnowned, Set<String> protect)
             throws IOException {
-        return mirror(resourceDirs, classes, ledger, adoptUnowned, protect).files();
+        return mirror(resourceDirs, Map.of(), classes, ledger, adoptUnowned, protect, Map.of())
+                .files();
     }
 
     /** As {@link #sync(List, Path, Path)}, answering how many files under {@code classes} it wrote or removed. */
     public static int syncChanges(List<Path> resourceDirs, Path classes, Path ledger) throws IOException {
-        return mirror(resourceDirs, classes, ledger, false, Set.of()).changes();
+        return mirror(resourceDirs, Map.of(), classes, ledger, false, Set.of(), Map.of())
+                .changes();
     }
 
-    private record Mirrored(Set<String> files, int changes) {}
+    /**
+     * What {@link #syncMain} did: how many files under the classes tree it wrote or removed, and
+     * the resource file each mirrored path was copied from (the last root holding it wins).
+     */
+    public record Main(int changes, Map<String, Path> sources) {}
+
+    /**
+     * The main-resource mirror, which runs before the compile: as {@link #syncChanges}, plus {@code
+     * files} (tree-relative path to a single file, laid after the roots — a module-root plugin
+     * manifest), leaving every {@code held} path alone while the resource it would be copied from
+     * still has the content sha {@code held} names. A processor rewrote that copy in the last
+     * compile, so the file there is the compile's output; a changed resource is copied again, and
+     * the compile, whose key names the resources, runs again over it.
+     */
+    public static Main syncMain(
+            List<Path> resourceDirs, Map<String, Path> files, Path classes, Path ledger, Map<String, String> held)
+            throws IOException {
+        Mirrored m = mirror(resourceDirs, files, classes, ledger, false, Set.of(), held);
+        return new Main(m.changes(), m.sources());
+    }
+
+    private record Mirrored(Set<String> files, int changes, Map<String, Path> sources) {}
 
     private static Mirrored mirror(
-            List<Path> resourceDirs, Path classes, Path ledger, boolean adoptUnowned, Set<String> protect)
+            List<Path> resourceDirs,
+            Map<String, Path> files,
+            Path classes,
+            Path ledger,
+            boolean adoptUnowned,
+            Set<String> protect,
+            Map<String, String> held)
             throws IOException {
         int changes = 0;
-        Set<String> current = new TreeSet<>();
+        Map<String, Path> sources = new TreeMap<>();
         for (Path dir : resourceDirs) {
             PathUtil.forEachRegularFile(
                     dir,
-                    (file, attrs) -> current.add(dir.relativize(file).toString().replace('\\', '/')));
+                    (file, attrs) -> sources.put(dir.relativize(file).toString().replace('\\', '/'), file));
         }
+        sources.putAll(files);
+        Set<String> current = new TreeSet<>(sources.keySet());
         Set<String> owned;
         if (Files.isRegularFile(ledger)) owned = previous(ledger);
         else if (adoptUnowned) {
@@ -96,11 +132,59 @@ public final class ResourceMirror {
                 if (parent != null) pruneEmptyParents(parent, classes);
             }
         }
-        for (Path dir : resourceDirs) changes += PathUtil.copyTree(dir, classes);
+        Set<Path> kept = kept(held, sources, classes);
+        for (Path dir : resourceDirs) changes += PathUtil.copyTree(dir, classes, d -> false, kept::contains);
+        for (var file : files.entrySet()) {
+            Path target = classes.resolve(file.getKey());
+            if (!kept.contains(target) && copyIfChanged(file.getValue(), target)) changes++;
+        }
         Path parent = ledger.getParent();
         if (parent != null) Files.createDirectories(parent);
         AtomicWrites.replaceIfChanged(ledger, current.isEmpty() ? "" : String.join("\n", current) + "\n");
-        return new Mirrored(current, changes);
+        return new Mirrored(current, changes, sources);
+    }
+
+    /** The {@code held} copies still on disk whose resource has the content sha recorded for it. */
+    private static Set<Path> kept(Map<String, String> held, Map<String, Path> sources, Path classes)
+            throws IOException {
+        Set<Path> out = new HashSet<>();
+        for (var e : held.entrySet()) {
+            Path source = sources.get(e.getKey());
+            Path target = classes.resolve(e.getKey());
+            if (source == null || !Files.isRegularFile(target)) continue;
+            if (FileHashMemo.contentHash(source).equals(e.getValue())) out.add(target);
+        }
+        return out;
+    }
+
+    /** Copy {@code source} over {@code target} unless it already has the source's size and mtime. */
+    private static boolean copyIfChanged(Path source, Path target) throws IOException {
+        BasicFileAttributes src = Files.readAttributes(source, BasicFileAttributes.class);
+        Optional<BasicFileAttributes> dst = PathUtil.stat(target);
+        if (dst.isPresent()
+                && dst.get().isRegularFile()
+                && dst.get().size() == src.size()
+                && dst.get().lastModifiedTime().equals(src.lastModifiedTime())) {
+            return false;
+        }
+        Path parent = target.getParent();
+        if (parent != null) Files.createDirectories(parent);
+        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+        Files.setLastModifiedTime(target, src.lastModifiedTime());
+        return true;
+    }
+
+    /**
+     * Lay every main resource the last {@link #syncMain} copied back into {@code classes}, after a
+     * compile started the tree over: the copy ran before the compile, so nothing else would put
+     * them back this build. A processor's rewrite of a copy went with the tree, so the ledger of
+     * those is dropped too.
+     */
+    public static void relay(Path classes, Path incremental) throws IOException {
+        for (var e : MirroredOutputs.sources(incremental).entrySet()) {
+            if (Files.isRegularFile(e.getValue())) copyIfChanged(e.getValue(), classes.resolve(e.getKey()));
+        }
+        ProcessedResources.clear(incremental);
     }
 
     /**

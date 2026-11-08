@@ -417,6 +417,16 @@ public final class PathUtil {
      * what a plugin's scratch directory is called.
      */
     public static int copyTree(Path from, Path to, Predicate<Path> skipSubtree, Copy... options) throws IOException {
+        return copyTree(from, to, skipSubtree, file -> false, options);
+    }
+
+    /**
+     * As {@link #copyTree(Path, Path, Predicate, Copy...)}, also leaving alone every target file
+     * {@code skipTarget} accepts: a file another step owns in the destination tree.
+     */
+    public static int copyTree(
+            Path from, Path to, Predicate<Path> skipSubtree, Predicate<Path> skipTarget, Copy... options)
+            throws IOException {
         if (!Files.isDirectory(from)) return 0;
         Set<Copy> opts = options.length == 0 ? Set.of() : EnumSet.copyOf(Arrays.asList(options));
         if (opts.contains(Copy.CLEAN_TARGET)) deleteRecursivelyOrThrow(to);
@@ -436,6 +446,7 @@ public final class PathUtil {
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE; // links, devices, sockets
                 Path target = to.resolve(from.relativize(file).toString());
+                if (skipTarget.test(target)) return FileVisitResult.CONTINUE;
                 if (!always && identical(target, attrs)) return FileVisitResult.CONTINUE;
                 if (preserve) {
                     Files.copy(file, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);

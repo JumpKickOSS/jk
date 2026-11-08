@@ -206,12 +206,13 @@ public final class PlannerPlugin {
             requires.add(TaskNames.RESOLVE_DEPS);
             requires.add(TaskNames.ENSURE_JDK);
             // A test-window step that reads the compiled classes waits for them to be complete.
-            if (step.inputs().contains("classes")) requires.add(TaskNames.COPY_RESOURCES);
+            if (step.inputs().contains("classes")) requires.add(PlannerResources.CLASSES_WHOLE);
             // One that reads the compiled tests waits for compile-test, which copies the test
             // resources in too.
             if (readsTestClasses) requires.add(TaskNames.COMPILE_TEST);
         } else {
-            requires.add(TaskNames.COPY_RESOURCES);
+            // After the compile and the resource copy ahead of it: the classes tree is whole.
+            requires.add(PlannerResources.CLASSES_WHOLE);
         }
         // Peer plugin outputs (In.stepOutput) — declared inputs ARE the dependency graph.
         for (String input : step.inputs()) {

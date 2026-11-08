@@ -298,10 +298,11 @@ final class WorkspaceRunPhase {
 
     /**
      * The steps whose success makes what this module's dependents compile against whole: every
-     * language compile in the plan, the classes assembler of a mixed module, and the resource
-     * copy — resources are not compiled against, but they land in the same tree, and a dependent
-     * that fingerprints the tree while they are being written would memoize a token under an
-     * identity no later build will see. {@code module-services} joins them: a dependent's processor
+     * language compile in the plan, the classes assembler of a mixed module, the resource copy
+     * ahead of them and the {@code after-compile} scripts after them — resources are not compiled
+     * against, but they land in the same tree, as a script's output may, and a dependent that
+     * fingerprints the tree while either is being written would memoize a token under an identity
+     * no later build will see. {@code module-services} joins them: a dependent's processor
      * path finds a sibling's processors through the services files it writes. A module that {@code relocates} packages is compiled
      * against through its {@code -all.jar}, so its {@code package-assembly} joins the set. A plan
      * with none of these (a sourceless root) publishes on completion.
@@ -316,6 +317,7 @@ final class WorkspaceRunPhase {
                 TaskNames.COMPILE_GROOVY,
                 TaskNames.ASSEMBLE_CLASSES,
                 TaskNames.COPY_RESOURCES,
+                TaskNames.BUILD_LOGIC_AFTER_COMPILE,
                 TaskNames.MODULE_SERVICES)) {
             if (present.contains(step)) wait.add(step);
         }

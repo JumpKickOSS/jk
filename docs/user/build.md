@@ -25,7 +25,10 @@ When something fails, run `jk results` — [Troubleshooting](troubleshooting.md)
 ## One lifecycle
 
 Every command that builds a project runs the same steps, in the same order, up to its goal:
-resolve and fetch, compile, test, package. A command that goes past packaging then does its own
+resolve and fetch, compile, test, package. Main resources are copied into the class output before
+the compile, as Maven's `process-resources` runs before `compile`, so an annotation processor reads
+them and what it writes at a resource's path is what the jar carries
+([Layout](layout.md#when-resources-are-copied)). A command that goes past packaging then does its own
 work on what the build just produced. No command needs another one run first: `jk install` is
 `jk build` and then the install, and `jk publish` is `jk build` and then the upload.
 
@@ -115,7 +118,10 @@ and Maven behave:
 
 A discovered processor and a declared one are the same thing downstream: the worker loads the
 processor path, records what each processor generates, and the compile action key hashes the
-path's full content. A classpath that registers no processor hands javac none, and the key hashes
+path's full content, and the main resources the processors can read from the class output.
+A processor that reads a copied resource and writes that path back — Helidon's manifest merge —
+merges into the resource, not into the file the last build left, so the module keeps its
+incremental compiles; a full compile puts the resource back before the processors run. A classpath that registers no processor hands javac none, and the key hashes
 it by ABI alone. `compile-main`, `compile-test`, fixtures and the guard suite all apply the rule.
 A Kotlin module whose processor path holds a KSP processor (Room, Hilt, Moshi's codegen) runs it
 in a KSP2 round before the Kotlin compile. The KSP2 tool is a pinned release, never the newest the

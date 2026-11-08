@@ -103,15 +103,6 @@ final class ZincWorkdir {
         }
     }
 
-    /** {@link #processorsChanged(String)} over the path itself; a path that cannot be read counts as changed. */
-    boolean processorsChanged(List<Path> processorPath) {
-        try {
-            return processorsChanged(processorDigest(processorPath));
-        } catch (IOException e) {
-            return true;
-        }
-    }
-
     /** A changed processor path invalidates every generated class, so drop the analysis outright. */
     void discardAnalysisIfProcessorsChanged(String processorDigest) throws IOException {
         if (processorsChanged(processorDigest)) Files.deleteIfExists(analysisFile);
@@ -129,6 +120,27 @@ final class ZincWorkdir {
     /** {@link #classpathDigest} over the processor path; the empty string when there is none. */
     static String processorDigest(List<Path> processorPath) throws IOException {
         return processorPath.isEmpty() ? "" : classpathDigest(processorPath);
+    }
+
+    /**
+     * {@link #processorDigest(List)} with the shapes of the resources copied into {@code
+     * classOutput} beside it: a processor reads them, so an edited resource changes what every
+     * processor run produces, and the analysis goes as for a changed processor.
+     */
+    static String processorDigest(List<Path> processorPath, Path classOutput) throws IOException {
+        String processors = processorDigest(processorPath);
+        return processors.isEmpty()
+                ? processors
+                : processors + CopiedResources.of(classOutput).stamp();
+    }
+
+    /** {@link #processorsChanged(String)} over {@link #processorDigest(List, Path)}; unreadable counts as changed. */
+    boolean processorsChanged(List<Path> processorPath, Path classOutput) {
+        try {
+            return processorsChanged(processorDigest(processorPath, classOutput));
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     /**

@@ -311,7 +311,7 @@ final class CorePlan {
         Task compileJava = PlannerCompile.compileJavaStep(cx, pluginDecls);
         Task compileKotlin = PlannerCompile.compileKotlinStep(cx, pluginDecls);
         Task compileGroovy = PlannerCompile.compileGroovyStep(cx, pluginDecls);
-        Task copyResources = PlannerResources.copyResourcesStep(cx);
+        Task copyResources = PlannerResources.copyResourcesStep(cx, pluginDecls);
         Task buildInfo =
                 parsedBuild != null && parsedBuild.build().buildInfo() != null ? PlannerBuildInfo.step(cx) : null;
         Task moduleServices =
@@ -441,13 +441,16 @@ final class CorePlan {
         return b.terminal(guardTerminal != null ? guardTerminal : TaskNames.RESOLVE_DEPS);
     }
 
-    /** Codegen, the language compiles, the guard lanes, and the classes assembler for mixed modules. */
+    /** Codegen, the resource copy, the language compiles, the guard lanes, and the classes assembler for mixed modules. */
     private void addCompile(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
         // BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
         b.addTask(PlannerResources.buildLogicBeforeCompileStep(cx));
         if (cx.ksp()) {
             b.addTask(PlannerKsp.kspStep(cx, pluginDecls));
         }
+        // Resources before any compile, as Maven's process-resources: a processor reads them from
+        // the class output, and what it writes at a resource's path is what the jar keeps.
+        b.addTask(s.copyResources());
         if (useGroovy) {
             b.addTask(s.compileGroovy());
         }
@@ -503,7 +506,7 @@ final class CorePlan {
     }
 
     /**
-     * `jk compile` stops here: lock → sync → compile (+ freshness stamps) and the resource copy,
+     * `jk compile` stops here: lock → sync → the resource copy → compile (+ freshness stamps),
      * no test or package. The resources are part of the tree, not of packaging: a dependent
      * compiles against this module's {@code target/classes}, a processor sibling is found through
      * the service registration the copy lands there, and a tree published without them is one
@@ -513,7 +516,6 @@ final class CorePlan {
      */
     private BuildPlan.Builder compileOnlyPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
-        b.addTask(s.copyResources());
         List<String> leaves = new ArrayList<>();
         boolean tests = in.compileTests();
         if (tests) {
@@ -533,14 +535,15 @@ final class CorePlan {
             b.addTask(s.writeStampGroovy());
             leaves.add(TaskNames.WRITE_STAMP_GROOVY);
         }
-        // Every stamp, the resource copy and (mixed) the classes assembler is an independent
+        // Every stamp, the after-compile scripts and (mixed) the classes assembler is an independent
         // leaf — a single-leaf terminal would prune the others, and a pruned language recompiles
         // every run. Join them so the closure keeps each one (same idiom as the deliver join).
         if (cx.mixed() || cx.mixedGroovy()) {
             leaves.add(TaskNames.ASSEMBLE_CLASSES);
         }
         if (PlannerVersions.declared(parsedBuild)) leaves.add(TaskNames.COMPILE_VERSIONS);
-        leaves.add(TaskNames.COPY_RESOURCES);
+        // After the compile and the resource copy before it.
+        leaves.add(PlannerResources.CLASSES_WHOLE);
         // A processor sibling is found through the services files module-services writes.
         if (s.moduleServices() != null) {
             b.addTask(s.moduleServices());
@@ -566,11 +569,10 @@ final class CorePlan {
         return b.terminal(BuildPlanner.COMPILE_JOIN);
     }
 
-    /** Resources, the test branch, the guard suite, the plugin steps and packaging, then the stamps. */
+    /** The after-compile scripts, the test branch, the guard suite, the plugin steps and packaging, then the stamps. */
     private void addTestsAndPackaging(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s, boolean skipJUnit) {
-        // Build-logic AFTER_COMPILE before resources / AFTER_RESOURCES.
+        // Build-logic AFTER_COMPILE: the resources and AFTER_RESOURCES ran before the compile.
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
-        b.addTask(s.copyResources());
         if (s.buildInfo() != null) b.addTask(s.buildInfo());
         if (s.moduleServices() != null) b.addTask(s.moduleServices());
         if (!skipJUnit) {
@@ -612,7 +614,7 @@ final class CorePlan {
         if (in.testOnly()) {
             if (gate != null) return b.terminal(gate);
             if (!skipJUnit) return b.terminal(TaskNames.RUN_TESTS);
-            return b.terminal(TaskNames.COPY_RESOURCES);
+            return b.terminal(PlannerResources.CLASSES_WHOLE);
         }
         return b.terminal(TaskNames.PACKAGE_JAR);
     }

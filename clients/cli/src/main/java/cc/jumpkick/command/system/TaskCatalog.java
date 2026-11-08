@@ -71,16 +71,16 @@ final class TaskCatalog {
             def(TaskNames.NODE_PACKAGE, "Package a node module's build output as a resource jar", null),
             def(TaskNames.NODE_STAGE, "Stage a JVM module's own node output for its jar or war", null),
             def(TaskNames.BUILD_LOGIC_BEFORE_COMPILE, "Project build-logic (BEFORE_COMPILE)", null),
+            def(
+                    TaskNames.COPY_RESOURCES,
+                    "Copy main resources + AFTER_RESOURCES build-logic, before compile",
+                    BuildLayout::classesDir,
+                    "resources"),
             def(TaskNames.COMPILE_JAVA, "Compile main Java sources", BuildLayout::classesDir, "compile"),
             def(TaskNames.COMPILE_KOTLIN, "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
             def(TaskNames.COMPILE_GROOVY, "Compile main Groovy sources", BuildLayout::groovyClassesDir),
             def(TaskNames.ASSEMBLE_CLASSES, "Merge language outputs into target/classes", BuildLayout::classesDir),
             def(TaskNames.BUILD_LOGIC_AFTER_COMPILE, "Project build-logic (AFTER_COMPILE)", BuildLayout::classesDir),
-            def(
-                    TaskNames.COPY_RESOURCES,
-                    "Copy main resources + AFTER_RESOURCES build-logic",
-                    BuildLayout::classesDir,
-                    "resources"),
             def(TaskNames.BUILD_INFO, "Write [build-info] git.properties into classes", BuildLayout::classesDir),
             def(
                     TaskNames.MODULE_SERVICES,

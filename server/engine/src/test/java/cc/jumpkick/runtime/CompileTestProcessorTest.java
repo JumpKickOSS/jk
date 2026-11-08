@@ -239,6 +239,7 @@ class CompileTestProcessorTest {
                 false,
                 false,
                 null,
+                null,
                 null);
 
         assertThat(PlannerCompile.mainCompileRequest(in).processorPath()).containsExactly(procDir, pluginProcDir);

@@ -3,9 +3,11 @@ package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.task.FileHashMemo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -156,5 +158,46 @@ class ResourceMirrorTest {
         assertThat(classes.resolve("gone.properties")).doesNotExist();
         assertThat(classes.resolve("META-INF/services/com.example.Spi")).isRegularFile();
         assertThat(classes.resolve("keep.properties")).isRegularFile();
+    }
+
+    /**
+     * The main mirror runs before the compile and leaves a copy the last compile's processor
+     * rewrote while its resource still has the sha the copy was seeded from; an edited resource is
+     * copied again. A single file beside the roots — a module-root plugin manifest — rides the
+     * ledger with them, and each mirrored path names the resource it came from.
+     */
+    @Test
+    void a_held_copy_is_left_until_its_resource_changes(@TempDir Path tmp) throws Exception {
+        Path classes = tmp.resolve("target/classes");
+        Path res = Files.createDirectories(tmp.resolve("resources/META-INF"));
+        Path resource = res.resolve("manifest");
+        Files.writeString(resource, "static\n");
+        Path plugin = Files.writeString(tmp.resolve("jk-plugin.toml"), "id = \"x\"\n");
+        Path ledger = tmp.resolve("target/incremental/copied-resources.txt");
+        Map<String, Path> files = Map.of("jk-plugin.toml", plugin);
+
+        ResourceMirror.Main first =
+                ResourceMirror.syncMain(List.of(tmp.resolve("resources")), files, classes, ledger, Map.of());
+        assertThat(first.sources())
+                .containsOnlyKeys("META-INF/manifest", "jk-plugin.toml")
+                .containsEntry("META-INF/manifest", resource);
+        assertThat(Files.readAllLines(ledger)).containsExactly("META-INF/manifest", "jk-plugin.toml");
+
+        Files.writeString(classes.resolve("META-INF/manifest"), "static\nmerged\n");
+        Map<String, String> held = Map.of("META-INF/manifest", FileHashMemo.contentHash(resource));
+        ResourceMirror.Main second =
+                ResourceMirror.syncMain(List.of(tmp.resolve("resources")), files, classes, ledger, held);
+        assertThat(second.changes()).isZero();
+        assertThat(classes.resolve("META-INF/manifest")).hasContent("static\nmerged");
+
+        Files.writeString(resource, "edited\n");
+        assertThat(ResourceMirror.syncMain(List.of(tmp.resolve("resources")), files, classes, ledger, held)
+                        .changes())
+                .isEqualTo(1);
+        assertThat(classes.resolve("META-INF/manifest")).hasContent("edited");
+
+        Files.delete(plugin);
+        ResourceMirror.syncMain(List.of(tmp.resolve("resources")), Map.of(), classes, ledger, held);
+        assertThat(classes.resolve("jk-plugin.toml")).doesNotExist();
     }
 }

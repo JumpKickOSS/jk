@@ -722,9 +722,10 @@ both scripts; the engine replaces that host so the running script's reply cannot
 request.
 Compiled `.java` / `.kt` under the logic dir is rejected. The engine action-caches each
 task’s `outDir` and merges into the classes tree (`BEFORE_COMPILE` is a generated-source
-root). No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,
-`AFTER_RESOURCES`, `BEFORE_PACKAGE` — each carries a stage wire name aligned with
-`BuildStage`. See [user build logic](../user/build-logic.md).
+root). No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_RESOURCES` (inside
+`copy-resources`, which runs before the language compiles as Maven's `process-resources` does),
+`AFTER_COMPILE`, `BEFORE_PACKAGE` — each carries a stage wire name aligned with `BuildStage`.
+See [user build logic](../user/build-logic.md).
 
 ### Coexistence: a `pom.xml` as the manifest (design)
 

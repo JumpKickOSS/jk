@@ -150,13 +150,14 @@ class HelidonQuickstartE2eTest {
 
     /**
      * The compile goal {@code jk dev} runs on every change rewrites the step's output, which the
-     * dev loop, {@code jk run} and the jar read. An edit to resources alone compiles nothing, so it
-     * keeps the real binding; a source edit leaves the empty one. A build whose inputs all match
+     * dev loop, {@code jk run} and the jar read. Helidon's processors read the module's resources
+     * from the class output, so a resource edit recompiles as a source edit does, and either
+     * leaves the empty binding. A build whose inputs all match
      * its memo still finds that empty binding is not its own output and restores the real one, or
      * the next {@code jk dev} or {@code jk run} starts on it with Helidon's warning.
      */
     @Test
-    void the_compile_goal_keeps_the_real_binding_on_a_resource_edit_and_the_next_build_restores_it(@TempDir Path tmp)
+    void the_compile_goal_leaves_the_empty_binding_on_an_edit_and_the_next_build_restores_it(@TempDir Path tmp)
             throws Exception {
         Path project = fixture(tmp, "quickstart-inject");
         Path cache = TestCaches.dir("helidon-quickstart-cache");
@@ -169,8 +170,8 @@ class HelidonQuickstartE2eTest {
         Files.writeString(yaml, config + "\n# edited\n");
         assertThat(plan(project, cache, true).run().errors()).isEmpty();
         assertThat(binding(project, "classes", "ApplicationBinding"))
-                .as("a resource edit compiles nothing: the binding stays the real one")
-                .doesNotContain(EMPTY_BINDING);
+                .as("Helidon's processors read the resources, so a resource edit recompiles like a source edit")
+                .contains(EMPTY_BINDING);
         Files.writeString(yaml, config);
         assertThat(plan(project, cache, true).run().errors()).isEmpty();
 

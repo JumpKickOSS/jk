@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import javax.tools.FileObject;
 import javax.tools.JavaFileManager;
 import javax.tools.JavaFileObject;
@@ -28,6 +29,9 @@ final class ApProvenance {
 
     /** Files a processor read back from an output location. */
     private final Set<Path> readBack = new HashSet<>();
+
+    /** Output files that hold a copied resource's bytes this compile ({@link GeneratedProvenance#pristine}). */
+    private Predicate<Path> pristine = p -> false;
 
     /** The manager javac compiles through, recording into this. */
     JavaFileManager manager(JavaFileManager fm, @Nullable Path sourceRoot, Function<Path, FileObject> files) {
@@ -54,13 +58,21 @@ final class ApProvenance {
      * service-registry.json} does. Its file is then a product of every source, whatever origins it
      * names — an incremental run would merge into rows whose sources are gone — so the module is
      * compiled in full from then on, with last run's generated files deleted first. A read of a file
-     * the processor does not write, a copied resource such as {@code persistence.xml}, is not one.
+     * the processor does not write, a copied resource such as {@code persistence.xml}, is not one;
+     * nor is a read of a copied resource it then rewrites, as Helidon merges its static manifest,
+     * while the copy still holds the resource's bytes: its merge base is the module's resource, not
+     * last run's output.
      */
     boolean merging() {
         for (Path read : readBack) {
-            if (generated.containsKey(read)) return true;
+            if (generated.containsKey(read) && !pristine.test(read)) return true;
         }
         return false;
+    }
+
+    /** The output files that hold a copied resource's bytes as this compile starts. */
+    void pristine(Predicate<Path> pristine) {
+        this.pristine = pristine;
     }
 
     void recordRead(FileObject read) {

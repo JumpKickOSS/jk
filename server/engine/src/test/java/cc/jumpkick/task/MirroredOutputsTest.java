@@ -117,6 +117,48 @@ class MirroredOutputsTest {
         assertThat(kept).containsOnlyKeys("com/example/App.class");
     }
 
+    /**
+     * Resources are copied before the compile, so a processor may read a copy and write that path
+     * back: such a copy is the compile's output, kept in its record and laid down by a restore. A
+     * copy that still holds its resource's bytes stays out of both.
+     */
+    @Test
+    void a_copy_a_processor_rewrote_is_the_compiles_and_a_restore_lays_it_down(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("target/classes"));
+        Path incremental = Files.createDirectories(tmp.resolve("target/incremental"));
+        Path res = Files.createDirectories(tmp.resolve("resources/META-INF"));
+        Files.writeString(res.resolve("manifest"), "static\n");
+        Files.writeString(res.resolve("plain.txt"), "plain\n");
+        Files.writeString(incremental.resolve(MirroredOutputs.MAIN_LEDGER), "META-INF/manifest\nMETA-INF/plain.txt\n");
+        MirroredOutputs.writeSources(
+                incremental,
+                Map.of("META-INF/manifest", res.resolve("manifest"), "META-INF/plain.txt", res.resolve("plain.txt")));
+        Files.createDirectories(classes.resolve("META-INF"));
+        Files.writeString(classes.resolve("META-INF/manifest"), "static\nmerged\n");
+        Files.writeString(classes.resolve("META-INF/plain.txt"), "plain\n");
+        Files.writeString(classes.resolve("App.class"), "class");
+        Path cache = tmp.resolve("cache");
+        Cas cas = new Cas(cache.resolve("cas"));
+        ActionCache ac = new ActionCache(cas, cache.resolve("actions"));
+        Map<String, String> snapshot = new TreeMap<>();
+        for (String rel : List.of("App.class", "META-INF/manifest", "META-INF/plain.txt")) {
+            snapshot.put(
+                    rel,
+                    cas.hashFromPath(cas.put(Files.readAllBytes(classes.resolve(rel))))
+                            .orElseThrow());
+        }
+
+        ActionCache.ActionRecord record =
+                ac.storeWithOutputs("compile-main", "key-1", Map.of(), MirroredOutputs.without(classes, snapshot));
+        assertThat(record.outputs()).containsOnlyKeys("App.class", "META-INF/manifest");
+
+        Files.writeString(classes.resolve("META-INF/manifest"), "static\n");
+        assertThat(ac.restore(MirroredOutputs.omitting(classes, record), classes))
+                .isTrue();
+        assertThat(classes.resolve("META-INF/manifest")).hasContent("static\nmerged");
+        assertThat(classes.resolve("META-INF/plain.txt")).hasContent("plain");
+    }
+
     @Test
     void a_directory_that_is_not_a_classes_tree_is_unchanged(@TempDir Path tmp) throws Exception {
         Path out = Files.createDirectories(tmp.resolve("kotlin/main"));

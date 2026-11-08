@@ -71,7 +71,7 @@ class PluginTestJvmArgsTest {
         assertThat(PlannerPlugin.pluginWindow(model)).isEqualTo(BuildStage.TEST);
         assertThat(PlannerPlugin.pluginRequires(model, null))
                 .as("the compiled classes it reads are complete before it runs")
-                .contains(TaskNames.COPY_RESOURCES);
+                .contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
     }
 
     @Test

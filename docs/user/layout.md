@@ -109,6 +109,23 @@ from `project.groupId`, `project.artifactId` and `project.version`, which jk set
 files that are not UTF-8 are copied as they are. A layout root may be listed as filtered.
 `jk import` writes the table from a POM's `<resources>`.
 
+### When resources are copied
+
+Main resources are copied into `target/classes/` **before** the main compile, as Maven's
+`process-resources` runs before `compile`. An annotation processor can therefore read a resource
+from the class output through the `Filer`, and a file it writes at a resource's path replaces the
+copy: the jar carries what the processor wrote. Helidon relies on this — its codegen reads a
+module's static `META-INF/helidon/manifest` and writes back one that also lists the service
+registry it generated.
+
+A compile that runs processors is keyed on the main resources too, so editing or deleting one
+compiles the module again and the processor merges into the new bytes; a compile that runs no
+processor ignores them. While a resource is unchanged, the copy leaves the file a processor
+wrote at its path, a compile restored from the action cache lays that file down again, and
+`jk explain` does not count it as resource drift.
+
+Test resources are copied into `target/test-classes/` by the test compile, after it compiles.
+
 ## Related
 
 [Projects](projects.md) · [Workspaces](workspaces.md) · [IDE](ide.md)

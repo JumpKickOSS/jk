@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 class BuildLogicAnchorGatingTest {
 
     @Test
-    void before_package_requires_resources_and_is_required_by_package(@TempDir Path dir) throws Exception {
+    void before_package_requires_the_classes_tree_and_is_required_by_package(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
         BuildPlan p = plan(project, dir.resolve("cache"), false);
         Map<String, Task> byName = index(p);
@@ -50,15 +50,20 @@ class BuildLogicAnchorGatingTest {
         assertThat(compileJava.requires()).contains(TaskNames.BUILD_LOGIC_BEFORE_COMPILE);
         assertThat(preCompile.stage().wireName()).isEqualTo("generate");
 
+        // Resources (and AFTER_RESOURCES) are copied before the compile, as Maven's
+        // process-resources: a processor reads them from the class output.
+        assertThat(resources.requires())
+                .contains(TaskNames.BUILD_LOGIC_BEFORE_COMPILE)
+                .doesNotContain(TaskNames.COMPILE_JAVA, TaskNames.BUILD_LOGIC_AFTER_COMPILE);
+        assertThat(compileJava.requires()).contains(TaskNames.COPY_RESOURCES);
         // AFTER_COMPILE is ordered before consumers that write/read main classes.
-        assertThat(resources.requires()).contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
         assertThat(compileTest.requires()).contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
-        assertThat(after.requires()).isNotEmpty(); // mainCompile at minimum
+        assertThat(after.requires()).contains(TaskNames.COMPILE_JAVA, TaskNames.COPY_RESOURCES);
 
-        // BEFORE_PACKAGE is not level-0: needs resources — and since never tests, so
+        // BEFORE_PACKAGE is not level-0: needs the whole classes tree — and never tests, so
         // artifact creation overlaps the suite. Tests stay scheduled via the terminal join.
         assertThat(before.requires())
-                .contains(TaskNames.COPY_RESOURCES)
+                .contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
                 .doesNotContain(TaskNames.RUN_TESTS)
                 .doesNotContain(TaskNames.PARSE_BUILD);
 
@@ -75,7 +80,7 @@ class BuildLogicAnchorGatingTest {
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
         assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);
         assertThat(task(byName, TaskNames.BUILD_LOGIC_BEFORE_PACKAGE).requires())
-                .contains(TaskNames.COPY_RESOURCES)
+                .contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
                 .doesNotContain(TaskNames.RUN_TESTS);
         assertThat(task(byName, TaskNames.PACKAGE_JAR).requires()).contains(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
     }

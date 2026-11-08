@@ -26,6 +26,7 @@ class PluginTaskStageTest {
             "ensure-jdk", BuildStage.RESOLVE,
             "build-logic-before-compile", BuildStage.GENERATE,
             "copy-resources", BuildStage.COMPILE,
+            "build-logic-after-compile", BuildStage.COMPILE,
             "run-tests", BuildStage.TEST,
             "package-jar", BuildStage.PACKAGE);
 
