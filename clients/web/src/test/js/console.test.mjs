@@ -385,7 +385,9 @@ test('a painted action or decision frame leaves a jk-console-event mark saying w
     vm.applyConsoleEvent({ type: 'action', data: { session: 'mcp-3f9a', action: { seq: 1, at: Date.now() - 30, millis: 10 } } });
     vm.applyConsoleEvent({ type: 'action', data: { session: 'other', action: { seq: 2, at: Date.now(), millis: 0 } } });
     vm.applyConsoleEvent({ type: 'decision', data: { id: 'd1', createdAt: Date.now(), state: 'open' } });
-    await new Promise((r) => setTimeout(r, 20));
+    // Each mark lands two timer turns after its frame; wait for the marks, not a fixed time, so a
+    // stalled event loop cannot run the assertion before they land.
+    for (let turns = 0; marks.length < 3 && turns < 1000; turns++) await new Promise((r) => setTimeout(r, 1));
     assert.deepEqual(marks.map((m) => m.name), ['jk-console-event', 'jk-console-event', 'jk-console-event']);
     const [mine, other, decision] = marks.map((m) => m.detail);
     assert.deepEqual([mine.kind, mine.id, mine.shown], ['action', 'mcp-3f9a#1', true]);
@@ -394,7 +396,9 @@ test('a painted action or decision frame leaves a jk-console-event mark saying w
     assert.deepEqual([decision.kind, decision.id, decision.shown], ['decision', 'd1', true]);
     globalThis.document = { hidden: true };
     vm.applyConsoleEvent({ type: 'decision', data: { id: 'd2', createdAt: Date.now(), state: 'open' } });
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
     assert.equal(marks.length, 3, 'a hidden tab marks nothing');
   } finally {
     globalThis.performance = saved.performance;
