@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -56,6 +58,22 @@ class SuiteReadsTest {
         assertThat(d.covers(Set.of(a, b), Set.of(), false)).isFalse();
         assertThat(d.covers(Set.of(), Set.of("git status"), false)).isFalse();
         assertThat(d.covers(Set.of(), Set.of(), true)).isFalse();
+    }
+
+    /**
+     * A directory made outside the workspace half a second before the run is not the run's own: only a
+     * file system that stamps whole seconds earns a second of slack.
+     */
+    @Test
+    void a_directory_made_just_before_the_run_is_not_taken_for_the_runs_own() {
+        long started = 1_794_165_723_818L;
+        FileTime fine = FileTime.from(started - 492, TimeUnit.MILLISECONDS);
+        FileTime whole = FileTime.from((started - 492) / 1_000, TimeUnit.SECONDS);
+        assertThat(fine.toMillis()).isLessThan(started - SuiteReads.birthSlackMillis(fine));
+        assertThat(whole.toMillis())
+                .as("a whole-second stamp may read up to a second early")
+                .isGreaterThanOrEqualTo(started - SuiteReads.birthSlackMillis(whole));
+        assertThat(SuiteReads.birthSlackMillis(fine)).isEqualTo(SuiteReads.FINE_BIRTH_SLACK_MILLIS);
     }
 
     @Test

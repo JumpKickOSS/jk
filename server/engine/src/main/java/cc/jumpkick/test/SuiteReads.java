@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingFile;
 import org.jspecify.annotations.Nullable;
@@ -220,6 +222,19 @@ public final class SuiteReads {
         return out;
     }
 
+    /**
+     * How far before the run's start a birth time may read and still be the run's own: a second where
+     * the file system stamps whole seconds, else a few clock ticks, since the kernel stamps files from
+     * a clock that lags ours by up to a tick. A second everywhere took a directory a test or a script
+     * made just before the build for one the run made, and never keyed what the suite read in it.
+     */
+    static long birthSlackMillis(FileTime born) {
+        return born.to(TimeUnit.NANOSECONDS) % 1_000_000_000L == 0 ? 1_000 : FINE_BIRTH_SLACK_MILLIS;
+    }
+
+    /** {@link #birthSlackMillis} on a file system that stamps finer than a second. */
+    static final long FINE_BIRTH_SLACK_MILLIS = 20;
+
     /** Whether an ancestor of {@code f} outside {@code workspace} came into being once the run had started. */
     static boolean madeDuringRun(Path f, Path workspace, long startedMillis, Map<Path, Boolean> memo) {
         Path ws = workspace.toAbsolutePath().normalize();
@@ -228,11 +243,9 @@ public final class SuiteReads {
             Boolean known = memo.get(dir);
             if (known == null) {
                 try {
-                    // A second of slack: a file system's creation clock is coarser than ours.
-                    known = Files.readAttributes(dir, BasicFileAttributes.class)
-                                    .creationTime()
-                                    .toMillis()
-                            >= startedMillis - 1_000;
+                    FileTime born =
+                            Files.readAttributes(dir, BasicFileAttributes.class).creationTime();
+                    known = born.toMillis() >= startedMillis - birthSlackMillis(born);
                 } catch (IOException gone) {
                     // Gone already: only the run's own scratch is reaped before it ends.
                     known = true;
