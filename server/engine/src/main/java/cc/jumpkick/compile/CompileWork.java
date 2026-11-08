@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import java.nio.file.Path;
@@ -81,10 +82,20 @@ final class CompileWork {
         return new CompileWork(req, true, heapBytes);
     }
 
-    /** This item is {@code job}'s, asked for under {@code session}. */
+    /**
+     * The shell of the request that asked for this item, captured on the request's thread. A lane
+     * writes the item's spec on its own thread, where only the session is rebound; a diagnostic the
+     * caller's shell set ({@code JK_COMPILE_PHASES}) is read from this.
+     */
+    @Nullable
+    Map<String, String> shell;
+
+    /** This item is {@code job}'s, asked for under {@code session} by the shell bound now. */
     CompileWork forJob(long job, Session session) {
         this.job = job;
         this.session = session;
+        RequestShell bound = RequestShell.current();
+        this.shell = bound == null ? null : bound.vars();
         return this;
     }
 

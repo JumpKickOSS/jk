@@ -4,15 +4,18 @@ package cc.jumpkick.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.WarmLinger;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
@@ -39,6 +42,32 @@ class JavaCompilerHostLanesTest {
         JvmOptions.resetSharedPlanForTests();
         JavaCompilerHost.overrideLaneBudgetForTests(0);
         WarmLinger.forTests(-1);
+    }
+
+    /**
+     * A lane writes the spec on its own thread. The request's shell must still reach it: the caller's
+     * JK_COMPILE_PHASES is how anyone learns where a compile's time went.
+     */
+    @Test
+    void a_pooled_compile_writes_the_phases_the_callers_shell_asked_for(@TempDir Path dir) throws Exception {
+        Path worker = workerJar();
+        JavaCompilerHost.overrideLaneBudgetForTests(1);
+        ForkedJavac.Request req = moduleRequest(dir, worker, "phased");
+        Path phases = dir.resolve("phases.log");
+        long job = 9104L;
+        JobWorkers.open(job);
+        try {
+            ForkedJavac.Result r = RequestShell.where(
+                    Map.of(PluginProtocol.COMPILE_PHASES_ENV, phases.toString()),
+                    () -> JkThreads.io().submit(() -> ForkedJavac.compile(req)).get(120, TimeUnit.SECONDS));
+            assertThat(r.success()).as("%s", r.diagnostics()).isTrue();
+        } finally {
+            JavaCompilerHost.end(job);
+            JobWorkers.shutdownForRequest(job, 0L);
+            JobWorkers.close();
+        }
+        assertThat(phases).exists();
+        assertThat(Files.readString(phases)).contains("zinc-compile=");
     }
 
     @Test

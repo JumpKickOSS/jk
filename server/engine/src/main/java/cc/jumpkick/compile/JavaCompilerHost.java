@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.config.AvailableCpus;
+import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
@@ -175,6 +176,8 @@ public final class JavaCompilerHost {
         ForkedJavac.Request req = Objects.requireNonNull(failed.req, "a retried item carries its request");
         CompileWork again = (failed.plan ? CompileWork.plan(req, heapBytes) : CompileWork.compile(req, heapBytes))
                 .forJob(failed.job, failed.session);
+        // The retry is queued from a lane's thread, which has no request shell: keep the original's.
+        again.shell = failed.shell;
         again.ranOut.addAll(failed.ranOut);
         if (failed.heapBytes != null) again.ranOut.add(failed.heapBytes);
         HeapScope.Key key = WorkerHeap.key(req);
@@ -1028,7 +1031,9 @@ public final class JavaCompilerHost {
                 try {
                     next.waitNanos = CLOCK.nanos() - next.enqueuedNanos;
                     ForkedJavac.Request req = next.req;
-                    next.spec = SessionContext.where(next.session, () -> owner.specs.write(req));
+                    Map<String, String> shell = next.shell;
+                    next.spec = SessionContext.where(
+                            next.session, () -> RequestShell.where(shell, () -> owner.specs.write(req)));
                     transcript.reset();
                     inflight.set(next);
                     // The worker may have died during the spec write. inflight is published before
