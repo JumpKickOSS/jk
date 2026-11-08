@@ -285,6 +285,7 @@ class McpElicitationTest {
             case McpElicitResult.Cancelled c -> "cancel";
             case McpElicitResult.Unsupported u -> "unsupported: " + u.reason();
             case McpElicitResult.TimedOut t -> "timed out";
+            case McpElicitResult.Closed c -> "closed";
             case McpElicitResult.Failed f -> "failed: " + f.message();
         };
     }

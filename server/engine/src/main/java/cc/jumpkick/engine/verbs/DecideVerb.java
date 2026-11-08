@@ -72,11 +72,10 @@ public final class DecideVerb implements HostedVerb {
         if (DecisionsRequest.LIST.equals(req.action())) return new DecisionsAck(null, list, null);
         String id = req.id();
         if (id == null || id.isBlank()) return DecisionsAck.error("name the decision to answer");
-        if (!req.tty()) return DecisionsAck.error("jk decide answers only at a terminal");
         DecisionQueue.Result result =
                 switch (req.action()) {
-                    case DecisionsRequest.ACCEPT -> queue.accept(id, answers(req.answers()), DecisionSurface.CLI, null);
-                    case DecisionsRequest.DECLINE -> queue.decline(id, DecisionSurface.CLI, null);
+                    case DecisionsRequest.ACCEPT -> queue.accept(id, answers(req.answers()), DecisionSurface.CLI);
+                    case DecisionsRequest.DECLINE -> queue.decline(id, DecisionSurface.CLI);
                     default -> throw new IllegalArgumentException("unknown decisions action: " + req.action());
                 };
         return switch (result) {
@@ -88,7 +87,6 @@ public final class DecideVerb implements HostedVerb {
                         list,
                         MiniJson.write(a.decision().toMap()));
             case DecisionQueue.Result.Missing m -> DecisionsAck.error("no decision " + id);
-            case DecisionQueue.Result.Refused r -> DecisionsAck.error(r.reason());
             case DecisionQueue.Result.Invalid i -> DecisionsAck.error(i.problems());
         };
     }

@@ -5,25 +5,20 @@ import java.util.Locale;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
-/** Where an answer came from. Only the host's two rungs and a terminal may settle a trust-changing decision. */
+/** Where an answer came from. Every surface may give any answer. */
 public enum DecisionSurface {
     /** The agent's host rendered the form (MCP form elicitation). */
     HOST_FORM,
-    /** The page the agent's host opened by URL elicitation, holding the link's one-time key. */
+    /** The agent's host, declining or dismissing the URL elicitation that links to the decision. */
     HOST_URL,
-    /** The dashboard, with nothing but the bearer token behind it. */
+    /** The dashboard: the decision page, from the banner, a notification or a link. */
     DASHBOARD,
-    /** {@code jk decide} in a terminal. */
+    /** {@code jk decide}. */
     CLI;
 
     /** {@code host-form}, {@code host-url}, {@code dashboard} or {@code cli}. */
     public String wire() {
         return name().toLowerCase(Locale.ROOT).replace('_', '-');
-    }
-
-    /** True when an answer from here proves a person decided, so it may settle a trust-changing decision. */
-    public boolean provesAPerson() {
-        return this != DASHBOARD;
     }
 
     public static Optional<DecisionSurface> parse(@Nullable String wire) {

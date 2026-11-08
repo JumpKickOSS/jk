@@ -15,9 +15,8 @@ public final class Decisions {
     /** The dashboard link to a decision; null while the dashboard is not serving. */
     @FunctionalInterface
     public interface Links {
-        /** {@code hostKey} rides only the link handed to the host by URL elicitation; null for every other. */
         @Nullable
-        String link(String id, @Nullable String hostKey);
+        String link(String id);
     }
 
     private final DecisionQueue queue;
@@ -37,8 +36,8 @@ public final class Decisions {
         return queue;
     }
 
-    public @Nullable String link(String id, @Nullable String hostKey) {
-        return links.link(id, hostKey);
+    public @Nullable String link(String id) {
+        return links.link(id);
     }
 
     public DecisionAlerts alerts() {

@@ -18,9 +18,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code /api/decisions}: bearer-gated, listed and answered from the dashboard. Holding the bearer
- * token is not proof that a person decided (an agent can read it and drive a browser), so a
- * token-only {@code POST} declines a trust-changing decision but cannot accept it.
+ * {@code /api/decisions}: bearer-gated, listed and answered from the dashboard, which accepts or
+ * declines any decision; every change, from any surface, is an SSE {@code decision} event.
  */
 class HttpDecisionsApiTest extends HttpEngineServerHarness {
 
@@ -31,13 +30,12 @@ class HttpDecisionsApiTest extends HttpEngineServerHarness {
         server.setDecisions(queue);
     }
 
-    private Decision open(String kind, boolean trust) {
+    private Decision open(String kind) {
         return queue.open(new DecisionQueue.Ask(
                 kind,
                 "Apply 1 move?",
                 List.of("jackson 2.18.2 → 3.0.0"),
                 DecisionForms.confirm(kind, "Apply 1 move?", "Yes"),
-                trust,
                 null,
                 "claude-code 3f9a",
                 null,
@@ -56,20 +54,20 @@ class HttpDecisionsApiTest extends HttpEngineServerHarness {
     }
 
     @Test
-    void a_bearer_token_post_cannot_accept_a_trust_changing_decision() throws Exception {
-        Decision d = open("update", true);
+    void the_dashboard_accepts_any_decision_with_the_bearer_token_alone() throws Exception {
+        Decision d = open("update");
 
         HttpResponse<String> res = post(d.id(), "{\"action\":\"accept\",\"answers\":{\"answer\":\"yes\"}}", token());
 
-        assertThat(res.statusCode()).isEqualTo(403);
-        assertThat(MiniJson.str(MiniJson.parse(res.body()), "error")).contains("trusts", "jk decide " + d.id());
-        assertThat(queue.find(d.id()).orElseThrow().open()).isTrue();
-        assertThat(queue.spend(d.id())).isFalse();
+        assertThat(res.statusCode()).isEqualTo(200);
+        assertThat(MiniJson.str(MiniJson.parse(res.body()), "state")).isEqualTo("accepted");
+        assertThat(queue.find(d.id()).orElseThrow().answeredBy()).isEqualTo(DecisionSurface.DASHBOARD);
+        assertThat(queue.spend(d.id())).as("the operation proceeds, once").isTrue();
     }
 
     @Test
-    void the_dashboard_declines_a_trust_changing_decision_and_a_late_answer_gets_409() throws Exception {
-        Decision d = open("update", true);
+    void the_dashboard_declines_a_decision_and_a_late_answer_gets_409() throws Exception {
+        Decision d = open("update");
         HttpResponse<String> declined = post(d.id(), "{\"action\":\"decline\"}", token());
         assertThat(declined.statusCode()).isEqualTo(200);
         assertThat(MiniJson.str(MiniJson.parse(declined.body()), "state")).isEqualTo("declined");
@@ -80,18 +78,8 @@ class HttpDecisionsApiTest extends HttpEngineServerHarness {
     }
 
     @Test
-    void the_page_the_host_opened_holds_the_key_that_accepts_a_trust_changing_decision() throws Exception {
-        Decision d = open("update", true);
-        String body =
-                "{\"action\":\"accept\",\"answers\":{\"answer\":\"yes\"},\"key\":\"" + queue.hostKey(d.id()) + "\"}";
-        HttpResponse<String> res = post(d.id(), body, token());
-        assertThat(res.statusCode()).isEqualTo(200);
-        assertThat(queue.find(d.id()).orElseThrow().answeredBy()).isEqualTo(DecisionSurface.HOST_URL);
-    }
-
-    @Test
-    void any_other_decision_is_answered_from_the_dashboard_and_bad_answers_are_refused() throws Exception {
-        Decision d = open("disk-clean", false);
+    void bad_answers_are_refused() throws Exception {
+        Decision d = open("disk-clean");
         assertThat(post(d.id(), "{\"action\":\"accept\",\"answers\":{\"answer\":\"maybe\"}}", token())
                         .statusCode())
                 .isEqualTo(400);
@@ -108,7 +96,7 @@ class HttpDecisionsApiTest extends HttpEngineServerHarness {
     @Test
     void the_list_and_one_decision_are_served_and_every_change_is_an_sse_decision_event() throws Exception {
         Iterator<String> lines = openEvents("");
-        Decision d = open("update", true);
+        Decision d = open("update");
 
         String data = awaitSseEvent(lines, "decision");
         assertThat(MiniJson.str(MiniJson.parse(data.substring("data: ".length())), "id"))
@@ -121,9 +109,14 @@ class HttpDecisionsApiTest extends HttpEngineServerHarness {
             Map<?, ?> row = (Map<?, ?>) r;
             assertThat(row.get("question")).isEqualTo("Apply 1 move?");
             assertThat(row.get("command")).isEqualTo("jk decide " + d.id());
-            assertThat(row.toString()).doesNotContain(String.valueOf(queue.hostKey(d.id())));
         });
         assertThat(get("/api/decisions/" + d.id()).statusCode()).isEqualTo(200);
         assertThat(get("/api/decisions/nope").statusCode()).isEqualTo(404);
+
+        queue.accept(d.id(), Map.of("answer", "yes"), DecisionSurface.CLI);
+        String settled = awaitSseEvent(lines, "decision");
+        assertThat(MiniJson.str(MiniJson.parse(settled.substring("data: ".length())), "state"))
+                .as("an answer from another surface reaches the banner, which drops the decision")
+                .isEqualTo("accepted");
     }
 }

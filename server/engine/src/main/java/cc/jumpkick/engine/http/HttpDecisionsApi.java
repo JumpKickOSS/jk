@@ -15,9 +15,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code GET /api/decisions}, {@code GET /api/decisions/<id>} and {@code POST /api/decisions/<id>}:
- * the decision queue read and answered from the dashboard. A post is the dashboard's answer, and
- * the queue refuses it ({@code 403}) for a trust-changing accept unless it carries the decision's
- * host key, which only the link handed to the agent's host by URL elicitation holds.
+ * the decision queue read and answered from the dashboard. A post is the dashboard's answer; like
+ * every surface's, it may accept or decline any decision, and the first answer wins.
  */
 final class HttpDecisionsApi {
 
@@ -51,9 +50,8 @@ final class HttpDecisionsApi {
 
     /**
      * {@code POST /api/decisions/<id>} with {@code {"action": "accept" | "decline", "answers": {…},
-     * "key": "…"}}: {@code 200} with the settled decision, {@code 409} with how it was already
-     * settled, {@code 403} when this surface may not give that answer, {@code 400} for answers that
-     * do not fit its form, {@code 404} for no such decision.
+     * }}: {@code 200} with the settled decision, {@code 409} with how it was already settled, {@code
+     * 400} for answers that do not fit its form, {@code 404} for no such decision.
      */
     void handleAnswer(HttpExchange exchange) throws IOException {
         String id = idOf(exchange);
@@ -63,12 +61,11 @@ final class HttpDecisionsApi {
             return;
         }
         String action = MiniJson.str(body, "action");
-        String key = MiniJson.str(body, "key");
         DecisionQueue.Result result;
         if ("decline".equals(action)) {
-            result = queue.decline(id, DecisionSurface.DASHBOARD, key);
+            result = queue.decline(id, DecisionSurface.DASHBOARD);
         } else if ("accept".equals(action)) {
-            result = queue.accept(id, answers(body.get("answers")), DecisionSurface.DASHBOARD, key);
+            result = queue.accept(id, answers(body.get("answers")), DecisionSurface.DASHBOARD);
         } else {
             error(exchange, 400, "action is accept or decline");
             return;
@@ -83,7 +80,6 @@ final class HttpDecisionsApi {
                 out.put("decision", a.decision().toMap());
                 HttpResponses.sendJson(exchange, 409, JsonOut.rawObject(out).toString());
             }
-            case DecisionQueue.Result.Refused r -> error(exchange, 403, r.reason());
             case DecisionQueue.Result.Invalid i -> error(exchange, 400, i.problems());
             case DecisionQueue.Result.Missing m -> error(exchange, 404, "no such decision: " + id);
         }

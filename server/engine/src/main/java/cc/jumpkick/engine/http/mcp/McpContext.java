@@ -130,7 +130,7 @@ public final class McpContext {
      * {@code jk decide}.
      */
     @Setter
-    private volatile Decisions decisions = new Decisions(new DecisionQueue(), (id, key) -> null);
+    private volatile Decisions decisions = new Decisions(new DecisionQueue(), id -> null);
 
     /** The tool registered under a name, for {@code run(decision=<id>)} to call again; null for none. */
     @Getter(AccessLevel.PACKAGE)

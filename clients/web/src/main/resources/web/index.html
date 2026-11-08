@@ -67,7 +67,7 @@
           <span class="dot-warn" aria-hidden="true"></span>
           <div class="needs-body">
             <div class="needs-q">{{ d.question }}</div>
-            <div class="needs-meta">{{ d.askedBy }}<template v-if="d.openedAt"> · asked {{ ago(d.openedAt) }}</template><template v-if="d.deadline"> · expires {{ fmtDateTime(d.deadline) }}</template> · the agent is waiting · <code>{{ d.command }}</code></div>
+            <div class="needs-meta">{{ d.askedBy }}<template v-if="d.openedAt"> · asked {{ ago(d.openedAt) }}</template><template v-if="d.deadline"> · expires {{ fmtDateTime(d.deadline) }}</template> · the agent is waiting</div>
           </div>
           <a class="action-cyan needs-open" :href="d.href">Review</a>
         </div>

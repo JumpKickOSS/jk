@@ -19,8 +19,7 @@ working, green done, red failed, amber needs you, cyan identity.
 `#console` is the landing page. From top to bottom and left to right:
 
 - **Needs you**: the decisions an agent is blocked on, oldest first, each with who asked, how
-  long ago, the `jk decide` command that answers it in a terminal, and **Review**, which opens the
-  decision (`#decision/<id>`). Absent when nothing waits, and on an engine without a decision queue.
+  long ago, and **Review**, which opens the decision (`#decision/<id>`). Absent when nothing waits, and on an engine without a decision queue.
 - **Sessions**: one card per live or idle session, and those that ended within the last hour. A
   card shows the host (`claude-code 3f9a`, `IntelliJ-BSP 7b2c`, `shell`), the current episode's
   title and where it came from (*goal from the agent*, *last goal*, *inferred*, or *your own
@@ -239,20 +238,15 @@ agent, and the new project's page says the agent was not told.
 
 ## Decisions
 
-An operation that waits for a person (an update across a minor, a dependency the deny policy
-refuses, a destructive clean) is a decision ([MCP](mcp.md#decisions)). `#decision/<id>` shows one:
-the question, who asked and where, the lines that explain it (the moves, the policy hits), and the
-answers this page may give. The agent's host sends you there by URL elicitation, a desktop
-notification carries the link under `[ui] ask = notify`, and a `NEEDS-YOU` result names it.
+Your agent asks you; this page is where the details live. An operation that waits for a person (a
+destructive clean, an uninstall) is a decision ([MCP](mcp.md#decisions)). `#decision/<id>` shows
+one: the question, who asked and where, the lines that explain it, and its answers: pick one and
+**Answer**, or **Decline**. The agent's host sends you there by URL elicitation, a desktop
+notification carries the link under `[ui] ask = notify`, and a `NEEDS-YOU` result names it. Every
+decision is answered here, whatever it concerns.
 
-- A decision that does not change what the project trusts is answered here: pick an answer and
-  **Answer**, or **Decline**.
-- A **trust-changing** one shows the command that accepts it, `jk decide <id>`, and only
-  **Decline**: an agent can read the dashboard token and drive a browser, so a click here is no
-  proof a person decided. The page the agent's host opened is the exception: its link carries a
-  one-time key (`k=`, scrubbed from the address bar like the token), and with it the page accepts.
-
-The first answer wins, wherever it came from; the page then says how and where it was settled.
+The first answer wins, wherever it came from; the page then says how and where it was settled, and
+the host's question, the desktop notification and the Needs-you row close.
 Settled decisions are kept under the same `[history]` retention as sessions.
 `GET /api/decisions` lists open decisions first, then recently settled ones; `GET
 /api/decisions/<id>` returns one; `POST /api/decisions/<id>` answers it; every change is an SSE

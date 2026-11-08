@@ -31,8 +31,9 @@ import org.jspecify.annotations.Nullable;
  * client's tool timeout ({@link McpJobRuns#clientWaitS}), leaving the decision open when nobody
  * has answered yet.
  *
- * <p>A trust-changing decision always asks. Any other asks only a host that can ask: on one that
- * cannot, the call's own {@code confirm=true} is the answer.
+ * <p>A decision asks only a host that can ask: on one that cannot, the call's own {@code
+ * confirm=true} is the answer. Any surface may answer it and the first answer wins: a question still
+ * in flight to the host when another surface answers is withdrawn.
  *
  * <p>The call a decision continues is stored with it in the queue, so a successor engine that
  * adopted the decision continues it. A continuation whose decision is gone answers {@code
@@ -56,13 +57,12 @@ public final class McpDecisions {
     /**
      * What an operation asks.
      *
-     * @param kind names the operation in the queue ({@code update}, {@code disk-clean}, …)
+     * @param kind names the operation in the queue ({@code disk-clean}, {@code jdk-uninstall}, …)
      * @param question one line
-     * @param detail the lines that explain it (the moves, the paths, the policy hits)
+     * @param detail the lines that explain it (the paths, the versions)
      * @param yes what accepting does, one line
-     * @param trust whether accepting changes what the project trusts
      */
-    public record Ask(String kind, String question, List<String> detail, String yes, boolean trust) {
+    public record Ask(String kind, String question, List<String> detail, String yes) {
         public Ask {
             detail = List.copyOf(detail);
         }
@@ -98,7 +98,7 @@ public final class McpDecisions {
             }
             return answered(in, decisions, d, false);
         }
-        if (!ask.trust() && !canAsk(in)) return new Outcome.Proceed(null);
+        if (!canAsk(in)) return new Outcome.Proceed(null);
         McpConnection c = in.connection();
         String label = c == null ? null : c.label();
         String project = in.dir();
@@ -120,9 +120,7 @@ public final class McpDecisions {
      */
     public static @Nullable Map<String, Object> confirm(
             McpCall in, McpTool tool, String kind, String question, String yes) {
-        return require(in, tool, new Ask(kind, question, List.of(), yes, false)) instanceof Outcome.Stop s
-                ? s.result()
-                : null;
+        return require(in, tool, new Ask(kind, question, List.of(), yes)) instanceof Outcome.Stop s ? s.result() : null;
     }
 
     /**
@@ -168,7 +166,7 @@ public final class McpDecisions {
         List<String> detail = new ArrayList<>();
         for (String line : ask.detail()) detail.add(EventRedaction.redactText(project, line));
         Form form = DecisionForms.confirm(ask.kind(), question, ask.yes());
-        return new DecisionQueue.Ask(ask.kind(), question, detail, form, ask.trust(), session, label, episode, project);
+        return new DecisionQueue.Ask(ask.kind(), question, detail, form, session, label, episode, project);
     }
 
     /**
@@ -217,7 +215,7 @@ public final class McpDecisions {
         McpConnection c = in.connection();
         McpElicitModes modes = c == null ? McpElicitModes.NONE : c.elicitation();
         long until = deadline(in);
-        String hostLink = decisions.link(d.id(), decisions.queue().hostKey(d.id()));
+        String hostLink = decisions.link(d.id());
         if (modes.form() && in.outbound() != null) {
             switch (byForm(in, decisions, d, modes.url() && hostLink != null, until)) {
                 case Rung.Settled s -> {
@@ -264,9 +262,11 @@ public final class McpDecisions {
                 DerivedDefaults.NONE,
                 (field, endpoint) -> List.of());
         if (!(next instanceof McpFlattening.Ask question)) return new Rung.Next();
-        McpElicitResult result =
-                in.elicit(new McpElicitation.Form(message(d), question.requestedSchema()), left(until));
         DecisionQueue queue = decisions.queue();
+        McpElicitResult result = in.elicit(
+                new McpElicitation.Form(message(d), question.requestedSchema()),
+                left(until),
+                queue.whenSettled(d.id()));
         return switch (result) {
             case McpElicitResult.Accepted accepted -> {
                 if (!(question.answers(accepted.content()) instanceof McpFlattening.Answered answered)
@@ -274,10 +274,11 @@ public final class McpDecisions {
                     yield new Rung.Next();
                 }
                 if (DecisionForms.shows(answered.answers())) yield new Rung.Next();
-                yield settled(queue, queue.accept(d.id(), answered.answers(), DecisionSurface.HOST_FORM, null));
+                yield settled(queue, queue.accept(d.id(), answered.answers(), DecisionSurface.HOST_FORM));
             }
-            case McpElicitResult.Declined x -> settled(queue, queue.decline(d.id(), DecisionSurface.HOST_FORM, null));
-            case McpElicitResult.Cancelled x -> settled(queue, queue.decline(d.id(), DecisionSurface.HOST_FORM, null));
+            case McpElicitResult.Declined x -> settled(queue, queue.decline(d.id(), DecisionSurface.HOST_FORM));
+            case McpElicitResult.Cancelled x -> settled(queue, queue.decline(d.id(), DecisionSurface.HOST_FORM));
+            case McpElicitResult.Closed x -> new Rung.Settled(queue.find(d.id()).orElse(d));
             case McpElicitResult.TimedOut x -> new Rung.TimedOut();
             default -> new Rung.Next();
         };
@@ -295,7 +296,8 @@ public final class McpDecisions {
         }
         String message = d.question() + ": answer it in the dashboard";
         DecisionQueue queue = decisions.queue();
-        return switch (in.elicit(new McpElicitation.Url(message, link, d.id()), left(until))) {
+        return switch (in.elicit(
+                new McpElicitation.Url(message, link, d.id()), left(until), queue.whenSettled(d.id()))) {
             case McpElicitResult.Accepted accepted -> {
                 Decision settled = in.ctx().admissionYield().yielding(() -> queue.await(d.id(), left(until))
                         .orElse(d));
@@ -303,8 +305,12 @@ public final class McpDecisions {
                 completed(out, d.id());
                 yield new Rung.Settled(settled);
             }
-            case McpElicitResult.Declined x -> settled(queue, queue.decline(d.id(), DecisionSurface.HOST_URL, null));
-            case McpElicitResult.Cancelled x -> settled(queue, queue.decline(d.id(), DecisionSurface.HOST_URL, null));
+            case McpElicitResult.Declined x -> settled(queue, queue.decline(d.id(), DecisionSurface.HOST_URL));
+            case McpElicitResult.Cancelled x -> settled(queue, queue.decline(d.id(), DecisionSurface.HOST_URL));
+            case McpElicitResult.Closed x -> {
+                completed(out, d.id());
+                yield new Rung.Settled(queue.find(d.id()).orElse(d));
+            }
             case McpElicitResult.TimedOut x -> new Rung.TimedOut();
             default -> new Rung.Next();
         };
@@ -354,19 +360,12 @@ public final class McpDecisions {
      * decision also gets what {@code [ui] ask} says: a notification, the browser, or nothing.
      */
     private static Outcome needsYou(McpCall in, Decisions decisions, Decision d, boolean alert) {
-        String link = decisions.link(d.id(), null);
+        String link = decisions.link(d.id());
         StringBuilder out = new StringBuilder("NEEDS-YOU ").append(d.question()).append('\n');
         for (String line : clipped(d.detail())) out.append("  ").append(line).append('\n');
-        if (d.trust()) {
-            out.append("the user accepts it in a terminal: ")
-                    .append(d.command())
-                    .append('\n');
-            if (link != null) out.append("see: ").append(link).append('\n');
-        } else {
-            out.append("the user answers it: ")
-                    .append(link != null ? link : d.command())
-                    .append('\n');
-        }
+        out.append("the user answers it: ")
+                .append(link != null ? link : d.command())
+                .append('\n');
         if (alert && link != null) decisions.alerts().raise(decisions.ask(), d, link);
         out.append("run(decision=").append(d.id()).append(")\n");
         return stop(in.text(out.toString()));

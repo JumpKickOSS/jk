@@ -38,12 +38,12 @@ test('an engine with no decision queue leaves the banner absent', async () => {
   await assert.rejects(fetchDecisions(() => Promise.reject({ status: 401 })), (e) => e.status === 401, 'a 401 still reaches the auth gate');
 });
 
-test('a banner row names who asks, links the decision page and the terminal command', () => {
+test('a banner row names who asks and links the decision page, where it is answered', () => {
   const sessions = [{ id: 'mcp-91be', origin: 'mcp', label: 'codex 91be' }];
   const [row] = bannerRows([d('dec 1', 10)], sessions);
   assert.equal(row.askedBy, 'codex 91be');
   assert.equal(row.href, '#decision/dec%201');
-  assert.equal(row.command, 'jk decide dec 1');
+  assert.equal('command' in row, false, 'nothing sends the person to a terminal');
   assert.equal(bannerRows([d('x', 1, { session: 'gone' })], sessions)[0].askedBy, 'gone');
   assert.deepEqual([...waitingSessions([d('a', 1), d('b', 2, { resolution: {} })])], ['mcp-91be']);
 });

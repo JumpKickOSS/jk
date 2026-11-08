@@ -55,11 +55,7 @@ function askedBy(d, sessions) {
   return d.label || id || 'an agent';
 }
 
-/**
- * The banner's rows: `{ id, question, askedBy, sessionId, openedAt, deadline, href, command }`,
- * oldest first. `command` is the terminal's answer (`jk decide <id>`), shown beside the link so
- * a decision a dashboard button may not answer still says how to answer it.
- */
+/** The banner's rows: `{ id, question, askedBy, sessionId, openedAt, deadline, href }`, oldest first. */
 export function bannerRows(decisions, sessions) {
   return (decisions || []).filter(isOpen).map((d) => ({
     id: d.id,
@@ -69,7 +65,6 @@ export function bannerRows(decisions, sessions) {
     openedAt: openedAt(d) || null,
     deadline: d.deadline ?? null,
     href: '#decision/' + encodeURIComponent(d.id),
-    command: 'jk decide ' + d.id,
   }));
 }
 

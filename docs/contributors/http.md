@@ -107,11 +107,9 @@ Decisions cross the hand-off the same way. `DecisionQueue` writes each change th
 (`JournaledDecisions`, `<builds>/decisions/<id>.json`) before it takes effect, under the session
 log's write gate (`SessionLog.whileWriting`), and loads the store once the session log has adopted
 (`DecisionQueue.adopt`, which every queue entry point runs first). A record is the decision as `GET
-/api/decisions` shows it, the SHA-256 of each host key it handed out (never a key), whether its
-operation has run (`spent`), and the call it continues (tool and arguments, the goal masked). A
-displaced engine's store refuses every write, so it records no answer and runs no operation; an
-answer or a run there is refused rather than lost. The successor mints a fresh host key when it
-needs one for an adopted decision, and the predecessor's link still matches its hash.
+/api/decisions` shows it, whether its operation has run (`spent`), and the call it continues (tool
+and arguments, the goal masked). A displaced engine's store refuses every write, so it records no
+answer and runs no operation; an answer or a run there is refused rather than lost.
 
 The successor takes the sessions over rather than ending them: see [`GET /api/sessions`](#get-apisessions)
 and [MCP sessions](#mcp-sessions-and-server-requests).
@@ -391,21 +389,19 @@ session as before.
 within each (the queue keeps 200; a settled decision is also pruned with the sessions under the
 `[history]` age and disk budgets, an open one never before its deadline, and the prune drops it from
 the queue and its record together). `GET /api/decisions/<id>` is one, or a **404**. A decision is
-`{ id, kind, question, detail, command, trust, form, session?, label?, episode?, project?,
+`{ id, kind, question, detail, command, form, session?, label?, episode?, project?,
 createdAt, deadline, state, answers?, answeredBy?, answeredAt?, route }`: `kind` names the
 operation (`disk-clean`, `jdk-uninstall`, …), `command` is `jk decide <id>`, `form` the shared
 form model ([forms](forms.md)), `state` one of `open`, `accepted`, `declined`, `expired`, and
 `answeredBy` one of `host-form`, `host-url`, `dashboard`, `cli`. `route` is `#decision/<id>`.
 
-`POST /api/decisions/<id>` with `{ action: "accept" | "decline", answers?, key? }` answers it as the
+`POST /api/decisions/<id>` with `{ action: "accept" | "decline", answers? }` answers it as the
 dashboard: **200** with the settled decision, **409** when it was already settled, **400** for
-answers that do not fit its form, **404** for no such decision, and **403** for an accept of a
-trust-changing decision without its host key. `key` is the one-time key the URL elicitation link
-carries (`#decision/<id>?k=<key>`); with it the answer counts as the host's (`host-url`). The key
-appears in no response, event, notification or tool result. The queue is `DecisionQueue`; the MCP
-rungs are `McpDecisions` ([MCP](../user/mcp.md#decisions)); `jk decide` reaches the same queue over
-the engine socket (`decisions-request`), and only an answer marked as typed at a terminal may
-accept a trust-changing decision.
+answers that do not fit its form, **404** for no such decision. Every surface may give either
+answer and the first wins. The queue is `DecisionQueue`; the MCP rungs are `McpDecisions`
+([MCP](../user/mcp.md#decisions)), which withdraw a host question still in flight once the queue
+settles the decision (`DecisionQueue.whenSettled`); `jk decide` reaches the same queue over the
+engine socket (`decisions-request`).
 
 ### `GET /report/<token>/<id>/<path>`
 

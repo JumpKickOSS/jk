@@ -304,17 +304,18 @@ Token, loopback bind, and how to report a hole in that gate: [Security](security
 
 ## Decisions
 
-Some operations wait for a person instead of proceeding on the agent's word. Each is a
-**decision** in the engine's one queue, which the agent's host, the [dashboard](web.md#decisions)
-and `jk decide` all answer; the first answer wins.
+Your agent asks you; jk's page is where the details live. A few operations wait for a person
+instead of proceeding on the agent's word. Each is a **decision** in the engine's one queue, which
+the agent's host, the [dashboard](web.md#decisions) and `jk decide` all answer. Any of them may
+accept or decline any decision; the first answer wins and every other surface closes.
 
-| Operation | Asks when | Changes trust |
-|---|---|---|
-| `disk` `clean` / `nuke` / `m2-clean`, `jdk` uninstall, `node` uninstall | always, when `confirm=true` and the host can ask | no |
+| Operation | Asks when |
+|---|---|
+| `disk` `clean` / `nuke` / `m2-clean`, `jdk` uninstall, `node` uninstall | `confirm=true` and the host can ask |
 
-Dependency work never asks: `update` applies and `deps` either applies or fails. A host that
-can ask neither by form nor by link still runs a destructive operation on `confirm=true`, as
-before; for a trust-changing one, `confirm` is not an answer.
+Dependency work never asks: `update` applies and `deps` either applies or fails. A host that can
+ask neither by form nor by link runs the operation on `confirm=true`. Decisions are a courtesy, not
+a gate: they surface what a person wants to know first, in more detail than the host's own prompt.
 
 jk asks by the first rung the session supports ([revisions](#protocol-revisions)), and stops there:
 
@@ -323,24 +324,26 @@ jk asks by the first rung the session supports ([revisions](#protocol-revisions)
    moves the question to rung 2.
 2. **URL elicitation.** The host asks the user to open the decision's dashboard page,
    `#decision/<id>`; the call resumes when the decision is settled and jk sends
-   `notifications/elicitation/complete`. That link carries a one-time key (`k=`) that lets the page
-   accept a trust-changing decision; no other link has it. A client that declared URL mode but has
-   no way back on this request gets the `-32042` error carrying the link instead, and calls again
-   once the user opened it.
-3. **`NEEDS-YOU`.** The call answers at once:
+   `notifications/elicitation/complete`. A client that declared URL mode but has no way back on
+   this request gets the `-32042` error carrying the link instead, and calls again once the user
+   opened it.
+3. **`NEEDS-YOU`.** When the host's rung runs out of time, the call answers:
 
    ```text
-   NEEDS-YOU Apply 1 dependency change that needs a person in /home/you/src/shop?
-     jackson 2.18.2 → 3.0.0
-   the user accepts it in a terminal: jk decide 3f9a0c1e…
-   see: http://127.0.0.1:8910/#decision/3f9a0c1e…
+   NEEDS-YOU Clean the cache?
+     ~/.jk/cache 2.1 GiB
+   the user answers it: http://127.0.0.1:8910/#decision/3f9a0c1e…
    run(decision=3f9a0c1e…)
    ```
 
-   A decision that does not change trust names the dashboard link as the answer instead. Then
-   `[ui] ask` ([Config](config.md#decisions)) applies once: `notify` (default) sends a desktop
+   Then `[ui] ask` ([Config](config.md#decisions)) applies once: `notify` (default) sends a desktop
    notification carrying the link (a click opens it on Windows and Linux), `open` opens the
    browser on it, `quiet` leaves the link in the result.
+
+When another surface answers while the host's question is still open, jk withdraws it: a form
+question gets `notifications/cancelled`, a link gets `notifications/cancelled` and
+`notifications/elicitation/complete`, the desktop notification is closed, and the dashboard's
+Needs-you banner drops the decision.
 
 `run(decision=<id>)` makes the original call again with the decision: it proceeds once the
 decision is accepted (once only), answers `DECLINED` or `EXPIRED` when it was not, and while it is
@@ -356,18 +359,11 @@ beside the session records with the call it continues, and an engine that replac
 upgrade, a restart) takes over every decision with its deadline: the answer and `run(decision=<id>)`
 both reach the new engine, the first answer still wins, and the operation still runs once. One whose
 deadline passed while no engine ran is `EXPIRED`. When the decision a continuation names is gone,
-the answer is `ASK-AGAIN`: repeat the original call without `decision` to be asked anew. The record
-keeps only a hash of the link's `k=` key, so a link the host opened still works on the new engine
-and the state directory holds nothing that accepts a decision.
-
-**Who may accept.** A trust-changing decision is accepted only where a person is known to answer:
-the host's form, the page the host opened (its key), or `jk decide` at a terminal. The dashboard
-shows it, with the command that accepts it, and may decline it, but a bearer-token answer never
-accepts it: an agent can read the token and drive a browser. [Security](security.md#decisions).
+the answer is `ASK-AGAIN`: repeat the original call without `decision` to be asked anew.
 
 **`jk decide`** lists the open decisions; at a terminal it asks one (`jk decide <id>`, or a pick
-when there are several) with the same widgets `jk new` uses. `-d` (`--decline`) declines it. Away from a
-terminal it lists and refuses to answer.
+when there are several) with the same widgets `jk new` uses. Anywhere, `-y` accepts it and `-d`
+(`--decline`) declines it without asking; without a terminal one of the two is needed.
 
 ## Resources
 

@@ -6,9 +6,6 @@ import cc.jumpkick.form.Form;
 import cc.jumpkick.form.FormCheck;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.jsonl.MiniJson;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -28,21 +25,14 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Every decision the engine holds, open and recently settled. The first answer wins; a later one is
- * told how it was settled. An open decision expires as declined at its deadline ({@link #DEADLINE}
- * after it opened unless the asker names another).
- *
- * <p>Each decision has a one-time {@linkplain #hostKey host key}, which rides only the link the
- * engine hands the agent's host by URL elicitation. A dashboard answer that carries it was made on
- * the page the host opened, so it counts as the host's; one without it is the dashboard's, which
- * may decline a trust-changing decision but never accept it, since an agent can read the bearer
- * token and drive a browser.
+ * Every decision the engine holds, open and recently settled. Any surface may give any answer; the
+ * first answer wins, and a later one is told how it was settled. An open decision expires as
+ * declined at its deadline ({@link #DEADLINE} after it opened unless the asker names another).
  *
  * <p>Decisions outlive the engine. Every change is written to the {@link Store} before it takes
  * effect, and a new engine {@link #adopt adopts} what a previous one left, so a decision opened on
- * one engine is answered on its successor and its operation still runs once. The store holds only
- * the SHA-256 of a host key, never the key. A store that refuses a write (this engine was displaced)
- * refuses the answer or the use it would record.
+ * one engine is answered on its successor and its operation still runs once. A store that refuses a
+ * write (this engine was displaced) refuses the answer or the use it would record.
  *
  * <p>Ids are 24 hex digits from {@link SecureRandom}: unguessable, never reused.
  */
@@ -67,7 +57,7 @@ public final class DecisionQueue {
 
     /**
      * Where decisions outlive the engine: one record per decision, each the decision's {@link
-     * Decision#toMap} plus {@code keys} (host-key hashes), {@code spent} and {@code call}.
+     * Decision#toMap} plus {@code spent} and {@code call}.
      */
     public interface Store {
         /** Keeps nothing and refuses nothing: an engine with no journal. */
@@ -101,13 +91,6 @@ public final class DecisionQueue {
     private static final class Entry {
         Decision decision;
 
-        /** The key itself; null for a decision adopted from the store until {@link #hostKey} mints one. */
-        @Nullable
-        String hostKey;
-
-        /** The SHA-256 of every key this decision has handed out; one of them proves the host. */
-        final List<String> keyHashes = new ArrayList<>();
-
         final CompletableFuture<Decision> settled = new CompletableFuture<>();
         boolean spent;
 
@@ -123,7 +106,6 @@ public final class DecisionQueue {
         Map<String, Object> record(Decision d, boolean spent) {
             Map<String, Object> m = new LinkedHashMap<>(d.toMap());
             m.remove("route");
-            m.put("keys", List.copyOf(keyHashes));
             m.put("spent", spent);
             if (call != null) m.put("call", call);
             return m;
@@ -134,7 +116,6 @@ public final class DecisionQueue {
             Decision d = Decision.of(record).orElse(null);
             if (d == null) return null;
             Entry e = new Entry(d);
-            for (Object h : MiniJson.list(record, "keys")) e.keyHashes.add(String.valueOf(h));
             e.spent = Boolean.TRUE.equals(record.get("spent"));
             if (record.get("call") instanceof Map<?, ?> c) e.call = (Map<String, Object>) c;
             if (!d.open()) e.settled.complete(d);
@@ -148,7 +129,6 @@ public final class DecisionQueue {
             String question,
             List<String> detail,
             Form form,
-            boolean trust,
             @Nullable String session,
             @Nullable String label,
             @Nullable String episode,
@@ -169,9 +149,6 @@ public final class DecisionQueue {
 
         /** No decision has the id, or it has been dropped. */
         record Missing() implements Result {}
-
-        /** This surface may not give this answer; {@code reason} says why. */
-        record Refused(String reason) implements Result {}
 
         /** The answers do not fit the form. */
         record Invalid(String problems) implements Result {}
@@ -244,7 +221,6 @@ public final class DecisionQueue {
                     ask.detail(),
                     "jk decide " + id,
                     ask.form(),
-                    ask.trust(),
                     ask.session(),
                     ask.label(),
                     ask.episode(),
@@ -256,8 +232,6 @@ public final class DecisionQueue {
                     null,
                     0);
             Entry e = new Entry(d);
-            e.hostKey = random(16);
-            e.keyHashes.add(Hashing.sha256Hex(e.hostKey));
             entries.put(id, e);
             save(e, d, false);
             trim();
@@ -318,39 +292,34 @@ public final class DecisionQueue {
 
     /**
      * Accept {@code id} with {@code answers}, checked against its form, from {@code surface}. A
-     * confirmation answered {@link DecisionForms#NO} settles declined. {@code hostKey}, when it is
-     * the decision's own, makes a dashboard answer the host's.
+     * confirmation answered {@link DecisionForms#NO} settles declined.
      */
-    public Result accept(String id, Map<String, ?> answers, DecisionSurface surface, @Nullable String hostKey) {
-        return answer(id, answers, true, surface, hostKey);
+    public Result accept(String id, Map<String, ?> answers, DecisionSurface surface) {
+        return answer(id, answers, true, surface);
     }
 
-    /** Decline {@code id} from {@code surface}. Any surface may decline. */
-    public Result decline(String id, DecisionSurface surface, @Nullable String hostKey) {
-        return answer(id, Map.of(), false, surface, hostKey);
+    /** Decline {@code id} from {@code surface}. */
+    public Result decline(String id, DecisionSurface surface) {
+        return answer(id, Map.of(), false, surface);
     }
 
-    private Result answer(
-            String id, Map<String, ?> answers, boolean accept, DecisionSurface surface, @Nullable String hostKey) {
+    private Result answer(String id, Map<String, ?> answers, boolean accept, DecisionSurface surface) {
         adopt();
         List<Decision> expired;
         Result result;
         synchronized (this) {
             expired = expire();
-            result = settle(id, answers, accept, surface, hostKey);
+            result = settle(id, answers, accept, surface);
         }
         expired.forEach(changed);
         if (result instanceof Result.Settled s) changed.accept(s.decision());
         return result;
     }
 
-    private Result settle(
-            String id, Map<String, ?> answers, boolean accept, DecisionSurface surface, @Nullable String hostKey) {
+    private Result settle(String id, Map<String, ?> answers, boolean accept, DecisionSurface surface) {
         Entry e = entries.get(id);
         if (e == null) return new Result.Missing();
         if (!e.decision.open()) return new Result.Already(e.decision);
-        DecisionSurface from =
-                surface == DecisionSurface.DASHBOARD && keyMatches(e, hostKey) ? DecisionSurface.HOST_URL : surface;
         Decision.State state = Decision.State.DECLINED;
         Map<String, Object> values = Map.of();
         if (accept) {
@@ -364,11 +333,7 @@ public final class DecisionQueue {
             if (DecisionForms.shows(values)) return new Result.Invalid("'show' is not an answer; open the decision");
             if (!DecisionForms.declines(values)) state = Decision.State.ACCEPTED;
         }
-        if (state == Decision.State.ACCEPTED && e.decision.trust() && !from.provesAPerson()) {
-            return new Result.Refused("this decision changes what the project trusts, so the dashboard can"
-                    + " decline it but not accept it; accept it in a terminal with " + e.decision.command());
-        }
-        Decision settled = e.decision.settled(state, values, from, clock.millis());
+        Decision settled = e.decision.settled(state, values, surface, clock.millis());
         if (!save(e, settled, e.spent)) return new Result.Missing();
         e.decision = settled;
         e.settled.complete(settled);
@@ -423,21 +388,14 @@ public final class DecisionQueue {
     }
 
     /**
-     * The one-time key the URL elicitation link for {@code id} carries; null when there is no such
-     * decision. A decision adopted from the store gets a fresh key here, since the store keeps only
-     * hashes. Never put it in a tool result or a notification: the agent reads those.
+     * Completes with {@code id} once it settles, by any surface or its deadline: how a surface that
+     * asked stops asking when another answered first. Never completes when there is no such decision.
      */
-    public @Nullable String hostKey(String id) {
+    public CompletableFuture<Decision> whenSettled(String id) {
         adopt();
         synchronized (this) {
             Entry e = entries.get(id);
-            if (e == null) return null;
-            if (e.hostKey == null) {
-                e.hostKey = random(16);
-                e.keyHashes.add(Hashing.sha256Hex(e.hostKey));
-                save(e, e.decision, e.spent);
-            }
-            return e.hostKey;
+            return e == null ? new CompletableFuture<>() : e.settled.copy();
         }
     }
 
@@ -477,14 +435,6 @@ public final class DecisionQueue {
         }
         expired.forEach(changed);
         return dropped;
-    }
-
-    private static boolean keyMatches(Entry e, @Nullable String key) {
-        if (key == null || key.isBlank()) return false;
-        byte[] hash = Hashing.sha256Hex(key.strip()).getBytes(StandardCharsets.UTF_8);
-        boolean match = false;
-        for (String h : e.keyHashes) match |= MessageDigest.isEqual(h.getBytes(StandardCharsets.UTF_8), hash);
-        return match;
     }
 
     /** Write {@code e} as it stands with {@code d} and {@code spent}; false when the store refused it. */

@@ -26,6 +26,9 @@ public sealed interface McpElicitResult {
     /** The caller's timeout passed with no answer; the client was told to withdraw the question. */
     record TimedOut() implements McpElicitResult {}
 
+    /** What the question asked was settled elsewhere first; the client was told to withdraw it. */
+    record Closed() implements McpElicitResult {}
+
     /** The client answered with an error, an unknown action, or the stream to it broke. */
     record Failed(String message) implements McpElicitResult {}
 

@@ -48,14 +48,13 @@ final class DecideView {
         return rows;
     }
 
-    /** {@code question  (kind, label, trust)} on one line. */
+    /** {@code question  (kind, label)} on one line. */
     static String oneLine(Map<?, ?> d) {
         StringBuilder out = new StringBuilder(String.valueOf(MiniJson.str(d, "question")));
         List<String> tags = new ArrayList<>();
         tags.add(String.valueOf(MiniJson.str(d, "kind")));
         String label = MiniJson.str(d, "label");
         if (label != null) tags.add(label);
-        if (Boolean.TRUE.equals(d.get("trust"))) tags.add("changes what the project trusts");
         return out.append("  (").append(String.join(", ", tags)).append(')').toString();
     }
 
@@ -69,7 +68,6 @@ final class DecideView {
             lines.add("  asked by " + (label == null ? "an agent" : label) + (project == null ? "" : " in " + project));
         }
         for (Object line : MiniJson.list(d, "detail")) lines.add("  " + line);
-        if (Boolean.TRUE.equals(d.get("trust"))) lines.add("  This changes what the project trusts.");
         return lines;
     }
 }

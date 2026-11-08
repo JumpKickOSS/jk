@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -54,6 +55,15 @@ public record McpCall(
      * under the client's own tool-call timeout, since the call stays outstanding while it waits.
      */
     public McpElicitResult elicit(McpElicitation question, Duration timeout) {
+        return elicit(question, timeout, new CompletableFuture<>());
+    }
+
+    /**
+     * As {@link #elicit(McpElicitation, Duration)}, withdrawing the question as soon as {@code
+     * closes} completes first: the thing it asks about was settled elsewhere, and the answer is
+     * {@link McpElicitResult.Closed}.
+     */
+    public McpElicitResult elicit(McpElicitation question, Duration timeout, CompletableFuture<?> closes) {
         McpConnection c = connection;
         if (c == null) return new McpElicitResult.Unsupported("the call rode on no session");
         McpElicitModes modes = c.elicitation();
@@ -77,13 +87,22 @@ public record McpCall(
             c.forget(expected.requestId());
             return new McpElicitResult.Failed("could not reach the client: " + e.getMessage());
         }
-        return ctx.admissionYield().yielding(() -> awaitAnswer(c, out, expected, timeout));
+        return ctx.admissionYield().yielding(() -> awaitAnswer(c, out, expected, timeout, closes));
     }
 
     private static McpElicitResult awaitAnswer(
-            McpConnection c, McpOutbound out, McpConnection.Expected expected, Duration timeout) {
+            McpConnection c,
+            McpOutbound out,
+            McpConnection.Expected expected,
+            Duration timeout,
+            CompletableFuture<?> closes) {
         try {
-            return McpElicitResult.of(expected.answer().get(Math.max(1, timeout.toMillis()), TimeUnit.MILLISECONDS));
+            CompletableFuture.anyOf(expected.answer(), closes)
+                    .get(Math.max(1, timeout.toMillis()), TimeUnit.MILLISECONDS);
+            if (expected.answer().isDone())
+                return McpElicitResult.of(expected.answer().get());
+            withdraw(c, out, expected.requestId(), "answered elsewhere");
+            return new McpElicitResult.Closed();
         } catch (TimeoutException e) {
             withdraw(c, out, expected.requestId(), "timed out");
             return new McpElicitResult.TimedOut();

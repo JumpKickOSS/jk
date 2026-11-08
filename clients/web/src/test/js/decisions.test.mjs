@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// The decision page's view model and the Needs-you banner rows: what a decision shows, which
-// answers this surface may give, and the route that opens it.
+// The decision page's view model and the Needs-you banner rows: what a decision shows, its
+// answers, and the route that opens it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -19,13 +19,13 @@ globalThis.localStorage = storage();
 globalThis.location = { hash: '', pathname: '/', search: '' };
 
 const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
-const { adoptHostKey, answerBody, answerOptions, decisionHash, decisionView, foldDecision, leftLabel, openDecisions } =
+const { answerBody, answerOptions, decisionHash, decisionView, foldDecision, leftLabel, openDecisions } =
   await spa('decisions.js');
 const { routeFromHash } = await spa('route.js');
 
 const form = {
-  id: 'update',
-  title: 'Apply 1 dependency change?',
+  id: 'disk-clean',
+  title: 'Clean the cache?',
   steps: [
     {
       id: 'decision',
@@ -36,7 +36,7 @@ const form = {
           label: 'Answer',
           kind: 'choice',
           options: [
-            { id: 'yes', label: 'Yes, update and relock' },
+            { id: 'yes', label: 'Yes, clean it' },
             { id: 'no', label: 'No, leave it as it is' },
             { id: 'show', label: 'Show me the details (opens the dashboard)' },
           ],
@@ -48,11 +48,10 @@ const form = {
 
 const decision = (over) => ({
   id: 'd1',
-  kind: 'update',
-  question: 'Apply 1 dependency change that needs a person in /ws/app?',
-  detail: ['jackson 2.18.2 → 3.0.0'],
+  kind: 'disk-clean',
+  question: 'Clean the cache?',
+  detail: ['~/.jk/cache 2.1 GiB'],
   command: 'jk decide d1',
-  trust: true,
   form,
   label: 'claude-code 3f9a',
   project: '/ws/app',
@@ -74,7 +73,6 @@ test('the banner lists open decisions newest first, linking each to its page', (
   );
   assert.equal(rows[0].href, '#decision/new');
   assert.equal(rows[0].who, 'claude-code 3f9a');
-  assert.equal(rows[0].trust, true);
   assert.equal(rows[1].left, '');
   assert.equal(openDecisions(null).length, 0);
 });
@@ -96,28 +94,16 @@ test('an SSE decision replaces the one with its id or joins the list', () => {
   );
 });
 
-test('a trust-changing decision can be declined here but accepted only in a terminal', () => {
+test('the dashboard answers any open decision with its form choices, show left out', () => {
   const view = decisionView(decision());
-  assert.equal(view.canAccept, false);
-  assert.equal(view.canDecline, true);
+  assert.equal(view.open, true);
   assert.equal(view.command, 'jk decide d1');
-  assert.match(view.note, /terminal/);
-});
-
-test("the page the host opened, holding the link's key, may accept a trust-changing decision", () => {
-  const view = decisionView(decision(), 'k3y');
-  assert.equal(view.canAccept, true);
-  assert.equal(view.note, '');
-  assert.deepEqual(answerBody('accept', 'yes', 'k3y'), { action: 'accept', answers: { answer: 'yes' }, key: 'k3y' });
-});
-
-test('any other decision is answered from the dashboard with its form choices, show left out', () => {
-  const view = decisionView(decision({ trust: false, kind: 'disk-clean' }));
-  assert.equal(view.canAccept, true);
+  assert.equal('canAccept' in view, false, 'nothing gates an answer here');
   assert.deepEqual(
     view.options.map((o) => o.id),
     ['yes', 'no'],
   );
+  assert.deepEqual(answerBody('accept', 'yes'), { action: 'accept', answers: { answer: 'yes' } });
   assert.deepEqual(answerBody('decline', 'yes'), { action: 'decline' });
   assert.deepEqual(answerOptions({}), []);
 });
@@ -125,19 +111,13 @@ test('any other decision is answered from the dashboard with its form choices, s
 test('a settled decision says how and where it was settled, and takes no answer', () => {
   const view = decisionView(decision({ state: 'accepted', answeredBy: 'cli' }));
   assert.equal(view.open, false);
-  assert.equal(view.canAccept, false);
-  assert.equal(view.canDecline, false);
-  assert.equal(view.answeredBy, 'jk decide in a terminal');
+  assert.equal(view.answeredBy, 'jk decide');
 });
 
-test('the route opens one decision and the host key is kept for the tab', () => {
-  const r = routeFromHash('#decision/abc123?k=secret');
+test('the route opens one decision', () => {
+  const r = routeFromHash('#decision/abc123?t=token');
   assert.equal(r.view, 'decision');
   assert.equal(r.decisionId, 'abc123');
   assert.equal(decisionHash('abc123'), '#decision/abc123');
-  const tab = storage();
-  assert.equal(adoptHostKey('abc123', '#decision/abc123?k=secret', tab), 'secret');
-  assert.equal(adoptHostKey('abc123', '#decision/abc123', tab), 'secret', 'a reload after the scrub keeps it');
-  assert.equal(adoptHostKey('other', '#decision/other', tab), '');
   assert.equal(routeFromHash('#decision/').view, 'console');
 });

@@ -31,11 +31,16 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk decide [<id>]} — the decisions waiting for a person, and an answer to one. Listing works
- * anywhere; answering only at a terminal, where the decision's form is asked with the same widgets
- * {@code jk new} uses. A terminal answer is the one that may accept a trust-changing decision.
+ * {@code jk decide [<id>]} — the decisions waiting for a person, and an answer to one. At a terminal
+ * the decision's form is asked with the same widgets {@code jk new} uses; anywhere, {@code -y}
+ * accepts and {@code -d} declines without asking.
  */
 public final class DecideCommand implements CliCommand {
+
+    /** A decision's confirmation field, and the value that accepts it. */
+    private static final String ANSWER = "answer";
+
+    private static final String YES = "yes";
 
     @Override
     public String name() {
@@ -54,15 +59,15 @@ public final class DecideCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Decline the decision instead of answering its form", "-d", "--decline"));
+        return List.of(
+                Opt.flag("Decline the decision instead of answering its form (-y accepts it)", "-d", "--decline"));
     }
 
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
         EnginePaths.Paths paths = EnginePaths.current();
-        DecisionsAck listed =
-                EngineClient.decisions(paths, new DecisionsRequest(DecisionsRequest.LIST, null, null, false));
+        DecisionsAck listed = EngineClient.decisions(paths, new DecisionsRequest(DecisionsRequest.LIST, null, null));
         if (listed.error() != null) {
             CommandWedge.printFail("Decide", listed.error());
             return Exit.SOFTWARE;
@@ -88,23 +93,22 @@ public final class DecideCommand implements CliCommand {
                     "Decide", "decision " + MiniJson.str(d, "id") + " is already " + MiniJson.str(d, "state"));
             return Exit.FAILURE;
         }
-        if (!terminal) {
-            CommandWedge.printFail("Decide", "jk decide answers only at a terminal; run it in one");
+        boolean decline = in.isSet("decline");
+        if (!terminal && !decline && !global.yes) {
+            CommandWedge.printFail("Decide", "without a terminal, -y accepts it and -d declines it");
             return Exit.USAGE;
         }
-        return answer(paths, d, in.isSet("decline"));
+        return answer(paths, d, decline, global.yes);
     }
 
-    private static int answer(EnginePaths.Paths paths, Map<?, ?> d, boolean decline) throws IOException {
+    private static int answer(EnginePaths.Paths paths, Map<?, ?> d, boolean decline, boolean yes) throws IOException {
         String id = String.valueOf(MiniJson.str(d, "id"));
         DecideView.card(d).forEach(CliOutput::out);
-        DecisionsRequest req;
-        if (decline) {
-            req = new DecisionsRequest(DecisionsRequest.DECLINE, id, null, true);
-        } else {
+        DecisionsRequest req = flagged(id, decline, yes);
+        if (req == null) {
             Asker asker = Asker.interactive();
             if (asker == null) {
-                CommandWedge.printFail("Decide", "jk decide answers only at a terminal; run it in one");
+                CommandWedge.printFail("Decide", "without a terminal, -y accepts it and -d declines it");
                 return Exit.USAGE;
             }
             Form form = Form.fromJson(MiniJson.write(d.get("form")));
@@ -114,7 +118,7 @@ public final class DecideCommand implements CliCommand {
                 CliOutput.out("Left unanswered; it is still open.");
                 return Exit.SUCCESS;
             }
-            req = new DecisionsRequest(DecisionsRequest.ACCEPT, id, MiniJson.write(values.get()), true);
+            req = new DecisionsRequest(DecisionsRequest.ACCEPT, id, MiniJson.write(values.get()));
         }
         DecisionsAck ack = EngineClient.decisions(paths, req);
         if (ack.error() != null) {
@@ -124,6 +128,16 @@ public final class DecideCommand implements CliCommand {
         Object settled = ack.decision() == null ? null : MiniJson.parse(ack.decision());
         CommandWedge.printOk("Decide", id + " " + MiniJson.str(settled, "state"));
         return Exit.SUCCESS;
+    }
+
+    /**
+     * The answer {@code -d} ({@code decline}) or {@code -y} ({@code yes}) gives decision {@code id},
+     * no question asked; null when neither was given and the form is asked.
+     */
+    static @Nullable DecisionsRequest flagged(String id, boolean decline, boolean yes) {
+        if (decline) return new DecisionsRequest(DecisionsRequest.DECLINE, id, null);
+        if (yes) return new DecisionsRequest(DecisionsRequest.ACCEPT, id, MiniJson.write(Map.of(ANSWER, YES)));
+        return null;
     }
 
     /** Asks which of {@code open} to answer; null when the user backed out. */

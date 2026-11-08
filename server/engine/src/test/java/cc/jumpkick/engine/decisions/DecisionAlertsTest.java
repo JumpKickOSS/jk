@@ -75,11 +75,11 @@ class DecisionAlertsTest {
         return new DecisionAlerts(launcher, os, env::get);
     }
 
-    private static Decision decision(boolean trust) {
-        return decision("Clean jk's cache?", trust);
+    private static Decision decision() {
+        return decision("Clean jk's cache?");
     }
 
-    private static Decision decision(String question, boolean trust) {
+    private static Decision decision(String question) {
         Form form = DecisionForms.confirm("disk-clean", question, "Yes");
         return new Decision(
                 "abc",
@@ -88,7 +88,6 @@ class DecisionAlertsTest {
                 List.of(),
                 "jk decide abc",
                 form,
-                trust,
                 null,
                 null,
                 null,
@@ -105,7 +104,7 @@ class DecisionAlertsTest {
     void an_old_notify_send_gets_a_text_notification_that_carries_the_deep_link() {
         launcher.outputs.put(List.of("notify-send", "--version"), "notify-send 0.7.9\n");
         DecisionAlerts alerts = on("Linux", Map.of());
-        assertThat(alerts.raise(UiAsk.NOTIFY, decision(false), LINK)).isEqualTo("sent a desktop notification");
+        assertThat(alerts.raise(UiAsk.NOTIFY, decision(), LINK)).isEqualTo("sent a desktop notification");
         assertThat(launcher.watches).isEmpty();
         assertThat(launcher.launched).singleElement().satisfies(argv -> {
             assertThat(argv.subList(0, 4))
@@ -114,7 +113,7 @@ class DecisionAlertsTest {
             assertThat(argv.getLast()).isEqualTo("Clean jk's cache?\nAnswer it in the dashboard.\n" + LINK);
         });
 
-        alerts.raise(UiAsk.NOTIFY, decision(false), LINK);
+        alerts.raise(UiAsk.NOTIFY, decision(), LINK);
         assertThat(launcher.asked).as("support is asked once").hasSize(2);
     }
 
@@ -122,7 +121,7 @@ class DecisionAlertsTest {
     void a_notify_send_with_actions_waits_for_a_click_and_opens_the_deep_link() {
         launcher.outputs.put(List.of("notify-send", "--version"), "notify-send 0.8.3\n");
         DecisionAlerts alerts = on("Linux", Map.of());
-        assertThat(alerts.raise(UiAsk.NOTIFY, decision(false), LINK)).isEqualTo("sent a desktop notification");
+        assertThat(alerts.raise(UiAsk.NOTIFY, decision(), LINK)).isEqualTo("sent a desktop notification");
         assertThat(launcher.watches).singleElement().satisfies(w -> {
             assertThat(w.argv())
                     .containsExactly(
@@ -144,7 +143,7 @@ class DecisionAlertsTest {
     @Test
     void a_notify_send_whose_help_names_action_counts_as_supporting_it() {
         launcher.outputs.put(List.of("notify-send", "--help"), "  -A, --action=[NAME=]Text...\n");
-        on("Linux", Map.of()).raise(UiAsk.NOTIFY, decision(false), LINK);
+        on("Linux", Map.of()).raise(UiAsk.NOTIFY, decision(), LINK);
         assertThat(launcher.watches).hasSize(1);
         assertThat(DecisionAlerts.actionsIn("notify-send 0.7.10")).isTrue();
         assertThat(DecisionAlerts.actionsIn("notify-send 1.0")).isTrue();
@@ -157,13 +156,12 @@ class DecisionAlertsTest {
         launcher.outputs.put(List.of("notify-send", "--version"), "notify-send 0.8.3\n");
         DecisionQueue queue = new DecisionQueue();
         DecisionAlerts alerts = on("Linux", Map.of());
-        new Decisions(queue, (id, key) -> null).alerts(alerts);
+        new Decisions(queue, id -> null).alerts(alerts);
         Decision d = queue.open(new DecisionQueue.Ask(
                 "disk-clean",
                 "Clean jk's cache?",
                 List.of(),
                 DecisionForms.confirm("disk-clean", "Clean jk's cache?", "Yes"),
-                false,
                 null,
                 null,
                 null,
@@ -172,7 +170,7 @@ class DecisionAlertsTest {
         Watched w = launcher.watches.getFirst();
         w.lines().accept("42");
 
-        queue.decline(d.id(), DecisionSurface.CLI, null);
+        queue.decline(d.id(), DecisionSurface.CLI);
 
         assertThat(w.stopped()[0]).isTrue();
         assertThat(launcher.launched).singleElement().satisfies(argv -> assertThat(argv)
@@ -188,25 +186,25 @@ class DecisionAlertsTest {
     void a_notification_dismissed_on_its_own_is_not_withdrawn_again_and_close_ends_the_rest() {
         launcher.outputs.put(List.of("notify-send", "--version"), "notify-send 0.8.3\n");
         DecisionAlerts alerts = on("Linux", Map.of());
-        alerts.raise(UiAsk.NOTIFY, decision(false), LINK);
+        alerts.raise(UiAsk.NOTIFY, decision(), LINK);
         Watched dismissed = launcher.watches.getFirst();
         dismissed.exited().run();
         alerts.withdraw("abc");
         assertThat(dismissed.stopped()[0]).isFalse();
         assertThat(launcher.launched).isEmpty();
 
-        alerts.raise(UiAsk.NOTIFY, decision(false), LINK);
+        alerts.raise(UiAsk.NOTIFY, decision(), LINK);
         alerts.close();
         assertThat(launcher.watches.getLast().stopped()[0]).isTrue();
     }
 
     @Test
     void on_macos_the_notification_text_is_quoted_for_applescript() {
-        on("Mac OS X", Map.of()).raise(UiAsk.NOTIFY, decision(true), LINK);
+        on("Mac OS X", Map.of()).raise(UiAsk.NOTIFY, decision(), LINK);
         assertThat(launcher.launched).singleElement().satisfies(argv -> {
             assertThat(argv.subList(0, 2)).containsExactly("osascript", "-e");
             assertThat(argv.get(2))
-                    .startsWith("display notification \"Clean jk's cache?\nAccept it in a terminal: jk decide abc\n")
+                    .startsWith("display notification \"Clean jk's cache?\nAnswer it in the dashboard.\n")
                     .contains(LINK)
                     .endsWith("with title \"" + DecisionAlerts.TITLE + "\"");
         });
@@ -214,7 +212,7 @@ class DecisionAlertsTest {
 
     @Test
     void on_windows_a_toast_opens_the_deep_link_and_is_tagged_by_the_decision() throws Exception {
-        assertThat(on("Windows 11", Map.of()).raise(UiAsk.NOTIFY, decision(false), LINK))
+        assertThat(on("Windows 11", Map.of()).raise(UiAsk.NOTIFY, decision(), LINK))
                 .isEqualTo("sent a desktop notification");
         List<String> argv = launcher.launched.getFirst();
         assertThat(argv.subList(0, 4))
@@ -237,7 +235,7 @@ class DecisionAlertsTest {
     @Test
     void hostile_question_text_cannot_leave_its_quoting_on_windows() throws Exception {
         String hostile = "'); Remove-Item -Recurse C:\\ #\u2019\" $(calc) `n </text><text>&x; ]]>";
-        on("Windows 11", Map.of()).raise(UiAsk.NOTIFY, decision(hostile, false), LINK);
+        on("Windows 11", Map.of()).raise(UiAsk.NOTIFY, decision(hostile), LINK);
         String script = script(launcher.launched.getFirst());
         assertThat(script).doesNotContain("Remove-Item", "calc", "</text>");
         assertThat(script.replaceAll("'[A-Za-z0-9+/=]*'", "''"))
@@ -254,7 +252,7 @@ class DecisionAlertsTest {
         alerts.withdraw("abc");
         assertThat(launcher.launched).as("nothing shown, nothing to remove").isEmpty();
 
-        alerts.raise(UiAsk.NOTIFY, decision(false), LINK);
+        alerts.raise(UiAsk.NOTIFY, decision(), LINK);
         alerts.withdraw("abc");
         alerts.withdraw("abc");
         assertThat(launcher.launched).hasSize(2);
@@ -266,10 +264,9 @@ class DecisionAlertsTest {
 
     @Test
     void open_opens_the_browser_on_the_link_and_quiet_does_nothing() {
-        on("Linux", Map.of()).raise(UiAsk.OPEN, decision(false), LINK);
-        on("Linux", Map.of("BROWSER", "firefox --new-tab")).raise(UiAsk.OPEN, decision(false), LINK);
-        assertThat(on("Linux", Map.of()).raise(UiAsk.QUIET, decision(false), LINK))
-                .startsWith("quiet");
+        on("Linux", Map.of()).raise(UiAsk.OPEN, decision(), LINK);
+        on("Linux", Map.of("BROWSER", "firefox --new-tab")).raise(UiAsk.OPEN, decision(), LINK);
+        assertThat(on("Linux", Map.of()).raise(UiAsk.QUIET, decision(), LINK)).startsWith("quiet");
         assertThat(launcher.launched).containsExactly(List.of("xdg-open", LINK), List.of("firefox", "--new-tab", LINK));
     }
 

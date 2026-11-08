@@ -144,8 +144,7 @@ public final class HttpEngineServer implements AutoCloseable {
         api.registerPrefix("POST", HttpDecisionsApi.PREFIX, decisionsApi::handleAnswer);
         queue.onChange(d -> events.publishDashboard(EventCatalog.SSE_DECISION, JsonOut.rawObject(d.toMap())));
         if (mcp != null) {
-            Decisions decisions =
-                    new Decisions(queue, (id, key) -> DashboardLinks.decision(url(), tokens.tokenText(), id, key));
+            Decisions decisions = new Decisions(queue, id -> DashboardLinks.decision(url(), tokens.tokenText(), id));
             this.decisions = decisions;
             mcp.decisions(decisions);
         }

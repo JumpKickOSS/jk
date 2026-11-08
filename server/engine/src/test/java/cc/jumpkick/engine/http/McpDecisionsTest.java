@@ -38,9 +38,10 @@ import org.junit.jupiter.api.Test;
 /**
  * Decisions reach the person behind a fake client by the first rung its session supports: a
  * client that declared form elicitation is asked in the call, one that declared URL elicitation is
- * sent to the decision's page by a link that carries the host key, and one that declared neither
- * gets {@code NEEDS-YOU} with the continuation {@code run(decision=<id>)} and, under {@code [ui] ask
- * = notify}, a desktop notification carrying the link.
+ * sent to the decision's page, and a call whose rungs run out of time gets {@code NEEDS-YOU} with
+ * the continuation {@code run(decision=<id>)} and, under {@code [ui] ask = notify}, a desktop
+ * notification carrying the link. Any surface answers, the first answer wins, and a question still
+ * in flight to the host is withdrawn when another surface answers first.
  */
 class McpDecisionsTest {
 
@@ -49,21 +50,18 @@ class McpDecisionsTest {
     private final ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor();
     private final DecisionQueue queue = new DecisionQueue();
     private final List<List<String>> launched = Collections.synchronizedList(new ArrayList<>());
-    private final Decisions decisions = new Decisions(
-                    queue, (id, key) -> BASE + "#decision/" + id + (key == null ? "?" : "?k=" + key + "&") + "t=T")
+    private final Decisions decisions = new Decisions(queue, id -> BASE + "#decision/" + id + "?t=T")
             .alerts(new DecisionAlerts(argv -> launched.add(argv), "Linux", name -> null))
             .ask(() -> UiAsk.NOTIFY);
     private final AtomicInteger done = new AtomicInteger();
     private final McpHandler mcp = handler();
 
-    /** Asks before it does anything; {@code trust} picks a trust-changing decision. */
+    /** Asks before it does anything. */
     private final class Risky implements McpTool {
         private final String name;
-        private final boolean trust;
 
-        Risky(String name, boolean trust) {
+        Risky(String name) {
             this.name = name;
-            this.trust = trust;
         }
 
         @Override
@@ -73,8 +71,7 @@ class McpDecisionsTest {
 
         @Override
         public Map<String, Object> call(McpCall in) {
-            McpDecisions.Ask ask =
-                    new McpDecisions.Ask(name, "Do the risky thing?", List.of("a → b"), "Yes, do it", trust);
+            McpDecisions.Ask ask = new McpDecisions.Ask(name, "Do the risky thing?", List.of("a → b"), "Yes, do it");
             if (McpDecisions.require(in, this, ask) instanceof McpDecisions.Outcome.Stop stop) return stop.result();
             return in.text("DONE " + done.incrementAndGet() + "\n");
         }
@@ -87,9 +84,9 @@ class McpDecisionsTest {
 
     @Test
     void a_form_client_is_asked_in_the_call_and_its_yes_lets_the_operation_proceed() throws Exception {
-        String session = initialize("{\"elicitation\":{\"form\":{}}}");
+        String session = initialize(FORM);
         BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
-        CompletableFuture<McpHandler.Reply> call = async(session, "trusty", Map.of(), sent);
+        CompletableFuture<McpHandler.Reply> call = async(session, "risky", Map.of(), sent);
 
         Map<String, Object> request = next(sent);
         Map<String, Object> params = object(request, "params");
@@ -109,9 +106,9 @@ class McpDecisionsTest {
 
     @Test
     void a_form_client_that_declines_stops_the_operation() throws Exception {
-        String session = initialize("{\"elicitation\":{\"form\":{}}}");
+        String session = initialize(FORM);
         BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
-        CompletableFuture<McpHandler.Reply> call = async(session, "trusty", Map.of(), sent);
+        CompletableFuture<McpHandler.Reply> call = async(session, "risky", Map.of(), sent);
         answer(session, next(sent), "{\"action\":\"decline\"}");
 
         assertThat(text(call.get(10, TimeUnit.SECONDS))).startsWith("DECLINED Do the risky thing?");
@@ -121,9 +118,9 @@ class McpDecisionsTest {
     @Test
     void a_form_client_that_never_answers_gets_the_continuation_before_its_timeout() throws Exception {
         mcp.waitSecondMs(2);
-        String session = initialize("{\"elicitation\":{\"form\":{}}}");
+        String session = initialize(FORM);
         BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
-        CompletableFuture<McpHandler.Reply> call = async(session, "trusty", Map.of(), sent);
+        CompletableFuture<McpHandler.Reply> call = async(session, "risky", Map.of(), sent);
         assertThat(next(sent).get("method")).isEqualTo("elicitation/create");
 
         String reply = text(call.get(10, TimeUnit.SECONDS));
@@ -134,63 +131,94 @@ class McpDecisionsTest {
     }
 
     @Test
-    void a_url_client_is_sent_to_the_decision_page_whose_key_lets_it_settle_a_trust_decision() throws Exception {
-        String session = initialize("{\"elicitation\":{\"url\":{}}}");
+    void a_form_question_in_flight_is_withdrawn_when_the_dashboard_answers_first() throws Exception {
+        String session = initialize(FORM);
         BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
-        CompletableFuture<McpHandler.Reply> call = async(session, "trusty", Map.of(), sent);
+        CompletableFuture<McpHandler.Reply> call = async(session, "risky", Map.of(), sent);
+        Map<String, Object> request = next(sent);
+        Decision open = queue.list().getFirst();
+
+        assertThat(queue.accept(open.id(), Map.of("answer", "yes"), DecisionSurface.DASHBOARD))
+                .isInstanceOf(DecisionQueue.Result.Settled.class);
+
+        assertThat(text(call.get(10, TimeUnit.SECONDS))).isEqualTo("DONE 1\n");
+        Map<String, Object> withdrawn = requireNonNull(sent.poll(5, TimeUnit.SECONDS));
+        assertThat(withdrawn.get("method")).isEqualTo("notifications/cancelled");
+        assertThat(object(withdrawn, "params").get("requestId")).isEqualTo(request.get("id"));
+        assertThat(queue.find(open.id()).orElseThrow().answeredBy()).isEqualTo(DecisionSurface.DASHBOARD);
+    }
+
+    @Test
+    void a_url_client_is_sent_to_the_decision_page_where_the_dashboard_answers() throws Exception {
+        String session = initialize(URL);
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call = async(session, "risky", Map.of(), sent);
 
         Map<String, Object> request = next(sent);
         Map<String, Object> params = object(request, "params");
         Decision open = queue.list().getFirst();
         assertThat(params.get("mode")).isEqualTo("url");
         assertThat(params.get("elicitationId")).isEqualTo(open.id());
-        String key = requireNonNull(queue.hostKey(open.id()));
-        assertThat(String.valueOf(params.get("url"))).isEqualTo(BASE + "#decision/" + open.id() + "?k=" + key + "&t=T");
+        assertThat(String.valueOf(params.get("url"))).isEqualTo(BASE + "#decision/" + open.id() + "?t=T");
         answer(session, request, "{\"action\":\"accept\"}");
 
-        // The person answers on the page the host opened: a dashboard answer holding the link's key.
-        assertThat(queue.accept(open.id(), Map.of("answer", "yes"), DecisionSurface.DASHBOARD, key))
+        assertThat(queue.accept(open.id(), Map.of("answer", "yes"), DecisionSurface.DASHBOARD))
                 .isInstanceOf(DecisionQueue.Result.Settled.class);
 
         assertThat(text(call.get(10, TimeUnit.SECONDS))).isEqualTo("DONE 1\n");
-        assertThat(queue.find(open.id()).orElseThrow().answeredBy()).isEqualTo(DecisionSurface.HOST_URL);
+        assertThat(queue.find(open.id()).orElseThrow().answeredBy()).isEqualTo(DecisionSurface.DASHBOARD);
         Map<String, Object> complete = requireNonNull(sent.poll(5, TimeUnit.SECONDS));
         assertThat(complete.get("method")).isEqualTo("notifications/elicitation/complete");
         assertThat(object(complete, "params").get("elicitationId")).isEqualTo(open.id());
     }
 
     @Test
-    void a_client_with_neither_mode_gets_needs_you_a_notification_and_a_continuation() throws Exception {
-        String session = initialize("{}");
+    void a_link_the_host_has_not_opened_is_withdrawn_and_completed_when_jk_decide_answers_first() throws Exception {
+        String session = initialize(URL);
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call = async(session, "risky", Map.of(), sent);
+        Map<String, Object> request = next(sent);
+        Decision open = queue.list().getFirst();
+
+        assertThat(queue.accept(open.id(), Map.of("answer", "yes"), DecisionSurface.CLI))
+                .isInstanceOf(DecisionQueue.Result.Settled.class);
+
+        assertThat(text(call.get(10, TimeUnit.SECONDS))).isEqualTo("DONE 1\n");
+        Map<String, Object> withdrawn = requireNonNull(sent.poll(5, TimeUnit.SECONDS));
+        assertThat(withdrawn.get("method")).isEqualTo("notifications/cancelled");
+        assertThat(object(withdrawn, "params").get("requestId")).isEqualTo(request.get("id"));
+        Map<String, Object> complete = requireNonNull(sent.poll(5, TimeUnit.SECONDS));
+        assertThat(complete.get("method")).isEqualTo("notifications/elicitation/complete");
+        assertThat(object(complete, "params").get("elicitationId")).isEqualTo(open.id());
+    }
+
+    @Test
+    void a_call_out_of_time_gets_needs_you_a_notification_and_a_continuation_the_dashboard_answers() {
+        mcp.waitSecondMs(1);
+        String session = initialize(FORM);
         BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
 
-        String reply = text(mcp.handle(call("trusty", Map.of()), session, null, null, sent::add));
+        String reply = text(mcp.handle(call("risky", Map.of()), session, null, null, sent::add));
         Decision d = queue.list().getFirst();
         String link = BASE + "#decision/" + d.id() + "?t=T";
         assertThat(reply)
                 .startsWith("NEEDS-YOU Do the risky thing?\n")
                 .contains("  a → b\n")
-                .contains("in a terminal: jk decide " + d.id())
-                .contains(link)
-                .doesNotContain("k=")
+                .contains("the user answers it: " + link + "\n")
+                .doesNotContain("terminal")
                 .endsWith("run(decision=" + d.id() + ")\n");
-        assertThat(sent).as("nothing was asked of the client").isEmpty();
         assertThat(launched).singleElement().satisfies(argv -> {
             assertThat(argv.getFirst()).isEqualTo("notify-send");
-            assertThat(argv.getLast()).contains("Do the risky thing?", "jk decide " + d.id(), link);
+            assertThat(argv.getLast()).contains("Do the risky thing?", "Answer it in the dashboard.", link);
         });
 
-        // Calling the tool again while it is open asks nothing new and notifies nobody again.
-        mcp.waitSecondMs(1);
-        assertThat(text(mcp.handle(call("trusty", Map.of()), session, null, null, sent::add)))
+        // Calling the tool again while it is open opens nothing new and notifies nobody again.
+        assertThat(text(mcp.handle(call("risky", Map.of()), session, null, null, sent::add)))
                 .contains("run(decision=" + d.id() + ")");
         assertThat(queue.list()).hasSize(1);
         assertThat(launched).hasSize(1);
 
-        assertThat(queue.accept(d.id(), Map.of("answer", "yes"), DecisionSurface.DASHBOARD, null))
-                .as("the dashboard cannot accept a trust-changing decision")
-                .isInstanceOf(DecisionQueue.Result.Refused.class);
-        assertThat(queue.accept(d.id(), Map.of("answer", "yes"), DecisionSurface.CLI, null))
+        assertThat(queue.accept(d.id(), Map.of("answer", "yes"), DecisionSurface.DASHBOARD))
                 .isInstanceOf(DecisionQueue.Result.Settled.class);
         assertThat(text(mcp.handle(call("run", Map.of("decision", d.id())), session, null, null, sent::add)))
                 .isEqualTo("DONE 1\n");
@@ -201,49 +229,43 @@ class McpDecisionsTest {
 
     @Test
     void an_accepted_decision_proceeds_only_the_call_it_was_asked_about() {
-        String session = initialize("{}");
-        mcp.handle(call("trusty", Map.of("deps", List.of("jackson"))), session);
+        mcp.waitSecondMs(1);
+        String session = initialize(FORM);
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        mcp.handle(call("risky", Map.of("deps", List.of("jackson"))), session, null, null, sent::add);
         Decision d = queue.list().getFirst();
-        queue.accept(d.id(), Map.of("answer", "yes"), DecisionSurface.CLI, null);
+        queue.accept(d.id(), Map.of("answer", "yes"), DecisionSurface.CLI);
 
-        assertThat(text(mcp.handle(call("trusty", Map.of("deps", List.of("everything"), "decision", d.id())), session)))
+        assertThat(text(mcp.handle(call("risky", Map.of("deps", List.of("everything"), "decision", d.id())), session)))
                 .contains("answers another call");
-        assertThat(text(mcp.handle(call("plain", Map.of("decision", d.id())), session)))
+        assertThat(text(mcp.handle(call("other", Map.of("decision", d.id())), session)))
                 .contains("answers another call");
         assertThat(done).hasValue(0);
-        assertThat(text(mcp.handle(call("trusty", Map.of("deps", List.of("jackson"), "decision", d.id())), session)))
+        assertThat(text(mcp.handle(call("risky", Map.of("deps", List.of("jackson"), "decision", d.id())), session)))
                 .isEqualTo("DONE 1\n");
     }
 
     @Test
     void quiet_leaves_the_link_in_the_result_alone() {
         decisions.ask(() -> UiAsk.QUIET);
-        String session = initialize("{}");
-        assertThat(text(mcp.handle(call("trusty", Map.of()), session))).startsWith("NEEDS-YOU");
+        mcp.waitSecondMs(1);
+        String session = initialize(FORM);
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        assertThat(text(mcp.handle(call("risky", Map.of()), session, null, null, sent::add)))
+                .startsWith("NEEDS-YOU");
         assertThat(launched).isEmpty();
     }
 
     @Test
-    void a_destructive_operation_on_a_host_that_cannot_ask_proceeds_on_its_own_confirm() {
+    void an_operation_on_a_host_that_cannot_ask_proceeds_on_its_own_confirm() {
         String session = initialize("{}");
-        assertThat(text(mcp.handle(call("plain", Map.of()), session))).isEqualTo("DONE 1\n");
+        assertThat(text(mcp.handle(call("risky", Map.of()), session))).isEqualTo("DONE 1\n");
         assertThat(queue.list()).isEmpty();
     }
 
-    @Test
-    void a_destructive_operation_the_dashboard_answers_continues_by_run() {
-        String session = initialize("{\"elicitation\":{\"form\":{}}}");
-        mcp.waitSecondMs(1);
-        // A form client whose call times out leaves the decision open for the dashboard.
-        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
-        String reply = text(mcp.handle(call("plain", Map.of()), session, null, null, sent::add));
-        Decision d = queue.list().getFirst();
-        assertThat(reply).contains("the user answers it: " + BASE + "#decision/" + d.id());
-        assertThat(queue.accept(d.id(), Map.of("answer", "yes"), DecisionSurface.DASHBOARD, null))
-                .isInstanceOf(DecisionQueue.Result.Settled.class);
-        assertThat(text(mcp.handle(call("run", Map.of("decision", d.id())), session, null, null, sent::add)))
-                .isEqualTo("DONE 1\n");
-    }
+    private static final String FORM = "{\"elicitation\":{\"form\":{}}}";
+
+    private static final String URL = "{\"elicitation\":{\"url\":{}}}";
 
     private CompletableFuture<McpHandler.Reply> async(
             String session, String tool, Map<String, Object> args, BlockingQueue<Map<String, Object>> sent) {
@@ -307,7 +329,7 @@ class McpDecisionsTest {
                 dir -> Map.of(),
                 List::of,
                 "0.13.7");
-        h.tools(new McpTools(List.of(new Risky("trusty", true), new Risky("plain", false), new RunTool())));
+        h.tools(new McpTools(List.of(new Risky("risky"), new Risky("other"), new RunTool())));
         h.decisions(decisions);
         h.waitSecondMs(50);
         return h;

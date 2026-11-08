@@ -51,17 +51,16 @@ class McpDecisionTakeoverTest {
     private final AtomicInteger ran = new AtomicInteger();
     private final AtomicLong now = new AtomicLong(System.currentTimeMillis());
 
-    /** Asks a trust-changing question, then counts one run. */
+    /** Asks a question, then counts one run. */
     private final class Update implements McpTool {
         @Override
         public Spec spec() {
-            return new Spec("trusty", "Changes what the project trusts.", Map.of("type", "object"));
+            return new Spec("risky", "Asks before it runs.", Map.of("type", "object"));
         }
 
         @Override
         public Map<String, Object> call(McpCall in) {
-            McpDecisions.Ask ask =
-                    new McpDecisions.Ask("trusty", "Apply 1 move?", List.of("a 1 → 2"), "Yes, apply it", true);
+            McpDecisions.Ask ask = new McpDecisions.Ask("risky", "Apply 1 move?", List.of("a 1 → 2"), "Yes, apply it");
             if (McpDecisions.require(in, this, ask) instanceof McpDecisions.Outcome.Stop stop) return stop.result();
             return in.text("RAN " + ran.incrementAndGet() + "\n");
         }
@@ -75,8 +74,8 @@ class McpDecisionTakeoverTest {
         AtomicBoolean firstIsPrimary = new AtomicBoolean(true);
         Engine first = engine(firstIsPrimary);
         String session = initialize(first);
-        String asked = text(
-                first.mcp().handle(call("trusty", Map.of("goal", "move a")), session, project.toString(), null, null));
+        String asked = text(first.mcp()
+                .handle(call("risky", Map.of("goal", "move a")), session, project.toString(), null, m -> {}));
         assertThat(asked).startsWith("NEEDS-YOU Apply 1 move?");
         String id = first.queue().list().getFirst().id();
         assertThat(asked).endsWith("run(decision=" + id + ")\n");
@@ -85,10 +84,10 @@ class McpDecisionTakeoverTest {
         firstIsPrimary.set(false);
         Engine next = engine(new AtomicBoolean(true));
 
-        assertThat(first.queue().accept(id, Map.of("answer", "yes"), DecisionSurface.CLI, null))
+        assertThat(first.queue().accept(id, Map.of("answer", "yes"), DecisionSurface.CLI))
                 .as("the displaced engine takes no answer")
                 .isInstanceOf(DecisionQueue.Result.Missing.class);
-        assertThat(next.queue().accept(id, Map.of("answer", "yes"), DecisionSurface.CLI, null))
+        assertThat(next.queue().accept(id, Map.of("answer", "yes"), DecisionSurface.CLI))
                 .isInstanceOf(DecisionQueue.Result.Settled.class);
 
         assertThat(text(next.mcp()
@@ -101,7 +100,7 @@ class McpDecisionTakeoverTest {
         first.mcp().waitSecondMs(1);
         assertThat(text(first.mcp()
                         .handle(
-                                call("trusty", Map.of("goal", "move a", "decision", id)),
+                                call("risky", Map.of("goal", "move a", "decision", id)),
                                 session,
                                 project.toString(),
                                 null,
@@ -134,7 +133,7 @@ class McpDecisionTakeoverTest {
         AtomicBoolean firstIsPrimary = new AtomicBoolean(true);
         Engine first = engine(firstIsPrimary);
         String session = initialize(first);
-        first.mcp().handle(call("trusty", Map.of()), session, project.toString(), null, null);
+        first.mcp().handle(call("risky", Map.of()), session, project.toString(), null, m -> {});
         String id = first.queue().list().getFirst().id();
 
         firstIsPrimary.set(false);
@@ -189,7 +188,7 @@ class McpDecisionTakeoverTest {
                 "0.13.7");
         h.sessions(log);
         h.tools(new McpTools(List.of(new Update(), new RunTool())));
-        h.decisions(new Decisions(queue, (id, key) -> null));
+        h.decisions(new Decisions(queue, id -> null));
         h.waitSecondMs(1);
         return new Engine(h, queue);
     }
@@ -198,7 +197,8 @@ class McpDecisionTakeoverTest {
         return requireNonNull(engine.mcp()
                 .handle(
                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":"
-                                + "\"2025-11-25\",\"capabilities\":{},\"clientInfo\":{\"name\":\"fake\","
+                                + "\"2025-11-25\",\"capabilities\":{\"elicitation\":{\"form\":{}}},"
+                                + "\"clientInfo\":{\"name\":\"fake\","
                                 + "\"version\":\"1\"}}}",
                         null,
                         project.toString(),

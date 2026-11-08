@@ -14,13 +14,11 @@ import org.jspecify.annotations.Nullable;
 /**
  * One question an operation puts to a person, as the queue holds it at one moment: what asks
  * ({@code kind}), the question and the lines that explain it, the command a person runs to answer
- * it in a terminal, the form every surface renders, whether it changes what the project trusts, who
- * raised it, its deadline, and how it was settled.
+ * it in a terminal, the form every surface renders, who raised it, its deadline, and how it was
+ * settled. Any surface may answer it; the first answer wins.
  *
- * @param kind the operation that asks ({@code update}, {@code disk-clean}, …)
+ * @param kind the operation that asks ({@code disk-clean}, {@code jdk-uninstall}, …)
  * @param command the terminal command that answers it, {@code jk decide <id>}
- * @param trust true when the answer changes what the project trusts: the dashboard may show it and
- *     decline it, never accept it
  * @param session the session id of the agent that raised it, or null for none
  * @param label that session's label ({@code claude-code 3f9a}), or null
  * @param episode the session's episode when it was raised, or null
@@ -38,7 +36,6 @@ public record Decision(
         List<String> detail,
         String command,
         Form form,
-        boolean trust,
         @Nullable String session,
         @Nullable String label,
         @Nullable String episode,
@@ -90,8 +87,8 @@ public record Decision(
     /** This decision settled as {@code state} by {@code surface} at {@code at}. */
     Decision settled(State state, Map<String, Object> answers, @Nullable DecisionSurface surface, long at) {
         return new Decision(
-                id, kind, question, detail, command, form, trust, session, label, episode, project, createdAt, deadline,
-                state, answers, surface, at);
+                id, kind, question, detail, command, form, session, label, episode, project, createdAt, deadline, state,
+                answers, surface, at);
     }
 
     /** The decision as {@code GET /api/decisions}, the SSE {@code decision} event and {@code jk decide} carry it. */
@@ -102,7 +99,6 @@ public record Decision(
         m.put("question", question);
         m.put("detail", detail);
         m.put("command", command);
-        m.put("trust", trust);
         m.put("form", MiniJson.parse(form.toJson()));
         if (session != null) m.put("session", session);
         if (label != null) m.put("label", label);
@@ -139,7 +135,6 @@ public record Decision(
                     detail,
                     command,
                     Form.fromJson(MiniJson.write(form)),
-                    Boolean.TRUE.equals(m.get("trust")),
                     MiniJson.str(m, "session"),
                     MiniJson.str(m, "label"),
                     MiniJson.str(m, "episode"),

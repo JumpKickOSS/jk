@@ -129,10 +129,9 @@ public final class DecisionAlerts implements AutoCloseable {
         }
     }
 
-    /** The notification's text: the question, and how to answer a trust-changing one. */
+    /** The notification's text: the question, and where to answer it. */
     static String body(Decision d) {
-        String how = d.trust() ? "Accept it in a terminal: " + d.command() : "Answer it in the dashboard.";
-        return d.question() + "\n" + how;
+        return d.question() + "\nAnswer it in the dashboard.";
     }
 
     private boolean notify(Decision d, String link) {
