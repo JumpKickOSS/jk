@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,7 +44,9 @@ public record Lockfile(
         /** The {@code [node]} pin; null when no module declares a Node.js version. */
         @Nullable NodePin node,
         /** The {@code [[tool]]} rows: plugin step tools pinned by digest, per platform where they follow the host. */
-        List<ToolEntry> tools) {
+        List<ToolEntry> tools,
+        /** The {@code [[schema]]} rows: registry schemas pinned by digest ({@link SchemaEntry}). */
+        List<SchemaEntry> schemas) {
 
     /**
      * The GraalVM reachability-metadata repository release a native build reads, resolved from
@@ -85,6 +88,7 @@ public record Lockfile(
         sdk = sdk == null ? List.of() : List.copyOf(sdk);
         modules = modules == null ? List.of() : List.copyOf(modules);
         tools = tools == null ? List.of() : List.copyOf(tools);
+        schemas = schemas == null ? List.of() : List.copyOf(schemas);
     }
 
     /** Constructor without the jk floor. */
@@ -115,122 +119,33 @@ public record Lockfile(
                 null,
                 null,
                 null,
+                List.of(),
                 List.of());
     }
 
     /** This lock with the jk floor set. */
     public Lockfile withJkMin(@Nullable String floor) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                floor,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.jkMin = floor);
     }
 
     /** This lock as written by another jk: {@code generated-by} names the writer, nothing else moves. */
     public Lockfile withGeneratedBy(String writer) {
-        return new Lockfile(
-                version,
-                writer,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.generatedBy = writer);
     }
 
     /** This lock as written by the build {@code build} names; null when the writer ran from no archive. */
     public Lockfile withWriterBuild(@Nullable WriterBuild build) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                build,
-                node,
-                tools);
+        return edit(e -> e.writerBuild = build);
     }
 
     /** This lock with a content digest of the manifests used to produce it. */
     public Lockfile withManifestsSha256(String digest) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                digest,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.manifestsSha256 = digest);
     }
 
     /** This lock with a durable project identity. */
     public Lockfile withProjectId(String id) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                id,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.projectId = id);
     }
 
     /**
@@ -239,117 +154,27 @@ public record Lockfile(
      * has had to be threaded through both.
      */
     public Lockfile withArtifacts(List<Artifact> newArtifacts) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                newArtifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.artifacts = newArtifacts);
     }
 
     /** This lock with the resolved reachability-metadata repository pin. */
     public Lockfile withNativeMetadata(NativeMetadata pin) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                pin,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.nativeMetadata = pin);
     }
 
     /** This lock with a resolved JDK pin. */
     public Lockfile withJdk(JdkPin pin) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                pin,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.jdk = pin);
     }
 
     /** This lock with a resolved Node.js pin (null clears it). */
     public Lockfile withNode(@Nullable NodePin pin) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                pin,
-                tools);
+        return edit(e -> e.node = pin);
     }
 
     /** This lock with a resolved GraalVM pin (null clears it). */
     public Lockfile withGraal(GraalPin pin) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                pin,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.graal = pin);
     }
 
     /** Constructor without SDK entries. */
@@ -381,117 +206,129 @@ public record Lockfile(
 
     /** Return a copy with the resolved Kotlin compiler version stamped in. */
     public Lockfile withKotlin(String kotlinVersion) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlinVersion,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.kotlin = kotlinVersion);
     }
 
     /** Return a copy with the resolved Scala 3 compiler version stamped in. */
     public Lockfile withScala(String scalaVersion) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scalaVersion,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.scala = scalaVersion);
     }
 
     /** Return a copy with the given plugin entries (replaces any existing). */
     public Lockfile withPlugins(List<PluginEntry> newPlugins) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                newPlugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.plugins = newPlugins);
     }
 
     /** Return a copy with the given provisioned-SDK component pins (replaces any existing). */
     public Lockfile withSdk(List<SdkEntry> newSdk) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                newSdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.sdk = newSdk);
     }
 
     /** Return a copy with the given {@code [[tool]]} rows (replaces any existing). */
     public Lockfile withTools(List<ToolEntry> newTools) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                newTools);
+        return edit(e -> e.tools = newTools);
+    }
+
+    /** Return a copy with the given {@code [[schema]]} rows (replaces any existing). */
+    public Lockfile withSchemas(List<SchemaEntry> newSchemas) {
+        return edit(e -> e.schemas = newSchemas);
+    }
+
+    /** A copy of this lock with {@code change} applied to its components. */
+    private Lockfile edit(Consumer<Edit> change) {
+        Edit e = new Edit(this);
+        change.accept(e);
+        return e.build();
+    }
+
+    /** The components of a lock being copied, each assignable once before {@link #build}. */
+    private static final class Edit {
+        int version;
+        String generatedBy;
+        String resolutionAlgorithm;
+
+        @Nullable
+        JdkPin jdk;
+
+        @Nullable
+        GraalPin graal;
+
+        @Nullable
+        String kotlin;
+
+        @Nullable
+        String scala;
+
+        List<Artifact> artifacts;
+        List<PluginEntry> plugins;
+        List<SdkEntry> sdk;
+        List<ModuleEntry> modules;
+
+        @Nullable
+        String jkMin;
+
+        @Nullable
+        String manifestsSha256;
+
+        @Nullable
+        String projectId;
+
+        @Nullable
+        NativeMetadata nativeMetadata;
+
+        @Nullable
+        WriterBuild writerBuild;
+
+        @Nullable
+        NodePin node;
+
+        List<ToolEntry> tools;
+        List<SchemaEntry> schemas;
+
+        Edit(Lockfile l) {
+            version = l.version;
+            generatedBy = l.generatedBy;
+            resolutionAlgorithm = l.resolutionAlgorithm;
+            jdk = l.jdk;
+            graal = l.graal;
+            kotlin = l.kotlin;
+            scala = l.scala;
+            artifacts = l.artifacts;
+            plugins = l.plugins;
+            sdk = l.sdk;
+            modules = l.modules;
+            jkMin = l.jkMin;
+            manifestsSha256 = l.manifestsSha256;
+            projectId = l.projectId;
+            nativeMetadata = l.nativeMetadata;
+            writerBuild = l.writerBuild;
+            node = l.node;
+            tools = l.tools;
+            schemas = l.schemas;
+        }
+
+        Lockfile build() {
+            return new Lockfile(
+                    version,
+                    generatedBy,
+                    resolutionAlgorithm,
+                    jdk,
+                    graal,
+                    kotlin,
+                    scala,
+                    artifacts,
+                    plugins,
+                    sdk,
+                    modules,
+                    jkMin,
+                    manifestsSha256,
+                    projectId,
+                    nativeMetadata,
+                    writerBuild,
+                    node,
+                    tools,
+                    schemas);
+        }
     }
 
     /** The {@code [[tool]]} row that pins {@code coord}'s bytes, or null when none does. */
@@ -514,25 +351,7 @@ public record Lockfile(
 
     /** Return a copy with resolved first-party module identity pins (replaces any existing). */
     public Lockfile withModules(List<ModuleEntry> newModules) {
-        return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                graal,
-                kotlin,
-                scala,
-                artifacts,
-                plugins,
-                sdk,
-                newModules,
-                jkMin,
-                manifestsSha256,
-                projectId,
-                nativeMetadata,
-                writerBuild,
-                node,
-                tools);
+        return edit(e -> e.modules = newModules);
     }
 
     /**
@@ -577,6 +396,7 @@ public record Lockfile(
                 null,
                 null,
                 null,
+                List.of(),
                 List.of());
     }
 

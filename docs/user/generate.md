@@ -195,6 +195,36 @@ The step is `generate-avro`; a schema edit re-runs it, and the classes join the 
 writes the table from a POM's `avro-maven-plugin`
 ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
+## `[schema-registry]` — schemas from a registry
+
+A Kafka service often keeps its schemas in a registry rather than the tree. `[schema-registry]`
+downloads subjects from any registry that serves the Confluent API (Confluent Schema Registry and
+Cloud, Redpanda, Karapace, Apicurio's `/apis/ccompat/v7`) and hands them to the generator of
+their type. Avro subjects join `[avro]`'s inputs beside `src`, so the module still declares
+`[avro]`:
+
+```toml
+[avro]
+
+[schema-registry]
+url        = "https://registry.example.com"
+subjects   = { "orders-value" = "3", "payments-value" = "latest" }
+# repository = "confluent"   # the credential id; the registry's host when omitted
+
+[dependencies]
+avro = "1.12.2"
+```
+
+`jk lock` fetches each subject and every subject version it references, and pins each as a
+`[[schema]]` row ([Lockfile](lockfile.md#registry-schemas)). A build reads the pinned schemas from
+the store and never asks the registry unless the store lacks one; it then refuses any other bytes.
+`latest` resolves once: `jk update` or `jk lock -F` moves it.
+
+The credential comes from the repository chain under the `repository` id: `JK_REPO_<ID>_USERNAME`
+and `JK_REPO_<ID>_PASSWORD` (a Confluent Cloud API key and secret), or a table in
+`~/.jk/config.toml` ([Repositories](repositories.md)). Only a download is supported: jk does not
+register schemas or check compatibility.
+
 ## `[jaxb]` — XML schemas through xjc
 
 The JAXB schema compiler, [xjc](https://eclipse-ee4j.github.io/jaxb-ri/), generates a class per

@@ -37,6 +37,7 @@ import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.SdkComponents;
+import cc.jumpkick.runtime.schema.SchemaFiles;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
@@ -512,7 +513,8 @@ public final class PlannerPlugin {
             List<PluginContributions.StepDep> declared,
             Map<String, Path> extras,
             Map<String, String> sdkPins,
-            List<LockClosures.Repo> closures) {
+            List<LockClosures.Repo> closures,
+            Optional<SchemaFiles.Dir> schemas) {
 
         static StepToolInputs of(
                 BuildPlanner.Ctx cx, BuildPlanner.Inputs in, JkBuild project, ActivePlugin active, TaskDecl step)
@@ -530,19 +532,25 @@ public final class PlannerPlugin {
                                     cx.cas(),
                                     in.lockFile(),
                                     active.manifest().id(),
-                                    step.name()));
+                                    step.name()),
+                    SchemaFiles.forPlugin(active.manifest().id(), project, in.dir(), in.lockFile(), cx.cas()));
         }
 
         /** The action-key tokens: each tool's, then each closure repository's name. */
         List<String> tokens() throws IOException {
             List<String> tokens = new ArrayList<>(toolTokens(declared, extras, sdkPins));
             for (LockClosures.Repo closure : closures) tokens.add("tool:" + closure.token());
+            schemas.ifPresent(dir -> tokens.add("schemas:" + dir.token()));
             return tokens;
         }
 
         /** The extras the spec hands the body: the tools, and each closure's repository, built now. */
         Map<String, Path> forSpec() throws IOException, InterruptedException {
-            return LockClosures.withRepositories(extras, closures);
+            Map<String, Path> out = LockClosures.withRepositories(extras, closures);
+            if (schemas.isEmpty()) return out;
+            Map<String, Path> with = new LinkedHashMap<>(out);
+            with.put(SchemaFiles.EXTRA, schemas.get().dir());
+            return with;
         }
     }
 

@@ -34,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * <p>A clean digest is necessary but not sufficient: a lock can also be missing a <em>fact</em>
  * jk writes for the current manifests — the {@code [native] metadata-repository} pin, the {@code
  * [node]} pin, a {@code [[kotlin-plugins]]} jar's {@code [[plugin]]} row, a plugin tool's
- * {@code [[tool]]} row — and {@link #isStale} rules such a lock stale.
+ * {@code [[tool]]} row, a registry subject's {@code [[schema]]} row — and {@link #isStale} rules
+ * such a lock stale.
  */
 public final class LockFreshness {
 
@@ -100,7 +101,8 @@ public final class LockFreshness {
             Map<Path, JkBuild> modules = modules(owner);
             return missingNodePin(modules.values(), lock)
                     || missingKotlinPluginPin(owner, modules, lock)
-                    || missingToolPin(owner, modules, lock);
+                    || missingToolPin(owner, modules, lock)
+                    || LockSchemas.missing(owner, modules, lock);
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {

@@ -258,10 +258,19 @@ final class HouseRules {
         v.population(files);
     }
 
+    /** True when {@code descriptor} exists and declares no {@code [code]} table: a plugin with no worker. */
+    private static boolean declarativeOnly(Text text, String descriptor) {
+        try {
+            return text.lines(descriptor).stream().noneMatch(l -> l.strip().equals("[code]"));
+        } catch (RuntimeException absent) {
+            return false;
+        }
+    }
+
     @Guard(
             id = "plugin-family",
             why =
-                    "a plugin module is one worker speaking one protocol: its family (SPI plugin with a jk-plugin.toml, or forked worker) must agree with its wire-prefix wiring, and an SPI plugin reads only keys its [schema] declares",
+                    "a plugin module is one worker speaking one protocol, or a jk-plugin.toml with no [code] and no worker: its family (SPI plugin with a jk-plugin.toml, or forked worker) must agree with its wire-prefix wiring, and an SPI plugin reads only keys its [schema] declares",
             instead =
                     "declare the prefix in jk-plugin.toml [code].protocol-prefix and never in server/*, or fork the worker from the engine and ship no descriptor; declare every config key under [schema]")
     void pluginFamily(Model model, Text text, Violations v) {
@@ -297,6 +306,12 @@ final class HouseRules {
             plugins++;
             List<String> files = text.files(module + "/src/main/java/**/*.java");
             String manifest = module + "/jk.toml";
+            if (declarativeOnly(text, module + "/jk-plugin.toml")) {
+                for (String rel : files)
+                    if (quotedPrefix.matcher(text.blanked(rel, Blank.COMMENTS)).find())
+                        v.add(new TextSite(rel, 0, "prefix"), module + " has no [code] layer, so no wire prefix");
+                continue;
+            }
             if (files.isEmpty()) {
                 v.add(
                         new TextSite(manifest, 0, "no sources"),

@@ -379,6 +379,29 @@ metadata-repository` in `jk.toml`. It is not an `[[artifact]]` row: it is on no 
 and in no scope. It *is* an input to `native-image`, so it is pinned like one. See
 [Native images](native.md#the-graalvm-metadata-repository).
 
+### Registry schemas
+
+Each subject a `[schema-registry]` table downloads ([Generate](generate.md#schema-registry--schemas-from-a-registry)),
+and each subject version a schema references, is a `[[schema]]` row: the version and schema id the
+registry served, the type, and the digest of the schema text. `references` names the rows a schema
+needs as `<subject>@<version>`:
+
+```toml
+[[schema]]
+module   = "orders"                         # omitted for the lock's own project
+registry = "https://registry.example.com"
+subject  = "orders-value"
+version  = 3
+id       = 101
+type     = "avro"
+checksum = "sha256:…"
+references = ["money@1"]
+```
+
+`jk sync` puts every pinned schema in the store, so an offline build generates from them. A
+subject the registry changed at the same version fails the build naming it until `jk lock -F`
+pins it again.
+
 ### Plugin tools
 
 A tool a plugin's step, command or packager fetches as one Maven artifact — protoc and its plugins

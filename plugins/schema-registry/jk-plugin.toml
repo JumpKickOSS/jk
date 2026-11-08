@@ -1,0 +1,14 @@
+# The [schema-registry] table's declarative manifest. It has no code layer: jk lock fetches each
+# subject, with every version it references, and pins it as a [[schema]] row; a build hands the
+# pinned schemas of a type to the generator that reads it ([avro] for Avro), as extra inputs.
+
+[plugin]
+id        = "schema-registry"
+table     = "schema-registry"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[schema]
+url        = { type = "string", required = true, example = "https://registry.example.com", hint = "the registry's base URL: Confluent Schema Registry or Cloud, Redpanda, Karapace, or Apicurio's /apis/ccompat/v7" }
+subjects   = { type = "string-map", required = true, hint = "subject → version number, or \"latest\", which jk update moves" }
+repository = { type = "string", hint = "the id the credentials are read under (JK_REPO_<ID>_USERNAME / _PASSWORD, ~/.jk/config.toml); the registry's host when omitted" }

@@ -37,6 +37,7 @@ import cc.jumpkick.resolver.PlatformBomVersions;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.runtime.base.SdkComponents;
+import cc.jumpkick.runtime.schema.SchemaFiles;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.tool.TrustedPlugins;
 import cc.jumpkick.util.JkDirs;
@@ -282,9 +283,11 @@ public final class PluginBuild {
                 // Downloaded and verified, not unpacked: the archive is unpacked by the build that reads it.
                 fetchTools(lanes, project, cas, lock, false, false).keySet());
         out.addAll(fetchPackagerDependencies(project, moduleDir, cas, lockFile).keySet());
-        if (lock != null)
+        if (lock != null) {
             out.addAll(LockClosures.stage(
                     project, lockDir(lockFile), moduleDir, cas, lock, memberLock(lockFile, moduleDir)));
+            out.addAll(SchemaFiles.prefetch(project, moduleDir, lockDir(lockFile), lock, cas));
+        }
         return out;
     }
 

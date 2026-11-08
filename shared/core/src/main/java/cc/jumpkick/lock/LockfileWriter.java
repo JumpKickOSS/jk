@@ -126,6 +126,7 @@ public final class LockfileWriter {
         writePlugins(out, lockfile);
         writeSdk(out, lockfile);
         writeTools(out, lockfile);
+        SchemaEntry.write(out, lockfile.schemas());
         writeModules(out, lockfile);
         return out.toString();
     }

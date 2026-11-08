@@ -35,6 +35,7 @@ class BuiltInManifestClasspathTest {
                         "taglib",
                         "jenkins-test",
                         "avro",
+                        "schema-registry",
                         "jaxb",
                         "jooq",
                         "lint",

@@ -42,6 +42,17 @@ final class Inputs {
         return List.copyOf(out);
     }
 
+    /** {@code inputs} then every file under {@code dir}, sorted, each once. */
+    static List<Path> withAll(List<Path> inputs, Path dir) throws IOException {
+        LinkedHashSet<Path> out = new LinkedHashSet<>(inputs);
+        List<Path> files = new ArrayList<>();
+        PathUtil.forEachRegularFile(
+                dir, (file, attrs) -> files.add(file.toAbsolutePath().normalize()));
+        files.sort(null);
+        out.addAll(files);
+        return List.copyOf(out);
+    }
+
     /**
      * The pattern's matcher and, for each {@code **} directory segment, the pattern without it: a
      * double star names zero or more directories, as it does under Maven and Gradle, where the

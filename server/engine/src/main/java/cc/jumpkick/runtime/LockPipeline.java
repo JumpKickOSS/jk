@@ -69,6 +69,7 @@ import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.runtime.base.SdkComponents;
+import cc.jumpkick.runtime.schema.SchemaPins;
 import cc.jumpkick.scala.ScalaResolver;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.version.Versions;
@@ -396,6 +397,7 @@ public final class LockPipeline {
         if (tools.kotlin() != null) lock = lock.withKotlin(tools.kotlin());
         if (tools.scala() != null) lock = lock.withScala(tools.scala());
         lock = withNativePin(lock, keepPins ? existing : null, pathPrep.repos(), progress);
+        lock = SchemaPins.pin(lock, keepPins ? existing : null, lockDir, modules(members), cas, progress::label);
         // graal() is non-null exactly when [native].graal is set or [native] turns native-image on,
         // which is what "the project asked for Graal" means.
         lock = Objects.requireNonNull(ToolchainLockStamp.apply(
