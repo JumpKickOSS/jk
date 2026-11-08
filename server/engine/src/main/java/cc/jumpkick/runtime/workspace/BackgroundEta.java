@@ -20,9 +20,10 @@ import org.jspecify.annotations.Nullable;
  * planning; no module needs the answer to start, so the build starts at once and the estimate is
  * published to the listener when it is ready.
  *
- * <p>The walk asks compiler workers for a plan only when one is already warm ({@link
- * JavaCompile#WARM_PLANS_ONLY}): a cold worker costs seconds, and a plan queued on a lane the build
- * is compiling on would delay a real compile for a progress bar.
+ * <p>The walk asks no compiler worker for a plan ({@link JavaCompile.PlanWorkers#NONE}) and prices
+ * each compile from its prior record: the build's own compiles run on those workers, and a cold
+ * build of a 223-module workspace queued one plan per module ahead of them, adding a third to the
+ * time spent compiling, for a progress bar.
  *
  * <p>{@link #close()} ends it before the build reports completion: an estimate still being priced
  * is cancelled and never published, so the listener never hears of a work model after the build
@@ -44,13 +45,13 @@ final class BackgroundEta {
     /**
      * Price {@code estimate} on a background thread, handing the result to {@code publish} unless
      * the build closed first. The io pool carries the session, its cancel token and the request
-     * scope; the scoped warm-plans bit does not ride the hop, so it is bound here.
+     * scope; the scoped plan-worker limit does not ride the hop, so it is bound here.
      */
     static BackgroundEta start(Supplier<BuildService.EtaModel> estimate, Consumer<BuildService.EtaModel> publish) {
         BackgroundEta eta = new BackgroundEta(publish);
         eta.pricing = JkThreads.io().submit(() -> {
-            BuildService.EtaModel model =
-                    ScopedValue.where(JavaCompile.WARM_PLANS_ONLY, true).call(estimate::get);
+            BuildService.EtaModel model = ScopedValue.where(JavaCompile.PLAN_WORKERS, JavaCompile.PlanWorkers.NONE)
+                    .call(estimate::get);
             eta.publish(model);
             return model;
         });

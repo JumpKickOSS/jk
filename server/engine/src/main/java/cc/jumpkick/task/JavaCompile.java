@@ -60,11 +60,24 @@ public final class JavaCompile {
         }
     }
 
-    /**
-     * Bound true for a forecast that must not start a compiler worker ({@code jk status}): a cold
-     * worker's start costs seconds, so the compile is predicted from the prior record instead.
-     */
-    public static final ScopedValue<Boolean> WARM_PLANS_ONLY = ScopedValue.newInstance();
+    /** Which compiler workers a forecast may ask for Zinc's plan of a compile. */
+    public enum PlanWorkers {
+        /** Any, starting one if none runs: {@code jk explain}, whose answer is the plan. */
+        ANY,
+        /**
+         * Only one already running ({@code jk status}): a cold worker's start costs seconds, so
+         * otherwise the compile is predicted from the prior record.
+         */
+        WARM,
+        /**
+         * None: the prior record only. The ETA priced beside a running build, whose plan requests
+         * would queue on the very lanes compiling the build's modules.
+         */
+        NONE
+    }
+
+    /** Bound by a forecast that limits which workers it plans on; unbound is {@link PlanWorkers#ANY}. */
+    public static final ScopedValue<PlanWorkers> PLAN_WORKERS = ScopedValue.newInstance();
 
     public enum Outcome {
         CACHE_HIT,
@@ -308,8 +321,7 @@ public final class JavaCompile {
 
     /**
      * Zinc's own plan from a compiler worker for {@code env} (the build's, so the plan shares its
-     * pool); under {@link #WARM_PLANS_ONLY}, only from one already running, else the prior compile
-     * record.
+     * pool), as far as {@link #PLAN_WORKERS} allows, else the prior compile record.
      */
     public static Prediction predict(
             String taskId,
@@ -355,7 +367,8 @@ public final class JavaCompile {
         if (!Files.isRegularFile(stateDir.resolve(ProducerAnalyses.ANALYSIS_FILE))) {
             return new Prediction(Outcome.FULL, key, request.sources().size(), "no zinc analysis");
         }
-        if (workerJar != null && Files.isRegularFile(workerJar)) {
+        PlanWorkers planWorkers = PLAN_WORKERS.orElse(PlanWorkers.ANY);
+        if (planWorkers != PlanWorkers.NONE && workerJar != null && Files.isRegularFile(workerJar)) {
             Path gen = generatedSourceDir != null ? generatedSourceDir : stateDir.resolve("gen");
             Files.createDirectories(gen);
             ForkedJavac.@Nullable Plan plan;
@@ -378,7 +391,7 @@ public final class JavaCompile {
                                 request.scalaBridgeJar(),
                                 env)
                         .withClasspathAnalyses(producerAnalyses(request, stateDir));
-                plan = WARM_PLANS_ONLY.orElse(false) ? ForkedJavac.planIfWarm(planned) : ForkedJavac.plan(planned);
+                plan = planWorkers == PlanWorkers.WARM ? ForkedJavac.planIfWarm(planned) : ForkedJavac.plan(planned);
             } catch (RuntimeException e) {
                 // A plan the worker cannot make (a sibling jar not built yet, say) is a full compile.
                 return new Prediction(Outcome.FULL, key, request.sources().size(), "no plan: " + e.getMessage());

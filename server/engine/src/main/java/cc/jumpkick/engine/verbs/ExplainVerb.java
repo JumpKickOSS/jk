@@ -109,7 +109,9 @@ public final class ExplainVerb implements HostedVerb {
                 ExplainReport.Knobs knobs =
                         new ExplainReport.Knobs(req.profile(), maxModuleConcurrency, req.skipTests(), selection);
                 // A quick forecast (jk status) must not start a compiler worker to plan a compile.
-                ExplainReport report = ScopedValue.where(JavaCompile.WARM_PLANS_ONLY, req.quick())
+                ExplainReport report = ScopedValue.where(
+                                JavaCompile.PLAN_WORKERS,
+                                req.quick() ? JavaCompile.PlanWorkers.WARM : JavaCompile.PlanWorkers.ANY)
                         .call(() -> ExplainReport.compute(entryDir, entryBuild, cache, session, knobs));
                 ExplainPlan plan = report.plan();
                 if (plan.hasErrors()) {

@@ -261,7 +261,7 @@ public final class TaskForecaster {
      * lane needs: the session and its cancel token, the run's io ledger, and the request scope a
      * compile prediction forks its plan worker under, so the lanes share one worker pool rather
      * than starting one each. The entry memo is a {@code ScopedValue}, which does not ride a pool
-     * hop, so it and {@link JavaCompile#WARM_PLANS_ONLY} are handed across explicitly.
+     * hop, so it and {@link JavaCompile#PLAN_WORKERS} are handed across explicitly.
      */
     private static void walkWave(List<BuildGraph.BuildUnit> members, Consumer<BuildGraph.BuildUnit> one) {
         int lanes = Math.clamp(members.size() / MIN_MODULES_PER_WAVE_LANE, 1, WAVE_LANES);
@@ -270,13 +270,13 @@ public final class TaskForecaster {
             return;
         }
         Map<Path, String> memo = ClasspathFingerprint.entryMemo();
-        boolean warmPlansOnly = JavaCompile.WARM_PLANS_ONLY.orElse(false);
+        JavaCompile.PlanWorkers planWorkers = JavaCompile.PLAN_WORKERS.orElse(JavaCompile.PlanWorkers.ANY);
         int chunk = (members.size() + lanes - 1) / lanes;
         List<Future<?>> pending = new ArrayList<>(lanes);
         for (int lane = 0; lane < lanes; lane++) {
             List<BuildGraph.BuildUnit> slice = members.subList(
                     Math.min(lane * chunk, members.size()), Math.min((lane + 1) * chunk, members.size()));
-            pending.add(JkThreads.cpu().submit(() -> ScopedValue.where(JavaCompile.WARM_PLANS_ONLY, warmPlansOnly)
+            pending.add(JkThreads.cpu().submit(() -> ScopedValue.where(JavaCompile.PLAN_WORKERS, planWorkers)
                     .call(() -> ClasspathFingerprint.withEntryMemo(memo, () -> {
                         for (BuildGraph.BuildUnit u : slice) one.accept(u);
                         return null;
