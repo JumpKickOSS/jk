@@ -52,7 +52,7 @@ import org.junit.jupiter.api.Test;
  * </ul>
  *
  * <p>Measured when written: 1,244 production sources, 1,017 literal-key reads, 443 distinct read
- * keys, 824 distinct written keys, <strong>5</strong> read with no writer; every orphan is listed below.
+ * keys, 824 distinct written keys, <strong>11</strong> read with no writer; every orphan is listed below.
  */
 class WireKeyClosureTest {
 
@@ -61,17 +61,23 @@ class WireKeyClosureTest {
      * <em>necessary</em>: the test fails when one of these stops being an orphan, so a fix deletes
      * its line here in the same change instead of leaving a stale exemption behind.
      */
-    private static final Map<String, String> EXEMPT = Map.of(
+    private static final String GROOVY = "written by jk-import-model.init.gradle, read by GradleModel";
+
+    private static final Map<String, String> EXEMPT = Map.ofEntries(
             // jbang-catalog.json is somebody else's document format. jk reads it and never writes one.
-            "aliases", "foreign format: jbang-catalog.json, read by JBangCatalog",
-            "java-options", "foreign format: jbang-catalog.json",
-            "script-ref", "foreign format: jbang-catalog.json",
+            Map.entry("aliases", "foreign format: jbang-catalog.json, read by JBangCatalog"),
+            Map.entry("java-options", "foreign format: jbang-catalog.json"),
+            Map.entry("script-ref", "foreign format: jbang-catalog.json"),
             // A POST /api/build body field an HTTP client sets; the engine only ever reads it.
-            "deadlineMs", "written by HTTP clients, not by Java: the job's wall deadline on POST /api/build",
-            // jk-import-model.init.gradle writes the xjc plugin's settings, in Groovy.
-            "xsdDir", "written by jk-import-model.init.gradle, read by GradleModel",
-            "defaultPackage", "written by jk-import-model.init.gradle, read by GradleModel",
-            "bindingFiles", "written by jk-import-model.init.gradle, read by GradleModel");
+            Map.entry("deadlineMs", "written by HTTP clients, not by Java: the job's wall deadline on POST /api/build"),
+            // jk-import-model.init.gradle writes the xjc and schema-registry plugins' settings, in Groovy.
+            Map.entry("xsdDir", GROOVY),
+            Map.entry("defaultPackage", GROOVY),
+            Map.entry("bindingFiles", GROOVY),
+            Map.entry("auth", GROOVY),
+            Map.entry("usernameEnv", GROOVY),
+            Map.entry("passwordEnv", GROOVY),
+            Map.entry("registers", GROOVY));
 
     /**
      * Production sources on the day this landed (re-measured at 1,244 once the walk stopped

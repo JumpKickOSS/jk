@@ -94,7 +94,9 @@ record GradleModel(
             /** Per Gradle plugin id, the properties its import rule asked the init script to read. */
             Map<String, Map<String, Object>> ruled,
             /** Per source or schema directory under the build directory, the tasks that write it. */
-            Map<String, List<Producer>> producers) {
+            Map<String, List<Producer>> producers,
+            /** The Confluent schema-registry plugin's configuration; null when the project does not apply it. */
+            @Nullable SchemaRegistry schemaRegistry) {
 
         boolean isRoot() {
             return dir.isEmpty();
@@ -172,6 +174,26 @@ record GradleModel(
             return "task " + task + (plugin == null ? "" : " (" + plugin.substring(plugin.lastIndexOf('.') + 1) + ")");
         }
     }
+
+    /**
+     * The {@code com.github.imflog.kafka-schema-registry-gradle-plugin} extension: the registry URL,
+     * whether it sends basic auth and the variables holding the key and secret (null where none is
+     * known), the subjects its {@code download} block names, and whether its register or
+     * compatibility blocks name any.
+     */
+    record SchemaRegistry(
+            @Nullable String url,
+            boolean auth,
+            @Nullable String usernameEnv,
+            @Nullable String passwordEnv,
+            List<Download> subjects,
+            boolean registers) {}
+
+    /**
+     * One {@code download} subject: its name or, when {@code regex}, a pattern; its version, null for
+     * the latest; the project-relative directory the plugin writes it to.
+     */
+    record Download(String subject, @Nullable Integer version, boolean regex, String output) {}
 
     record SourceSet(String name, List<String> java, List<String> resources, List<String> kotlin) {}
 
@@ -302,6 +324,7 @@ record GradleModel(
     static final String AVRO_BUILD_DIR = "buildDir";
     static final String RULED = "ruled";
     static final String PRODUCERS = "producers";
+    static final String SCHEMA_REGISTRY = "schemaRegistry";
 
     /** The {@code test} task's system properties with string values, and its JVM arguments. */
     record TestTask(Map<String, String> systemProperties, List<String> jvmArgs) {}
@@ -438,7 +461,25 @@ record GradleModel(
                 Jsonl.topStr(p, ARCHIVES_NAME),
                 publications,
                 ruled(Jsonl.nested(p, RULED)),
-                producers(Jsonl.nested(p, PRODUCERS)));
+                producers(Jsonl.nested(p, PRODUCERS)),
+                schemaRegistry(Jsonl.nested(p, SCHEMA_REGISTRY)));
+    }
+
+    private static @Nullable SchemaRegistry schemaRegistry(@Nullable String json) {
+        if (json == null) return null;
+        List<Download> subjects = new ArrayList<>();
+        for (String s : Jsonl.objectArray(json, "subjects")) {
+            int version = Jsonl.intValue(s, "version", 0);
+            subjects.add(new Download(
+                    str(s, "subject"), version > 0 ? version : null, Jsonl.bool(s, "regex", false), str(s, "output")));
+        }
+        return new SchemaRegistry(
+                Jsonl.topStr(json, "url"),
+                Jsonl.bool(json, "auth", false),
+                Jsonl.topStr(json, "usernameEnv"),
+                Jsonl.topStr(json, "passwordEnv"),
+                subjects,
+                Jsonl.bool(json, "registers", false));
     }
 
     private static Map<String, List<Producer>> producers(@Nullable String json) {

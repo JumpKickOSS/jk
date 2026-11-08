@@ -283,6 +283,40 @@ def describeProject(Project p, Project root, List<String> probeIds) {
     } catch (Throwable ignored) { }
 
     // Each import rule's properties, read off the extension or task it names, per plugin id.
+    // The Confluent schema-registry plugin (com.github.imflog.kafka-schema-registry-gradle-plugin):
+    // the registry URL, the subjects its download block names, the variables holding the basic-auth
+    // key and secret (2.x clientConfig, 1.x credentials), and whether it registers or checks.
+    try {
+        def sr = p.extensions.findByName('schemaRegistry')
+        if (sr != null && p.plugins.hasPlugin('com.github.imflog.kafka-schema-registry-gradle-plugin')) {
+            def r = [url: sr.url.orNull, auth: false, usernameEnv: null, passwordEnv: null, registers: false]
+            def info = null
+            try { info = (sr.clientConfig.orNull ?: [:])['basic.auth.user.info'] } catch (Throwable ignored) { }
+            if (info instanceof String && info.contains(':')) {
+                r.auth = true
+                def colon = info.indexOf(':')
+                r.usernameEnv = envHolding(info.substring(0, colon))
+                r.passwordEnv = envHolding(info.substring(colon + 1))
+            }
+            try {
+                def c = sr.credentials
+                if (c.username.orNull) r.auth = true
+                if (!r.usernameEnv) r.usernameEnv = envHolding(c.username.orNull)
+                if (!r.passwordEnv) r.passwordEnv = envHolding(c.password.orNull)
+            } catch (Throwable ignored) { }
+            def download = sr.extensions.findByName('download')
+            r.subjects = (download?.subjects?.orNull ?: []).collect { s ->
+                def d = [subject: s.subject, regex: s.regex, output: relDirs(p, [p.file(s.outputPath)])[0]]
+                if (s.version != null) d.version = s.version
+                d
+            }
+            r.registers = ['register', 'compatibility'].any { name ->
+                try { !(sr.extensions.findByName(name)?.subjects?.orNull ?: []).isEmpty() } catch (Throwable ignored) { false }
+            }
+            m.schemaRegistry = r
+        }
+    } catch (Throwable ignored) { }
+
     def ruled = [:]
     for (def r : RULE_READS) {
         try {

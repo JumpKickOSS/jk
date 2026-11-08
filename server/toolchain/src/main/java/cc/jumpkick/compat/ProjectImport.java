@@ -143,7 +143,8 @@ public final class ProjectImport {
                 Map<String, JkBuild> modules = new LinkedHashMap<>(result.modules());
                 progress.detail("checking declared pins");
                 ImportReport report = DeclaredPins.check(result.root(), modules, result.report(), poms);
-                return Staged.of(new Converted(result.root(), modules, report, frontends.files(), List.of(), false));
+                return Staged.of(new Converted(
+                        result.root(), modules, report, frontends.files(), result.machineCredentials(), false));
             }
             if (GradleBuildImport.isGradleSource(filename)) {
                 GradleBuildImport.Result result = gradle.importBuild(source, progress);
