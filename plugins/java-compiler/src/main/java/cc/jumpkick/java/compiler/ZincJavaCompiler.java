@@ -197,19 +197,29 @@ public final class ZincJavaCompiler {
             FileConverter converter,
             Path classOutput,
             Path workdir,
-            @Nullable Path sourceOutput)
+            @Nullable Path sourceOutput,
+            boolean compilesDescriptor)
             throws IOException {
         if (prev.isEmpty()) {
             deleteClassFiles(classOutput);
             GeneratedProvenance.of(classOutput).deletePrevious(sourceOutput, classOutput);
             return;
         }
+        // module-info.class is no product in Zinc's analysis, so the sweep would take it from a
+        // module that still declares one; a compile with nothing to recompile never writes it back.
+        Path keep = compilesDescriptor
+                ? classOutput.resolve(MODULE_DESCRIPTOR_CLASS).toAbsolutePath().normalize()
+                : null;
         deleteClassFilesUnknownTo(
                 prev.get().getAnalysis(),
                 converter,
                 classOutput,
-                GeneratedProvenance.of(classOutput).ownedClassFiles(sourceOutput, classOutput));
+                GeneratedProvenance.of(classOutput).ownedClassFiles(sourceOutput, classOutput),
+                keep);
     }
+
+    /** The compiled module descriptor, at the root of the class output. */
+    private static final String MODULE_DESCRIPTOR_CLASS = "module-info.class";
 
     /**
      * Zinc's Java analysis loaded a compiled class's library supertype with this JVM and reflected over
@@ -361,7 +371,8 @@ public final class ZincJavaCompiler {
 
             Optional<AnalysisContents> prev = zinced.readAnalysis(store);
             phases.mark("read-analysis");
-            clearOutput(prev, converter, classOutput, workdir, sourceOutput);
+            clearOutput(
+                    prev, converter, classOutput, workdir, sourceOutput, descriptor(sourceFiles, converter) != null);
             provenance.pristine(
                     GeneratedProvenance.of(classOutput).pristine(sourceOutput, classOutput, prev.isEmpty()));
             phases.mark("clear-output");
@@ -462,7 +473,11 @@ public final class ZincJavaCompiler {
      * recorded. A swept class whose source is present is compiled again as an added source.
      */
     private static void deleteClassFilesUnknownTo(
-            CompileAnalysis analysis, FileConverter converter, Path dir, GeneratedProvenance.Owned owned)
+            CompileAnalysis analysis,
+            FileConverter converter,
+            Path dir,
+            GeneratedProvenance.Owned owned,
+            @Nullable Path keep)
             throws IOException {
         if (!(analysis instanceof Analysis full)) return;
         Set<Path> products = new HashSet<>();
@@ -472,7 +487,7 @@ public final class ZincJavaCompiler {
         PathUtil.forEachRegularFile(dir, (file, attrs) -> {
             if (!file.toString().endsWith(".class")) return;
             Path abs = file.toAbsolutePath().normalize();
-            if (!products.contains(abs) && !owned.owns(abs)) Files.deleteIfExists(file);
+            if (!products.contains(abs) && !owned.owns(abs) && !abs.equals(keep)) Files.deleteIfExists(file);
         });
     }
 

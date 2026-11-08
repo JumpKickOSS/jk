@@ -80,6 +80,31 @@ class ZincModularCompileTest {
     }
 
     /**
+     * A compile that finds nothing to recompile keeps the descriptor too: the engine runs one when a
+     * dependency's API moved without touching anything this module uses, or when jk itself changed,
+     * and the stale-class sweep before it must not take {@code module-info.class}, which is in no
+     * Zinc analysis as a product, with nothing compiled afterwards to write it back.
+     */
+    @Test
+    void a_compile_with_nothing_to_recompile_keeps_the_module_descriptor(@TempDir Path dir) throws Exception {
+        Path src = dir.resolve("app/src");
+        write(src, "module-info.java", "module com.acme.app { exports com.acme.a; }");
+        write(src, "com/acme/a/A.java", "package com.acme.a; public class A {}");
+        Path classes = dir.resolve("app/classes");
+        Path zinc = dir.resolve("app/zinc");
+        assertThat(ZincJavaCompiler.compileJava(job(src, List.of(), classes, zinc, List.of()))
+                        .success())
+                .isTrue();
+
+        ZincJavaCompiler.Result again = ZincJavaCompiler.compileJava(job(src, List.of(), classes, zinc, List.of()));
+
+        assertThat(again.success()).as(again.diagnostics().toString()).isTrue();
+        assertThat(classes.resolve("module-info.class"))
+                .as("recompiled %s", again.compiledSources())
+                .isRegularFile();
+    }
+
+    /**
      * Only what the descriptor requires joins the module path. Two automatic modules the module
      * never names, splitting one package between them, stay on the classpath: on the module path,
      * resolving any automatic module resolves them all, and javac fails on the split package.
