@@ -66,8 +66,8 @@ public final class UpdateTool implements McpTool {
     private static McpDecisions.Ask ask(String dir, List<String> held) {
         String question = held.isEmpty()
                 ? "Apply the dependency update in " + dir + "?"
-                : "Apply " + held.size() + " dependency change" + (held.size() == 1 ? "" : "s")
-                        + " that need a person in " + dir + "?";
+                : "Apply " + held.size() + " dependency change" + (held.size() == 1 ? " that needs" : "s that need")
+                        + " a person in " + dir + "?";
         return new McpDecisions.Ask(KIND, question, held, "Yes, update and relock", true);
     }
 
