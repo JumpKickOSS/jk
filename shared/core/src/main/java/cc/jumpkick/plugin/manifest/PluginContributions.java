@@ -1001,6 +1001,7 @@ public final class PluginContributions {
                 int cmp = Versions.compare(anchor(version), c.bound());
                 yield c.atLeast() ? cmp >= 0 : cmp < 0;
             }
+            case PluginDescriptor.Condition.ConfigSet c -> config.values().containsKey(c.key()) == c.set();
             case PluginDescriptor.Condition.NativeDeclared ignored -> nativeDeclared;
             case PluginDescriptor.Condition.KotlinProject ignored -> project.isKotlin();
         };

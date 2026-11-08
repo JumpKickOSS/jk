@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.asyncapi;
 
+import cc.jumpkick.avro.AvroMain;
 import cc.jumpkick.generate.GeneratorEntry;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
@@ -19,7 +20,8 @@ import java.util.Locale;
 /**
  * The AsyncAPI preset's code layer: {@code [asyncapi]} becomes one {@link GeneratorEntry}, {@link
  * AsyncApiMain} over jsonschema2pojo's closure and the module's AsyncAPI documents, into the
- * generate stage, contributed as sources, run by the generator plugin's step.
+ * generate stage, contributed as sources, run by the generator plugin's step. With {@code avro},
+ * {@link AvroMain} rides on the classpath beside the Avro compiler for the Avro payloads.
  */
 public final class AsyncApiPreset implements Plugin, BuildExtension {
 
@@ -56,6 +58,7 @@ public final class AsyncApiPreset implements Plugin, BuildExtension {
         if (config.bool("jsr303", false)) args.add("-303");
         if (config.bool("jakarta-validation", false)) args.add("--useJakartaValidation");
         if (config.bool("additional-properties", true)) args.add("-D");
+        if (config.stringOpt("avro").isPresent()) args.add(AsyncApiMain.AVRO);
         args.add("--");
         args.add("${inputs}");
         return new GeneratorEntry(
@@ -68,9 +71,24 @@ public final class AsyncApiPreset implements Plugin, BuildExtension {
                 args,
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/asyncapi",
-                classpath,
+                withAvroMain(classpath),
                 List.of(),
                 null);
+    }
+
+    /** {@code classpath} and the jar carrying {@link AvroMain}, which compiles the Avro payloads. */
+    static List<Path> withAvroMain(List<Path> classpath) {
+        List<Path> out = new ArrayList<>(classpath);
+        CodeSource source = AvroMain.class.getProtectionDomain().getCodeSource();
+        if (source != null && source.getLocation() != null) {
+            try {
+                Path jar = Path.of(source.getLocation().toURI());
+                if (!out.contains(jar)) out.add(jar);
+            } catch (URISyntaxException e) {
+                throw new IllegalStateException("the avro worker's jar has no path: " + source.getLocation(), e);
+            }
+        }
+        return out;
     }
 
     /** This worker's own jar (or classes directory), which carries {@link AsyncApiMain}. */

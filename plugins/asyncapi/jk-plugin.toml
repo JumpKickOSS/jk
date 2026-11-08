@@ -22,6 +22,7 @@ jakarta-validation    = { type = "bool", default = false, hint = "take those ann
 additional-properties = { type = "bool", default = true, hint = "keep properties a schema does not name in an additionalProperties map" }
 date-time-type        = { type = "string", hint = "the Java type of a date-time string, e.g. java.time.OffsetDateTime" }
 version               = { type = "string", default = "1.3.3", example = "1.3.3", hint = "the jsonschema2pojo release; a bare version is exact" }
+avro                  = { type = "string", example = "1.12.2", hint = "the Avro release Avro payloads compile with; without it they are skipped. The module's avro dependency is expected to match" }
 
 # jsonschema2pojo and its closure, which also brings the Jackson YAML reader the step parses
 # documents with.
@@ -30,3 +31,13 @@ artifact   = "jsonschema2pojo-cli"
 coordinate = "org.jsonschema2pojo:jsonschema2pojo-cli:${config.version}"
 transitive = true
 for-step   = "generate-asyncapi"
+when       = { config = "avro", set = false }
+
+# With `avro`, the Avro compiler rides beside it for the Avro payloads.
+[[contribute.step-dependency]]
+artifact   = "jsonschema2pojo-cli"
+coordinate = "org.jsonschema2pojo:jsonschema2pojo-cli:${config.version}"
+with       = ["org.apache.avro:avro-compiler:${config.avro}"]
+transitive = true
+for-step   = "generate-asyncapi"
+when       = { config = "avro", set = true }

@@ -65,4 +65,39 @@ class PluginVersionConditionTest {
                     assertThat(dep.with()).isEmpty();
                 });
     }
+
+    /** A set condition adds a companion artifact only when the table gives the key a value. */
+    @Test
+    void a_set_condition_picks_the_step_dependency_by_whether_the_key_has_a_value() {
+        PluginDescriptor manifest = PluginDescriptors.parse("""
+                [plugin]
+                id = "set-fixture"
+                table = "set-fixture"
+
+                [schema]
+                avro = { type = "string" }
+
+                [[contribute.step-dependency]]
+                artifact   = "tool"
+                coordinate = "org.acme:tool:1.0"
+                when       = { config = "avro", set = false }
+
+                [[contribute.step-dependency]]
+                artifact   = "tool"
+                coordinate = "org.acme:tool:1.0"
+                with       = ["org.apache.avro:avro-compiler:${config.avro}"]
+                transitive = true
+                when       = { config = "avro", set = true }
+                """, "set-fixture.toml");
+        PluginTableRegistry.putBuiltIn(manifest, null);
+        String head = "name = \"demo\"\ngroup = \"com.example\"\nversion = \"1.0.0\"\n\n[set-fixture]\n";
+
+        assertThat(PluginContributions.stepDependencies(JkBuildParser.parse(head), null, Map.of()))
+                .singleElement()
+                .satisfies(dep -> assertThat(dep.with()).isEmpty());
+        assertThat(PluginContributions.stepDependencies(
+                        JkBuildParser.parse(head + "avro = \"1.12.2\"\n"), null, Map.of()))
+                .singleElement()
+                .satisfies(dep -> assertThat(dep.with()).containsExactly("org.apache.avro:avro-compiler:1.12.2"));
+    }
 }
