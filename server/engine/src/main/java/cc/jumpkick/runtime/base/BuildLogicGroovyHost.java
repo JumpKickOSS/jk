@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
@@ -28,7 +29,8 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Evaluates project build-logic {@code .groovy} scripts in a forked JVM ({@code groovy.ui.GroovyMain}).
+ * Evaluates project build-logic {@code .groovy} scripts in a forked JVM ({@code groovy.ui.GroovyMain}),
+ * one per script, started from a recorded startup cache when jk's own JDK can map one.
  *
  * <p>Groovy is not linked into the engine fat jar — jars are fetched once into the product tool
  * cache. The child process is the isolation boundary: {@code System.exit} / OOM in a script cannot
@@ -76,10 +78,20 @@ public final class BuildLogicGroovyHost {
             String javaBin = JdkFingerprint.java(JavaHomes.runningJavaHome()).toString();
             List<Path> cp = new ArrayList<>(jars.length);
             for (Path jar : jars) cp.add(jar);
+            String classpath = Classpaths.join(cp);
             List<String> cmd = new ArrayList<>();
             cmd.add(javaBin);
+            // The fork is most of a script's cost: a JVM, Groovy and Ant loading from cold, ~0.6 s
+            // against ~0.3 s from a startup cache. Each script keeps its own process and working
+            // directory; only the classes it starts with come mapped.
+            cmd.addAll(WorkerAotCache.flags(
+                    AOT_TOOL,
+                    JavaHomes.runningJavaHome(),
+                    classpath,
+                    List.of(),
+                    (aotOut, scratch) -> trainerCommand(javaBin, classpath, aotOut, scratch)));
             cmd.add("-cp");
-            cmd.add(Classpaths.join(cp));
+            cmd.add(classpath);
             cmd.add("groovy.ui.GroovyMain");
             cmd.add(wrapper.toString());
             ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), JavaHomes.runningJavaHome());
@@ -119,6 +131,40 @@ public final class BuildLogicGroovyHost {
         } finally {
             Files.deleteIfExists(wrapper);
         }
+    }
+
+    /** The startup cache's tool name under {@link WorkerAotCache#dir()}. */
+    static final String AOT_TOOL = "build-logic-groovy";
+
+    /**
+     * What the startup cache is recorded from: never a user's script, which may write anywhere, but
+     * a synthetic one through the same wrapper and bindings, touching what a build-logic script
+     * usually does — a tree walk, text read and written, closures and strings, and Ant.
+     */
+    static final String TRAINING_SCRIPT = """
+            def templates = projectDir.resolve('src/main/templates')
+            templates.toFile().eachFileRecurse(groovy.io.FileType.FILES) { f ->
+                def rel = templates.relativize(f.toPath())
+                def out = outDir.resolve(rel.toString()).toFile()
+                out.parentFile.mkdirs()
+                out.text = f.text.replace('${project.version}', "1.${rel.nameCount}").trim()
+            }
+            properties.put('trained', [1, 2, 3].collect { it * 2 }.sum())
+            if (binding.hasVariable('ant')) ant.mkdir(dir: outDir.resolve('ant').toString())
+            println "trained ${properties.trained}"
+            """;
+
+    /** The trainer: {@link #TRAINING_SCRIPT} through {@link #wrap}, recording into {@code aotOut}. */
+    static List<String> trainerCommand(String javaBin, String classpath, Path aotOut, Path scratch) throws IOException {
+        Path project = scratch.resolve("project");
+        Path templates = Files.createDirectories(project.resolve("src/main/templates/demo"));
+        Files.writeString(templates.resolve("Version.java"), "class Version { String v = \"${project.version}\"; }\n");
+        Path script = scratch.resolve("train.groovy");
+        Files.writeString(script, TRAINING_SCRIPT, StandardCharsets.UTF_8);
+        Path wrapper = scratch.resolve("wrapper.groovy");
+        Files.writeString(wrapper, wrap(script, project, scratch.resolve("out")), StandardCharsets.UTF_8);
+        return List.of(
+                javaBin, "-XX:AOTCacheOutput=" + aotOut, "-cp", classpath, "groovy.ui.GroovyMain", wrapper.toString());
     }
 
     /**
