@@ -336,6 +336,49 @@ class GradleModelQueryNetworkTest {
                 .noneSatisfy(m -> assertThat(m).contains("glpat-not-a-real-token"));
     }
 
+    /**
+     * The Avro plugin reading schemas another task downloads under build/, before any build ran:
+     * the directory still counts though it is empty, and the row names the task that fills it.
+     */
+    @Test
+    void avro_schemas_a_task_downloads_name_the_task(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("flags"));
+        Files.createDirectories(root.resolve("gradle/wrapper"));
+        Files.writeString(
+                root.resolve("gradle/wrapper/gradle-wrapper.properties"),
+                "distributionUrl=https\\://services.gradle.org/distributions/gradle-" + GradleResolver.DEFAULT_VERSION
+                        + "-bin.zip\n");
+        Files.writeString(root.resolve("settings.gradle.kts"), "rootProject.name = \"flags\"\n");
+        Files.writeString(root.resolve("build.gradle.kts"), """
+                plugins {
+                    java
+                    id("com.github.davidmc24.gradle.plugin.avro") version "1.9.1"
+                }
+                group = "com.acme"
+                version = "1.0"
+                repositories { mavenCentral() }
+                dependencies { implementation("org.apache.avro:avro:1.12.0") }
+                val shared = layout.buildDirectory.dir("generated/avro/shared")
+                val downloadSchemas by tasks.registering { outputs.dir(shared) }
+                tasks.named<com.github.davidmc24.gradle.plugin.avro.GenerateAvroJavaTask>("generateAvroJava") {
+                    dependsOn(downloadSchemas)
+                    setSource(shared)
+                }
+                """);
+        GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
+                JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
+
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle.kts"), ImportProgress.NONE);
+
+        List<String> rows = result.report().issues().stream()
+                .map(ImportReport.Issue::message)
+                .toList();
+        assertThat(result.report().hasErrors())
+                .as("Gradle evaluated the build: " + rows)
+                .isFalse();
+        assertThat(rows).contains("Avro schemas come from task downloadSchemas; see [schema-registry]");
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }

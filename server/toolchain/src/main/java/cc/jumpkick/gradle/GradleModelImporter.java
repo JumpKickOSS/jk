@@ -342,7 +342,8 @@ final class GradleModelImporter {
         GradleModel.Xjc xjc = p.xjc();
         if (xjc != null) plugins.add(jaxbTable(xjc, local));
         GradleModel.Avro avro = p.avro();
-        if (avro != null) plugins.add(avroTable(p, avro, local));
+        if (avro != null)
+            plugins.add(avroTable(p, avro, plugins.stream().anyMatch(c -> c.id().equals("schema-registry")), local));
         plugins = merged(plugins);
         String groovy = applied.contains("groovy") ? groovyVersion(p, local) : null;
         Set<String> unreported = new LinkedHashSet<>(applied);
@@ -526,21 +527,22 @@ final class GradleModelImporter {
     }
 
     /**
-     * The Avro plugin's schema directory and the Avro version the project resolves, as {@code [avro]}
-     * keys, each written only where it differs from the table's default; the generator options come
-     * from the plugin's import rule. A schema directory under the build directory is filled by another task, which jk
-     * cannot run, so it is a row instead.
+     * {@code [avro]}'s {@code src} and {@code version} where they differ from the defaults. A schema
+     * directory under the build directory is another task's output: a row naming the task, unless
+     * a rule already brought the module's schemas in through {@code [schema-registry]}. The plugin's
+     * own IDL output is skipped: {@code [avro]} compiles IDL itself.
      */
-    private static PluginConfig avroTable(GradleModel.Project p, GradleModel.Avro avro, ImportReport.Builder local) {
+    private static PluginConfig avroTable(
+            GradleModel.Project p, GradleModel.Avro avro, boolean fromRegistry, ImportReport.Builder local) {
         Map<String, Object> table = new LinkedHashMap<>();
         String build = avro.buildDir() == null ? null : avro.buildDir() + "/";
         List<String> sources = new ArrayList<>();
         for (String dir : avro.sources()) {
-            if (build != null && (dir + "/").startsWith(build)) {
-                local.warning("Avro schemas are generated into " + dir + "; put them in src/main/avro");
-            } else {
-                sources.add(dir);
-            }
+            String writers = p.writersOf(dir);
+            if (build == null || !(dir + "/").startsWith(build)) sources.add(dir);
+            else if (fromRegistry || dir.matches(".*/generated-\\w+-avro-avpr")) continue;
+            else if (writers != null) local.warning("Avro schemas come from " + writers + "; see [schema-registry]");
+            else local.warning("Avro schemas are generated into " + dir + "; put them in src/main/avro");
         }
         if (!sources.isEmpty() && !sources.getFirst().equals(AVRO_DEFAULT_SRC)) table.put("src", sources.getFirst());
         if (sources.size() > 1) local.warning("Avro: imported " + sources.getFirst() + " only");
@@ -881,7 +883,8 @@ final class GradleModelImporter {
                 if (!dir.equals(prefix + "kotlin") && !dir.equals(prefix + "java")) odd.add(dir);
             for (String dir : s.resources()) if (!dir.equals(prefix + "resources")) odd.add(dir);
             if (!odd.isEmpty()) {
-                local.warning("source set " + s.name() + " reads " + String.join(", ", odd)
+                local.warning("source set " + s.name() + " reads "
+                        + String.join(", ", odd.stream().map(p::withWriters).toList())
                         + ", outside jk's layout; move them or generate them");
             }
         }
