@@ -869,12 +869,13 @@ final class ParityRules {
 
     // ---- G111 --------------------------------------------------------------------------------
 
-    private static final List<String> CLAIM_DOCS = List.of(
-            "README.md",
-            "docs/user/why.md",
-            "docs/user/comparison.md",
-            "docs/user/graph.md",
-            "hosting/public/index.html");
+    /**
+     * The reference pages, where a reader checks the evidence. The README and the website are the
+     * pitch: they may say jk is faster in their own words, and the numbers they show stay inside
+     * the generated blocks the scoreboard renders.
+     */
+    private static final List<String> CLAIM_DOCS =
+            List.of("docs/user/why.md", "docs/user/comparison.md", "docs/user/graph.md");
 
     /**
      * The blocks {@code bench/scoreboard --render} writes: from the banked rows ({@code wall-}) and

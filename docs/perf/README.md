@@ -103,8 +103,9 @@ renders the `wall` rows into three kinds of generated block — the tables (`wal
 `docs/user/performance.md` and `why.md`), the comparison sentences (`wall-claims`, in the README,
 `why.md`, `comparison.md` and `performance.md`) and the website's proof strip (`wall-strip`, in
 `hosting/public/index.html`) — each from every tool's latest measurement, never jk's ratcheted best;
-every number names its commit and conditions. Speed and memory comparisons appear nowhere else
-(guard `speed-claims-are-generated`). It then writes the morning report
+every number names its commit and conditions. In the reference pages, speed and memory comparisons
+appear nowhere else (guard `speed-claims-are-generated`); the README and the website pitch in
+their own words, and every number they show comes from these blocks. It then writes the morning report
 to `$JK_BENCH_HOME/scoreboard/night/<date>.md`: regressions with commit ranges, banked and recorded
 rows, noisy and skipped rows, queue results and the top five gaps.
 
