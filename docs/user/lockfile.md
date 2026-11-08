@@ -124,9 +124,10 @@ takes them all, at a terminal or not. MCP [`update`](mcp.md#decisions) asks the 
 A move whose relock adds a package to the lock is yours to accept too: a new package is new code
 you trust. At a terminal `jk update` lists those moves with the packages each adds, beside any move
 across a minor or a major, and asks once. Without a terminal it holds them: before it relocks, it
-resolves the rewritten manifests without writing the lock, traces each new package to the moved
-pins whose dependencies reach it, and puts those pins back where they were, so the lock is written
-as if those moves were not taken. Every other move applies, the run names each held move with the
+resolves the moved manifests from memory, writing neither `jk.toml` nor the lock, traces each new
+package to the moved pins whose dependencies reach it, and writes only the other moves, so the lock
+is written as if those moves were not taken. `jk.toml` on disk never holds a move nobody took, not
+even while the preview resolves. Every other move applies, the run names each held move with the
 packages it adds and `jk update -y takes them`, also in `jk-results.md`, and exits 0. When a new
 package is reached by no moved pin (a dependency you declared since the last lock, say), the moves
 cannot be told apart: every move is held together, each naming every new package. A first lock adds

@@ -314,8 +314,8 @@ and `jk decide` all answer; the first answer wins.
 | `deps` add | the new lock trips the project's deny policy (license, source, yanked) | yes |
 | `disk` `clean` / `nuke` / `m2-clean`, `jdk` uninstall, `node` uninstall | always, when `confirm=true` and the host can ask | no |
 
-Nothing is written until the decision is accepted: `update` holds a move before writing and puts a
-relock that added a package back, and `deps` puts an add the deny policy refuses back. A host that
+Nothing is written until the decision is accepted: `update` holds a move, and a relock that would
+add a package, before writing anything (it resolves the moved manifests from memory), and `deps` puts an add the deny policy refuses back. A host that
 can ask neither by form nor by link still runs a destructive operation on `confirm=true`, as
 before; for a trust-changing one, `confirm` is not an answer.
 

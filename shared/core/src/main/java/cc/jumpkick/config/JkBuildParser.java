@@ -243,6 +243,8 @@ public final class JkBuildParser {
     public static JkBuild parseLocal(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
         Path key = file.toAbsolutePath().normalize();
+        String overlaid = ManifestOverlay.text(key);
+        if (overlaid != null) return parseLocal(overlaid, key);
         PARSE_REQUESTS.incrementAndGet();
         // Before the memo: a user pin that changed drops every memoized parse it validated.
         PluginTableRegistry.syncUserPins();
@@ -287,6 +289,8 @@ public final class JkBuildParser {
     static TomlParseResult document(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
         Path key = file.toAbsolutePath().normalize();
+        String overlaid = ManifestOverlay.text(key);
+        if (overlaid != null) return document(overlaid);
         ManifestStamp stamp = ManifestStamp.of(key, JkBuildParser::readManifest);
         try {
             return document(key, stamp, null);

@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.rules;
 
 import cc.jumpkick.config.FileContentStamp;
+import cc.jumpkick.config.ManifestOverlay;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
@@ -94,6 +95,8 @@ public final class GuardPacks {
     /** The {@code [guards] extends} coordinates of the root rules file, as written (unparsed). */
     public static List<String> declared(Path root) throws IOException {
         Path file = GuardsPresence.rulesFile(root);
+        String overlaid = ManifestOverlay.text(file);
+        if (overlaid != null) return declared(overlaid);
         if (!Files.isRegularFile(file)) return List.of();
         // Keyed on the file's content stamp, which is one stat once the file has settled — this
         // runs once per module of a forecast, and the rules file is tens of kilobytes.

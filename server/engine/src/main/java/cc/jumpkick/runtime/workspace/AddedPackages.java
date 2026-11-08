@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.config.ManifestOverlay;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.PackageId;
@@ -31,18 +32,27 @@ public final class AddedPackages {
     private AddedPackages() {}
 
     /**
-     * The lock the scope at {@code lockDir} resolves to from its manifests as they stand now, written
-     * nowhere: the relock {@code mode} would run, seeded by the lock on disk like it.
+     * The lock the scope at {@code lockDir} resolves to with each manifest in {@code manifests}
+     * (path to text) read as that text and every other as it stands on disk, written nowhere: the
+     * relock {@code mode} would run, seeded by the lock on disk like it. No file is written.
      */
     public static Lockfile probe(
-            Path lockDir, Path cache, @Nullable URI repoUrl, List<String> features, boolean withDefaults, LockMode mode)
+            Path lockDir,
+            Map<Path, String> manifests,
+            Path cache,
+            @Nullable URI repoUrl,
+            List<String> features,
+            boolean withDefaults,
+            LockMode mode)
             throws Exception {
-        LockPlans.LockScope scope = LockPlans.lockScope(lockDir, new FeatureSelection(features, withDefaults));
-        return new LockPipeline(scope.lockDir(), scope.effective(), cache, repoUrl, features, withDefaults, mode)
-                .resolve(
-                        LockPipeline.readIfPresent(scope.lockDir()),
-                        ResolveObserver.NOOP,
-                        LockPipeline.Progress.SILENT);
+        return ManifestOverlay.reading(manifests, () -> {
+            LockPlans.LockScope scope = LockPlans.lockScope(lockDir, new FeatureSelection(features, withDefaults));
+            return new LockPipeline(scope.lockDir(), scope.effective(), cache, repoUrl, features, withDefaults, mode)
+                    .resolve(
+                            LockPipeline.readIfPresent(scope.lockDir()),
+                            ResolveObserver.NOOP,
+                            LockPipeline.Progress.SILENT);
+        });
     }
 
     /**

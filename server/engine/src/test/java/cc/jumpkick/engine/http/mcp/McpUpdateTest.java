@@ -15,10 +15,14 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -139,6 +143,62 @@ class McpUpdateTest {
                 .contains("\"to\":\"1.1.0\"");
         assertThat(reply).doesNotContain("2.18.2");
         assertThat(Files.readString(dir.resolve("jk.toml"))).contains("com.acme:other:1.0.0");
+    }
+
+    @Test
+    void an_unapproved_apply_whose_relock_adds_a_package_writes_nothing(@TempDir Path dir) throws Exception {
+        MavenStub upstream = new MavenStub(http);
+        upstream.leaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
+        upstream.leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
+        upstream.leaf("com.acme", "extra", "1.0");
+        upstream.pom("com.acme", "growing", "1.0.0", MavenStub.emptyPom("com.acme", "growing", "1.0.0"));
+        upstream.pom("com.acme", "growing", "1.0.1", """
+                <project><groupId>com.acme</groupId><artifactId>growing</artifactId><version>1.0.1</version>
+                  <dependencies><dependency>
+                    <groupId>com.acme</groupId><artifactId>extra</artifactId><version>1.0</version>
+                  </dependency></dependencies>
+                </project>""");
+        upstream.metadata("com.acme", "growing", "1.0.0", "1.0.1");
+        Path manifest = dir.resolve("jk.toml");
+        Files.writeString(manifest, """
+                group   = "com.example"
+                name    = "app"
+                version = "1.0.0"
+                java    = 25
+
+                [repositories]
+                central = "%s"
+
+                [dependencies]
+                growing = "com.acme:growing:1.0.0"
+                """.formatted(http.baseUrl()));
+        Path lockFile = dir.resolve("jk-lock.toml");
+        McpUpdate.run(dir.toString(), List.of("nothing-named-this"), false, true, true);
+        assertThat(lockFile).exists();
+        byte[] manifestBytes = Files.readAllBytes(manifest);
+        byte[] lockBytes = Files.readAllBytes(lockFile);
+        FileTime manifestTime = Files.getLastModifiedTime(manifest);
+        FileTime lockTime = Files.getLastModifiedTime(lockFile);
+        List<Boolean> untouchedDuringResolve = new CopyOnWriteArrayList<>();
+        http.beforeServe(path -> {
+            if (!path.endsWith("growing-1.0.1.pom")) return;
+            try {
+                untouchedDuringResolve.add(Arrays.equals(Files.readAllBytes(manifest), manifestBytes));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+
+        Map<String, Object> held = McpUpdate.run(dir.toString(), List.of(), false, true, false);
+
+        assertThat(held).doesNotContainKey("error");
+        assertThat(held.get("applied")).isEqualTo(false);
+        assertThat(held.get("held")).isEqualTo(List.of("com.acme:extra 1.0 (new)"));
+        assertThat(untouchedDuringResolve).isNotEmpty().containsOnly(true);
+        assertThat(Files.readAllBytes(manifest)).isEqualTo(manifestBytes);
+        assertThat(Files.readAllBytes(lockFile)).isEqualTo(lockBytes);
+        assertThat(Files.getLastModifiedTime(manifest)).isEqualTo(manifestTime);
+        assertThat(Files.getLastModifiedTime(lockFile)).isEqualTo(lockTime);
     }
 
     // ---- fixture ---------------------------------------------------------------

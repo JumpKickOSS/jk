@@ -79,6 +79,7 @@ public final class RequestScope {
      * computes it every time.
      */
     public static RequestScope current() {
+        if (ManifestOverlay.active()) return UNSCOPED;
         IoLedger ledger = ambientLedger();
         if (ledger == null) return UNSCOPED;
         return SCOPES.computeIfAbsent(ledger, l -> new RequestScope());

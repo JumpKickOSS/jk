@@ -4,9 +4,9 @@ package cc.jumpkick.engine.http.mcp;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.LockDiff;
-import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -15,7 +15,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
-import cc.jumpkick.runtime.workspace.HeldFiles;
+import cc.jumpkick.runtime.workspace.AddedPackages;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code update}'s body: the pin rewrites {@link ManifestUpdates} plans for {@code dir}, and with
@@ -35,8 +36,8 @@ public final class McpUpdate {
 
     /**
      * The plan for {@code dir}, written and relocked when {@code apply}. Unless {@code approved}, an
-     * apply that moves a pin across a minor or a major writes nothing, and one whose relock adds a
-     * package is rolled back; either answers {@code held}, one line per move or added package, for
+     * apply that moves a pin across a minor or a major, or whose relock adds a package, writes
+     * nothing; either answers {@code held}, one line per move or added package, for
      * the caller to put to a person before it applies again with {@code approved}.
      */
     public static Map<String, Object> run(
@@ -74,7 +75,11 @@ public final class McpUpdate {
         return out;
     }
 
-    /** Writes {@code plan}, relocks, and rolls both back when the relock added a package unapproved. */
+    /**
+     * Writes {@code plan} and relocks. Unapproved, a relock that would add a package to an existing
+     * lock is found first by a resolve that reads the plan's manifests from memory, and then nothing
+     * is written.
+     */
     private static void apply(
             Path root,
             LockPlans.LockScope scope,
@@ -84,10 +89,27 @@ public final class McpUpdate {
             boolean approved,
             Map<String, Object> out)
             throws Exception {
-        List<Path> touched = new ArrayList<>(plan.contents().keySet());
-        touched.add(LockPaths.lockFile(lockDir));
-        HeldFiles held = HeldFiles.of(touched);
         Lockfile before = LockDiff.current(lockDir);
+        // A first lock adds every package; only a relock that grows an existing lock asks.
+        if (!approved && before != null) {
+            Lockfile probe = probe(lockDir, cache, plan);
+            if (probe != null) {
+                List<LockDiff.Change> changes = LockDiff.between(before, probe);
+                List<String> added = added(changes);
+                if (!added.isEmpty()) {
+                    out.put("applied", false);
+                    Map<String, Object> lock = new LinkedHashMap<>();
+                    lock.put("success", true);
+                    lock.put("exitCode", 0);
+                    lock.put("packages", probe.artifacts().size());
+                    lock.put("updated", changes.size());
+                    lock.put("changes", changes(changes));
+                    out.put("lock", lock);
+                    out.put("held", added);
+                    return;
+                }
+            }
+        }
         ManifestUpdates.apply(plan);
         out.put("applied", true);
         LockPlans.LockScope relockScope = plan.isEmpty() ? scope : LockPlans.lockScope(root);
@@ -107,14 +129,10 @@ public final class McpUpdate {
         lock.put("exitCode", result.success() ? 0 : LockPlans.failureExitCode(result));
         Lockfile written = relock.get(LockPlans.LOCKFILE).orElse(null);
         lock.put("packages", written == null ? -1 : written.artifacts().size());
-        List<String> added = new ArrayList<>();
         if (written != null) {
             List<LockDiff.Change> changes = LockDiff.between(before, written);
             lock.put("updated", changes.size());
             lock.put("changes", changes(changes));
-            for (LockDiff.Change c : changes) {
-                if (c.from() == null && c.to() != null) added.add(c.coordinate() + " " + c.to() + " (new)");
-            }
         }
         List<String> errors = new ArrayList<>();
         for (BuildPlanResult.Diagnostic d : result.errors()) {
@@ -123,12 +141,30 @@ public final class McpUpdate {
         if (!errors.isEmpty()) lock.put("errors", errors);
         out.put("lock", lock);
         if (!result.success()) out.put("error", "relock failed");
-        // A first lock adds every package; only a relock that grows an existing lock asks.
-        if (!approved && before != null && result.success() && !added.isEmpty()) {
-            held.restore();
-            out.put("applied", false);
-            out.put("held", added);
+    }
+
+    /**
+     * The lock {@code plan}'s manifests resolve to, read from memory and written nowhere; {@code
+     * null} when that resolve fails, which the relock then meets and reports.
+     */
+    private static @Nullable Lockfile probe(Path lockDir, Path cache, ManifestUpdates.Plan plan) {
+        try {
+            return AddedPackages.probe(
+                    lockDir, plan.contents(), cache, null, List.of(), true, new LockMode.Update(null));
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            Log.debug("update: no probe of the packages the relock adds", e);
+            return null;
         }
+    }
+
+    /** Each package {@code changes} adds, as {@code coordinate version (new)}. */
+    private static List<String> added(List<LockDiff.Change> changes) {
+        List<String> added = new ArrayList<>();
+        for (LockDiff.Change c : changes) {
+            if (c.from() == null && c.to() != null) added.add(c.coordinate() + " " + c.to() + " (new)");
+        }
+        return added;
     }
 
     /** Each move across a minor or a major, as {@code handle from → to}. */

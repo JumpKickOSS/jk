@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
-import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.engine.api.CoalescingLockPackages;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
@@ -22,7 +21,6 @@ import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.runtime.workspace.AddedPackages;
-import cc.jumpkick.runtime.workspace.HeldFiles;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.wire.protocol.ProtoEvents;
@@ -71,9 +69,10 @@ final class LockCascade {
      * decision for a person: such pins move only to their newest patch, each held move streams as a
      * held {@code update-rewrite} event from the version its pin lands on, and a run notice names
      * the moves held and the command that takes them. Unless {@code accept}, a move whose relock adds
-     * a package to an existing lock is held too, the pin left where it stood: a resolve written
-     * nowhere finds the packages and the moves that reach them ({@link AddedPackages}), and the held
-     * event and a run notice name them. When every move is held nothing is written or relocked.
+     * a package to an existing lock is held too, the pin left where it stood: a resolve that reads
+     * the moved manifests from memory and writes nothing finds the packages and the moves that reach
+     * them ({@link AddedPackages}), and the held event and a run notice name them. Only the moves
+     * taken are written, once; when every move is held nothing is written or relocked.
      */
     static JobOutcome run(
             VerbHost host,
@@ -114,8 +113,6 @@ final class LockCascade {
                 try {
                     ManifestUpdates.Plan plan =
                             ManifestUpdates.plan(lockDir, repoUrl, accept ? rewrite : rewrite.holding());
-                    HeldFiles written = HeldFiles.of(List.copyOf(plan.contents().keySet()));
-                    ManifestUpdates.apply(plan);
                     Map<ManifestUpdates.Rewrite, List<String>> adding = accept
                             ? Map.of()
                             : adding(lockDir, cache, repoUrl, features, withDefaults, mode, before, plan);
@@ -123,13 +120,10 @@ final class LockCascade {
                             .filter(r -> !adding.containsKey(r))
                             .toList();
                     List<ManifestUpdates.Rewrite> held = heldFrom(plan.held(), adding);
-                    if (!adding.isEmpty()) {
-                        if (taken.isEmpty()) {
-                            written.restore();
-                            RequestScope.release();
-                        } else {
-                            ManifestUpdates.apply(ManifestUpdates.revert(lockDir, List.copyOf(adding.keySet())));
-                        }
+                    if (adding.isEmpty()) {
+                        ManifestUpdates.apply(plan);
+                    } else if (!taken.isEmpty()) {
+                        ManifestUpdates.apply(ManifestUpdates.taking(lockDir, taken));
                     }
                     String heldNotice = held(held);
                     if (heldNotice != null) RunNotices.warnOnce(HELD_NOTICE, () -> heldNotice);
@@ -235,7 +229,7 @@ final class LockCascade {
 
     /**
      * The moves of {@code plan} whose relock adds packages to {@code before}, each mapped to the
-     * packages it adds, read off a resolve of the rewritten manifests written nowhere. Empty when
+     * packages it adds, read off a resolve of the plan's manifest text, written nowhere. Empty when
      * there is no lock yet (a first lock adds every package), no move, or the resolve fails: the
      * relock that follows meets the same failure and reports it.
      */
@@ -250,7 +244,8 @@ final class LockCascade {
             ManifestUpdates.Plan plan) {
         if (before == null || plan.isEmpty()) return Map.of();
         try {
-            Lockfile probe = AddedPackages.probe(lockDir, cache, repoUrl, features, withDefaults, mode);
+            Lockfile probe =
+                    AddedPackages.probe(lockDir, plan.contents(), cache, repoUrl, features, withDefaults, mode);
             return AddedPackages.byMove(before, probe, plan.rewrites());
         } catch (Exception e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
