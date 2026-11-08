@@ -104,6 +104,26 @@ class ZincModularCompileTest {
                 .isRegularFile();
     }
 
+    /** A classes tree that lost its descriptor gets it back on the next compile, whatever changed. */
+    @Test
+    void a_lost_module_descriptor_is_written_back_by_the_next_compile(@TempDir Path dir) throws Exception {
+        Path src = dir.resolve("app/src");
+        write(src, "module-info.java", "module com.acme.app { exports com.acme.a; }");
+        write(src, "com/acme/a/A.java", "package com.acme.a; public class A {}");
+        Path classes = dir.resolve("app/classes");
+        Path zinc = dir.resolve("app/zinc");
+        assertThat(ZincJavaCompiler.compileJava(job(src, List.of(), classes, zinc, List.of()))
+                        .success())
+                .isTrue();
+        Files.delete(classes.resolve("module-info.class"));
+
+        ZincJavaCompiler.Result again = ZincJavaCompiler.compileJava(job(src, List.of(), classes, zinc, List.of()));
+
+        assertThat(again.success()).as(again.diagnostics().toString()).isTrue();
+        assertThat(classes.resolve("module-info.class")).isRegularFile();
+        assertThat(classes.resolve("com/acme/a/A.class")).isRegularFile();
+    }
+
     /**
      * Only what the descriptor requires joins the module path. Two automatic modules the module
      * never names, splitting one package between them, stay on the classpath: on the module path,

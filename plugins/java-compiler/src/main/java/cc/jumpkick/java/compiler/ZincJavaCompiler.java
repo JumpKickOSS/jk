@@ -222,6 +222,31 @@ public final class ZincJavaCompiler {
                 keep);
     }
 
+    /**
+     * The analysis this compile continues from, or none for a whole compile. A module that declares a
+     * descriptor but has no module-info.class (an earlier build lost it) compiles whole: no analysis
+     * invalidates the descriptor, so an incremental compile would never write it back and every
+     * module requiring this one fails module not found.
+     */
+    private static Optional<AnalysisContents> previousAnalysis(
+            ZincWorkdir zinced, AnalysisStore store, boolean compilesDescriptor, Path classOutput) {
+        Optional<AnalysisContents> prev = zinced.readAnalysis(store);
+        if (prev.isPresent()
+                && compilesDescriptor
+                && !Files.isRegularFile(classOutput.resolve(MODULE_DESCRIPTOR_CLASS))) {
+            return Optional.empty();
+        }
+        return prev;
+    }
+
+    /** The directories a compile writes, made before it starts. */
+    private static void createDirectories(Path classOutput, Path workdir, @Nullable Path sourceOutput)
+            throws IOException {
+        Files.createDirectories(classOutput);
+        Files.createDirectories(workdir);
+        if (sourceOutput != null) Files.createDirectories(sourceOutput);
+    }
+
     /** The compiled module descriptor, at the root of the class output. */
     private static final String MODULE_DESCRIPTOR_CLASS = "module-info.class";
 
@@ -305,17 +330,13 @@ public final class ZincJavaCompiler {
         Path classOutput = job.classOutput();
         Path workdir = Objects.requireNonNull(job.workdir(), "a compile needs a workdir; only a forecast may omit it");
         Path sourceOutput = job.sourceOutput();
-        int release = job.release();
-        List<String> extraOptions = job.extraOptions();
         List<Path> processorPath = job.processorPath();
         RecordingJavaCompiler javac = null;
         ProcessorLoad processors = ProcessorLoad.none();
         CompilePhases phases = CompilePhases.open(job.phasesLog());
         CollectingReporter reporter = new CollectingReporter();
         try {
-            Files.createDirectories(classOutput);
-            Files.createDirectories(workdir);
-            if (sourceOutput != null) Files.createDirectories(sourceOutput);
+            createDirectories(classOutput, workdir, sourceOutput);
             ZincWorkdir zinced = ZincWorkdir.of(workdir);
             zinced.discardAnalysisIfAggregating();
             String processorDigest = ZincWorkdir.processorDigest(processorPath, classOutput);
@@ -342,7 +363,8 @@ public final class ZincJavaCompiler {
             cp.add(classOutput);
             VirtualFile[] cpFiles = ZincSetup.virtual(cp, converter);
             phases.mark("virtualise");
-            String[] javacOpts = javacOptions(release, extraOptions, sourceOutput, processorPath, sources, classpath);
+            String[] javacOpts =
+                    javacOptions(job.release(), job.extraOptions(), sourceOutput, processorPath, sources, classpath);
             // The analysis-off marker is keyed by the classpath: the entry whose supertype the
             // analysis could not load may have changed, and then the analysis is tried again.
             Optional<String> analysisOff = mixed == null ? zinced.analysisOff(classpath) : Optional.empty();
@@ -370,16 +392,16 @@ public final class ZincJavaCompiler {
                     .withClasspath(cpFiles)
                     .withSources(sourceFiles)
                     .withClassesDirectory(classOutput)
-                    .withScalacOptions(ScalaBridge.scalacOptions(mixed, release))
+                    .withScalacOptions(ScalaBridge.scalacOptions(mixed, job.release()))
                     .withJavacOptions(javacOpts)
                     .withOrder(CompileOrder.Mixed)
                     .withConverter(converter)
                     .withStamper(stamper);
 
-            Optional<AnalysisContents> prev = zinced.readAnalysis(store);
+            boolean compilesDescriptor = descriptor(sourceFiles, converter) != null;
+            Optional<AnalysisContents> prev = previousAnalysis(zinced, store, compilesDescriptor, classOutput);
             phases.mark("read-analysis");
-            clearOutput(
-                    prev, converter, classOutput, workdir, sourceOutput, descriptor(sourceFiles, converter) != null);
+            clearOutput(prev, converter, classOutput, workdir, sourceOutput, compilesDescriptor);
             provenance.pristine(
                     GeneratedProvenance.of(classOutput).pristine(sourceOutput, classOutput, prev.isEmpty()));
             phases.mark("clear-output");
