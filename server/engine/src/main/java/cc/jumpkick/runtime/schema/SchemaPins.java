@@ -57,7 +57,7 @@ public final class SchemaPins {
     private static @Nullable List<SchemaEntry> kept(Lockfile previous, LockSchemas.Declared declared) {
         try {
             return LockSchemas.closure(previous.schemas(), declared);
-        } catch (IllegalStateException unpinned) {
+        } catch (IllegalStateException | IllegalArgumentException unpinnedOrSplit) {
             return null;
         }
     }
@@ -91,6 +91,8 @@ public final class SchemaPins {
                     refs);
             byKey.put(row.key(), row);
         }
-        return List.copyOf(byKey.values());
+        List<SchemaEntry> rows = List.copyOf(byKey.values());
+        LockSchemas.oneVersionEach(rows);
+        return rows;
     }
 }

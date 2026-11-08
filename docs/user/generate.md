@@ -218,7 +218,8 @@ avro = "1.12.2"
 `jk lock` fetches each subject and every subject version it references, and pins each as a
 `[[schema]]` row ([Lockfile](lockfile.md#registry-schemas)). A build reads the pinned schemas from
 the store and never asks the registry unless the store lacks one; it then refuses any other bytes.
-`latest` resolves once: `jk update` or `jk lock -F` moves it.
+`latest` resolves once: `jk update` or `jk lock -F` moves it. A module reads one version of each subject: when a
+declared subject and a reference to it name different versions, `jk lock` refuses, naming both.
 
 The credential comes from the repository chain under the `repository` id: `JK_REPO_<ID>_USERNAME`
 and `JK_REPO_<ID>_PASSWORD` (a Confluent Cloud API key and secret), or a table in

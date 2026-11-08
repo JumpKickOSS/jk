@@ -74,22 +74,30 @@ public final class LockSchemas {
                 config.stringOpt("repository").orElse(null));
     }
 
-    /** The row pinning {@code subject} as {@code declared} asks for it, or null when none does. */
+    /**
+     * The row pinning {@code subject} as {@code declared} asks for it, the newest pinned one for
+     * {@code latest}, or null when none does.
+     */
     public static @Nullable SchemaEntry row(List<SchemaEntry> rows, Declared declared, String subject) {
         String version = declared.subjects().get(subject);
+        String exact = version == null || LATEST.equals(version) ? null : version;
+        SchemaEntry found = null;
         for (SchemaEntry row : rows) {
             if (!row.answersFor(declared.module())
                     || !row.registry().equals(declared.registry())
                     || !row.subject().equals(subject)) continue;
-            if (version == null || LATEST.equals(version) || version.equals(Integer.toString(row.version())))
-                return row;
+            boolean match = exact == null
+                    ? found == null || row.version() > found.version()
+                    : exact.equals(Integer.toString(row.version()));
+            if (match) found = row;
         }
-        return null;
+        return found;
     }
 
     /**
      * The rows a module reads: each declared subject's and, transitively, every version they
-     * reference. Throws naming the first subject the lock does not pin.
+     * reference. Throws naming the first subject the lock does not pin, or a subject two
+     * versions of which meet.
      */
     public static List<SchemaEntry> closure(List<SchemaEntry> rows, Declared declared) {
         Map<String, SchemaEntry> byKey = new LinkedHashMap<>();
@@ -115,15 +123,36 @@ public final class LockSchemas {
                 work.add(referenced);
             }
         }
+        oneVersionEach(out);
         return out;
     }
 
-    /** True when some declared subject, or a version a pinned schema references, has no row. */
+    /**
+     * Throws when two versions of one subject meet in {@code rows}: both would be laid out at the
+     * subject's file.
+     */
+    public static void oneVersionEach(List<SchemaEntry> rows) {
+        Map<String, SchemaEntry> bySubject = new LinkedHashMap<>();
+        for (SchemaEntry row : rows) {
+            SchemaEntry other = bySubject.putIfAbsent(row.subject(), row);
+            if (other != null && other.version() != row.version()) {
+                int low = Math.min(other.version(), row.version());
+                int high = Math.max(other.version(), row.version());
+                throw new IllegalArgumentException(
+                        row.subject() + ": v" + low + " and v" + high + " both reach one module; keep one");
+            }
+        }
+    }
+
+    /**
+     * True when some declared subject, or a version a pinned schema references, has no row, or a
+     * module's rows split one subject across versions.
+     */
     static boolean missing(Path owner, Map<Path, JkBuild> modules, Lockfile lock) {
         for (Declared declared : declared(owner, modules)) {
             try {
                 closure(lock.schemas(), declared);
-            } catch (IllegalStateException unpinned) {
+            } catch (IllegalStateException | IllegalArgumentException unpinnedOrSplit) {
                 return true;
             }
         }
