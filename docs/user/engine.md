@@ -250,7 +250,7 @@ with any Java heap analyser.
 
 ### Worker containment
 
-On Linux every worker the engine forks — compiler lanes, Kotlin and Groovy compiles, test
+On Linux every worker the engine forks — the Java compiler, Kotlin and Groovy compiles, test
 JVMs, plugin workers, and the tool processes those steps run — is given `oom_score_adj` 800
 as soon as it starts. Under memory pressure the kernel then prefers a jk worker over the
 engine and over an ordinary session process. The engine's own score is never changed. A
@@ -290,7 +290,7 @@ starts it in the caller's cgroup instead.
 
 ### Worker memory
 
-Every process the engine forks — compiler lanes, Kotlin and Groovy compiles, test JVMs,
+Every process the engine forks — the Java compiler, Kotlin and Groovy compiles, test JVMs,
 plugin workers, `git`, `docker`, `native-image` — takes a lease before it starts and
 returns it when the process exits, including when the process is killed. The budget is the
 same number written to the workers cgroup `memory.max`: host memory, or the enclosing
@@ -318,11 +318,11 @@ dashboard's Admin page shows the same line.
 The worker limits are one per host: every engine of one state directory leases from them
 together, so an engine still draining after `jk engine stop` and the engine that took over
 never hold more between them than one engine could alone. Host-wide are the budget, its
-twice-the-budget overbooking cap, the running-JVM cap, the compiler lane count, and the free
+twice-the-budget overbooking cap, the running-JVM cap, and the free
 memory overbooking reads. Each engine records its line in `<state>/engine/worker-leases` —
 its budget, its running-JVM cap, the bytes it holds, its running JVMs, how many leases it has
 queued, and the pid of each worker it forked — and counts the others' lines before it grants
-a lease or starts a lane; the leased total and the JVM count on the Workers line, and the
+a lease; the leased total and the JVM count on the Workers line, and the
 Waiting line's `held by other engines 3.0 GiB`, include them. The budget and the running-JVM
 cap are the ones the engine that was there first recorded: an engine started with a different
 `JK_WORKER_BUDGET_MB` or CPU quota says so once in the engine log, shows `(another engine's)`
@@ -409,13 +409,12 @@ read from the engine process, the same way as `JK_WORKER_BUDGET_MB`: `jk engine 
 start the next command with the variable set. `CI` is inherited by that process for the same
 reason; a worker does not see it unless the module inherits the engine's whole environment.
 
-An idle compiler lane holds its lease only while nothing else is waiting. When a fork of any
-engine of the host is queued, or another job needs a lane and the lane budget is full, the
-idle lane exits and
-the next compile starts a new one. Lanes are one budget for the whole engine, shared by
-every job: the cores the other engines of the host leave free of their running JVMs, and how
-many lane leases fit in what they leave of the budget, never fewer than one. A job on its own
-still gets every lane that fits. `JK_COMPILE_LANES` pins the count for measurement.
+The Java compiler worker is leased by what it holds, not by what it may grow to: 512 MiB
+when it starts, then its committed heap plus the usual overhead each time it reports, about once
+a second. When it runs out of compiles it collects at once and its heap shrinks to what it keeps
+between builds, so an idle worker holds little of the budget and a test JVM is not kept waiting
+for a reservation. It runs every compile of its JDK on its own threads, one per core it sees;
+`JK_COMPILE_CONCURRENCY` pins the count for measurement.
 
 Forked JVMs that are actually running are also capped at the machine's online processors,
 or at the cgroup CPU quota when that quota is finite, separate from the memory lease, so
@@ -494,23 +493,26 @@ formats every file again but counts each file once.
 
 ### Compiler worker heap
 
-A compiler worker's heap follows the module it compiles. Each worker starts with the larger
-of the memory plan's per-worker share and an estimate from the module's inputs — a 384 MiB
-base, one MiB per classpath entry, one byte per eight bytes of jar and 96 bytes per byte of
-source — rounded up to a multiple of 256 MiB and capped at what the host can give a single
-worker, so a module with a several-hundred-jar test classpath and a large test tree gets a
-worker of its own size while modules of about one size share one. Once a module has been
-compiled here before, that estimate gives way to the learned heap below; the first time, the
-worker starts at least at the generous first heap below. A worker that still runs out of heap
-climbs the retry ladder below; running out of the last rung fails the step with a message
-naming the module, every heap tried, and how to raise the heap. A pinned
-worker heap (`--ram-percent`, `[jvm] args` with `-Xmx`, `[test] jvm-args`, a module `-J`
-flag) switches the sizing and the retry off: your number is the heap, and the worker budget
-does not rewrite it.
+The Java compiler worker is not sized per module. It starts with a 64 MiB heap and may grow to
+68% of the memory it sees (the cgroup limit in a container), on G1. Where the engine gives each
+worker a cgroup of its own, the compiler worker's cap is the whole worker budget and its heap is an
+explicit `-Xmx` 1.5 GiB below that, so metaspace, code cache and stacks fit under the cap; a second
+compiler worker (another JDK, a module with its own `-J` flags) gets what the first leaves of the
+budget; after each collection it
+keeps its heap within 10–30% of what is live, and 30 idle seconds bring a full, compacting
+collection, so between builds it holds about what it keeps warm — jar indexes, processor class
+loaders, loaded classes. A compile that runs it out of memory ends the worker, as any
+`OutOfMemoryError` does (what remains is not trusted with the other compiles); every compile it
+was running starts again once on a fresh worker, and one whose second worker dies too fails with
+what the worker printed. Those re-runs go one at a time until each has answered, so a compile that
+kills its worker dies alone, and a death by running out of heap halves the worker's concurrency for
+five minutes. When a job ends, its compiles still running are cancelled; one that has not answered
+within ten seconds has its worker stopped, and the other jobs' compiles on it run again. `[jvm]
+args` with a heap flag, or `--ram-percent`, replace the 64 MiB and 68%.
 
 ### Learned heaps
 
-jk-planned workers — compiler lanes, Kotlin and Groovy compiles, test JVMs, and other plugin
+jk-planned workers — Kotlin and Groovy compiles, test JVMs, and other plugin
 workers — write a GC log, and all but the test JVMs start with `-XX:+ExitOnOutOfMemoryError`.
 A test may provoke an `OutOfMemoryError` and catch it, as under Surefire and Gradle; one for
 the heap that escapes a test fails that test, and its class is what the retry ladder below

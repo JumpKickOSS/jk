@@ -38,24 +38,25 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   **256 MiB** (or **512 MiB** when `CI=1`/`true` and unset) via
   `~/.jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`.
   **Four budgets:** (1) engine heap = thin coordinator (measured ~36 MiB peak on a
-  200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`, and per compile the
-  larger of that share and `WorkerHeap`'s estimate from the module's classpath and source bytes,
-  replaced by `LearnedHeaps` (a generous first heap for an unseen key, then the learned peak
+  200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`, replaced by
+  `LearnedHeaps` (a generous first heap for an unseen key, then the learned peak
   with headroom and a known-good floor) and retried up `HeapLadder` on a worker OOM (doubling,
-  at most three retries inside the budget, then a failure naming the module and every heap);
+  at most three retries inside the budget, then a failure naming the module and every heap) —
+  except the resident Java compiler worker (`CompilerPool`): one JVM per JDK running one compile
+  per thread, grown from 64 MiB to 68% of RAM, giving memory back, leased by the committed heap
+  it reports, and re-running every compile in flight once when it dies;
   (3) concurrency via
   **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=effective cores via
   cgroup quota when present else `availableProcessors()`, `1`=serial, `N`=cap),
   still limited by the worker lease ledger (`WorkerLeases`: FIFO with a ten-minute deadline per
   wait, which refuses at once a lease past twice the budget, which on Linux may grant past
   that budget while free memory and PSI pressure stay low but never past twice it — host-wide,
-  as are the running-JVM cap, the compile lane count (`JavaCompilerHost.laneBudget`) and the
+  as are the running-JVM cap and the
   overbook free memory (host `MemAvailable`, capped by this engine's workers group): an engine
   process joins `HostLeases`, one `<state>/engine/worker-leases` file under a file lock in which
   every engine of the state dir records its budget, JVM cap, charged bytes, running JVMs,
   queued leases and worker pids, each grant is decided against the sums, the first live line's
-  budget and JVM cap are every engine's, an idle compile lane exits while any engine has a lease
-  queued, and a reader drops the line of an engine whose pid is gone or was reused and kills the
+  budget and JVM cap are every engine's, and a reader drops the line of an engine whose pid is gone or was reused and kills the
   workers it names that still run (pid and start instant both match), so a draining engine and
   its successor share one set of limits and a crashed one blocks nobody; a test JVM's ledger
   joins nothing — and which asks a resident helper such

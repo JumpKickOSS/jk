@@ -509,6 +509,20 @@ separate — [Test](test.md#within-module-workers--w).
 
 Free RAM may still reduce live worker JVMs.
 
+**Java compiles share one JVM.** Every Java module of a build compiles in one resident compiler
+worker per JDK, one compile per worker thread, and the worker has one thread per core it sees
+(cgroup quota included), like Maven's in-process javac under `-T`. Compiles past that wait in the
+engine for a thread to come free, and every compiler worker of the engine together runs at most one
+compile per core. The worker stays up 29 minutes after its last compile
+(`JK_WORKER_LINGER_MIN`), so the next build compiles on a warm JIT. A module whose worker JVM must
+differ — its own `-J` flags, `[env] inherit`, another JDK — gets a worker of its own. Two settings
+read from the engine's environment are for measurement, not tuning:
+
+| Variable | Effect |
+|----------|--------|
+| `JK_COMPILE_CONCURRENCY=N` | Compiles one worker runs at once, instead of one per core |
+| `JK_COMPILE_PHASES=<file>` | Each compile appends one line with where its time went (read from the shell that runs `jk`) |
+
 ## Module filters
 
 ```bash

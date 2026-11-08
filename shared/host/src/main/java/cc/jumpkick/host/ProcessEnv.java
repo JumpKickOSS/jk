@@ -8,7 +8,7 @@ import org.jspecify.annotations.Nullable;
  * This process's own environment, and the one place jk reads it.
  *
  * <p>In the CLI that is the caller's shell. In the engine it is whichever shell started the daemon,
- * possibly days ago, so engine code reads it only for jk's own settings ({@code JK_COMPILE_LANES},
+ * possibly days ago, so engine code reads it only for jk's own settings ({@code JK_COMPILE_CONCURRENCY},
  * the worker budget) and for whether the machine itself is a CI runner. Anything the jk command
  * being served decides (its {@code CI}, credentials, {@code PATH}, a toolchain) reads {@code
  * BuildEnv.get} instead, which answers from the request first.
