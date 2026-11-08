@@ -7,11 +7,7 @@ import com.sun.source.tree.RequiresTree;
 import com.sun.source.util.JavacTask;
 import java.io.IOException;
 import java.io.StringWriter;
-import java.lang.module.FindException;
 import java.lang.module.ModuleDescriptor;
-import java.lang.module.ModuleFinder;
-import java.lang.module.ModuleReference;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -54,11 +50,10 @@ public final class ModulePath {
         Map<String, Path> byName = new LinkedHashMap<>();
         Map<String, ModuleDescriptor> descriptors = new LinkedHashMap<>();
         for (Path entry : classpath) {
-            Optional<ModuleReference> ref = describe(entry);
-            if (ref.isEmpty()) continue;
-            String name = ref.get().descriptor().name();
-            if (byName.putIfAbsent(name, entry) == null)
-                descriptors.put(name, ref.get().descriptor());
+            Optional<ModuleDescriptor> d = ModuleDescriptors.of(entry);
+            if (d.isEmpty()) continue;
+            String name = d.get().name();
+            if (byName.putIfAbsent(name, entry) == null) descriptors.put(name, d.get());
         }
         Set<String> reached = new HashSet<>();
         Deque<String> pending = new ArrayDeque<>(rootRequires);
@@ -115,19 +110,6 @@ public final class ModulePath {
             if (eq > 0) return value.substring(0, eq);
         }
         return null;
-    }
-
-    /** The module an entry forms on the module path: explicit, automatic, or none (a plain directory). */
-    private static Optional<ModuleReference> describe(Path entry) {
-        if (!Files.exists(entry)) return Optional.empty();
-        try {
-            Set<ModuleReference> found = ModuleFinder.of(entry).findAll();
-            return found.size() == 1 ? Optional.of(found.iterator().next()) : Optional.empty();
-        } catch (FindException | SecurityException unreadable) {
-            // A jar the module system refuses (a bad Automatic-Module-Name, a broken descriptor)
-            // cannot be a module this compile requires; it stays on the classpath.
-            return Optional.empty();
-        }
     }
 
     /** The module names {@code moduleInfo} requires, static or not, or null when it cannot be parsed. */

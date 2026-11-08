@@ -2,9 +2,8 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.ModuleDescriptors;
 import java.io.IOException;
-import java.io.InputStream;
-import java.lang.module.InvalidModuleDescriptorException;
 import java.lang.module.ModuleDescriptor;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,13 +36,8 @@ final class ModularCompile {
     /** The module name in {@code classesDir}'s descriptor, or null when the tree declares no module. */
     static @Nullable String moduleName(@Nullable Path classesDir) {
         if (classesDir == null) return null;
-        Path descriptor = classesDir.resolve(DESCRIPTOR_CLASS);
-        if (!Files.isRegularFile(descriptor)) return null;
-        try (InputStream in = Files.newInputStream(descriptor)) {
-            return ModuleDescriptor.read(in).name();
-        } catch (IOException | InvalidModuleDescriptorException unreadable) {
-            return null;
-        }
+        ModuleDescriptor d = ModuleDescriptors.ofClassesDir(classesDir);
+        return d == null ? null : d.name();
     }
 
     /**

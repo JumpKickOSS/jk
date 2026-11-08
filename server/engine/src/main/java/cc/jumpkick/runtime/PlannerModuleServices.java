@@ -5,6 +5,7 @@ import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.W_RESOURCES;
 
+import cc.jumpkick.host.ModuleDescriptors;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
@@ -16,7 +17,6 @@ import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
-import java.io.InputStream;
 import java.lang.module.InvalidModuleDescriptorException;
 import java.lang.module.ModuleDescriptor;
 import java.nio.charset.StandardCharsets;
@@ -180,8 +180,8 @@ final class PlannerModuleServices {
         Path descriptor = classes.resolve(DESCRIPTOR);
         if (!Files.isRegularFile(descriptor)) return Map.of();
         ModuleDescriptor module;
-        try (InputStream in = Files.newInputStream(descriptor)) {
-            module = ModuleDescriptor.read(in);
+        try {
+            module = ModuleDescriptors.read(Files.readAllBytes(descriptor));
         } catch (InvalidModuleDescriptorException e) {
             throw new IOException("module-services: cannot read " + descriptor + ": " + e.getMessage(), e);
         }

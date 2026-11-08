@@ -2,12 +2,10 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.ModuleDescriptors;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
-import java.lang.module.FindException;
 import java.lang.module.ModuleDescriptor;
-import java.lang.module.ModuleFinder;
-import java.lang.module.ModuleReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -57,13 +55,7 @@ public final class JvmModulePath {
     /** The module a jar declares in its {@code module-info}, or null for a plain or automatic one. */
     static @Nullable String explicitModule(Path jar) {
         if (!Files.isRegularFile(jar) || !jar.getFileName().toString().endsWith(".jar")) return null;
-        try {
-            Set<ModuleReference> refs = ModuleFinder.of(jar).findAll();
-            if (refs.size() != 1) return null;
-            ModuleDescriptor d = refs.iterator().next().descriptor();
-            return d.isAutomatic() ? null : d.name();
-        } catch (FindException e) {
-            return null;
-        }
+        ModuleDescriptor d = ModuleDescriptors.ofJar(jar);
+        return d == null ? null : d.name();
     }
 }
