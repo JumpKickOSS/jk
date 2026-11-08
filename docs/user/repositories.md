@@ -61,6 +61,13 @@ between public repositories, not a confinement: Google answers alone when it has
 coordinate, and a miss there is asked of the other remotes. Declared `groups` on Google are
 **exclusive** bindings on top of the routed defaults.
 
+### A repository that does not answer
+
+A repository that gives no answer within the request timeout (60 s) is asked last for the rest of
+the run, and jk says so once: a coordinate another repository serves no longer waits on it, and
+one only it serves still reaches it. A GitLab project package registry asked for Central's
+artifacts is the usual case.
+
 ### When Central refuses this host
 
 Maven Central refuses a host two ways, and both are sticky for hours: Sonatype's per-IP quota

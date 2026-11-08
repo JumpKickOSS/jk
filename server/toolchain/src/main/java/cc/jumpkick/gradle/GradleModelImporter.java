@@ -179,6 +179,20 @@ final class GradleModelImporter {
 
     private int rootJdk;
 
+    /** Whether the build asks Maven Central before any other repository it declares. */
+    private boolean centralFirst;
+
+    /**
+     * The repositories in the build's order. Central is jk's after every declared one, so it is
+     * written first when the build asks it first: the others are not asked for what Central serves.
+     */
+    private List<RepositorySpec> declaredRepositories() {
+        List<RepositorySpec> out = new ArrayList<>();
+        if (centralFirst && !repositories.isEmpty()) out.add(RepositorySpec.MAVEN_CENTRAL);
+        out.addAll(repositories.values());
+        return out;
+    }
+
     /** Whether the {@code mavenLocal()} row was written; one row however many projects declare it. */
     private boolean mavenLocal;
 
@@ -234,8 +248,8 @@ final class GradleModelImporter {
         for (GradleModel.Repository r : model.settingsRepositories()) repository(r);
         if (members.isEmpty()) {
             for (GradleModel.Repository r : root.repositories()) repository(r);
-            JkBuild single = memberBuild(
-                    root, GradleModuleSettings.artifactName(root, report), "", new ArrayList<>(repositories.values()));
+            JkBuild single =
+                    memberBuild(root, GradleModuleSettings.artifactName(root, report), "", declaredRepositories());
             return new GradleBuildImport.Result(single, Map.of(), finish(), machineCredentials, true);
         }
         nameMembers(members);
@@ -259,7 +273,7 @@ final class GradleModelImporter {
         JkBuild rootBuild = JkBuild.builder(rootProject)
                 .workspace(new Workspace(
                         members.stream().map(GradleModel.Project::dir).toList()))
-                .repositories(new ArrayList<>(repositories.values()))
+                .repositories(declaredRepositories())
                 .build();
         return new GradleBuildImport.Result(rootBuild, modules, finish(), machineCredentials, true);
     }
@@ -882,6 +896,7 @@ final class GradleModelImporter {
      */
     private void repository(GradleModel.Repository repo) {
         String url = repo.url();
+        if (GradleImporter.isCentral(url) && repositories.isEmpty()) centralFirst = true;
         if (url.isBlank() || GradleImporter.isCentral(url)) return;
         if (url.startsWith("file:") && url.replace('\\', '/').matches(".*/\\.m2/repository/?")) {
             if (mavenLocal) return;
