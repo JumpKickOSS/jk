@@ -47,6 +47,6 @@ public record FeatureSelection(List<String> requested, boolean defaults) {
             changed |= kept.size() != e.getValue().size();
             out.put(e.getKey(), kept);
         }
-        return changed ? build.withDependencies(new JkBuild.Dependencies(out)) : build;
+        return changed ? build.withDependencyScopes(out) : build;
     }
 }

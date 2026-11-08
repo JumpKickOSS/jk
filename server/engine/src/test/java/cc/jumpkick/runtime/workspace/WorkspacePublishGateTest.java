@@ -85,14 +85,18 @@ class WorkspacePublishGateTest {
         assertThat(WorkspaceRunPhase.testClassesConsumed(List.of(lib, app))).isEmpty();
     }
 
-    /** Dependents compile against the classes tree, so the admission publish lands on its last writer. */
+    /**
+     * Dependents compile against the classes tree, so the admission publish lands on its last
+     * writers: the resource copy ahead of the compiles, the compiles, and the after-compile scripts.
+     */
     @Test
     void the_classes_publish_waits_for_every_compile_the_assembler_and_the_resource_copy() {
         BuildPlan plan = planWith(
+                TaskNames.COPY_RESOURCES,
                 TaskNames.COMPILE_JAVA,
                 TaskNames.COMPILE_KOTLIN,
                 TaskNames.ASSEMBLE_CLASSES,
-                TaskNames.COPY_RESOURCES,
+                TaskNames.BUILD_LOGIC_AFTER_COMPILE,
                 TaskNames.PACKAGE_JAR,
                 TaskNames.COMPILE_TEST,
                 TaskNames.RUN_TESTS);
@@ -102,7 +106,8 @@ class WorkspacePublishGateTest {
                         TaskNames.COMPILE_JAVA,
                         TaskNames.COMPILE_KOTLIN,
                         TaskNames.ASSEMBLE_CLASSES,
-                        TaskNames.COPY_RESOURCES);
+                        TaskNames.COPY_RESOURCES,
+                        TaskNames.BUILD_LOGIC_AFTER_COMPILE);
     }
 
     /** A plan whose only tree writer is its compiler publishes there; one that compiles nothing publishes on completion. */

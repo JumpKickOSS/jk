@@ -88,10 +88,11 @@ bench/scoreboard --dim paired --baseline "$JK_BENCH_HOME/release-0.15.2/bin/jk"
 
 `--tier night` takes `$JK_BENCH_HOME/heavy.lock` (`flock`) for its whole run, so another heavy job
 that takes the same lock waits instead of landing in the numbers, and runs the load-proof kinds
-first. Before each absolute-wall dimension it waits for a **quiet host**: 1-minute load below 1.0,
-CPU PSI `some` avg60 below 0.5 %, and no live job on the user's engine. It looks every 5 minutes
-until the deadline (`--deadline`, default 06:30); a host still busy then records `skipped: busy`
-and banks nothing for that dimension. Each batch is **calibrated**: a fixed javac batch of
+first. Before each absolute-wall dimension it waits for a **quiet host**: 1-minute load per online
+core at most 0.1 (2.4 on 24 cores, where an idle desktop sits near 1.5; 0.8 on 8 cores), CPU PSI
+`some` avg60 at most 0.5 %, and no live job on the user's engine. It looks every 5 minutes until
+the deadline (`--deadline`, default 06:30); a host still busy then records `skipped: busy` and
+banks nothing for that dimension. Each batch is **calibrated**: a fixed javac batch of
 generated sources, timed before and after. Drift above 10 %, or a host slower than its banked
 calibration, marks every row `noisy`: recorded, never banked or judged. The load at the end of a
 batch is the batch's own builds, so interference during it shows as calibration drift instead. A clean batch banks the calibration as its own row.
@@ -102,8 +103,9 @@ renders the `wall` rows into three kinds of generated block — the tables (`wal
 `docs/user/performance.md` and `why.md`), the comparison sentences (`wall-claims`, in the README,
 `why.md`, `comparison.md` and `performance.md`) and the website's proof strip (`wall-strip`, in
 `hosting/public/index.html`) — each from every tool's latest measurement, never jk's ratcheted best;
-every number names its commit and conditions. Speed and memory comparisons appear nowhere else
-(guard `speed-claims-are-generated`). It then writes the morning report
+every number names its commit and conditions. In the reference pages, speed and memory comparisons
+appear nowhere else (guard `speed-claims-are-generated`); the README and the website pitch in
+their own words, and every number they show comes from these blocks. It then writes the morning report
 to `$JK_BENCH_HOME/scoreboard/night/<date>.md`: regressions with commit ranges, banked and recorded
 rows, noisy and skipped rows, queue results and the top five gaps.
 

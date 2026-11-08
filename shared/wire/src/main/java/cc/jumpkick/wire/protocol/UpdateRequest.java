@@ -9,7 +9,8 @@ import org.jspecify.annotations.Nullable;
  * A dependency update request. {@code deps} limits the pin rewrite to those handles or {@code
  * group:artifact} coordinates (empty = every declared pin); {@code major} lets a pin cross its Maven
  * major; {@code preview} reports the rewrites without writing or relocking; {@code accept} lets a
- * pin move across a minor or a major, which without it is refused unwritten.
+ * pin move across a minor or a major, which without it is held, the pin moving only to its newest
+ * patch.
  */
 public record UpdateRequest(
         @Nullable String dir,

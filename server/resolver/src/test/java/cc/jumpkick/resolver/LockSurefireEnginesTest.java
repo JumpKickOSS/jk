@@ -174,6 +174,78 @@ class LockSurefireEnginesTest {
     }
 
     @Test
+    void a_provided_jupiter_api_with_no_test_dependencies_locks_jupiter_engine_and_launcher_on_its_line(
+            @TempDir Path tempDir) throws Exception {
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.PROVIDED, List.of(test("org.junit.jupiter:junit-jupiter-api", "=5.12.2")));
+        JkBuild project = new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(byScope));
+
+        Lockfile lock = lock(tempDir, project);
+
+        assertThat(versions(lock, "org.junit.jupiter:junit-jupiter:jar:"))
+                .as("the Jupiter jk adds rides the provided API's line, not latest")
+                .containsExactly("5.12.2");
+        assertThat(versions(lock, ENGINE)).containsExactly("5.12.2");
+        assertThat(versions(lock, LAUNCHER)).containsExactly("1.12.2");
+        assertThat(versions(lock, PLATFORM_ENGINE)).containsExactly("1.12.2");
+        assertThat(row(lock, ENGINE).scopes()).containsExactly(Scope.TEST);
+    }
+
+    @Test
+    void a_bom_managed_provided_jupiter_api_with_no_test_dependencies_locks_the_boms_jupiter_line(@TempDir Path tempDir)
+            throws Exception {
+        String bom = "org.junit:junit-bom:5.12.2";
+        upstream.pom(
+                "org.junit",
+                "junit-bom",
+                "5.12.2",
+                MavenStub.bom(
+                        "org.junit",
+                        "junit-bom",
+                        "5.12.2",
+                        List.of(
+                                "org.junit.jupiter:junit-jupiter:5.12.2",
+                                "org.junit.jupiter:junit-jupiter-api:5.12.2",
+                                "org.junit.jupiter:junit-jupiter-engine:5.12.2",
+                                "org.junit.platform:junit-platform-commons:1.12.2",
+                                "org.junit.platform:junit-platform-engine:1.12.2",
+                                "org.junit.platform:junit-platform-launcher:1.12.2")));
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.PLATFORM,
+                List.of(Dependency.of("junit-bom", "org.junit:junit-bom", VersionSelector.parse("=5.12.2"))));
+        byScope.put(
+                Scope.PROVIDED,
+                List.of(Dependency.platformManaged("junit-jupiter-api", "org.junit.jupiter:junit-jupiter-api")));
+        JkBuild project = new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(byScope));
+
+        Lockfile lock = lock(tempDir, project);
+
+        assertThat(versions(lock, API)).containsExactly("5.12.2");
+        assertThat(versions(lock, ENGINE)).containsExactly("5.12.2");
+        assertThat(versions(lock, LAUNCHER)).containsExactly("1.12.2");
+        assertThat(row(lock, ENGINE).scopes()).containsExactly(Scope.TEST);
+        assertThat(row(lock, LAUNCHER).pinnedBy()).isEqualTo(bom);
+    }
+
+    @Test
+    void a_jupiter_api_a_main_dependency_brings_in_gets_its_engine_beside_declared_test_dependencies(
+            @TempDir Path tempDir) throws Exception {
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.MAIN,
+                List.of(test("io.helidon.webserver.testing.junit5:helidon-webserver-testing-junit5", "=27.0.1")));
+        byScope.put(Scope.TEST, List.of(test("com.foo:truth", "=1.0")));
+        JkBuild project = new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(byScope));
+
+        Lockfile lock = lock(tempDir, project);
+
+        assertThat(versions(lock, ENGINE)).containsExactly("5.12.2");
+        assertThat(versions(lock, LAUNCHER)).containsExactly("1.12.2");
+        assertThat(row(lock, ENGINE).scopes()).containsExactly(Scope.TEST);
+    }
+
+    @Test
     void a_declared_launcher_on_another_line_is_still_refused(@TempDir Path tempDir) {
         JkBuild project = project(
                 test("org.junit.jupiter:junit-jupiter-api", "=5.12.2"),
@@ -229,6 +301,33 @@ class LockSurefireEnginesTest {
                 .lock(merged, "test");
 
         assertThat(versions(lock.forMember("app"), ENGINE)).containsExactly("5.12.2");
+        assertThat(versions(lock.forMember("app"), LAUNCHER)).containsExactly("1.12.2");
+        assertThat(row(lock, ENGINE).scopes()).containsExactly(Scope.TEST);
+    }
+
+    @Test
+    void a_workspace_member_whose_jupiter_api_is_provided_reads_an_engine_on_its_line(@TempDir Path tempDir)
+            throws Exception {
+        Dependency api = test("org.junit.jupiter:junit-jupiter-api", "=5.12.2");
+        Dependency truth = test("com.foo:truth", "=1.0");
+        EnumMap<Scope, List<Dependency>> appScopes = new EnumMap<>(Scope.class);
+        appScopes.put(Scope.PROVIDED, List.of(api));
+        JkBuild app = new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(appScopes));
+        JkBuild lib = manifest("lib", truth);
+        EnumMap<Scope, List<Dependency>> mergedScopes = new EnumMap<>(Scope.class);
+        mergedScopes.put(Scope.PROVIDED, List.of(api));
+        mergedScopes.put(Scope.TEST, List.of(truth));
+        JkBuild merged =
+                new JkBuild(new Project("com.example", "root", "1.0", 25), new JkBuild.Dependencies(mergedScopes));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withMembers(List.of(new LockOrchestrator.Member("app", app), new LockOrchestrator.Member("lib", lib)))
+                .lock(merged, "test");
+
+        assertThat(versions(lock.forMember("app"), ENGINE))
+                .as(
+                        "a sibling's test table keeps Jupiter out of the merged seeds; the provided API still gets its engine")
+                .containsExactly("5.12.2");
         assertThat(versions(lock.forMember("app"), LAUNCHER)).containsExactly("1.12.2");
         assertThat(row(lock, ENGINE).scopes()).containsExactly(Scope.TEST);
     }

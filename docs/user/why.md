@@ -42,7 +42,7 @@ The measure is turns, tokens and wall time to green on broken builds, against Ma
 given the same agent tooling: [Agents reach green](#agents-reach-green).
 
 <!-- agents-claims:begin -->
-Asked who calls a method or what can end up running it, agents from 6 vendors answered from the graph in 66%–91% fewer turns and 72%–98% fewer tokens than with no graph; renaming a method and every caller took 75%–91% fewer turns and 78%–98% fewer tokens; down to the smallest repository measured, gs-multi-module at 83 lines. ([The tables](#asking-about-the-code).)
+We asked coding agents from 6 vendors questions like "who calls this method?" With jk's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 ### 2. Never type `clean` again

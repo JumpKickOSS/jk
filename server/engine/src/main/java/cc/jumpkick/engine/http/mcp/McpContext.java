@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.function.LongFunction;
@@ -133,9 +132,10 @@ public final class McpContext {
     @Setter
     private volatile Decisions decisions = new Decisions(new DecisionQueue(), (id, key) -> null);
 
-    /** The call each open decision continues, by decision id, for {@code run(decision=<id>)}. */
+    /** The tool registered under a name, for {@code run(decision=<id>)} to call again; null for none. */
     @Getter(AccessLevel.PACKAGE)
-    private final Map<String, McpDecisions.Continuation> continuations = new ConcurrentHashMap<>();
+    @Setter
+    private volatile Function<String, @Nullable McpTool> toolNamed = name -> null;
 
     /** How long one second of a wait's {@code timeout_s} lasts. Tests shrink it to expire a wait quickly. */
     @Setter

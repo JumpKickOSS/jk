@@ -312,6 +312,23 @@ class JkBuildParserProjectTest {
     }
 
     @Test
+    void module_services_is_a_boolean_off_by_default() {
+        assertThat(JkBuildParser.parse(PROJECT).build().moduleServices()).isFalse();
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [build]
+                module-services = true
+                """).build().moduleServices()).isTrue();
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [build]
+                module-services = "yes"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[build].module-services must be true or false");
+    }
+
+    @Test
     void parses_test_workers_pin_and_parallel_false_alias() {
         assertThat(JkBuildParser.parse(PROJECT).build().testWorkers()).isNull();
         assertThat(JkBuildParser.parse(PROJECT + """

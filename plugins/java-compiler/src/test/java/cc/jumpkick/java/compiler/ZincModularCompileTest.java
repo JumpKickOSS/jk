@@ -49,6 +49,102 @@ class ZincModularCompileTest {
                 .isFalse();
     }
 
+    /**
+     * An incremental compile keeps the module's descriptor: editing one class recompiles what it
+     * invalidates and leaves {@code module-info.class} in the classes tree, where a jar and every
+     * module that requires this one read it.
+     */
+    @Test
+    void an_incremental_compile_keeps_the_module_descriptor(@TempDir Path dir) throws Exception {
+        Path src = dir.resolve("app/src");
+        write(src, "module-info.java", "module com.acme.app { exports com.acme.a; exports com.acme.b; }");
+        write(src, "com/acme/a/A.java", "package com.acme.a; public class A {}");
+        write(
+                src,
+                "com/acme/b/B.java",
+                "package com.acme.b; public class B { public com.acme.a.A a() { return null; } }");
+        Path classes = dir.resolve("app/classes");
+        Path zinc = dir.resolve("app/zinc");
+        assertThat(ZincJavaCompiler.compileJava(job(src, List.of(), classes, zinc, List.of()))
+                        .success())
+                .isTrue();
+        assertThat(classes.resolve("module-info.class")).isRegularFile();
+
+        write(src, "com/acme/a/A.java", "package com.acme.a; public class A { public int x() { return 1; } }");
+        ZincJavaCompiler.Result r = ZincJavaCompiler.compileJava(job(src, List.of(), classes, zinc, List.of()));
+
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+        assertThat(classes.resolve("module-info.class"))
+                .as("recompiled %s", r.compiledSources())
+                .isRegularFile();
+    }
+
+    /**
+     * Only what the descriptor requires joins the module path. Two automatic modules the module
+     * never names, splitting one package between them, stay on the classpath: on the module path,
+     * resolving any automatic module resolves them all, and javac fails on the split package.
+     */
+    @Test
+    void automatic_modules_the_descriptor_does_not_require_stay_off_the_module_path(@TempDir Path dir)
+            throws Exception {
+        Path lib = explicitModule(dir);
+        Path plain = automaticModuleJar(dir);
+        Path splitA = splitJar(dir, "split-a", "A");
+        Path splitB = splitJar(dir, "split-b", "B");
+        Path src = dir.resolve("app/src");
+        write(src, "module-info.java", "module com.acme.app { requires com.acme.lib; requires plainlib; }");
+        write(src, "com/acme/app/App.java", """
+                package com.acme.app;
+                public class App {
+                    public static String run() { return com.acme.lib.Lib.hi() + com.acme.plain.Plain.p(); }
+                }
+                """);
+        Path classes = dir.resolve("app/classes");
+
+        ZincJavaCompiler.Result r = ZincJavaCompiler.compileJava(
+                job(src, List.of(lib, splitA, plain, splitB), classes, dir.resolve("app/zinc"), List.of()));
+
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+        assertThat(classes.resolve("module-info.class")).isRegularFile();
+    }
+
+    /**
+     * A dependency's {@code requires static transitive} joins the module path when it is on the
+     * classpath: javac resolves it for the modules that read the dependency, as JUnit's API does
+     * with {@code org.apiguardian.api}.
+     */
+    @Test
+    void a_dependencys_static_transitive_requires_joins_the_module_path(@TempDir Path dir) throws Exception {
+        Path guardSrc = dir.resolve("guard/src");
+        write(guardSrc, "module-info.java", "module ex.guard { exports ex.guard; }");
+        write(guardSrc, "ex/guard/Api.java", "package ex.guard; public @interface Api {}");
+        Path guard = dir.resolve("guard/classes");
+        javac(guardSrc, guard, List.of());
+        Path apiSrc = dir.resolve("api/src");
+        write(apiSrc, "module-info.java", "module ex.api { requires static transitive ex.guard; exports ex.api; }");
+        write(apiSrc, "ex/api/Thing.java", "package ex.api; @ex.guard.Api public class Thing {}");
+        Path api = dir.resolve("api/classes");
+        javac(apiSrc, api, List.of("--module-path", guard.toString()));
+        Path src = dir.resolve("app/src");
+        write(src, "module-info.java", "module ex.app { requires ex.api; }");
+        write(src, "ex/app/App.java", "package ex.app; public class App { ex.api.Thing t; }");
+        Path classes = dir.resolve("app/classes");
+
+        ZincJavaCompiler.Result r = ZincJavaCompiler.compileJava(
+                job(src, List.of(api, guard), classes, dir.resolve("app/zinc"), List.of()));
+
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+    }
+
+    /** {@code <name>-1.0.jar}, an automatic module holding {@code org.split.<type>}: two of them split the package. */
+    private static Path splitJar(Path dir, String name, String type) throws IOException {
+        Path src = dir.resolve(name + "/src");
+        write(src, "org/split/" + type + ".java", "package org.split; public class " + type + " {}");
+        Path out = dir.resolve(name + "/classes");
+        javac(src, out, List.of());
+        return jar(out, dir.resolve(name + "-1.0.jar"));
+    }
+
     @Test
     void a_patched_test_compile_reads_the_unnamed_module(@TempDir Path dir) throws Exception {
         Path lib = explicitModule(dir);

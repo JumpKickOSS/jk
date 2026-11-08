@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp.tools;
 
-import cc.jumpkick.engine.http.mcp.HeldFiles;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpDecisions;
 import cc.jumpkick.engine.http.mcp.McpError;
@@ -13,6 +12,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.base.PolicyOps;
+import cc.jumpkick.runtime.workspace.HeldFiles;
 import cc.jumpkick.wire.protocol.DenyReport;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -39,17 +39,19 @@ public final class DepsTool implements McpTool {
         return new Spec(
                 "deps",
                 DESCRIPTION,
-                McpSchemas.object(Map.of(
-                        "action",
-                        McpSchemas.oneOf("add", "remove", "pin"),
-                        "coords",
-                        McpSchemas.strings(),
-                        "scope",
-                        McpSchemas.string(),
-                        "dir",
-                        McpSchemas.string(),
-                        "preview",
-                        McpSchemas.bool())));
+                McpSchemas.withGoal(
+                        Map.of(
+                                "action",
+                                McpSchemas.oneOf("add", "remove", "pin"),
+                                "coords",
+                                McpSchemas.strings(),
+                                "scope",
+                                McpSchemas.string(),
+                                "dir",
+                                McpSchemas.string(),
+                                "preview",
+                                McpSchemas.bool()),
+                        List.of()));
     }
 
     @Override

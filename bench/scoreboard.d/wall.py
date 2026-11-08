@@ -11,8 +11,9 @@ banked. Subjects, per scenario of the harness (clean, rebuild, noop, edit, test,
 jk rows ratchet (15% above fails, 5% below is banked); Gradle and Maven rows record what those
 tools do today. `render` publishes each tool's latest measurement, never jk's banked best, into
 three kinds of generated block: the tables (`wall-table`), the comparison sentences
-(`wall-claims`) and the website's proof strip (`wall-strip`). No other text may compare speed or
-memory against another tool; the `speed-claims-are-generated` guard holds the docs to that.
+(`wall-claims`) and the website's proof strip (`wall-strip`). In the reference pages no other text
+may compare speed or memory against another tool; the `speed-claims-are-generated` guard holds
+why.md, comparison.md and graph.md to that. The README and the website pitch in their own words.
 """
 
 from __future__ import annotations

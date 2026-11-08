@@ -55,6 +55,6 @@ public final class PathTargets {
             }
             out.put(scope, named);
         });
-        return build.withDependencies(new JkBuild.Dependencies(out));
+        return build.withDependencyScopes(out);
     }
 }

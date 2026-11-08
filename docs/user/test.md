@@ -584,12 +584,17 @@ lock's pin is part of the stamp: a Node upgrade re-runs the suites. See [Node.js
 
 `jk test` discovers and runs tests through the JUnit Platform launcher and nothing else; `jk lock`
 puts `junit-platform-launcher` on every test classpath, and `junit-jupiter` on a module that
-declares no `[test-dependencies]` at all. Once you own that table, the framework is yours.
+declares no `[test-dependencies]` at all — on the line of a Jupiter its `[dependencies]` or
+`[provided-dependencies]` already reach, `latest` when they reach none. Once you own that table, the
+framework is yours.
 
-The lock reads the solved test graph — what you declare and what it brings in — the way Maven
-Surefire reads the resolved test classpath. A `junit-jupiter-api` on that graph with no
-`junit-jupiter-engine` gets the engine at the API's version, so declaring only the API (as Helidon's
-archetypes and many Maven projects do) runs the tests. The launcher follows the resolved Jupiter:
+The lock reads the solved test classpath — what you declare in `[test-dependencies]`, and in
+`[dependencies]`, `[provided-dependencies]` and the other tables a test JVM sees, and what they
+bring in — the way Maven Surefire reads the resolved test classpath. A `junit-jupiter-api` on that
+classpath with no `junit-jupiter-engine` gets the engine at the API's version, so declaring only the
+API (as Helidon's archetypes and many Maven projects do) runs the tests, and so does a test-support
+library that declares the API in `[provided-dependencies]` with no test table of its own (Helidon's
+`helidon-common-testing-junit5`). The launcher follows the resolved Jupiter:
 Jupiter 5.x.y runs on Platform 1.x.y and Jupiter 6 shares the Platform's number, so
 `junit-jupiter = "5.9.0"` locks `junit-platform-launcher 1.9.0`, and a test library that brings in
 Jupiter 5.12.2 (`helidon-webserver-testing-junit5` 27.0.1) locks `1.12.2` with no pin of yours. A

@@ -63,18 +63,24 @@ final class ModuleRoots {
     /**
      * The roots {@code jk lock} added to the module's test graph, by the rule the lock applied to
      * its solve ({@link TestEngines#injectedKeys}): the walk that asks whether the module reaches a
-     * Jupiter API runs over the lock's test rows from what the module's test declarations stand for.
+     * Jupiter API runs over the lock's test-classpath rows ({@link ClasspathResolver#TEST}) from what
+     * the module's test declarations and its main and provided ones stand for, as Surefire reads a
+     * Jupiter off the whole test classpath.
      */
     private static List<String> testPlatform(JkBuild module, @Nullable Path moduleDir, List<Lockfile.Artifact> rows) {
         Set<String> declared = new LinkedHashSet<>();
         for (Scope scope : TEST_SCOPES) {
             for (Dependency dep : module.dependencies().of(scope)) addDeclared(declared, dep, moduleDir, rows);
         }
+        Set<String> classpath = new LinkedHashSet<>();
+        for (Scope scope : TestEngines.CLASSPATH_SCOPES) {
+            for (Dependency dep : module.dependencies().of(scope)) addDeclared(classpath, dep, moduleDir, rows);
+        }
         List<Lockfile.Artifact> testRows = new ArrayList<>();
         for (Lockfile.Artifact row : rows) {
-            if (row.inAnyScope(TEST_SCOPES)) testRows.add(row);
+            if (row.inAnyScope(ClasspathResolver.TEST)) testRows.add(row);
         }
-        return TestEngines.injectedKeys(module, declared, keys -> {
+        return TestEngines.injectedKeys(module, declared, classpath, keys -> {
             Set<String> reached = new HashSet<>();
             for (Lockfile.Artifact row : ClasspathResolver.reachableArtifacts(testRows, keys)) {
                 reached.add(row.packageKey());

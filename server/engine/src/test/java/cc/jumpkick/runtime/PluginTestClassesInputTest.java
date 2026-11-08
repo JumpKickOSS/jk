@@ -57,7 +57,8 @@ class PluginTestClassesInputTest {
         TaskDecl step = decl(List.of(In.testClasses().wireName(), In.classes().wireName()), List.of("out"), List.of());
         assertThat(step.testOnly()).isTrue();
         assertThat(PlannerPlugin.pluginWindow(step)).isEqualTo(BuildStage.TEST);
-        assertThat(PlannerPlugin.pluginRequires(step, null)).contains(TaskNames.COMPILE_TEST, TaskNames.COPY_RESOURCES);
+        assertThat(PlannerPlugin.pluginRequires(step, null))
+                .contains(TaskNames.COMPILE_TEST, TaskNames.BUILD_LOGIC_AFTER_COMPILE);
     }
 
     @Test

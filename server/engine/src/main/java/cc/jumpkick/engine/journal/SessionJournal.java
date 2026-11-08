@@ -27,6 +27,10 @@ import org.jspecify.annotations.Nullable;
  * removed when the session ends. The shapes are the session log's; this class only
  * stores and reads them as {@link MiniJson} objects. Pruned with the runs, under the same {@code
  * [history]} budgets ({@link BuildJournal#prune}).
+ *
+ * <p>Beside the session directories, {@code <builds>/decisions/<id>.json} holds one decision of the
+ * engine's queue each, written under the same one-writer rule. The queue bounds how many it keeps,
+ * and a settled one is pruned with the sessions, under the same budgets.
  */
 public final class SessionJournal {
 
@@ -39,13 +43,18 @@ public final class SessionJournal {
 
     static final String CONNECTION_JSON = "connection.json";
 
+    /** The directory beside {@link #DIR} that holds one {@code <id>.json} per decision. */
+    public static final String DECISIONS_DIR = "decisions";
+
     /** A session id is one path segment of letters, digits, dot, dash and underscore. */
     private static final Pattern ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
 
     private final Path root;
+    private final Path decisions;
 
     public SessionJournal(Path root) {
         this.root = root.normalize();
+        this.decisions = this.root.resolveSibling(DECISIONS_DIR);
     }
 
     /** The session records beside the runs of the journal under {@code buildsRoot}. */
@@ -65,6 +74,43 @@ public final class SessionJournal {
             if (ended(dir)) out.add(entry.apply(dir, millis(dir, nowMillis)));
         }
         return out;
+    }
+
+    /**
+     * Every settled decision under {@code buildsRoot} as a prune entry, made by {@code entry} from
+     * its file, when it last changed and its size. An open decision is prunable only once its deadline has
+     * passed, which means the engine that held it stopped before it could settle it expired; until
+     * then a successor may still adopt and answer it. A record that does not parse is prunable.
+     */
+    static <T> List<T> prunableDecisions(Path buildsRoot, long nowMillis, PruneEntry<T> entry) {
+        Path dir = under(buildsRoot).decisions;
+        List<T> out = new ArrayList<>();
+        try {
+            PathUtil.forEachChild(dir, (p, attrs) -> {
+                if (attrs.isRegularFile() && p.getFileName().toString().endsWith(".json") && settled(p, nowMillis)) {
+                    out.add(entry.of(p, attrs.lastModifiedTime().toMillis(), attrs.size()));
+                }
+                return true;
+            });
+        } catch (IOException e) {
+            Log.debug("decisions unreadable: " + dir, e);
+        }
+        return out;
+    }
+
+    /** Makes a prune entry from a path, when it last changed, and its size in bytes. */
+    @FunctionalInterface
+    interface PruneEntry<T> {
+        T of(Path path, long millis, long size);
+    }
+
+    /** False only for a decision still open before its deadline. */
+    private static boolean settled(Path file, long nowMillis) {
+        return readJson(file)
+                .map(doc -> !"open".equals(doc.get("state"))
+                        || !(doc.get("deadline") instanceof Number deadline)
+                        || nowMillis >= deadline.longValue())
+                .orElse(true);
     }
 
     public Path root() {
@@ -99,6 +145,33 @@ public final class SessionJournal {
     public Optional<Map<String, Object>> connection(String id) {
         if (!validId(id)) return Optional.empty();
         return readJson(root.resolve(id).resolve(CONNECTION_JSON));
+    }
+
+    /** Replace decision {@code id}'s record with {@code doc}. */
+    public void writeDecision(String id, Map<String, Object> doc) throws IOException {
+        if (!validId(id)) throw new IllegalArgumentException("invalid decision id: " + id);
+        OwnerOnlyFiles.createDirectories(decisions);
+        AtomicWrites.replace(decisions.resolve(id + ".json"), MiniJson.write(doc) + "\n");
+    }
+
+    /** Remove decision {@code id}'s record, when there is one. */
+    public void deleteDecision(String id) throws IOException {
+        if (validId(id)) Files.deleteIfExists(decisions.resolve(id + ".json"));
+    }
+
+    /** Every stored decision record that parses, in no particular order. */
+    public List<Map<String, Object>> decisions() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        try {
+            PathUtil.forEachChild(decisions, (p, attrs) -> {
+                if (attrs.isRegularFile() && p.getFileName().toString().endsWith(".json"))
+                    readJson(p).ifPresent(out::add);
+                return true;
+            });
+        } catch (IOException e) {
+            Log.debug("decisions unreadable: " + decisions, e);
+        }
+        return out;
     }
 
     /** Append one action line to session {@code id}. */

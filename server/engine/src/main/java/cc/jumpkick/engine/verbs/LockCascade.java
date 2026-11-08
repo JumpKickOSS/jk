@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.engine.api.CoalescingLockPackages;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockDiff;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
@@ -19,14 +21,19 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.runtime.workspace.AddedPackages;
+import cc.jumpkick.runtime.workspace.HeldFiles;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
+import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -61,7 +68,12 @@ final class LockCascade {
      * first moving the declared exact pins {@code rewrite} selects ({@code jk update}): each move
      * streams as an {@code update-rewrite} event, the manifests are written, and the resolve then
      * runs against the rewritten tree. Unless {@code accept}, a move across a minor or a major is a
-     * decision for a person: nothing is written and the run fails naming the moves and the flag.
+     * decision for a person: such pins move only to their newest patch, each held move streams as a
+     * held {@code update-rewrite} event from the version its pin lands on, and a run notice names
+     * the moves held and the command that takes them. Unless {@code accept}, a move whose relock adds
+     * a package to an existing lock is held too, the pin left where it stood: a resolve written
+     * nowhere finds the packages and the moves that reach them ({@link AddedPackages}), and the held
+     * event and a run notice name them. When every move is held nothing is written or relocked.
      */
     static JobOutcome run(
             VerbHost host,
@@ -100,13 +112,36 @@ final class LockCascade {
             @Nullable Lockfile before = LockDiff.current(lockDir);
             if (rewrite != null) {
                 try {
-                    ManifestUpdates.Plan plan = ManifestUpdates.plan(lockDir, repoUrl, rewrite);
-                    sendRewrites(host, writer, plan);
-                    String held = accept ? null : held(plan);
-                    if (held != null) return fail(host, writer, Exit.USAGE, held);
+                    ManifestUpdates.Plan plan =
+                            ManifestUpdates.plan(lockDir, repoUrl, accept ? rewrite : rewrite.holding());
+                    HeldFiles written = HeldFiles.of(List.copyOf(plan.contents().keySet()));
                     ManifestUpdates.apply(plan);
+                    Map<ManifestUpdates.Rewrite, List<String>> adding = accept
+                            ? Map.of()
+                            : adding(lockDir, cache, repoUrl, features, withDefaults, mode, before, plan);
+                    List<ManifestUpdates.Rewrite> taken = plan.rewrites().stream()
+                            .filter(r -> !adding.containsKey(r))
+                            .toList();
+                    List<ManifestUpdates.Rewrite> held = heldFrom(plan.held(), adding);
+                    if (!adding.isEmpty()) {
+                        if (taken.isEmpty()) {
+                            written.restore();
+                            RequestScope.release();
+                        } else {
+                            ManifestUpdates.apply(ManifestUpdates.revert(lockDir, List.copyOf(adding.keySet())));
+                        }
+                    }
+                    String heldNotice = held(held);
+                    if (heldNotice != null) RunNotices.warnOnce(HELD_NOTICE, () -> heldNotice);
+                    String addsNotice = heldAdds(adding);
+                    if (addsNotice != null) RunNotices.warnOnce(HELD_ADDS_NOTICE, () -> addsNotice);
+                    sendRewrites(host, writer, taken, held, adding);
+                    if (taken.isEmpty() && !(held.isEmpty() && adding.isEmpty())) {
+                        host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
+                        return JobOutcome.ok();
+                    }
                     // The manifests just changed: the merged model the resolve sees must be theirs.
-                    if (!plan.isEmpty())
+                    if (!taken.isEmpty())
                         effective = LockPlans.lockScope(entryDir, selection).effective();
                 } catch (RuntimeException | IOException e) {
                     return fail(host, writer, Exit.CONFIG, Errors.text(e));
@@ -198,39 +233,119 @@ final class LockCascade {
         }
     }
 
-    /** One {@code update-rewrite} event per planned pin move. */
-    /** The refusal for {@code plan}'s moves across a minor or a major, or null when it has none. */
-    static @Nullable String held(ManifestUpdates.Plan plan) {
-        List<ManifestUpdates.Rewrite> crossing = plan.rewrites().stream()
-                .filter(ManifestUpdates.Rewrite::crossesMinor)
-                .toList();
-        if (crossing.isEmpty()) return null;
-        StringBuilder out = new StringBuilder()
-                .append(crossing.size())
-                .append(crossing.size() == 1 ? " pin moves" : " pins move")
-                .append(" across a minor or a major, which a person accepts:");
-        for (ManifestUpdates.Rewrite r : crossing) {
-            out.append("\n  ")
-                    .append(r.handle())
-                    .append(' ')
-                    .append(r.from())
-                    .append(" → ")
-                    .append(r.to());
+    /**
+     * The moves of {@code plan} whose relock adds packages to {@code before}, each mapped to the
+     * packages it adds, read off a resolve of the rewritten manifests written nowhere. Empty when
+     * there is no lock yet (a first lock adds every package), no move, or the resolve fails: the
+     * relock that follows meets the same failure and reports it.
+     */
+    private static Map<ManifestUpdates.Rewrite, List<String>> adding(
+            Path lockDir,
+            Path cache,
+            @Nullable URI repoUrl,
+            List<String> features,
+            boolean withDefaults,
+            LockMode mode,
+            @Nullable Lockfile before,
+            ManifestUpdates.Plan plan) {
+        if (before == null || plan.isEmpty()) return Map.of();
+        try {
+            Lockfile probe = AddedPackages.probe(lockDir, cache, repoUrl, features, withDefaults, mode);
+            return AddedPackages.byMove(before, probe, plan.rewrites());
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            Log.debug("update: no probe of the packages the moves add", e);
+            return Map.of();
         }
-        return out.append("\nnothing was written; ")
-                .append(UPDATE_ACCEPT_FLAG)
-                .append(" accepts them (jk update asks at a terminal)")
-                .toString();
     }
 
-    /** The {@code jk update} flag that accepts moves across a minor or a major. */
-    static final String UPDATE_ACCEPT_FLAG = "--yes";
+    /**
+     * {@code held}, each move whose pin's own move {@code adding} holds starting where that pin now
+     * stays, its {@code from}.
+     */
+    static List<ManifestUpdates.Rewrite> heldFrom(
+            List<ManifestUpdates.Rewrite> held, Map<ManifestUpdates.Rewrite, List<String>> adding) {
+        return held.stream()
+                .map(h -> adding.keySet().stream()
+                        .filter(m -> m.file().equals(h.file())
+                                && m.table().equals(h.table())
+                                && m.handle().equals(h.handle())
+                                && m.to().equals(h.from()))
+                        .findFirst()
+                        .map(m -> new ManifestUpdates.Rewrite(
+                                h.file(),
+                                h.dir(),
+                                h.moduleLabel(),
+                                h.table(),
+                                h.handle(),
+                                h.module(),
+                                m.from(),
+                                h.to()))
+                        .orElse(h))
+                .toList();
+    }
 
-    static void sendRewrites(VerbHost host, @Nullable BufferedWriter writer, ManifestUpdates.Plan plan) {
-        for (ManifestUpdates.Rewrite r : plan.rewrites()) {
-            host.sendQuiet(
-                    writer,
-                    ProtoEvents.updateRewrite(r.dir().toString(), r.table(), r.handle(), r.module(), r.from(), r.to()));
-        }
+    /**
+     * The run notice naming the moves across a minor or a major {@code held} for a person, or null
+     * when there are none.
+     */
+    static @Nullable String held(List<ManifestUpdates.Rewrite> held) {
+        List<String> crossing = held.stream()
+                .map(r -> r.handle() + " " + r.from() + " → " + r.to())
+                .toList();
+        if (crossing.isEmpty()) return null;
+        return "held " + crossing.size() + (crossing.size() == 1 ? " pin" : " pins") + " across a minor or a major ("
+                + UPDATE_ACCEPT + " takes them): " + String.join(", ", crossing);
+    }
+
+    /**
+     * The run notice naming the moves held because their relock adds packages, and the packages, or
+     * null when there are none.
+     */
+    static @Nullable String heldAdds(Map<ManifestUpdates.Rewrite, List<String>> adding) {
+        if (adding.isEmpty()) return null;
+        List<String> moves = new ArrayList<>();
+        adding.forEach((r, adds) ->
+                moves.add(r.handle() + " " + r.from() + " → " + r.to() + " adds " + String.join(", ", adds)));
+        return "held " + adding.size() + (adding.size() == 1 ? " pin" : " pins") + " whose relock adds packages ("
+                + UPDATE_ACCEPT + " takes " + (adding.size() == 1 ? "it" : "them") + "): " + String.join("; ", moves);
+    }
+
+    /** The command that accepts moves across a minor or a major. */
+    static final String UPDATE_ACCEPT = "jk update -y";
+
+    /** The {@link RunNotices} key of the held-moves notice. */
+    private static final String HELD_NOTICE = "update-held";
+
+    /** The {@link RunNotices} key of the notice on moves held because their relock adds packages. */
+    private static final String HELD_ADDS_NOTICE = "update-held-adds";
+
+    /**
+     * One {@code update-rewrite} event per move {@code taken}, then one held event per move {@code
+     * held} across a minor or a major and per move held because its relock adds the packages {@code
+     * adding} names.
+     */
+    static void sendRewrites(
+            VerbHost host,
+            @Nullable BufferedWriter writer,
+            List<ManifestUpdates.Rewrite> taken,
+            List<ManifestUpdates.Rewrite> held,
+            Map<ManifestUpdates.Rewrite, List<String>> adding) {
+        for (ManifestUpdates.Rewrite r : taken) sendRewrite(host, writer, r, false, List.of());
+        for (ManifestUpdates.Rewrite r : held) sendRewrite(host, writer, r, true, List.of());
+        adding.forEach((r, adds) -> sendRewrite(host, writer, r, true, adds));
+    }
+
+    /** One {@code update-rewrite} event: {@code r}, {@code held} or taken, adding {@code adds}. */
+    static void sendRewrite(
+            VerbHost host,
+            @Nullable BufferedWriter writer,
+            ManifestUpdates.Rewrite r,
+            boolean held,
+            List<String> adds) {
+        host.sendQuiet(
+                writer,
+                ProtoEvents.updateRewrite(
+                        r.dir().toString(), r.table(), r.handle(), r.module(), r.from(), r.to(), held, adds));
     }
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.engine.http.mcp;
+package cc.jumpkick.runtime.workspace;
 
 import java.io.IOException;
 import java.nio.file.Files;

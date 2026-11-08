@@ -347,7 +347,7 @@ public final class PomImporter {
                         inherited == null
                                 ? FormatPlugins.map(em.model(), report).orElse(JkBuild.FormatConfig.EMPTY)
                                 : JkBuild.FormatConfig.EMPTY)
-                .dependencies(new JkBuild.Dependencies(byScope))
+                .dependencies(new JkBuild.Dependencies(byScope, !processorPaths.testOwn()))
                 .repositories(repos)
                 .features(profileFeatures)
                 .profiles(toProfiles(profiles.profiles()))
@@ -365,6 +365,7 @@ public final class PomImporter {
         List<ReleaseSources> releases = MultiReleasePlugins.map(em.model(), report);
         JkBuild jkBuild = builder.build(buildBlock(em.model(), sourceTree, tests, report)
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))
+                        .withModuleServices(ModuleServicesPlugin.map(em, report))
                         .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(BuildBlock.Dokka.DEFAULT))
                         .withMultiRelease(releases)
                         .withWar(packaging.war())
@@ -424,10 +425,6 @@ public final class PomImporter {
             report.warning("<compilerArgs>: dropped "
                     + packagesOf(args.granted()).size() + " -J jdk.compiler opens jk already grants");
         }
-        for (String execution : PluginFacts.mainScopedProcessorPaths(model)) {
-            report.warning("<annotationProcessorPaths> on execution " + execution
-                    + ": written to [processor-dependencies], which test compiles use too");
-        }
         if (!sourceTree.extraSrc().isEmpty()) build = build.withExtraSrc(sourceTree.extraSrc());
         if (!sourceTree.testExtraSrc().isEmpty()) build = build.withTestExtraSrc(sourceTree.testExtraSrc());
         if (!sourceTree.resources().isEmpty()) build = build.withResources(sourceTree.resources());
@@ -441,6 +438,7 @@ public final class PomImporter {
             build = build.withTestClassSuites(Map.of(TestSuites.INTEGRATION, tests.integration()));
         }
         if (!tests.jvm().isEmpty()) build = build.withTestJvm(tests.jvm());
+        if (!tests.env().isEmpty()) build = build.withTestEnv(tests.env());
         List<String> testExcludes = PluginFacts.compilerSourceGlobs(model, "testExcludes", true);
         if (!testExcludes.isEmpty()) build = build.withTestExcludeSrc(testExcludes);
         reportCompilerGlobs(model, "testIncludes", true, report);
@@ -593,7 +591,7 @@ public final class PomImporter {
         if (!hoistedManaged.isEmpty()) {
             Map<Scope, List<Dependency>> rootDeps = new EnumMap<>(Scope.class);
             rootDeps.put(Scope.MANAGED, hoistedManaged);
-            rootJkBuild = rootJkBuild.withDependencies(new JkBuild.Dependencies(rootDeps));
+            rootJkBuild = rootJkBuild.withDependencyScopes(rootDeps);
             ManagedRows.reportHoisted(hoistedManaged, report);
         }
         Set<String> importedBoms = new HashSet<>();
@@ -870,24 +868,25 @@ public final class PomImporter {
     }
 
     /**
-     * {@code <annotationProcessorPaths>} → {@code [processor-dependencies]}, and the paths of a
-     * {@code testCompile}-only execution → {@code [test-processor-dependencies]}, so compile-test
-     * alone runs them as under Maven. With the element present Maven hands javac a processor path
-     * and stops discovering processors on the classpath, which is exactly what the jk tables do, so
-     * only the listed paths are written. Without it, the processors {@link KnownProcessors}
-     * recognizes among the plain dependencies are written.
+     * {@code <annotationProcessorPaths>} → {@code [processor-dependencies]} for compile-main's path,
+     * and {@code [test-processor-dependencies]} for what compile-test's differs by: the extra paths
+     * when it is compile-main's plus more, else its whole path under {@code inherit = false}, so the
+     * tests run exactly the processors Maven's {@code testCompile} runs. With the element present
+     * Maven hands javac a processor path and stops discovering processors on the classpath, which is
+     * exactly what the jk tables do, so only the listed paths are written. Without it, the
+     * processors {@link KnownProcessors} recognizes among the plain dependencies are written.
      */
     private static void mapProcessorPaths(
             PluginFacts.ProcessorPaths paths, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
         mapProcessorPaths(paths.shared(), Scope.PROCESSOR, byScope, report);
-        List<Pom.Dep> testOnly = new ArrayList<>();
-        for (Pom.Dep path : paths.test()) {
-            if (paths.shared().stream().noneMatch(s -> s.module().equals(path.module()))) testOnly.add(path);
-        }
-        mapProcessorPaths(testOnly, Scope.TEST_PROCESSOR, byScope, report);
-        if (!testOnly.isEmpty()) {
-            report.warning("<annotationProcessorPaths> on testCompile: "
-                    + testOnly.stream().map(Pom.Dep::module).collect(Collectors.joining(", "))
+        mapProcessorPaths(paths.test(), Scope.TEST_PROCESSOR, byScope, report);
+        String named = paths.test().stream().map(Pom.Dep::module).collect(Collectors.joining(", "));
+        if (paths.testOwn()) {
+            report.warning("<annotationProcessorPaths>: testCompile runs "
+                    + (named.isEmpty() ? "no declared processor" : named)
+                    + ", not compile's path; written to [test-processor-dependencies] with inherit = false");
+        } else if (!named.isEmpty()) {
+            report.warning("<annotationProcessorPaths> on testCompile: " + named
                     + " written to [test-processor-dependencies]");
         }
     }

@@ -42,6 +42,8 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.ProcessedResources;
+import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClassAbi;
@@ -52,12 +54,14 @@ import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.test.AbiIndex;
 import cc.jumpkick.test.AffectedChangedPublish;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -210,6 +214,9 @@ public final class PlannerCompile {
      * adds the sibling-language outputs, because which of those belong on it is part of the
      * derivation and not a caller's decision. {@code processorPath} is the module's declared
      * processor path, {@code contributedProcessors} the plugins' ({@link #effectiveProcessorPath}).
+     * {@code resources} are the main resources copied in ahead of the compile; their digest joins
+     * the request when processors may run, since a processor can read them back. Null for a
+     * compile that has none to read.
      */
     public record MainCompile(
             List<Path> sources,
@@ -225,7 +232,8 @@ public final class PlannerCompile {
             boolean mixedKotlin,
             boolean mixedGroovy,
             @Nullable Path groovyJar,
-            ScalaCompile.@Nullable Setup scala) {}
+            ScalaCompile.@Nullable Setup scala,
+            @Nullable ProcessorResources resources) {}
 
     /** compile-main's request — the build's javac invocation and the forecast's key, from one body. */
     public static CompileRequest mainCompileRequest(MainCompile in) {
@@ -255,15 +263,28 @@ public final class PlannerCompile {
             options.add("--source-path");
             options.add(in.layout().groovyStubsDir().toAbsolutePath().toString());
         }
+        List<String> javacOpts = javacOptions(options, in.javac());
+        List<Path> processorPath = effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath);
         CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
                 .sources(in.sources())
                 .classpath(classpath)
                 .outputDir(in.outputDir())
                 .release(in.release())
-                .extraOptions(javacOptions(options, in.javac()))
+                .extraOptions(javacOpts)
                 .javaHome(in.javaHome())
-                .processorPath(effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath));
+                .processorPath(processorPath);
+        if (in.resources() != null && ActionKey.processorsMayRun(processorPath, javacOpts)) {
+            req.resourcesDigest(resourcesDigest(in.resources(), in.layout()));
+        }
         return withScala(req, in.scala()).build();
+    }
+
+    private static String resourcesDigest(ProcessorResources resources, BuildLayout layout) {
+        try {
+            return resources.digest(layout);
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot read the main resources the processors see", e);
+        }
     }
 
     /**
@@ -315,7 +336,53 @@ public final class PlannerCompile {
             JavacConfig javac,
             Path javaHome,
             ScalaCompile.@Nullable Setup scala,
-            @Nullable Path mainClasses) {}
+            @Nullable Path mainClasses,
+            boolean discover) {
+
+        /** A compile-test that discovers classpath processors when it declares none. */
+        public TestCompile(
+                List<Path> sources,
+                List<Path> classpath,
+                List<Path> processorPath,
+                List<Path> contributedProcessors,
+                Path outputDir,
+                int release,
+                List<String> javacArgs,
+                JavacConfig javac,
+                Path javaHome,
+                ScalaCompile.@Nullable Setup scala,
+                @Nullable Path mainClasses) {
+            this(
+                    sources,
+                    classpath,
+                    processorPath,
+                    contributedProcessors,
+                    outputDir,
+                    release,
+                    javacArgs,
+                    javac,
+                    javaHome,
+                    scala,
+                    mainClasses,
+                    true);
+        }
+    }
+
+    /**
+     * compile-test's javac options. A test compile that may not discover processors and declares
+     * none runs with {@code -proc:none}: Maven's testCompile without {@code annotationProcessorPaths}
+     * on JDK 23 and later runs no processor at all, and javac on an older JDK, given no processor
+     * path, would otherwise go looking on the test classpath.
+     */
+    private static List<String> testJavacOptions(TestCompile in) {
+        List<String> base = javacOptions(in.javacArgs(), in.javac());
+        if (in.discover()
+                || !in.processorPath().isEmpty()
+                || !in.contributedProcessors().isEmpty()) return base;
+        List<String> out = new ArrayList<>(base);
+        out.add("-proc:none");
+        return List.copyOf(out);
+    }
 
     /** compile-test's request — the build's javac invocation and the forecast's key, from one body. */
     public static CompileRequest testCompileRequest(TestCompile in) {
@@ -331,10 +398,12 @@ public final class PlannerCompile {
                 .classpath(classpath)
                 .outputDir(in.outputDir())
                 .release(in.release())
-                .extraOptions(ModularCompile.testOptions(
-                        javacOptions(in.javacArgs(), in.javac()), in.mainClasses(), in.sources()))
+                .extraOptions(ModularCompile.testOptions(testJavacOptions(in), in.mainClasses(), in.sources()))
                 .javaHome(in.javaHome())
-                .processorPath(effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath));
+                .processorPath(
+                        in.discover() || !in.processorPath().isEmpty()
+                                ? effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath)
+                                : List.copyOf(in.contributedProcessors()));
         return withScala(req, in.scala()).build();
     }
 
@@ -439,7 +508,7 @@ public final class PlannerCompile {
         }
         if (sources.isEmpty()) {
             ctx.label("no Java sources");
-            dropOutputOfRemovedSources(javaOut);
+            if (dropOutputOfRemovedSources(javaOut)) ResourceMirror.relay(javaOut, incremental(ctx));
             Files.createDirectories(javaOut);
             ctx.put(BUILD_OUTCOME, "no-sources");
             return;
@@ -472,7 +541,8 @@ public final class PlannerCompile {
                 cx.mixed(),
                 cx.mixedGroovy(),
                 groovyJar,
-                scalaSetup));
+                scalaSetup,
+                new ProcessorResources(in.dir(), ctx.require(PROJECT), cx.compact())));
         // The stamp gates on the option-bearing inputs too — [build] lint/debug, [javac] args and
         // plugins, --profile args, the JDK — through the digest of the very request the action
         // key hashes, and on the classpath through the token lines that key hashes (the ABI of
@@ -556,12 +626,27 @@ public final class PlannerCompile {
         ctx.put(ACTION_KEY, r.actionKey());
         ctx.waited(Duration.ofMillis(r.waitMillis()));
         reportJavacResult(ctx, request, r);
-        warnMovedSources(ctx, r.movedSources());
+        afterJavac(ctx, cx, request, r);
         ctx.put(BUILD_OUTCOME, r.outcome());
         ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
         advanceAbiIndex(ctx, in, r, abiFile, preAbi);
         advanceSourceApiIndex(in.dir(), ctx.require(LAYOUT).buildDir(), r, sources);
         ctx.progress(sources.size());
+    }
+
+    /**
+     * After a compile-main that succeeded: the sources edited while it ran, and which resource
+     * copies its processors rewrote — the resource copy leaves those next time.
+     */
+    private static void afterJavac(TaskContext ctx, BuildPlanner.Ctx cx, CompileRequest request, JavaCompile.Result r)
+            throws IOException {
+        warnMovedSources(ctx, r.movedSources());
+        ProcessedResources.afterCompile(
+                Objects.requireNonNull(request.outputDir(), "compile-main writes a classes tree"),
+                incremental(ctx),
+                request.resourcesDigest() != null,
+                cx.actionCache(),
+                r.cacheHit() ? r.actionKey() : null);
     }
 
     /** What a compiler-worker failure names: the module's coordinates when the plan carries them, and the {@code step}. */
@@ -597,10 +682,16 @@ public final class PlannerCompile {
      * source that reappears compiles instead of stamp-skipping. Sibling languages that merge into
      * this tree re-merge in assemble-classes, which runs after every compile.
      */
-    static void dropOutputOfRemovedSources(Path javaOut) throws IOException {
-        if (!FreshnessStamp.hasRemovedSources(javaOut, BuildStamps.JAVA, List.of())) return;
+    static boolean dropOutputOfRemovedSources(Path javaOut) throws IOException {
+        if (!FreshnessStamp.hasRemovedSources(javaOut, BuildStamps.JAVA, List.of())) return false;
         PathUtil.deleteRecursively(javaOut);
         Files.createDirectories(javaOut);
+        return true;
+    }
+
+    /** {@code target/incremental}: the resource and compile ledgers beside the classes tree. */
+    static Path incremental(TaskContext ctx) {
+        return ctx.require(LAYOUT).buildDir().resolve("incremental");
     }
 
     /**
@@ -698,7 +789,9 @@ public final class PlannerCompile {
                 TaskNames.PARSE_BUILD,
                 TaskNames.RESOLVE_DEPS,
                 TaskNames.ENSURE_JDK,
-                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
+                // The resources are in the class output before any compile reads it.
+                TaskNames.COPY_RESOURCES));
         if (ksp) requires.add(TaskNames.KSP);
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
@@ -710,7 +803,9 @@ public final class PlannerCompile {
                 TaskNames.PARSE_BUILD,
                 TaskNames.RESOLVE_DEPS,
                 TaskNames.ENSURE_JDK,
-                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
+                // The resources are in the class output before any compile reads it.
+                TaskNames.COPY_RESOURCES));
         if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
         if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
         if (ksp) requires.add(TaskNames.KSP);
@@ -723,7 +818,9 @@ public final class PlannerCompile {
                 TaskNames.PARSE_BUILD,
                 TaskNames.RESOLVE_DEPS,
                 TaskNames.ENSURE_JDK,
-                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
+                // The resources are in the class output before any compile reads it.
+                TaskNames.COPY_RESOURCES));
         // Kotlin compiles first in a module that has both, and Groovy reads its output.
         if (kotlinModule) requires.add(TaskNames.COMPILE_KOTLIN);
         requires.addAll(sourceGenStepSteps(decls));
@@ -827,6 +924,7 @@ public final class PlannerCompile {
                     if (FreshnessStamp.hasRemovedSources(classes, BuildStamps.KOTLIN, freshInputs)) {
                         PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
+                        ResourceMirror.relay(classes, incremental(ctx));
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
                     // Mixed module: Kotlin reads the Java declarations from source
@@ -975,6 +1073,7 @@ public final class PlannerCompile {
                     if (FreshnessStamp.hasRemovedSources(classes, BuildStamps.GROOVY, freshInputs)) {
                         PathUtil.deleteRecursively(classes);
                         Files.createDirectories(classes);
+                        ResourceMirror.relay(classes, incremental(ctx));
                         // Kotlin published here earlier in this run; its own dir still holds it.
                         if (kotlinModule && !mixedWithJava) {
                             mergeLanguageOutput(

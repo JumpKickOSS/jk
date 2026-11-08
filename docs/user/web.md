@@ -23,8 +23,8 @@ working, green done, red failed, amber needs you, cyan identity.
   decision (`#decision/<id>`). Absent when nothing waits, and on an engine without a decision queue.
 - **Sessions**: one card per live or idle session, and those that ended within the last hour. A
   card shows the host (`claude-code 3f9a`, `IntelliJ-BSP 7b2c`, `shell`), the current episode's
-  title and where it came from (*goal from the agent*, *inferred*, or *your own commands* for the
-  shell), the project, and the state: **waiting on you**, **working** (a run in flight or its
+  title and where it came from (*goal from the agent*, *last goal*, *inferred*, or *your own
+  commands* for the shell), the project, and the state: **waiting on you**, **working** (a run in flight or its
   episode open), **idle** or **ended**. Your own shell is a session like any other, so your
   `jk test` sits beside the agent's. Click a card to select it; the route carries the choice
   (`#console/<session-id>`). With none chosen the console holds the first card.
@@ -93,7 +93,11 @@ session expiry, like any other.
 
 An episode starts with the session's first action, and again when the session moves to another
 project, when it acts after ten minutes of quiet, and after a red run streak ends green (the
-green run closes the episode it fixed). Its title is inferred from what it did, in this order:
+green run closes the episode it fixed). An agent names its task with the `goal` argument of
+[`run`, `deps`, `rename` and `update`](mcp.md#goal): a new goal starts a new episode titled by
+it, and a green run does not close an episode the agent named a goal for. Work with no goal
+that starts an episode takes the session's last goal as its title (*last goal*). With no goal at
+all, the title is inferred from what the episode did, in this order:
 
 | What happened | Title |
 |---|---|
@@ -249,6 +253,7 @@ notification carries the link under `[ui] ask = notify`, and a `NEEDS-YOU` resul
   one-time key (`k=`, scrubbed from the address bar like the token), and with it the page accepts.
 
 The first answer wins, wherever it came from; the page then says how and where it was settled.
+Settled decisions are kept under the same `[history]` retention as sessions.
 `GET /api/decisions` lists open decisions first, then recently settled ones; `GET
 /api/decisions/<id>` returns one; `POST /api/decisions/<id>` answers it; every change is an SSE
 `decision` event ([contributor HTTP](../contributors/http.md#decisions)).

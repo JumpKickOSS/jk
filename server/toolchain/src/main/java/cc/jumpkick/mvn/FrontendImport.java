@@ -306,7 +306,7 @@ final class FrontendImport {
         List<Dependency> main = new ArrayList<>(byScope.getOrDefault(Scope.MAIN, List.of()));
         main.add(Dependency.workspace(name));
         byScope.put(Scope.MAIN, main);
-        return consumer.withDependencies(new JkBuild.Dependencies(byScope));
+        return consumer.withDependencyScopes(byScope);
     }
 
     /** The member whose directory holds {@code target}, the deepest one when members nest. */

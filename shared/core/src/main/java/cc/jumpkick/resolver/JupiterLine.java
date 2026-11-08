@@ -5,6 +5,8 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -32,9 +34,9 @@ public final class JupiterLine {
 
     /**
      * The selector the launcher seeding the first test solve rides: the declared Jupiter's selector
-     * moved onto the Platform line ({@code 5.9.0 -> 1.9.0}, {@code ^5.9 -> ^1.9}), or {@code
-     * latest} when the module declares no Jupiter, or one whose selector names no line (a range,
-     * latest).
+     * ({@link #declaredJupiter}) moved onto the Platform line ({@code 5.9.0 -> 1.9.0}, {@code ^5.9
+     * -> ^1.9}), or {@code latest} when the module declares no Jupiter, or one whose selector names
+     * no line (a range, latest).
      */
     public static VersionSelector launcherSelector(JkBuild project) {
         Dependency jupiter = declaredJupiter(project);
@@ -42,9 +44,10 @@ public final class JupiterLine {
     }
 
     /**
-     * The selector an injected engine of another framework (Vintage) seeds the first test solve
-     * with: Jupiter's own line, which the engines share, or {@code latest} when the module declares
-     * no Jupiter.
+     * The selector an injected engine of another framework (Vintage), and the Jupiter added to a
+     * module with no test dependencies, seed the first test solve with: the declared Jupiter's own
+     * line ({@link #declaredJupiter}), which the engines share, or {@code latest} when the module
+     * declares no Jupiter.
      */
     public static VersionSelector engineSelector(JkBuild project) {
         Dependency jupiter = declaredJupiter(project);
@@ -78,9 +81,16 @@ public final class JupiterLine {
         return null;
     }
 
-    /** The declared test-scope Jupiter artifact — aggregate, api, engine or params — or null. */
+    /**
+     * The declared Jupiter artifact — aggregate, api, engine or params — on the module's test
+     * classpath, or null: a test-scope one first, else one the module's main or provided
+     * dependencies declare ({@link TestEngines#CLASSPATH_SCOPES}), which Maven's test classpath
+     * holds as well.
+     */
     static @Nullable Dependency declaredJupiter(JkBuild project) {
-        for (Scope scope : new Scope[] {Scope.TEST, Scope.TEST_DEV}) {
+        List<Scope> scopes = new ArrayList<>(List.of(Scope.TEST, Scope.TEST_DEV));
+        scopes.addAll(TestEngines.CLASSPATH_SCOPES);
+        for (Scope scope : scopes) {
             for (Dependency d : project.dependencies().of(scope)) {
                 if (d.module().startsWith(JUPITER_GROUP + ":junit-jupiter") && !d.isFile()) return d;
             }

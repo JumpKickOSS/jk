@@ -165,6 +165,7 @@ class MainStampParityTest {
                 false,
                 true,
                 groovyJar,
+                null,
                 null));
 
         assertThat(ActionKey.javacClasspathTokens(req))
@@ -224,6 +225,7 @@ class MainStampParityTest {
                 javaHome,
                 mixedKotlin,
                 false,
+                null,
                 null,
                 null);
     }

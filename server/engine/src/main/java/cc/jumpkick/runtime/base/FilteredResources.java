@@ -98,7 +98,7 @@ public final class FilteredResources {
                     if (Files.exists(staged)) return true;
                     continue;
                 }
-                if (expandedOutOfSync(root, values, staged)) return true;
+                if (expandedOutOfSync(root, values, staged, Set.of())) return true;
                 Set<String> expected = new HashSet<>();
                 PathUtil.forEachRegularFile(
                         root,
@@ -120,12 +120,17 @@ public final class FilteredResources {
      * forecast's question. A filtered root is compared by its expanded bytes.
      */
     public static boolean mainOutOfSync(Path moduleDir, JkBuild build, Path classes) {
+        return mainOutOfSync(moduleDir, build, classes, Set.of());
+    }
+
+    /** As {@link #mainOutOfSync(Path, JkBuild, Path)}, passing over the tree-relative paths in {@code skip}. */
+    public static boolean mainOutOfSync(Path moduleDir, JkBuild build, Path classes, Set<String> skip) {
         BuildBlock.Resources r = build.build().resources();
         Map<String, String> values = ResourceFilter.values(build);
         try {
             for (String rel : r.filtered()) {
                 Path root = moduleDir.resolve(rel);
-                if (Files.isDirectory(root) && expandedOutOfSync(root, values, classes)) return true;
+                if (Files.isDirectory(root) && expandedOutOfSync(root, values, classes, skip)) return true;
             }
         } catch (IOException e) {
             return true;
@@ -208,11 +213,14 @@ public final class FilteredResources {
         for (Path file : stale) Files.deleteIfExists(file);
     }
 
-    private static boolean expandedOutOfSync(Path root, Map<String, String> values, Path classes) throws IOException {
+    private static boolean expandedOutOfSync(Path root, Map<String, String> values, Path classes, Set<String> skip)
+            throws IOException {
         List<Path> files = new ArrayList<>();
         PathUtil.forEachRegularFile(root, (file, attrs) -> files.add(file));
         for (Path file : files) {
-            Path copy = classes.resolve(root.relativize(file).toString());
+            String rel = root.relativize(file).toString();
+            if (skip.contains(rel.replace('\\', '/'))) continue;
+            Path copy = classes.resolve(rel);
             if (!Files.isRegularFile(copy)) return true;
             byte[] want = ResourceFilter.filter(
                     String.valueOf(file.getFileName()), Files.readAllBytes(file), values, new HashSet<>());

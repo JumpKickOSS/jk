@@ -4,6 +4,7 @@ package cc.jumpkick.engine.sessions;
 import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.wire.protocol.EventCatalog;
@@ -145,6 +146,36 @@ public final class SessionLog {
      */
     public synchronized void stopWriting() {
         retired = true;
+    }
+
+    /** One write to the journal, made under the log's write gate. */
+    @FunctionalInterface
+    public interface JournalWrite {
+        void to(SessionJournal journal) throws IOException;
+    }
+
+    /**
+     * Run {@code write} while this engine writes the records, once it has adopted, and answer true;
+     * answer false, writing nothing, once it no longer does. A log with no journal writes nothing and
+     * answers as the gate stands. Records kept beside the sessions (decisions) cross a hand-off
+     * under the same one-writer rule this way.
+     */
+    public synchronized boolean whileWriting(String what, JournalWrite write) {
+        adopt();
+        if (!writing()) return false;
+        if (journal == null) return true;
+        try {
+            write.to(journal);
+        } catch (IOException | RuntimeException e) {
+            Log.debug("not written: " + what, e);
+        }
+        return true;
+    }
+
+    /** The journal to read records from once this log has adopted; null when nothing is stored. */
+    public synchronized @Nullable SessionJournal adoptedJournal() {
+        adopt();
+        return journal;
     }
 
     public long idleGapMillis() {
@@ -403,18 +434,34 @@ public final class SessionLog {
 
     /**
      * The agent named its goal: the session's current episode when it already pursues {@code text},
-     * else a new episode titled by it. Answers the episode id.
+     * else a new episode titled by it. The goal is clipped to {@link #GOAL_CHARS} and masked as an
+     * action's summary is before anything stores, serves or streams it. Answers the episode id.
      */
     public synchronized @Nullable String goal(String origin, @Nullable String label, String project, String text) {
         if (!ownsTrigger(origin)) return null;
         adopt();
         long now = clock.getAsLong();
         Live live = sessionFor(origin, label, clientOf(label), now);
-        EpisodeInference.Placement p = live.episodes.goal(now, projectOr(live, project), text);
+        String where = projectOr(live, project);
+        EpisodeInference.Placement p = live.episodes.goal(now, where, maskedGoal(where, text));
         touch(live, project, now, p.episode());
         persist(live);
         publish(live, p.changes());
         return p.episode();
+    }
+
+    /** Characters of a goal an episode title keeps: a goal is meant to be under eight words. */
+    static final int GOAL_CHARS = 120;
+
+    /** {@code text} on one line, clipped to {@link #GOAL_CHARS}, with the project's secrets masked. */
+    static String maskedGoal(String project, @Nullable String text) {
+        if (text == null || text.isBlank()) return "";
+        String dir = project.isBlank() ? null : project;
+        String masked = EventRedaction.redactText(dir, text.strip());
+        String line = String.join(" ", masked.split("\\s+"));
+        if (line.length() <= GOAL_CHARS) return line;
+        return EventRedaction.redactClipped(
+                dir, line.substring(0, GOAL_CHARS - 1) + ActionRecord.CLIP, ActionRecord.CLIP);
     }
 
     /** The open session of an origin and label, and its current episode, when one is open. */

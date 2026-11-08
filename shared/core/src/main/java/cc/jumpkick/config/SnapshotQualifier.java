@@ -52,7 +52,7 @@ public final class SnapshotQualifier {
             changed |= !next.equals(deps);
             by.put(scope, next);
         }
-        return changed ? out.withDependencies(new JkBuild.Dependencies(by)) : out;
+        return changed ? out.withDependencyScopes(by) : out;
     }
 
     private static Dependency qualified(Dependency d) {

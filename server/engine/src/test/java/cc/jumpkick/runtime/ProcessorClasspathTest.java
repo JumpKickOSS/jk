@@ -131,6 +131,67 @@ class ProcessorClasspathTest {
     }
 
     @Test
+    void a_non_inheriting_test_table_is_compile_tests_whole_processor_path(@TempDir Path tmp) throws Exception {
+        Path root = workspace(tmp);
+        Path tproc = Files.createDirectories(root.resolve("tproc/target/classes"));
+        Files.writeString(root.resolve("tproc/jk.toml"), """
+                group   = "com.example"
+                name    = "tproc"
+                version = "1.0.0"
+                """);
+        Files.writeString(root.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["proc", "tproc", "consumer"]
+                """);
+        Path consumer = root.resolve("consumer");
+        String tables = """
+                group   = "com.example"
+                name    = "consumer"
+                version = "1.0.0"
+
+                [processor-dependencies]
+                proc = { workspace = true }
+
+                [test-processor-dependencies]
+                """;
+        ClasspathResolver resolver = new ClasspathResolver(new Cas(tmp.resolve("cas")));
+        Lockfile lock = Lockfile.empty("test");
+        Path procClasses = root.resolve("proc/target/classes");
+
+        Files.writeString(consumer.resolve("jk.toml"), tables + "tproc = { workspace = true }\n");
+        JkBuild inheriting = JkBuildParser.parse(consumer.resolve("jk.toml"));
+        List<Path> shared = List.of(procClasses);
+        assertThat(ProcessorPaths.forTest(
+                        inheriting,
+                        shared,
+                        shared,
+                        ProcessorPaths.testClosure(inheriting, lock, resolver, consumer, false)))
+                .as("by default compile-test runs the shared table's processor beside its own")
+                .containsExactly(procClasses, tproc);
+
+        Files.writeString(consumer.resolve("jk.toml"), tables + "inherit = false\ntproc = { workspace = true }\n");
+        JkBuild own = JkBuildParser.parse(consumer.resolve("jk.toml"));
+        assertThat(ProcessorPaths.forTest(
+                        own, shared, shared, ProcessorPaths.testClosure(own, lock, resolver, consumer, false)))
+                .as("inherit = false: the test table alone, the main-only processor stays off the tests")
+                .containsExactly(tproc);
+        assertThat(ProcessorPaths.forecastTest(own, lock, resolver, consumer, shared))
+                .as("the forecast derives the path the build does")
+                .containsExactly(tproc);
+
+        Files.writeString(consumer.resolve("jk.toml"), tables + "inherit = false\n");
+        JkBuild none = JkBuildParser.parse(consumer.resolve("jk.toml"));
+        assertThat(ProcessorPaths.forTest(
+                        none, shared, shared, ProcessorPaths.testClosure(none, lock, resolver, consumer, false)))
+                .as("an empty non-inheriting table declares nothing, so compile-test discovers on its classpath")
+                .isEmpty();
+    }
+
+    @Test
     void an_unresolved_test_processor_is_named_with_its_table(@TempDir Path tmp) throws Exception {
         Path dir = Files.createDirectories(tmp.resolve("solo"));
         Files.writeString(dir.resolve("jk.toml"), """

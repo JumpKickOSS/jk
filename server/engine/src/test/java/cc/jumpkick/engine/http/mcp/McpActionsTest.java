@@ -72,6 +72,39 @@ class McpActionsTest {
     }
 
     @Test
+    void a_goal_titles_the_episode_a_call_without_one_is_served_and_a_new_goal_starts_the_next() {
+        McpContext ctx = context();
+        McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);
+        String id = log.open("mcp", "claude-code", connection.label(), null);
+        McpTools tools = new McpTools(List.of(
+                tool("rename", in -> in.text("renamed 3 calls\n")),
+                tool("deps", in -> in.text("added\n")),
+                tool("callers", in -> in.text("3 callers\n"))));
+        String dir = project.toString();
+
+        tools.call(
+                ctx,
+                call("rename", Map.of("dir", dir, "goal", "Rename post to record", "address", "Ledger.post")),
+                connection,
+                null);
+        // No goal: answered as any call, and its work joins the goal's episode.
+        Map<String, Object> answer =
+                tools.call(ctx, call("callers", Map.of("address", "Ledger.record")), connection, null);
+        assertThat(answer).doesNotContainEntry("isError", true);
+        tools.call(ctx, call("deps", Map.of("coords", List.of("org.postgresql:postgresql"))), connection, null);
+        tools.call(
+                ctx,
+                call("deps", Map.of("goal", "Add Postgres", "coords", List.of("org.postgresql:postgresql"))),
+                connection,
+                null);
+
+        SessionLog.Page page = log.session(id, 0, 10).orElseThrow();
+        assertThat(page.episodes())
+                .extracting(e -> e.get("title") + "/" + e.get("titleSource") + "/" + e.get("actions"))
+                .containsExactly("Rename post to record/goal/3", "Add Postgres/goal/1");
+    }
+
+    @Test
     void a_call_that_throws_is_logged_as_failed_and_still_throws() {
         McpContext ctx = context();
         McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);

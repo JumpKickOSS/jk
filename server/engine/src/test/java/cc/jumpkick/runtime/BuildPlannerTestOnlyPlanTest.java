@@ -270,7 +270,8 @@ class BuildPlannerTestOnlyPlanTest {
 
     /**
      * The resource copy is part of the classes tree a dependent compiles against, so a compile-only
-     * plan carries it beside the stamp; the two are independent leaves the join keeps.
+     * plan carries it: ahead of the compile, which the after-compile scripts follow, so the join
+     * keeps the stamp and those scripts as its independent leaves.
      */
     @Test
     void single_language_compile_only_joins_the_stamp_and_the_resource_copy(@TempDir Path dir) throws Exception {
@@ -291,7 +292,13 @@ class BuildPlannerTestOnlyPlanTest {
                 .filter(s -> s.name().equals(BuildPlanner.COMPILE_JOIN))
                 .findFirst()
                 .orElseThrow();
-        assertThat(join.requires()).containsExactlyInAnyOrder(TaskNames.WRITE_STAMP, TaskNames.COPY_RESOURCES);
+        assertThat(join.requires())
+                .containsExactlyInAnyOrder(TaskNames.WRITE_STAMP, TaskNames.BUILD_LOGIC_AFTER_COMPILE);
+        Task compileJava = plan.steps().stream()
+                .filter(s -> s.name().equals(TaskNames.COMPILE_JAVA))
+                .findFirst()
+                .orElseThrow();
+        assertThat(compileJava.requires()).contains(TaskNames.COPY_RESOURCES);
     }
 
     /**

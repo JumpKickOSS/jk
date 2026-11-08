@@ -65,14 +65,25 @@ public final class ManifestUpdates {
 
     /**
      * Which pins to move: the handles or {@code group:artifact} coordinates in {@code deps} (empty =
-     * every declared pin), crossing a Maven major only when {@code major} is set.
+     * every declared pin), crossing a Maven major only when {@code major} is set. {@code hold} keeps
+     * every pin on its minor: it moves only to the newest patch, a move no person need accept, and
+     * the newer release across the minor is planned as held.
      */
-    public record Selection(List<String> deps, boolean major) {
+    public record Selection(List<String> deps, boolean major, boolean hold) {
 
         public static final Selection ALL = new Selection(List.of(), false);
 
         public Selection {
             deps = deps == null ? List.of() : List.copyOf(deps);
+        }
+
+        public Selection(List<String> deps, boolean major) {
+            this(deps, major, false);
+        }
+
+        /** This selection, each pin kept on its minor. */
+        public Selection holding() {
+            return new Selection(deps, major, true);
         }
 
         boolean selects(String handle, String module) {
@@ -94,7 +105,7 @@ public final class ManifestUpdates {
             if (deps.isEmpty() || modules.isEmpty()) return this;
             List<String> wider = new ArrayList<>(deps);
             wider.addAll(modules);
-            return new Selection(wider, major);
+            return new Selection(wider, major, hold);
         }
     }
 
@@ -123,16 +134,23 @@ public final class ManifestUpdates {
     }
 
     /**
-     * The rewrites and the manifest text they produce, keyed by manifest path. Nothing is on disk
-     * until {@link #apply}.
+     * The rewrites and the manifest text they produce, keyed by manifest path, and the moves {@code
+     * held} for a person: each from the version its rewrite lands on (or the pin as written) to the
+     * newer release across a minor or a major a holding {@link Selection} keeps it from. Nothing is
+     * on disk until {@link #apply}.
      */
-    public record Plan(List<Rewrite> rewrites, Map<Path, String> contents) {
+    public record Plan(List<Rewrite> rewrites, Map<Path, String> contents, List<Rewrite> held) {
 
         public static final Plan EMPTY = new Plan(List.of(), Map.of());
 
         public Plan {
             rewrites = List.copyOf(rewrites);
             contents = Map.copyOf(contents);
+            held = List.copyOf(held);
+        }
+
+        public Plan(List<Rewrite> rewrites, Map<Path, String> contents) {
+            this(rewrites, contents, List.of());
         }
 
         public boolean isEmpty() {
@@ -164,11 +182,52 @@ public final class ManifestUpdates {
                 && dep.version() instanceof VersionSelector.Exact;
     }
 
-    /** Where one exact pin of the manifest under {@code dir} moves, or {@code null} to leave it. */
+    /**
+     * Where one pin goes: {@code to} the version written ({@code null} leaves the pin), {@code held}
+     * a newer release a person accepts first ({@code null} when there is none).
+     */
+    record Step(@Nullable String to, @Nullable String held) {
+
+        static final Step NONE = new Step(null, null);
+    }
+
+    /**
+     * Where one exact pin of the manifest under {@code dir} goes; {@code available} lists what the
+     * repositories publish for it, read only when asked.
+     */
     @FunctionalInterface
     private interface Move {
-        @Nullable
-        String to(Path dir, RepoGroup repos, String module, String current);
+        Step to(Path dir, String module, String current, Supplier<List<String>> available);
+    }
+
+    /** One pin's text edit: {@code text} with the pin written as {@code version}. */
+    @FunctionalInterface
+    private interface Edit {
+        String apply(String text, String version);
+    }
+
+    /** The {@link Rewrite} of one pin moving {@code from} → {@code to}. */
+    @FunctionalInterface
+    private interface Pin {
+        Rewrite at(String from, String to);
+    }
+
+    /** The moves one planning pass takes and holds. */
+    private record Moves(List<Rewrite> taken, List<Rewrite> held) {}
+
+    /**
+     * {@code text} with {@code step} taken through {@code edit}: the move to {@code step.to()} is
+     * recorded as taken, the held release as held from the version the pin lands on. Throws as
+     * {@code edit} does when the pin is not written where it was read, recording nothing.
+     */
+    private static String take(String text, String current, Step step, Edit edit, Pin pin, Moves moves) {
+        String to = step.to();
+        String held = step.held();
+        if (to == null && held == null) return text;
+        String edited = edit.apply(text, to != null ? to : Objects.requireNonNull(held));
+        if (to != null) moves.taken().add(pin.at(current, to));
+        if (held != null) moves.held().add(pin.at(to != null ? to : current, held));
+        return to != null ? edited : text;
     }
 
     /**
@@ -176,14 +235,12 @@ public final class ManifestUpdates {
      * standalone project). Throws like {@link JkBuildParser#parse} when a manifest does not parse.
      */
     public static Plan plan(Path lockDir, @Nullable URI repoUrl, Selection selection) throws IOException {
-        Map<String, List<String>> versionsByModule = new HashMap<>();
         return plan(
                 lockDir,
                 repoUrl,
                 selection,
-                (dir, repos, module, current) ->
-                        newer(current, available(module, repos, versionsByModule), selection.major()),
-                versionsByModule);
+                (dir, module, current, available) -> step(current, available.get(), selection),
+                new HashMap<>());
     }
 
     /**
@@ -196,11 +253,30 @@ public final class ManifestUpdates {
                 lockDir,
                 null,
                 Selection.ALL,
-                (dir, repos, module, current) -> {
+                (dir, module, current, available) -> {
                     String held = held(lockDir, dir, probe, module);
-                    return held != null && Versions.compare(held, current) > 0 ? held : null;
+                    return held != null && Versions.compare(held, current) > 0 ? new Step(held, null) : Step.NONE;
                 },
                 null);
+    }
+
+    /**
+     * The plan that moves each of {@code moves} back, {@code to} → {@code from}, in the manifests of
+     * the lock scope at {@code lockDir} as they stand once {@code moves} are written. Reads no
+     * repository.
+     */
+    public static Plan revert(Path lockDir, List<Rewrite> moves) throws IOException {
+        Map<List<Object>, String> back = new HashMap<>();
+        for (Rewrite r : moves) back.put(List.of(r.dir().toAbsolutePath().normalize(), r.module(), r.to()), r.from());
+        return plan(
+                lockDir,
+                null,
+                Selection.ALL,
+                (dir, module, current, available) -> {
+                    String from = back.get(List.of(dir.toAbsolutePath().normalize(), module, current));
+                    return from == null ? Step.NONE : new Step(from, null);
+                },
+                new HashMap<>());
     }
 
     /**
@@ -236,6 +312,7 @@ public final class ManifestUpdates {
             @Nullable Map<String, List<String>> toolVersions)
             throws IOException {
         boolean toolPins = toolVersions != null;
+        Map<String, List<String>> versions = toolVersions != null ? toolVersions : new HashMap<>();
         JkBuild root = JkBuildParser.parse(ManifestPaths.manifestIn(lockDir));
         JkBuild effectiveRoot = LockPlans.applyWorkspaceContextIfModule(lockDir, root);
 
@@ -257,7 +334,7 @@ public final class ManifestUpdates {
         }
         selection = selection.withModules(selectedModules(declared, texts, selection, toolPins));
 
-        List<Rewrite> rewrites = new ArrayList<>();
+        Moves moves = new Moves(new ArrayList<>(), new ArrayList<>());
         Map<Path, String> contents = new LinkedHashMap<>();
         AtomicReference<@Nullable List<NodeRelease>> nodeReleases = new AtomicReference<>();
         Supplier<List<NodeRelease>> releases =
@@ -276,21 +353,29 @@ public final class ManifestUpdates {
                 for (Dependency dep : table.deps()) {
                     if (!pinnable(dep) || !selection.selects(dep.library(), dep.module())) continue;
                     String current = ((VersionSelector.Exact) dep.version()).version();
-                    String to = move.to(dir, repos, dep.module(), current);
-                    if (to == null) continue;
-                    String rewritten;
+                    Step step = move.to(dir, dep.module(), current, () -> available(dep.module(), repos, versions));
                     try {
-                        rewritten = JkBuildEditor.setDependencyVersion(text, table.path(), dep.library(), to);
+                        text = take(
+                                text,
+                                current,
+                                step,
+                                (t, v) -> JkBuildEditor.setDependencyVersion(t, table.path(), dep.library(), v),
+                                (from, to) -> new Rewrite(
+                                        manifest,
+                                        dir,
+                                        moduleLabel,
+                                        table.path(),
+                                        dep.library(),
+                                        dep.module(),
+                                        from,
+                                        to),
+                                moves);
                     } catch (IllegalStateException inherited) {
                         // The entry is not written in this table (a `workspace = true` entry, a
                         // plugin-injected platform, a variant overlay folded at parse time): its owner
                         // rewrites it.
                         Log.debug("update: " + table.path() + "." + dep.library() + " not rewritten", inherited);
-                        continue;
                     }
-                    text = rewritten;
-                    rewrites.add(new Rewrite(
-                            manifest, dir, moduleLabel, table.path(), dep.library(), dep.module(), current, to));
                 }
             }
             for (Map.Entry<String, Workspace.WorkspaceDependency> e :
@@ -298,20 +383,25 @@ public final class ManifestUpdates {
                 Workspace.WorkspaceDependency wd = e.getValue();
                 if (!(wd.version() instanceof VersionSelector.Exact exact)) continue;
                 if (!selection.selects(e.getKey(), wd.module())) continue;
-                String to = move.to(dir, repos, wd.module(), exact.version());
-                if (to == null) continue;
-                text = JkBuildEditor.setWorkspaceDependencyVersion(text, e.getKey(), to);
-                rewrites.add(new Rewrite(
-                        manifest, dir, moduleLabel, WORKSPACE_TABLE, e.getKey(), wd.module(), exact.version(), to));
+                String handle = e.getKey();
+                Step step = move.to(dir, wd.module(), exact.version(), () -> available(wd.module(), repos, versions));
+                text = take(
+                        text,
+                        exact.version(),
+                        step,
+                        (t, v) -> JkBuildEditor.setWorkspaceDependencyVersion(t, handle, v),
+                        (from, to) ->
+                                new Rewrite(manifest, dir, moduleLabel, WORKSPACE_TABLE, handle, wd.module(), from, to),
+                        moves);
             }
-            if (toolVersions != null) {
-                text = moveToolPins(dir, moduleLabel, build, text, repos, selection, toolVersions, rewrites);
+            if (toolPins) {
+                text = moveToolPins(dir, moduleLabel, build, text, repos, selection, move, versions, moves);
             }
             if (toolPins && selection.major() && selection.selects(NodeUpdates.HANDLE, NodeUpdates.HANDLE)) {
+                // Node's major always crosses: a holding selection plans it as held.
                 NodeUpdates.Move node = NodeUpdates.major(text, releases);
                 if (node != null) {
-                    text = node.text();
-                    rewrites.add(new Rewrite(
+                    Rewrite nodeMove = new Rewrite(
                             manifest,
                             dir,
                             moduleLabel,
@@ -319,15 +409,21 @@ public final class ManifestUpdates {
                             NodeUpdates.HANDLE,
                             NodeUpdates.MODULE,
                             node.from(),
-                            node.to()));
+                            node.to());
+                    if (selection.hold()) {
+                        moves.held().add(nodeMove);
+                    } else {
+                        text = node.text();
+                        moves.taken().add(nodeMove);
+                    }
                 }
             }
             if (!text.equals(before)) contents.put(manifest, text);
         }
-        if (toolVersions != null) {
-            movePacks(lockDir, effective.get(lockDir), repoUrl, selection, toolVersions, rewrites, contents);
+        if (toolPins) {
+            movePacks(lockDir, effective.get(lockDir), repoUrl, selection, move, versions, moves, contents);
         }
-        return new Plan(rewrites, contents);
+        return new Plan(moves.taken(), contents, moves.held());
     }
 
     /**
@@ -339,8 +435,9 @@ public final class ManifestUpdates {
             @Nullable JkBuild effectiveRoot,
             @Nullable URI repoUrl,
             Selection selection,
+            Move move,
             Map<String, List<String>> versionsByModule,
-            List<Rewrite> rewrites,
+            Moves moves,
             Map<Path, String> contents)
             throws IOException {
         List<GuardPacks.Coordinate> packs = GuardPackPins.of(lockDir);
@@ -352,19 +449,23 @@ public final class ManifestUpdates {
         RepoGroup repos = RepoGroupBuilder.buildFor(effectiveRoot, repoUrl, cas);
         for (GuardPacks.Coordinate pack : packs) {
             if (!selection.selects(pack.artifact(), pack.ga())) continue;
-            String to = newer(
+            Step step = move.to(
+                    lockDir,
+                    pack.ga(),
                     pack.version(),
-                    GuardPackPins.available(pack, cas.root(), repos, versionsByModule),
-                    selection.major());
-            if (to == null) continue;
+                    () -> GuardPackPins.available(pack, cas.root(), repos, versionsByModule));
             try {
-                text = GuardPackPins.rewrite(text, pack, to);
+                text = take(
+                        text,
+                        pack.version(),
+                        step,
+                        (t, v) -> GuardPackPins.rewrite(t, pack, v),
+                        (from, to) -> new Rewrite(
+                                file, lockDir, "", GuardPackPins.TABLE, pack.artifact(), pack.ga(), from, to),
+                        moves);
             } catch (IllegalStateException unwritable) {
                 Log.debug("update: " + pack.gav() + " not rewritten", unwritable);
-                continue;
             }
-            rewrites.add(new Rewrite(
-                    file, lockDir, "", GuardPackPins.TABLE, pack.artifact(), pack.ga(), pack.version(), to));
         }
         if (!text.equals(before)) contents.put(file, text);
     }
@@ -398,8 +499,8 @@ public final class ManifestUpdates {
     }
 
     /**
-     * {@code text} with every selected tool pin of {@code build} moved to its newest stable, each
-     * move recorded in {@code rewrites}; a pin whose key the editor cannot find is left as written.
+     * {@code text} with every selected tool pin of {@code build} moved where {@code move} says, each
+     * move recorded in {@code moves}; a pin whose key the editor cannot find is left as written.
      * A key that fills several coordinates ({@code [intellij] version} names the IDE and its test
      * framework) moves only to a version every one of them publishes.
      */
@@ -410,8 +511,9 @@ public final class ManifestUpdates {
             String text,
             RepoGroup repos,
             Selection selection,
+            Move move,
             Map<String, List<String>> versionsByModule,
-            List<Rewrite> rewrites) {
+            Moves moves) {
         Map<String, List<ToolPins.ToolPin>> byKey = new LinkedHashMap<>();
         for (ToolPins.ToolPin pin : ToolPins.of(build, text)) {
             byKey.computeIfAbsent(pin.path(), k -> new ArrayList<>()).add(pin);
@@ -419,23 +521,26 @@ public final class ManifestUpdates {
         for (List<ToolPins.ToolPin> pins : byKey.values()) {
             if (pins.stream().noneMatch(selection::selects)) continue;
             ToolPins.ToolPin pin = pins.getFirst();
-            String to = newer(pin.version(), published(pins, repos, versionsByModule), selection.major());
-            if (to == null) continue;
+            Step step = move.to(dir, pin.module(), pin.version(), () -> published(pins, repos, versionsByModule));
             try {
-                text = pin.rewrite(text, to);
+                text = take(
+                        text,
+                        pin.version(),
+                        step,
+                        pin::rewrite,
+                        (from, to) -> new Rewrite(
+                                ManifestPaths.manifestIn(dir),
+                                dir,
+                                moduleLabel,
+                                pin.path(),
+                                pin.handle(),
+                                pin.module(),
+                                from,
+                                to),
+                        moves);
             } catch (IllegalStateException unwritable) {
                 Log.debug("update: " + pin.path() + " not rewritten", unwritable);
-                continue;
             }
-            rewrites.add(new Rewrite(
-                    ManifestPaths.manifestIn(dir),
-                    dir,
-                    moduleLabel,
-                    pin.path(),
-                    pin.handle(),
-                    pin.module(),
-                    pin.version(),
-                    to));
         }
         return text;
     }
@@ -472,6 +577,25 @@ public final class ManifestUpdates {
                 .filter(v -> Versions.compare(v, current) > 0)
                 .max(Versions::compare)
                 .orElse(null);
+    }
+
+    /**
+     * Where {@code selection} moves a pin at {@code current}: to the newest release {@link
+     * #newer(String, List, boolean)} finds, or, when it holds and that release crosses a minor, to the
+     * newest patch on the pin's minor with that release held.
+     */
+    static Step step(String current, List<String> available, Selection selection) {
+        String newest = newer(current, available, selection.major());
+        if (newest == null || !selection.hold() || !Versions.crossesMinor(current, newest)) {
+            return new Step(newest, null);
+        }
+        String patch = available.stream()
+                .filter(Versions::isStable)
+                .filter(v -> !Versions.crossesMinor(current, v))
+                .filter(v -> Versions.compare(v, current) > 0)
+                .max(Versions::compare)
+                .orElse(null);
+        return new Step(patch, newest);
     }
 
     /** The versions every list in {@code published} carries, in the first list's order. */

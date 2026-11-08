@@ -89,7 +89,8 @@ final class PlannerCompileForecast {
                 prepared.mixedKotlin(),
                 prepared.mixedGroovy(),
                 groovyJar,
-                scalaSetup));
+                scalaSetup,
+                new ProcessorResources(s.dir, s.project, prepared.compact())));
         Optional<FreshnessStamp.Stamp> fresh = Optional.empty();
         // A stamp over generated sources the KSP round is about to restore answers for the old ones.
         if (!s.compileDepDirty && !s.force && !groovyJarUnavailable && !round.rewrites(mainSrc)) {

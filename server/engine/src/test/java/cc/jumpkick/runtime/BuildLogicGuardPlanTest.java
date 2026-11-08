@@ -57,7 +57,7 @@ class BuildLogicGuardPlanTest {
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, sel));
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);
-        assertThat(task(byName, TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.COPY_RESOURCES);
+        assertThat(task(byName, TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
     }
 
     @Test

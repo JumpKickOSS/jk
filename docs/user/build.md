@@ -25,7 +25,10 @@ When something fails, run `jk results` — [Troubleshooting](troubleshooting.md)
 ## One lifecycle
 
 Every command that builds a project runs the same steps, in the same order, up to its goal:
-resolve and fetch, compile, test, package. A command that goes past packaging then does its own
+resolve and fetch, compile, test, package. Main resources are copied into the class output before
+the compile, as Maven's `process-resources` runs before `compile`, so an annotation processor reads
+them and what it writes at a resource's path is what the jar carries
+([Layout](layout.md#when-resources-are-copied)). A command that goes past packaging then does its own
 work on what the build just produced. No command needs another one run first: `jk install` is
 `jk build` and then the install, and `jk publish` is `jk build` and then the upload.
 
@@ -110,11 +113,15 @@ and Maven behave:
 | No `[processor-dependencies]` | When any compile-classpath entry registers one in `META-INF/services/javax.annotation.processing.Processor`, the whole compile classpath is the processor path — javac's own behaviour without `-processorpath` — so Lombok or MapStruct declared as a plain or `provided` dependency runs, and a processor that needs other jars at processing time (a Log4j plugin processor, Dagger's compiler) finds them beside it |
 | `[processor-dependencies]` present | That path alone; a processor that is only on the compile classpath does not run |
 | `[test-processor-dependencies]` present | compile-test's path is that table beside `[processor-dependencies]`; compile-main never sees it, so a processor a test suite alone needs (a test-fixture generator, MapStruct for test mappers) runs over the tests without touching the main compile. A module with only this table still discovers compile-main's processors on its classpath |
-| A plugin contributes processors | The plugin's processors (Helidon's codegen, say) are appended to whichever path the rows above give, discovered or declared, each jar once. A contribution never turns discovery off, so Lombok as a plain dependency still runs beside them, and declaring Lombok in `[processor-dependencies]` keeps the plugin's. A processor the module declares itself (same `group:artifact`) is the module's: the plugin's entry for it steps aside, from both compiles for `[processor-dependencies]`, from compile-test for `[test-processor-dependencies]` |
+| `[test-processor-dependencies]` with `inherit = false` | compile-test's path is that table alone; `[processor-dependencies]` stays off the tests, the way Maven configures `testCompile`'s `annotationProcessorPaths` apart from `compile`'s, so a main-only processor (Helidon's API-stability enforcer, which fails any public class without a stability annotation) never runs over test sources. With no entries beside the key compile-test runs no processor (`-proc:none`), as Maven's `testCompile` does without `annotationProcessorPaths` on JDK 23 and later, where javac no longer looks for processors on the classpath; a processor the test classpath registers, the module's own among them, stays off the tests. `inherit = true`, the default, is the row above |
+| A plugin contributes processors | The plugin's processors (Helidon's codegen, say) are appended to whichever path the rows above give, discovered or declared, each jar once. A contribution never turns discovery off, so Lombok as a plain dependency still runs beside them, and declaring Lombok in `[processor-dependencies]` keeps the plugin's. A processor the module declares itself (same `group:artifact`) is the module's: the plugin's entry for it steps aside, from both compiles for `[processor-dependencies]`, from compile-test for `[test-processor-dependencies]`. Under `inherit = false` a contribution still joins compile-test's path unless either table names it: a processor the module took over in `[processor-dependencies]` and left out of its own test path stays off the tests |
 
 A discovered processor and a declared one are the same thing downstream: the worker loads the
 processor path, records what each processor generates, and the compile action key hashes the
-path's full content. A classpath that registers no processor hands javac none, and the key hashes
+path's full content, and the main resources the processors can read from the class output.
+A processor that reads a copied resource and writes that path back — Helidon's manifest merge —
+merges into the resource, not into the file the last build left, so the module keeps its
+incremental compiles; a full compile puts the resource back before the processors run. A classpath that registers no processor hands javac none, and the key hashes
 it by ABI alone. `compile-main`, `compile-test`, fixtures and the guard suite all apply the rule.
 A Kotlin module whose processor path holds a KSP processor (Room, Hilt, Moshi's codegen) runs it
 in a KSP2 round before the Kotlin compile. The KSP2 tool is a pinned release, never the newest the
@@ -126,9 +133,25 @@ the step's label names the release that ran (`KSP 2.3.12: 2 processor jar(s)`).
 Declare `[processor-dependencies]` when the manifest should say what runs, when the processor needs
 dependencies of its own that do not belong on the compile classpath, or when a classpath jar
 registers a processor you want silent; `[test-processor-dependencies]` when a processor belongs to
-the tests alone. Both tables' entries are solved in the processor graph, apart from the main and
-test graphs, and a `[test-processor-dependencies]` row in `jk-lock.toml` carries the
-`test-processor` scope.
+the tests alone, and `inherit = false` in it when a processor belongs to the main compile alone:
+
+```toml
+[processor-dependencies]
+helidon-codegen-apt = "io.helidon.codegen:helidon-codegen-apt:4.3.0"
+helidon-codegen-api-stability-enforcer = "io.helidon.codegen:helidon-codegen-api-stability-enforcer:4.3.0"
+
+[test-processor-dependencies]
+inherit = false
+helidon-codegen-apt = "io.helidon.codegen:helidon-codegen-apt:4.3.0"
+```
+
+`[nullness]` with `tests = true` puts its Error Prone and NullAway jars on a non-inheriting test path
+too, since compile-test runs them.
+
+Both tables' entries are solved in the processor graph, apart from the main and test graphs, and a
+`[test-processor-dependencies]` row in `jk-lock.toml` carries the `test-processor` scope. Under
+`inherit = false` compile-test reads only the rows its own table's entries reach; a jar both tables
+reach still has the one version the shared graph settles.
 
 `jk explain -v` names what a compile step runs: each processor class on the step's
 processor path with the jar it comes from (`processors: org.mapstruct.ap.MappingProcessor
@@ -136,10 +159,14 @@ processor path with the jar it comes from (`processors: org.mapstruct.ap.Mapping
 `jk import` makes the intent explicit for a Maven module that relies on discovery: Lombok,
 MapStruct, AutoValue, Dagger, Immutables, Micronaut inject-java and Hibernate jpamodelgen declared
 as plain dependencies in a POM without `annotationProcessorPaths` are written into
-`[processor-dependencies]` as well, and the import report says which; the paths of a
-`maven-compiler-plugin` execution bound to `testCompile` alone, and Gradle's
-`testAnnotationProcessor`, `kaptTest` and `kspTest` configurations, are written into
-`[test-processor-dependencies]`. [Migration](migration.md).
+`[processor-dependencies]` as well, and the import report says which. For a Maven module the import
+works out the path each compile step runs, an execution's `<configuration>` merged over the
+plugin's as Maven does, with `default-testCompile` reading the plugin's when the POM leaves it alone:
+compile-main's is `[processor-dependencies]`; a compile-test path that is compile-main's plus more
+writes the extras to `[test-processor-dependencies]`; any other compile-test path is written there
+whole with `inherit = false` (empty when `testCompile` has no `annotationProcessorPaths`), and the
+report says so. Gradle's `testAnnotationProcessor`, `kaptTest` and `kspTest` configurations are
+written into `[test-processor-dependencies]`. [Migration](migration.md).
 
 ## Java modules (`module-info.java`)
 
@@ -158,6 +185,24 @@ dependencies as declared, so a dependency the descriptor requires must be in `[d
 Zinc unchanged: its analysis tracks classes, not modules, and a descriptor change recompiles the
 module like any other source. javac's own module diagnostics (`module not found`, `package is not
 visible`) land in the results as compile errors.
+
+A library that declares its services only in the descriptor (`provides S with I1, I2;`) is found
+by `ServiceLoader` on the module path, but not on a class path or an annotation processor path,
+which read `META-INF/services` files. `[build] module-services = true` writes those files:
+
+```toml
+[build]
+module-services = true    # default false
+```
+
+The `module-services` step runs after the resource copy and reads the compiled `module-info.class`.
+Each `provides` becomes `META-INF/services/<S>` in the classes tree, and so in the jar, naming the
+providers one per line in declaration order. The file is rewritten only when its bytes would
+change, so an unchanged descriptor is a skip and leaves the jar alone. A file of the same name the
+module's resources (or a processor) already put in the tree is left alone when it names the same
+providers and fails the step, naming the file and both lists, when it names others. A `provides`
+removed from the descriptor removes the file the step wrote, never a resource's. `jk import` writes
+the key for a module that runs Helidon's `helidon-services-plugin` ([Migration](migration.md)).
 
 ## Null checking (`[nullness]`)
 

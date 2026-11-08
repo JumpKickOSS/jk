@@ -476,7 +476,7 @@ public final class JkBuildParser {
         Optional<NullnessConfig> nullness = ManifestNullness.parse(result);
         if (nullness.isPresent()) {
             build = build.withNullness(nullness.get());
-            deps = ManifestNullness.withImplied(deps);
+            deps = ManifestNullness.withImplied(deps, nullness.get().tests());
         }
         // [test] is its own top-level table (test settings are not build inputs), but it folds into
         // the Build block, which already carries the other test-scoped setting, test-plugin-jars.

@@ -108,6 +108,37 @@ other lock package it changed prints the same way — a transitive dependency th
 for one it added, `1.0 → removed` for one it dropped — then the summary, `Analyzed 17 dependencies,
 2 were updated in jk-lock.toml`.
 
+A move across a minor or a major (`1.0.4 → 1.1.0`, `2.18.2 → 3.0.0`) is yours to accept. At a
+terminal `jk update` lists those moves and asks before it writes anything. Without a terminal it
+holds them: every other move applies, a held pin moves only to the newest patch on its minor, and
+the run ends naming each held move and `jk update -y takes them`, also in `jk-results.md`, and
+exits 0. A held move starts where its pin landed: a pin that took `1.0.0 → 1.0.1` is named once
+more only as held, `1.0.1 → 1.1.0`. When every move is held, nothing is written or relocked. `-y`
+takes them all, at a terminal or not. MCP [`update`](mcp.md#decisions) asks the user instead.
+
+```text
+! Update  held 1 pin across a minor or a major; jk update -y takes them
+  minory  1.0.1 → 1.1.0
+```
+
+A move whose relock adds a package to the lock is yours to accept too: a new package is new code
+you trust. At a terminal `jk update` lists those moves with the packages each adds, beside any move
+across a minor or a major, and asks once. Without a terminal it holds them: before it relocks, it
+resolves the rewritten manifests without writing the lock, traces each new package to the moved
+pins whose dependencies reach it, and puts those pins back where they were, so the lock is written
+as if those moves were not taken. Every other move applies, the run names each held move with the
+packages it adds and `jk update -y takes them`, also in `jk-results.md`, and exits 0. When a new
+package is reached by no moved pin (a dependency you declared since the last lock, say), the moves
+cannot be told apart: every move is held together, each naming every new package. A first lock adds
+every package and holds nothing. `-y` takes them all.
+
+```text
+  plainy  1.0.0 → 1.0.1
+✓ Update  Analyzed 17 dependencies, 1 was updated in jk-lock.toml
+! Update  held 1 pin whose relock adds packages; jk update -y takes them
+  growy  1.0.0 → 1.0.1  (adds com.foo.update:extra 1.0)
+```
+
 An update never moves a package backwards. `jk update` and `jk lock -F` treat every version the old
 lock holds as a floor: a transitive dependency stays where it was even when the POMs that pull it
 in name an older release, and moves up when one of them asks for a newer one. Only a constraint

@@ -204,7 +204,7 @@ public final class ManifestBuild {
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         deps.byScope().forEach(byScope::put);
         byScope.put(Scope.PLATFORM, platform);
-        return new JkBuild.Dependencies(byScope);
+        return deps.withByScope(byScope);
     }
 
     /** The keys {@code [native]} may carry. */
@@ -353,7 +353,8 @@ public final class ManifestBuild {
                     null,
                     BuildBlock.Resources.EMPTY,
                     null,
-                    null);
+                    null,
+                    false);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
         JkBuildParser.TestTomlTags tags = ManifestTables.parseTestTags(root);
@@ -398,7 +399,8 @@ public final class ManifestBuild {
                 null,
                 BuildBlock.Resources.EMPTY,
                 null,
-                null);
+                null,
+                s.moduleServices);
     }
 
     /** The keys {@code [resolve]} may carry; the schema names exactly these. */

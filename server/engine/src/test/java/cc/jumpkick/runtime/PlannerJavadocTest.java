@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -119,6 +120,124 @@ class PlannerJavadocTest {
                 }
             }
         }
+    }
+
+    /**
+     * A module with a descriptor documents against the modules it requires: the sibling's classes
+     * tree and its descriptor are found on the module path, so strict javadoc passes instead of
+     * failing every {@code requires} with "module not found".
+     */
+    @Test
+    @Tag("integration")
+    void a_modular_module_documents_strictly_against_the_module_it_requires(@TempDir Path tmp) throws Exception {
+        Path depSrc = Files.createDirectories(tmp.resolve("dep/src/dep"));
+        Files.writeString(depSrc.resolve("Dep.java"), """
+                package dep;
+                /** A dependency. */
+                public class Dep {
+                    /** Makes one. */
+                    public Dep() {}
+                }
+                """);
+        Path depInfo = Files.writeString(tmp.resolve("dep/src/module-info.java"), """
+                /** The dependency. */
+                module ex.dep { exports dep; }
+                """);
+        Path depClasses = Files.createDirectories(tmp.resolve("dep/classes"));
+        assertThat(ToolProvider.getSystemJavaCompiler()
+                        .run(
+                                null,
+                                null,
+                                null,
+                                "-d",
+                                depClasses.toString(),
+                                depInfo.toString(),
+                                depSrc.resolve("Dep.java").toString()))
+                .isZero();
+        Path libSrc = Files.createDirectories(tmp.resolve("lib/src/lib"));
+        Path libType = Files.writeString(libSrc.resolve("Lib.java"), """
+                package lib;
+                /** Uses the dependency. */
+                public class Lib {
+                    /** Makes one. */
+                    public Lib() {}
+                    /** @return a dependency */
+                    public dep.Dep dep() { return new dep.Dep(); }
+                }
+                """);
+        Path libInfo = Files.writeString(tmp.resolve("lib/src/module-info.java"), """
+                /** The library. */
+                module ex.lib { requires transitive ex.dep; exports lib; }
+                """);
+        Path out = Files.createDirectories(tmp.resolve("out"));
+
+        JavadocTool.Result r = JavadocTool.run(
+                JavaHomes.runningJavaHome(),
+                out,
+                List.of(libInfo, libType),
+                List.of(depClasses),
+                JavadocTool.options(JavadocMode.STRICT, 0, List.of()),
+                tmp);
+
+        assertThat(r.success()).as(r.output()).isTrue();
+        assertThat(PlannerJavadoc.verdict(JavadocMode.STRICT, r, true)).isEqualTo(PlannerJavadoc.Verdict.DOCUMENTED);
+    }
+
+    /**
+     * A named module documents against the types an annotation processor generated into its own
+     * classes: javadoc builds the module from source, so they are reached by patching the module
+     * with its compiled classes, and strict javadoc passes without documenting them.
+     */
+    @Test
+    @Tag("integration")
+    void a_modular_module_documents_against_types_only_its_compiled_classes_hold(@TempDir Path tmp) throws Exception {
+        Path src = Files.createDirectories(tmp.resolve("lib/src/lib"));
+        Path info = Files.writeString(tmp.resolve("lib/src/module-info.java"), """
+                /** The library. */
+                module ex.gen { exports lib; }
+                """);
+        Path generated = Files.writeString(
+                Files.createDirectories(tmp.resolve("gen/lib")).resolve("Made.java"), """
+                package lib;
+                /** Generated. */
+                public class Made {
+                    /** Makes one. */
+                    public Made() {}
+                }
+                """);
+        Path type = Files.writeString(src.resolve("Uses.java"), """
+                package lib;
+                /** Uses a generated type. */
+                public class Uses {
+                    /** Makes one. */
+                    public Uses() {}
+                    /** @return a generated type */
+                    public Made made() { return new Made(); }
+                }
+                """);
+        Path classes = Files.createDirectories(tmp.resolve("lib/classes"));
+        assertThat(ToolProvider.getSystemJavaCompiler()
+                        .run(
+                                null,
+                                null,
+                                null,
+                                "-d",
+                                classes.toString(),
+                                info.toString(),
+                                type.toString(),
+                                generated.toString()))
+                .isZero();
+        Path out = Files.createDirectories(tmp.resolve("out-gen"));
+
+        JavadocTool.Result r = JavadocTool.run(
+                JavaHomes.runningJavaHome(),
+                out,
+                List.of(info, type),
+                List.of(classes),
+                JavadocTool.options(JavadocMode.STRICT, 0, List.of()),
+                tmp);
+
+        assertThat(r.success()).as(r.output()).isTrue();
     }
 
     /** The running JDK plus every {@code ~/.jdks/<vendor>-<major>} line that ships a javadoc. */

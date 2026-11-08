@@ -59,7 +59,8 @@ and the command, `jk decide <id>`, and `POST /api/decisions/<id>` with the token
 
 - the host's form elicitation, which the host renders to the user, not the model;
 - the decision page opened from the host's URL elicitation, whose link carries a one-time key the
-  engine puts in no tool result, notification or listing;
+  engine puts in no tool result, notification or listing, and writes to disk only as a SHA-256 hash
+  (decisions are kept in the state directory so a replacement engine takes them over);
 - `jk decide` at a terminal.
 
 Any surface may decline. A decision that does not change trust (a destructive clean or uninstall)

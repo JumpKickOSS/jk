@@ -23,7 +23,9 @@ export function hostLabel(s) {
 /** Where an episode's title came from, as the screen says it. */
 export function titleSourceLabel(ep) {
   if (!ep) return '';
-  return ep.titleSource === 'goal' ? 'goal from the agent' : 'inferred';
+  if (ep.titleSource === 'goal') return 'goal from the agent';
+  if (ep.titleSource === 'lastGoal') return 'last goal';
+  return 'inferred';
 }
 
 /** The last path segment of a checkout, the way the rail names a project. */
@@ -141,6 +143,27 @@ export function foldIntoDetail(detail, type, frame) {
     return { ...detail, actions: [...(detail.actions || []), a].sort((x, y) => x.seq - y.seq) };
   }
   return detail;
+}
+
+/**
+ * When the engine published a console frame, and what the frame names, for the event-latency
+ * mark: an `action` frame goes out as its call ends (`at + millis`), a `decision` frame as the
+ * decision opens (`createdAt`). `{ kind, id, publishedAt }`, or null for any other frame and for a
+ * decision frame that settles one.
+ */
+export function frameStamp(type, frame) {
+  if (!frame) return null;
+  if (type === 'action') {
+    const a = frame.action;
+    if (!a || !frame.session || !Number.isFinite(a.at)) return null;
+    return { kind: 'action', id: frame.session + '#' + a.seq, publishedAt: a.at + (a.millis || 0) };
+  }
+  if (type === 'decision') {
+    const d = frame.decision || frame;
+    if (!d || !d.id || d.resolution || (d.state && d.state !== 'open') || !Number.isFinite(d.createdAt)) return null;
+    return { kind: 'decision', id: d.id, publishedAt: d.createdAt };
+  }
+  return null;
 }
 
 // ---- one episode's timeline ----

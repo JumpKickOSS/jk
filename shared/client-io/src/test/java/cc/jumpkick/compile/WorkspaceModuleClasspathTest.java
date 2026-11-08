@@ -215,6 +215,43 @@ class WorkspaceModuleClasspathTest {
     }
 
     @Test
+    void a_member_whose_provided_jupiter_api_is_its_only_jupiter_gets_the_engine_on_its_test_classpath()
+            throws Exception {
+        Path api = putJar("org/junit/jupiter/junit-jupiter-api/5.12.2/junit-jupiter-api-5.12.2.jar", "api");
+        Path engine = putJar("org/junit/jupiter/junit-jupiter-engine/5.12.2/junit-jupiter-engine-5.12.2.jar", "engine");
+        List<Lockfile.Artifact> rows = new ArrayList<>(lock.artifacts());
+        rows.add(new Lockfile.Artifact(
+                "org.junit.jupiter:junit-jupiter-api:jar:",
+                "5.12.2",
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + Hashing.sha256Hex(api),
+                null,
+                List.of(Scope.PROVIDED),
+                List.of()));
+        rows.add(new Lockfile.Artifact(
+                "org.junit.jupiter:junit-jupiter-engine:jar:",
+                "5.12.2",
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + Hashing.sha256Hex(engine),
+                null,
+                List.of(Scope.TEST),
+                List.of("org.junit.jupiter:junit-jupiter-api:jar:@5.12.2")));
+        lock = lock.withArtifacts(rows);
+        Files.writeString(library.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "library"
+                version = "1.0"
+
+                [provided-dependencies]
+                junit-jupiter-api = { group = "org.junit.jupiter", version = "5.12.2" }
+                """);
+
+        assertThat(classpath(library, ClasspathResolver.TEST))
+                .as("the provided API is on the test classpath, so its engine is too, as under Surefire")
+                .contains(jar(api), jar(engine), jar(launcher));
+    }
+
+    @Test
     void jk_tree_and_the_compile_classpath_name_the_same_artifacts() throws Exception {
         JkBuild build = JkBuildParser.parse(library.resolve("jk.toml"));
         String tree = DependencyTree.render(

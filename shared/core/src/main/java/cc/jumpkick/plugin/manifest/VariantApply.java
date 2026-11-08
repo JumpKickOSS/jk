@@ -120,7 +120,7 @@ public final class VariantApply {
             out.dependencies().byScope().forEach((scope, deps) -> merged.put(scope, new ArrayList<>(deps)));
             extraDeps.forEach((scope, deps) ->
                     merged.computeIfAbsent(scope, s -> new ArrayList<>()).addAll(deps));
-            out = out.withDependencies(new JkBuild.Dependencies(merged));
+            out = out.withDependencyScopes(merged);
         }
 
         // Plugin folds: overlay keys onto each plugin config, inject the selected names, then

@@ -290,6 +290,7 @@ final class CorePlan {
             Task compileGroovy,
             Task copyResources,
             @Nullable Task buildInfo,
+            @Nullable Task moduleServices,
             boolean hasFixtures,
             Task compileTestFixtures,
             boolean hasGuardSuite,
@@ -310,9 +311,11 @@ final class CorePlan {
         Task compileJava = PlannerCompile.compileJavaStep(cx, pluginDecls);
         Task compileKotlin = PlannerCompile.compileKotlinStep(cx, pluginDecls);
         Task compileGroovy = PlannerCompile.compileGroovyStep(cx, pluginDecls);
-        Task copyResources = PlannerResources.copyResourcesStep(cx);
+        Task copyResources = PlannerResources.copyResourcesStep(cx, pluginDecls);
         Task buildInfo =
                 parsedBuild != null && parsedBuild.build().buildInfo() != null ? PlannerBuildInfo.step(cx) : null;
+        Task moduleServices =
+                parsedBuild != null && parsedBuild.build().moduleServices() ? PlannerModuleServices.step(cx) : null;
         boolean hasFixtures = parsedBuild != null && PlannerFixtures.declared(parsedBuild);
         Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
         boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), compactLayout);
@@ -324,6 +327,8 @@ final class CorePlan {
         List<String> testStampRequires = new ArrayList<>();
         // A test that reads git.properties off the classpath (Boot's /info) waits for its writer.
         if (buildInfo != null) testStampRequires.add(TaskNames.BUILD_INFO);
+        // As does a test that loads the module's services off the class path.
+        if (moduleServices != null) testStampRequires.add(TaskNames.MODULE_SERVICES);
         // The suite reads the versioned classes ahead of the main ones.
         if (PlannerVersions.declared(parsedBuild)) testStampRequires.add(TaskNames.COMPILE_VERSIONS);
         if (testNode) testStampRequires.add(TaskNames.ENSURE_NODE);
@@ -367,6 +372,7 @@ final class CorePlan {
                 compileGroovy,
                 copyResources,
                 buildInfo,
+                moduleServices,
                 hasFixtures,
                 compileTestFixtures,
                 hasGuardSuite,
@@ -435,13 +441,16 @@ final class CorePlan {
         return b.terminal(guardTerminal != null ? guardTerminal : TaskNames.RESOLVE_DEPS);
     }
 
-    /** Codegen, the language compiles, the guard lanes, and the classes assembler for mixed modules. */
+    /** Codegen, the resource copy, the language compiles, the guard lanes, and the classes assembler for mixed modules. */
     private void addCompile(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
         // BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
         b.addTask(PlannerResources.buildLogicBeforeCompileStep(cx));
         if (cx.ksp()) {
             b.addTask(PlannerKsp.kspStep(cx, pluginDecls));
         }
+        // Resources before any compile, as Maven's process-resources: a processor reads them from
+        // the class output, and what it writes at a resource's path is what the jar keeps.
+        b.addTask(s.copyResources());
         if (useGroovy) {
             b.addTask(s.compileGroovy());
         }
@@ -497,7 +506,7 @@ final class CorePlan {
     }
 
     /**
-     * `jk compile` stops here: lock → sync → compile (+ freshness stamps) and the resource copy,
+     * `jk compile` stops here: lock → sync → the resource copy → compile (+ freshness stamps),
      * no test or package. The resources are part of the tree, not of packaging: a dependent
      * compiles against this module's {@code target/classes}, a processor sibling is found through
      * the service registration the copy lands there, and a tree published without them is one
@@ -507,7 +516,6 @@ final class CorePlan {
      */
     private BuildPlan.Builder compileOnlyPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
-        b.addTask(s.copyResources());
         List<String> leaves = new ArrayList<>();
         boolean tests = in.compileTests();
         if (tests) {
@@ -527,14 +535,20 @@ final class CorePlan {
             b.addTask(s.writeStampGroovy());
             leaves.add(TaskNames.WRITE_STAMP_GROOVY);
         }
-        // Every stamp, the resource copy and (mixed) the classes assembler is an independent
+        // Every stamp, the after-compile scripts and (mixed) the classes assembler is an independent
         // leaf — a single-leaf terminal would prune the others, and a pruned language recompiles
         // every run. Join them so the closure keeps each one (same idiom as the deliver join).
         if (cx.mixed() || cx.mixedGroovy()) {
             leaves.add(TaskNames.ASSEMBLE_CLASSES);
         }
         if (PlannerVersions.declared(parsedBuild)) leaves.add(TaskNames.COMPILE_VERSIONS);
-        leaves.add(TaskNames.COPY_RESOURCES);
+        // After the compile and the resource copy before it.
+        leaves.add(PlannerResources.CLASSES_WHOLE);
+        // A processor sibling is found through the services files module-services writes.
+        if (s.moduleServices() != null) {
+            b.addTask(s.moduleServices());
+            leaves.add(TaskNames.MODULE_SERVICES);
+        }
         // Every plugin step joins the plan, and the terminal keeps the ones the compile requires:
         // the source generators the compiles read. A classes transform (bytecode enhancement)
         // makes the module's classes what they are, so a recompile runs it too: `jk dev` launches
@@ -555,12 +569,12 @@ final class CorePlan {
         return b.terminal(BuildPlanner.COMPILE_JOIN);
     }
 
-    /** Resources, the test branch, the guard suite, the plugin steps and packaging, then the stamps. */
+    /** The after-compile scripts, the test branch, the guard suite, the plugin steps and packaging, then the stamps. */
     private void addTestsAndPackaging(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s, boolean skipJUnit) {
-        // Build-logic AFTER_COMPILE before resources / AFTER_RESOURCES.
+        // Build-logic AFTER_COMPILE: the resources and AFTER_RESOURCES ran before the compile.
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
-        b.addTask(s.copyResources());
         if (s.buildInfo() != null) b.addTask(s.buildInfo());
+        if (s.moduleServices() != null) b.addTask(s.moduleServices());
         if (!skipJUnit) {
             if (s.hasFixtures()) b.addTask(s.compileTestFixtures());
             b.addTask(s.compileTest()).addTask(s.runTests());
@@ -577,7 +591,8 @@ final class CorePlan {
         // packages a jar, so the packaging plugin steps fall away with package-jar.
         for (Task p : s.pluginSteps()) b.addTask(p);
         if (!in.testOnly()) {
-            b.addTask(PlannerResources.buildLogicBeforePackageStep(cx, s.buildInfo() != null));
+            b.addTask(PlannerResources.buildLogicBeforePackageStep(
+                    cx, s.buildInfo() != null, s.moduleServices() != null));
             b.addTask(s.packageJar());
         }
         // write-stamp is the Java-compile freshness companion; only when Java ran.
@@ -599,7 +614,7 @@ final class CorePlan {
         if (in.testOnly()) {
             if (gate != null) return b.terminal(gate);
             if (!skipJUnit) return b.terminal(TaskNames.RUN_TESTS);
-            return b.terminal(TaskNames.COPY_RESOURCES);
+            return b.terminal(PlannerResources.CLASSES_WHOLE);
         }
         return b.terminal(TaskNames.PACKAGE_JAR);
     }

@@ -311,6 +311,36 @@ class PomExporterTest {
     }
 
     @Test
+    void a_non_inheriting_test_table_is_the_testCompile_executions_whole_list() {
+        String head = """
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [processor-dependencies]
+                lombok = { group = "org.projectlombok", name = "lombok", version = "1.18.42" }
+
+                [test-processor-dependencies]
+                inherit = false
+                """;
+        String own = PomExporter.export(
+                        parse(
+                                head
+                                        + "mapstruct-ap = { group = \"org.mapstruct\", name = \"mapstruct-processor\", version = \"1.6.3\" }\n"))
+                .xml();
+        assertThat(own.substring(own.indexOf("<execution>")))
+                .contains("<artifactId>mapstruct-processor</artifactId>")
+                .doesNotContain("lombok");
+
+        String none = PomExporter.export(parse(head)).xml();
+        assertThat(none.substring(none.indexOf("<execution>")))
+                .as("no test processors: an empty list, so testCompile discovers as compile-test does")
+                .contains("<annotationProcessorPaths combine.self=\"override\">\n")
+                .doesNotContain("<path>");
+    }
+
+    @Test
     void exclusions_are_written_on_dependencies_and_managed_entries() {
         JkBuild b = parse("""
                 group = "com.example"

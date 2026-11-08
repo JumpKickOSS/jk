@@ -4,6 +4,7 @@ package cc.jumpkick.java.compiler;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JavacLevel;
+import cc.jumpkick.host.ModulePath;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.java.compiler.ScalaBridge.MixedScala;
 import cc.jumpkick.java.compiler.ZincSetup.ClasspathLookup;
@@ -271,7 +272,7 @@ public final class ZincJavaCompiler {
             if (sourceOutput != null) Files.createDirectories(sourceOutput);
             ZincWorkdir zinced = ZincWorkdir.of(workdir);
             zinced.discardAnalysisIfAggregating();
-            String processorDigest = ZincWorkdir.processorDigest(processorPath);
+            String processorDigest = ZincWorkdir.processorDigest(processorPath, classOutput);
             zinced.discardAnalysisIfProcessorsChanged(processorDigest);
 
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
@@ -284,6 +285,7 @@ public final class ZincJavaCompiler {
             Compilers compilers = ScalaBridge.compilersFor(javac, mixed);
 
             VirtualFile[] sourceFiles = ZincSetup.virtual(sources, converter);
+            javac.alwaysCompiling(descriptor(sourceFiles, converter));
             List<Path> cp = new ArrayList<>(classpath);
             // Scala 3.8+ ships the stdlib as scala-library (same version as the compiler);
             // scala3-library_3 is an empty stub. Zinc's ClasspathOptions only move a library
@@ -331,6 +333,8 @@ public final class ZincJavaCompiler {
             Optional<AnalysisContents> prev = zinced.readAnalysis(store);
             phases.mark("read-analysis");
             clearOutput(prev, converter, classOutput, workdir, sourceOutput);
+            provenance.pristine(
+                    GeneratedProvenance.of(classOutput).pristine(sourceOutput, classOutput, prev.isEmpty()));
             phases.mark("clear-output");
             PreviousResult previous = prev.isPresent()
                     ? PreviousResult.of(prev.get().getAnalysis(), prev.get().getMiniSetup())
@@ -473,7 +477,7 @@ public final class ZincJavaCompiler {
                     "aggregating annotation processors",
                     allSources(sources, "aggregating annotation processors"));
         }
-        if (zinced.processorsChanged(processorPath)) {
+        if (zinced.processorsChanged(processorPath, classOutput)) {
             return new Plan(
                     true, "annotation processors changed", allSources(sources, "annotation processors changed"));
         }
@@ -852,6 +856,15 @@ public final class ZincJavaCompiler {
         return new URLClassLoader(urls, ClassLoader.getPlatformClassLoader());
     }
 
+    /** The main {@code module-info.java} among {@code sources}, or null when the module declares none. */
+    private static @Nullable VirtualFile descriptor(VirtualFile[] sources, FileConverter converter) {
+        for (VirtualFile vf : sources) {
+            Path name = converter.toPath(vf).getFileName();
+            if (name != null && MODULE_INFO.equals(name.toString())) return vf;
+        }
+        return null;
+    }
+
     /** javac's spelling of a module descriptor source. */
     static final String MODULE_INFO = "module-info.java";
 
@@ -899,8 +912,11 @@ public final class ZincJavaCompiler {
             opts.add(Classpaths.join(processorPath));
         }
         if (!classpath.isEmpty() && modular(sources, extra) && !containsFlag(extra, "--module-path")) {
-            opts.add("--module-path");
-            opts.add(Classpaths.join(classpath));
+            List<Path> modulePath = ModulePath.forCompile(sources, extra == null ? List.of() : extra, classpath);
+            if (!modulePath.isEmpty()) {
+                opts.add("--module-path");
+                opts.add(Classpaths.join(modulePath));
+            }
         }
         if (extra != null) opts.addAll(extra);
         return opts.toArray(String[]::new);

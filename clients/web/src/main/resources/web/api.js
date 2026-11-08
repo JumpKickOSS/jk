@@ -332,6 +332,15 @@ const COALESCE_TYPES = new Set([
 ]);
 
 /**
+ * True for an error-typed event that is really an engine frame (`event: error` with a payload),
+ * false for EventSource's own data-less error when the connection drops. Exported for the
+ * headless suite.
+ */
+export function isServerFrame(e) {
+  return !!e && typeof e.data === 'string';
+}
+
+/**
  * Open the SSE stream. `onEvent({type, data})` per engine event; `onState('live'|'offline')` as the
  * connection comes and goes. EventSource reconnects on its own after NETWORK errors only — any
  * non-200 response (503 while the engine respawns or the SSE budget is exhausted, 421 bad Host)
@@ -349,7 +358,12 @@ export function events(onEvent, onState) {
   const query = token() ? '?access_token=' + encodeURIComponent(token()) : '';
   const source = new EventSource('/api/events' + query);
   source.onopen = () => onState('live');
-  source.onerror = () => onState('offline');
+  // The engine publishes a failed build's diagnostics as a named `error` frame, and EventSource
+  // hands named frames to onerror too: that one carries data and is an event (the listener below
+  // queues it), not a dropped connection. Only a data-less error is the stream going away.
+  source.onerror = (e) => {
+    if (!isServerFrame(e)) onState('offline');
+  };
 
   /** @type {{type: string, data: object}[]} */
   const queue = [];

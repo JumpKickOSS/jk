@@ -103,6 +103,16 @@ the fields the session log folds), and the successor folds it into its episode a
 finished there. A drained engine sends whatever runs the ticks have not carried in one last
 `drain-status`, and only then `drain-done`.
 
+Decisions cross the hand-off the same way. `DecisionQueue` writes each change through its store
+(`JournaledDecisions`, `<builds>/decisions/<id>.json`) before it takes effect, under the session
+log's write gate (`SessionLog.whileWriting`), and loads the store once the session log has adopted
+(`DecisionQueue.adopt`, which every queue entry point runs first). A record is the decision as `GET
+/api/decisions` shows it, the SHA-256 of each host key it handed out (never a key), whether its
+operation has run (`spent`), and the call it continues (tool and arguments, the goal masked). A
+displaced engine's store refuses every write, so it records no answer and runs no operation; an
+answer or a run there is refused rather than lost. The successor mints a fresh host key when it
+needs one for an adopted decision, and the predecessor's link still matches its hash.
+
 The successor takes the sessions over rather than ending them: see [`GET /api/sessions`](#get-apisessions)
 and [MCP sessions](#mcp-sessions-and-server-requests).
 
@@ -336,7 +346,9 @@ dashboard shows), `label` the run records' `session` (`claude-code 3f9a`;
 absent for the shell and the dashboard), `state` `live`, `idle` (quiet for the idle gap, ten
 minutes) or `ended`, `episode` the current episode's id and `current` that episode. An episode is
 `{ id, session, number, project, projectId?, title, titleSource, outcome, startedAt, lastAt, runs,
-actions }`: `id` is `<session>.<number>`, `titleSource` `inferred` or `goal`, `outcome` `working`,
+actions }`: `id` is `<session>.<number>`, `titleSource` `goal` (the agent's `goal` argument),
+`lastGoal` (the session's last goal, for an episode no call named one for) or `inferred`, and
+`title` masked like an action's summary; `outcome` `working`,
 `green`, `red` or `abandoned`. What starts an episode and how its title is chosen:
 [web](../user/web.md#sessions-and-episodes); the rules are `EpisodeInference`.
 
@@ -376,7 +388,8 @@ session as before.
 ### Decisions
 
 `GET /api/decisions`: `{ decisions: [...] }`, open decisions first, then settled ones, newest first
-within each (the queue keeps 200). `GET /api/decisions/<id>` is one, or a **404**. A decision is
+within each (the queue keeps 200; a settled decision's record is also pruned with the sessions under
+the `[history]` age and disk budgets, an open one never before its deadline). `GET /api/decisions/<id>` is one, or a **404**. A decision is
 `{ id, kind, question, detail, command, trust, form, session?, label?, episode?, project?,
 createdAt, deadline, state, answers?, answeredBy?, answeredAt?, route }`: `kind` names the
 operation (`update`, `deps-add`, `disk-clean`, …), `command` is `jk decide <id>`, `form` the shared
@@ -544,6 +557,14 @@ progress/structure, and the freshest sample always survives); the engine skips w
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
 | **Session log** | `session` / `episode` / `action` | As a session starts, goes idle, acts again, ends or changes its current episode; as an episode starts, is retitled or settles; once per non-run MCP action. Dashboard subscribers only |
 | **Sampled** (change-gated, IO) | `cache` | Safety-net tick (60 s) while subscribed, plus after request finish; snapshot walks are single-flight and TTL-memoized (30 s) engine-side; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
+
+**A stream lasts as long as its page.** The JDK server never reads a socket while a handler
+streams, so the engine learns that a page went away only when a write to its stream fails: a quiet
+stream writes a `: heartbeat` comment every second (`SseEndpoint`), and the second write after the
+page closes fails, which frees the stream's slot and its vitals subscriber within two seconds. A
+comment line wakes no handler in the page, so an idle tab costs a dozen bytes a second. The page
+closes its `EventSource` on `pagehide` and reopens it on a back/forward-cache `pageshow`, so a
+reload or a cached page never holds one of the browser's six connections to the engine.
 
 **Which events each surface carries** is written in one place, `EventCatalog`
 (`shared/wire/.../protocol/EventCatalog.java`): every event jk streams, and for the engine wire,

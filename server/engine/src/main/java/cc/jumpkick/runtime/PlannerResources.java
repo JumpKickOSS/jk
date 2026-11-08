@@ -3,12 +3,12 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
-import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildBlock;
@@ -22,130 +22,135 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.runtime.base.FilteredResources;
+import cc.jumpkick.runtime.base.ProcessedResources;
 import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.MirroredOutputs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * copy-resources and stem-script build-logic anchors around compile / package.
+ * copy-resources and stem-script build-logic anchors around compile / package. The resources are
+ * copied before the compile, so {@code after-resources} scripts run before it too.
  */
 public final class PlannerResources {
 
     private PlannerResources() {}
 
-    static Task copyResourcesStep(BuildPlanner.Ctx cx) {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        ActionCache actionCache = cx.actionCache();
+    /**
+     * copy-resources: the main resources into the classes tree, then the {@code after-resources}
+     * stem scripts. It runs ahead of every language compile, as Maven's {@code process-resources}
+     * runs ahead of {@code compile}: an annotation processor reads the copies through the Filer, and
+     * a file it writes at a copy's path replaces the copy — the compile's output wins.
+     */
+    static Task copyResourcesStep(BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls) {
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
-        Path javaMainSrcDir = cx.javaMainSrcDir();
-        boolean compact = cx.compact();
-        boolean mixed = cx.mixed();
-        boolean kotlinModule = cx.kotlinModule();
-        boolean mixedWithJava = cx.mixedWithJava();
-        String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COPY_RESOURCES)
                 .forecast(StepForecast.priced(s -> forecastCopy(ForecastScope.of(s))))
                 .stage(BuildLogicAnchor.AFTER_RESOURCES.stage())
                 .label("Resources")
                 .kind(TaskKind.CPU)
-                // After AFTER_COMPILE so generated classes land before resource merge.
-                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
+                // Before the compiles, after what lays down resource roots: codegen, the KSP round
+                // and the plugin source generators.
+                .requires(copyResourcesRequires(pluginDecls, cx.ksp()))
                 .weight(() -> plan.get().fullyCached() ? 0 : W_RESOURCES)
                 .ticks(1)
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
-                    // SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
-                    // Plugin-contributed resource roots (grails-app/conf, i18n, views) merge after.
-                    // The KSP round's bytecode and resources come first, so a hand-written resource
-                    // at the same path wins.
-                    Set<String> unresolved = new TreeSet<>();
-                    List<Path> resDirs =
-                            new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspOutBase(ctx.require(LAYOUT))));
-                    resDirs.addAll(FilteredResources.mainRoots(
-                            in.dir(), ctx.require(PROJECT), ctx.require(LAYOUT), compact, unresolved));
-                    warnUnresolved(ctx, unresolved);
-                    for (var root : ModuleLayoutPlugins.pluginContributedRoots(in.dir())) {
-                        if (!root.resource()) continue;
-                        Path dir = in.dir().resolve(root.relative());
-                        if (Files.isDirectory(dir)) resDirs.add(dir);
-                    }
-                    Path pluginManifest = in.dir().resolve(ManifestPaths.PLUGIN_MANIFEST);
-                    boolean ownManifest = Files.isRegularFile(pluginManifest);
-                    // Orphan reconciliation: a manifest deleted (or renamed away) at the module
-                    // root must also leave the classes tree, or the jar keeps describing a
-                    // plugin that no longer exists.
-                    if (!ownManifest) {
-                        Files.deleteIfExists(classes.resolve(ManifestPaths.PLUGIN_MANIFEST));
-                    }
-                    boolean copied = false;
-                    // Mirrored through a ledger even when no root is left: the copy of a resource
-                    // deleted since the last build is removed before anything is copied.
-                    Path ledger = ctx.require(LAYOUT)
-                            .buildDir()
-                            .resolve("incremental")
-                            .resolve(ResourceMirror.LEDGER);
-                    if (!resDirs.isEmpty() || ownManifest) {
-                        ctx.label("copy resources");
-                        // A tree whose files all match their copies is not work: the step reports SKIPPED.
-                        copied = ResourceMirror.syncChanges(resDirs, classes, ledger) > 0;
-                        if (ownManifest) {
-                            Files.copy(
-                                    pluginManifest,
-                                    classes.resolve(ManifestPaths.PLUGIN_MANIFEST),
-                                    StandardCopyOption.REPLACE_EXISTING);
-                            copied = true;
-                        }
-                    } else {
-                        ResourceMirror.sync(List.of(), classes, ledger);
-                        ctx.label("no static resources");
-                    }
+                    Files.createDirectories(classes);
+                    boolean copied = mirrorMainResources(ctx, cx.in().dir(), cx.compact(), classes);
                     // Test-classpath fixtures must not ride main classes into the jar. Leftover
                     // extra-resources copies of *.jk-plugin.toml (and scaffold trees) are stripped
                     // after the merge so a skipped copy step cannot keep poisoning PluginTableRegistry.
                     boolean stripped = stripFlattenedPluginCatalog(
                             classes, name -> ctx.warn("resources", "stripped leftover plugin-catalog copy: " + name));
                     if (stripped) ctx.label("stripped leftover plugin catalog");
-                    // Project build logic: AFTER_RESOURCES stem scripts.
-                    boolean logicRan = false;
-                    try {
-                        logicRan = BuildLogicSupport.run(
-                                in.dir(),
-                                ctx.require(LAYOUT),
-                                actionCache,
-                                classes,
-                                BuildLogicAnchor.AFTER_RESOURCES,
-                                cx.buildLogicScope(),
-                                ctx::label,
-                                ctx::output,
-                                buildLogicInputTokens,
-                                ctx::cancelled);
-                        if (logicRan) ctx.label("build-logic applied");
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("build-logic interrupted", e);
-                    }
+                    boolean logicRan = runAnchor(ctx, cx, classes, BuildLogicAnchor.AFTER_RESOURCES);
                     if (!copied && !logicRan && !stripped) ctx.cached(); // SKIPPED — nothing to copy, no logic
-                    // This step reads no sibling's jar, and it is the last writer of the classes
-                    // tree the dependents compile against: they are admitted on its success, so
-                    // it waits for nothing of the siblings.
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /** copy-resources waits for every step that writes a root it copies, and for nothing that compiles. */
+    static String[] copyResourcesRequires(@Nullable PluginDeclarations pluginDecls, boolean ksp) {
+        List<String> requires = new ArrayList<>(List.of(
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
+        if (ksp) requires.add(TaskNames.KSP);
+        requires.addAll(PlannerKsp.sourceGenStepSteps(pluginDecls));
+        return requires.toArray(String[]::new);
+    }
+
+    /**
+     * Mirror the main resource roots into {@code classes}: the KSP round's output first, then the
+     * layout root, the extra and filtered roots and the plugin-contributed ones, so a hand-written
+     * resource at the same path wins; then a module-root plugin manifest. Records which resource
+     * each copy came from, for the compile that follows. Answers whether a file was written or
+     * removed.
+     */
+    private static boolean mirrorMainResources(TaskContext ctx, Path dir, boolean compact, Path classes)
+            throws IOException {
+        BuildLayout layout = ctx.require(LAYOUT);
+        Set<String> unresolved = new TreeSet<>();
+        List<Path> resDirs = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspOutBase(layout)));
+        resDirs.addAll(FilteredResources.mainRoots(dir, ctx.require(PROJECT), layout, compact, unresolved));
+        warnUnresolved(ctx, unresolved);
+        for (var root : ModuleLayoutPlugins.pluginContributedRoots(dir)) {
+            if (!root.resource()) continue;
+            Path rootDir = dir.resolve(root.relative());
+            if (Files.isDirectory(rootDir)) resDirs.add(rootDir);
+        }
+        // A manifest deleted (or renamed away) at the module root leaves the classes tree with
+        // the rest of the mirror, or the jar keeps describing a plugin that no longer exists.
+        Path pluginManifest = dir.resolve(ManifestPaths.PLUGIN_MANIFEST);
+        Map<String, Path> files =
+                Files.isRegularFile(pluginManifest) ? Map.of(ManifestPaths.PLUGIN_MANIFEST, pluginManifest) : Map.of();
+        if (files.isEmpty()) Files.deleteIfExists(classes.resolve(ManifestPaths.PLUGIN_MANIFEST));
+        // Mirrored through a ledger even when no root is left: the copy of a resource deleted
+        // since the last build is removed before anything is copied.
+        Path incremental = layout.buildDir().resolve("incremental");
+        Path ledger = incremental.resolve(ResourceMirror.LEDGER);
+        ctx.label(resDirs.isEmpty() && files.isEmpty() ? "no static resources" : "copy resources");
+        ResourceMirror.Main mirrored =
+                ResourceMirror.syncMain(resDirs, files, classes, ledger, ProcessedResources.read(incremental));
+        MirroredOutputs.writeSources(incremental, mirrored.sources());
+        // A tree whose files all match their copies is not work: the step reports SKIPPED.
+        return mirrored.changes() > 0;
+    }
+
+    /** Run {@code anchor}'s stem scripts over {@code classes}; whether any ran. */
+    private static boolean runAnchor(TaskContext ctx, BuildPlanner.Ctx cx, Path classes, BuildLogicAnchor anchor)
+            throws IOException {
+        try {
+            boolean ran = BuildLogicSupport.run(
+                    cx.in().dir(),
+                    ctx.require(LAYOUT),
+                    cx.actionCache(),
+                    classes,
+                    anchor,
+                    cx.buildLogicScope(),
+                    ctx::label,
+                    ctx::output,
+                    cx.buildLogicInputTokens(),
+                    ctx::cancelled);
+            if (ran) ctx.label("build-logic applied");
+            return ran;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("build-logic interrupted", e);
+        }
     }
 
     /** One warning per filtered-resource reference that had no value. */
@@ -201,117 +206,57 @@ public final class PlannerResources {
      * Product stage {@link BuildStage#GENERATE}.
      */
     static Task buildLogicBeforeCompileStep(BuildPlanner.Ctx cx) {
-        BuildPlanner.Inputs in = cx.in();
-        ActionCache actionCache = cx.actionCache();
-        Supplier<EffortWeights.Plan> plan = cx.plan();
-        BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
-        return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_COMPILE)
-                .forecast(StepForecast.RIDES)
-                .stage(BuildLogicAnchor.BEFORE_COMPILE.stage())
-                .label("Build logic (before compile)")
-                .kind(TaskKind.CPU)
-                .requires(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK)
-                .weight(() -> plan.get().fullyCached() ? 0 : 1)
-                .ticks(1)
-                .execute(ctx -> {
-                    Path classes = ctx.require(MAIN_CLASSES);
-                    try {
-                        boolean ran = BuildLogicSupport.run(
-                                in.dir(),
-                                ctx.require(LAYOUT),
-                                actionCache,
-                                classes,
-                                BuildLogicAnchor.BEFORE_COMPILE,
-                                cx.buildLogicScope(),
-                                ctx::label,
-                                ctx::output,
-                                buildLogicInputTokens,
-                                ctx::cancelled);
-                        if (ran) ctx.label("build-logic applied");
-                        else ctx.cached(); // SKIPPED — no generate/before-compile logic this run
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("build-logic interrupted", e);
-                    }
-                    ctx.progress(1);
-                })
-                .build();
+        return classesAnchorStep(
+                cx,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE,
+                "Build logic (before compile)",
+                BuildLogicAnchor.BEFORE_COMPILE,
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK);
     }
 
-    /** Anchor {@code AFTER_COMPILE}: stem-script tasks after main classes exist. */
+    /**
+     * Anchor {@code AFTER_COMPILE}: stem-script tasks after main classes exist. The resources were
+     * copied before the compile, so this is the step after which the main classes tree is whole
+     * but for {@code build-info} and {@code module-services}; it waits for the copy too, which a
+     * module with no compile does not reach through one.
+     */
     static Task buildLogicAfterCompileStep(BuildPlanner.Ctx cx) {
-        BuildPlanner.Inputs in = cx.in();
-        ActionCache actionCache = cx.actionCache();
-        Supplier<EffortWeights.Plan> plan = cx.plan();
-        String mainCompile = cx.mainCompile();
-        BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
-        return Task.builder(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
-                .forecast(StepForecast.RIDES)
-                .stage(BuildLogicAnchor.AFTER_COMPILE.stage())
-                .label("Build logic (after compile)")
-                .kind(TaskKind.CPU)
-                .requires(mainCompile)
-                .weight(() -> plan.get().fullyCached() ? 0 : 1)
-                .ticks(1)
-                .execute(ctx -> {
-                    Path classes = ctx.require(MAIN_CLASSES);
-                    try {
-                        boolean ran = BuildLogicSupport.run(
-                                in.dir(),
-                                ctx.require(LAYOUT),
-                                actionCache,
-                                classes,
-                                BuildLogicAnchor.AFTER_COMPILE,
-                                cx.buildLogicScope(),
-                                ctx::label,
-                                ctx::output,
-                                buildLogicInputTokens,
-                                ctx::cancelled);
-                        if (ran) ctx.label("build-logic applied");
-                        else ctx.cached(); // SKIPPED — no after-compile logic this run
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("build-logic interrupted", e);
-                    }
-                    ctx.progress(1);
-                })
-                .build();
+        return classesAnchorStep(
+                cx,
+                TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                "Build logic (after compile)",
+                BuildLogicAnchor.AFTER_COMPILE,
+                cx.mainCompile(),
+                TaskNames.COPY_RESOURCES);
     }
 
     /** Anchor {@code BEFORE_PACKAGE}: stem-script tasks immediately before jar/image. */
-    static Task buildLogicBeforePackageStep(BuildPlanner.Ctx cx, boolean buildInfo) {
-        BuildPlanner.Inputs in = cx.in();
-        ActionCache actionCache = cx.actionCache();
+    static Task buildLogicBeforePackageStep(BuildPlanner.Ctx cx, boolean buildInfo, boolean moduleServices) {
+        return classesAnchorStep(
+                cx,
+                TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
+                "Build logic (before package)",
+                BuildLogicAnchor.BEFORE_PACKAGE,
+                beforePackageRequires(buildInfo, moduleServices));
+    }
+
+    /** A module anchor's step: its stem scripts over the main classes tree, SKIPPED when none ran. */
+    private static Task classesAnchorStep(
+            BuildPlanner.Ctx cx, String name, String label, BuildLogicAnchor anchor, String... requires) {
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
-        return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)
+        return Task.builder(name)
                 .forecast(StepForecast.RIDES)
-                .stage(BuildLogicAnchor.BEFORE_PACKAGE.stage())
-                .label("Build logic (before package)")
+                .stage(anchor.stage())
+                .label(label)
                 .kind(TaskKind.CPU)
-                .requires(beforePackageRequires(buildInfo))
+                .requires(requires)
                 .weight(() -> plan.get().fullyCached() ? 0 : 1)
                 .ticks(1)
                 .execute(ctx -> {
-                    Path classes = ctx.require(MAIN_CLASSES);
-                    try {
-                        boolean ran = BuildLogicSupport.run(
-                                in.dir(),
-                                ctx.require(LAYOUT),
-                                actionCache,
-                                classes,
-                                BuildLogicAnchor.BEFORE_PACKAGE,
-                                cx.buildLogicScope(),
-                                ctx::label,
-                                ctx::output,
-                                buildLogicInputTokens,
-                                ctx::cancelled);
-                        if (ran) ctx.label("build-logic applied");
-                        else ctx.cached(); // SKIPPED — no before-package logic this run
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("build-logic interrupted", e);
-                    }
+                    if (!runAnchor(ctx, cx, ctx.require(MAIN_CLASSES), anchor))
+                        ctx.cached(); // SKIPPED — no logic this run
                     ctx.progress(1);
                 })
                 .build();
@@ -434,7 +379,7 @@ public final class PlannerResources {
         if (afterBuild) {
             req = new String[] {TaskNames.BUILD_LOGIC_AFTER_BUILD};
         } else if (testOnly) {
-            req = new String[] {includeTests ? TaskNames.RUN_TESTS : TaskNames.COPY_RESOURCES};
+            req = new String[] {includeTests ? TaskNames.RUN_TESTS : CLASSES_WHOLE};
         } else if (includeTests) {
             req = new String[] {TaskNames.RUN_TESTS, TaskNames.PACKAGE_JAR};
         } else {
@@ -445,13 +390,34 @@ public final class PlannerResources {
     }
 
     /**
-     * BEFORE_PACKAGE waits on resources only — never on tests. Packaging needs a complete
-     * classes tree, which tests do not contribute to. A failing suite still fails the build;
-     * the artifact is built concurrently. {@code [build-info]} is the last writer of that tree
-     * when the module declares it.
+     * The step after which the main classes tree holds the compile's output and the resources:
+     * the copy runs before the compile and the {@code after-compile} scripts after it, waiting for
+     * both. Only {@code build-info} and {@code module-services} write the tree later.
      */
-    static String[] beforePackageRequires(boolean buildInfo) {
-        return new String[] {buildInfo ? TaskNames.BUILD_INFO : TaskNames.COPY_RESOURCES};
+    static final String CLASSES_WHOLE = TaskNames.BUILD_LOGIC_AFTER_COMPILE;
+
+    /**
+     * BEFORE_PACKAGE waits on the classes tree only — never on tests. Packaging needs a complete
+     * classes tree, which tests do not contribute to. A failing suite still fails the build;
+     * the artifact is built concurrently. {@code [build-info]} and {@code [build] module-services}
+     * write that tree after the compile, each its own files, so either one present is a last writer
+     * to wait for; without them {@link #CLASSES_WHOLE} is.
+     */
+    static String[] beforePackageRequires(boolean buildInfo, boolean moduleServices) {
+        return lastClassesWriters(buildInfo, moduleServices).toArray(String[]::new);
+    }
+
+    /**
+     * The steps that finish the main classes tree: {@code build-info} and {@code module-services}
+     * when planned (both follow {@link #CLASSES_WHOLE} and write disjoint files), else {@link
+     * #CLASSES_WHOLE} itself.
+     */
+    static List<String> lastClassesWriters(boolean buildInfo, boolean moduleServices) {
+        List<String> out = new ArrayList<>();
+        if (buildInfo) out.add(TaskNames.BUILD_INFO);
+        if (moduleServices) out.add(TaskNames.MODULE_SERVICES);
+        if (out.isEmpty()) out.add(CLASSES_WHOLE);
+        return out;
     }
 
     // ---- forecast ---------------------------------------------------------------------------
@@ -459,7 +425,8 @@ public final class PlannerResources {
     /**
      * copy-resources' price: runs when the main resources (or the {@code [build-info]} files) drifted
      * from the classes tree. Detected once, before package-jar keys on the post-copy tree; a compile
-     * that runs makes drift moot.
+     * that runs makes drift moot. A copy a processor rewrote is not drift while its resource is
+     * unchanged ({@link ProcessedResources}).
      */
     static TaskForecast.@Nullable Task forecastCopy(ForecastScope s) throws Exception {
         ForecastScope.Prepared p = s.prepared();
@@ -474,6 +441,12 @@ public final class PlannerResources {
             // jar is forecast as the resource drift it is.
             s.buildInfoDrift = PlannerBuildInfo.outOfSync(s.dir, s.project, buildInfo, classes, Clock.SYSTEM);
             s.mainResourceDrift |= s.buildInfoDrift;
+        }
+        if (s.project.build().moduleServices()) {
+            // Services files written from module-info change the tree package-jar keys on, too.
+            s.moduleServicesDrift =
+                    PlannerModuleServices.outOfSync(classes, PlannerModuleServices.incremental(p.layout()));
+            s.mainResourceDrift |= s.moduleServicesDrift;
         }
         s.knownResourceDrift = s.mainResourceDrift;
         return s.mainResourceDrift

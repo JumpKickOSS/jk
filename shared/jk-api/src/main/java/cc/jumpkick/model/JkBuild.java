@@ -351,6 +351,11 @@ public record JkBuild(
                 library);
     }
 
+    /** This build with its dependency rows replaced and its table settings kept. */
+    public JkBuild withDependencyScopes(Map<Scope, List<Dependency>> byScope) {
+        return withDependencies(dependencies.withByScope(byScope));
+    }
+
     /** This build with its dependencies replaced — the variant dependency-overlay fold point. */
     public JkBuild withDependencies(Dependencies dependencies) {
         return new JkBuild(
@@ -496,27 +501,7 @@ public record JkBuild(
     public JkBuild withProfiles(Profiles profiles) {
         Objects.requireNonNull(profiles, "profiles");
         if (profiles.equals(this.profiles)) return this;
-        Builder b = builder(project)
-                .dependencies(dependencies)
-                .repositories(repositories)
-                .profiles(profiles)
-                .features(features)
-                .workspace(workspace)
-                .manifest(manifest)
-                .plugins(plugins)
-                .application(application)
-                .nativeConfig(nativeConfig)
-                .build(build)
-                .format(format)
-                .variants(variants)
-                .install(install)
-                .publish(publish)
-                .image(image)
-                .library(library);
-        for (PluginConfig config : pluginConfigs.values()) {
-            b.pluginConfig(config);
-        }
-        return b.build();
+        return toBuilder(project).profiles(profiles).build();
     }
 
     /**
@@ -535,32 +520,17 @@ public record JkBuild(
     public JkBuild withProject(Project project) {
         Objects.requireNonNull(project, "project");
         if (project.equals(this.project)) return this;
-        Builder b = builder(project)
-                .dependencies(dependencies)
-                .repositories(repositories)
-                .profiles(profiles)
-                .features(features)
-                .workspace(workspace)
-                .manifest(manifest)
-                .plugins(plugins)
-                .application(application)
-                .nativeConfig(nativeConfig)
-                .build(build)
-                .format(format)
-                .variants(variants)
-                .install(install)
-                .publish(publish)
-                .image(image)
-                .library(library);
-        for (PluginConfig config : pluginConfigs.values()) {
-            b.pluginConfig(config);
-        }
-        return b.build();
+        return toBuilder(project).build();
     }
 
     /** Same build with a replacement {@code [workspace]} block. */
     public JkBuild withWorkspace(@Nullable Workspace workspace) {
         if (Objects.equals(workspace, this.workspace)) return this;
+        return toBuilder(project).workspace(workspace).build();
+    }
+
+    /** A builder over {@code project} holding every other table of this build, for a wither to replace one. */
+    private Builder toBuilder(Project project) {
         Builder b = builder(project)
                 .dependencies(dependencies)
                 .repositories(repositories)
@@ -581,7 +551,7 @@ public record JkBuild(
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
-        return b.build();
+        return b;
     }
 
     /** Mutable accumulator for {@link JkBuild}. */
@@ -1084,7 +1054,8 @@ public record JkBuild(
         }
     }
 
-    public record Dependencies(Map<Scope, List<Dependency>> byScope) {
+    /** The tables by scope; {@code testProcessorsInherit} false makes the test processor table compile-test's whole path. */
+    public record Dependencies(Map<Scope, List<Dependency>> byScope, boolean testProcessorsInherit) {
 
         public Dependencies {
             Objects.requireNonNull(byScope, "byScope");
@@ -1093,8 +1064,17 @@ public record JkBuild(
             byScope = Map.copyOf(copy);
         }
 
+        public Dependencies(Map<Scope, List<Dependency>> byScope) {
+            this(byScope, true);
+        }
+
         public static Dependencies empty() {
             return new Dependencies(Map.of());
+        }
+
+        /** These tables' settings over {@code byScope}: a rewrite of the rows keeps what the tables say about them. */
+        public Dependencies withByScope(Map<Scope, List<Dependency>> byScope) {
+            return new Dependencies(byScope, testProcessorsInherit);
         }
 
         public List<Dependency> of(Scope scope) {

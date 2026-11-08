@@ -37,6 +37,8 @@ const {
   registerDirtyGuard,
   unregisterDirtyGuard,
   releaseDeferredEpochReload,
+  events,
+  isServerFrame,
 } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'api.js')));
 
 beforeEach(() => {
@@ -103,4 +105,48 @@ test('reload latch still breaks reload loops', () => {
   hardRefreshForEpoch();
   assert.equal(reloads, 0, 'in-flight latch swallows the second reload');
   assert.equal(store.has('jk-epoch-reload'), false, 'latch consumed');
+});
+
+// A failed build's diagnostics arrive as a named `error` frame. EventSource dispatches named frames
+// to onerror as well, and the stream used to read that as a disconnect: every red build flipped
+// every open dashboard to OFFLINE until it was reloaded.
+test('a named error frame is an event, not a disconnect', async () => {
+  const sources = [];
+  globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+  globalThis.EventSource = class {
+    static CLOSED = 2;
+    constructor(url) {
+      this.url = url;
+      this.readyState = 1;
+      this.listeners = new Map();
+      sources.push(this);
+    }
+    addEventListener(type, fn) {
+      this.listeners.set(type, fn);
+    }
+  };
+  const states = [];
+  const got = [];
+  events((ev) => got.push(ev), (s) => states.push(s));
+  const source = sources[0];
+  source.onopen();
+  // What a browser does with `event: error\ndata: {...}`: the named listener and onerror both run.
+  const frame = { type: 'error', data: JSON.stringify({ type: 'error', message: 'type not found: Bird' }) };
+  source.listeners.get('error')(frame);
+  source.onerror(frame);
+  await new Promise((r) => setTimeout(r, 5));
+  assert.deepEqual(states, ['live'], 'the stream stays live through a failed build');
+  assert.equal(got.length, 1);
+  assert.equal(got[0].type, 'error');
+  assert.equal(got[0].data.message, 'type not found: Bird');
+
+  // The connection really dropping: a data-less error.
+  source.onerror({ type: 'error' });
+  assert.deepEqual(states, ['live', 'offline']);
+});
+
+test('isServerFrame tells an engine frame from a dropped connection', () => {
+  assert.equal(isServerFrame({ type: 'error', data: '{}' }), true);
+  assert.equal(isServerFrame({ type: 'error' }), false);
+  assert.equal(isServerFrame(undefined), false);
 });

@@ -15,6 +15,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.runtime.workspace.HeldFiles;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;

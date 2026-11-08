@@ -2,17 +2,24 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
+import cc.jumpkick.lock.LockDiff;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.LockPlans;
+import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.runtime.workspace.AddedPackages;
+import cc.jumpkick.runtime.workspace.HeldFiles;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -25,6 +32,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -98,7 +106,17 @@ public final class UpdateVerb implements HostedVerb {
                 Path entryDir = session.workingDir();
                 Path cache = session.cacheDir();
                 ManifestUpdates.Selection selection = new ManifestUpdates.Selection(body.deps(), body.major());
-                if (body.preview()) return preview(entryDir, repoUrl, selection, writer);
+                if (body.preview()) {
+                    return preview(
+                            entryDir,
+                            cache,
+                            repoUrl,
+                            body.features(),
+                            !body.noDefaultFeatures(),
+                            new LockMode.Update(platformFinal),
+                            selection,
+                            writer);
+                }
                 if (!body.gitOnly()) {
                     return LockCascade.run(
                             host,
@@ -142,15 +160,49 @@ public final class UpdateVerb implements HostedVerb {
         }
     }
 
-    /** The planned pin moves as {@code update-rewrite} events; nothing is written or relocked. */
+    /**
+     * The planned pin moves as {@code update-rewrite} events, each naming the packages its relock
+     * would add to an existing lock; nothing is left written or relocked. Finding those packages
+     * writes the moves, resolves without writing the lock, and puts the manifests back, all under
+     * the lock dir's gate.
+     */
     private JobOutcome preview(
             Path entryDir,
+            Path cache,
             @Nullable URI repoUrl,
+            List<String> features,
+            boolean withDefaults,
+            LockMode mode,
             ManifestUpdates.Selection selection,
             @Nullable BufferedWriter writer) {
         try {
             Path lockDir = LockPlans.lockScope(entryDir).lockDir();
-            LockCascade.sendRewrites(host, writer, ManifestUpdates.plan(lockDir, repoUrl, selection));
+            synchronized (LockGate.monitorFor(lockDir)) {
+                ManifestUpdates.Plan plan = ManifestUpdates.plan(lockDir, repoUrl, selection);
+                Map<ManifestUpdates.Rewrite, List<String>> adding = Map.of();
+                Lockfile before = LockDiff.current(lockDir);
+                if (before != null && !plan.isEmpty()) {
+                    HeldFiles written = HeldFiles.of(List.copyOf(plan.contents().keySet()));
+                    try {
+                        ManifestUpdates.apply(plan);
+                        adding = AddedPackages.byMove(
+                                before,
+                                AddedPackages.probe(lockDir, cache, repoUrl, features, withDefaults, mode),
+                                plan.rewrites());
+                    } catch (Exception e) {
+                        if (e instanceof InterruptedException)
+                            Thread.currentThread().interrupt();
+                        // The update itself meets the same failure and reports it.
+                        Log.debug("update: no probe of the packages the moves add", e);
+                    } finally {
+                        written.restore();
+                        RequestScope.release();
+                    }
+                }
+                for (ManifestUpdates.Rewrite r : plan.rewrites()) {
+                    LockCascade.sendRewrite(host, writer, r, false, adding.getOrDefault(r, List.of()));
+                }
+            }
         } catch (RuntimeException | IOException e) {
             return LockCascade.fail(host, writer, Exit.CONFIG, Errors.text(e));
         }

@@ -5,6 +5,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.ClassSuite;
+import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.TestJvm;
 import java.io.File;
@@ -23,6 +24,7 @@ import java.util.Properties;
 import java.util.Set;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginExecution;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
@@ -51,9 +53,10 @@ final class TestPlugins {
             List<String> excludeDependencies,
             @Nullable ClassSuite integration,
             TestJvm jvm,
-            TestFailureMode failures) {
-        static final TestSettings NONE =
-                new TestSettings(List.of(), List.of(), List.of(), List.of(), null, TestJvm.EMPTY, TestFailureMode.FAIL);
+            TestFailureMode failures,
+            List<EnvDecl> env) {
+        static final TestSettings NONE = new TestSettings(
+                List.of(), List.of(), List.of(), List.of(), null, TestJvm.EMPTY, TestFailureMode.FAIL, List.of());
     }
 
     private static final String SUREFIRE = "maven-surefire-plugin";
@@ -83,7 +86,8 @@ final class TestPlugins {
                 tags.excludeDependencies(),
                 integration,
                 jvm.toTestJvm(),
-                failures(model, report));
+                failures(model, report),
+                tags.env());
     }
 
     /**
@@ -115,14 +119,17 @@ final class TestPlugins {
         Set<String> exclude = new LinkedHashSet<>();
         Set<String> excludeClasses = new LinkedHashSet<>();
         Set<String> excludeDependencies = new LinkedHashSet<>();
-        for (Xpp3Dom config : PluginFacts.configurations(surefire)) {
+        Map<String, String> env = new LinkedHashMap<>();
+        List<Xpp3Dom> configs = runConfigurations(surefire, report);
+        for (Xpp3Dom config : configs) {
+            env.putAll(environmentVariables(config, model.getProjectDirectory(), report));
             tags(config, "groups", SUREFIRE, report).ifPresent(include::addAll);
             tags(config, "excludedGroups", SUREFIRE, report).ifPresent(exclude::addAll);
             reportIncludes(config, report);
             excludeClasses.addAll(excludes(config, report));
             excludeDependencies.addAll(classpathDependencyExcludes(config, report));
         }
-        jvm.take(surefire, SUREFIRE, model, report);
+        jvm.take(configs, SUREFIRE, model, report);
         reportSkip(surefire, model, report);
         return new TestSettings(
                 List.copyOf(include),
@@ -131,7 +138,89 @@ final class TestPlugins {
                 List.copyOf(excludeDependencies),
                 null,
                 TestJvm.EMPTY,
-                TestFailureMode.FAIL);
+                TestFailureMode.FAIL,
+                envDecls(env));
+    }
+
+    /**
+     * The Surefire configurations the module's one test run reads: the plugin's own and those of
+     * executions that run the whole suite. An execution other than {@code default-test} that names
+     * its own {@code <includes>} is a separate run of those classes with settings of its own
+     * (Helidon's metrics module runs one class twice with different system properties and
+     * environment); jk's {@code [test]} has no per-run settings, so merging them would hand every
+     * test what only that run should see. It is left out, with a row naming it.
+     */
+    private static List<Xpp3Dom> runConfigurations(Plugin surefire, ImportReport.Builder report) {
+        List<Xpp3Dom> out = new ArrayList<>();
+        List<String> pluginIncludes = List.of();
+        if (surefire.getConfiguration() instanceof Xpp3Dom dom) {
+            out.add(dom);
+            pluginIncludes = children(dom.getChild("includes"));
+        }
+        for (PluginExecution execution : surefire.getExecutions()) {
+            if (!(execution.getConfiguration() instanceof Xpp3Dom dom)) continue;
+            List<String> includes = children(dom.getChild("includes"));
+            // The effective model merges the plugin's configuration into each execution's, so
+            // includes it shares with the plugin are the plugin's, not the execution's own.
+            boolean dedicated = !"default-test".equals(execution.getId())
+                    && !includes.isEmpty()
+                    && !includes.equals(pluginIncludes);
+            if (dedicated) {
+                report.warning(SUREFIRE + " execution " + execution.getId() + " runs "
+                        + String.join(", ", includes)
+                        + " with settings of its own: not imported; run those classes with jk test -S");
+                continue;
+            }
+            out.add(dom);
+        }
+        return out;
+    }
+
+    /**
+     * Surefire's {@code <environmentVariables>} as {@code [test] env} values. A value left
+     * uninterpolated is a row, as for system properties; a path under the module is written
+     * relative to it. A value that is the importing JVM's own {@code java.home} — Helidon's
+     * {@code <JAVA_HOME>${java.home}</JAVA_HOME>} — names the JDK running Maven on this machine,
+     * which is jk's test JDK's job to supply, so it is left out with a row.
+     */
+    private static Map<String, String> environmentVariables(
+            Xpp3Dom config, @Nullable File moduleDir, ImportReport.Builder report) {
+        Map<String, String> out = new LinkedHashMap<>();
+        Xpp3Dom variables = config.getChild("environmentVariables");
+        if (variables == null) return out;
+        String javaHome = System.getProperty("java.home");
+        for (Xpp3Dom variable : variables.getChildren()) {
+            String name = variable.getName();
+            String raw = PluginFacts.text(variable);
+            String value = raw == null ? "" : raw.trim();
+            if (value.contains("${") || value.contains("@{")) {
+                report.warning(SUREFIRE + " environment variable " + name + "=" + value
+                        + ": Maven placeholder; set it in [test] env");
+                continue;
+            }
+            if (javaHome != null && isPath(value, javaHome)) {
+                report.warning(SUREFIRE + " environment variable " + name
+                        + ": the JDK running the import; not imported, set it in [test] env if a test needs it");
+                continue;
+            }
+            out.put(name, portablePath("environment variable", name, value, moduleDir, SUREFIRE, report));
+        }
+        return out;
+    }
+
+    private static boolean isPath(String value, String path) {
+        if (value.isEmpty()) return false;
+        try {
+            return Path.of(value).normalize().equals(Path.of(path).normalize());
+        } catch (InvalidPathException notAPath) {
+            return false;
+        }
+    }
+
+    private static List<EnvDecl> envDecls(Map<String, String> env) {
+        List<EnvDecl> out = new ArrayList<>();
+        env.forEach((k, v) -> out.add(new EnvDecl.Set(k, v)));
+        return List.copyOf(out);
     }
 
     /**
@@ -260,11 +349,11 @@ final class TestPlugins {
          * agent (coverage is {@code jk test -T}); the {@code argLine} property counts when
          * the plugin declares none. Failsafe's values behind Surefire's are a row.
          */
-        void take(Plugin plugin, String label, Model model, ImportReport.Builder report) {
+        void take(List<Xpp3Dom> configs, String label, Model model, ImportReport.Builder report) {
             List<String> args = new ArrayList<>();
             Map<String, String> props = new LinkedHashMap<>();
             boolean configured = false;
-            for (Xpp3Dom config : PluginFacts.configurations(plugin)) {
+            for (Xpp3Dom config : configs) {
                 String argLine = PluginFacts.text(config.getChild("argLine"));
                 if (argLine != null) {
                     configured = true;
@@ -351,7 +440,7 @@ final class TestPlugins {
                     + ": Maven placeholder; set it in [test] system-properties");
             return;
         }
-        out.put(name, portablePath(name, value, moduleDir, label, report));
+        out.put(name, portablePath("system property", name, value, moduleDir, label, report));
     }
 
     /**
@@ -361,7 +450,12 @@ final class TestPlugins {
      * absolute path stays as written, with a row.
      */
     private static String portablePath(
-            String name, String value, @Nullable File moduleDir, String label, ImportReport.Builder report) {
+            String what,
+            String name,
+            String value,
+            @Nullable File moduleDir,
+            String label,
+            ImportReport.Builder report) {
         if (moduleDir == null) return value;
         Path path;
         try {
@@ -374,7 +468,7 @@ final class TestPlugins {
             String relative = SourceTreePlugins.moduleRelative(value, moduleDir.toPath());
             return relative.isEmpty() ? "." : relative;
         }
-        report.warning("`" + label + "` system property " + name + "=" + value
+        report.warning("`" + label + "` " + what + " " + name + "=" + value
                 + " is an absolute path outside the module, written as is; it holds only on this machine,"
                 + " so make it relative to the module directory, the test JVM's working directory.");
         return value;
@@ -421,7 +515,7 @@ final class TestPlugins {
         List<String> declared = includes.isEmpty() ? FAILSAFE_DEFAULT_INCLUDES : List.copyOf(includes);
         List<String> patterns = classPatterns(declared, "<includes>", "classes", report);
         List<String> excluded = classPatterns(excludes, "<excludes>", "exclude-classes", report);
-        jvm.take(failsafe, FAILSAFE, model, report);
+        jvm.take(PluginFacts.configurations(failsafe), FAILSAFE, model, report);
         return patterns.isEmpty() ? null : new ClassSuite(patterns, excluded);
     }
 

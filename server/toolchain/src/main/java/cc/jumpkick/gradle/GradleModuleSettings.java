@@ -84,7 +84,7 @@ final class GradleModuleSettings {
                 if (processor.stream().noneMatch(d -> d.module().equals(tool.module()))) processor.add(tool);
             }
             byScope.put(Scope.PROCESSOR, processor);
-            build = build.withDependencies(new JkBuild.Dependencies(byScope));
+            build = build.withDependencyScopes(byScope);
         }
         return NullnessImport.map(build, local);
     }

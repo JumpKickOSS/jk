@@ -477,7 +477,10 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #LOCK_REQUEST}/{@link #UPDATE_REQUEST}: cascade outcome. */
     public static final String LOCK_FINISH = "lock-finish";
 
-    /** Server → client, repeated: one declared pin {@link #UPDATE_REQUEST} rewrote (or previews). */
+    /**
+     * Server → client, repeated: one declared pin {@link #UPDATE_REQUEST} rewrote (or previews), or,
+     * marked held, a move it left for a person to accept.
+     */
     public static final String UPDATE_REWRITE = "update-rewrite";
 
     /**

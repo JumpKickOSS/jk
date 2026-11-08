@@ -11,6 +11,7 @@ import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.decisions.DecisionQueue;
+import cc.jumpkick.engine.decisions.JournaledDecisions;
 import cc.jumpkick.engine.graph.GraphCompiles;
 import cc.jumpkick.engine.graph.GraphRunner;
 import cc.jumpkick.engine.http.HttpEngineServer;
@@ -370,6 +371,7 @@ public final class EngineServer implements AutoCloseable {
         this.journalWriter = new JournalWriter(
                 sessions, journal, historyConfig, () -> metricsFile, clockMillis, this.version, this.log);
         this.sessionLog = newSessionLog();
+        decisions.store(new JournaledDecisions(sessionLog));
         journalWriter.onFinished(sessionLog::runFinished);
         drain.predecessorRuns(this::foldPredecessorRun);
         this.sse = new SsePublisher(
@@ -631,6 +633,8 @@ public final class EngineServer implements AutoCloseable {
         Thread.ofVirtual().name("jk-engine-sessions-adopt").start(() -> {
             int adopted = sessionLog.adopt();
             if (adopted > 0) log.accept("jk engine: adopted " + adopted + " open session(s)");
+            int asked = decisions.adopt();
+            if (asked > 0) log.accept("jk engine: adopted " + asked + " decision(s)");
         });
         if (selfUpdate != null) selfUpdate.start();
         watchdog.start();

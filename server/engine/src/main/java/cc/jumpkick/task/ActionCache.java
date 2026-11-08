@@ -499,13 +499,15 @@ public final class ActionCache {
     private boolean restoreInto(ActionRecord record, Path outputDir) throws IOException {
         // Paths the resource mirror or a language merge owns stay on disk and are not rewritten
         // from this record: a compile that snapshotted them would otherwise delete or resurrect a
-        // resource, or lay a dropped Kotlin class back beside javac's output.
+        // resource, or lay a dropped Kotlin class back beside javac's output. A main resource copy
+        // the record holds is one a processor rewrote, and comes back with the rest.
         Set<String> mirrored = MirroredOutputs.recorded(outputDir);
+        Set<String> skipped = mirrored.isEmpty() ? Set.of() : MirroredOutputs.notRestored(outputDir);
         Map<String, String> outputs = record.outputs();
-        if (!mirrored.isEmpty()) {
+        if (!skipped.isEmpty()) {
             Map<String, String> kept = new LinkedHashMap<>();
             for (var entry : outputs.entrySet()) {
-                if (!mirrored.contains(entry.getKey())) kept.put(entry.getKey(), entry.getValue());
+                if (!skipped.contains(entry.getKey())) kept.put(entry.getKey(), entry.getValue());
             }
             outputs = kept;
         }

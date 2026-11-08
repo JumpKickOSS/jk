@@ -7,6 +7,7 @@ import cc.jumpkick.model.ClassSuite;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.run.TaskNames;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,6 +39,7 @@ final class ManifestBuildTable {
         final List<String> orderAfter = new ArrayList<>();
         final List<String> testPluginJars = new ArrayList<>();
         boolean lint = true;
+        boolean moduleServices = false;
         DebugInfo debug = DebugInfo.FULL;
         final List<String> kspOptions = new ArrayList<>();
 
@@ -79,6 +81,7 @@ final class ManifestBuildTable {
             "extra-src",
             "test-workers",
             "test-parallel",
+            TaskNames.MODULE_SERVICES,
             "logic");
 
     private static void readBuildTable(TomlTable build, Settings s) {
@@ -169,6 +172,15 @@ final class ManifestBuildTable {
         }
         if (Boolean.FALSE.equals(build.getBoolean("test-parallel"))) {
             s.testWorkers = 1;
+        }
+        // [build] module-services — write META-INF/services from module-info's provides, as
+        // Helidon's services plugin does, for consumers that read a class or processor path.
+        Object rawServices = build.get(TaskNames.MODULE_SERVICES);
+        if (rawServices != null) {
+            if (!(rawServices instanceof Boolean on)) {
+                throw new JkBuildParseException("[build].module-services must be true or false");
+            }
+            s.moduleServices = on;
         }
     }
 

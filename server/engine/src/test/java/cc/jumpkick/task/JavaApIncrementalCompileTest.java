@@ -13,6 +13,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -298,6 +299,37 @@ class JavaApIncrementalCompileTest {
         assertThat(p.stateDir.resolve("aggregating")).doesNotExist();
     }
 
+    /**
+     * A processor that reads a resource jk copied into the class output before the compile and
+     * writes that file back merged — Helidon's static {@code META-INF/helidon/manifest} — is not
+     * merging: its merge base is the module's resource, not last run's output. The module stays
+     * incremental, an unrelated source edit keeps the merged file, and once the annotated source
+     * is gone the file goes back to the resource rather than away.
+     */
+    @Test
+    void merging_into_a_copied_resource_stays_incremental(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), mergingProcessor(dir), dir.resolve("target/classes"));
+        p.copyResource("META-INF/registry.txt", "static.Row\n");
+        p.write("app/Alpha.java", "package app; @reg.Reg public class Alpha {}");
+        p.build();
+        assertThat(p.registry()).containsExactly("app.Alpha", "static.Row");
+        assertThat(p.stateDir.resolve("aggregating"))
+                .as("reading the copied resource back is not a merge into last run's output")
+                .doesNotExist();
+
+        p.write("app/Plain.java", "package app; public class Plain {}");
+        JavaCompile.Result unrelated = p.build();
+        assertThat(unrelated.compiledSources()).noneMatch(src -> src.endsWith("Alpha.java"));
+        assertThat(p.registry()).containsExactly("app.Alpha", "static.Row");
+        assertThat(p.stateDir.resolve("aggregating")).doesNotExist();
+
+        p.delete("app/Alpha.java");
+        p.build();
+        assertThat(p.registry())
+                .as("the processor's file goes back to the resource it merged into")
+                .containsExactly("static.Row");
+    }
+
     // ---- harness ----------------------------------------------------------
 
     private static Path workerJar() {
@@ -324,9 +356,14 @@ class JavaApIncrementalCompileTest {
         final Path procDir;
 
         Project(Path root, Path workerJar, Path procDir) throws IOException {
+            this(root, workerJar, procDir, root.resolve("out"));
+        }
+
+        /** A project whose class output is {@code out}: {@code target/classes} to read jk's resource ledgers. */
+        Project(Path root, Path workerJar, Path procDir, Path out) throws IOException {
             this.root = root;
             this.srcRoot = root.resolve("src/main/java");
-            this.out = root.resolve("out");
+            this.out = out;
             this.genSrc = root.resolve("gen-src");
             this.cas = new Cas(root.resolve("cas"));
             this.actionCache = new ActionCache(cas, root.resolve("actions"));
@@ -344,6 +381,22 @@ class JavaApIncrementalCompileTest {
 
         void delete(String rel) throws IOException {
             Files.delete(srcRoot.resolve(rel));
+        }
+
+        /**
+         * What the engine's resource copy does ahead of the compile: {@code body} as the module's
+         * resource {@code rel}, copied into the class output and recorded with its source in the
+         * ledger beside it.
+         */
+        void copyResource(String rel, String body) throws IOException {
+            Path resource = root.resolve("resources").resolve(rel);
+            Files.createDirectories(resource.getParent());
+            Files.writeString(resource, body);
+            Path copy = out.resolve(rel);
+            Files.createDirectories(copy.getParent());
+            Files.copy(resource, copy, StandardCopyOption.REPLACE_EXISTING);
+            Path incremental = Files.createDirectories(out.resolveSibling("incremental"));
+            Files.writeString(incremental.resolve(MirroredOutputs.MAIN_SOURCES), rel + "\t" + resource + "\n");
         }
 
         Path classFile(String rel) {

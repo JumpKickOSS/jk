@@ -9,6 +9,7 @@ import cc.jumpkick.engine.http.mcp.McpJobRuns;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import cc.jumpkick.engine.http.mcp.McpVitals;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -27,23 +28,25 @@ public final class RunTool implements McpTool {
         return new Spec(
                 "run",
                 DESCRIPTION,
-                McpSchemas.object(Map.of(
-                        "kind",
-                        McpSchemas.string(),
-                        "only",
-                        McpSchemas.string(),
-                        "dir",
-                        McpSchemas.string(),
-                        "run",
-                        McpSchemas.string(),
-                        "jid",
-                        McpSchemas.integer(),
-                        "suites",
-                        McpSchemas.strings(),
-                        "classes",
-                        McpSchemas.string(),
-                        McpDecisions.DECISION,
-                        McpSchemas.string())));
+                McpSchemas.withGoal(
+                        Map.of(
+                                "kind",
+                                McpSchemas.string(),
+                                "only",
+                                McpSchemas.string(),
+                                "dir",
+                                McpSchemas.string(),
+                                "run",
+                                McpSchemas.string(),
+                                "jid",
+                                McpSchemas.integer(),
+                                "suites",
+                                McpSchemas.strings(),
+                                "classes",
+                                McpSchemas.string(),
+                                McpDecisions.DECISION,
+                                McpSchemas.string()),
+                        List.of()));
     }
 
     @Override

@@ -42,6 +42,23 @@ records its `jk_build`.
 time splits into model time and tool time. A rename that "got slower" is usually a test run, not
 reasoning.
 
+## Goal presence from real use
+
+Whether agents pass `goal` on `run`, `deps`, `rename` and `update` is read from use, not a bench:
+the PRD target is a `goal` on 90% of Claude Code and Cursor `run` calls. After a stretch of normal
+work, read the local session journal (read-only; the engine need not run):
+
+```bash
+bench/console/goal-share --days 7        # $JK_STATE_DIR, else $JK_HOME/state, else ~/.jk/state
+bench/console/goal-share --json
+```
+
+One row per MCP client (`clientInfo.name`): its sessions, its episodes by title source (`goal`,
+`lastGoal`, `inferred`), the runs in those episodes, and the goal share of runs. The journal keeps
+episodes, not each call's arguments, so a goal-less run that joined a goal's episode counts as one
+with a goal: the share is an upper bound, and the `lastGoal` and `inferred` runs certainly carried
+none. Bench sessions (`agent-loop-harness`, `scoreboard`) are rows of their own; read the agents'.
+
 ## What a verdict means
 
 `screen-ff` prints, per agent and task, tokens, turns and wall time against the baseline, then

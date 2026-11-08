@@ -41,6 +41,64 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class ForecastKeyOwnerTest {
 
+    /**
+     * Resources are copied before compile-main and a processor reads them back, so a compile that
+     * runs processors keys on them — the stamp and the action key through the options digest — and
+     * one that runs none does not, so a resource edit recompiles only what can read it.
+     */
+    @Test
+    void compile_main_request_keys_the_resources_its_processors_read(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("m"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group = "t"
+                name = "m"
+                version = "0.1.0"
+                jdk = 25
+                """);
+        JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
+        BuildLayout layout = BuildLayout.of(module, project);
+        Path src = Files.writeString(module.resolve("A.java"), "class A {}");
+        Path resource = Files.createDirectories(module.resolve("src/main/resources/META-INF"))
+                .resolve("manifest");
+        Files.writeString(resource, "static\n");
+        Path processor = Files.writeString(tmp.resolve("proc.jar"), "processor");
+        ProcessorResources resources = new ProcessorResources(module, project, false);
+
+        CompileRequest withProcessors = mainWithResources(src, layout, List.of(processor), resources);
+        CompileRequest without = mainWithResources(src, layout, List.of(), resources);
+        assertThat(withProcessors.resourcesDigest()).isNotNull();
+        assertThat(without.resourcesDigest()).isNull();
+
+        String before = ActionKey.javacOptionsDigest(withProcessors);
+        Files.writeString(resource, "edited\n");
+        CompileRequest edited = mainWithResources(src, layout, List.of(processor), resources);
+        assertThat(ActionKey.javacOptionsDigest(edited))
+                .as("a resource edit is a different compile when processors can read it")
+                .isNotEqualTo(before);
+        assertThat(ActionKey.javacOptionsDigest(mainWithResources(src, layout, List.of(), resources)))
+                .isEqualTo(ActionKey.javacOptionsDigest(without));
+    }
+
+    private static CompileRequest mainWithResources(
+            Path src, BuildLayout layout, List<Path> processorPath, ProcessorResources resources) {
+        return PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+                List.of(src),
+                List.of(),
+                processorPath,
+                List.of(),
+                layout,
+                layout.classesDir(),
+                25,
+                List.of(),
+                JavacConfig.EMPTY,
+                Path.of(System.getProperty("java.home")),
+                false,
+                false,
+                null,
+                null,
+                resources));
+    }
+
     @Test
     void compile_main_request_carries_every_field_forJavac_hashes(@TempDir Path tmp) throws Exception {
         // : the forecast built its CompileRequest independently and set none of the Scala
@@ -79,7 +137,8 @@ class ForecastKeyOwnerTest {
                 true,
                 true,
                 groovyJar,
-                scala));
+                scala,
+                null));
 
         assertThat(full.javaHome()).isEqualTo(jdk);
         assertThat(full.scalaVersion()).isEqualTo("3.8.4");
@@ -106,6 +165,7 @@ class ForecastKeyOwnerTest {
                 jdk,
                 false,
                 false,
+                null,
                 null,
                 null));
         assertThat(ActionKey.forJavac("compile-main", full, "0.1.0"))
@@ -199,6 +259,7 @@ class ForecastKeyOwnerTest {
                 false,
                 false,
                 null,
+                null,
                 null));
         assertThat(main.extraOptions())
                 .containsExactly("-Xlint:all", plugin, "-XDcompilePolicy=simple", "--should-stop=ifError=FLOW");
@@ -234,6 +295,7 @@ class ForecastKeyOwnerTest {
                 jdk,
                 false,
                 false,
+                null,
                 null,
                 null));
         assertThat(ActionKey.forJavac("compile-main", main, "0.1.0"))
@@ -282,6 +344,7 @@ class ForecastKeyOwnerTest {
                 jdk,
                 false,
                 false,
+                null,
                 null,
                 null));
     }

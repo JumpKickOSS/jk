@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import xsbti.PathBasedFile;
@@ -108,6 +109,63 @@ class ProvenanceJavacTest {
         assertThat(secondClasses.resolve("gen/Generated.class"))
                 .as("the second compile inherited the first compile's processor path")
                 .doesNotExist();
+    }
+
+    /**
+     * A processor gets javac's own processing environment, so one that reaches javac's trees, as
+     * Helidon's API-stability check does through {@code Trees.instance}, runs instead of failing on a
+     * wrapped environment; and what it writes is still recorded against the source it came from.
+     */
+    @Test
+    void a_processor_that_needs_javacs_own_environment_runs_and_its_output_is_recorded(@TempDir Path dir)
+            throws Exception {
+        Path procDir = writeTreesProcessor(dir.resolve("proc"));
+        Path src = writeSource(dir.resolve("src"), "a");
+        Path gen = dir.resolve("gen");
+
+        ZincJavaCompiler.Result r = ZincJavaCompiler.compileJava(new JavaCompileJob(
+                List.of(src),
+                List.of(),
+                dir.resolve("classes"),
+                dir.resolve("work"),
+                gen,
+                25,
+                List.of(),
+                List.of(procDir)));
+
+        assertThat(r.success()).as("compile failed: %s", r.diagnostics()).isTrue();
+        assertThat(r.diagnostics()).noneMatch(d -> d.message().contains("Trees"));
+        assertThat(r.generated())
+                .containsEntry(gen.resolve("gen/AMade.java").toAbsolutePath(), Set.of(src.toAbsolutePath()));
+    }
+
+    /**
+     * A processor reading the module's {@code module-info.java} through the Filer finds it, as it
+     * does under Maven's {@code -sourcepath}: Helidon's codegen learns the module name this way.
+     */
+    @Test
+    void a_processor_reads_the_module_descriptor_from_the_source_path(@TempDir Path dir) throws Exception {
+        Path procDir = writeSourcePathProcessor(dir.resolve("proc"));
+        Path srcRoot = dir.resolve("src");
+        Path type = writeSource(srcRoot, "a");
+        Path info = srcRoot.resolve("module-info.java");
+        Files.writeString(info, "module ex.found { exports a; }");
+        Path classes = dir.resolve("classes");
+
+        ZincJavaCompiler.Result r = ZincJavaCompiler.compileJava(new JavaCompileJob(
+                List.of(info, type),
+                List.of(),
+                classes,
+                dir.resolve("work"),
+                dir.resolve("gen"),
+                25,
+                List.of(),
+                List.of(procDir)));
+
+        assertThat(r.success()).as("compile failed: %s", r.diagnostics()).isTrue();
+        assertThat(classes.resolve("a/Found.class"))
+                .as("the processor did not find module-info.java on the source path")
+                .exists();
     }
 
     private static Path writeSource(Path srcDir, String pkg) throws Exception {
@@ -214,6 +272,98 @@ class ProvenanceJavacTest {
         Path services = procDir.resolve("META-INF/services/javax.annotation.processing.Processor");
         Files.createDirectories(services.getParent());
         Files.writeString(services, "disc.DiscProc\n");
+        return procDir;
+    }
+
+    /**
+     * A processor that takes {@code Trees.instance} of its environment in {@code init}, which throws
+     * unless that environment is javac's own, and writes {@code gen.<Name>Made} for each root class
+     * with the class as its originating element.
+     */
+    private static Path writeTreesProcessor(Path procDir) throws Exception {
+        Files.createDirectories(procDir);
+        Path src = procDir.resolve("_src/trees/TreesProc.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, """
+                package trees;
+                import com.sun.source.util.Trees;
+                import javax.annotation.processing.*;
+                import javax.lang.model.SourceVersion;
+                import javax.lang.model.element.*;
+                import java.io.Writer;
+                import java.util.Set;
+                @SupportedAnnotationTypes("*")
+                public class TreesProc extends AbstractProcessor {
+                    public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                    public synchronized void init(ProcessingEnvironment env) {
+                        super.init(env);
+                        Trees.instance(env);
+                    }
+                    public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
+                        for (Element e : r.getRootElements()) {
+                            String name = e.getSimpleName().toString();
+                            if (name.endsWith("Made")) continue;
+                            try (Writer w = processingEnv.getFiler().createSourceFile("gen." + name + "Made", e).openWriter()) {
+                                w.write("package gen; public class " + name + "Made {}");
+                            } catch (Exception x) {
+                                throw new RuntimeException(x);
+                            }
+                        }
+                        return false;
+                    }
+                }
+                """);
+        FixtureJavac.compile(procDir, src);
+        Path services = procDir.resolve("META-INF/services/javax.annotation.processing.Processor");
+        Files.createDirectories(services.getParent());
+        Files.writeString(services, "trees.TreesProc\n");
+        return procDir;
+    }
+
+    /**
+     * A processor that reads {@code module-info.java} through {@code Filer.getResource(SOURCE_PATH)}
+     * and writes {@code a.Found} when it can, {@code a.Missing} when it cannot.
+     */
+    private static Path writeSourcePathProcessor(Path procDir) throws Exception {
+        Files.createDirectories(procDir);
+        Path src = procDir.resolve("_src/sp/SourcePathProc.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, """
+                package sp;
+                import javax.annotation.processing.*;
+                import javax.lang.model.SourceVersion;
+                import javax.lang.model.element.TypeElement;
+                import javax.tools.StandardLocation;
+                import java.io.Writer;
+                import java.util.Set;
+                @SupportedAnnotationTypes("*")
+                public class SourcePathProc extends AbstractProcessor {
+                    private boolean done;
+                    public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                    public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
+                        if (done || r.processingOver()) return false;
+                        done = true;
+                        String name;
+                        try {
+                            CharSequence text = processingEnv.getFiler()
+                                    .getResource(StandardLocation.SOURCE_PATH, "", "module-info.java").getCharContent(true);
+                            name = text.toString().contains("ex.found") ? "Found" : "Wrong";
+                        } catch (Exception e) {
+                            name = "Missing";
+                        }
+                        try (Writer w = processingEnv.getFiler().createSourceFile("a." + name).openWriter()) {
+                            w.write("package a; public class " + name + " {}");
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                        return false;
+                    }
+                }
+                """);
+        FixtureJavac.compile(procDir, src);
+        Path services = procDir.resolve("META-INF/services/javax.annotation.processing.Processor");
+        Files.createDirectories(services.getParent());
+        Files.writeString(services, "sp.SourcePathProc\n");
         return procDir;
     }
 }

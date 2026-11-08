@@ -15,7 +15,8 @@ import org.jspecify.annotations.Nullable;
  * @param project the checkout it worked in (absolute dir)
  * @param projectId that checkout's durable project id, or null when it has none
  * @param title what it is doing: the agent's goal, or a title inferred from its facts
- * @param titleSource {@code goal} or {@code inferred}
+ * @param titleSource {@code goal} when the agent named it for this episode, {@code lastGoal} when
+ *     the episode took the session's last goal for want of one, {@code inferred} otherwise
  * @param outcome {@code working} while open; once closed {@code green} or {@code red} by its last
  *     run (or, with none, its last action), {@code abandoned} when nothing in it was judged
  * @param lastAt when its last fact finished
@@ -43,6 +44,7 @@ public record Episode(
 
     public static final String INFERRED = "inferred";
     public static final String GOAL = "goal";
+    public static final String LAST_GOAL = "lastGoal";
 
     /** This episode with its project id. */
     public Episode withProjectId(@Nullable String projectId) {

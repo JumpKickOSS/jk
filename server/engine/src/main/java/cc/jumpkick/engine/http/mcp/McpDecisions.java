@@ -6,6 +6,7 @@ import cc.jumpkick.engine.decisions.DecisionForms;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.decisions.DecisionSurface;
 import cc.jumpkick.engine.decisions.Decisions;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Form;
@@ -32,6 +33,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A trust-changing decision always asks. Any other asks only a host that can ask: on one that
  * cannot, the call's own {@code confirm=true} is the answer.
+ *
+ * <p>The call a decision continues is stored with it in the queue, so a successor engine that
+ * adopted the decision continues it. A continuation whose decision is gone answers {@code
+ * ASK-AGAIN}: the agent repeats the original call and is asked anew.
  */
 public final class McpDecisions {
 
@@ -71,8 +76,8 @@ public final class McpDecisions {
         record Stop(Map<String, Object> result) implements Outcome {}
     }
 
-    /** The call a decision continues: the tool and the arguments it was called with. */
-    record Continuation(McpTool tool, Map<String, Object> args) {}
+    /** The argument that names the task; masked before a decision stores it. */
+    private static final String GOAL = "goal";
 
     /**
      * Ask {@code ask} of the person behind {@code in}'s client, or read the answer to the decision
@@ -85,12 +90,9 @@ public final class McpDecisions {
         String named = in.str(DECISION);
         if (named != null && !named.isBlank()) {
             Decision d = queue.find(named.strip()).orElse(null);
-            if (d == null) {
-                return stop(in.error("no decision " + named.strip() + ": it expired or the engine restarted;"
-                        + " call again without decision to ask anew\n"));
-            }
-            Continuation asked = in.ctx().continuations().get(d.id());
-            if (!d.kind().equals(ask.kind()) || (asked != null && !asked.args().equals(callArgs(in)))) {
+            if (d == null) return stop(askAgain(in, named.strip()));
+            Map<String, Object> asked = askedArgs(queue, d.id());
+            if (!d.kind().equals(ask.kind()) || (asked != null && !asked.equals(callArgs(in)))) {
                 return stop(in.error("decision " + d.id() + " answers another call; call again without decision"
                         + " to ask about this one\n"));
             }
@@ -128,19 +130,27 @@ public final class McpDecisions {
      * and the decision, which answers it once the decision is settled.
      */
     public static Map<String, Object> resume(McpCall in, String id) {
-        Continuation next = in.ctx().continuations().get(id.strip());
-        if (next == null) {
-            Decision d = in.ctx().decisions().queue().find(id.strip()).orElse(null);
-            String why = d == null ? "it expired or the engine restarted" : "the call it answers was already continued";
-            return in.error("no call waits on decision " + id.strip() + ": " + why + "\n");
+        String named = id.strip();
+        DecisionQueue queue = in.ctx().decisions().queue();
+        Decision d = queue.find(named).orElse(null);
+        if (d == null) return askAgain(in, named);
+        Map<String, Object> call = queue.call(named).orElse(null);
+        Map<String, Object> asked = askedArgs(queue, named);
+        McpTool tool = call == null ? null : in.ctx().toolNamed().apply(String.valueOf(call.get("tool")));
+        if (call == null || asked == null || tool == null) {
+            return in.error("no call waits on decision " + named + ": the call it answers was already continued\n");
         }
-        Map<String, Object> args = new LinkedHashMap<>(next.args());
-        args.put(DECISION, id.strip());
-        Map<String, Object> result = next.tool().call(in.withArgs(args));
-        if (in.ctx().decisions().queue().find(id.strip()).map(d -> !d.open()).orElse(true)) {
-            in.ctx().continuations().remove(id.strip());
-        }
+        Map<String, Object> args = new LinkedHashMap<>(asked);
+        args.put(DECISION, named);
+        Map<String, Object> result = tool.call(in.withArgs(args));
+        if (queue.find(named).map(x -> !x.open()).orElse(true)) queue.call(named, null);
         return result;
+    }
+
+    /** {@code ASK-AGAIN}: decision {@code id} is gone, so the agent repeats the call that asked it. */
+    private static Map<String, Object> askAgain(McpCall in, String id) {
+        return in.text("ASK-AGAIN decision " + id + " is gone: it expired or was lost, and nothing changed\n"
+                + "repeat the call that asked it, without decision, to ask anew\n");
     }
 
     private static DecisionQueue.Ask raise(McpCall in, Ask ask, @Nullable String label, @Nullable String project) {
@@ -154,34 +164,46 @@ public final class McpDecisions {
                 episode = place.episode();
             }
         }
-        Form form = DecisionForms.confirm(ask.kind(), ask.question(), ask.yes());
-        return new DecisionQueue.Ask(
-                ask.kind(), ask.question(), ask.detail(), form, ask.trust(), session, label, episode, project);
+        String question = EventRedaction.redactText(project, ask.question());
+        List<String> detail = new ArrayList<>();
+        for (String line : ask.detail()) detail.add(EventRedaction.redactText(project, line));
+        Form form = DecisionForms.confirm(ask.kind(), question, ask.yes());
+        return new DecisionQueue.Ask(ask.kind(), question, detail, form, ask.trust(), session, label, episode, project);
     }
 
-    /** The call's arguments without {@value #DECISION}: what a decision was asked about. */
+    /**
+     * The call's arguments without {@value #DECISION}, its goal masked as a session record masks it:
+     * what a decision was asked about, as the queue stores it.
+     */
     private static Map<String, Object> callArgs(McpCall in) {
         Map<String, Object> args = new LinkedHashMap<>();
         in.args().forEach((k, v) -> {
-            if (v != null && !DECISION.equals(k)) args.put(k, v);
+            if (v == null || DECISION.equals(k)) return;
+            args.put(k, GOAL.equals(k) && v instanceof String goal ? EventRedaction.redactText(in.dir(), goal) : v);
         });
         return args;
     }
 
-    /** True when {@code open} was asked about this very call, so asking again would be a duplicate. */
-    private static boolean sameCall(McpCall in, Decision open) {
-        Continuation asked = in.ctx().continuations().get(open.id());
-        return asked != null && asked.args().equals(callArgs(in));
+    /** The arguments of the call {@code id} continues; null when it stores none. */
+    @SuppressWarnings("unchecked")
+    private static @Nullable Map<String, Object> askedArgs(DecisionQueue queue, String id) {
+        return queue.call(id)
+                .map(c -> c.get("args") instanceof Map<?, ?> a ? (Map<String, Object>) a : null)
+                .orElse(null);
     }
 
-    /** The call {@code d} continues, so {@code run(decision=<id>)} can make it again. */
+    /** True when {@code open} was asked about this very call, so asking again would be a duplicate. */
+    private static boolean sameCall(McpCall in, Decision open) {
+        Map<String, Object> asked = askedArgs(in.ctx().decisions().queue(), open.id());
+        return asked != null && asked.equals(callArgs(in));
+    }
+
+    /** Store the call {@code d} continues with it, so {@code run(decision=<id>)} can make it again on any engine. */
     private static void remember(McpCall in, Decision d, McpTool tool) {
-        Map<String, Continuation> store = in.ctx().continuations();
-        DecisionQueue queue = in.ctx().decisions().queue();
-        store.keySet().removeIf(id -> queue.find(id)
-                .map(x -> !x.open() && queue.spent(x.id()))
-                .orElse(true));
-        store.put(d.id(), new Continuation(tool, Map.copyOf(callArgs(in))));
+        Map<String, Object> call = new LinkedHashMap<>();
+        call.put("tool", tool.spec().name());
+        call.put("args", Map.copyOf(callArgs(in)));
+        in.ctx().decisions().queue().call(d.id(), call);
     }
 
     /** Whether the session can be asked at all: a mode declared and a way back to the client. */
@@ -318,7 +340,8 @@ public final class McpDecisions {
                                 + " to ask anew\n"));
             case DECLINED -> stop(in.text("DECLINED " + now.question() + "\n" + by(now) + "nothing changed\n"));
             case EXPIRED ->
-                stop(in.text("EXPIRED " + now.question() + "\nnobody answered by the deadline; nothing changed\n"));
+                stop(in.text("EXPIRED " + now.question() + "\nnobody answered by the deadline; nothing changed\n"
+                        + "repeat the call without decision to ask anew\n"));
         };
     }
 

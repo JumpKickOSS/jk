@@ -5,6 +5,7 @@ import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
+import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
@@ -95,14 +96,15 @@ public final class JkBuildRenderer {
     }
 
     /**
-     * {@code [build] extra-src}; {@code [test]} extra source roots and source excludes, the baseline
+     * {@code [build] extra-src} and {@code module-services}; {@code [test]} extra source roots and source excludes, the baseline
      * tag filters, the excluded classes and dependencies, the test JVM's flags and system properties,
      * and a {@code [test.suites.<name>]} table per class-pattern suite.
      */
     private static void renderBuild(StringBuilder sb, BuildBlock build) {
-        if (!build.extraSrc().isEmpty()) {
-            sb.append("\n[build]\nextra-src = ").append(list(build.extraSrc())).append('\n');
-        }
+        if (!build.extraSrc().isEmpty() || build.moduleServices()) sb.append("\n[build]\n");
+        if (!build.extraSrc().isEmpty())
+            sb.append("extra-src = ").append(list(build.extraSrc())).append('\n');
+        if (build.moduleServices()) sb.append("module-services = true\n");
         renderTest(sb, build);
         build.testClassSuites().forEach((suite, spec) -> {
             sb.append("\n[test.suites.")
@@ -128,7 +130,8 @@ public final class JkBuildRenderer {
                 && build.testExcludeDependencies().isEmpty()
                 && build.testFailures() == TestFailureMode.FAIL
                 && build.testFastMethodBudgetMs() == 0
-                && build.testJvm().isEmpty()) {
+                && build.testJvm().isEmpty()
+                && build.testEnv().isEmpty()) {
             return;
         }
         sb.append("\n[test]\n");
@@ -171,6 +174,21 @@ public final class JkBuildRenderer {
                     .append(inlineTable(build.testJvm().systemProperties()))
                     .append('\n');
         }
+        if (!build.testEnv().isEmpty())
+            sb.append("env = ").append(envArray(build.testEnv())).append('\n');
+    }
+
+    /** {@code [test] env}: a bare name forwards, a one-entry table sets. */
+    private static String envArray(List<EnvDecl> decls) {
+        List<String> items = new ArrayList<>();
+        for (EnvDecl d : decls) {
+            items.add(
+                    switch (d) {
+                        case EnvDecl.Forward f -> quote(f.name());
+                        case EnvDecl.Set set -> inlineTable(Map.of(set.name(), set.value()));
+                    });
+        }
+        return "[" + String.join(", ", items) + "]";
     }
 
     /** {@code [build-info]} — the table itself is the declaration; only keys off their defaults are written. */
@@ -771,9 +789,14 @@ public final class JkBuildRenderer {
             List<Dependency> deps = byScope.getOrDefault(scope, List.of()).stream()
                     .filter(d -> d.impliedBy() == null)
                     .toList();
-            if (deps.isEmpty()) continue;
+            // inherit = false is the test table's whole meaning even when it lists nothing: compile-test
+            // then runs no declared processor, as Maven's testCompile without annotationProcessorPaths.
+            boolean ownTestPath =
+                    scope == Scope.TEST_PROCESSOR && !jkBuild.dependencies().testProcessorsInherit();
+            if (deps.isEmpty() && !ownTestPath) continue;
             sb.append('\n');
             sb.append('[').append(scope.tomlSection()).append("]\n");
+            if (ownTestPath) sb.append("inherit = false\n");
             for (Dependency d : ordered(scope, deps)) {
                 sb.append(renderEntry(d, catalog)).append('\n');
             }

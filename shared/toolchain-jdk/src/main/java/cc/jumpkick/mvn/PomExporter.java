@@ -224,7 +224,14 @@ public final class PomExporter {
             sb.append("    <plugins>\n");
             if (kotlin) appendKotlinPlugin(sb, p, report);
             if (anyProcessor) {
-                appendCompilerProcessorPlugin(sb, processors, testProcessors, p.javaRelease(), locked, report);
+                appendCompilerProcessorPlugin(
+                        sb,
+                        processors,
+                        testProcessors,
+                        jkBuild.dependencies().testProcessorsInherit(),
+                        p.javaRelease(),
+                        locked,
+                        report);
             }
             if (toolchain) appendToolchainsPlugin(sb, p);
             if (jarManifest) appendJarPlugin(sb, jkBuild.mainClass(), jkBuild.manifest());
@@ -255,12 +262,15 @@ public final class PomExporter {
      * {@code [processor-dependencies]} as the plugin's own {@code <annotationProcessorPaths>}, which
      * reach both compiles; {@code [test-processor-dependencies]} as a {@code testCompile} execution
      * whose paths replace the plugin's with the shared list plus its own, so compile-test alone
-     * runs them.
+     * runs them. Under {@code inherit = false} the execution's paths are the test table alone, an
+     * empty list when the table names none, which leaves testCompile discovering processors on its
+     * classpath as jk's compile-test then does.
      */
     private static void appendCompilerProcessorPlugin(
             StringBuilder sb,
             List<Dependency> processors,
             List<Dependency> testProcessors,
+            boolean inherit,
             int release,
             Map<String, String> locked,
             ImportReport.Builder report) {
@@ -271,8 +281,8 @@ public final class PomExporter {
         sb.append("          <release>").append(release).append("</release>\n");
         if (!processors.isEmpty()) appendProcessorPaths(sb, processors, "          ", false, locked, report);
         sb.append("        </configuration>\n");
-        if (!testProcessors.isEmpty()) {
-            List<Dependency> all = new ArrayList<>(processors);
+        if (!testProcessors.isEmpty() || (!inherit && !processors.isEmpty())) {
+            List<Dependency> all = new ArrayList<>(inherit ? processors : List.of());
             all.addAll(testProcessors);
             sb.append("        <executions>\n");
             sb.append("          <execution>\n");

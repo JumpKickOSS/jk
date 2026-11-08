@@ -9,3 +9,10 @@
 *.jar binary
 *.png binary
 *.webp binary
+
+# Marketing media lives in Git LFS: the demo videos, their posters, and the README banner. The
+# small brand files (jk-logo.svg, jumpkick-logo.webp) stay plain: the web UI bundles them.
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.webm filter=lfs diff=lfs merge=lfs -text
+docs/assets/**/*.png filter=lfs diff=lfs merge=lfs -text
+hosting/public/*demo*.webp filter=lfs diff=lfs merge=lfs -text

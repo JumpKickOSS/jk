@@ -67,7 +67,7 @@ public final class CodeGraphTool implements McpTool {
                         "rename",
                         "Rename Type.method (or Type.method(int,String)) to `to` with every override, call and doc"
                                 + " link; it then tests and guards, and says when the task is done.",
-                        McpSchemas.object(
+                        McpSchemas.withGoal(
                                 props(Map.of(
                                         "address", McpSchemas.string(),
                                         "to", McpSchemas.string(),

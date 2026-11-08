@@ -42,8 +42,7 @@ class TestEnginesTest {
 
         assertThat(roots(project, graph))
                 .containsExactly("org.junit.platform:junit-platform-launcher =1.12.2", JupiterLine.ENGINE + " =5.12.2");
-        assertThat(TestEngines.injectedKeys(project, TestEngines.declaredTestKeys(project), graph::reach))
-                .containsExactly(LAUNCHER, ENGINE);
+        assertThat(keys(project, graph)).containsExactly(LAUNCHER, ENGINE);
     }
 
     @Test
@@ -87,14 +86,57 @@ class TestEnginesTest {
     }
 
     @Test
+    void a_provided_jupiter_api_with_no_test_dependencies_puts_jupiter_engine_and_launcher_on_its_line() {
+        JkBuild project = project(Map.of(Scope.PROVIDED, List.of(dep(JupiterLine.API, "5.12.2"))));
+        Graph graph = new Graph()
+                .edge(API, key("org.junit.platform:junit-platform-commons"))
+                .at(JupiterLine.API, "5.12.2");
+
+        assertThat(seeds(project))
+                .as("the first solve already seeds Jupiter on the provided API's line")
+                .containsExactly(
+                        "org.junit.platform:junit-platform-launcher 1.12.2", "org.junit.jupiter:junit-jupiter 5.12.2");
+        assertThat(roots(project, graph))
+                .as("Surefire reads provided on the test classpath: the API it finds there sets the line")
+                .containsExactly(
+                        "org.junit.platform:junit-platform-launcher =1.12.2",
+                        "org.junit.jupiter:junit-jupiter =5.12.2",
+                        JupiterLine.ENGINE + " =5.12.2");
+        assertThat(keys(project, graph)).containsExactly(LAUNCHER, key("org.junit.jupiter:junit-jupiter"), ENGINE);
+    }
+
+    @Test
+    void a_jupiter_api_a_main_dependency_brings_in_gets_its_engine_beside_declared_test_dependencies() {
+        JkBuild project = project(Map.of(
+                Scope.MAIN, List.of(dep("io.helidon:testing-junit5", "27.0.1")),
+                Scope.TEST, List.of(dep("org.hamcrest:hamcrest", "3.0"))));
+        Graph graph = new Graph().edge(key("io.helidon:testing-junit5"), API).at(JupiterLine.API, "5.12.2");
+
+        assertThat(roots(project, graph))
+                .containsExactly("org.junit.platform:junit-platform-launcher =1.12.2", JupiterLine.ENGINE + " =5.12.2");
+        assertThat(keys(project, graph)).containsExactly(LAUNCHER, ENGINE);
+    }
+
+    @Test
+    void a_jupiter_engine_the_module_declares_in_main_is_not_injected_again() {
+        JkBuild project = project(Map.of(
+                Scope.PROVIDED, List.of(dep(JupiterLine.API, "5.12.2"), dep(JupiterLine.ENGINE, "5.12.2")),
+                Scope.TEST, List.of(dep("org.hamcrest:hamcrest", "3.0"))));
+        Graph graph =
+                new Graph().edge(ENGINE, API).at(JupiterLine.API, "5.12.2").at(JupiterLine.ENGINE, "5.12.2");
+
+        assertThat(roots(project, graph)).containsExactly("org.junit.platform:junit-platform-launcher =1.12.2");
+        assertThat(keys(project, graph)).containsExactly(LAUNCHER);
+    }
+
+    @Test
     void a_declared_launcher_is_the_users_and_nothing_replaces_it() {
         JkBuild project = project(
                 Map.of(Scope.TEST, List.of(dep(JupiterLine.API, "5.12.2"), dep(JupiterLine.LAUNCHER, "1.12.2"))));
         Graph graph = new Graph().at(JupiterLine.API, "5.12.2").edge(LAUNCHER).edge(API);
 
         assertThat(roots(project, graph)).containsExactly(JupiterLine.ENGINE + " =5.12.2");
-        assertThat(TestEngines.injectedKeys(project, TestEngines.declaredTestKeys(project), graph::reach))
-                .containsExactly(ENGINE);
+        assertThat(keys(project, graph)).containsExactly(ENGINE);
     }
 
     @Test
@@ -107,8 +149,7 @@ class TestEnginesTest {
                 .containsExactly(
                         "org.junit.platform:junit-platform-launcher =6.1.0",
                         "org.junit.vintage:junit-vintage-engine latest");
-        assertThat(TestEngines.injectedKeys(junit4, TestEngines.declaredTestKeys(junit4), alone::reach))
-                .containsExactly(LAUNCHER, VINTAGE);
+        assertThat(keys(junit4, alone)).containsExactly(LAUNCHER, VINTAGE);
 
         JkBuild beside = project(
                 Map.of(Scope.TEST, List.of(dep("junit:junit", "4.13.2"), dep("io.helidon:testing-junit5", "27.0.1"))));
@@ -130,8 +171,7 @@ class TestEnginesTest {
         Graph graph = new Graph().edge(key("org.testcontainers:testcontainers"), key("junit:junit"));
 
         assertThat(roots(project, graph)).containsExactly("org.junit.platform:junit-platform-launcher latest");
-        assertThat(TestEngines.injectedKeys(project, TestEngines.declaredTestKeys(project), graph::reach))
-                .containsExactly(LAUNCHER);
+        assertThat(keys(project, graph)).containsExactly(LAUNCHER);
     }
 
     @Test
@@ -142,7 +182,7 @@ class TestEnginesTest {
                 .edge(key("org.junit.support:testng-engine"), key("org.testng:testng"), PLATFORM_ENGINE)
                 .at(JupiterLine.API, "5.12.2");
 
-        assertThat(TestEngines.injectedKeys(member, TestEngines.declaredTestKeys(member), workspace::reach))
+        assertThat(keys(member, workspace))
                 .as("another member's Jupiter is in the rows, not in this member's test graph")
                 .containsExactly(LAUNCHER, key("org.junit.support:testng-engine"));
     }
@@ -152,6 +192,22 @@ class TestEnginesTest {
         return TestEngines.injectedRoots(project, graph::reach, graph.versions::get).stream()
                 .map(d -> d.module() + " " + d.version().raw())
                 .toList();
+    }
+
+    /** Each seed root as {@code group:artifact selector}. */
+    private static List<String> seeds(JkBuild project) {
+        return TestEngines.seedRoots(project).stream()
+                .map(d -> d.module() + " " + d.version().raw())
+                .toList();
+    }
+
+    /** The injected keys a lock-row reader walks to, from the module's test and classpath declarations. */
+    private static List<String> keys(JkBuild project, Graph graph) {
+        return TestEngines.injectedKeys(
+                project,
+                TestEngines.declaredTestKeys(project),
+                TestEngines.declaredClasspathKeys(project),
+                graph::reach);
     }
 
     private static String key(String ga) {

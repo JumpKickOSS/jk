@@ -11,7 +11,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk lock` | Resolve and write `jk-lock.toml` (keeps pins; `-F` moves opt-in selectors) | [Lockfile](lockfile.md) |
 | `jk sync` | The build's lock and sync phase on its own: every dependency, tool and JDK on disk | [Lockfile](lockfile.md) |
 | `jk outdated` | Newer versions than the lock (read-only) | [Lockfile](lockfile.md) |
-| `jk update` | Bump declared pins in `jk.toml` to the newest stable on the same major (`--major` to cross), relock | [Lockfile](lockfile.md#jk-update) |
+| `jk update` | Bump declared pins in `jk.toml` to the newest stable on the same major (`--major` to cross), relock. A move across a minor or a major, or one whose relock adds packages to the lock, is asked at a terminal; without one it is held and named (with the packages it adds), and `-y` takes it | [Lockfile](lockfile.md#jk-update) |
 | `jk tree` / `jk why` | Inspect the graph | [Dependencies](dependencies.md) |
 | `jk graph` | Build and query the code graph: symbols, calls, config and docs | [Code graph](graph.md) |
 | `jk compile` | Type-check | [Build](build.md) |

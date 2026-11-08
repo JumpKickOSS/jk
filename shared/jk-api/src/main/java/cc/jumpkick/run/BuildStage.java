@@ -194,6 +194,7 @@ public enum BuildStage {
                     TaskNames.COMPILE_GROOVY,
                     TaskNames.COPY_RESOURCES,
                     TaskNames.BUILD_INFO,
+                    TaskNames.MODULE_SERVICES,
                     TaskNames.ASSEMBLE_CLASSES,
                     TaskNames.WRITE_STAMP,
                     TaskNames.WRITE_STAMP_KOTLIN,

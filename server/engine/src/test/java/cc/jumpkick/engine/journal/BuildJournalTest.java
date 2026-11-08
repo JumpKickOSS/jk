@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -582,6 +583,34 @@ class BuildJournalTest {
         assertThat(r.removedEntries()).isGreaterThanOrEqualTo(1);
         List<Long> numbers = j.list().stream().map(BuildRecord::buildNumber).toList();
         assertThat(numbers).contains(Long.parseLong(newest)).doesNotContain(Long.parseLong(oldest));
+    }
+
+    /** Settled decisions share the age budget; an open one outlives it until its deadline. */
+    @Test
+    void prune_drops_settled_decisions_past_the_age_limit_but_keeps_an_open_one() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        SessionJournal sessions = SessionJournal.under(dir);
+        long now = 1_700_000_000_000L;
+        long day = 86_400_000L;
+        long old = now - 10 * day;
+        sessions.writeDecision("settled", decision("settled", "accepted", old + 60_000));
+        sessions.writeDecision("expired", decision("expired", "open", old + 60_000));
+        sessions.writeDecision("waiting", decision("waiting", "open", now + 60_000));
+        sessions.writeDecision("recent", decision("recent", "declined", now));
+        Path decisions = dir.resolve(SessionJournal.DECISIONS_DIR);
+        for (String id : List.of("settled", "expired", "waiting")) {
+            Files.setLastModifiedTime(decisions.resolve(id + ".json"), FileTime.fromMillis(old));
+        }
+        Files.setLastModifiedTime(decisions.resolve("recent.json"), FileTime.fromMillis(now - 1));
+
+        BuildJournal.PruneResult r = j.prune(2 * day, 0, now);
+
+        assertThat(r.removedEntries()).isEqualTo(2);
+        assertThat(sessions.decisions()).extracting(d -> d.get("id")).containsExactlyInAnyOrder("waiting", "recent");
+    }
+
+    private static Map<String, Object> decision(String id, String state, long deadline) {
+        return Map.of("id", id, "state", state, "deadline", deadline);
     }
 
     /**

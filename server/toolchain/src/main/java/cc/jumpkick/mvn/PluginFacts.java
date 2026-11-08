@@ -95,6 +95,7 @@ final class PluginFacts {
             "git-commit-id-maven-plugin",
             "git-commit-id-plugin",
             "dokka-maven-plugin",
+            ModuleServicesPlugin.ARTIFACT,
             "quarkus-maven-plugin",
             "native-maven-plugin",
             "jib-maven-plugin",
@@ -291,11 +292,6 @@ final class PluginFacts {
         return List.copyOf(out);
     }
 
-    /** {@code `<id>` (goal `compile`)} for a compiler-plugin execution bound to one step. */
-    private static String label(PluginExecution execution, CompileStep step) {
-        return execution.getId() + " (goal " + (step == CompileStep.MAIN ? "compile" : "testCompile") + ")";
-    }
-
     /**
      * The step an execution's goals bind: {@code compile} without {@code testCompile} is
      * compile-main, {@code testCompile} without {@code compile} is compile-test; no goals fall back
@@ -315,26 +311,6 @@ final class PluginFacts {
     }
 
     /**
-     * The compiler-plugin executions bound to the {@code compile} goal alone that declare {@code
-     * <annotationProcessorPaths>} of their own, as {@code `<id>` (goal `compile`)}: jk's {@code
-     * [processor-dependencies]} table serves compile-test as well, so the import writes the paths
-     * and says so. A {@code testCompile} execution's paths have a table of their own.
-     */
-    static List<String> mainScopedProcessorPaths(Model model) {
-        List<String> scoped = new ArrayList<>();
-        Optional<Plugin> compiler = lifecycleBoundPlugin(model, COMPILER);
-        if (compiler.isEmpty()) return scoped;
-        for (PluginExecution execution : compiler.get().getExecutions()) {
-            if (!(execution.getConfiguration() instanceof Xpp3Dom config)) continue;
-            CompileStep step = compileStep(execution);
-            if (step == CompileStep.MAIN && config.getChild("annotationProcessorPaths") != null) {
-                scoped.add(label(execution, step));
-            }
-        }
-        return scoped;
-    }
-
-    /**
      * The compiler plugin's own boolean switches that stand for a javac flag: {@code <parameters>}
      * (set by the Spring Boot parent), {@code <enablePreview>} and {@code <failOnWarning>}. Each
      * lands once, whether the POM spelled it as a switch, in {@code <compilerArgs>}, or both.
@@ -345,7 +321,17 @@ final class PluginFacts {
                     .orElse(false);
             if (on && !args.contains(e.getValue())) args.add(e.getValue());
         }
+        // <proc> is javac's -proc: none, only, full; a later configuration's value replaces an
+        // earlier one, as an execution's does the plugin's.
+        String proc = usable(text(config.getChild("proc")));
+        if (proc != null && PROC_VALUES.contains(proc)) {
+            args.removeIf(a -> a.startsWith("-proc:"));
+            args.add("-proc:" + proc);
+        }
     }
+
+    /** The values of maven-compiler-plugin's {@code <proc>}: javac's own. */
+    private static final Set<String> PROC_VALUES = Set.of("none", "only", "full");
 
     static void collectCompilerArgs(Xpp3Dom config, List<String> args) {
         Xpp3Dom list = config.getChild("compilerArgs");
@@ -367,37 +353,84 @@ final class PluginFacts {
     }
 
     /**
-     * The compiler plugin's {@code <annotationProcessorPaths>} by the compile step they reach:
-     * {@code shared} is the plugin's own configuration and every execution compile-main runs
-     * ({@code [processor-dependencies]}), {@code test} the {@code testCompile}-only executions'
-     * ({@code [test-processor-dependencies]}).
+     * The compiler plugin's {@code <annotationProcessorPaths>} as jk's two tables: {@code shared}
+     * is compile-main's path ({@code [processor-dependencies]}), {@code test} what {@code
+     * [test-processor-dependencies]} holds. With {@code testOwn} false the test table adds to the
+     * shared path (empty when both compiles run the same path); with it true the test table is
+     * compile-test's whole path ({@code inherit = false}), an empty one meaning testCompile hands
+     * javac no processor path and discovers processors on its classpath.
      */
-    record ProcessorPaths(List<Pom.Dep> shared, List<Pom.Dep> test) {
+    record ProcessorPaths(List<Pom.Dep> shared, List<Pom.Dep> test, boolean testOwn) {
         /** Every path, the shared ones first. */
         List<Pom.Dep> all() {
             List<Pom.Dep> all = new ArrayList<>(shared);
-            all.addAll(test);
+            for (Pom.Dep path : test) {
+                if (all.stream().noneMatch(p -> p.module().equals(path.module()))) all.add(path);
+            }
             return all;
         }
     }
 
     /**
-     * Every {@code <annotationProcessorPaths><path>} of the compiler plugin as a dependency, split
-     * by compile step. A path without a version takes the effective {@code dependencyManagement}
-     * pin for its GA, the way the compiler plugin itself resolves it; nothing there leaves the
-     * version unusable.
+     * Every {@code <annotationProcessorPaths><path>} of the compiler plugin as a dependency, by the
+     * compile step Maven runs it in. Each execution reads its own {@code <configuration>} merged over
+     * the plugin's, as Maven configures a mojo, so an execution's list replaces the plugin's (or
+     * appends to it under {@code combine.children="append"}). {@code default-compile} and {@code
+     * default-testCompile} run whether the POM lists them or not, with the plugin's configuration
+     * when it does not; another execution bound to a step runs beside the default one. A path
+     * without a version takes the effective {@code dependencyManagement} pin for its GA, the way the
+     * compiler plugin itself resolves it; nothing there leaves the version unusable.
+     *
+     * <p>When the two steps' paths match the result is today's single table. When compile-test's
+     * path is compile-main's followed by more, the extras are the additive test table. Otherwise
+     * compile-test's path is its own table ({@code testOwn}): a Helidon module whose {@code
+     * default-compile} adds an API-stability enforcer to the plugin-level paths must not run it over
+     * its tests.
      */
     static ProcessorPaths annotationProcessorPaths(Model model) {
-        List<Pom.Dep> shared = new ArrayList<>();
-        List<Pom.Dep> test = new ArrayList<>();
         Optional<Plugin> compiler = lifecycleBoundPlugin(model, COMPILER);
-        if (compiler.isEmpty()) return new ProcessorPaths(shared, test);
-        if (compiler.get().getConfiguration() instanceof Xpp3Dom config) collectProcessorPaths(model, config, shared);
-        for (PluginExecution execution : compiler.get().getExecutions()) {
-            if (!(execution.getConfiguration() instanceof Xpp3Dom config)) continue;
-            collectProcessorPaths(model, config, compileStep(execution) == CompileStep.TEST ? test : shared);
+        if (compiler.isEmpty()) return new ProcessorPaths(List.of(), List.of(), false);
+        @Nullable Xpp3Dom pluginConfig = compiler.get().getConfiguration() instanceof Xpp3Dom c ? c : null;
+        List<Pom.Dep> main = new ArrayList<>();
+        List<Pom.Dep> test = new ArrayList<>();
+        boolean mainDefault = false;
+        boolean testDefault = false;
+        List<PluginExecution> executions = compiler.get().getExecutions();
+        for (PluginExecution execution : executions) {
+            mainDefault |= "default-compile".equals(execution.getId());
+            testDefault |= "default-testCompile".equals(execution.getId());
         }
-        return new ProcessorPaths(shared, test);
+        if (pluginConfig != null) {
+            if (!mainDefault) collectProcessorPaths(model, pluginConfig, main);
+            if (!testDefault) collectProcessorPaths(model, pluginConfig, test);
+        }
+        for (PluginExecution execution : executions) {
+            Xpp3Dom own =
+                    execution.getConfiguration() instanceof Xpp3Dom c ? new Xpp3Dom(c) : new Xpp3Dom("configuration");
+            Xpp3Dom config = pluginConfig == null ? own : Xpp3Dom.mergeXpp3Dom(own, pluginConfig);
+            CompileStep step = compileStep(execution);
+            if (step != CompileStep.TEST) collectProcessorPaths(model, config, main);
+            if (step != CompileStep.MAIN) collectProcessorPaths(model, config, test);
+        }
+        List<Pom.Dep> shared = distinct(main);
+        List<Pom.Dep> testPath = distinct(test);
+        if (modules(shared).equals(modules(testPath))) return new ProcessorPaths(shared, List.of(), false);
+        if (testPath.size() > shared.size()
+                && modules(testPath.subList(0, shared.size())).equals(modules(shared))) {
+            return new ProcessorPaths(shared, testPath.subList(shared.size(), testPath.size()), false);
+        }
+        return new ProcessorPaths(shared, testPath, true);
+    }
+
+    /** {@code paths} with each module's first entry alone. */
+    private static List<Pom.Dep> distinct(List<Pom.Dep> paths) {
+        Map<String, Pom.Dep> first = new LinkedHashMap<>();
+        for (Pom.Dep path : paths) first.putIfAbsent(path.module(), path);
+        return new ArrayList<>(first.values());
+    }
+
+    private static List<String> modules(List<Pom.Dep> paths) {
+        return paths.stream().map(Pom.Dep::module).toList();
     }
 
     private static void collectProcessorPaths(Model model, Xpp3Dom config, List<Pom.Dep> paths) {

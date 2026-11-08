@@ -36,8 +36,10 @@ import org.jspecify.annotations.Nullable;
  * <li>the project JDK's identity ({@link #jdkToken})
  * <li>each source file's module-relative path and SHA-256 (so editing a file invalidates the key,
  *     and two checkouts of the same module compute the same key)
- * <li>a constant {@code mirrored:excluded} line, so a record that captured resource files copied
- *     into the same directory is not a hit — a resource edit does not move the key
+ * <li>a constant {@code mirrored:excluded-unless-rewritten} line, so a record that captured
+ *     resource files copied into the same directory under an older rule is not a hit
+ * <li>when processors run, the digest of the main resources the copy lays into the output
+ *     directory before the compile ({@code resources:}): a processor reads them through the Filer
  * <li>each compile-classpath entry's JVM ABI ({@link ClasspathAbi}: {@code abi:<sha256>}) and each
  *     processor-path entry's content identity ({@code file:<sha256>} / directory tree hash) —
  *     see {@link #javacClasspathTokens}
@@ -86,9 +88,9 @@ public final class ActionKey {
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
         appendJavacOptions(sb, request);
-        // Resources copied into this output directory are not compile outputs. The line does not
-        // move when a resource changes; a record stored without it does not hit.
-        sb.append("mirrored:excluded\n");
+        // Resources copied into this output directory are not compile outputs unless a processor
+        // rewrote them. A record stored under an older rule does not hit.
+        sb.append("mirrored:excluded-unless-rewritten\n");
 
         // Sources: path + content hash (FileHashMemo — at most one content read per path/thread).
         appendSources(sb, request.sources());
@@ -142,6 +144,14 @@ public final class ActionKey {
                 : withResources(cp).of(entry);
     }
 
+    /**
+     * Whether a javac compile with this processor path and these options may run annotation
+     * processors: a processor path is named, or the options turn processing on.
+     */
+    public static boolean processorsMayRun(List<Path> processorPath, List<String> options) {
+        return !processorPath.isEmpty() || processingAsked(options);
+    }
+
     /** Whether the options turn annotation processing on without naming a processor path. */
     private static boolean processingAsked(List<String> options) {
         for (String o : options) {
@@ -190,6 +200,10 @@ public final class ActionKey {
         // carries no version of its own under a release build, so its bytes are the identity.
         for (String token : WorkerClosure.tokens(PluginJar.JAVA_COMPILER))
             sb.append("worker:").append(token).append('\n');
+        // What a processor can read back from the class output: the resources copied in ahead
+        // of the compile. Absent when no processor runs, so a resource edit moves no other key.
+        if (request.resourcesDigest() != null)
+            sb.append("resources:").append(request.resourcesDigest()).append('\n');
         if (request.mixedScala()) {
             sb.append("scala:").append(request.scalaVersion()).append('\n');
             List<Path> scp = new ArrayList<>(request.compilerClasspath());

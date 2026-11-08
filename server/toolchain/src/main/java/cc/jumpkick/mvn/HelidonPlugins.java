@@ -117,7 +117,8 @@ final class HelidonPlugins {
 
         /** {@code paths} less the processors the table contributes. */
         PluginFacts.ProcessorPaths processors(PluginFacts.ProcessorPaths paths) {
-            return new PluginFacts.ProcessorPaths(withoutContributed(paths.shared()), withoutContributed(paths.test()));
+            return new PluginFacts.ProcessorPaths(
+                    withoutContributed(paths.shared()), withoutContributed(paths.test()), paths.testOwn());
         }
 
         /** {@code tests} less the test config profile the table sets, when Helidon's value is the one written. */
@@ -133,7 +134,8 @@ final class HelidonPlugins {
                     tests.excludeDependencies(),
                     tests.integration(),
                     new TestJvm(jvm.jvmArgs(), properties),
-                    tests.failures());
+                    tests.failures(),
+                    tests.env());
         }
 
         /** {@code libDir}, or {@code null} when it is the layout the table lays out by default. */

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,30 @@ public final class McpSchemas {
     /** A history filter that defaults to {@code bind}'s dir. */
     public static final String CHECKOUT_FILTER = "Checkout filter (default: bound dir)";
 
+    /**
+     * The argument naming the task a call serves, on the tools that start work. Required in the
+     * schema so an agent passes it, but a call without it is never refused: the session's last goal
+     * or an inferred title stands in.
+     */
+    public static final String GOAL = "goal";
+
     private McpSchemas() {}
+
+    /** The {@link #GOAL} argument's schema: one wording on every tool that takes it. */
+    public static Map<String, Object> goal() {
+        return string("the task this call serves, under eight words; repeat it word for word until the task changes");
+    }
+
+    /** {@code properties} with {@link #GOAL}, required; {@code required} names the rest that are. */
+    public static Map<String, Object> withGoal(Map<String, Object> properties, List<String> required) {
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put(GOAL, goal());
+        props.putAll(properties);
+        List<String> all = new ArrayList<>();
+        all.add(GOAL);
+        all.addAll(required);
+        return object(props, all);
+    }
 
     public static Map<String, Object> object(Map<String, Object> properties) {
         return object(properties, List.of());
