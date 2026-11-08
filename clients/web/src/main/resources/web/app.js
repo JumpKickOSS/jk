@@ -99,6 +99,7 @@ export const appOptions = {
     _inflight: Object.create(null),
     _offlineStatusBackoffMs: 5_000,
     _offlineStatusTimer: null,
+    _eventsSuspended: false, // the stream was closed by pagehide, to reopen on a cache restore
     // projectId a meta load is running or has loaded for — the applyRoute reload guard keys on
     // this, not on projectMeta, which is null for the whole in-flight window.
     _projectMetaFor: null,
@@ -120,6 +121,9 @@ export const appOptions = {
     }
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', () => this.applyRoute());
+    // A page that leaves closes its stream; one the back/forward cache restores reopens it.
+    window.addEventListener('pagehide', () => this.suspendEvents());
+    window.addEventListener('pageshow', (event) => this.resumeEvents(event));
     // pause offline REST polling while the tab is hidden; keep SSE open (orphan engine).
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.clearOfflineStatusFallback();
@@ -162,14 +166,7 @@ export const appOptions = {
       this.connection = 'unauthorized';
       this.authModal = true;
       this.clearOfflineStatusFallback();
-      if (this._eventSource) {
-        try {
-          this._eventSource.close();
-        } catch {
-          // already closed
-        }
-        this._eventSource = null;
-      }
+      this.closeEvents();
       // Drop partial chrome so the gated shell does not look "live" under the dialog.
       this.status = null;
       this.cache = null;
@@ -236,16 +233,41 @@ export const appOptions = {
       }
       return true;
     },
+    /** Close the SSE stream, if one is open. */
+    closeEvents() {
+      if (!this._eventSource) return;
+      try {
+        this._eventSource.close();
+      } catch {
+        // already closed
+      }
+      this._eventSource = null;
+    },
+    /**
+     * `pagehide`: a page leaving — reloaded, navigated away, or kept in the back/forward cache —
+     * lets go of its stream. A cached page's open stream holds one of the browser's six
+     * connections to the engine for as long as the page is kept, and a few back/forward moves
+     * stall the next load behind them; a reloaded page's stream lingers on the engine until its
+     * next write fails.
+     */
+    suspendEvents() {
+      if (!this._eventSource) return;
+      this.closeEvents();
+      this._eventsSuspended = true;
+      // Frames published while the page sat in the cache are gone: reopening resyncs as after
+      // an outage.
+      if (this.connection === 'live') this.connection = 'offline';
+    },
+    /** `pageshow`: a page restored from the back/forward cache reopens the stream it suspended. */
+    resumeEvents(event) {
+      if (!event || !event.persisted || !this._eventsSuspended) return;
+      this._eventsSuspended = false;
+      if (this.authModal || this.connection === 'unauthorized') return;
+      this.connectEvents();
+    },
     /** (Re)open the SSE stream — closed while unauthorized so a half-authed tab cannot look live. */
     connectEvents() {
-      if (this._eventSource) {
-        try {
-          this._eventSource.close();
-        } catch {
-          // already closed
-        }
-        this._eventSource = null;
-      }
+      this.closeEvents();
       this._eventSource = events(
         (event) => {
           if (this.authModal || this.connection === 'unauthorized') return;

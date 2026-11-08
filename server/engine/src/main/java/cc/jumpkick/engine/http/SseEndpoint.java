@@ -18,8 +18,14 @@ import org.jspecify.annotations.Nullable;
  */
 final class SseEndpoint {
 
-    /** How often a quiet SSE stream writes a comment line — dead-client detection + proxy keepalive. */
-    private static final long DEFAULT_HEARTBEAT_MILLIS = 15_000;
+    /**
+     * How often a quiet SSE stream writes a comment line. The JDK server never reads a socket while
+     * its handler streams, so a write is the only way a stream learns its client is gone: the first
+     * write after the peer closes draws a reset and the next fails. A short interval frees a closed
+     * page's slot (and its vitals subscriber) within two seconds; a dozen bytes a second is nothing
+     * to a live tab, and a comment line wakes no handler in the page.
+     */
+    static final long DEFAULT_HEARTBEAT_MILLIS = 1_000;
 
     private final HttpEvents events;
     private final LiveVitals liveVitals;

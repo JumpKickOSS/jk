@@ -450,3 +450,54 @@ test('one relative-time formatter, and it can say days', () => {
   assert.equal(v.agoLong(now - (86_400_000 + 2 * 3_600_000 + 3 * 60_000 + 4000)), '1d 2h 3m 4s ago');
   assert.equal(v.agoLong(null), 'never');
 });
+
+/** An open EventSource stand-in that counts its closes. */
+function openStream() {
+  return { closes: 0, close() { this.closes++; } };
+}
+
+test('a page that leaves closes its stream, and a back/forward restore reopens it', () => {
+  const stream = openStream();
+  const v = vm({ connection: 'live' });
+  v._eventSource = stream;
+  let opens = 0;
+  v.connectEvents = () => opens++;
+
+  v.suspendEvents(); // pagehide: reload, navigation, or into the back/forward cache
+  assert.equal(stream.closes, 1, 'the leaving page holds no connection to the engine');
+  assert.equal(v._eventSource, null);
+  assert.equal(v.connection, 'offline', 'a restore resyncs what the cached page missed');
+
+  v.resumeEvents({ persisted: true }); // pageshow from the cache
+  assert.equal(opens, 1);
+  v.resumeEvents({ persisted: true });
+  assert.equal(opens, 1, 'one restore, one stream');
+});
+
+test('a fresh pageshow, or a page that never had a stream, opens nothing', () => {
+  const v = vm({ connection: 'live' });
+  v._eventSource = openStream();
+  let opens = 0;
+  v.connectEvents = () => opens++;
+  v.suspendEvents();
+  v.resumeEvents({ persisted: false });
+  assert.equal(opens, 0, 'a first load opens its stream from mounted, not from pageshow');
+
+  const never = vm({ connection: 'connecting' });
+  never.connectEvents = () => opens++;
+  never.suspendEvents();
+  never.resumeEvents({ persisted: true });
+  assert.equal(opens, 0);
+  assert.equal(never.connection, 'connecting');
+});
+
+test('a restored page that was unauthorized stays closed', () => {
+  const v = vm({ connection: 'live' });
+  v._eventSource = openStream();
+  let opens = 0;
+  v.connectEvents = () => opens++;
+  v.suspendEvents();
+  v.connection = 'unauthorized';
+  v.resumeEvents({ persisted: true });
+  assert.equal(opens, 0);
+});

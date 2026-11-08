@@ -341,7 +341,11 @@ that reload is not served a still-fresh copy of the previous jar.
 
 While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.
 REST hydrate runs on load/reconnect. **Offline** status fallback uses stepped backoff (5 s → 30 s
-cap) and pauses when the tab is hidden (`document.hidden`); EventSource stays open. Metrics are
+cap) and pauses when the tab is hidden (`document.hidden`); EventSource stays open in a hidden tab.
+A page that leaves (`pagehide`: reload, navigation, the back/forward cache) closes its EventSource,
+and a page the cache restores (`pageshow` with `persisted`) reopens it and resyncs as after an
+outage — a cached page holding its stream would keep one of the browser's six connections to the
+engine for as long as the page is kept. Metrics are
 **view-scoped** (Admin / Projects / project detail), not a global chrome poll. All REST GETs go
 through a single-flight gate (`fetchOnce`) so reconnect cannot stack duplicate in-flight calls.
 Relative “ago” labels use a local 1 s `now` tick only (no network).

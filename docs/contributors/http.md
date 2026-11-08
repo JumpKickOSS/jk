@@ -557,6 +557,14 @@ progress/structure, and the freshest sample always survives); the engine skips w
 | **Session log** | `session` / `episode` / `action` | As a session starts, goes idle, acts again, ends or changes its current episode; as an episode starts, is retitled or settles; once per non-run MCP action. Dashboard subscribers only |
 | **Sampled** (change-gated, IO) | `cache` | Safety-net tick (60 s) while subscribed, plus after request finish; snapshot walks are single-flight and TTL-memoized (30 s) engine-side; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
+**A stream lasts as long as its page.** The JDK server never reads a socket while a handler
+streams, so the engine learns that a page went away only when a write to its stream fails: a quiet
+stream writes a `: heartbeat` comment every second (`SseEndpoint`), and the second write after the
+page closes fails, which frees the stream's slot and its vitals subscriber within two seconds. A
+comment line wakes no handler in the page, so an idle tab costs a dozen bytes a second. The page
+closes its `EventSource` on `pagehide` and reopens it on a back/forward-cache `pageshow`, so a
+reload or a cached page never holds one of the browser's six connections to the engine.
+
 **Which events each surface carries** is written in one place, `EventCatalog`
 (`shared/wire/.../protocol/EventCatalog.java`): every event jk streams, and for the engine wire,
 console JSONL (`-O jsonl` stdout), SSE and MCP either how it is carried (under which name, how
