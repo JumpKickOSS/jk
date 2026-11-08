@@ -88,6 +88,20 @@ class JavadocToolTest {
         assertThat(lines).allSatisfy(l -> assertThat(l).doesNotContain("\n"));
     }
 
+    @Test
+    void a_module_descriptor_puts_the_classpath_on_the_module_path_too() {
+        Path out = ShortTempDirs.path().resolve("out");
+        Path descriptor = ShortTempDirs.path().resolve("ws/lib/src/module-info.java");
+        Path plain = ShortTempDirs.path().resolve("ws/lib/src/a/A.java");
+        Path dep = ShortTempDirs.path().resolve("ws/dep/classes");
+
+        List<String> modular = JavadocTool.argfileLines(out, List.of(descriptor, plain), List.of(dep), List.of());
+        List<String> unnamed = JavadocTool.argfileLines(out, List.of(plain), List.of(dep), List.of());
+
+        assertThat(modular).containsSubsequence("-classpath", quoted(dep), "--module-path", quoted(dep));
+        assertThat(unnamed).doesNotContain("--module-path");
+    }
+
     /** The argfile syntax read back: the value quoted, with a Windows path's backslashes doubled. */
     private static String quoted(Path path) {
         return "\"" + escaped(path) + "\"";

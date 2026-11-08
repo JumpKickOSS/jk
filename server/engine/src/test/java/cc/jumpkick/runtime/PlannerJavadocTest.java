@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -119,6 +120,67 @@ class PlannerJavadocTest {
                 }
             }
         }
+    }
+
+    /**
+     * A module with a descriptor documents against the modules it requires: the sibling's classes
+     * tree and its descriptor are found on the module path, so strict javadoc passes instead of
+     * failing every {@code requires} with "module not found".
+     */
+    @Test
+    @Tag("integration")
+    void a_modular_module_documents_strictly_against_the_module_it_requires(@TempDir Path tmp) throws Exception {
+        Path depSrc = Files.createDirectories(tmp.resolve("dep/src/dep"));
+        Files.writeString(depSrc.resolve("Dep.java"), """
+                package dep;
+                /** A dependency. */
+                public class Dep {
+                    /** Makes one. */
+                    public Dep() {}
+                }
+                """);
+        Path depInfo = Files.writeString(tmp.resolve("dep/src/module-info.java"), """
+                /** The dependency. */
+                module ex.dep { exports dep; }
+                """);
+        Path depClasses = Files.createDirectories(tmp.resolve("dep/classes"));
+        assertThat(ToolProvider.getSystemJavaCompiler()
+                        .run(
+                                null,
+                                null,
+                                null,
+                                "-d",
+                                depClasses.toString(),
+                                depInfo.toString(),
+                                depSrc.resolve("Dep.java").toString()))
+                .isZero();
+        Path libSrc = Files.createDirectories(tmp.resolve("lib/src/lib"));
+        Path libType = Files.writeString(libSrc.resolve("Lib.java"), """
+                package lib;
+                /** Uses the dependency. */
+                public class Lib {
+                    /** Makes one. */
+                    public Lib() {}
+                    /** @return a dependency */
+                    public dep.Dep dep() { return new dep.Dep(); }
+                }
+                """);
+        Path libInfo = Files.writeString(tmp.resolve("lib/src/module-info.java"), """
+                /** The library. */
+                module ex.lib { requires transitive ex.dep; exports lib; }
+                """);
+        Path out = Files.createDirectories(tmp.resolve("out"));
+
+        JavadocTool.Result r = JavadocTool.run(
+                JavaHomes.runningJavaHome(),
+                out,
+                List.of(libInfo, libType),
+                List.of(depClasses),
+                JavadocTool.options(JavadocMode.STRICT, 0, List.of()),
+                tmp);
+
+        assertThat(r.success()).as(r.output()).isTrue();
+        assertThat(PlannerJavadoc.verdict(JavadocMode.STRICT, r, true)).isEqualTo(PlannerJavadoc.Verdict.DOCUMENTED);
     }
 
     /** The running JDK plus every {@code ~/.jdks/<vendor>-<major>} line that ships a javadoc. */

@@ -109,13 +109,30 @@ public final class JavadocTool {
         lines.add(quote(outDir.toAbsolutePath().toString()));
         for (String opt : options) lines.add(quote(opt));
         if (!classpath.isEmpty()) {
-            lines.add("-classpath");
             List<Path> absolute = new ArrayList<>();
             for (Path p : classpath) absolute.add(p.toAbsolutePath());
-            lines.add(quote(Classpaths.join(absolute)));
+            String joined = quote(Classpaths.join(absolute));
+            lines.add("-classpath");
+            lines.add(joined);
+            // A module's descriptor reads its requires from the module path, as the compile's does:
+            // the classpath rides there too, a jar an automatic or explicit module, a classes tree
+            // with a descriptor an explicit one. Here and not in options(), which the cache keys on
+            // and which must not carry this machine's paths.
+            if (declaresModule(sources)) {
+                lines.add("--module-path");
+                lines.add(joined);
+            }
         }
         for (Path src : sources) lines.add(quote(src.toAbsolutePath().toString()));
         return lines;
+    }
+
+    private static boolean declaresModule(List<Path> sources) {
+        for (Path source : sources) {
+            Path name = source.getFileName();
+            if (name != null && name.toString().equals("module-info.java")) return true;
+        }
+        return false;
     }
 
     /** javadoc's argfile syntax: double quotes, with backslashes and quotes escaped. */
