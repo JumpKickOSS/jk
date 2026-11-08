@@ -127,7 +127,11 @@ final class ProvenanceJavac implements JavaCompiler {
             StringWriter written = new StringWriter();
             // Processors get javac's own environment; what they write is recorded where the Filer
             // meets the file manager instead, see ProvenanceFileManager.
-            JavaFileManager manager = loader == null ? fileOps.wrap(fm) : provenance.manager(fileOps.wrap(fm));
+            JavaFileManager manager = loader == null
+                    ? fileOps.wrap(fm)
+                    : provenance.manager(fileOps.wrap(fm), descriptorRoot(srcPaths), path -> fm.getJavaFileObjects(path)
+                            .iterator()
+                            .next());
             JavacTask task = (JavacTask) javac.getTask(written, manager, diags, Arrays.asList(options), null, units);
             if (loader != null) task.setProcessors(ZincJavaCompiler.freshProcessors(loader));
             if (constants != null) constants.listen(task);
@@ -163,6 +167,17 @@ final class ProvenanceJavac implements JavaCompiler {
         } catch (IOException | RuntimeException failed) {
             System.err.println("jk: the reference index was not written: " + failed);
         }
+    }
+
+    /** The directory of the compile's {@code module-info.java}, its main source root; null without one. */
+    private static @Nullable Path descriptorRoot(List<Path> sources) {
+        for (Path source : sources) {
+            Path name = source.getFileName();
+            if (name != null && name.toString().equals(ZincJavaCompiler.MODULE_INFO)) {
+                return source.toAbsolutePath().normalize().getParent();
+            }
+        }
+        return null;
     }
 
     /** What a failed compile that reported no diagnostic and wrote no text has to say. */

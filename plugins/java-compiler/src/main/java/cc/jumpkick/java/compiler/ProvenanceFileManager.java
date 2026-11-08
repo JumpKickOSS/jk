@@ -6,12 +6,16 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.function.Function;
 import javax.tools.FileObject;
 import javax.tools.ForwardingFileObject;
 import javax.tools.ForwardingJavaFileManager;
 import javax.tools.ForwardingJavaFileObject;
 import javax.tools.JavaFileManager;
 import javax.tools.JavaFileObject;
+import javax.tools.StandardLocation;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -30,9 +34,22 @@ final class ProvenanceFileManager extends ForwardingJavaFileManager<JavaFileMana
 
     private final ApProvenance provenance;
 
-    ProvenanceFileManager(JavaFileManager fm, ApProvenance provenance) {
+    /**
+     * The compile's main source root, the directory of its {@code module-info.java}; null for a
+     * compile without one. What a processor asks the Filer to read from {@code SOURCE_PATH} is
+     * looked up here when the manager's own source path has no such file.
+     */
+    private final @Nullable Path sourceRoot;
+
+    /** Makes a file object for a path, as the standard manager underneath does. */
+    private final Function<Path, FileObject> files;
+
+    ProvenanceFileManager(
+            JavaFileManager fm, ApProvenance provenance, @Nullable Path sourceRoot, Function<Path, FileObject> files) {
         super(fm);
         this.provenance = provenance;
+        this.sourceRoot = sourceRoot;
+        this.files = files;
     }
 
     @Override
@@ -72,7 +89,25 @@ final class ProvenanceFileManager extends ForwardingJavaFileManager<JavaFileMana
     public @Nullable FileObject getFileForInput(Location location, String pkg, String relativeName) throws IOException {
         FileObject file = super.getFileForInput(location, pkg, relativeName);
         if (file != null && location.isOutputLocation()) provenance.recordRead(file);
+        if (file == null && location == StandardLocation.SOURCE_PATH) file = fromSourceRoot(pkg, relativeName);
         return file;
+    }
+
+    /**
+     * A source a processor reads through the Filer, from the compile's own source root. jk passes
+     * javac no {@code -sourcepath}: given one, javac compiles whatever it finds there on its own,
+     * behind the incremental compile's back. Maven does pass one, and processors rely on it:
+     * Helidon's codegen reads {@code module-info.java} this way to learn the module's name, and
+     * without it names the module "unnamed" and files its service registry under that name. javac
+     * itself never asks for a source through this call, so answering it reaches processors alone.
+     */
+    private @Nullable FileObject fromSourceRoot(String pkg, String relativeName) {
+        Path root = sourceRoot;
+        if (root == null) return null;
+        Path dir = pkg.isEmpty() ? root : root.resolve(pkg.replace('.', '/'));
+        Path candidate = dir.resolve(relativeName).normalize();
+        if (!candidate.startsWith(root) || !Files.isRegularFile(candidate)) return null;
+        return files.apply(candidate);
     }
 
     // The file objects handed out above come back as arguments, and the manager underneath downcasts

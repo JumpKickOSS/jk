@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Function;
 import javax.tools.FileObject;
 import javax.tools.JavaFileManager;
 import javax.tools.JavaFileObject;
@@ -29,8 +30,8 @@ final class ApProvenance {
     private final Set<Path> readBack = new HashSet<>();
 
     /** The manager javac compiles through, recording into this. */
-    JavaFileManager manager(JavaFileManager fm) {
-        return new ProvenanceFileManager(fm, this);
+    JavaFileManager manager(JavaFileManager fm, @Nullable Path sourceRoot, Function<Path, FileObject> files) {
+        return new ProvenanceFileManager(fm, this, sourceRoot, files);
     }
 
     /**
