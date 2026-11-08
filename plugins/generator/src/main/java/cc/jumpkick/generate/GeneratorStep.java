@@ -61,8 +61,8 @@ final class GeneratorStep {
         String toolArtifact = entry.toolArtifact();
         if (toolArtifact != null) classpath.addAll(toolClasspath(exec.requireExtra(toolArtifact)));
         String main = entry.main() != null ? entry.main() : mainClass(classpath, entry);
-        List<String> args =
-                Arguments.expand(entry.args(), new Arguments.Scope(inputs, unpacked, out, exec.moduleDir()));
+        List<String> args = Arguments.expand(
+                entry.args(), new Arguments.Scope(inputs, unpacked, out, exec.moduleDir(), exec::requireExtra));
         exec.label(entry.name() + " (" + describe(inputs, entry) + ")");
 
         List<String> output = new ArrayList<>();

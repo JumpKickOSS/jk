@@ -54,4 +54,12 @@ class ArgumentsTest {
         assertThat(Arguments.expand(List.of("--template=${name}.java", "${in}"), SCOPE))
                 .containsExactly("--template=${name}.java", A.toString());
     }
+
+    @Test
+    void an_extra_names_the_step_dependency_s_path() {
+        Arguments.Scope scope = new Arguments.Scope(List.of(), null, OUT, MODULE, name -> Path.of("/tools/" + name));
+
+        assertThat(Arguments.expand(List.of("--protoc", "${extra:protoc}", "-I${extra:protobuf-java}"), scope))
+                .containsExactly("--protoc", "/tools/protoc", "-I/tools/protobuf-java");
+    }
 }

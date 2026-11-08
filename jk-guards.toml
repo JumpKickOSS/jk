@@ -106,6 +106,10 @@ instead    = "exec.tool(name | path), then run() / stream(sink) / start()"
 why        = "a hand-rolled fork is where the wrong JDK and the missing .exe get in"
 
 [[guards.plugin-fork-owner.allow]]
+in     = "cc.jumpkick.asyncapi.Protoc"
+reason = "runs inside a generator step's forked JVM, which carries nothing of jk's: protoc is the path the step handed as ${extra:protoc}"
+
+[[guards.plugin-fork-owner.allow]]
 in     = "cc.jumpkick.plugin.image.AotCacheTrainer"
 reason = "three container-runtime forks (docker/podman info, run, stop): the runtime is a PATH name the user may configure, and ToolRun absolutises its executable head"
 

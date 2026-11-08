@@ -252,14 +252,16 @@ package                 = "com.acme.orders"
 # date-time-type        = "java.time.OffsetDateTime"
 # version               = "1.3.3"        # the jsonschema2pojo release
 # avro                  = "1.12.2"       # compile Avro payloads with this Avro; keep the avro dependency at it
+# protobuf              = "4.33.1"       # compile Protobuf payloads with this protoc; keep protobuf-java at it
 
 [dependencies]
 jackson-databind = "2.23.0"
 ```
 
 The step is `generate-asyncapi`. An Avro payload (`schemaFormat: application/vnd.apache.avro…`)
-compiles with Avro's own compiler when `avro` names a release, and is skipped with a warning when
-it does not; a Protobuf payload is skipped with a warning, and channel, operation and listener code is not generated: jk makes the payload
+compiles with Avro's own compiler when `avro` names a release, and a Protobuf payload
+(`application/vnd.google.protobuf…`) with protoc when `protobuf` does, its well-known types read
+from protobuf-java; either is skipped with a warning when its release is not named, and channel, operation and listener code is not generated: jk makes the payload
 classes your own code sends and receives. `jk import` writes the table from sngular's
 scs-multiapi plugin (Maven and Gradle) and ZenWave's Maven plugin
 ([Migration](migration.md#which-maven-plugins-import-and-how-well)).

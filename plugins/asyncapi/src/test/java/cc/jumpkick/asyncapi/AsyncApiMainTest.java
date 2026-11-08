@@ -124,6 +124,31 @@ class AsyncApiMainTest {
         assertThat(out.resolve("com/acme/avro/UserAvro.java")).exists();
     }
 
+    /** A Protobuf payload's text becomes a .proto file named after its message. */
+    @Test
+    void a_protobuf_payload_becomes_a_proto_file(@TempDir Path tmp) throws Exception {
+        Path doc = tmp.resolve("asyncapi.yaml");
+        Files.writeString(doc, """
+                asyncapi: 3.0.0
+                info: { title: Shipping, version: 1.0.0 }
+                channels:
+                  shipping:
+                    messages:
+                      orderShipped:
+                        payload:
+                          schemaFormat: application/vnd.google.protobuf;version=3
+                          schema: |
+                            syntax = "proto3";
+                            package acme;
+                            message OrderShipped { int64 id = 1; }
+                """);
+
+        List<Path> written = AsyncApiMain.extract(doc, tmp.resolve("json"), null, tmp.resolve("proto"));
+
+        assertThat(written).containsExactly(tmp.resolve("proto/ordershipped.proto"));
+        assertThat(Files.readString(written.getFirst())).contains("message OrderShipped");
+    }
+
     @Test
     void the_table_names_its_documents_and_flags() {
         GeneratorEntry entry = AsyncApiPreset.entry(

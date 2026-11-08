@@ -22,6 +22,7 @@ jakarta-validation    = { type = "bool", default = false, hint = "take those ann
 additional-properties = { type = "bool", default = true, hint = "keep properties a schema does not name in an additionalProperties map" }
 date-time-type        = { type = "string", hint = "the Java type of a date-time string, e.g. java.time.OffsetDateTime" }
 version               = { type = "string", default = "1.3.3", example = "1.3.3", hint = "the jsonschema2pojo release; a bare version is exact" }
+protobuf              = { type = "string", example = "4.33.1", hint = "the protoc release Protobuf payloads compile with; without it they are skipped. The module's protobuf-java dependency is expected to match" }
 avro                  = { type = "string", example = "1.12.2", hint = "the Avro release Avro payloads compile with; without it they are skipped. The module's avro dependency is expected to match" }
 
 # jsonschema2pojo and its closure, which also brings the Jackson YAML reader the step parses
@@ -41,3 +42,16 @@ with       = ["org.apache.avro:avro-compiler:${config.avro}"]
 transitive = true
 for-step   = "generate-asyncapi"
 when       = { config = "avro", set = true }
+
+# With `protobuf`, protoc and the protobuf-java jar, whose well-known types protoc imports.
+[[contribute.step-dependency]]
+artifact   = "protoc"
+coordinate = "com.google.protobuf:protoc:${config.protobuf}:${host.os-arch}!exe"
+for-step   = "generate-asyncapi"
+when       = { config = "protobuf", set = true }
+
+[[contribute.step-dependency]]
+artifact   = "protobuf-java"
+coordinate = "com.google.protobuf:protobuf-java:${config.protobuf}"
+for-step   = "generate-asyncapi"
+when       = { config = "protobuf", set = true }
