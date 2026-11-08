@@ -108,6 +108,34 @@ class ZincModularCompileTest {
         assertThat(classes.resolve("module-info.class")).isRegularFile();
     }
 
+    /**
+     * A dependency's {@code requires static transitive} joins the module path when it is on the
+     * classpath: javac resolves it for the modules that read the dependency, as JUnit's API does
+     * with {@code org.apiguardian.api}.
+     */
+    @Test
+    void a_dependencys_static_transitive_requires_joins_the_module_path(@TempDir Path dir) throws Exception {
+        Path guardSrc = dir.resolve("guard/src");
+        write(guardSrc, "module-info.java", "module ex.guard { exports ex.guard; }");
+        write(guardSrc, "ex/guard/Api.java", "package ex.guard; public @interface Api {}");
+        Path guard = dir.resolve("guard/classes");
+        javac(guardSrc, guard, List.of());
+        Path apiSrc = dir.resolve("api/src");
+        write(apiSrc, "module-info.java", "module ex.api { requires static transitive ex.guard; exports ex.api; }");
+        write(apiSrc, "ex/api/Thing.java", "package ex.api; @ex.guard.Api public class Thing {}");
+        Path api = dir.resolve("api/classes");
+        javac(apiSrc, api, List.of("--module-path", guard.toString()));
+        Path src = dir.resolve("app/src");
+        write(src, "module-info.java", "module ex.app { requires ex.api; }");
+        write(src, "ex/app/App.java", "package ex.app; public class App { ex.api.Thing t; }");
+        Path classes = dir.resolve("app/classes");
+
+        ZincJavaCompiler.Result r = ZincJavaCompiler.compileJava(
+                job(src, List.of(api, guard), classes, dir.resolve("app/zinc"), List.of()));
+
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+    }
+
     /** {@code <name>-1.0.jar}, an automatic module holding {@code org.split.<type>}: two of them split the package. */
     private static Path splitJar(Path dir, String name, String type) throws IOException {
         Path src = dir.resolve(name + "/src");

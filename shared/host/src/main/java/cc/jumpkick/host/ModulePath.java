@@ -63,14 +63,10 @@ public final class ModulePath {
             if (!byName.containsKey(name) || !reached.add(name)) continue;
             ModuleDescriptor d = descriptors.get(name);
             if (d == null || d.isAutomatic()) continue;
-            for (ModuleDescriptor.Requires r : d.requires()) {
-                // A static requires is compile-time only for the module that declares it: the root
-                // sees its own, a dependency's do not reach this compile.
-                boolean isRoot = name.equals(root);
-                if (isRoot || !r.modifiers().contains(ModuleDescriptor.Requires.Modifier.STATIC)) {
-                    pending.addLast(r.name());
-                }
-            }
+            // A static requires is followed too: javac resolves a dependency's static requires
+            // when they are observable (JUnit's requires static transitive org.apiguardian.api
+            // fails "module not found" without it), and one the classpath lacks is simply absent.
+            for (ModuleDescriptor.Requires r : d.requires()) pending.addLast(r.name());
         }
         List<Path> out = new ArrayList<>();
         for (Path entry : classpath) {
@@ -114,22 +110,32 @@ public final class ModulePath {
 
     /** The module names {@code moduleInfo} requires, static or not, or null when it cannot be parsed. */
     static @Nullable Set<String> requiresOf(Path moduleInfo) {
+        Declared d = declared(moduleInfo);
+        return d == null ? null : d.requires();
+    }
+
+    /** The module a {@code module-info.java} declares and what it requires, static or not. */
+    public record Declared(String name, Set<String> requires) {}
+
+    /** What {@code moduleInfo} declares, or null when it cannot be parsed. */
+    public static @Nullable Declared declared(Path moduleInfo) {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         if (javac == null) return null;
         try (StandardJavaFileManager fm = javac.getStandardFileManager(null, null, null)) {
             JavacTask task = (JavacTask) javac.getTask(
                     new StringWriter(), fm, d -> {}, List.of("-proc:none"), null, fm.getJavaFileObjects(moduleInfo));
-            Set<String> names = new LinkedHashSet<>();
             for (CompilationUnitTree unit : task.parse()) {
                 ModuleTree module = unit.getModule();
                 if (module == null) return null;
+                Set<String> names = new LinkedHashSet<>();
                 for (var directive : module.getDirectives()) {
                     if (directive instanceof RequiresTree requires) {
                         names.add(requires.getModuleName().toString());
                     }
                 }
+                return new Declared(module.getName().toString(), Set.copyOf(names));
             }
-            return names;
+            return null;
         } catch (IOException | RuntimeException unparsable) {
             return null;
         }
