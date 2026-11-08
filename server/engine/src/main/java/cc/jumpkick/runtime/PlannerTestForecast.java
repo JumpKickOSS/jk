@@ -89,7 +89,8 @@ final class PlannerTestForecast {
                     s.project.javac().forTests(),
                     prepared.javaHome(),
                     testScala,
-                    layout.classesDir()));
+                    layout.classesDir(),
+                    ProcessorPaths.discovers(s.project)));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
             Path stateDir = ActionKey.stateDir(
                     ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(s.cache)),

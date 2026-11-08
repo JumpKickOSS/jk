@@ -210,11 +210,21 @@ class CompileTestProcessorTest {
                 .isTrue();
         assertThat(out.resolve("app/WidgetTestGen.class")).isRegularFile();
 
-        // The key alone: no declared path, so the test classpath's processor is discovered and the
-        // enforcer, which only the main table names, still stays off.
-        Path discovered = dir.resolve("c/out");
+        // The key alone: no declared path and no discovery, as Maven's testCompile without
+        // annotationProcessorPaths on JDK 23+. The generator on the test classpath stays off too,
+        // so a test source that only carries its annotation compiles and nothing is generated.
+        Path plainSrc = dir.resolve("plain").resolve("src");
+        write(plainSrc, "app/WidgetTest.java", "package app; @gen.Gen public class WidgetTest {}");
+        Path none = dir.resolve("c/out");
         List<Path> nonePath = ProcessorPaths.forTest(own, shared, shared, List.of());
-        assertThat(compile(dir.resolve("c"), testSrc, List.of(procDir), nonePath, discovered))
+        assertThat(nonePath).isEmpty();
+        assertThat(compile(dir.resolve("c"), plainSrc, List.of(procDir), nonePath, List.of(), none, false))
+                .isTrue();
+        assertThat(none.resolve("app/WidgetTestGen.class")).doesNotExist();
+        // The same compile allowed to discover runs the classpath's generator, as an inheriting
+        // compile-test without a declared path does.
+        Path discovered = dir.resolve("d/out");
+        assertThat(compile(dir.resolve("d"), plainSrc, List.of(procDir), nonePath, List.of(), discovered, true))
                 .isTrue();
         assertThat(discovered.resolve("app/WidgetTestGen.class")).isRegularFile();
     }
@@ -253,6 +263,18 @@ class CompileTestProcessorTest {
     private static boolean compile(
             Path dir, Path testSrc, List<Path> classpath, List<Path> processorPath, List<Path> contributed, Path out)
             throws Exception {
+        return compile(dir, testSrc, classpath, processorPath, contributed, out, true);
+    }
+
+    private static boolean compile(
+            Path dir,
+            Path testSrc,
+            List<Path> classpath,
+            List<Path> processorPath,
+            List<Path> contributed,
+            Path out,
+            boolean discover)
+            throws Exception {
         return TestSupport.compileWithCache(
                         new NoopContext(),
                         "compile-test",
@@ -267,7 +289,8 @@ class CompileTestProcessorTest {
                                 JavacConfig.EMPTY,
                                 Path.of(System.getProperty("java.home")),
                                 null,
-                                null),
+                                null,
+                                discover),
                         dir.resolve("gen"),
                         new Cas(dir.resolve("cas")),
                         dir.resolve("cache"),

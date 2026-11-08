@@ -336,7 +336,53 @@ public final class PlannerCompile {
             JavacConfig javac,
             Path javaHome,
             ScalaCompile.@Nullable Setup scala,
-            @Nullable Path mainClasses) {}
+            @Nullable Path mainClasses,
+            boolean discover) {
+
+        /** A compile-test that discovers classpath processors when it declares none. */
+        public TestCompile(
+                List<Path> sources,
+                List<Path> classpath,
+                List<Path> processorPath,
+                List<Path> contributedProcessors,
+                Path outputDir,
+                int release,
+                List<String> javacArgs,
+                JavacConfig javac,
+                Path javaHome,
+                ScalaCompile.@Nullable Setup scala,
+                @Nullable Path mainClasses) {
+            this(
+                    sources,
+                    classpath,
+                    processorPath,
+                    contributedProcessors,
+                    outputDir,
+                    release,
+                    javacArgs,
+                    javac,
+                    javaHome,
+                    scala,
+                    mainClasses,
+                    true);
+        }
+    }
+
+    /**
+     * compile-test's javac options. A test compile that may not discover processors and declares
+     * none runs with {@code -proc:none}: Maven's testCompile without {@code annotationProcessorPaths}
+     * on JDK 23 and later runs no processor at all, and javac on an older JDK, given no processor
+     * path, would otherwise go looking on the test classpath.
+     */
+    private static List<String> testJavacOptions(TestCompile in) {
+        List<String> base = javacOptions(in.javacArgs(), in.javac());
+        if (in.discover()
+                || !in.processorPath().isEmpty()
+                || !in.contributedProcessors().isEmpty()) return base;
+        List<String> out = new ArrayList<>(base);
+        out.add("-proc:none");
+        return List.copyOf(out);
+    }
 
     /** compile-test's request — the build's javac invocation and the forecast's key, from one body. */
     public static CompileRequest testCompileRequest(TestCompile in) {
@@ -352,10 +398,12 @@ public final class PlannerCompile {
                 .classpath(classpath)
                 .outputDir(in.outputDir())
                 .release(in.release())
-                .extraOptions(ModularCompile.testOptions(
-                        javacOptions(in.javacArgs(), in.javac()), in.mainClasses(), in.sources()))
+                .extraOptions(ModularCompile.testOptions(testJavacOptions(in), in.mainClasses(), in.sources()))
                 .javaHome(in.javaHome())
-                .processorPath(effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath));
+                .processorPath(
+                        in.discover() || !in.processorPath().isEmpty()
+                                ? effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath)
+                                : List.copyOf(in.contributedProcessors()));
         return withScala(req, in.scala()).build();
     }
 

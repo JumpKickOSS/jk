@@ -18,8 +18,9 @@ import java.util.Set;
  * the same {@code -processorpath}: by default the shared table's javac half, then every entry the
  * {@code [test-processor-dependencies]} closure adds; under that table's {@code inherit = false}
  * the test table's closure alone, the way Maven's {@code testCompile} reads only its own {@code
- * annotationProcessorPaths}. An empty one leaves the request builder discovering processors on the
- * test classpath, as a module without any processor table does.
+ * annotationProcessorPaths}. An empty one runs no processor ({@link #discovers}), as Maven's
+ * testCompile does on JDK 23 and later; an inheriting compile-test that declares none discovers
+ * them on the test classpath, as a module without any processor table does.
  */
 final class ProcessorPaths {
 
@@ -28,6 +29,11 @@ final class ProcessorPaths {
     /** Whether compile-test runs {@code [processor-dependencies]} beside the test table. */
     static boolean inherits(JkBuild project) {
         return project.dependencies().testProcessorsInherit();
+    }
+
+    /** Whether compile-test may discover classpath processors when its path declares none. */
+    static boolean discovers(JkBuild project) {
+        return inherits(project);
     }
 
     /** The lock scopes and workspace edges compile-test's declared processor path is read from. */
