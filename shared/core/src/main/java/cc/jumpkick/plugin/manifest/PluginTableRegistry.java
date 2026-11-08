@@ -79,6 +79,7 @@ public final class PluginTableRegistry {
             new BuiltIn("avro", "avro"),
             new BuiltIn("schema-registry", "schema-registry"),
             new BuiltIn("json-schema", "json-schema"),
+            new BuiltIn("asyncapi", "asyncapi"),
             new BuiltIn("jaxb", "jaxb"),
             new BuiltIn("jooq", "jooq"),
             new BuiltIn("lint", "lint"),

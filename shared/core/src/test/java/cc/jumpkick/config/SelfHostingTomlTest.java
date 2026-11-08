@@ -105,6 +105,7 @@ class SelfHostingTomlTest {
                         "plugins/avro",
                         "plugins/schema-registry",
                         "plugins/json-schema",
+                        "plugins/asyncapi",
                         "plugins/jaxb",
                         "plugins/jooq",
                         "plugins/lint",

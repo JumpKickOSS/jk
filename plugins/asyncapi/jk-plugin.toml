@@ -1,0 +1,32 @@
+# The built-in AsyncAPI preset's declarative manifest. Owns [asyncapi]; the code layer turns the
+# table into one generator entry that reads each AsyncAPI document, writes every message payload
+# and components.schemas entry as a JSON Schema, and runs jsonschema2pojo over them in the generate
+# stage, contributed as sources. `jk explain` shows that entry as the step `generate-asyncapi`.
+
+[plugin]
+id        = "asyncapi"
+table     = "asyncapi"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-asyncapi"
+protocol-prefix = "##JKASYNCAPI:"
+
+[schema]
+src                   = { type = "string-list", default = ["src/main/asyncapi/asyncapi.yaml"], hint = "the module-relative AsyncAPI documents, YAML or JSON, 2.x or 3.x: one string or a list" }
+package               = { type = "string", hint = "the package of the generated payload classes" }
+annotation-style      = { type = "string", default = "jackson", hint = "the annotations on the generated classes: jackson (Jackson 2), jackson3, jsonb1, jsonb2, gson, moshi1 or none" }
+jsr303                = { type = "bool", default = false, hint = "add Bean Validation annotations from the schemas' rules" }
+jakarta-validation    = { type = "bool", default = false, hint = "take those annotations from jakarta.validation, not javax.validation" }
+additional-properties = { type = "bool", default = true, hint = "keep properties a schema does not name in an additionalProperties map" }
+date-time-type        = { type = "string", hint = "the Java type of a date-time string, e.g. java.time.OffsetDateTime" }
+version               = { type = "string", default = "1.3.3", example = "1.3.3", hint = "the jsonschema2pojo release; a bare version is exact" }
+
+# jsonschema2pojo and its closure, which also brings the Jackson YAML reader the step parses
+# documents with.
+[[contribute.step-dependency]]
+artifact   = "jsonschema2pojo-cli"
+coordinate = "org.jsonschema2pojo:jsonschema2pojo-cli:${config.version}"
+transitive = true
+for-step   = "generate-asyncapi"

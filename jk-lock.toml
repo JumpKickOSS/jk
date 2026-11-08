@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.50.4-SNAPSHOT"
-generated-by-build = "47cc4be12f03"
-generated-by-build-time = "2026-11-08T05:09:01Z"
+generated-by-build = "13fc90e6191b"
+generated-by-build-time = "2026-11-08T05:43:17Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "fd76b75d9e1518908d01dd8131cfcb6d12300e6b6068dfeaca45f9e31ad9bcf7"
+manifests-sha256 = "92c86d9c22c14925c6d88a2162beea090cc5796f15ac4246b3c1dcd6c32ce4a1"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -133,7 +133,7 @@ name     = "com.fasterxml.jackson.core:jackson-annotations:jar:"
 version  = "2.22"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
-scopes   = ["main", "test"]
+scopes   = ["main", "provided", "test"]
 licenses = ["Apache-2.0"]
 
 [[artifact]]
@@ -142,8 +142,33 @@ version  = "2.22.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:2d30c375cddea9657a1e1ef97547a2694b663b355facb4de53a097782b312d1a"
 pinned-by = "jk.toml:jackson-core"
-scopes   = ["main", "test"]
+scopes   = ["main", "provided", "test"]
 licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
+version  = "2.21.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:0057817ee40bc71544072dc2a3ba575ef91dce53a2d87489bde91c05f3a22621"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.4",
+]
+
+[[artifact]]
+name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
+version  = "2.21.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:0057817ee40bc71544072dc2a3ba575ef91dce53a2d87489bde91c05f3a22621"
+scopes   = ["provided", "test"]
+licenses = ["Apache-2.0"]
+members  = ["plugins/asyncapi"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.4",
+]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
@@ -151,8 +176,22 @@ version  = "2.22.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d4cbf8947087f305869826801913abdc50735a1fab2074a1993e7bc67ca974a3"
 pinned-by = "jk.toml:jackson-databind"
-scopes   = ["main", "test"]
+scopes   = ["main", "provided"]
 licenses = ["Apache-2.0"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.4",
+]
+
+[[artifact]]
+name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
+version  = "2.22.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d4cbf8947087f305869826801913abdc50735a1fab2074a1993e7bc67ca974a3"
+pinned-by = "jk.toml:jackson-databind"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+members  = ["plugins/avro", "plugins/json-schema"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
   "com.fasterxml.jackson.core:jackson-core:jar:@2.22.4",
@@ -163,7 +202,7 @@ name     = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:jar:"
 version  = "2.21.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:5d184579144780c38962a5f475ed2485e8a29f36cc59ca237135b19e9b642420"
-scopes   = ["test"]
+scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
 deps = [
   "com.fasterxml.jackson.core:jackson-core:jar:@2.22.4",
@@ -386,7 +425,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:dd0ce1b55a3ed2080cb70f9c655850cda86c206862310009dcb5e5c95265a5e0"
 scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/json-schema", "plugins/quarkus"]
+members  = ["plugins/asyncapi", "plugins/json-schema", "plugins/quarkus"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.41.0",
 ]
@@ -437,7 +476,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:a56e782b5b50811ac204073a355a21d915a2107fce13ec711331ad036f660fcc"
 scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/json-schema", "plugins/quarkus"]
+members  = ["plugins/asyncapi", "plugins/json-schema", "plugins/quarkus"]
 
 [[artifact]]
 name     = "com.google.errorprone:error_prone_annotations:jar:"
@@ -1031,7 +1070,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:7d643a2afea8b058b762aa6fb90e5b256f6c729739f8b3784c3370ddc609e88d"
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/json-schema"]
+members  = ["plugins/asyncapi", "plugins/json-schema"]
 
 [[artifact]]
 name     = "commons-io:commons-io:jar:"
@@ -1892,7 +1931,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d78396e3c5bce3f2865c9186647481e5589d34cacc632484715b686108d17c66"
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
-members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/helidon", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/json-schema", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
+members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/asyncapi", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/helidon", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/json-schema", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
 
 [[artifact]]
 name     = "net.jcip:jcip-annotations:jar:"
@@ -2041,7 +2080,7 @@ checksum = "sha256:2fc749a84cb3b8c9124a29c8b1eb135d021521b12f6a29dd9b7b1e95be398
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.4",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.21.0",
   "org.apache.avro:avro:jar:@1.12.2",
   "org.apache.commons:commons-text:jar:@1.15.0",
   "org.apache.velocity:velocity-engine-core:jar:@2.4.1",
@@ -2056,7 +2095,7 @@ checksum = "sha256:b4b44005c8d7a5ff0f7a4602d9fca2517efb3c282b28c5ba03b44e8eebfff
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.4",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.21.0",
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.avro:avro:jar:@1.12.2",
   "org.apache.commons:commons-lang3:jar:@3.21.0",
@@ -2073,7 +2112,7 @@ scopes   = ["test"]
 licenses = ["Apache-2.0"]
 deps = [
   "com.fasterxml.jackson.core:jackson-core:jar:@2.22.4",
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.4",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.21.0",
   "org.apache.commons:commons-compress:jar:@1.28.0",
   "org.slf4j:slf4j-api:jar:@2.0.20",
 ]
@@ -2128,7 +2167,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:69e5c9fa35da7a51a5fd2099dfe56a2d8d32cf233e2f6d770e796146440263f4"
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/avro", "plugins/json-schema"]
+members  = ["plugins/asyncapi", "plugins/avro", "plugins/json-schema"]
 
 [[artifact]]
 name     = "org.apache.commons:commons-lang3:jar:"
@@ -3806,7 +3845,7 @@ checksum = "sha256:4c20b83876de5abb2c14e429ae1785fa291d98d460374ba21d8dbc8680450
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.4",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.21.0",
   "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:jar:@2.21.0",
   "com.google.code.findbugs:annotations:jar:@3.0.1u2",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
@@ -4619,7 +4658,7 @@ name     = "org.yaml:snakeyaml:jar:"
 version  = "2.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ef779af5d29a9dde8cc70ce0341f5c6f7735e23edff9685ceaa9d35359b7bb7f"
-scopes   = ["test"]
+scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
 
 [[artifact]]
@@ -7232,6 +7271,15 @@ name    = "jk-antlr"
 version = "0.50.4"
 java    = 25
 description = "JumpKick's ANTLR preset: [antlr] as one generator entry running the ANTLR tool over a module's grammars, a package per grammar directory"
+install.destination = "jk"
+
+[[module]]
+path    = "plugins/asyncapi"
+group   = "cc.jumpkick"
+name    = "jk-asyncapi"
+version = "0.50.4"
+java    = 25
+description = "JumpKick's AsyncAPI preset: [asyncapi] as one generator entry running jsonschema2pojo over an AsyncAPI document's message payloads"
 install.destination = "jk"
 
 [[module]]

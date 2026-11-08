@@ -232,6 +232,34 @@ The step is `generate-json-schema`; a schema edit re-runs it, and the classes jo
 `jk import` writes the table from the `jsonschema2pojo-maven-plugin` and the Gradle plugin
 (`org.jsonschema2pojo`) ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
+## `[asyncapi]` — message payloads from an AsyncAPI document
+
+An [AsyncAPI](https://www.asyncapi.com/) document describes a service's channels and messages.
+`[asyncapi]` generates the classes of its message payloads: every `components.schemas` entry and
+every payload a message names, inline or by `$ref`, from AsyncAPI 2.x (`publish` / `subscribe`)
+and 3.x (`messages`) documents, YAML or JSON. Each becomes a JSON Schema, an internal
+`#/components/schemas/X` reference pointing at its file, and jsonschema2pojo generates them in one
+run, named after the schema or message (`order-created` is `OrderCreated`).
+
+```toml
+[asyncapi]
+# src                   = "src/main/asyncapi/asyncapi.yaml"   # one document or a list
+package                 = "com.acme.orders"
+# annotation-style      = "jackson"      # as in [json-schema]
+# jsr303                = false
+# jakarta-validation    = false
+# additional-properties = true
+# date-time-type        = "java.time.OffsetDateTime"
+# version               = "1.3.3"        # the jsonschema2pojo release
+
+[dependencies]
+jackson-databind = "2.23.0"
+```
+
+The step is `generate-asyncapi`. A payload in another `schemaFormat` (Avro, Protobuf) is skipped
+with a warning, and channel, operation and listener code is not generated: jk makes the payload
+classes your own code sends and receives.
+
 ## `[schema-registry]` — schemas from a registry
 
 A Kafka service often keeps its schemas in a registry rather than the tree. `[schema-registry]`

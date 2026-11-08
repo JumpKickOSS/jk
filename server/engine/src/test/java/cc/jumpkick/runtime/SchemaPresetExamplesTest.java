@@ -77,6 +77,29 @@ class SchemaPresetExamplesTest {
     }
 
     @Test
+    void the_asyncapi_example_generates_payloads_compiles_hits_and_regenerates_on_an_edit(@TempDir Path tmp)
+            throws Exception {
+        Path project = example(tmp, PluginJar.ASYNCAPI, "plugins/asyncapi");
+        Path cache = TestCaches.dir("asyncapi-example-cache");
+        lock(project, cache);
+
+        BuildPlanResult first = build(project, cache);
+        assertThat(first.errors()).isEmpty();
+        assertThat(anyFile(project.resolve("target"), "Order.class")).isTrue();
+        assertThat(anyFile(project.resolve("target"), "Main.class")).isTrue();
+        assertThat(step(build(project, cache), "generate-asyncapi").status()).isEqualTo(TaskStatus.SKIPPED);
+
+        Path doc = project.resolve("src/main/asyncapi/asyncapi.yaml");
+        Files.writeString(
+                doc,
+                Files.readString(doc)
+                        .replace("        cents:\n", "        currency:\n          type: string\n        cents:\n"));
+        BuildPlanResult third = build(project, cache);
+        assertThat(third.errors()).isEmpty();
+        assertThat(step(third, "generate-asyncapi").status()).isEqualTo(TaskStatus.SUCCESS);
+    }
+
+    @Test
     void the_jaxb_example_generates_compiles_and_hits(@TempDir Path tmp) throws Exception {
         Path project = example(tmp, PluginJar.JAXB, "plugins/jaxb");
         Path cache = TestCaches.dir("jaxb-example-cache");
