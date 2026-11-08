@@ -1,0 +1,105 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime.workspace;
+
+import cc.jumpkick.host.Log;
+import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.task.JavaCompile;
+import java.util.Optional;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * The build's ETA and work model, priced beside the build instead of ahead of it. Pricing walks the
+ * forecast of every scheduled module, which on a 223-module workspace is seconds of hashing and
+ * planning; no module needs the answer to start, so the build starts at once and the estimate is
+ * published to the listener when it is ready.
+ *
+ * <p>The walk asks compiler workers for a plan only when one is already warm ({@link
+ * JavaCompile#WARM_PLANS_ONLY}): a cold worker costs seconds, and a plan queued on a lane the build
+ * is compiling on would delay a real compile for a progress bar.
+ *
+ * <p>{@link #close()} ends it before the build reports completion: an estimate still being priced
+ * is cancelled and never published, so the listener never hears of a work model after the build
+ * finished.
+ */
+@NullMarked
+final class BackgroundEta {
+
+    private final Object lock = new Object();
+    private final Consumer<BuildService.EtaModel> publish;
+    private volatile @Nullable Future<BuildService.EtaModel> pricing;
+    private boolean open = true;
+    private boolean published;
+
+    private BackgroundEta(Consumer<BuildService.EtaModel> publish) {
+        this.publish = publish;
+    }
+
+    /**
+     * Price {@code estimate} on a background thread, handing the result to {@code publish} unless
+     * the build closed first. The io pool carries the session, its cancel token and the request
+     * scope; the scoped warm-plans bit does not ride the hop, so it is bound here.
+     */
+    static BackgroundEta start(Supplier<BuildService.EtaModel> estimate, Consumer<BuildService.EtaModel> publish) {
+        BackgroundEta eta = new BackgroundEta(publish);
+        eta.pricing = JkThreads.io().submit(() -> {
+            BuildService.EtaModel model =
+                    ScopedValue.where(JavaCompile.WARM_PLANS_ONLY, true).call(estimate::get);
+            eta.publish(model);
+            return model;
+        });
+        return eta;
+    }
+
+    /** An estimate already in hand, published at once: for callers that priced synchronously, and tests. */
+    static BackgroundEta of(BuildService.EtaModel model, Consumer<BuildService.EtaModel> publish) {
+        BackgroundEta eta = new BackgroundEta(publish);
+        eta.pricing = CompletableFuture.completedFuture(model);
+        eta.publish(model);
+        return eta;
+    }
+
+    private void publish(BuildService.EtaModel model) {
+        synchronized (lock) {
+            if (!open || published) return;
+            published = true;
+            publish.accept(model);
+        }
+    }
+
+    /** The estimate if pricing finished and succeeded; empty while it runs or after it failed. */
+    Optional<BuildService.EtaModel> settled() {
+        Future<BuildService.EtaModel> f = pricing;
+        if (f == null || !f.isDone() || f.isCancelled()) return Optional.empty();
+        try {
+            return Optional.of(f.get());
+        } catch (ExecutionException e) {
+            Log.debug("build eta failed; the build ran without one", e.getCause() != null ? e.getCause() : e);
+            return Optional.empty();
+        } catch (CancellationException e) {
+            return Optional.empty();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Stop publishing and cancel a pricing still running. Returns the estimate when it had already
+     * settled, which is what the build learns its schedule bias from.
+     */
+    Optional<BuildService.EtaModel> close() {
+        synchronized (lock) {
+            open = false;
+        }
+        Future<BuildService.EtaModel> f = pricing;
+        if (f != null && !f.isDone()) f.cancel(true);
+        return settled();
+    }
+}

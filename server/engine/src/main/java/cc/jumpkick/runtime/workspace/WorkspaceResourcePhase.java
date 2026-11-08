@@ -33,8 +33,7 @@ final class WorkspaceResourcePhase {
             List<BuildGraph.BuildUnit> cleanUnits,
             List<StepTimings.Sample> timingSamples,
             List<HostLearnedRates.HostSample> hostSamples,
-            BuildService.EtaModel etaModel,
-            long etaMs,
+            BackgroundEta eta,
             boolean parallelTests) {}
 
     static Resources seed(WorkspacePreflightPhase.Context preflight, WorkspaceBuildListener listener) {
@@ -63,11 +62,41 @@ final class WorkspaceResourcePhase {
             JvmOptions.planAndApply(HeapPlan.requestedJvms(width, request.workers(), parallelTests, processorCap));
         }
 
+        // The ETA walks the forecast of every scheduled module (seconds on a large workspace) and
+        // nothing scheduling needs comes from it, so it is priced beside the build.
+        WorkspaceRequest priced = request;
+        BackgroundEta eta =
+                BackgroundEta.start(() -> estimate(preflight, priced, incoming, dirtyUnits, parallelTests), model -> {
+                    List<ModuleWorkCost> ordered = BuildEta.orderCostsLikeUnits(dirtyUnits, model.costs());
+                    listener.onWorkModel(
+                            WorkModel.of(model.etaMs(), model.concurrency(), model.serial(), parallelTests, ordered));
+                    listener.onEtaEstimate(model.etaMs());
+                });
+
+        return new Resources(
+                preflight,
+                request,
+                List.copyOf(dirtyUnits),
+                List.copyOf(cleanUnits),
+                timingSamples,
+                hostSamples,
+                eta,
+                parallelTests);
+    }
+
+    /**
+     * The work model of this build: the forecast of the scheduled modules priced against step
+     * history. The user's -w (0 = auto) is passed rather than the resolved share on {@code request}:
+     * the ETA recomputes that share, and passing it would look like an explicit pin.
+     */
+    static BuildService.EtaModel estimate(
+            WorkspacePreflightPhase.Context preflight,
+            WorkspaceRequest request,
+            WorkspaceRequest incoming,
+            List<BuildGraph.BuildUnit> dirtyUnits,
+            boolean parallelTests) {
         ExplainPlan etaPlan = etaPlan(preflight, request, dirtyUnits);
-        // The user's -w (0 = auto). The resolved share stays on `request` for the executor; the ETA
-        // recomputes that share and, for auto, the class-wall worker count. Passing the share here
-        // would look like an explicit pin.
-        BuildService.EtaModel etaModel = BuildEta.estimateEtaModel(
+        return BuildEta.estimateEtaModel(
                 etaPlan,
                 request.entryDir(),
                 request.cache(),
@@ -78,21 +107,6 @@ final class WorkspaceResourcePhase {
                 request.verbose(),
                 parallelTests,
                 request.maxModuleConcurrency());
-        long etaMs = etaModel.etaMs();
-        List<ModuleWorkCost> ordered = BuildEta.orderCostsLikeUnits(dirtyUnits, etaModel.costs());
-        listener.onWorkModel(WorkModel.of(etaMs, etaModel.concurrency(), etaModel.serial(), parallelTests, ordered));
-        listener.onEtaEstimate(etaMs);
-
-        return new Resources(
-                preflight,
-                request,
-                List.copyOf(dirtyUnits),
-                List.copyOf(cleanUnits),
-                timingSamples,
-                hostSamples,
-                etaModel,
-                etaMs,
-                parallelTests);
     }
 
     private static ExplainPlan etaPlan(

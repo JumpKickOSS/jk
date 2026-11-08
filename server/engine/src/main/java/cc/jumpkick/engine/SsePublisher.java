@@ -232,6 +232,7 @@ public final class SsePublisher implements SseEvents {
 
     public void trackModuleComplete(long requestId, String dir, long lastDen, @Nullable BufferedWriter writer) {
         if (requestId <= 0) return;
+        if (dir != null) sessions.moduleCompleted(requestId, dir);
         RemainingWork rw = remaining(requestId);
         if (rw != null && dir != null) {
             synchronized (rw) {

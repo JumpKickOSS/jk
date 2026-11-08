@@ -24,13 +24,18 @@ public final class WorkspaceExecute {
         } else {
             WorkspaceResourcePhase.Resources resources =
                     WorkspaceResourcePhase.seed(((WorkspacePreflightPhase.Ready) preflight).context(), listener);
-            WorkspacePreparePhase.Outcome prepare = WorkspacePreparePhase.prepare(resources, listener);
-            if (prepare instanceof WorkspacePreparePhase.Completed completed) {
-                result = completed.result();
-            } else {
-                WorkspaceRunPhase.Run run =
-                        WorkspaceRunPhase.run(((WorkspacePreparePhase.Ready) prepare).prepared(), listener);
-                result = WorkspaceFinalPhase.complete(run);
+            try {
+                WorkspacePreparePhase.Outcome prepare = WorkspacePreparePhase.prepare(resources, listener);
+                if (prepare instanceof WorkspacePreparePhase.Completed completed) {
+                    result = completed.result();
+                } else {
+                    WorkspaceRunPhase.Run run =
+                            WorkspaceRunPhase.run(((WorkspacePreparePhase.Ready) prepare).prepared(), listener);
+                    result = WorkspaceFinalPhase.complete(run);
+                }
+            } finally {
+                // No work model reaches the listener after the build: a pricing still running stops.
+                resources.eta().close();
             }
         }
         return finish(listener, result);

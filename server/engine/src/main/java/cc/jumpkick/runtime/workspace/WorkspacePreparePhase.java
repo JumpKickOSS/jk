@@ -86,7 +86,6 @@ final class WorkspacePreparePhase {
         }
         listener.onPlan(List.copyOf(plans.values()));
         listener.onModuleGraph(resources.preflight().graph().edges());
-        listener.onEtaEstimate(resources.etaMs());
         return new Ready(new Prepared(resources, Collections.unmodifiableMap(new LinkedHashMap<>(plans)), siblings));
     }
 

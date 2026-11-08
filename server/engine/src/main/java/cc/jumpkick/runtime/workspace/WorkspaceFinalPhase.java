@@ -117,13 +117,17 @@ final class WorkspaceFinalPhase {
         BuildGraph.Result graph = resources.preflight().graph();
         long now = System.currentTimeMillis();
 
-        BuildEta.logSeedQuality(
-                resources.etaMs(), run.executeWallMs(), resources.dirtyUnits().size());
-        ScheduleBias.observe(
-                request.entryDir(),
-                resources.etaModel().rawScheduleMs(),
-                run.executeWallMs(),
-                resources.dirtyUnits().size());
+        // An estimate still being priced when the build ended has nothing to learn from: it was
+        // never shown, and its schedule was never the one this run was measured against.
+        resources.eta().close().ifPresent(model -> {
+            BuildEta.logSeedQuality(
+                    model.etaMs(), run.executeWallMs(), resources.dirtyUnits().size());
+            ScheduleBias.observe(
+                    request.entryDir(),
+                    model.rawScheduleMs(),
+                    run.executeWallMs(),
+                    resources.dirtyUnits().size());
+        });
         StepTimings.record(request.cache(), resources.timingSamples(), StepTimings.DEFAULT_ALPHA, now);
         Calibration.learnFromSuccess(List.copyOf(resources.hostSamples()));
         medianRate(run.observedRates()).ifPresent(rate -> Calibration.refine(rate, now));

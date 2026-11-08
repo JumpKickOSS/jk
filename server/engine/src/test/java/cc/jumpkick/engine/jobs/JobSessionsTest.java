@@ -4,6 +4,11 @@ package cc.jumpkick.engine.jobs;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.wire.runtime.ModuleWorkCost;
+import cc.jumpkick.wire.runtime.RemainingWork;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
@@ -32,5 +37,39 @@ class JobSessionsTest {
         var late = s.tracker();
         assertThat(late).isNotSameAs(first);
         assertThat(sessions.open(1)).isNull();
+    }
+
+    /**
+     * The build no longer waits for its ETA, so modules can finish before the work model exists.
+     * A model set late must not count them as still to do.
+     */
+    @Test
+    void work_model_set_late_drains_modules_that_already_finished() {
+        JobSessions sessions = new JobSessions(() -> 1L);
+        sessions.open(1);
+        sessions.moduleCompleted(1, "/ws/a");
+        RemainingWork rw = RemainingWork.seed(
+                List.of(
+                        new ModuleWorkCost(Path.of("/ws/a"), Set.of(), 10, 0),
+                        new ModuleWorkCost(Path.of("/ws/b"), Set.of(), 10, 0)),
+                2_000,
+                1,
+                true,
+                false);
+        assertThat(rw.pendingModules()).isEqualTo(2);
+        sessions.remaining(1, rw);
+        assertThat(rw.pendingModules()).isEqualTo(1);
+    }
+
+    @Test
+    void finished_modules_are_forgotten_on_retire() {
+        JobSessions sessions = new JobSessions(() -> 1L);
+        JobSession s = requireNonNull(sessions.open(1));
+        s.moduleCompleted("/ws/a");
+        s.retire();
+        RemainingWork rw = RemainingWork.seed(
+                List.of(new ModuleWorkCost(Path.of("/ws/a"), Set.of(), 10, 0)), 1_000, 1, true, false);
+        s.remaining(rw);
+        assertThat(rw.pendingModules()).isEqualTo(1);
     }
 }

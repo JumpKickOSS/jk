@@ -5,6 +5,8 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
+import java.nio.file.Path;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
@@ -29,6 +31,14 @@ public final class JobSession {
     private volatile long lastEventAt;
 
     private final ConcurrentHashMap<String, Long> weights = new ConcurrentHashMap<>();
+
+    /**
+     * Modules that finished, as their completion named them. The work model can arrive after the
+     * first modules finish (the build does not wait for its ETA), so a model set late drains
+     * these before anyone reads its residual.
+     */
+    private final Set<String> completed = ConcurrentHashMap.newKeySet();
+
     private final Object emitLock = new Object();
     private volatile long @Nullable [] emitState;
 
@@ -53,6 +63,7 @@ public final class JobSession {
         lastProgress = null;
         lastProgressDen = null;
         weights.clear();
+        completed.clear();
         emitState = null;
         // accumulator is removed by the journal writer, not here
     }
@@ -88,9 +99,23 @@ public final class JobSession {
         }
     }
 
+    /**
+     * Set the residual schedule, then drain every module already reported complete. Paired with
+     * {@link #moduleCompleted}, which records before it reads: whichever runs second sees the
+     * other's write, so no completion is lost to the race and a repeat is harmless.
+     */
     public void remaining(@Nullable RemainingWork remaining) {
         this.remaining = remaining;
         this.lastEventAt = System.currentTimeMillis();
+        if (remaining == null) return;
+        synchronized (remaining) {
+            for (String dir : completed) remaining.moduleComplete(Path.of(dir));
+        }
+    }
+
+    /** Record that the module in {@code dir} finished. */
+    public void moduleCompleted(String dir) {
+        if (!retired.get()) completed.add(dir);
     }
 
     public @Nullable RemainingWork remaining() {

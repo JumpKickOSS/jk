@@ -73,6 +73,12 @@ public final class JobSessions {
         if (s != null) s.remaining(rw);
     }
 
+    /** Record a finished module for {@code id}; see {@link JobSession#moduleCompleted}. */
+    public void moduleCompleted(long id, String dir) {
+        JobSession s = open(id);
+        if (s != null) s.moduleCompleted(dir);
+    }
+
     public void mode(long id, ProgressBarMode mode) {
         JobSession s = open(id);
         if (s != null) s.mode(mode);
