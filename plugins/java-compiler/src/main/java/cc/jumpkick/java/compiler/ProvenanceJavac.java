@@ -16,6 +16,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import javax.tools.Diagnostic;
+import javax.tools.JavaFileManager;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
@@ -31,8 +32,8 @@ import xsbti.compile.JavaCompiler;
 import xsbti.compile.Output;
 
 /**
- * ToolProvider javac for every in-process compile this worker runs, installing wrapped processors so
- * generated-file provenance is recorded when there are processors to install.
+ * ToolProvider javac for every in-process compile this worker runs, recording generated-file
+ * provenance through its file manager when there are processors to install.
  *
  * <p>This is used instead of Zinc's {@code JavaCompiler.local} whether or not a processor path is
  * present, because the file manager it compiles through is held across compiles rather than opened
@@ -124,11 +125,11 @@ final class ProvenanceJavac implements JavaCompiler {
             // javac's own writer: what a plugin or javac itself prints rather than reports lands
             // here, and a compile that fails without a diagnostic is explained by it.
             StringWriter written = new StringWriter();
-            JavacTask task =
-                    (JavacTask) javac.getTask(written, fileOps.wrap(fm), diags, Arrays.asList(options), null, units);
-            if (loader != null) {
-                task.setProcessors(provenance.wrap(ZincJavaCompiler.freshProcessors(loader)));
-            }
+            // Processors get javac's own environment; what they write is recorded where the Filer
+            // meets the file manager instead, see ProvenanceFileManager.
+            JavaFileManager manager = loader == null ? fileOps.wrap(fm) : provenance.manager(fileOps.wrap(fm));
+            JavacTask task = (JavacTask) javac.getTask(written, manager, diags, Arrays.asList(options), null, units);
+            if (loader != null) task.setProcessors(ZincJavaCompiler.freshProcessors(loader));
             if (constants != null) constants.listen(task);
             References refs = References.ENABLED ? new References(task) : null;
             if (refs != null) task.addTaskListener(refs);
