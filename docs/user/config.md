@@ -174,10 +174,13 @@ applies with `[http] enabled = false` or `[mcp] enabled = false` too. Details: [
 
 `ask` (`JK_UI_ASK`) is what jk does when a [decision](mcp.md#decisions) waits for you and the
 agent's host can ask neither by form nor by link: `notify` (default) sends a desktop notification
-carrying the decision's dashboard link (`notify-send` on Linux, `osascript` on macOS; nothing on
-Windows), `open` opens the browser on it (`$BROWSER` when set), and `quiet` leaves the link in the
-agent's result alone. The engine reads it each time it asks, so an edit applies without a restart.
-It is machine-scoped: `~/.jk/config.toml` only.
+with the question and the decision's dashboard link, `open` opens the browser on it (`$BROWSER`
+when set), and `quiet` leaves the link in the agent's result alone. On Windows the notification is
+a toast and a click opens the link; on Linux `notify-send` 0.7.10 or later opens it on a click too,
+and an older one shows the link in the text; on macOS (`osascript`) the link is in the text. A
+notification still showing goes away when its decision is answered or expires. The engine reads
+it each time it asks, so an edit applies without a restart. It is machine-scoped:
+`~/.jk/config.toml` only.
 
 ## Network
 

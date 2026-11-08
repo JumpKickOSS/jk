@@ -69,6 +69,10 @@ public final class HttpEngineServer implements AutoCloseable {
     private final Consumer<String> log;
     private final @Nullable McpHandler mcp;
     private final @Nullable McpFront mcpFront;
+
+    /** What MCP raises decisions through; its alerts end with this server. Null before {@link #setDecisions}. */
+    private volatile @Nullable Decisions decisions;
+
     private final HttpHistoryApi historyApi;
     private final HttpCoverageReport coverageReport;
     private final HttpProjectApi projectApi;
@@ -140,8 +144,10 @@ public final class HttpEngineServer implements AutoCloseable {
         api.registerPrefix("POST", HttpDecisionsApi.PREFIX, decisionsApi::handleAnswer);
         queue.onChange(d -> events.publishDashboard(EventCatalog.SSE_DECISION, JsonOut.rawObject(d.toMap())));
         if (mcp != null) {
-            mcp.decisions(
-                    new Decisions(queue, (id, key) -> DashboardLinks.decision(url(), tokens.tokenText(), id, key)));
+            Decisions decisions =
+                    new Decisions(queue, (id, key) -> DashboardLinks.decision(url(), tokens.tokenText(), id, key));
+            this.decisions = decisions;
+            mcp.decisions(decisions);
         }
     }
 
@@ -374,6 +380,8 @@ public final class HttpEngineServer implements AutoCloseable {
             executor = null;
         }
         liveVitals.close();
+        Decisions d = decisions;
+        if (d != null) d.alerts().close();
     }
 
     /** Every request funnels through here: gates first, then dispatch. */

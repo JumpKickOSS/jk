@@ -342,7 +342,7 @@ jk asks by the first rung the session supports ([revisions](#protocol-revisions)
 
    A decision that does not change trust names the dashboard link as the answer instead. Then
    `[ui] ask` ([Config](config.md#decisions)) applies once: `notify` (default) sends a desktop
-   notification carrying the link (`notify-send` on Linux, `osascript` on macOS), `open` opens the
+   notification carrying the link (a click opens it on Windows and Linux), `open` opens the
    browser on it, `quiet` leaves the link in the result.
 
 `run(decision=<id>)` makes the original call again with the decision: it proceeds once the

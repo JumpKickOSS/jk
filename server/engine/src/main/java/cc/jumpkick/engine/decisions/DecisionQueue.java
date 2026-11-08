@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -57,7 +58,8 @@ public final class DecisionQueue {
 
     private final Clock clock;
     private final Map<String, Entry> entries = new LinkedHashMap<>();
-    private volatile Consumer<Decision> changed = d -> {};
+    private final List<Consumer<Decision>> listeners = new CopyOnWriteArrayList<>();
+    private final Consumer<Decision> changed = d -> listeners.forEach(l -> l.accept(d));
     private volatile Store store = Store.MEMORY;
 
     /** Whether {@link #adopt} has run. */
@@ -181,9 +183,9 @@ public final class DecisionQueue {
         this.clock = clock;
     }
 
-    /** Run {@code changed} with every decision that opens or settles, outside the queue's lock. */
-    public void onChange(Consumer<Decision> changed) {
-        this.changed = Objects.requireNonNull(changed);
+    /** Also run {@code listener} with every decision that opens or settles, outside the queue's lock. */
+    public void onChange(Consumer<Decision> listener) {
+        listeners.add(Objects.requireNonNull(listener));
     }
 
     /** Keep decisions in {@code store} and adopt what it holds. Before the queue is first used. */

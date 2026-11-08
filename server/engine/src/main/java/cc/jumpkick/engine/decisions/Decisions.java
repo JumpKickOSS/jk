@@ -8,7 +8,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The decision queue with what its surfaces need around it: the dashboard link to a decision, the
- * {@code [ui] ask} setting and the alerts it drives.
+ * {@code [ui] ask} setting and the alerts it drives, each withdrawn when its decision settles.
  */
 public final class Decisions {
 
@@ -28,6 +28,9 @@ public final class Decisions {
     public Decisions(DecisionQueue queue, Links links) {
         this.queue = Objects.requireNonNull(queue);
         this.links = Objects.requireNonNull(links);
+        queue.onChange(d -> {
+            if (!d.open()) this.alerts.withdraw(d.id());
+        });
     }
 
     public DecisionQueue queue() {
