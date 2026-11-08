@@ -635,6 +635,8 @@ class WorkspaceSchedulerTest {
                 siblings));
 
         assertThat(run.get(30, TimeUnit.SECONDS)).isNull();
-        assertThat(completed).containsExactly("b", "a");
+        // b signals its compile before it returns, so a may finish first; both finishing under a
+        // one-unit cap is what shows a gave its slot to b.
+        assertThat(completed).containsExactlyInAnyOrder("a", "b");
     }
 }
