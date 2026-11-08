@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.50.4-SNAPSHOT"
-generated-by-build = "0817faf1274a"
-generated-by-build-time = "2026-11-07T22:55:17Z"
+generated-by-build = "47cc4be12f03"
+generated-by-build-time = "2026-11-08T05:09:01Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "2d6dc461dac8e86a62b32114cf47c18112dd987063f57b1c7b2a95cbf8bb78dd"
+manifests-sha256 = "fd76b75d9e1518908d01dd8131cfcb6d12300e6b6068dfeaca45f9e31ad9bcf7"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -39,6 +39,14 @@ version  = "9.4.1"
 source   = "google+https://dl.google.com/dl/android/maven2/"
 checksum = "sha256:7ae2e5980c77d853e3513074ee7c822bbdcdcde1668889d17faa7fe8bc8aa821"
 scopes   = ["main"]
+licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "com.beust:jcommander:jar:"
+version  = "1.82"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:deeac157c8de6822878d85d0c7bc8467a19cc8484d37788f7804f039dde280b1"
+scopes   = ["test"]
 licenses = ["Apache-2.0"]
 
 [[artifact]]
@@ -148,6 +156,19 @@ licenses = ["Apache-2.0"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
   "com.fasterxml.jackson.core:jackson-core:jar:@2.22.4",
+]
+
+[[artifact]]
+name     = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:jar:"
+version  = "2.21.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:5d184579144780c38962a5f475ed2485e8a29f36cc59ca237135b19e9b642420"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.4",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.4",
+  "org.yaml:snakeyaml:jar:@2.4",
 ]
 
 [[artifact]]
@@ -339,6 +360,18 @@ deps = [
 ]
 
 [[artifact]]
+name     = "com.google.code.findbugs:annotations:jar:"
+version  = "3.0.1u2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:acc0d2c06be70e9094d70cd05dffa077735c8f9d1a870eafda130b0592528200"
+scopes   = ["test"]
+licenses = ["GNU Lesser Public License"]
+deps = [
+  "com.google.code.findbugs:jsr305:jar:@3.0.2",
+  "net.jcip:jcip-annotations:jar:@1.0",
+]
+
+[[artifact]]
 name     = "com.google.code.findbugs:jsr305:jar:"
 version  = "3.0.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -351,9 +384,9 @@ name     = "com.google.code.gson:gson:jar:"
 version  = "2.13.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:dd0ce1b55a3ed2080cb70f9c655850cda86c206862310009dcb5e5c95265a5e0"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/quarkus"]
+members  = ["plugins/json-schema", "plugins/quarkus"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.41.0",
 ]
@@ -379,6 +412,14 @@ licenses = ["Apache-2.0"]
 members  = ["plugins/image-builder"]
 
 [[artifact]]
+name     = "com.google.code.javaparser:javaparser:jar:"
+version  = "1.0.11"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d3bfe5fe6fea64af17b919b9f27958f5c32f99125bb808cc82d1055b99597d82"
+scopes   = ["test"]
+licenses = []
+
+[[artifact]]
 name     = "com.google.errorprone:error_prone_annotation:jar:"
 version  = "2.50.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -394,9 +435,9 @@ name     = "com.google.errorprone:error_prone_annotations:jar:"
 version  = "2.41.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:a56e782b5b50811ac204073a355a21d915a2107fce13ec711331ad036f660fcc"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/quarkus"]
+members  = ["plugins/json-schema", "plugins/quarkus"]
 
 [[artifact]]
 name     = "com.google.errorprone:error_prone_annotations:jar:"
@@ -826,6 +867,14 @@ deps = [
 ]
 
 [[artifact]]
+name     = "com.sun.codemodel:codemodel:jar:"
+version  = "2.6"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:2735816d68f85adca141179951889653ce355ae7e7ab4eb92a322ea0ef671767"
+scopes   = ["test"]
+licenses = ["CDDL v1.1 / GPL v2 dual license"]
+
+[[artifact]]
 name     = "com.sun.istack:istack-commons-runtime:jar:"
 version  = "4.1.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -974,6 +1023,15 @@ checksum = "sha256:df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25d
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
 members  = ["plugins/avro"]
+
+[[artifact]]
+name     = "commons-io:commons-io:jar:"
+version  = "2.21.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:7d643a2afea8b058b762aa6fb90e5b256f6c729739f8b3784c3370ddc609e88d"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+members  = ["plugins/json-schema"]
 
 [[artifact]]
 name     = "commons-io:commons-io:jar:"
@@ -1707,6 +1765,14 @@ scopes   = ["test"]
 licenses = ["Apache-2.0"]
 
 [[artifact]]
+name     = "jakarta.json.bind:jakarta.json.bind-api:jar:"
+version  = "2.0.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:a5e606b5888b412b48907ad688b34dfe4e30ae8189c6f27cc0491b8f3c036287"
+scopes   = ["test"]
+licenses = ["EPL-2.0", "GNU General Public License, version 2 with the GNU Classpath Exception"]
+
+[[artifact]]
 name     = "jakarta.json:jakarta.json-api:jar:"
 version  = "2.1.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -1729,6 +1795,14 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:50c0a7c760c13ae6c042acf182b28f0047413db95b4636fb8879bcffab5ba875"
 scopes   = ["test"]
 licenses = ["EPL-2.0", "GPL-2.0-with-classpath-exception"]
+
+[[artifact]]
+name     = "jakarta.validation:jakarta.validation-api:jar:"
+version  = "3.1.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:63ce00156388c365f3ac1be71fcfaf114682fc0c452020b5df6e7ec236e142ab"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
 
 [[artifact]]
 name     = "jakarta.xml.bind:jakarta.xml.bind-api:jar:"
@@ -1772,12 +1846,36 @@ scopes   = ["main", "provided", "test", "processor"]
 licenses = ["Apache-2.0"]
 
 [[artifact]]
+name     = "javax.json.bind:javax.json.bind-api:jar:"
+version  = "1.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:cd3be391f599d4bef59bfb155257ad6b91e4521d19b8e972b0dfb52dfb0c5fc1"
+scopes   = ["test"]
+licenses = ["Dual license consisting of the CDDL v1.1 and GPL v2"]
+
+[[artifact]]
+name     = "javax.validation:validation-api:jar:"
+version  = "2.0.1.Final"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:9873b46df1833c9ee8f5bc1ff6853375115dadd8897bcb5a0dffb5848835ee6c"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+
+[[artifact]]
 name     = "jaxen:jaxen:jar:"
 version  = "2.0.6"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3e2a755b283fd492fa4be204294c7abb7cd63ac94fb366baab9c7bb9afb00b6d"
 scopes   = ["test"]
 licenses = ["BSD License 2.0"]
+
+[[artifact]]
+name     = "joda-time:joda-time:jar:"
+version  = "2.14.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1e2da6f9eb65f20a25d9a3186831ed2b3fb14f7a48e1ef8206135ee58cb143d3"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
 
 [[artifact]]
 name     = "net.bytebuddy:byte-buddy:jar:"
@@ -1794,7 +1892,15 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d78396e3c5bce3f2865c9186647481e5589d34cacc632484715b686108d17c66"
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
-members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/helidon", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
+members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "plugins/android", "plugins/antlr", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/helidon", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/json-schema", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
+
+[[artifact]]
+name     = "net.jcip:jcip-annotations:jar:"
+version  = "1.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:be5805392060c71474bf6c9a67a099471274d30b83eef84bfc4e0889a4f1dcc0"
+scopes   = ["test"]
+licenses = []
 
 [[artifact]]
 name     = "net.jqwik:jqwik-api:jar:"
@@ -2022,7 +2128,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:69e5c9fa35da7a51a5fd2099dfe56a2d8d32cf233e2f6d770e796146440263f4"
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/avro"]
+members  = ["plugins/avro", "plugins/json-schema"]
 
 [[artifact]]
 name     = "org.apache.commons:commons-lang3:jar:"
@@ -3680,6 +3786,45 @@ deps = [
 ]
 
 [[artifact]]
+name     = "org.jsonschema2pojo:jsonschema2pojo-cli:jar:"
+version  = "1.3.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:ff220f89484aacb82e3e64b4dc72936c3e2b530eda6c2bbdf9930530cfea3d76"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+deps = [
+  "com.beust:jcommander:jar:@1.82",
+  "com.google.code.findbugs:annotations:jar:@3.0.1u2",
+  "org.jsonschema2pojo:jsonschema2pojo-core:jar:@1.3.3",
+]
+
+[[artifact]]
+name     = "org.jsonschema2pojo:jsonschema2pojo-core:jar:"
+version  = "1.3.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:4c20b83876de5abb2c14e429ae1785fa291d98d460374ba21d8dbc8680450dba"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.4",
+  "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:jar:@2.21.0",
+  "com.google.code.findbugs:annotations:jar:@3.0.1u2",
+  "com.google.code.findbugs:jsr305:jar:@3.0.2",
+  "com.google.code.gson:gson:jar:@2.14.0",
+  "com.google.code.javaparser:javaparser:jar:@1.0.11",
+  "com.sun.codemodel:codemodel:jar:@2.6",
+  "commons-io:commons-io:jar:@2.22.0",
+  "jakarta.json.bind:jakarta.json.bind-api:jar:@2.0.0",
+  "jakarta.validation:jakarta.validation-api:jar:@3.1.1",
+  "javax.json.bind:javax.json.bind-api:jar:@1.0",
+  "javax.validation:validation-api:jar:@2.0.1.Final",
+  "joda-time:joda-time:jar:@2.14.0",
+  "org.apache.commons:commons-lang3:jar:@3.21.0",
+  "org.apache.commons:commons-text:jar:@1.15.0",
+  "tools.jackson.core:jackson-databind:jar:@3.0.2",
+]
+
+[[artifact]]
 name     = "org.jspecify:jspecify:jar:"
 version  = "1.0.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -4468,6 +4613,34 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b0c487ad2f3e558be8d829c916d2458d10aca6a5bafa7a4d0524b70845e48a5c"
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "org.yaml:snakeyaml:jar:"
+version  = "2.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:ef779af5d29a9dde8cc70ce0341f5c6f7735e23edff9685ceaa9d35359b7bb7f"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "tools.jackson.core:jackson-core:jar:"
+version  = "3.0.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:fa74515ba5fc01282cecab7e5970fa12a0f4ff23bd6c2061e9c7783338d0b436"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+
+[[artifact]]
+name     = "tools.jackson.core:jackson-databind:jar:"
+version  = "3.0.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:f54f69bfc780380a3f4de42fb2c3e82b22c8ef4d84ba918cff81d22c6aa1069f"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
+  "tools.jackson.core:jackson-core:jar:@3.0.2",
+]
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-guards-junit"
@@ -7203,6 +7376,15 @@ name    = "jk-jooq"
 version = "0.50.4"
 java    = 25
 description = "JumpKick's jOOQ preset: [jooq] as one generator entry running jOOQ codegen over a module's DDL scripts or a live schema"
+install.destination = "jk"
+
+[[module]]
+path    = "plugins/json-schema"
+group   = "cc.jumpkick"
+name    = "jk-json-schema"
+version = "0.50.4"
+java    = 25
+description = "JumpKick's JSON Schema preset: [json-schema] as one generator entry running jsonschema2pojo over a module's schemas"
 install.destination = "jk"
 
 [[module]]

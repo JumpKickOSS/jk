@@ -36,6 +36,7 @@ class BuiltInManifestClasspathTest {
                         "jenkins-test",
                         "avro",
                         "schema-registry",
+                        "json-schema",
                         "jaxb",
                         "jooq",
                         "lint",

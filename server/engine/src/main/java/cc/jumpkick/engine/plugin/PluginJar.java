@@ -56,6 +56,7 @@ public enum PluginJar {
     JENKINS_TEST("jk-jenkins-test", "jk.jenkins-test.plugin.jar"),
     AVRO("jk-avro", "jk.avro.plugin.jar"),
     SCHEMA_REGISTRY("jk-schema-registry", "jk.schema-registry.plugin.jar"),
+    JSON_SCHEMA("jk-json-schema", "jk.json-schema.plugin.jar"),
     JAXB("jk-jaxb", "jk.jaxb.plugin.jar"),
     JOOQ("jk-jooq", "jk.jooq.plugin.jar"),
     LINT("jk-lint", "jk.lint.plugin.jar"),

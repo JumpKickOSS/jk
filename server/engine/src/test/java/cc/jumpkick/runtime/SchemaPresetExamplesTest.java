@@ -63,6 +63,20 @@ class SchemaPresetExamplesTest {
     }
 
     @Test
+    void the_json_schema_example_generates_a_schema_and_its_ref_compiles_and_hits(@TempDir Path tmp) throws Exception {
+        Path project = example(tmp, PluginJar.JSON_SCHEMA, "plugins/json-schema");
+        Path cache = TestCaches.dir("json-schema-example-cache");
+        lock(project, cache);
+
+        BuildPlanResult first = build(project, cache);
+        assertThat(first.errors()).isEmpty();
+        assertThat(anyFile(project.resolve("target"), "Order.class")).isTrue();
+        assertThat(anyFile(project.resolve("target"), "Money.class")).isTrue();
+        assertThat(anyFile(project.resolve("target"), "Main.class")).isTrue();
+        assertThat(step(build(project, cache), "generate-json-schema").status()).isEqualTo(TaskStatus.SKIPPED);
+    }
+
+    @Test
     void the_jaxb_example_generates_compiles_and_hits(@TempDir Path tmp) throws Exception {
         Path project = example(tmp, PluginJar.JAXB, "plugins/jaxb");
         Path cache = TestCaches.dir("jaxb-example-cache");

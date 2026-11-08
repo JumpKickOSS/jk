@@ -324,11 +324,15 @@ class GradleModelQueryNetworkTest {
         GradleBuildImport.Result result = RequestShell.where(
                 shell, () -> gradle.importBuild(root.resolve("settings.gradle.kts"), ImportProgress.NONE));
 
-        assertThat(result.root().repositories()).singleElement().satisfies(r -> {
-            assertThat(r.name()).isEqualTo("corppackages");
-            assertThat(r.groups()).containsExactly("com.corp");
-            assertThat(r.snapshots()).isFalse();
-        });
+        assertThat(result.root().repositories())
+                .as("the build asks Central first, so it stays first")
+                .hasSize(2)
+                .last()
+                .satisfies(r -> {
+                    assertThat(r.name()).isEqualTo("corppackages");
+                    assertThat(r.groups()).containsExactly("com.corp");
+                    assertThat(r.snapshots()).isFalse();
+                });
         assertThat(result.machineCredentials()).singleElement().satisfies(t -> assertThat(t.credential())
                 .containsExactly(Map.entry("token", "${env:JK_TEST_CORP_PULL_TOKEN}")));
         assertThat(result.report().issues())
@@ -516,6 +520,50 @@ class GradleModelQueryNetworkTest {
                 .containsExactly(
                         Map.entry("username", "${env:ACME_SR_KEY}"), Map.entry("password", "${env:ACME_SR_SECRET}")));
         assertThat(String.join("\n", rows)).doesNotContain("0123456789").doesNotContain("SchemaRegistryPlugin");
+    }
+
+    /** The jsonschema2pojo Gradle plugin's extension imports as [json-schema], its output raising no row. */
+    @Test
+    void the_jsonschema2pojo_plugin_imports_as_json_schema(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("events"));
+        Files.createDirectories(root.resolve("gradle/wrapper"));
+        Files.writeString(
+                root.resolve("gradle/wrapper/gradle-wrapper.properties"),
+                "distributionUrl=https\\://services.gradle.org/distributions/gradle-" + GradleResolver.DEFAULT_VERSION
+                        + "-bin.zip\n");
+        Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'events'\n");
+        Files.writeString(root.resolve("build.gradle"), """
+                plugins {
+                    id 'java'
+                    id 'org.jsonschema2pojo' version '1.3.3'
+                }
+                group = 'com.acme'
+                version = '1.0'
+                jsonSchema2Pojo {
+                    sourceFiles = files('src/main/schemas')
+                    targetPackage = 'com.acme.events'
+                    generateBuilders = true
+                    includeJsr303Annotations = true
+                }
+                """);
+        GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
+                JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
+
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle"), ImportProgress.NONE);
+
+        List<String> rows = result.report().issues().stream()
+                .map(ImportReport.Issue::message)
+                .toList();
+        assertThat(result.report().hasErrors())
+                .as("Gradle evaluated the build: " + rows)
+                .isFalse();
+        assertThat(result.root().pluginConfig("json-schema").orElseThrow().values())
+                .containsOnly(
+                        Map.entry("src", "src/main/schemas"),
+                        Map.entry("package", "com.acme.events"),
+                        Map.entry("builders", true),
+                        Map.entry("jsr303", true));
+        assertThat(rows).noneMatch(r -> r.contains("jsonschema2pojo") || r.contains("outside jk's layout"));
     }
 
     private static JkBuild module(GradleBuildImport.Result result, String path) {

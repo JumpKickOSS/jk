@@ -1,0 +1,54 @@
+# The built-in JSON Schema preset's declarative manifest. Owns [json-schema]; the code layer turns
+# the table into one generator entry, jsonschema2pojo over the module's schema files, into the
+# generate stage, contributed as sources, run through the generator plugin's step. `jk explain`
+# shows that entry as the step `generate-json-schema`.
+
+[plugin]
+id        = "json-schema"
+table     = "json-schema"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-json-schema"
+protocol-prefix = "##JKJSONSCHEMA:"
+
+[schema]
+src                   = { type = "string", default = "src/main/resources/json", hint = "the module-relative directory holding the schemas; a subdirectory is a subpackage, and a $ref names another file by its relative path" }
+package               = { type = "string", hint = "the package of the generated classes; a schema's javaType overrides it" }
+source-type           = { type = "string", default = "jsonschema", hint = "what the files are: jsonschema, json (example documents), yamlschema or yaml" }
+annotation-style      = { type = "string", default = "jackson", hint = "the annotations on the generated classes: jackson (Jackson 2), jackson3, jsonb1, jsonb2, gson, moshi1 or none" }
+builders              = { type = "bool", default = false, hint = "generate a with-method per property" }
+constructors          = { type = "bool", default = false, hint = "generate a constructor taking every property" }
+jsr303                = { type = "bool", default = false, hint = "add Bean Validation annotations from the schema's rules" }
+jakarta-validation    = { type = "bool", default = false, hint = "take those annotations from jakarta.validation, not javax.validation" }
+serializable          = { type = "bool", default = false, hint = "make the generated classes Serializable" }
+optional-getters      = { type = "bool", default = false, hint = "return Optional from the getter of a property the schema does not require" }
+long-integers         = { type = "bool", default = false, hint = "map integer to long instead of int" }
+big-decimals          = { type = "bool", default = false, hint = "map number to BigDecimal instead of double" }
+title-as-classname    = { type = "bool", default = false, hint = "name a class from the schema's title instead of its property or file name" }
+additional-properties = { type = "bool", default = true, hint = "keep properties the schema does not name in an additionalProperties map" }
+date-time-type        = { type = "string", hint = "the Java type of a date-time string, e.g. java.time.OffsetDateTime" }
+date-type             = { type = "string", hint = "the Java type of a date string, e.g. java.time.LocalDate" }
+time-type             = { type = "string", hint = "the Java type of a time string, e.g. java.time.LocalTime" }
+encoding              = { type = "string", default = "UTF-8", hint = "the generated sources' encoding" }
+version               = { type = "string", default = "1.3.3", example = "1.3.3", hint = "the jsonschema2pojo release; a bare version is exact" }
+
+# The generator and its runtime closure (jsonschema2pojo-core, CodeModel, Jackson) come together.
+[[contribute.step-dependency]]
+artifact   = "jsonschema2pojo-cli"
+coordinate = "org.jsonschema2pojo:jsonschema2pojo-cli:${config.version}"
+transitive = true
+for-step   = "generate-json-schema"
+
+# jk import: the jsonschema2pojo Gradle plugin's extension. A Maven build's plugin is read by the
+# importer itself.
+[[import.gradle-plugin]]
+id         = "org.jsonschema2pojo"
+extension  = "jsonSchema2Pojo"
+properties = { sourceFiles = "src", targetPackage = "package", sourceType = "source-type", annotationStyle = "annotation-style", generateBuilders = "builders", includeConstructors = "constructors", includeJsr303Annotations = "jsr303", useJakartaValidation = "jakarta-validation", serializable = "serializable", useOptionalForGetters = "optional-getters", useLongIntegers = "long-integers", useBigDecimals = "big-decimals", useTitleAsClassname = "title-as-classname", includeAdditionalProperties = "additional-properties", dateTimeType = "date-time-type", dateType = "date-type", timeType = "time-type", outputEncoding = "encoding" }
+
+[[import.gradle-plugin]]
+id         = "jsonschema2pojo"
+extension  = "jsonSchema2Pojo"
+properties = { sourceFiles = "src", targetPackage = "package", sourceType = "source-type", annotationStyle = "annotation-style", generateBuilders = "builders", includeConstructors = "constructors", includeJsr303Annotations = "jsr303", useJakartaValidation = "jakarta-validation", serializable = "serializable", useOptionalForGetters = "optional-getters", useLongIntegers = "long-integers", useBigDecimals = "big-decimals", useTitleAsClassname = "title-as-classname", includeAdditionalProperties = "additional-properties", dateTimeType = "date-time-type", dateType = "date-type", timeType = "time-type", outputEncoding = "encoding" }

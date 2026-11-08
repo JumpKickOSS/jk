@@ -679,7 +679,7 @@ def plainValue(Project p, Object v) {
     if (v instanceof org.gradle.api.file.FileCollection) return relDirs(p, v.files)
     if (v instanceof Boolean || v instanceof Number) return v
     if (v instanceof Map) return v.collectEntries { a, b -> [a.toString(), b?.toString()] }
-    if (v instanceof Iterable) return v.collect { it?.toString() }
+    if (v instanceof Iterable) return v.collect { it instanceof File ? relDirs(p, [it])[0] : it?.toString() }
     return v.toString()
 }
 

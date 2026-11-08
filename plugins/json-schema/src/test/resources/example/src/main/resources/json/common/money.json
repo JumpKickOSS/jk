@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "cents": { "type": "integer" },
+    "currency": { "type": "string" }
+  }
+}

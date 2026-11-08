@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "title": "Order",
+  "properties": {
+    "id": { "type": "integer" },
+    "total": { "$ref": "common/money.json" }
+  },
+  "required": ["id"]
+}
