@@ -18,33 +18,8 @@ if (!chrome || !url) {
 }
 const runs = Number(runsArg || 10);
 
-const origin = new URL(url).origin;
-const token = (/[#&?]t=([^&]+)/.exec(new URL(url).hash) || [])[1] || '';
-
-/**
- * Wait until the engine has let go of the previous page's event stream: a stream outlives its page
- * until the engine next writes to it, and a load timed while it lingers measures the engine's
- * connection pool rather than the console.
- */
-async function activeRequests() {
-  try {
-    const r = await fetch(origin + '/api/status', { headers: { Authorization: 'Bearer ' + token } });
-    return (await r.json()).activeRequests ?? 0;
-  } catch {
-    return Infinity;
-  }
-}
-
-/** The engine's open requests with no page of ours loaded: other tabs' streams count in it. */
-let baseline = 0;
-
-async function engineSettled() {
-  for (let i = 0; i < 100 && (await activeRequests()) > baseline; i++) await sleep(100);
-}
-
 async function paintOnce(cdp) {
   await cdp.send('Page.navigate', { url: 'about:blank' });
-  await engineSettled();
   await cdp.send('Page.navigate', { url });
   for (let i = 0; i < 300; i++) {
     const r = await cdp.send('Runtime.evaluate', { expression: 'document.documentElement.dataset.consolePaintedMs || ""', returnByValue: true });
@@ -63,7 +38,6 @@ const cdp = await launch(chrome);
 try {
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
-  baseline = await activeRequests();
   await paintOnce(cdp); // warm-up: CDN scripts into the HTTP cache
   const samples = [];
   for (let i = 0; i < runs; i++) {

@@ -110,20 +110,6 @@ async function api(p) {
   return resp.json();
 }
 
-/** The engine's open requests: a closed page's event stream counts until the engine next writes to it. */
-async function activeRequests() {
-  try {
-    return (await (await fetch(origin + '/api/status', { headers: auth })).json()).activeRequests ?? 0;
-  } catch {
-    return Infinity;
-  }
-}
-
-/** Wait (at most 10 s) until the previous page's streams are gone, as paint.mjs does between loads. */
-async function engineSettled(baseline) {
-  for (let i = 0; i < 100 && (await activeRequests()) > baseline; i++) await sleep(100);
-}
-
 // ---- the page ----
 
 const cdp = await launch(chrome);
@@ -239,12 +225,8 @@ try {
   closing = await openDecision();
   await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: CHECKER });
   const checklist = [];
-  await cdp.send('Page.navigate', { url: 'about:blank' });
-  await sleep(300);
-  const baseline = await activeRequests();
   for (let i = 0; i < PASSES + 1; i++) {
     await cdp.send('Page.navigate', { url: 'about:blank' });
-    await engineSettled(baseline);
     await cdp.send('Page.navigate', { url: consoleUrl });
     let found = {};
     for (let n = 0; n < 640; n++) {
