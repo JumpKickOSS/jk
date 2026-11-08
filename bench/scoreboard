@@ -10,7 +10,7 @@
     bench/scoreboard --no-bank                 # judge only; scoreboard.toml is not rewritten
     bench/scoreboard --gaps                    # banked rows ranked by distance to target, nothing measured
     bench/scoreboard --render                  # docs tables from the banked rows, nothing measured
-    bench/scoreboard --selftest                # the band arithmetic
+    bench/scoreboard --selftest                # the band arithmetic and the quiet gate
 
 A row is one (dimension, subject, project, tool, kind). Kinds:
 
@@ -244,6 +244,12 @@ def selftest() -> int:
     assert f and "slower than the baseline" in f[0], f
     b2, f, n = judge(b, pw(2.0, noisy="load 9"), host, today, "ghi")
     assert not f and "noisy" in n[0] and b2 == b, n
+    idle = {"load": 1.5, "cpu-psi-avg60": 0.0}
+    assert busy_reason(idle, 0, 24) is None, "an idle 24-core desktop is quiet"
+    assert "load-per-core" in (busy_reason(idle, 0, 4) or ""), "the same load on 4 cores is busy"
+    assert "load-per-core" in (busy_reason({**idle, "load": 6.0}, 0, 24) or ""), "a loaded 24-core host is busy"
+    assert "cpu-psi" in (busy_reason({**idle, "cpu-psi-avg60": 3.0}, 0, 24) or "")
+    assert "live job" in (busy_reason(idle, 2, 24) or "")
     print("selftest ok")
     return 0
 
@@ -301,9 +307,11 @@ class Context:
 
 # --------------------------------------------------------------------------- quiet gate and calibration
 
-# An absolute wall is taken only on a quiet host: 1-minute load, CPU PSI `some` avg60 (%), and no
-# live job on the user's engine. Calibration is a fixed javac run before and after the batch.
-QUIET = {"load": 1.0, "cpu-psi-avg60": 0.5}
+# An absolute wall is taken only on a quiet host: 1-minute load per online core, CPU PSI `some`
+# avg60 (%), and no live job on the user's engine. Load is judged per core because an idle desktop's
+# background load grows with its core count: 1.5 is idle on 24 cores and busy on 1.
+# Calibration is a fixed javac run before and after the batch.
+QUIET = {"load-per-core": 0.1, "cpu-psi-avg60": 0.5}
 POLL_S = 300
 DRIFT = 0.10
 CALIBRATION_CLASSES = 150
@@ -320,7 +328,12 @@ def user_engine_jobs() -> int:
     return int(m.group(1)) if m else 0
 
 
-def busy_reason(cond: dict, jobs: int) -> str | None:
+def cores() -> int:
+    return len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count() or 1
+
+
+def busy_reason(cond: dict, jobs: int, ncores: int | None = None) -> str | None:
+    cond = {**cond, "load-per-core": round(cond.get("load", 0) / (ncores or cores()), 3)}
     over = [f"{k} {cond[k]:g} > {limit:g}" for k, limit in QUIET.items() if cond.get(k, 0) > limit]
     if jobs:
         over.append(f"{jobs} live job(s) on the user's engine")

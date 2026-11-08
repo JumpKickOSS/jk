@@ -88,10 +88,11 @@ bench/scoreboard --dim paired --baseline "$JK_BENCH_HOME/release-0.15.2/bin/jk"
 
 `--tier night` takes `$JK_BENCH_HOME/heavy.lock` (`flock`) for its whole run, so another heavy job
 that takes the same lock waits instead of landing in the numbers, and runs the load-proof kinds
-first. Before each absolute-wall dimension it waits for a **quiet host**: 1-minute load below 1.0,
-CPU PSI `some` avg60 below 0.5 %, and no live job on the user's engine. It looks every 5 minutes
-until the deadline (`--deadline`, default 06:30); a host still busy then records `skipped: busy`
-and banks nothing for that dimension. Each batch is **calibrated**: a fixed javac batch of
+first. Before each absolute-wall dimension it waits for a **quiet host**: 1-minute load per online
+core at most 0.1 (2.4 on 24 cores, where an idle desktop sits near 1.5; 0.8 on 8 cores), CPU PSI
+`some` avg60 at most 0.5 %, and no live job on the user's engine. It looks every 5 minutes until
+the deadline (`--deadline`, default 06:30); a host still busy then records `skipped: busy` and
+banks nothing for that dimension. Each batch is **calibrated**: a fixed javac batch of
 generated sources, timed before and after. Drift above 10 %, or a host slower than its banked
 calibration, marks every row `noisy`: recorded, never banked or judged. The load at the end of a
 batch is the batch's own builds, so interference during it shows as calibration drift instead. A clean batch banks the calibration as its own row.
