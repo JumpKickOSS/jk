@@ -163,8 +163,7 @@ final class EngineResolveAdapter {
                         Objects.requireNonNullElse(req.platform(), ""),
                         req.deps(),
                         req.major(),
-                        req.preview(),
-                        req.accept())
+                        req.preview())
                 .encode());
     }
 
@@ -239,8 +238,8 @@ final class EngineResolveAdapter {
                 }
                 case EngineProtocol.UPDATE_REWRITE -> {
                     UpdateRewriteEvent e = UpdateRewriteEvent.decode(line);
-                    if (e.held())
-                        handler.onHeld(e.dir(), e.table(), e.handle(), e.module(), e.from(), e.to(), e.adds());
+                    if (e.available())
+                        handler.onAvailable(e.dir(), e.table(), e.handle(), e.module(), e.from(), e.to());
                     else handler.onRewrite(e.dir(), e.table(), e.handle(), e.module(), e.from(), e.to(), e.adds());
                 }
                 case EngineProtocol.UPDATE_CHANGE -> {

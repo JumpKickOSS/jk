@@ -63,52 +63,26 @@ class UpdateCommandSettleTest {
     }
 
     @Test
-    void printHeld_names_each_held_move_and_the_command_that_takes_them() {
-        List<UpdateCommand.Held> held = List.of(
-                new UpdateCommand.Held("jackson", "2.18.2", "3.0.0", List.of()),
-                new UpdateCommand.Held("other", "1.0.0", "1.1.0", List.of()));
-        String moved = TestAnsi.strip(Capture.stdout(() -> UpdateCommand.printHeld(held, true)));
-        assertThat(moved)
-                .contains("Update")
-                .contains("held 2 pins across a minor or a major; jk update -y takes them")
-                .contains("  jackson  2.18.2 → 3.0.0")
-                .contains("  other  1.0.0 → 1.1.0")
-                .doesNotContain("nothing moved");
-
-        String none = TestAnsi.strip(Capture.stdout(() -> UpdateCommand.printHeld(held.subList(0, 1), false)));
-        assertThat(none).contains("nothing moved; held 1 pin across a minor or a major; jk update -y takes them");
-    }
-
-    @Test
-    void a_pin_patched_and_held_shows_its_patch_then_its_held_move_from_the_patch() {
-        String out = TestAnsi.strip(Capture.stdout(() -> {
-            UpdateCommand.printRewrite(Path.of("/p"), "dependencies", "other", "1.0.0", "1.0.1", Path.of("/p"));
-            UpdateCommand.printHeld(List.of(new UpdateCommand.Held("other", "1.0.1", "1.1.0", List.of())), true);
-        }));
+    void printAvailable_names_each_newer_major_and_the_flag_that_takes_them() {
+        List<UpdateCommand.Move> available = List.of(
+                new UpdateCommand.Move("jackson", "2.18.2", "3.0.0", List.of()),
+                new UpdateCommand.Move("other", "1.1.0", "2.0.0", List.of()));
+        String out = TestAnsi.strip(Capture.stdout(() -> UpdateCommand.printAvailable(available)));
         assertThat(out)
-                .contains("  other  1.0.0 → 1.0.1")
-                .contains("held 1 pin across a minor or a major; jk update -y takes them")
-                .contains("  other  1.0.1 → 1.1.0")
-                .doesNotContain("1.0.0 → 1.1.0");
-        assertThat(out.indexOf("1.0.0 → 1.0.1")).isLessThan(out.indexOf("1.0.1 → 1.1.0"));
+                .contains("Update")
+                .contains("2 pins have a newer major; jk update --major takes them")
+                .contains("  jackson  2.18.2 → 3.0.0")
+                .contains("  other  1.1.0 → 2.0.0");
+
+        String one = TestAnsi.strip(Capture.stdout(() -> UpdateCommand.printAvailable(available.subList(0, 1))));
+        assertThat(one).contains("1 pin has a newer major; jk update --major takes it");
     }
 
     @Test
-    void printHeld_names_the_packages_a_held_move_adds() {
-        List<UpdateCommand.Held> held = List.of(
-                new UpdateCommand.Held("other", "1.0.0", "1.0.1", List.of("com.acme:extra 1.0", "com.acme:more 2.0")));
-        String adding = TestAnsi.strip(Capture.stdout(() -> UpdateCommand.printHeld(held, false)));
-        assertThat(adding)
-                .contains("nothing moved; held 1 pin whose relock adds packages; jk update -y takes them")
-                .contains("  other  1.0.0 → 1.0.1  (adds com.acme:extra 1.0, com.acme:more 2.0)");
-
-        List<UpdateCommand.Held> both =
-                List.of(new UpdateCommand.Held("jackson", "2.18.2", "3.0.0", List.of()), held.getFirst());
-        assertThat(TestAnsi.strip(Capture.stdout(() -> UpdateCommand.printHeld(both, true))))
-                .contains("held 1 pin across a minor or a major and 1 whose relock adds packages;"
-                        + " jk update -y takes them")
-                .contains("  jackson  2.18.2 → 3.0.0")
-                .doesNotContain("3.0.0  (adds");
+    void printMove_names_the_packages_a_move_adds() {
+        String out = TestAnsi.strip(Capture.stdout(() -> UpdateCommand.printMove(new UpdateCommand.Move(
+                "other", "1.0.0", "1.0.1", List.of("com.acme:extra 1.0", "com.acme:more 2.0")))));
+        assertThat(out).contains("  other  1.0.0 → 1.0.1  (adds com.acme:extra 1.0, com.acme:more 2.0)");
     }
 
     @Test

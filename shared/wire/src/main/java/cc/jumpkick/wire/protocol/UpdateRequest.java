@@ -8,9 +8,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * A dependency update request. {@code deps} limits the pin rewrite to those handles or {@code
  * group:artifact} coordinates (empty = every declared pin); {@code major} lets a pin cross its Maven
- * major; {@code preview} reports the rewrites without writing or relocking; {@code accept} lets a
- * pin move across a minor or a major, which without it is held, the pin moving only to its newest
- * patch.
+ * major; {@code preview} reports the rewrites without writing or relocking.
  */
 public record UpdateRequest(
         @Nullable String dir,
@@ -26,8 +24,7 @@ public record UpdateRequest(
         String platform,
         List<String> deps,
         boolean major,
-        boolean preview,
-        boolean accept) {
+        boolean preview) {
 
     public UpdateRequest {
         features = features == null ? List.of() : List.copyOf(features);
@@ -51,7 +48,6 @@ public record UpdateRequest(
                 .array("deps", deps)
                 .bool("major", major)
                 .bool("preview", preview)
-                .bool("accept", accept)
                 .finish();
     }
 
@@ -70,7 +66,6 @@ public record UpdateRequest(
                 Jsonl.requiredStr(json, "platform"),
                 Jsonl.strArray(json, "deps"),
                 Jsonl.bool(json, "major", false),
-                Jsonl.bool(json, "preview", false),
-                Jsonl.bool(json, "accept", false));
+                Jsonl.bool(json, "preview", false));
     }
 }

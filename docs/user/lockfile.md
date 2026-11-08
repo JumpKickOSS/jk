@@ -108,37 +108,22 @@ other lock package it changed prints the same way — a transitive dependency th
 for one it added, `1.0 → removed` for one it dropped — then the summary, `Analyzed 17 dependencies,
 2 were updated in jk-lock.toml`.
 
-A move across a minor or a major (`1.0.4 → 1.1.0`, `2.18.2 → 3.0.0`) is yours to accept. At a
-terminal `jk update` lists those moves and asks before it writes anything. Without a terminal it
-holds them: every other move applies, a held pin moves only to the newest patch on its minor, and
-the run ends naming each held move and `jk update -y takes them`, also in `jk-results.md`, and
-exits 0. A held move starts where its pin landed: a pin that took `1.0.0 → 1.0.1` is named once
-more only as held, `1.0.1 → 1.1.0`. When every move is held, nothing is written or relocked. `-y`
-takes them all, at a terminal or not. MCP [`update`](mcp.md#decisions) asks the user instead.
+`jk update` takes every move on a pin's major, across a minor (`1.0.4 → 1.1.0`) and with any
+package its relock adds. Crossing a major needs `--major`: without it a newer major is named, not
+taken, and the run ends with it, also in `jk-results.md`.
 
 ```text
-! Update  held 1 pin across a minor or a major; jk update -y takes them
-  minory  1.0.1 → 1.1.0
-```
-
-A move whose relock adds a package to the lock is yours to accept too: a new package is new code
-you trust. At a terminal `jk update` lists those moves with the packages each adds, beside any move
-across a minor or a major, and asks once. Without a terminal it holds them: before it relocks, it
-resolves the moved manifests from memory, writing neither `jk.toml` nor the lock, traces each new
-package to the moved pins whose dependencies reach it, and writes only the other moves, so the lock
-is written as if those moves were not taken. `jk.toml` on disk never holds a move nobody took, not
-even while the preview resolves. Every other move applies, the run names each held move with the
-packages it adds and `jk update -y takes them`, also in `jk-results.md`, and exits 0. When a new
-package is reached by no moved pin (a dependency you declared since the last lock, say), the moves
-cannot be told apart: every move is held together, each naming every new package. A first lock adds
-every package and holds nothing. `-y` takes them all.
-
-```text
-  plainy  1.0.0 → 1.0.1
+  minory  1.0.0 → 1.1.0
 ✓ Update  Analyzed 17 dependencies, 1 was updated in jk-lock.toml
-! Update  held 1 pin whose relock adds packages; jk update -y takes them
-  growy  1.0.0 → 1.0.1  (adds com.foo.update:extra 1.0)
+! Update  1 pin has a newer major; jk update --major takes it
+  minory  1.1.0 → 2.0.0
 ```
+
+At a terminal, without `-y`, `jk update` first lists the moves across a minor or a major and the
+moves whose relock adds packages to the lock (each with the packages it adds), and asks once before
+it writes anything. To find those packages it resolves the moved manifests from memory, writing
+neither `jk.toml` nor the lock. Without a terminal it asks nothing and applies, as MCP
+[`update`](mcp.md#tools) does.
 
 An update never moves a package backwards. `jk update` and `jk lock -F` treat every version the old
 lock holds as a floor: a transitive dependency stays where it was even when the POMs that pull it

@@ -15,14 +15,10 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -59,13 +55,16 @@ class McpUpdateTest {
     void preview_reports_the_moves_without_writing_and_apply_writes_and_relocks(@TempDir Path dir) throws Exception {
         project(dir);
 
-        Map<String, Object> preview = McpUpdate.run(dir.toString(), List.of(), false, false, false);
+        Map<String, Object> preview = McpUpdate.run(dir.toString(), List.of(), false, false);
         assertThat(preview).doesNotContainKey("error");
         assertThat(preview.get("applied")).isEqualTo(false);
         assertThat(preview.get("changed")).isEqualTo(true);
         assertThat(rows(preview, "rewrites"))
                 .extracting(r -> r.get("handle"), r -> r.get("from"), r -> r.get("to"))
                 .containsExactlyInAnyOrder(tuple("jackson", "2.18.0", "2.18.2"), tuple("other", "1.0.0", "1.1.0"));
+        assertThat(preview.get("available"))
+                .as("a newer major is reported, not planned")
+                .isEqualTo(List.of("jackson 2.18.2 → 3.0.0"));
         assertThat(String.valueOf(preview.get("preview"))).contains("jackson = \"com.acme:jackson:2.18.2\"");
         assertThat(rows(preview, "files"))
                 .extracting(r -> r.get("path"))
@@ -73,7 +72,7 @@ class McpUpdateTest {
         assertThat(Files.readString(dir.resolve("jk.toml"))).contains("com.acme:jackson:2.18.0");
         assertThat(dir.resolve("jk-lock.toml")).doesNotExist();
 
-        Map<String, Object> applied = McpUpdate.run(dir.toString(), List.of("jackson"), false, true, true);
+        Map<String, Object> applied = McpUpdate.run(dir.toString(), List.of("jackson"), false, true);
         assertThat(applied).doesNotContainKey("error");
         assertThat(applied.get("applied")).isEqualTo(true);
         assertThat(rows(applied, "rewrites")).extracting(r -> r.get("handle")).containsExactly("jackson");
@@ -89,14 +88,11 @@ class McpUpdateTest {
                 .as("the first lock adds every package")
                 .allSatisfy(r -> assertThat(r.get("from")).isNull());
 
-        Map<String, Object> held = McpUpdate.run(dir.toString(), List.of("other"), false, true, false);
-        assertThat(held.get("applied"))
-                .as("1.0.0 → 1.1.0 crosses a minor: a person accepts it")
-                .isEqualTo(false);
-        assertThat(held.get("held")).isEqualTo(List.of("other 1.0.0 → 1.1.0"));
-        assertThat(locked(dir, "com.acme:other")).isEqualTo("1.0.0");
-
-        Map<String, Object> other = McpUpdate.run(dir.toString(), List.of("other"), false, true, true);
+        Map<String, Object> other = McpUpdate.run(dir.toString(), List.of("other"), false, true);
+        assertThat(other.get("applied"))
+                .as("1.0.0 → 1.1.0 crosses a minor and applies all the same")
+                .isEqualTo(true);
+        assertThat(Files.readString(dir.resolve("jk.toml"))).contains("other = \"com.acme:other:1.1.0\"");
         @SuppressWarnings("unchecked")
         Map<String, Object> relock = (Map<String, Object>) requireNonNull(other.get("lock"));
         assertThat(relock.get("updated")).isEqualTo(1);
@@ -104,8 +100,9 @@ class McpUpdateTest {
                 .extracting(r -> r.get("coordinate"), r -> r.get("from"), r -> r.get("to"))
                 .containsExactly(tuple("com.acme:other", "1.0.0", "1.1.0"));
 
-        Map<String, Object> major = McpUpdate.run(dir.toString(), List.of("jackson"), true, false, false);
+        Map<String, Object> major = McpUpdate.run(dir.toString(), List.of("jackson"), true, false);
         assertThat(rows(major, "rewrites")).extracting(r -> r.get("to")).containsExactly("3.0.0");
+        assertThat(major).doesNotContainKey("available");
     }
 
     @Test
@@ -143,10 +140,21 @@ class McpUpdateTest {
                 .contains("\"to\":\"1.1.0\"");
         assertThat(reply).doesNotContain("2.18.2");
         assertThat(Files.readString(dir.resolve("jk.toml"))).contains("com.acme:other:1.0.0");
+
+        String applied = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"update\",\"arguments\":{\"dir\":"
+                + Jsonl.quote(dir.toString())
+                + ",\"deps\":[\"other\"],\"apply\":true}}}");
+        assertThat(applied)
+                .as("a move across a minor applies with no decision asked")
+                .contains("\"applied\":true")
+                .doesNotContain("decision")
+                .doesNotContain("NEEDS-YOU");
+        assertThat(Files.readString(dir.resolve("jk.toml"))).contains("com.acme:other:1.1.0");
     }
 
     @Test
-    void an_unapproved_apply_whose_relock_adds_a_package_writes_nothing(@TempDir Path dir) throws Exception {
+    void an_apply_whose_relock_adds_a_package_writes_and_relocks(@TempDir Path dir) throws Exception {
         MavenStub upstream = new MavenStub(http);
         upstream.leaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
         upstream.leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
@@ -172,33 +180,20 @@ class McpUpdateTest {
                 [dependencies]
                 growing = "com.acme:growing:1.0.0"
                 """.formatted(http.baseUrl()));
-        Path lockFile = dir.resolve("jk-lock.toml");
-        McpUpdate.run(dir.toString(), List.of("nothing-named-this"), false, true, true);
-        assertThat(lockFile).exists();
-        byte[] manifestBytes = Files.readAllBytes(manifest);
-        byte[] lockBytes = Files.readAllBytes(lockFile);
-        FileTime manifestTime = Files.getLastModifiedTime(manifest);
-        FileTime lockTime = Files.getLastModifiedTime(lockFile);
-        List<Boolean> untouchedDuringResolve = new CopyOnWriteArrayList<>();
-        http.beforeServe(path -> {
-            if (!path.endsWith("growing-1.0.1.pom")) return;
-            try {
-                untouchedDuringResolve.add(Arrays.equals(Files.readAllBytes(manifest), manifestBytes));
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-        });
+        McpUpdate.run(dir.toString(), List.of("nothing-named-this"), false, true);
+        assertThat(dir.resolve("jk-lock.toml")).exists();
 
-        Map<String, Object> held = McpUpdate.run(dir.toString(), List.of(), false, true, false);
+        Map<String, Object> applied = McpUpdate.run(dir.toString(), List.of(), false, true);
 
-        assertThat(held).doesNotContainKey("error");
-        assertThat(held.get("applied")).isEqualTo(false);
-        assertThat(held.get("held")).isEqualTo(List.of("com.acme:extra 1.0 (new)"));
-        assertThat(untouchedDuringResolve).isNotEmpty().containsOnly(true);
-        assertThat(Files.readAllBytes(manifest)).isEqualTo(manifestBytes);
-        assertThat(Files.readAllBytes(lockFile)).isEqualTo(lockBytes);
-        assertThat(Files.getLastModifiedTime(manifest)).isEqualTo(manifestTime);
-        assertThat(Files.getLastModifiedTime(lockFile)).isEqualTo(lockTime);
+        assertThat(applied).doesNotContainKey("error");
+        assertThat(applied.get("applied")).isEqualTo(true);
+        assertThat(Files.readString(manifest)).contains("com.acme:growing:1.0.1");
+        assertThat(locked(dir, "com.acme:extra")).isEqualTo("1.0");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> lock = (Map<String, Object>) requireNonNull(applied.get("lock"));
+        assertThat(rows(lock, "changes"))
+                .extracting(r -> r.get("coordinate"), r -> r.get("from"), r -> r.get("to"))
+                .contains(tuple("com.acme:extra", null, "1.0"), tuple("com.acme:growing", "1.0.0", "1.0.1"));
     }
 
     // ---- fixture ---------------------------------------------------------------

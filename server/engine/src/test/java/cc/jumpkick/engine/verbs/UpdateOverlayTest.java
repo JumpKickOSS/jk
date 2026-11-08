@@ -9,7 +9,6 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.base.LockMode;
-import cc.jumpkick.runtime.workspace.ManifestUpdates;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
@@ -35,9 +34,9 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk update} finds the packages a move adds by resolving the moved manifests from memory:
- * every manifest on disk holds its original bytes while that resolve runs, and a preview or a run
- * that holds every move writes nothing.
+ * {@code jk update}'s preview finds the packages a move adds by resolving the moved manifests from
+ * memory: every manifest on disk holds its original bytes while that resolve runs, and it writes
+ * nothing.
  */
 class UpdateOverlayTest {
 
@@ -96,36 +95,6 @@ class UpdateOverlayTest {
     }
 
     @Test
-    void a_held_run_resolves_the_move_from_memory_and_writes_nothing() throws Exception {
-        Snapshot before = Snapshot.of(project);
-        watchDuringResolve(before);
-        RecordingHost host = new RecordingHost();
-
-        JobOutcome outcome = LockCascade.run(
-                host,
-                project,
-                project.resolve("cache"),
-                http.base(),
-                List.of(),
-                true,
-                new LockMode.Update(null),
-                false,
-                ManifestUpdates.Selection.ALL,
-                false,
-                null);
-
-        assertThat(outcome).isEqualTo(JobOutcome.ok());
-        assertThat(duringResolve)
-                .as("the resolve read the moved pin, and jk.toml on disk was untouched while it ran")
-                .isNotEmpty()
-                .allMatch("unchanged"::equals);
-        assertThat(rewrites(host))
-                .extracting(e -> e.handle(), e -> e.held(), e -> e.adds())
-                .containsExactly(tuple("growing", true, List.of("com.acme:extra 1.0")));
-        assertThat(Snapshot.of(project)).isEqualTo(before);
-    }
-
-    @Test
     void a_preview_resolves_the_move_from_memory_and_writes_nothing() throws Exception {
         Snapshot before = Snapshot.of(project);
         watchDuringResolve(before);
@@ -144,8 +113,7 @@ class UpdateOverlayTest {
                         "",
                         List.of(),
                         false,
-                        true,
-                        false)
+                        true)
                 .encode();
 
         JobOutcome outcome = new UpdateVerb(host).run(request, Session.CancelToken.NONE, null);

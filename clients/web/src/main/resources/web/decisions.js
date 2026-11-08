@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// Decisions: questions an operation puts to a person before it proceeds (an update across a minor,
-// a dependency the deny policy refuses, a destructive clean). The engine holds them in one queue
+// Decisions: questions an operation puts to a person before it proceeds (a destructive clean, an
+// uninstall). The engine holds them in one queue
 // (GET /api/decisions, the SSE `decision` event); this file is the `#decision/<id>` page and the
 // view model the console's Needs-you banner reads. A decision that changes what the project trusts
 // can be declined here but never accepted: an agent can read the dashboard token and drive a

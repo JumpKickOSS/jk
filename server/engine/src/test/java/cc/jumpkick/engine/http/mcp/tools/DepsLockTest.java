@@ -22,7 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code deps} writes jk.toml and leaves a lock the next build can trust; a version no configured
- * repository serves is refused, preview or not.
+ * repository serves is refused, preview or not, and an add the deny policy refuses writes nothing.
  */
 class DepsLockTest {
 
@@ -88,6 +88,46 @@ class DepsLockTest {
                         null));
         assertThat(text(found)).isEqualTo("add com.acme:thing:1.0.0\npreview\n");
         assertThat(Files.readString(dir.resolve("jk.toml"))).isEqualTo(before);
+    }
+
+    @Test
+    void an_add_the_deny_policy_refuses_fails_naming_the_rule_and_writes_nothing(@TempDir Path tmp) throws Exception {
+        Path dir = project(tmp);
+        Files.writeString(tmp.resolve("repo/com/acme/thing/1.0.0/thing-1.0.0.pom"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>thing</artifactId>
+                  <version>1.0.0</version>
+                  <licenses><license><name>GPL-3.0</name></license></licenses>
+                </project>
+                """);
+        Files.write(tmp.resolve("repo/com/acme/thing/1.0.0/thing-1.0.0.jar"), new byte[] {'P', 'K', 5, 6});
+        Path manifest = dir.resolve("jk.toml");
+        Files.writeString(manifest, Files.readString(manifest) + """
+
+                [deny.licenses]
+                allow = ["Apache-2.0"]
+                """);
+        LockFlow.Result first = LockFlow.run(dir, dir.resolve("cache"), List.of(), false, null);
+        assertThat(first.status()).as("the first lock: %s", first.error()).isZero();
+        byte[] manifestBefore = Files.readAllBytes(manifest);
+        byte[] lockBefore = Files.readAllBytes(dir.resolve("jk-lock.toml"));
+
+        Map<String, Object> refused = new DepsTool()
+                .call(new McpCall(
+                        context(),
+                        Map.of("action", "add", "coords", List.of("com.acme:thing:1.0.0"), "dir", dir.toString()),
+                        null));
+
+        assertThat(refused.get("isError")).as(text(refused)).isEqualTo(true);
+        assertThat(text(refused))
+                .contains("deny policy")
+                .contains("com.acme:thing")
+                .contains("[deny.licenses] allow")
+                .doesNotContain("NEEDS-YOU");
+        assertThat(Files.readAllBytes(manifest)).isEqualTo(manifestBefore);
+        assertThat(Files.readAllBytes(dir.resolve("jk-lock.toml"))).isEqualTo(lockBefore);
     }
 
     /** A project whose only repository is a local one serving {@code com.acme:thing:1.0.0}. */

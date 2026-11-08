@@ -219,8 +219,8 @@ The whole registry:
 | **`explain`** | Forecast next build |
 | **`affected_tests`** | WIP module cone + advisory ranked test classes; writes `target/jk-tests-affected.md` |
 | **`outdated`** | Declared pins an update would move (read-only; Current / Compatible / Latest): dependencies, language and tool keys, rule packs; `all=true` lists every row, `checked` counts them, `file` is the `target/jk-outdated-dependencies.md` it wrote, and a row whose coordinate moved carries `relocated` |
-| **`update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock. Params: `dir`, [`goal`](#goal), `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). Preview returns the proposed `jk.toml` hunk without writing; `apply=true` writes, relocks, and lists every lock package the relock added, removed or moved under `lock.changes` (`coordinate`, `from`, `to`; `from`/`to` null when added/removed), with the count in `lock.updated`. Same renderer as `jk add`. A move across a minor or a major, or a relock that adds a package, is a [decision](#decisions) the user makes first |
-| **`deps`** | Add, remove, or pin coordinates and relock, with a [`goal`](#goal). `preview=true` does not write; a version or coordinate the repositories do not serve is an error, preview or not. An add whose lock trips the project's [deny policy](publish.md#deny-policy) is put back and becomes a [decision](#decisions) |
+| **`update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock. Params: `dir`, [`goal`](#goal), `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). Preview returns the proposed `jk.toml` hunk without writing; `apply=true` writes, relocks, and lists every lock package the relock added, removed or moved under `lock.changes` (`coordinate`, `from`, `to`; `from`/`to` null when added/removed), with the count in `lock.updated`. Same renderer as `jk add`. Every move on a pin's major applies, across a minor and with any package the relock adds, and nobody is asked; without `major`, each newer major is listed under `available` (`handle from → to`), not applied |
+| **`deps`** | Add, remove, or pin coordinates and relock, with a [`goal`](#goal). `preview=true` does not write; a version or coordinate the repositories do not serve is an error, preview or not. An add whose lock trips the project's [deny policy](publish.md#deny-policy) fails naming each rule it trips, and `jk.toml` and `jk-lock.toml` are left as they were |
 | **`workspace`** | Preview/apply workspace member add/remove |
 | **`manifest`** | Set whitelisted `jk.toml` keys (`java=N` is language level, not `jdk=`) |
 | **`config`** | Machine config get/set, or `apply_preset=ci` |
@@ -310,12 +310,9 @@ and `jk decide` all answer; the first answer wins.
 
 | Operation | Asks when | Changes trust |
 |---|---|---|
-| `update` with `apply=true` | a pin moves across a minor or a major, or the relock adds a package | yes |
-| `deps` add | the new lock trips the project's deny policy (license, source, yanked) | yes |
 | `disk` `clean` / `nuke` / `m2-clean`, `jdk` uninstall, `node` uninstall | always, when `confirm=true` and the host can ask | no |
 
-Nothing is written until the decision is accepted: `update` holds a move, and a relock that would
-add a package, before writing anything (it resolves the moved manifests from memory), and `deps` puts an add the deny policy refuses back. A host that
+Dependency work never asks: `update` applies and `deps` either applies or fails. A host that
 can ask neither by form nor by link still runs a destructive operation on `confirm=true`, as
 before; for a trust-changing one, `confirm` is not an answer.
 

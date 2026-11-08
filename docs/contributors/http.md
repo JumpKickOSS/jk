@@ -393,7 +393,7 @@ within each (the queue keeps 200; a settled decision is also pruned with the ses
 the queue and its record together). `GET /api/decisions/<id>` is one, or a **404**. A decision is
 `{ id, kind, question, detail, command, trust, form, session?, label?, episode?, project?,
 createdAt, deadline, state, answers?, answeredBy?, answeredAt?, route }`: `kind` names the
-operation (`update`, `deps-add`, `disk-clean`, …), `command` is `jk decide <id>`, `form` the shared
+operation (`disk-clean`, `jdk-uninstall`, …), `command` is `jk decide <id>`, `form` the shared
 form model ([forms](forms.md)), `state` one of `open`, `accepted`, `declined`, `expired`, and
 `answeredBy` one of `host-form`, `host-url`, `dashboard`, `cli`. `route` is `#decision/<id>`.
 

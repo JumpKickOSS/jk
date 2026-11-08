@@ -400,9 +400,9 @@ public final class ProtoEvents {
             String module,
             String from,
             String to,
-            boolean held,
+            boolean available,
             List<String> adds) {
-        return new UpdateRewriteEvent(dir, table, handle, module, from, to, held, adds).encode();
+        return new UpdateRewriteEvent(dir, table, handle, module, from, to, available, adds).encode();
     }
 
     public static String updateChange(

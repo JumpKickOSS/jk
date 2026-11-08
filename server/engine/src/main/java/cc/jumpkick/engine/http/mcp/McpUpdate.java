@@ -4,7 +4,6 @@ package cc.jumpkick.engine.http.mcp;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.LockDiff;
 import cc.jumpkick.lock.Lockfile;
@@ -15,7 +14,6 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
-import cc.jumpkick.runtime.workspace.AddedPackages;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
@@ -23,7 +21,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jspecify.annotations.Nullable;
 
 /**
  * {@code update}'s body: the pin rewrites {@link ManifestUpdates} plans for {@code dir}, and with
@@ -35,13 +32,10 @@ public final class McpUpdate {
     private McpUpdate() {}
 
     /**
-     * The plan for {@code dir}, written and relocked when {@code apply}. Unless {@code approved}, an
-     * apply that moves a pin across a minor or a major, or whose relock adds a package, writes
-     * nothing; either answers {@code held}, one line per move or added package, for
-     * the caller to put to a person before it applies again with {@code approved}.
+     * The plan for {@code dir}, written and relocked when {@code apply}. Without {@code major}, the
+     * releases past a pin's major it leaves are listed under {@code available}, one line each.
      */
-    public static Map<String, Object> run(
-            String dir, List<String> deps, boolean major, boolean apply, boolean approved) {
+    public static Map<String, Object> run(String dir, List<String> deps, boolean major, boolean apply) {
         Path root = PathUtil.resolveUserPath(dir);
         Map<String, Object> out = new LinkedHashMap<>();
         if (McpManifest.refuseShadowed(root.resolve(ManifestPaths.MANIFEST), out)) return out;
@@ -59,13 +53,12 @@ public final class McpUpdate {
                     out.put("files", files(plan));
                     String entryManifest = plan.contents().get(root.resolve(ManifestPaths.MANIFEST));
                     out.put("preview", entryManifest == null ? "" : entryManifest);
-                    List<String> crossing = crossing(plan);
-                    if (!apply || (!approved && !crossing.isEmpty())) {
+                    if (!plan.available().isEmpty()) out.put("available", moves(plan.available()));
+                    if (!apply) {
                         out.put("applied", false);
-                        if (apply) out.put("held", crossing);
                         return null;
                     }
-                    apply(root, scope, lockDir, cache, plan, approved, out);
+                    apply(root, scope, lockDir, cache, plan, out);
                     return null;
                 }
             });
@@ -75,41 +68,16 @@ public final class McpUpdate {
         return out;
     }
 
-    /**
-     * Writes {@code plan} and relocks. Unapproved, a relock that would add a package to an existing
-     * lock is found first by a resolve that reads the plan's manifests from memory, and then nothing
-     * is written.
-     */
+    /** Writes {@code plan} and relocks. */
     private static void apply(
             Path root,
             LockPlans.LockScope scope,
             Path lockDir,
             Path cache,
             ManifestUpdates.Plan plan,
-            boolean approved,
             Map<String, Object> out)
             throws Exception {
         Lockfile before = LockDiff.current(lockDir);
-        // A first lock adds every package; only a relock that grows an existing lock asks.
-        if (!approved && before != null) {
-            Lockfile probe = probe(lockDir, cache, plan);
-            if (probe != null) {
-                List<LockDiff.Change> changes = LockDiff.between(before, probe);
-                List<String> added = added(changes);
-                if (!added.isEmpty()) {
-                    out.put("applied", false);
-                    Map<String, Object> lock = new LinkedHashMap<>();
-                    lock.put("success", true);
-                    lock.put("exitCode", 0);
-                    lock.put("packages", probe.artifacts().size());
-                    lock.put("updated", changes.size());
-                    lock.put("changes", changes(changes));
-                    out.put("lock", lock);
-                    out.put("held", added);
-                    return;
-                }
-            }
-        }
         ManifestUpdates.apply(plan);
         out.put("applied", true);
         LockPlans.LockScope relockScope = plan.isEmpty() ? scope : LockPlans.lockScope(root);
@@ -143,36 +111,10 @@ public final class McpUpdate {
         if (!result.success()) out.put("error", "relock failed");
     }
 
-    /**
-     * The lock {@code plan}'s manifests resolve to, read from memory and written nowhere; {@code
-     * null} when that resolve fails, which the relock then meets and reports.
-     */
-    private static @Nullable Lockfile probe(Path lockDir, Path cache, ManifestUpdates.Plan plan) {
-        try {
-            return AddedPackages.probe(
-                    lockDir, plan.contents(), cache, null, List.of(), true, new LockMode.Update(null));
-        } catch (Exception e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            Log.debug("update: no probe of the packages the relock adds", e);
-            return null;
-        }
-    }
-
-    /** Each package {@code changes} adds, as {@code coordinate version (new)}. */
-    private static List<String> added(List<LockDiff.Change> changes) {
-        List<String> added = new ArrayList<>();
-        for (LockDiff.Change c : changes) {
-            if (c.from() == null && c.to() != null) added.add(c.coordinate() + " " + c.to() + " (new)");
-        }
-        return added;
-    }
-
-    /** Each move across a minor or a major, as {@code handle from → to}. */
-    private static List<String> crossing(ManifestUpdates.Plan plan) {
+    /** Each move as {@code handle from → to}. */
+    private static List<String> moves(List<ManifestUpdates.Rewrite> moves) {
         List<String> out = new ArrayList<>();
-        for (ManifestUpdates.Rewrite r : plan.rewrites()) {
-            if (r.crossesMinor()) out.add(r.handle() + " " + r.from() + " → " + r.to());
-        }
+        for (ManifestUpdates.Rewrite r : moves) out.add(r.handle() + " " + r.from() + " → " + r.to());
         return out;
     }
 

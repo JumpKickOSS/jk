@@ -16,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -51,22 +50,17 @@ class ManifestUpdatesTest {
     }
 
     @Test
-    void a_held_selection_moves_a_pin_only_to_the_newest_patch_on_its_minor() {
+    void a_selection_without_major_takes_the_newest_on_the_major_and_leaves_the_next_major() {
         List<String> published = List.of("1.2.3", "1.2.5", "1.3.0", "2.0.0");
-        ManifestUpdates.Selection held = new ManifestUpdates.Selection(List.of(), true).holding();
-        assertThat(ManifestUpdates.step("1.2.3", published, held))
-                .isEqualTo(new ManifestUpdates.Step("1.2.5", "2.0.0"));
-        assertThat(ManifestUpdates.step("1.2.5", published, held)).isEqualTo(new ManifestUpdates.Step(null, "2.0.0"));
-        assertThat(ManifestUpdates.step("2.0.0", published, held)).isEqualTo(ManifestUpdates.Step.NONE);
-        assertThat(ManifestUpdates.step("1.2.3", published, new ManifestUpdates.Selection(List.of(), false)))
-                .as("an unheld selection takes the newest release and holds nothing")
-                .isEqualTo(new ManifestUpdates.Step("1.3.0", null));
-        assertThat(new ManifestUpdates.Selection(List.of("a"), false)
-                        .holding()
-                        .withModules(Set.of("com.acme:a"))
-                        .hold())
-                .as("a widened selection still holds")
-                .isTrue();
+        ManifestUpdates.Selection same = new ManifestUpdates.Selection(List.of(), false);
+        assertThat(ManifestUpdates.step("1.2.3", published, same))
+                .as("across a minor, and the next major available")
+                .isEqualTo(new ManifestUpdates.Step("1.3.0", "2.0.0"));
+        assertThat(ManifestUpdates.step("1.3.0", published, same)).isEqualTo(new ManifestUpdates.Step(null, "2.0.0"));
+        assertThat(ManifestUpdates.step("2.0.0", published, same)).isEqualTo(ManifestUpdates.Step.NONE);
+        assertThat(ManifestUpdates.step("1.2.3", published, new ManifestUpdates.Selection(List.of(), true)))
+                .as("major takes the newest release and leaves nothing")
+                .isEqualTo(new ManifestUpdates.Step("2.0.0", null));
     }
 
     @Test
@@ -149,52 +143,29 @@ class ManifestUpdatesTest {
     }
 
     @Test
-    void a_held_plan_keeps_every_pin_on_its_minor(@TempDir Path ws) throws Exception {
+    void a_plan_without_major_takes_every_move_on_the_major_and_names_each_newer_major(@TempDir Path ws)
+            throws Exception {
         workspace(ws);
         publish();
 
-        ManifestUpdates.Plan plan = ManifestUpdates.plan(ws, http.base(), ManifestUpdates.Selection.ALL.holding());
+        ManifestUpdates.Plan plan = ManifestUpdates.plan(ws, http.base(), ManifestUpdates.Selection.ALL);
 
         assertThat(plan.rewrites())
                 .extracting(r -> r.handle(), r -> r.from(), r -> r.to())
-                .as("shared 1.0.0 → 1.2.0 and tj 1.0 → 1.1 cross a minor; guava's 33.4.8 too")
-                .containsExactlyInAnyOrder(tuple("jackson", "2.18.0", "2.18.2"), tuple("jackson", "2.18.0", "2.18.2"));
-        assertThat(plan.held())
-                .extracting(r -> r.dir().getFileName().toString(), r -> r.handle(), r -> r.from(), r -> r.to())
-                .as("the same pass plans the held moves, each from where its pin stands")
+                .as("moves across a minor are taken too")
                 .containsExactlyInAnyOrder(
-                        tuple(ws.getFileName().toString(), "guava", "33.0.0-jre", "33.4.8-jre"),
-                        tuple(ws.getFileName().toString(), "shared", "1.0.0", "1.2.0"),
-                        tuple("lib", "tj", "1.0", "1.1"));
-    }
-
-    @Test
-    void a_held_pin_that_takes_a_patch_is_held_from_the_patch(@TempDir Path project) throws Exception {
-        MavenStub upstream = new MavenStub(http);
-        versions(upstream, "other", "1.0.0", "1.0.1", "1.1.0");
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "com.example"
-                name = "app"
-                version = "1.0.0"
-                java = 25
-
-                [dependencies]
-                other = "com.acme:other:1.0.0"
-                """);
-
-        ManifestUpdates.Plan plan = ManifestUpdates.plan(project, http.base(), ManifestUpdates.Selection.ALL.holding());
-
-        assertThat(plan.rewrites())
-                .extracting(r -> r.handle(), r -> r.from(), r -> r.to())
-                .containsExactly(tuple("other", "1.0.0", "1.0.1"));
-        assertThat(plan.held())
-                .extracting(r -> r.handle(), r -> r.from(), r -> r.to())
-                .containsExactly(tuple("other", "1.0.1", "1.1.0"));
-        assertThat(plan.contents().get(project.resolve("jk.toml"))).contains("com.acme:other:1.0.1");
-        assertThat(ManifestUpdates.plan(project, http.base(), ManifestUpdates.Selection.ALL)
-                        .held())
-                .as("an unheld plan holds nothing")
-                .isEmpty();
+                        tuple("jackson", "2.18.0", "2.18.2"),
+                        tuple("jackson", "2.18.0", "2.18.2"),
+                        tuple("guava", "33.0.0-jre", "33.4.8-jre"),
+                        tuple("shared", "1.0.0", "1.2.0"),
+                        tuple("tj", "1.0", "1.1"));
+        assertThat(plan.available())
+                .extracting(r -> r.dir().getFileName().toString(), r -> r.handle(), r -> r.from(), r -> r.to())
+                .as("the same pass names each newer major, from where its pin lands")
+                .containsExactlyInAnyOrder(
+                        tuple(ws.getFileName().toString(), "jackson", "2.18.2", "3.0.0"),
+                        tuple("lib", "jackson", "2.18.2", "3.0.0"),
+                        tuple(ws.getFileName().toString(), "guava", "33.4.8-jre", "34.0.0-jre"));
     }
 
     @Test

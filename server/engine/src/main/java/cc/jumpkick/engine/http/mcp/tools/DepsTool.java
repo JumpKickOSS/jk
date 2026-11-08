@@ -2,7 +2,6 @@
 package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.engine.http.mcp.McpCall;
-import cc.jumpkick.engine.http.mcp.McpDecisions;
 import cc.jumpkick.engine.http.mcp.McpError;
 import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
@@ -24,12 +23,10 @@ import java.util.Map;
 /**
  * {@code deps} — add, remove, or pin dependencies in {@code jk.toml}, then relock. {@code
  * preview=true} writes nothing and does not lock; an added or pinned version must still exist in the
- * configured repositories. An add whose lock trips the project's deny policy is put back, and
- * kept only when the user accepts it as a trust-changing decision.
+ * configured repositories. An add whose lock trips the project's deny policy fails naming each rule
+ * it trips, and {@code jk.toml} and {@code jk-lock.toml} are put back as they were.
  */
 public final class DepsTool implements McpTool {
-
-    static final String KIND = "deps-add";
 
     static final String DESCRIPTION =
             "Add, remove, or pin coords in jk.toml and relock. action=add, remove, or pin; preview=true does not write.";
@@ -62,24 +59,15 @@ public final class DepsTool implements McpTool {
         }
         boolean preview = in.flag("preview");
         String dir = in.requiredDir();
-        boolean continued = "add".equals(action) && !preview && in.str(McpDecisions.DECISION) != null;
-        if (continued) {
-            McpDecisions.Outcome outcome = McpDecisions.require(in, this, denied(dir, List.of()));
-            if (outcome instanceof McpDecisions.Outcome.Stop stop) return stop.result();
-        }
-        return edit(in, action, dir, preview, "add".equals(action) && !continued);
-    }
-
-    /** The edit and relock; with {@code gate}, an add whose lock trips the deny policy is put back and asked. */
-    private Map<String, Object> edit(McpCall in, String action, String dir, boolean preview, boolean gate) {
+        boolean gate = "add".equals(action) && !preview;
         Path root = PathUtil.resolveUserPath(dir);
-        HeldFiles held;
+        HeldFiles before;
         try {
-            held = HeldFiles.of(List.of(ManifestPaths.manifestIn(root), LockPaths.lockFile(root)));
+            before = HeldFiles.of(List.of(ManifestPaths.manifestIn(root), LockPaths.lockFile(root)));
         } catch (IOException e) {
             return in.error(Errors.text(e) + "\n");
         }
-        List<String> already = gate && !preview ? denyHits(root) : List.of();
+        List<String> already = gate ? denyHits(root) : List.of();
         Map<String, Object> data = McpManifest.deps(dir, action, in.strings("coords"), in.str("scope"), !preview);
         if (data.get("error") != null) {
             return in.error(data.get("error") + "\n");
@@ -96,13 +84,11 @@ public final class DepsTool implements McpTool {
         hits.removeAll(already);
         if (hits.isEmpty()) return in.text(text);
         try {
-            held.restore();
+            before.restore();
         } catch (IOException e) {
             return in.error(text + "could not put jk.toml back: " + Errors.text(e) + "\n");
         }
-        McpDecisions.Outcome outcome = McpDecisions.require(in, this, denied(dir, hits));
-        if (outcome instanceof McpDecisions.Outcome.Stop stop) return stop.result();
-        return edit(in, action, dir, preview, false);
+        return in.error("deny policy refuses the add; nothing written:\n" + String.join("\n", hits) + "\n");
     }
 
     /** What the deny policy says about the lock {@code root} now has, one line per hit. */
@@ -114,14 +100,5 @@ public final class DepsTool implements McpTool {
                     + report.reasons().get(i));
         }
         return hits;
-    }
-
-    private static McpDecisions.Ask denied(String dir, List<String> hits) {
-        return new McpDecisions.Ask(
-                KIND,
-                "Add dependencies that the deny policy refuses in " + dir + "?",
-                hits,
-                "Yes, add them anyway",
-                true);
     }
 }

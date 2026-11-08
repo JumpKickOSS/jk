@@ -47,9 +47,9 @@ import org.jspecify.annotations.Nullable;
  * {@code jk update} — move the exact pins {@code jk.toml} declares to the newest stable on the same
  * Maven major ({@code --major} to cross one; names or {@code --dep} to pick handles), then
  * re-resolve and overwrite {@code jk-lock.toml}. Workspace roots cascade over every member; {@code
- * --git [name]} re-resolves only git deps (pinned refs move only here). A move across a minor or a
- * major, and one whose relock adds packages to the lock, is the user's to accept: asked at a
- * terminal; elsewhere held, unless {@code --yes}. Engine-hosted.
+ * --git [name]} re-resolves only git deps (pinned refs move only here). At a terminal, unless
+ * {@code --yes}, a move across a minor or a major and one whose relock adds packages to the lock
+ * are previewed and asked once; without a terminal every move applies. Engine-hosted.
  */
 public final class UpdateCommand implements CliCommand {
 
@@ -161,20 +161,18 @@ public final class UpdateCommand implements CliCommand {
                 platform,
                 deps,
                 major,
-                global.yes,
                 false);
     }
 
     /**
-     * The request to send: accepting when {@code --yes} said so, or when a terminal user accepted
-     * the moves across a minor or a major and the moves adding packages the preview names (or there
-     * are none). Empty when they declined. Without a terminal the request goes unaccepted,
-     * unpreviewed: the engine holds such moves and names each in a held event.
+     * The request to send, unless a terminal user declined the moves across a minor or a major and
+     * the moves adding packages the preview names: empty then. With {@code --yes}, JSON output or no
+     * terminal there is no preview and every move applies.
      */
     private Optional<EngineRequests.UpdateRequest> decided(EngineRequests.UpdateRequest req) throws IOException {
-        if (req.accept() || global.outputIsJson() || !Interactivity.canPrompt()) return Optional.of(req);
-        List<Held> crossing = new ArrayList<>();
-        List<Held> adding = new ArrayList<>();
+        if (global.yes || global.outputIsJson() || !Interactivity.canPrompt()) return Optional.of(req);
+        List<Move> crossing = new ArrayList<>();
+        List<Move> adding = new ArrayList<>();
         EngineRequests.LockHandler preview = new EngineRequests.LockHandler() {
             @Override
             public void onRewrite(
@@ -185,7 +183,7 @@ public final class UpdateCommand implements CliCommand {
                     String from,
                     String to,
                     List<String> adds) {
-                Held move = new Held(handle, from, to, adds);
+                Move move = new Move(handle, from, to, adds);
                 if (Versions.crossesMinor(from, to)) crossing.add(move);
                 if (!adds.isEmpty()) adding.add(move);
             }
@@ -196,30 +194,29 @@ public final class UpdateCommand implements CliCommand {
             }
         };
         EngineRequests.LockOutcome looked = EngineClient.runUpdate(EnginePaths.current(), req.previewing(), preview);
-        if (!looked.success() || (crossing.isEmpty() && adding.isEmpty())) return Optional.of(req.accepting());
+        if (!looked.success() || (crossing.isEmpty() && adding.isEmpty())) return Optional.of(req);
         if (!crossing.isEmpty()) {
             CliOutput.out(RichText.parse("[bold]" + crossing.size() + "[/] pin"
                             + (crossing.size() == 1 ? " moves" : "s move") + " across a minor or a major:")
                     .render());
-            for (Held m : crossing) printHeldMove(new Held(m.handle(), m.from(), m.to(), List.of()));
+            for (Move m : crossing) printMove(new Move(m.handle(), m.from(), m.to(), List.of()));
         }
         if (!adding.isEmpty()) {
             CliOutput.out(RichText.parse("[bold]" + adding.size() + "[/] pin" + (adding.size() == 1 ? "" : "s")
                             + " add packages to the lock:")
                     .render());
-            for (Held m : adding) printHeldMove(m);
+            for (Move m : adding) printMove(m);
         }
         long asked =
                 Stream.concat(crossing.stream(), adding.stream()).distinct().count();
         if (!Confirm.of("Apply " + (asked == 1 ? "it" : "them") + "?", false).ask()) return Optional.empty();
-        return Optional.of(req.accepting());
+        return Optional.of(req);
     }
 
     /** Hosted full re-resolve: one console listener per cascade module, summary line per lockfile. */
     private int runHosted(Path dir, Path cache) {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        List<Held> held = new ArrayList<>();
-        boolean[] relocked = {false};
+        List<Move> available = new ArrayList<>();
         EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
             private final List<Moved> rewritten = new ArrayList<>();
             private final List<Moved> changed = new ArrayList<>();
@@ -238,15 +235,9 @@ public final class UpdateCommand implements CliCommand {
             }
 
             @Override
-            public void onHeld(
-                    String moduleDir,
-                    String table,
-                    String handle,
-                    String module,
-                    String from,
-                    String to,
-                    List<String> adds) {
-                held.add(new Held(handle, from, to, adds));
+            public void onAvailable(
+                    String moduleDir, String table, String handle, String module, String from, String to) {
+                available.add(new Move(handle, from, to, List.of()));
             }
 
             @Override
@@ -267,7 +258,6 @@ public final class UpdateCommand implements CliCommand {
             @Override
             public void onModuleFinish(
                     @Nullable String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
-                relocked[0] = true;
                 if (result.success() && !global.outputIsJson()) {
                     for (Moved m : changed) {
                         if (rewritten.stream().noneMatch(m::sameMoveAs)) printChange(m);
@@ -302,50 +292,32 @@ public final class UpdateCommand implements CliCommand {
         if (!outcome.success() && outcome.errors().isEmpty() && !global.outputIsJson()) {
             CommandWedge.printFail("Update", "update failed; see the errors above");
         }
-        if (outcome.success() && !held.isEmpty()) printHeld(held, relocked[0]);
+        if (outcome.success() && !available.isEmpty() && !global.outputIsJson()) printAvailable(available);
         return outcome.exitCode();
     }
 
-    /**
-     * A move held for a person: across a minor or a major, or, when {@code adds} names packages
-     * ({@code coordinate version}), because its relock adds them to the lock.
-     */
-    record Held(String handle, String from, String to, List<String> adds) {
-        Held {
+    /** One pin move, and the packages ({@code coordinate version}) its relock adds to the lock. */
+    record Move(String handle, String from, String to, List<String> adds) {
+        Move {
             adds = List.copyOf(adds);
         }
     }
 
-    /**
-     * The verdict on held moves: how many, why, the command that takes them, one line each. {@code
-     * relocked} false says the run moved nothing.
-     */
-    static void printHeld(List<Held> held, boolean relocked) {
-        int adding = (int) held.stream().filter(h -> !h.adds().isEmpty()).count();
-        JkWedge.warning("Update", RichText.parse(heldTail(held.size() - adding, adding, relocked)))
+    /** The releases past a pin's major the run left: how many, the flag that takes them, one line each. */
+    static void printAvailable(List<Move> available) {
+        JkWedge.warning("Update", RichText.parse(availableTail(available.size())))
                 .print();
-        for (Held m : held) printHeldMove(m);
+        for (Move m : available) printMove(m);
     }
 
-    /**
-     * {@code [nothing moved; ]held N pins across a minor or a major[ and M whose relock adds
-     * packages]; jk update -y takes them}.
-     */
-    static String heldTail(int crossing, int adding, boolean relocked) {
-        String why;
-        if (adding == 0) {
-            why = "[bold]" + crossing + "[/] pin" + (crossing == 1 ? "" : "s") + " across a minor or a major";
-        } else if (crossing == 0) {
-            why = "[bold]" + adding + "[/] pin" + (adding == 1 ? "" : "s") + " whose relock adds packages";
-        } else {
-            why = "[bold]" + crossing + "[/] pin" + (crossing == 1 ? "" : "s") + " across a minor or a major and [bold]"
-                    + adding + "[/] whose relock adds packages";
-        }
-        return (relocked ? "" : "nothing moved; ") + "held " + why + "; [bold]jk update -y[/] takes them";
+    /** {@code N pin(s) have a newer major; jk update --major takes it/them}. */
+    static String availableTail(int count) {
+        return "[bold]" + count + "[/] pin" + (count == 1 ? " has" : "s have") + " a newer major; [bold]jk update"
+                + " --major[/] takes " + (count == 1 ? "it" : "them");
     }
 
-    /** One held move: {@code   handle  1.0.1 → 1.1.0}, then {@code (adds g:a 1.0, …)} when it adds packages. */
-    static void printHeldMove(Held m) {
+    /** One move: {@code   handle  1.0.1 → 1.1.0}, then {@code (adds g:a 1.0, …)} when it adds packages. */
+    static void printMove(Move m) {
         String adds = m.adds().isEmpty() ? "" : "  [dim](adds " + RichText.escape(String.join(", ", m.adds())) + ")[/]";
         CliOutput.out(RichText.parse("  [bold]" + RichText.escape(m.handle()) + "[/]  " + RichText.escape(m.from())
                         + " → [yellow]" + RichText.escape(m.to()) + "[/]" + adds)

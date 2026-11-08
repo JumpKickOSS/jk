@@ -130,41 +130,29 @@ class UpdateRequestWireTest extends EngineServerHarness {
             assertThat(locked(project, "com.acme:other")).isEqualTo("1.0.0");
             assertThat(Files.readString(project.resolve("jk.toml"))).contains("com.acme:jackson:2.18.2");
 
-            // Moves across a minor or a major are a person's to accept: unaccepted, they are held
-            // and each pin moves only to its newest patch.
-            Outcome partly = drive(p, update(project, cache, List.of(), true, false, false));
-            assertThat(partly.success()).isTrue();
-            assertThat(partly.rewrites)
+            // Without --major every move on the pin's major applies, across a minor too, and a
+            // release past the major is reported as available, not taken.
+            Outcome minor = drive(p, update(project, cache, List.of(), false, false));
+            assertThat(minor.success()).isTrue();
+            assertThat(minor.rewrites)
                     .extracting(e -> e.handle(), e -> e.from(), e -> e.to())
-                    .containsExactly(tuple("other", "1.0.0", "1.0.1"));
-            assertThat(partly.held)
+                    .containsExactly(tuple("other", "1.0.0", "1.1.0"));
+            assertThat(minor.available)
                     .extracting(e -> e.handle(), e -> e.from(), e -> e.to())
-                    .as("the same pass names each held move from where its pin lands")
-                    .containsExactlyInAnyOrder(tuple("jackson", "2.18.2", "3.0.0"), tuple("other", "1.0.1", "1.1.0"));
+                    .containsExactly(tuple("jackson", "2.18.2", "3.0.0"));
             assertThat(Files.readString(project.resolve("jk.toml")))
                     .contains("com.acme:jackson:2.18.2")
-                    .contains("com.acme:other:1.0.1");
+                    .contains("com.acme:other:1.1.0");
             assertThat(locked(project, "com.acme:jackson")).isEqualTo("2.18.2");
-            assertThat(locked(project, "com.acme:other")).isEqualTo("1.0.1");
-
-            // Every move held: nothing is written or relocked, and the run still succeeds.
-            String lockBefore = Files.readString(project.resolve("jk-lock.toml"));
-            Outcome held = drive(p, update(project, cache, List.of(), true, false, false));
-            assertThat(held.success()).isTrue();
-            assertThat(held.rewrites).isEmpty();
-            assertThat(held.held)
-                    .extracting(e -> e.handle(), e -> e.from(), e -> e.to())
-                    .containsExactlyInAnyOrder(tuple("jackson", "2.18.2", "3.0.0"), tuple("other", "1.0.1", "1.1.0"));
-            assertThat(held.planFinish).isNull();
-            assertThat(Files.readString(project.resolve("jk.toml"))).contains("com.acme:other:1.0.1");
-            assertThat(Files.readString(project.resolve("jk-lock.toml"))).isEqualTo(lockBefore);
+            assertThat(locked(project, "com.acme:other")).isEqualTo("1.1.0");
 
             // --major crosses the line for every pin.
             Outcome crossed = drive(p, update(project, cache, List.of(), true, false));
             assertThat(crossed.success()).isTrue();
             assertThat(crossed.rewrites)
                     .extracting(e -> e.handle(), e -> e.from(), e -> e.to())
-                    .containsExactlyInAnyOrder(tuple("jackson", "2.18.2", "3.0.0"), tuple("other", "1.0.1", "1.1.0"));
+                    .containsExactly(tuple("jackson", "2.18.2", "3.0.0"));
+            assertThat(crossed.available).isEmpty();
             assertThat(Files.readString(project.resolve("jk.toml")))
                     .contains("jackson = \"com.acme:jackson:3.0.0\"")
                     .contains("other = \"com.acme:other:1.1.0\"");
@@ -172,9 +160,8 @@ class UpdateRequestWireTest extends EngineServerHarness {
             assertThat(locked(project, "com.acme:other")).isEqualTo("1.1.0");
             assertThat(crossed.changes)
                     .extracting(e -> e.coordinate(), e -> e.from(), e -> e.to())
-                    .containsExactly(
-                            tuple("com.acme:jackson", "2.18.2", "3.0.0"), tuple("com.acme:other", "1.0.1", "1.1.0"));
-            assertThat(Jsonl.longValue(crossed.planFinish, "lockChanged", -1)).isEqualTo(2);
+                    .containsExactly(tuple("com.acme:jackson", "2.18.2", "3.0.0"));
+            assertThat(Jsonl.longValue(crossed.planFinish, "lockChanged", -1)).isEqualTo(1);
 
             // A keep-pins lock streams no changes.
             assertThat(drive(p, lock(project, cache, false)).changes).isEmpty();
@@ -187,10 +174,6 @@ class UpdateRequestWireTest extends EngineServerHarness {
     // ---- wire ------------------------------------------------------------------
 
     private String update(Path project, Path cache, List<String> deps, boolean major, boolean preview) {
-        return update(project, cache, deps, major, preview, true);
-    }
-
-    private String update(Path project, Path cache, List<String> deps, boolean major, boolean preview, boolean accept) {
         return new UpdateRequest(
                         project.toString(),
                         cache.toString(),
@@ -205,8 +188,7 @@ class UpdateRequestWireTest extends EngineServerHarness {
                         "",
                         deps,
                         major,
-                        preview,
-                        accept)
+                        preview)
                 .encode();
     }
 
@@ -228,7 +210,7 @@ class UpdateRequestWireTest extends EngineServerHarness {
     /** Everything a lock/update conversation ends with. */
     private record Outcome(
             List<UpdateRewriteEvent> rewrites,
-            List<UpdateRewriteEvent> held,
+            List<UpdateRewriteEvent> available,
             List<UpdateChangeEvent> changes,
             @Nullable String planFinish,
             String lockFinish) {
@@ -240,7 +222,7 @@ class UpdateRequestWireTest extends EngineServerHarness {
     /** Drive one request to its {@code lock-finish}, collecting the pin moves it streamed. */
     private static Outcome drive(EnginePaths.Paths p, String request) throws IOException {
         List<UpdateRewriteEvent> rewrites = new ArrayList<>();
-        List<UpdateRewriteEvent> held = new ArrayList<>();
+        List<UpdateRewriteEvent> available = new ArrayList<>();
         List<UpdateChangeEvent> changes = new ArrayList<>();
         String planFinish = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
@@ -251,7 +233,7 @@ class UpdateRequestWireTest extends EngineServerHarness {
                 switch (type) {
                     case EngineProtocol.UPDATE_REWRITE -> {
                         UpdateRewriteEvent e = UpdateRewriteEvent.decode(line);
-                        (e.held() ? held : rewrites).add(e);
+                        (e.available() ? available : rewrites).add(e);
                     }
                     case EngineProtocol.UPDATE_CHANGE -> {
                         assertThat(planFinish)
@@ -261,7 +243,7 @@ class UpdateRequestWireTest extends EngineServerHarness {
                     }
                     case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
                     case EngineProtocol.LOCK_FINISH -> {
-                        return new Outcome(rewrites, held, changes, planFinish, line);
+                        return new Outcome(rewrites, available, changes, planFinish, line);
                     }
                     case EngineProtocol.ERROR -> throw new IOException("request failed: " + line);
                     default -> {

@@ -301,7 +301,7 @@ class EngineProtocolTest {
     void update_request_round_trips_the_git_splice_fields() {
         String json = new UpdateRequest(
                         "/work", "/cache", List.of(), false, null, true, "mylib", false, true, false, "", List.of(),
-                        false, false, false)
+                        false, false)
                 .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.UPDATE_REQUEST);
         assertThat(Jsonl.bool(json, "gitOnly", false)).isTrue();
@@ -325,13 +325,11 @@ class EngineProtocolTest {
                 "",
                 List.of("jackson", "com.acme:other"),
                 true,
-                true,
                 true);
         UpdateRequest back = UpdateRequest.decode(req.encode());
         assertThat(back.deps()).containsExactly("jackson", "com.acme:other");
         assertThat(back.major()).isTrue();
         assertThat(back.preview()).isTrue();
-        assertThat(back.accept()).isTrue();
         // Absent fields read as "every pin, same major, write".
         UpdateRequest bare = UpdateRequest.decode(RequestJson.request(EngineProtocol.UPDATE_REQUEST)
                 .string("platform", "")
@@ -339,7 +337,6 @@ class EngineProtocolTest {
         assertThat(bare.deps()).isEmpty();
         assertThat(bare.major()).isFalse();
         assertThat(bare.preview()).isFalse();
-        assertThat(bare.accept()).as("absent, a move across a minor is held").isFalse();
     }
 
     @Test
@@ -354,19 +351,19 @@ class EngineProtocolTest {
         assertThat(e.module()).isEqualTo("com.acme:jackson");
         assertThat(e.from()).isEqualTo("2.18.0");
         assertThat(e.to()).isEqualTo("2.18.2");
-        assertThat(e.held()).isFalse();
+        assertThat(e.available()).isFalse();
         assertThat(e.adds()).isEmpty();
-        UpdateRewriteEvent held = UpdateRewriteEvent.decode(ProtoEvents.updateRewrite(
+        UpdateRewriteEvent available = UpdateRewriteEvent.decode(ProtoEvents.updateRewrite(
                 "/work/lib",
                 "dependencies",
                 "jackson",
                 "com.acme:jackson",
                 "2.18.2",
-                "2.19.0",
+                "3.0.0",
                 true,
                 List.of("com.acme:extra 1.0")));
-        assertThat(held.held()).isTrue();
-        assertThat(held.adds()).containsExactly("com.acme:extra 1.0");
+        assertThat(available.available()).isTrue();
+        assertThat(available.adds()).containsExactly("com.acme:extra 1.0");
     }
 
     @Test

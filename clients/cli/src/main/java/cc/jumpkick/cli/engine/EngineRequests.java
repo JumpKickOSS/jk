@@ -153,9 +153,8 @@ public final class EngineRequests {
     /**
      * Everything an engine-hosted {@code jk update} needs — mirrors {@code UpdateCommand}'s local
      * fields. {@code deps} limits the pin rewrite to those handles or {@code group:artifact}
-     * coordinates (empty = all); {@code major} lets a pin cross its Maven major; {@code accept} lets
-     * a pin move across a minor or a major, which the engine otherwise holds, moving the pin only
-     * to its newest patch; {@code preview} only reports the moves.
+     * coordinates (empty = all); {@code major} lets a pin cross its Maven major; {@code preview} only
+     * reports the moves.
      */
     public record UpdateRequest(
             Path entryDir,
@@ -169,7 +168,6 @@ public final class EngineRequests {
             @Nullable String platform,
             List<String> deps,
             boolean major,
-            boolean accept,
             boolean preview) {
 
         /** This request, previewing: the moves stream and nothing is written. */
@@ -186,26 +184,7 @@ public final class EngineRequests {
                     platform,
                     deps,
                     major,
-                    accept,
                     true);
-        }
-
-        /** This request, accepting moves across a minor or a major. */
-        public UpdateRequest accepting() {
-            return new UpdateRequest(
-                    entryDir,
-                    cache,
-                    features,
-                    noDefaultFeatures,
-                    repoUrl,
-                    offline,
-                    force,
-                    verbose,
-                    platform,
-                    deps,
-                    major,
-                    true,
-                    preview);
         }
     }
 
@@ -251,13 +230,11 @@ public final class EngineRequests {
                 String dir, String table, String handle, String module, String from, String to, List<String> adds) {}
 
         /**
-         * One move {@code jk update} held for a person to accept: {@code handle} in {@code table} of
-         * the manifest under {@code dir} stays at {@code from}, where the run left it, short of
-         * {@code to}, because the move crosses a minor or a major or, when {@code adds} is not
-         * empty, because its relock adds those packages; fires with the rewrites.
+         * A release past a pin's major {@code jk update} did not take: {@code handle} in {@code
+         * table} of the manifest under {@code dir} stays at {@code from}, where the run left it,
+         * short of {@code to}, which {@code --major} takes; fires with the rewrites.
          */
-        default void onHeld(
-                String dir, String table, String handle, String module, String from, String to, List<String> adds) {}
+        default void onAvailable(String dir, String table, String handle, String module, String from, String to) {}
 
         /**
          * One package {@code jk update}'s relock changed in the lockfile under {@code dir}: {@code

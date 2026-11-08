@@ -65,25 +65,14 @@ public final class ManifestUpdates {
 
     /**
      * Which pins to move: the handles or {@code group:artifact} coordinates in {@code deps} (empty =
-     * every declared pin), crossing a Maven major only when {@code major} is set. {@code hold} keeps
-     * every pin on its minor: it moves only to the newest patch, a move no person need accept, and
-     * the newer release across the minor is planned as held.
+     * every declared pin), crossing a Maven major only when {@code major} is set.
      */
-    public record Selection(List<String> deps, boolean major, boolean hold) {
+    public record Selection(List<String> deps, boolean major) {
 
         public static final Selection ALL = new Selection(List.of(), false);
 
         public Selection {
             deps = deps == null ? List.of() : List.copyOf(deps);
-        }
-
-        public Selection(List<String> deps, boolean major) {
-            this(deps, major, false);
-        }
-
-        /** This selection, each pin kept on its minor. */
-        public Selection holding() {
-            return new Selection(deps, major, true);
         }
 
         boolean selects(String handle, String module) {
@@ -105,7 +94,7 @@ public final class ManifestUpdates {
             if (deps.isEmpty() || modules.isEmpty()) return this;
             List<String> wider = new ArrayList<>(deps);
             wider.addAll(modules);
-            return new Selection(wider, major, hold);
+            return new Selection(wider, major);
         }
     }
 
@@ -125,29 +114,23 @@ public final class ManifestUpdates {
             String handle,
             String module,
             String from,
-            String to) {
-
-        /** True when this move changes the pin's major or minor. */
-        public boolean crossesMinor() {
-            return Versions.crossesMinor(from, to);
-        }
-    }
+            String to) {}
 
     /**
      * The rewrites and the manifest text they produce, keyed by manifest path, and the moves {@code
-     * held} for a person: each from the version its rewrite lands on (or the pin as written) to the
-     * newer release across a minor or a major a holding {@link Selection} keeps it from. Nothing is
-     * on disk until {@link #apply}; until then a resolve reads {@code contents} through {@link
-     * cc.jumpkick.config.ManifestOverlay}.
+     * available} past a pin's major that a {@link Selection} without {@code major} does not take:
+     * each from the version its rewrite lands on (or the pin as written) to the newest stable on any
+     * major. Nothing is on disk until {@link #apply}; until then a resolve reads {@code contents}
+     * through {@link cc.jumpkick.config.ManifestOverlay}.
      */
-    public record Plan(List<Rewrite> rewrites, Map<Path, String> contents, List<Rewrite> held) {
+    public record Plan(List<Rewrite> rewrites, Map<Path, String> contents, List<Rewrite> available) {
 
         public static final Plan EMPTY = new Plan(List.of(), Map.of());
 
         public Plan {
             rewrites = List.copyOf(rewrites);
             contents = Map.copyOf(contents);
-            held = List.copyOf(held);
+            available = List.copyOf(available);
         }
 
         public Plan(List<Rewrite> rewrites, Map<Path, String> contents) {
@@ -184,10 +167,11 @@ public final class ManifestUpdates {
     }
 
     /**
-     * Where one pin goes: {@code to} the version written ({@code null} leaves the pin), {@code held}
-     * a newer release a person accepts first ({@code null} when there is none).
+     * Where one pin goes: {@code to} the version written ({@code null} leaves the pin), {@code
+     * available} a newer release past its major the run does not take ({@code null} when there is
+     * none).
      */
-    record Step(@Nullable String to, @Nullable String held) {
+    record Step(@Nullable String to, @Nullable String available) {
 
         static final Step NONE = new Step(null, null);
     }
@@ -213,21 +197,21 @@ public final class ManifestUpdates {
         Rewrite at(String from, String to);
     }
 
-    /** The moves one planning pass takes and holds. */
-    private record Moves(List<Rewrite> taken, List<Rewrite> held) {}
+    /** The moves one planning pass takes, and those past a major it leaves available. */
+    private record Moves(List<Rewrite> taken, List<Rewrite> available) {}
 
     /**
      * {@code text} with {@code step} taken through {@code edit}: the move to {@code step.to()} is
-     * recorded as taken, the held release as held from the version the pin lands on. Throws as
-     * {@code edit} does when the pin is not written where it was read, recording nothing.
+     * recorded as taken, the release past the major as available from the version the pin lands on.
+     * Throws as {@code edit} does when the pin is not written where it was read, recording nothing.
      */
     private static String take(String text, String current, Step step, Edit edit, Pin pin, Moves moves) {
         String to = step.to();
-        String held = step.held();
-        if (to == null && held == null) return text;
-        String edited = edit.apply(text, to != null ? to : Objects.requireNonNull(held));
+        String available = step.available();
+        if (to == null && available == null) return text;
+        String edited = edit.apply(text, to != null ? to : Objects.requireNonNull(available));
         if (to != null) moves.taken().add(pin.at(current, to));
-        if (held != null) moves.held().add(pin.at(to != null ? to : current, held));
+        if (available != null) moves.available().add(pin.at(to != null ? to : current, available));
         return to != null ? edited : text;
     }
 
@@ -255,37 +239,17 @@ public final class ManifestUpdates {
                 null,
                 Selection.ALL,
                 (dir, module, current, available) -> {
-                    String held = held(lockDir, dir, probe, module);
-                    return held != null && Versions.compare(held, current) > 0 ? new Step(held, null) : Step.NONE;
+                    String locked = highest(lockDir, dir, probe, module);
+                    return locked != null && Versions.compare(locked, current) > 0 ? new Step(locked, null) : Step.NONE;
                 },
                 null);
-    }
-
-    /**
-     * The plan that takes only {@code moves}, each {@code from} → {@code to}, in the manifests of the
-     * lock scope at {@code lockDir} as they stand. Reads no repository.
-     */
-    public static Plan taking(Path lockDir, List<Rewrite> moves) throws IOException {
-        Map<List<Object>, String> forward = new HashMap<>();
-        for (Rewrite r : moves) {
-            forward.put(List.of(r.dir().toAbsolutePath().normalize(), r.module(), r.from()), r.to());
-        }
-        return plan(
-                lockDir,
-                null,
-                Selection.ALL,
-                (dir, module, current, available) -> {
-                    String to = forward.get(List.of(dir.toAbsolutePath().normalize(), module, current));
-                    return to == null ? Step.NONE : new Step(to, null);
-                },
-                new HashMap<>());
     }
 
     /**
      * The highest version {@code probe} holds for {@code module} as the manifest under {@code dir}
      * reads it: a member its own view, the root the workspace's plain rows.
      */
-    private static @Nullable String held(Path lockDir, Path dir, Lockfile probe, String module) {
+    private static @Nullable String highest(Path lockDir, Path dir, Lockfile probe, String module) {
         Path root = lockDir.toAbsolutePath().normalize();
         Path here = dir.toAbsolutePath().normalize();
         boolean atRoot = here.equals(root);
@@ -400,7 +364,6 @@ public final class ManifestUpdates {
                 text = moveToolPins(dir, moduleLabel, build, text, repos, selection, move, versions, moves);
             }
             if (toolPins && selection.major() && selection.selects(NodeUpdates.HANDLE, NodeUpdates.HANDLE)) {
-                // Node's major always crosses: a holding selection plans it as held.
                 NodeUpdates.Move node = NodeUpdates.major(text, releases);
                 if (node != null) {
                     Rewrite nodeMove = new Rewrite(
@@ -412,12 +375,8 @@ public final class ManifestUpdates {
                             NodeUpdates.MODULE,
                             node.from(),
                             node.to());
-                    if (selection.hold()) {
-                        moves.held().add(nodeMove);
-                    } else {
-                        text = node.text();
-                        moves.taken().add(nodeMove);
-                    }
+                    text = node.text();
+                    moves.taken().add(nodeMove);
                 }
             }
             if (!text.equals(before)) contents.put(manifest, text);
@@ -425,7 +384,7 @@ public final class ManifestUpdates {
         if (toolPins) {
             movePacks(lockDir, effective.get(lockDir), repoUrl, selection, move, versions, moves, contents);
         }
-        return new Plan(moves.taken(), contents, moves.held());
+        return new Plan(moves.taken(), contents, moves.available());
     }
 
     /**
@@ -583,21 +542,14 @@ public final class ManifestUpdates {
 
     /**
      * Where {@code selection} moves a pin at {@code current}: to the newest release {@link
-     * #newer(String, List, boolean)} finds, or, when it holds and that release crosses a minor, to the
-     * newest patch on the pin's minor with that release held.
+     * #newer(String, List, boolean)} finds; without {@code major}, the newest stable past the pin's
+     * major, when there is one, is left available.
      */
     static Step step(String current, List<String> available, Selection selection) {
         String newest = newer(current, available, selection.major());
-        if (newest == null || !selection.hold() || !Versions.crossesMinor(current, newest)) {
-            return new Step(newest, null);
-        }
-        String patch = available.stream()
-                .filter(Versions::isStable)
-                .filter(v -> !Versions.crossesMinor(current, v))
-                .filter(v -> Versions.compare(v, current) > 0)
-                .max(Versions::compare)
-                .orElse(null);
-        return new Step(patch, newest);
+        if (selection.major()) return new Step(newest, null);
+        String beyond = newer(current, available, true);
+        return new Step(newest, beyond != null && major(beyond) != major(current) ? beyond : null);
     }
 
     /** The versions every list in {@code published} carries, in the first list's order. */

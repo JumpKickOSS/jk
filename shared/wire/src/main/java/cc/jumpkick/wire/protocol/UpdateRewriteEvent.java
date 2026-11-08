@@ -8,9 +8,9 @@ import java.util.List;
  * One declared pin {@code jk update} moved (or, in preview, would move): {@code handle} in the
  * {@code table} of the manifest under {@code dir} goes {@code from} → {@code to} (see {@link
  * EngineProtocol#UPDATE_REWRITE}). {@code module} is the {@code group:artifact} behind the handle.
- * {@code held} marks a move not taken, a person's to accept: {@code from} is where the pin stands
- * after the run. {@code adds} names the packages, {@code coordinate version}, the move's relock adds
- * to the lock, another reason a person accepts it; empty when it adds none.
+ * {@code available} marks a release past the pin's major the run did not take ({@code --major}
+ * takes it): {@code from} is where the pin stands after the run. In a preview {@code adds} names the
+ * packages, {@code coordinate version}, the move's relock would add to the lock; empty otherwise.
  */
 public record UpdateRewriteEvent(
         String dir,
@@ -19,7 +19,7 @@ public record UpdateRewriteEvent(
         String module,
         String from,
         String to,
-        boolean held,
+        boolean available,
         List<String> adds) {
 
     public UpdateRewriteEvent {
@@ -34,7 +34,7 @@ public record UpdateRewriteEvent(
                 .string("module", module)
                 .string("from", from)
                 .string("to", to)
-                .bool("held", held)
+                .bool("available", available)
                 .array("adds", adds)
                 .finish();
     }
@@ -47,7 +47,7 @@ public record UpdateRewriteEvent(
                 Jsonl.requiredStr(json, "module"),
                 Jsonl.requiredStr(json, "from"),
                 Jsonl.requiredStr(json, "to"),
-                Jsonl.bool(json, "held", false),
+                Jsonl.bool(json, "available", false),
                 Jsonl.strArray(json, "adds"));
     }
 }

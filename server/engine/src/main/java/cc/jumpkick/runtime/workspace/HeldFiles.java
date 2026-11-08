@@ -10,8 +10,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * The bytes of a few files as they stood before an edit, so an edit a person has not yet approved
- * can be put back: a file that existed gets its bytes again, one that did not is deleted.
+ * The bytes of a few files as they stood before an edit, so an edit that must not stand can be put
+ * back: a file that existed gets its bytes again, one that did not is deleted.
  */
 public final class HeldFiles {
 
