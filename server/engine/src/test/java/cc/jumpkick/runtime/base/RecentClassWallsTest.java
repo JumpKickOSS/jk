@@ -10,8 +10,14 @@ import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -115,6 +121,52 @@ class RecentClassWallsTest {
         Map<String, Long> walls = SessionContext.where(
                 Session.defaults().withWorkingDir(module), () -> RecentClassWalls.forModule(module));
         assertThat(walls).containsEntry("com.example.Only", 8_000L);
+    }
+
+    @Test
+    void concurrent_misses_scan_once_and_a_new_run_is_the_only_file_parsed_again() throws Exception {
+        Path module = Files.createDirectories(state.resolve("app"));
+        Path home = ProjectBuilds.projectHome(JkDirs.builds(), null, module);
+        writeRun(home, module, 1, """
+                [test-class."_"."com.example"]
+                A = 100
+                """);
+        writeRun(home, module, 2, """
+                [test-class."_"."com.example"]
+                B = 200
+                """);
+        RecentClassWalls.clear();
+        long before = RecentClassWalls.PARSES.get();
+        // Every module of a prepare asks at once, the first lookup of a build.
+        CountDownLatch go = new CountDownLatch(1);
+        List<Future<Map<String, Long>>> asks = new ArrayList<>();
+        try (ExecutorService pool = Executors.newFixedThreadPool(16)) {
+            for (int i = 0; i < 16; i++) {
+                asks.add(pool.submit(() -> {
+                    go.await();
+                    return RecentClassWalls.forModule(module);
+                }));
+            }
+            go.countDown();
+            for (Future<Map<String, Long>> ask : asks) {
+                assertThat(ask.get()).containsKeys("com.example.A", "com.example.B");
+            }
+        }
+        assertThat(RecentClassWalls.PARSES.get() - before)
+                .as("one scan, each run parsed once")
+                .isEqualTo(2);
+
+        writeRun(home, module, 3, """
+                [test-class."_"."com.example"]
+                C = 300
+                """);
+        Path runs = home.resolve(ProjectBuilds.RUNS);
+        Files.setLastModifiedTime(
+                runs, FileTime.fromMillis(Files.getLastModifiedTime(runs).toMillis() + 10_000));
+        assertThat(RecentClassWalls.forModule(module)).containsKeys("com.example.A", "com.example.B", "com.example.C");
+        assertThat(RecentClassWalls.PARSES.get() - before)
+                .as("only the new run is parsed")
+                .isEqualTo(3);
     }
 
     private static void writeRun(Path home, Path module, int n, String metrics) throws Exception {
