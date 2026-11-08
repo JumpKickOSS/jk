@@ -14,6 +14,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -22,6 +23,11 @@ from pathlib import Path
 
 from .mcp import anthropic_tools
 from .session import TOOL_LABEL, TOOL_NAMES, mcp_server_config, open_mcp, results_ok
+
+_BENCH = Path(__file__).resolve().parents[2]
+if str(_BENCH) not in sys.path:
+    sys.path.insert(0, str(_BENCH))
+import benchtools  # noqa: E402
 
 SYSTEM_PROMPT = """You are fixing a {tool_label} project at {sandbox}. The build is red; make it green.
 
@@ -443,7 +449,7 @@ def _gradle_user_home() -> Path:
 
 
 def _write_sandbox_profile(home: Path, sandbox: Path) -> None:
-    """Deny reads of user grok state, the artifact cache, sibling runs, and harness sources.
+    """Deny reads of user grok state, the run's jk home artifact cache, sibling runs, and harness sources.
 
     Extends `workspace` rather than `strict`: `strict` blocks DNS for the model API. Writes are the
     project, `/tmp`, and `~/.grok`, plus the Gradle user home. Gradle writes a lock beside its
@@ -456,7 +462,7 @@ def _write_sandbox_profile(home: Path, sandbox: Path) -> None:
     for name in ("auth.json", "config.toml", "trusted_folders.toml", "memory", "memory-v2", "sessions"):
         denies.append(user_grok / name)
     denies.append(Path.home() / ".ssh")
-    denies.append(Path.home() / ".jk" / "store" / "repos")
+    denies.append(benchtools.jk_home() / "store" / "repos")
     loop = Path(__file__).resolve().parents[1]
     denies += [loop / "harnesslib", loop / "scenario", loop / "scenarios.toml"]
     # <date>/<driver>/<tool>/<repo.failure>/sandbox — deny sibling tools and sibling drivers.
