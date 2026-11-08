@@ -209,7 +209,7 @@ public final class AvroMain {
         invoke(
                 compilerType.getMethod("setFieldVisibility", visibility),
                 compiler,
-                enumValue(visibility, options.fieldVisibility()));
+                enumValue(visibility, options.fieldVisibility().toUpperCase(Locale.ROOT)));
         invoke(compilerType.getMethod("setCreateSetters", boolean.class), compiler, options.setters());
         invoke(compilerType.getMethod("setCreateOptionalGetters", boolean.class), compiler, options.optionalGetters());
         invoke(

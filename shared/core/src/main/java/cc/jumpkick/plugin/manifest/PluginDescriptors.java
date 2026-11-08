@@ -129,7 +129,7 @@ public final class PluginDescriptors {
                 parseContributions(result, schema.keySet(), entryKeys, displayPath);
         PluginDescriptor.Code code = parseCode(result, displayPath);
         PluginDescriptor.Packaging packaging = parsePackaging(result, displayPath);
-        List<PluginDescriptor.GradleImport> gradleImports = parseGradleImports(result, displayPath);
+        List<PluginDescriptor.GradleImport> gradleImports = GradleImports.parse(result, displayPath);
         return new PluginDescriptor(
                 id,
                 table,
@@ -182,20 +182,6 @@ public final class PluginDescriptors {
                             minVersion));
         }
         return schema;
-    }
-
-    /** The {@code [[import.gradle-plugin]]} rules — jk import's plugin-id mappings (P4). */
-    private static List<PluginDescriptor.GradleImport> parseGradleImports(TomlParseResult result, String displayPath) {
-        TomlTable importTable = result.getTable("import");
-        if (importTable == null) return List.of();
-        List<PluginDescriptor.GradleImport> rules = new ArrayList<>();
-        for (TomlTable t : tableArray(importTable, "gradle-plugin", displayPath)) {
-            rules.add(new PluginDescriptor.GradleImport(
-                    requireString(t, "id", displayPath + ".import.gradle-plugin"),
-                    t.getString("version-to"),
-                    t.getString("missing-version-warning")));
-        }
-        return rules;
     }
 
     /** The {@code [code]} table — the plugin's worker jar carrying step/packager bodies (P3). */

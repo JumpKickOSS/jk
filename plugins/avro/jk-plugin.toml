@@ -40,3 +40,15 @@ coordinate = "org.apache.avro:avro-compiler:${config.version}"
 transitive = true
 for-step   = "generate-avro"
 when       = { config = "version", below = "1.12" }
+
+# jk import: the Gradle Avro plugin's generator options. Its schema directories and the Avro
+# version the project resolves are read by the importer itself.
+[[import.gradle-plugin]]
+id         = "com.github.davidmc24.gradle.plugin.avro"
+extension  = "avro"
+properties = { stringType = "string-type", fieldVisibility = "field-visibility", outputCharacterEncoding = "encoding", createSetters = "setters", createOptionalGetters = "optional-getters", enableDecimalLogicalType = "decimal-logical-type" }
+
+[[import.gradle-plugin]]
+id         = "com.github.davidmc24.gradle.plugin.avro-base"
+extension  = "avro"
+properties = { stringType = "string-type", fieldVisibility = "field-visibility", outputCharacterEncoding = "encoding", createSetters = "setters", createOptionalGetters = "optional-getters", enableDecimalLogicalType = "decimal-logical-type" }

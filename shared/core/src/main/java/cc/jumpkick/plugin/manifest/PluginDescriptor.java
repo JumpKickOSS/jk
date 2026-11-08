@@ -68,16 +68,31 @@ public record PluginDescriptor(
     }
 
     /**
-     * One {@code [[import.gradle-plugin]]} rule (plan row 10): a Gradle plugin id this plugin's
-     * table absorbs on {@code jk import}. {@code versionTo} names the config key the Gradle
-     * plugin's declared version becomes (null = the id is recognized and consumed with no
-     * config); {@code missingVersionWarning} is reported when {@code versionTo} is set but the
-     * Gradle build declares the plugin without an inline version.
+     * One {@code [[import.gradle-plugin]]} rule: a Gradle plugin id {@code jk import} maps into a jk
+     * table — {@code table}, else this plugin's own. {@code versionTo} names the key the plugin's
+     * declared version becomes, and {@code missingVersionWarning} is said when it declares none.
+     * {@code properties} maps a property of the {@code extension} or {@code task} the rule names to
+     * a table key; {@code files} maps a module-relative file the plugin reads, with an optional
+     * {@code #dotted.key} into a YAML, JSON or properties file, to a table key. A rule with none of
+     * these only recognizes the id.
      */
     public record GradleImport(
-            String id, @Nullable String versionTo, @Nullable String missingVersionWarning) {
+            String id,
+            @Nullable String versionTo,
+            @Nullable String missingVersionWarning,
+            @Nullable String table,
+            @Nullable String extension,
+            @Nullable String task,
+            Map<String, String> properties,
+            Map<String, String> files) {
         public GradleImport {
             Objects.requireNonNull(id, "id");
+            properties = properties == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(properties));
+            files = files == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(files));
+        }
+
+        public GradleImport(String id, @Nullable String versionTo, @Nullable String missingVersionWarning) {
+            this(id, versionTo, missingVersionWarning, null, null, null, Map.of(), Map.of());
         }
     }
 

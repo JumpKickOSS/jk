@@ -8,7 +8,8 @@
 // first, beside that file: Gradle resolves a project's configurations only in its own context, and
 // the declared dependencies are read before resolving, which adds the ones plugins add lazily.
 // `-Pjk.import.plugins` is the comma-separated list of plugin ids the import knows how to map;
-// each project answers which of them it applies.
+// each project answers which of them it applies. `-Pjk.import.rules` names a JSON file of the
+// extension and task properties installed import rules read, per plugin id.
 import groovy.json.JsonOutput
 import java.util.Locale
 import groovy.json.JsonSlurper
@@ -26,6 +27,9 @@ import org.gradle.api.attributes.Category
 
 def outPath = gradle.startParameter.projectProperties['jk.import.out']
 def probeIds = (gradle.startParameter.projectProperties['jk.import.plugins'] ?: '').split(',').findAll { it }
+def rulesPath = gradle.startParameter.projectProperties['jk.import.rules']
+@Field List RULE_READS = []
+if (rulesPath) RULE_READS = new JsonSlurper().parse(new File(rulesPath)) as List
 
 // The import's progress: how many projects there are, then one line per project configured and
 // one per project whose classpaths are resolved and described.
@@ -243,23 +247,12 @@ def describeProject(Project p, Project root, List<String> probeIds) {
     } catch (Throwable ignored) { }
 
     try {
-        // The Avro plugin (com.github.davidmc24.gradle.plugin.avro): its generator options, the
-        // schema directories generateAvroJava reads, and the build directory to tell generated ones apart.
+        // The Avro plugin (com.github.davidmc24.gradle.plugin.avro): the schema directories
+        // generateAvroJava reads, and the build directory to tell generated ones apart.
         def avro = p.extensions.findByName('avro')
         def gen = p.tasks.findByName('generateAvroJava')
         if (avro != null && gen != null) {
             def a = [:]
-            for (String k : ['stringType', 'fieldVisibility', 'outputCharacterEncoding']) {
-                try { def v = avro."$k"?.orNull; if (v != null) a[k] = v.toString() } catch (Throwable ignored) { }
-            }
-            // The boolean options are Property<Boolean> behind isX() getters, which Groovy property syntax cannot read.
-            for (String k : ['createSetters', 'createOptionalGetters', 'enableDecimalLogicalType']) {
-                try {
-                    def v = avro."is${k.capitalize()}"()
-                    if (v != null && v.respondsTo('getOrNull')) v = v.orNull
-                    if (v != null) a[k] = v as boolean
-                } catch (Throwable ignored) { }
-            }
             def roots = [] as LinkedHashSet
             try {
                 gen.source.visit { d ->
@@ -274,6 +267,23 @@ def describeProject(Project p, Project root, List<String> probeIds) {
             m.avro = a
         }
     } catch (Throwable ignored) { }
+
+    // Each import rule's properties, read off the extension or task it names, per plugin id.
+    def ruled = [:]
+    for (def r : RULE_READS) {
+        try {
+            if (!p.plugins.hasPlugin(r.id as String)) continue
+            def target = r.extension ? p.extensions.findByName(r.extension as String) : p.tasks.findByName(r.task as String)
+            if (target == null) continue
+            def values = [:]
+            for (def k : r.properties) {
+                def v = ruleValue(p, target, k as String)
+                if (v != null) values[k] = v
+            }
+            ruled[r.id] = values
+        } catch (Throwable ignored) { }
+    }
+    if (ruled) m.ruled = ruled
 
     try { m.mainClass = p.extensions.findByName('application')?.mainClass?.orNull } catch (Throwable ignored) { }
     if (!m.mainClass) {
@@ -538,6 +548,31 @@ def propertyValue(Project p, String expression) {
     } catch (Throwable ignored) {
         return null
     }
+}
+
+// One property of an extension or task as JSON can carry it: a Provider's value, a file as a
+// project-relative path, a collection or map of strings. A Property<Boolean> behind an isX()
+// getter is read through the getter, which Groovy property syntax cannot reach.
+def ruleValue(Project p, Object target, String k) {
+    def v
+    try {
+        v = target."$k"
+    } catch (Throwable missing) {
+        try { v = target."is${k.capitalize()}"() } catch (Throwable ignored) { return null }
+    }
+    return plainValue(p, v)
+}
+
+def plainValue(Project p, Object v) {
+    if (v == null) return null
+    if (v instanceof org.gradle.api.provider.Provider) return plainValue(p, v.orNull)
+    if (v instanceof org.gradle.api.file.FileSystemLocation) v = v.asFile
+    if (v instanceof File) return relDirs(p, [v])[0]
+    if (v instanceof org.gradle.api.file.FileCollection) return relDirs(p, v.files)
+    if (v instanceof Boolean || v instanceof Number) return v
+    if (v instanceof Map) return v.collectEntries { a, b -> [a.toString(), b?.toString()] }
+    if (v instanceof Iterable) return v.collect { it?.toString() }
+    return v.toString()
 }
 
 def relDirs(Project p, Collection dirs) {

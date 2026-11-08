@@ -833,15 +833,17 @@ class GradleModelImporterTest {
                "pluginClasses":["com.github.davidmc24.gradle.plugin.avro.AvroPlugin","com.github.davidmc24.gradle.plugin.avro.AvroBasePlugin"],
                "pluginVersions":{},"bootBuildInfo":false,"repositories":[],"configurations":[],"tasks":[],
                "sourceSets":[{"name":"main","java":["src/main/java","build/generated-main-avro-java"],"resources":["src/main/resources"],"kotlin":[]}],
-               "avro":{"sources":["src/main/avro"],"buildDir":"build","stringType":"String","fieldVisibility":"PRIVATE",
-                       "createSetters":true,"createOptionalGetters":false,"enableDecimalLogicalType":true},
+               "avro":{"sources":["src/main/avro"],"buildDir":"build"},
+               "ruled":{"com.github.davidmc24.gradle.plugin.avro":{"stringType":"String","fieldVisibility":"PRIVATE",
+                       "createSetters":true,"createOptionalGetters":false,"enableDecimalLogicalType":true}},
                "resolved":["org.apache.avro:avro@1.11.5"]},
               {"path":":flags","projectName":"flags","dir":"flags","group":"com.acme","version":"1.0",
                "plugins":["java","com.github.davidmc24.gradle.plugin.avro"],
                "pluginClasses":["com.github.davidmc24.gradle.plugin.avro.AvroPlugin"],
                "pluginVersions":{},"bootBuildInfo":false,"repositories":[],"configurations":[],"tasks":[],
-               "avro":{"sources":["build/generated/avro/shared"],"buildDir":"build","stringType":"CharSequence",
-                       "fieldVisibility":"PUBLIC","createSetters":false,"enableDecimalLogicalType":false}}
+               "avro":{"sources":["build/generated/avro/shared"],"buildDir":"build"},
+               "ruled":{"com.github.davidmc24.gradle.plugin.avro":{"stringType":"CharSequence",
+                       "fieldVisibility":"PUBLIC","createSetters":false,"enableDecimalLogicalType":false}}}
             ]}
             """;
 
