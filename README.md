@@ -105,7 +105,7 @@ The full story, with the numbers behind every claim: **[Why JumpKick](docs/user/
 
 ---
 
-## Your agent is ready to move faster. Give it JumpKick.
+## Your agent is ready to move faster. Give it a JumpKick.
 
 | Doc | For |
 |---|---|
