@@ -961,7 +961,9 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .agent-notes-head button.ghost:hover { color: var(--cn); border-color: var(--bd); }
 .agent-notes-head .ico { width: 14px; height: 14px; }
 .checkouts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
-.checkouts button.ghost {
+/* The run page's Follow newest shares the picker's compact ghost chrome. */
+.checkouts button.ghost,
+.focused-run .panel-head button.ghost {
   background: var(--s1);
   color: var(--mu);
   border: 1px solid var(--bd);
@@ -970,7 +972,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   font: 600 11.5px var(--mono);
   cursor: pointer;
 }
-.checkouts button.ghost:hover { color: var(--cn); }
+.checkouts button.ghost:hover,
+.focused-run .panel-head button.ghost:hover { color: var(--cn); }
 .checkouts button.ghost.active { color: var(--cn); border-color: rgba(var(--cn-rgb), 0.45); }
 .focused-run .checkout { font-size: 11px; }
 .back {
