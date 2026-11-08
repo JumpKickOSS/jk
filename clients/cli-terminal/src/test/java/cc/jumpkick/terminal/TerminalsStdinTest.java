@@ -63,6 +63,20 @@ class TerminalsStdinTest {
     }
 
     @Test
+    void on_windows_a_console_nobody_types_into_is_no_controlling_terminal() {
+        // An ssh session or `jk update < NUL`: the console is live, stdin is not it.
+        assertThat(Terminals.controllingIsTty(true, () -> true, () -> false)).isFalse();
+        assertThat(Terminals.controllingIsTty(true, () -> true, () -> true)).isTrue();
+        assertThat(Terminals.controllingIsTty(true, () -> false, () -> true)).isFalse();
+    }
+
+    @Test
+    void on_posix_the_controlling_terminal_answers_even_with_stdin_redirected() {
+        assertThat(Terminals.controllingIsTty(false, () -> true, () -> false)).isTrue();
+        assertThat(Terminals.controllingIsTty(false, () -> false, () -> true)).isFalse();
+    }
+
+    @Test
     void on_posix_stdin_is_file_descriptor_zero() {
         List<Integer> asked = new ArrayList<>();
         Terminals.Probe posix = new Terminals.Probe() {

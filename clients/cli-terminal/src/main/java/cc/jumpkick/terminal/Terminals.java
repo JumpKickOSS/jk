@@ -15,6 +15,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
 /** Process façade. One controlling TTY. Never owns FD 0/1/2 of the process. */
@@ -63,11 +64,17 @@ public final class Terminals {
 
     /**
      * Input axis. POSIX {@code isatty} on a private {@code /dev/tty} fd; Windows {@code GetConsoleMode}
-     * on {@code CONIN$}. Does not emit bytes.
+     * on {@code CONIN$}, and only when stdin is that console: a Windows process nearly always has a
+     * console (an ssh session, Git Bash, a redirected cmd) whether or not a person types into it.
+     * Does not emit bytes.
      */
     public static boolean controllingIsTty() {
-        TerminalSession s = controlling();
-        return s.isLive();
+        return controllingIsTty(Os.isWindows(), () -> controlling().isLive(), Terminals::stdinIsTty);
+    }
+
+    /** {@link #controllingIsTty()} with the live-terminal and stdin checks as seams. */
+    static boolean controllingIsTty(boolean windows, BooleanSupplier live, BooleanSupplier stdin) {
+        return live.getAsBoolean() && (!windows || stdin.getAsBoolean());
     }
 
     /**
