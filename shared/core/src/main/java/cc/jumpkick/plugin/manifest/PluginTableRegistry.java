@@ -77,6 +77,7 @@ public final class PluginTableRegistry {
             new BuiltIn("taglib", "taglib"),
             new BuiltIn("jenkins-test", "jenkins-test"),
             new BuiltIn("avro", "avro"),
+            new BuiltIn("schema-registry", "schema-registry"),
             new BuiltIn("jaxb", "jaxb"),
             new BuiltIn("jooq", "jooq"),
             new BuiltIn("lint", "lint"),

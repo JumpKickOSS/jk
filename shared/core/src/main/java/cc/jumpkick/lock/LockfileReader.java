@@ -54,6 +54,7 @@ public final class LockfileReader {
             "project-id",
             "resolution-algorithm",
             "scala",
+            "schema",
             "sdk",
             "tool",
             "version");
@@ -260,7 +261,8 @@ public final class LockfileReader {
                 toNativeMetadata(tableOrFail(result, "native", origin)),
                 toWriterBuild(result),
                 toNodePin(tableOrFail(result, "node", origin)),
-                readTools(result));
+                readTools(result),
+                SchemaEntry.read(result));
     }
 
     /**

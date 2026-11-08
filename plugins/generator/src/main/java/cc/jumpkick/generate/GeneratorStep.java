@@ -10,6 +10,7 @@ import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
@@ -20,11 +21,14 @@ import org.jspecify.annotations.Nullable;
  * The generate step's body: expand the entry's inputs, extract the jar it unpacks, fork
  * {@code java -cp <tool> <main> <args>} on the build's JDK with the output dir as the working
  * directory, report every located line the tool printed as a diagnostic, fail on a non-zero exit
- * with the output's tail. Inputs that name no file under the module — a table a reactor parent
+ * with the output's tail. Schemas a {@code [schema-registry]} table pins join the inputs. Inputs that name no file under the module — a table a reactor parent
  * hands to a module with nothing to generate — leave the output empty and say so once, unless the
  * entry's key probe names what the tool reads instead.
  */
 final class GeneratorStep {
+
+    /** The extra holding the schemas the module's {@code [schema-registry]} table pins for this tool. */
+    static final String REGISTRY_SCHEMAS = "schema-registry";
 
     /** How many trailing output lines a failure message carries. */
     private static final int TAIL = 40;
@@ -33,6 +37,8 @@ final class GeneratorStep {
 
     static void run(TaskExec exec, GeneratorEntry entry) throws Exception {
         List<Path> inputs = Inputs.expand(exec.moduleDir(), entry.inputs());
+        Optional<Path> registry = exec.extra(REGISTRY_SCHEMAS);
+        if (registry.isPresent()) inputs = Inputs.withAll(inputs, registry.get());
         if (inputs.isEmpty() && !entry.inputs().isEmpty() && entry.keyProbe() == null) {
             exec.outputDir(entry.out());
             exec.label(entry.name() + " (no inputs)");

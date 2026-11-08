@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.50.4-SNAPSHOT"
-generated-by-build = "9bb302bbba67"
-generated-by-build-time = "2026-11-07T20:23:54Z"
+generated-by-build = "0817faf1274a"
+generated-by-build-time = "2026-11-07T22:55:17Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "d138388494f8b2cb4937a36a58c875a274fa0f4932869674b7602b0cdfc61361"
+manifests-sha256 = "2d6dc461dac8e86a62b32114cf47c18112dd987063f57b1c7b2a95cbf8bb78dd"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -3681,6 +3681,15 @@ deps = [
 
 [[artifact]]
 name     = "org.jspecify:jspecify:jar:"
+version  = "1.0.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab"
+scopes   = ["test"]
+licenses = ["Apache-2.0"]
+members  = ["plugins/schema-registry"]
+
+[[artifact]]
+name     = "org.jspecify:jspecify:jar:"
 version  = "1.0.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66"
@@ -7275,6 +7284,15 @@ name    = "jk-quarkus"
 version = "0.50.4"
 java    = 25
 description = "JumpKick's Quarkus packaging plugin"
+install.destination = "jk"
+
+[[module]]
+path    = "plugins/schema-registry"
+group   = "cc.jumpkick"
+name    = "jk-schema-registry"
+version = "0.50.4"
+java    = 25
+description = "JumpKick's [schema-registry] table: schema subjects a module downloads from a Confluent-compatible registry, pinned by jk lock"
 install.destination = "jk"
 
 [[module]]

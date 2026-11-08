@@ -80,6 +80,7 @@ class LockfilePropertyTest {
                         null,
                         null,
                         null,
+                        List.of(),
                         List.of()));
     }
 

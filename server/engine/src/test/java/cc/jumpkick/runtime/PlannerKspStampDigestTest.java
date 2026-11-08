@@ -36,6 +36,7 @@ class PlannerKspStampDigestTest {
             null,
             null,
             null,
+            List.of(),
             List.of());
 
     private static final String PLAIN = """

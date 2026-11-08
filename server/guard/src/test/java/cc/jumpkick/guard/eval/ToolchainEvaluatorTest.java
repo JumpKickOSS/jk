@@ -84,6 +84,7 @@ class ToolchainEvaluatorTest {
                 null,
                 null,
                 null,
+                List.of(),
                 List.of());
         LockfileWriter.write(lock, root.resolve(ManifestPaths.LOCK));
     }

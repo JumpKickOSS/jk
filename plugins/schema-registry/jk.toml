@@ -1,0 +1,2 @@
+name = "jk-schema-registry"
+description = "JumpKick's [schema-registry] table: schema subjects a module downloads from a Confluent-compatible registry, pinned by jk lock"

@@ -31,6 +31,15 @@ class InputsTest {
                 .containsExactly(a, b, nested);
     }
 
+    @Test
+    void a_registry_directory_adds_every_file_after_the_module_s_own(@TempDir Path tmp) throws Exception {
+        Path own = write(tmp.resolve("module/src/main/avro/a.avsc"));
+        Path money = write(tmp.resolve("registry/money.avsc"));
+        Path order = write(tmp.resolve("registry/orders-value.avsc"));
+
+        assertThat(Inputs.withAll(List.of(own), tmp.resolve("registry"))).containsExactly(own, money, order);
+    }
+
     /** A double-star segment names a file right under its base as well as one nested deeper. */
     @Test
     void a_double_star_segment_matches_zero_directories(@TempDir Path module) throws Exception {
