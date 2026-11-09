@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.compat.ToolInstaller;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.SessionExpiry;
+import cc.jumpkick.engine.activity.ChangeNotices;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
@@ -145,6 +147,9 @@ public final class EngineServer implements AutoCloseable {
 
     /** The bell's notices and the machine's one seen marker, kept in the state directory. */
     private final Notices notices;
+
+    /** Rings the bell once for each batch of new change-journal entries. */
+    private final ChangeNotices changeNotices;
 
     private final EngineListeners listeners;
     private final EngineHttpFront http;
@@ -381,6 +386,7 @@ public final class EngineServer implements AutoCloseable {
         MachineSetupDecisions.watch(decisions);
         this.notices = new Notices(JkDirs.state().resolve(Notices.FILE), Clock.SYSTEM);
         notices.follow(decisions);
+        this.changeNotices = new ChangeNotices(ChangeJournal::current, notices);
         journalWriter.onFinished(sessionLog::runFinished);
         drain.predecessorRuns(this::foldPredecessorRun);
         this.sse = new SsePublisher(
@@ -640,6 +646,7 @@ public final class EngineServer implements AutoCloseable {
         storeFeedRefresh = started.feeds();
         engineMaintenance = started.maintenance();
         engineMaintenance.onTick(sessionLog::sweep);
+        changeNotices.start();
         // Sessions a previous engine left open carry on here; off the startup path.
         Thread.ofVirtual().name("jk-engine-sessions-adopt").start(() -> {
             int adopted = sessionLog.adopt();
@@ -969,6 +976,7 @@ public final class EngineServer implements AutoCloseable {
 
     private void cleanup() {
         if (selfUpdate != null) selfUpdate.close();
+        changeNotices.close();
         if (engineMaintenance != null) {
             engineMaintenance.close();
             engineMaintenance = null;

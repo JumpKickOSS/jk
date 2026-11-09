@@ -134,10 +134,7 @@ public final class ChangeJournal {
      */
     public Page page(@Nullable String before, int limit) {
         int max = Math.clamp(limit, 1, MAX_PAGE);
-        List<Change> all = new ArrayList<>();
-        read(dir.resolve(ROLLED), all);
-        read(dir.resolve(FILE), all);
-        all.sort((x, y) -> y.id().compareTo(x.id()));
+        List<Change> all = newestFirst();
         List<Change> out = new ArrayList<>(max);
         boolean more = false;
         for (Change c : all) {
@@ -149,6 +146,28 @@ public final class ChangeJournal {
             out.add(c);
         }
         return new Page(List.copyOf(out), more ? out.getLast().id() : null);
+    }
+
+    /** Every entry the journal keeps, newest first: one read of both files. */
+    public List<Change> newestFirst() {
+        List<Change> all = new ArrayList<>();
+        read(dir.resolve(ROLLED), all);
+        read(dir.resolve(FILE), all);
+        all.sort((x, y) -> y.id().compareTo(x.id()));
+        return all;
+    }
+
+    /**
+     * A number that changes whenever an entry is appended: the live file's size and modification
+     * time, so a watcher learns of new entries from one stat instead of a read. 0 when there is none.
+     */
+    public long stamp() {
+        Path file = dir.resolve(FILE);
+        try {
+            return Files.size(file) * 31 + Files.getLastModifiedTime(file).toMillis();
+        } catch (IOException e) {
+            return 0;
+        }
     }
 
     private void append(Change change) throws IOException {

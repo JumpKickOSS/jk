@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.activity.Activity;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.decisions.Dashboards;
@@ -165,6 +166,14 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/notices", noticesApi::handleList);
         api.register("POST", HttpNoticesApi.SEEN, noticesApi::handleSeen);
         notices.onChange(c -> events.publishDashboard(EventCatalog.SSE_NOTICE, JsonOut.rawObject(c.toMap())));
+    }
+
+    /**
+     * Engine hook: serve {@code activity} on {@code /api/activity}, the Activity page's merged
+     * history. Before {@link #start}.
+     */
+    public void setActivity(Activity activity) {
+        api.register("GET", "/api/activity", new HttpActivityApi(activity)::handle);
     }
 
     public void setOnSseAdmitted(Runnable onSseAdmitted) {

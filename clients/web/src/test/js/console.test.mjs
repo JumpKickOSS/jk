@@ -340,7 +340,7 @@ test("the project's Sessions tab lists each session's episodes on that project",
 
 test('routes: the console is the landing page and selects a session; the project has a Sessions tab', () => {
   assert.equal(routeFromHash('').view, 'console');
-  assert.equal(routeFromHash('#activity').view, 'console', 'a retired hash lands on the console');
+  assert.equal(routeFromHash('#feed').view, 'console', 'a hash no route claims lands on the console');
   assert.deepEqual([routeFromHash('#console').view, routeFromHash('#console').session], ['console', null]);
   assert.equal(routeFromHash('#console/mcp-3f9a').session, 'mcp-3f9a');
   assert.equal(buildConsoleHash('mcp-3f9a'), '#console/mcp-3f9a');

@@ -195,6 +195,30 @@ follow and edit (**all** shows every worktree's runs with a Checkout column); th
 its Save work in the picked tree only, and a link from `jk` or an MCP result already names the
 tree the build ran in. A deleted worktree drops out of the list on the next build of a sibling.
 
+## Activity
+
+**Activity** (in the header, or the bell menu's last line) is what happened on this machine, newest
+first: the notifications JumpKick showed, each decision with who asked it, where it was answered
+(the terminal, the dashboard or the agent's host), how it reached you (in the dashboard, a browser
+notification, a desktop notification), and how it was settled, the changes JumpKick made outside
+your projects with who asked for each (a `jk` command line, an agent's session and goal, an
+import), machine-setup results, and installs.
+
+Filters narrow it by kind, project, agent session and surface; they are part of the address, so
+Back undoes one. Click an entry to open it: a change shows its diff (credentials masked), a
+decision its outcome and a link to its dialog, and either links to its project when JumpKick knows
+it. Opening the page clears the bell's number.
+
+Nothing is stored twice: Activity reads the [change journal](config.md#what-jumpkick-changed), the
+decision history and the bell's notices, so each kind is kept as long as its source keeps it. The
+page loads 50 entries at a time; **Show older** loads the next.
+
+```text
+#activity                                   # everything
+#activity?kind=change&surface=import        # the changes imports made
+#activity/change:<id>                       # one entry, opened
+```
+
 ## Admin
 
 **Admin** holds the engine's vitals: host CPU and RAM, version, pid, uptime, connections, the
@@ -266,7 +290,12 @@ one "seen up to" marker for the machine, and it survives an engine restart.
 Seen is not answered. A decision you have seen but not answered no longer counts, but the bell
 stays amber, with no number, while any decision waits on you. Its menu has two parts: **Waiting on
 you**, the open decisions, and **Just now**, the recent notices, with the ones you hadn't seen
-marked. Older history is not kept in the bell.
+marked. Older history is not kept in the bell: the menu's last line, **See all activity**, opens [Activity](#activity).
+
+Besides decisions, the bell rings once for each batch of changes JumpKick makes outside your
+projects (an edit of `config.toml`, a stored login, a cache clean, an import's repositories) and
+for each machine-setup result. Installs of a JDK, Node.js or a tool don't ring: builds fetch them
+as a matter of course. They are in Activity under **Installs**.
 
 ### Notifications
 

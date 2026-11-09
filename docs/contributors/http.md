@@ -366,6 +366,34 @@ import's credential tables, `RepoCredentialStore` and `TokenStore` (logins), `Jd
 actor is a scoped value: `jk` sets the command line for each invocation, `McpTools` the session,
 client, goal and tool for each call, and an import wraps its own writes.
 
+
+### `GET /api/activity`
+
+The dashboard's Activity page: one history merged from the change journal, the decision queue
+and the bell's notices (`Activity` in `server/engine/.../activity`), with no store of its own.
+`GET /api/activity[?before=<cursor>&limit=N&kind=&project=&session=&surface=]` (default 50, at
+most 200): `{ entries: [...], next, facets? }`. Entries are newest first by `at`, then `id`; `next`
+is `"<at>:<id>"` of the page's last entry, the `before` of the page older than it, `null` on the
+last. `facets` (`{ kinds, projects, sessions: [{id, label}], surfaces }`) comes only on the first
+page.
+
+An entry is `{ kind, id, at, title, who, surface?, channel?, project?, session?, href, ... }`.
+`kind` is `notification`, `decision`, `change`, `setup` (a `setup` decision or an `apply` change)
+or `install` (an `install` or `uninstall` change). `id` is `change:…`, `decision:…` or
+`notice:…`. `surface` is where it came from or was answered: `cli` (a `jk` command, `jk decide`),
+`dashboard`, `agent` (an MCP call, the agent host's form), `import` or `engine`. `channel` is how a
+decision reached the person, as `Decisions.alert` recorded it on the queue entry: `in-app`,
+`browser`, `native`, `open` or `none`; a notice is `in-app`. `href` is a decision's
+`#decision/<id>` or the entry's own `#activity/<id>`. A change adds `what`, `action`, `diff?` and
+`actor`; a decision `decision`, `decisionKind`, `outcome` (`open`, `accepted`, `declined`,
+`expired`), `answeredBy?`, `answeredAt?` and `detail?`. Filters: `kind=notification` keeps every
+entry that reached the person, decisions included; `project` keeps entries whose checkout or
+build file starts with it. A notice about a decision or a change is listed once, as its decision
+or change.
+
+`ChangeNotices` stats `changes.jsonl` every 5 s and adds one bell notice per batch of new entries
+(kind `change`, or `setup` for an `apply`), leaving installs and uninstalls off the bell.
+
 ### `GET /api/sessions`
 
 `GET /api/sessions[?limit=N]` (default 50, at most 200): `{ sessions: [...] }`, live and recent

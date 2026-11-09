@@ -101,6 +101,10 @@ public final class DecisionQueue {
         @Nullable
         Map<String, Object> call;
 
+        /** The channel that told the person ({@code in-app}, {@code browser}, {@code native}, …); null for none yet. */
+        @Nullable
+        String notified;
+
         Entry(Decision decision) {
             this.decision = decision;
         }
@@ -111,6 +115,7 @@ public final class DecisionQueue {
             m.remove("route");
             m.put("spent", spent);
             if (call != null) m.put("call", call);
+            if (notified != null) m.put("notified", notified);
             return m;
         }
 
@@ -121,6 +126,7 @@ public final class DecisionQueue {
             Entry e = new Entry(d);
             e.spent = Boolean.TRUE.equals(record.get("spent"));
             if (record.get("call") instanceof Map<?, ?> c) e.call = (Map<String, Object>) c;
+            if (record.get("notified") instanceof String n) e.notified = n;
             if (!d.open()) e.settled.complete(d);
             return e;
         }
@@ -463,6 +469,30 @@ public final class DecisionQueue {
         synchronized (this) {
             Entry e = entries.get(id);
             return e == null ? Optional.empty() : Optional.ofNullable(e.call);
+        }
+    }
+
+    /**
+     * Remember that {@code channel} told the person about {@code id}: {@code in-app}, {@code browser},
+     * {@code native}, {@code open} (the browser opened on it) or {@code none}. Kept with the decision,
+     * so its history says how it reached the person. Nothing when there is no such decision.
+     */
+    public void notified(String id, String channel) {
+        adopt();
+        synchronized (this) {
+            Entry e = entries.get(id);
+            if (e == null) return;
+            e.notified = channel;
+            save(e, e.decision, e.spent);
+        }
+    }
+
+    /** The channel {@link #notified(String, String)} recorded for {@code id}; empty for none. */
+    public Optional<String> notified(String id) {
+        adopt();
+        synchronized (this) {
+            Entry e = entries.get(id);
+            return e == null ? Optional.empty() : Optional.ofNullable(e.notified);
         }
     }
 

@@ -49,6 +49,7 @@
       <nav>
         <button :class="{ active: view === 'console' }" @click="setView('console')">Console</button>
         <button :class="{ active: view === 'projects' }" @click="setView('projects')">Projects</button>
+        <button :class="{ active: view === 'activity' }" @click="setView('activity')">Activity</button>
         <button :class="{ active: view === 'status' }" @click="setView('status')">Admin</button>
       </nav>
 
@@ -86,6 +87,7 @@
                 </span>
               </a>
             </template>
+            <a class="bell-foot" role="menuitem" href="#activity" @click="bellOpen = false">See all activity</a>
             <!-- The one ask for notification permission: on a click, never on load, gone once answered. -->
             <div v-if="notifyAsk" class="bell-ask">
               <p>{{ notifyAsk }}</p>
@@ -103,6 +105,68 @@
         <button class="icon-btn" @click="setView('status')" aria-label="Settings" data-tip="Engine settings &amp; vitals"><jk-icon name="settings"></jk-icon></button>
       </div>
     </header>
+
+    <!-- Activity: what happened on this machine, newest first (activity.js). Opening it clears the
+         bell's count; history lives here, not in the bell. -->
+    <main v-if="view === 'activity'" class="activity-page">
+      <div class="activity-head">
+        <h1>Activity</h1>
+        <span class="dim small">Notifications, decisions and who answered them, changes JumpKick made outside your projects, setup and installs.</span>
+      </div>
+      <div class="activity-filters" role="group" aria-label="Filters">
+        <label>Kind
+          <select :value="activityFilter.kind || ''" @change="setActivityFilter('kind', $event.target.value)">
+            <option value="">All</option>
+            <option v-for="k in (activityFacets && activityFacets.kinds) || ['notification', 'decision', 'change', 'setup', 'install']" :key="k" :value="k">{{ kindLabel(k) }}</option>
+          </select>
+        </label>
+        <label>Project
+          <select :value="activityFilter.project || ''" @change="setActivityFilter('project', $event.target.value)">
+            <option value="">All</option>
+            <option v-for="p in (activityFacets && activityFacets.projects) || []" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </label>
+        <label>Agent session
+          <select :value="activityFilter.session || ''" @change="setActivityFilter('session', $event.target.value)">
+            <option value="">All</option>
+            <option v-for="s in (activityFacets && activityFacets.sessions) || []" :key="s.id" :value="s.id">{{ s.label }}</option>
+          </select>
+        </label>
+        <label>Surface
+          <select :value="activityFilter.surface || ''" @change="setActivityFilter('surface', $event.target.value)">
+            <option value="">All</option>
+            <option v-for="s in (activityFacets && activityFacets.surfaces) || []" :key="s" :value="s">{{ surfaceLabel(s) }}</option>
+          </select>
+        </label>
+      </div>
+      <p v-if="activityError" class="error small">{{ activityError }}</p>
+      <p v-else-if="!activityLoading && !activity.length" class="empty small">Nothing yet. Decisions, notifications and the changes JumpKick makes outside your projects show here as they happen.</p>
+      <ol class="activity-list">
+        <li v-for="r in activityRows()" :key="r.id" class="activity-row" :class="['act-' + r.kind, { open: activityOpen === r.id }]" :data-entry="r.id">
+          <button type="button" class="activity-line" :aria-expanded="activityOpen === r.id" @click="toggleActivity(r.id)">
+            <span class="chip act-kind">{{ kindLabel(r.kind) }}</span>
+            <span class="activity-title">{{ r.title }}</span>
+            <span v-if="r.outcome" class="chip act-outcome" :class="'out-' + r.outcome">{{ r.outcome }}</span>
+            <span class="spacer"></span>
+            <span class="dim small" :data-tip="fmtDateTime(r.at)">{{ ago(r.at) }}</span>
+          </button>
+          <div class="activity-meta small dim">{{ r.meta }}</div>
+          <div v-if="activityOpen === r.id" class="activity-detail">
+            <ul v-if="r.detail.length" class="activity-lines"><li v-for="(l, i) in r.detail" :key="i">{{ l }}</li></ul>
+            <pre v-if="r.diff" class="activity-diff"><span v-for="(l, i) in diffLines(r.diff)" :key="i" class="diff-line" :class="l.cls">{{ l.text }}</span></pre>
+            <div class="activity-links small">
+              <a v-if="r.href && r.href !== r.self" :href="r.href">{{ r.kind === 'decision' || r.kind === 'setup' ? 'Open the decision' : 'Open' }}</a>
+              <a v-if="r.project" :href="r.project">Open the project</a>
+              <span class="dim">{{ fmtDateTime(r.at) }}</span>
+            </div>
+          </div>
+        </li>
+      </ol>
+      <div class="activity-more">
+        <button v-if="activityNext" type="button" class="action-cyan" :disabled="activityLoading" @click="moreActivity()">{{ activityLoading ? 'Loading…' : 'Show older' }}</button>
+        <span v-else-if="activity.length" class="dim small">That is everything JumpKick keeps.</span>
+      </div>
+    </main>
 
     <!-- The console: what each session is doing, what it changed, and whether it needs you
          (console.js models, consoleview.js reads). A build is one action in an episode; its

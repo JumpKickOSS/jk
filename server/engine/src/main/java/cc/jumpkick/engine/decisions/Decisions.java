@@ -13,6 +13,21 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Decisions {
 
+    /** The decision showed in a dashboard page someone was using. */
+    public static final String CHANNEL_IN_APP = "in-app";
+
+    /** A dashboard tab showed a browser notification. */
+    public static final String CHANNEL_BROWSER = "browser";
+
+    /** The operating system's notification. */
+    public static final String CHANNEL_NATIVE = "native";
+
+    /** {@code [ui] ask = open}: the browser opened on the decision. */
+    public static final String CHANNEL_OPEN = "open";
+
+    /** {@code [ui] ask = quiet}: only the link in the tool result. */
+    public static final String CHANNEL_NONE = "none";
+
     /** The dashboard link to a decision; null while the dashboard is not serving. */
     @FunctionalInterface
     public interface Links {
@@ -36,7 +51,7 @@ public final class Decisions {
         queue.links(links::link);
         queue.onAlert(d -> {
             String link = links.link(d.id());
-            if (d.open() && link != null) this.alerts.raise(ask(), d, link);
+            if (d.open() && link != null) alert(d, link);
         });
     }
 
@@ -60,13 +75,23 @@ public final class Decisions {
      */
     public String alert(Decision d, String link) {
         UiAsk mode = ask();
-        if (mode != UiAsk.NOTIFY) return alerts.raise(mode, d, link);
+        if (mode == UiAsk.QUIET) return told(d, CHANNEL_NONE, alerts.raise(mode, d, link));
+        if (mode == UiAsk.OPEN) return told(d, CHANNEL_OPEN, alerts.raise(mode, d, link));
         return switch (dashboards.channel()) {
-            case Dashboards.Channel.InApp i -> "a dashboard is in use: it shows it in the page";
+            case Dashboards.Channel.InApp i ->
+                told(d, CHANNEL_IN_APP, "a dashboard is in use: it shows it in the page");
             case Dashboards.Channel.Browser b ->
-                dashboards.notify(b.stream(), d) ? "sent a browser notification" : alerts.raise(mode, d, link);
-            case Dashboards.Channel.Native n -> alerts.raise(mode, d, link);
+                dashboards.notify(b.stream(), d)
+                        ? told(d, CHANNEL_BROWSER, "sent a browser notification")
+                        : told(d, CHANNEL_NATIVE, alerts.raise(mode, d, link));
+            case Dashboards.Channel.Native n -> told(d, CHANNEL_NATIVE, alerts.raise(mode, d, link));
         };
+    }
+
+    /** Records {@code channel} as how {@code d} reached the person, and answers {@code what}. */
+    private String told(Decision d, String channel, String what) {
+        queue.notified(d.id(), channel);
+        return what;
     }
 
     /** The current {@code [ui] ask}, read afresh each time so an edit applies without a restart. */

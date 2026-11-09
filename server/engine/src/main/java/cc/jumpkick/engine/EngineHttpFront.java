@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.activity.Activity;
 import cc.jumpkick.engine.api.LockFloor;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.http.CacheSnapshot;
@@ -113,6 +115,7 @@ public final class EngineHttpFront {
         candidate.setSessions(sessions);
         candidate.setDecisions(decisions);
         candidate.setNotices(notices);
+        candidate.setActivity(new Activity(ChangeJournal::current, decisions, notices));
         try {
             candidate.start(1);
             serve(candidate);

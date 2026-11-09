@@ -22,6 +22,7 @@ import { CodeView } from './code.js';
 import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
 import { DecisionDialog, decisionData, decisionMethods } from './decisions.js';
 import { askLine, notifyData, notifyMethods } from './notify.js';
+import { activityData, activityFilters, activityMethods, channelLabel, diffLines, kindLabel, surfaceLabel } from './activity.js';
 import { bellLook, justNow, noticeData, noticeMethods } from './notices.js';
 import { foldEvent, seedFromHistory } from './fold.js';
 import {
@@ -60,8 +61,9 @@ export const appOptions = {
     ...decisionData(routeFromHash()),
     ...notifyData(),
     ...noticeData(),
+    ...activityData(routeFromHash()),
     ...installData(),
-    view: routeFromHash().view, // 'console' | 'projects' | 'project' | 'status' | 'new'
+    view: routeFromHash().view, // 'console' | 'projects' | 'project' | 'status' | 'new' | 'activity'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
     codePath: routeFromHash().path,
@@ -128,6 +130,7 @@ export const appOptions = {
       if (this.view === 'project' && this.selectedProjectId) this.loadProjectMeta(this.selectedProjectId);
       if (this.view === 'project' && this.projectTab === 'sessions') this.loadProjectSessions();
       if (this.view === 'new') this.enterWizard();
+      if (this.view === 'activity') this.loadActivity();
     }
     // The service worker: installability, and notifications whose clicks come back as messages.
     registerWorker(navigator.serviceWorker, (message) => this.workerMessage(message));
@@ -187,6 +190,7 @@ export const appOptions = {
     ...decisionMethods,
     ...notifyMethods,
     ...noticeMethods,
+    ...activityMethods,
     ...installMethods,
     ...cardMethods,
     ...statusMethods,
@@ -388,6 +392,11 @@ export const appOptions = {
         this.loadProjectHistory();
         this.refreshMetrics(); // view-scoped, not a global timer
       }
+      if (view === 'activity') {
+        this.activityFilter = {};
+        this.activityOpen = null;
+        this.loadActivity();
+      }
     },
     // The Projects tab groups the same journal payload the feed seeds from — one GET serves
     // both (each /api/history hit re-enriches up to 200 rows engine-side).
@@ -463,6 +472,13 @@ export const appOptions = {
       if (r.view === 'new') this.enterWizard();
       if (r.view === 'console' && !this.sessionsLoaded) this.loadConsole();
       if (r.view === 'project' && r.tab === 'sessions') this.loadProjectSessions(r.projectId);
+      if (r.view === 'activity') {
+        const filter = activityFilters(r.activityFilter);
+        const refilter = JSON.stringify(filter) !== JSON.stringify(this.activityFilter);
+        this.activityOpen = r.activityEntry;
+        this.activityFilter = filter;
+        if (refilter || !this.activity.length || r.activityEntry) this.loadActivity();
+      }
     },
     browseCodebase() {
       this.openCode({ projectId: this.selectedProjectId });
@@ -690,6 +706,10 @@ export const appOptions = {
     gib,
     duration: fmtDuration,
     bytes: fmtBytes,
+    kindLabel,
+    surfaceLabel,
+    channelLabel,
+    diffLines,
     ago(millis) {
       return agoOf(millis, this.now);
     },

@@ -52,6 +52,8 @@ export function parseTruthy(raw) {
  *  #console/<sessionId>                       (the console with one session selected)
  *  #new?<key>=<value>&…                       (the new-project wizard, pre-filled)
  *  #decision/<id>                             (a decision's dialog over the page under it; decisions.js)
+ *  #activity?kind=…&project=…&session=…&surface=…   (the Activity page, filtered; activity.js)
+ *  #activity/<entryId>                        (the Activity page with one entry open)
  *  #project/<id>
  *  #project/<id>/run/<buildNumber>            (pin one run; without it the page follows the newest)
  *  #project/<id>/sessions                     (the project's Sessions tab)
@@ -95,6 +97,10 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
   }
   if (pathPart === '#status') {
     return routeFields({ view: 'status' });
+  }
+  if (pathPart === '#activity' || pathPart.startsWith('#activity/')) {
+    const entry = pathPart === '#activity' ? null : decodeComp(pathPart.slice('#activity/'.length)) || null;
+    return routeFields({ view: 'activity', activityEntry: entry, activityFilter: q });
   }
   // The new-project wizard; its query is the answers it opens with (wizard-model.js#linkFromHash).
   if (pathPart === '#new') {
