@@ -10,8 +10,10 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.Sleepers;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -87,22 +89,55 @@ class WorkerAotCacheTest {
         assertThat(WorkerAotCache.trainingInFlight()).isFalse();
     }
 
-    /** A worker forked on a JDK that is not jk's own runs cold: no flag, and no recording either. */
+    /**
+     * A worker forked on a pinned HotSpot 25+ JDK that is not jk's own records a cache of its own;
+     * one on an older JDK runs cold and records nothing, since that JDK cannot map one.
+     */
     @Test
-    void a_worker_on_another_jdk_gets_no_cache_and_records_none(@TempDir Path dir) throws Exception {
+    void a_pinned_25_plus_jdk_records_its_own_cache_and_an_older_one_records_none(@TempDir Path dir) throws Exception {
         Path state = Files.createDirectories(dir.resolve("state"));
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
-        Path projectJdk = Files.createDirectories(dir.resolve("temurin-25-project"));
-        Files.writeString(projectJdk.resolve("release"), "JAVA_VERSION=\"25.0.4.1\"\n");
-
-        int[] forks = new int[1];
-        assertThat(WorkerAotCache.flags("java-compiler", projectJdk, "/w/a.jar", List.of(), (out, scratch) -> {
-                    forks[0]++;
+        Path older = Files.createDirectories(dir.resolve("temurin-21-project"));
+        Files.writeString(older.resolve("release"), "JAVA_VERSION=\"21.0.12\"\n");
+        AtomicInteger forks = new AtomicInteger();
+        assertThat(WorkerAotCache.flags("java-compiler", older, "/w/a.jar", List.of(), (out, scratch) -> {
+                    forks.incrementAndGet();
                     return Sleepers.writesLine("x", out);
                 }))
                 .isEmpty();
-        assertThat(forks[0]).isZero();
+        assertThat(forks.get()).isZero();
         assertThat(state.resolve("aot")).doesNotExist();
+
+        Path pinned = Files.createDirectories(dir.resolve("temurin-27-project"));
+        Files.writeString(pinned.resolve("release"), "JAVA_VERSION=\"27.0.1\"\n");
+        assertThat(WorkerAotCache.flags("java-compiler", pinned, "/w/a.jar", List.of(), (out, scratch) -> {
+                    forks.incrementAndGet();
+                    return Sleepers.writesLine("x", out);
+                }))
+                .as("the miss runs cold")
+                .isEmpty();
+        waitUntil(() -> forks.get() == 1 && !WorkerAotCache.trainingInFlight());
+        assertThat(WorkerAotCache.flags("java-compiler", pinned, "/w/a.jar", List.of(), (out, scratch) -> {
+                    forks.incrementAndGet();
+                    return Sleepers.writesLine("x", out);
+                }))
+                .as("the next worker on that JDK maps its own cache")
+                .anyMatch(f -> f.startsWith("-XX:AOTCache="));
+    }
+
+    /** When a cache lands, the tool's caches for that JDK go; another JDK's belong to another worker. */
+    @Test
+    void a_landing_cache_sweeps_its_own_jdks_siblings_only(@TempDir Path aot) throws Exception {
+        String v = JkVersion.VERSION;
+        Path landed = Files.writeString(aot.resolve("kotlinc-" + v + "-aaaaaaaa-0000000000000001.aot"), "x");
+        Path stale = Files.writeString(aot.resolve("kotlinc-" + v + "-aaaaaaaa-0000000000000002.aot"), "x");
+        Path otherJdk = Files.writeString(aot.resolve("kotlinc-" + v + "-bbbbbbbb-0000000000000003.aot"), "x");
+        Path otherTool = Files.writeString(aot.resolve("formatter-" + v + "-aaaaaaaa-0000000000000004.aot"), "x");
+        WorkerAotCache.sweepSiblings(landed);
+        assertThat(landed).exists();
+        assertThat(stale).doesNotExist();
+        assertThat(otherJdk).exists();
+        assertThat(otherTool).exists();
     }
 
     /**
@@ -172,9 +207,12 @@ class WorkerAotCacheTest {
                 .doesNotExist();
     }
 
-    /** At engine start, caches for another jk version or another JDK go; this engine's stay. */
+    /**
+     * At engine start, caches for another jk version go; another JDK's go once disused, and stay
+     * while a pinned worker still maps them; this engine's stay.
+     */
     @Test
-    void the_start_sweep_keeps_only_this_version_and_this_jdk(@TempDir Path aot) throws Exception {
+    void the_start_sweep_keeps_this_version_and_the_jdks_still_in_use(@TempDir Path aot) throws Exception {
         String tag = WorkerAotCache.jdkTag(HOTSPOT_25);
         Path mine = Files.writeString(
                 aot.resolve("kotlinc-" + JkVersion.VERSION + "-" + tag + "-0123456789abcdef.aot"), "x");
@@ -182,6 +220,11 @@ class WorkerAotCacheTest {
                 aot.resolve("java-compiler-" + JkVersion.VERSION + "-" + tag + "-fedcba9876543210.aot"), "x");
         Path otherJdk =
                 Files.writeString(aot.resolve("kotlinc-" + JkVersion.VERSION + "-89abcdef-0123456789abcdef.aot"), "x");
+        Path disusedJdk =
+                Files.writeString(aot.resolve("kotlinc-" + JkVersion.VERSION + "-76543210-0123456789abcdef.aot"), "x");
+        Files.setLastModifiedTime(
+                disusedJdk,
+                FileTime.fromMillis(System.currentTimeMillis() - WorkerAotCache.DISUSE_TTL_MILLIS - 60_000));
         Path otherVersion = Files.writeString(aot.resolve("kotlinc-0.1.0-" + tag + "-0123456789abcdef.aot"), "x");
         Path legacy = Files.writeString(aot.resolve("kotlinc-0.13.8-3d5aa37c6f2e823d.aot"), "x");
         Path manifest = Files.writeString(aot.resolve("aot.toml"), "not a cache");
@@ -193,7 +236,8 @@ class WorkerAotCacheTest {
 
         assertThat(mine).exists();
         assertThat(mineToo).exists();
-        assertThat(otherJdk).doesNotExist();
+        assertThat(otherJdk).as("a pinned JDK's cache in use").exists();
+        assertThat(disusedJdk).as("a pinned JDK's cache nobody maps").doesNotExist();
         assertThat(otherVersion).doesNotExist();
         assertThat(legacy)
                 .as("a name from before the JDK tag can never map again")

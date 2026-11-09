@@ -22,7 +22,9 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,11 +34,13 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * JEP 514 startup caches for the short-lived {@code java … PluginMain} workers (java-compiler,
- * kotlinc, formatter). One file per tool at rest, recorded only for the JDK jk itself runs on:
+ * kotlinc, formatter). One file per tool and JDK at rest, recorded for every HotSpot 25+ JDK a
+ * worker runs on — jk's own, or the one a {@code jdk = 27} pin names:
  * {@code <state>/aot/<tool>-<jk-version>-<jdk tag>-<key>.aot}, mapped when present, otherwise one
- * background recording per key per engine process. A worker forked on any other JDK runs without a
- * cache. When a cache lands, the tool's other caches go; when the engine starts, every cache for
- * another jk version or another JDK goes ({@link #sweepForeign}). {@code JK_WORKER_AOT=off} (or
+ * background recording per key per engine process. A worker on an older JDK, or a Graal one, runs
+ * without a cache. When a cache lands, the tool's other caches for that JDK go; when the engine
+ * starts, every cache for another jk version goes, and one for another JDK once it has gone {@link
+ * #DISUSE_TTL_MILLIS} unmapped ({@link #sweepForeign}). {@code JK_WORKER_AOT=off} (or
  * {@code -Djk.worker.aot=off}) turns mapping and recording off; HotSpot 25+ only.
  */
 public final class WorkerAotCache {
@@ -50,6 +54,15 @@ public final class WorkerAotCache {
 
     /** Ceiling for one training run (fork, synthetic compile, assembly); typical is a few seconds. */
     static volatile long trainingTimeoutMillis = TimeUnit.SECONDS.toMillis(120);
+
+    /** Each worker JDK's {@code release} reading, once per engine. */
+    private static final Map<Path, Optional<Host>> HOSTS = new ConcurrentHashMap<>();
+
+    /**
+     * A cache for a JDK other than the engine's that has gone this long unmapped is swept: the pin
+     * that named that JDK is gone, or the JDK is. Mapping a cache touches it.
+     */
+    static final long DISUSE_TTL_MILLIS = 14L * 24 * 60 * 60 * 1_000;
 
     /** A trainer's temp sibling older than this belongs to a dead engine. */
     private static final long TMP_TTL_MILLIS = 24L * 60 * 60 * 1_000;
@@ -97,8 +110,9 @@ public final class WorkerAotCache {
             String tool, @Nullable Path javaHome, String workerClasspath, List<String> jvmFlags, Trainer trainer) {
         if (!enabled() || javaHome == null) return List.of();
         try {
-            Host host = engineHost();
-            if (host == null || !host.eligible() || !host.home().equals(normalize(javaHome))) return List.of();
+            Host host = HOSTS.computeIfAbsent(normalize(javaHome), h -> Optional.ofNullable(host(h)))
+                    .orElse(null);
+            if (host == null || !host.eligible()) return List.of();
             Path cache = cacheFile(tool, host, workerClasspath, jvmFlags);
             if (usable(cache)) {
                 touch(cache);
@@ -116,8 +130,9 @@ public final class WorkerAotCache {
     }
 
     /**
-     * Delete every cache this engine can never map: another jk version's, another JDK's, and
-     * trainer temp files a dead engine left behind. Runs once at engine start; best-effort.
+     * Delete every cache this engine can never map, another jk version's; another JDK's once it has
+     * gone {@link #DISUSE_TTL_MILLIS} unmapped; and trainer temp files a dead engine left behind.
+     * Runs once at engine start; best-effort.
      */
     public static void sweepForeign() {
         Host host = engineHost();
@@ -133,10 +148,9 @@ public final class WorkerAotCache {
                 String name = p.getFileName().toString();
                 if (name.endsWith(".aot")) {
                     var m = NAME.matcher(name);
-                    boolean ours = m.matches()
-                            && m.group("version").equals(JkVersion.VERSION)
-                            && m.group("jdk").equals(tag);
-                    if (!ours) deleteQuietly(p);
+                    boolean thisJk = m.matches() && m.group("version").equals(JkVersion.VERSION);
+                    boolean disused = now - attrs.lastModifiedTime().toMillis() > DISUSE_TTL_MILLIS;
+                    if (!thisJk || (!m.group("jdk").equals(tag) && disused)) deleteQuietly(p);
                 } else if (name.contains(".aot.tmp-")
                         && now - attrs.lastModifiedTime().toMillis() > TMP_TTL_MILLIS) {
                     deleteQuietly(p);
@@ -291,17 +305,23 @@ public final class WorkerAotCache {
         }
     }
 
-    /** One file per tool: when a cache lands, the tool's other caches go, whatever their age. */
+    /**
+     * One file per tool and JDK: when a cache lands, the tool's other caches for that JDK go,
+     * whatever their age; another JDK's are another worker's.
+     */
     static void sweepSiblings(Path landed) {
         var m = NAME.matcher(landed.getFileName().toString());
         if (!m.matches()) return;
         String tool = m.group("tool");
+        String jdk = m.group("jdk");
         Path dir = Objects.requireNonNull(landed.getParent(), "cache dir");
         try {
             PathUtil.forEachRegularFile(dir, d -> true, (p, attrs) -> {
                 if (p.equals(landed)) return;
                 var other = NAME.matcher(p.getFileName().toString());
-                if (other.matches() && other.group("tool").equals(tool)) deleteQuietly(p);
+                if (other.matches()
+                        && other.group("tool").equals(tool)
+                        && other.group("jdk").equals(jdk)) deleteQuietly(p);
             });
         } catch (IOException ignored) {
             // opportunistic: a leftover cache costs disk, not correctness
