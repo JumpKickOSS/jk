@@ -7,8 +7,11 @@ import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.protocol.EventCatalog;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -667,7 +670,12 @@ public final class SessionLog {
     private void persist(Live live) {
         if (journal == null || !writing()) return;
         List<Map<String, Object>> eps = new ArrayList<>();
-        for (Episode e : live.episodes.episodes()) eps.add(withProjectId(e).toMap());
+        // Only the current episode's project is asked for its id here: this runs while a build is
+        // admitted, and resolving every older episode's checkout forked git once per checkout on
+        // a fresh engine — a second of a Helidon build's first request. Older episodes keep the id
+        // they were written with; the history views resolve the rest through the memo.
+        String current = live.record.episode();
+        for (Episode e : live.episodes.episodes()) eps.add((e.id().equals(current) ? withProjectId(e) : e).toMap());
         Map<String, Object> doc = new LinkedHashMap<>();
         doc.put("schema", 1);
         doc.put("session", live.record.toMap());
@@ -759,7 +767,8 @@ public final class SessionLog {
         if (projectIds.containsKey(dir)) return projectIds.get(dir);
         String id;
         try {
-            id = ProjectIds.idOf(dir);
+            // A directory with no jk manifest has no project identity; asking git costs a fork.
+            id = Files.isRegularFile(ManifestPaths.manifestIn(Path.of(dir))) ? ProjectIds.idOf(dir) : null;
         } catch (RuntimeException e) {
             id = null;
         }
