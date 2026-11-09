@@ -237,6 +237,38 @@ class ActionKeyTest {
                 "app=" + module.resolve("test/src").toAbsolutePath());
     }
 
+    /**
+     * A processor-path entry keys by the reader's identity: the forecast answers a sibling tree the
+     * build restores first with the restored tree's identity, not the stale one on disk.
+     */
+    @Test
+    void a_processor_path_entry_keys_through_the_readers_identity(@TempDir Path tempDir) throws IOException {
+        Path module = module(tempDir.resolve("app"));
+        Path processor = Files.createDirectories(tempDir.resolve("gen/target/classes"));
+        Files.writeString(processor.resolve("Gen.class"), "stale");
+        CompileRequest req = CompileRequest.builder()
+                .sources(List.of(module.resolve("src/main/java/Hello.java")))
+                .outputDir(module.resolve("target/classes"))
+                .processorPath(List.of(processor))
+                .release(25)
+                .build();
+        ActionKey.EntryToken restoring = new ActionKey.EntryToken() {
+            @Override
+            public String of(Path entry) throws IOException {
+                return ClasspathAbi.token(entry);
+            }
+
+            @Override
+            public String identity(Path entry) {
+                return "dir:restored";
+            }
+        };
+        assertThat(ActionKey.javacClasspathTokens(req, restoring)).contains("pp:dir:restored");
+        assertThat(ActionKey.javacClasspathTokens(req))
+                .as("the build's own reading is the tree on disk")
+                .noneMatch(line -> line.equals("pp:dir:restored"));
+    }
+
     private static CompileRequest pathOptions(Path module, String... options) {
         return CompileRequest.builder()
                 .sources(List.of(module.resolve("src/main/java/Hello.java")))

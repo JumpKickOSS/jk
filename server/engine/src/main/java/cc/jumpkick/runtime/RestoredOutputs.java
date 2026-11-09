@@ -153,12 +153,26 @@ final class RestoredOutputs {
      * by what is on disk.
      */
     ActionKey.EntryToken abiToken() {
-        return entry -> {
-            Path abs = key(entry);
-            String projected = treeAbi.get(abs);
-            if (projected != null) return projected;
-            Path blob = pinnedBlob(abs);
-            return blob != null ? ClasspathAbi.token(blob) : ClasspathAbi.token(entry);
+        ClasspathFingerprint.EntryIdentity identity = identity();
+        return new ActionKey.EntryToken() {
+            @Override
+            public String of(Path entry) throws IOException {
+                Path abs = key(entry);
+                String projected = treeAbi.get(abs);
+                if (projected != null) return projected;
+                Path blob = pinnedBlob(abs);
+                return blob != null ? ClasspathAbi.token(blob) : ClasspathAbi.token(entry);
+            }
+
+            /**
+             * A restored tree on the processor path keys as what returns: reverting an API edit
+             * restored the edited module, and its dependents' processor path still read the
+             * reverted-from tree on disk, so every one forecast a recompile it then restored.
+             */
+            @Override
+            public String identity(Path entry) throws IOException {
+                return identity.of(entry);
+            }
         };
     }
 

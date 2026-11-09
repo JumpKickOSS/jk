@@ -121,7 +121,9 @@ public final class ActionKey {
     public static List<String> javacClasspathTokens(CompileRequest request, EntryToken cp) throws IOException {
         List<String> lines = new ArrayList<>();
         appendCpTokens(lines, "cp:", request.classpath(), javacEntryToken(request, cp));
-        appendCpTokens(lines, "pp:", request.processorPath(), ClasspathFingerprint::entry);
+        // Through cp's identity: a sibling tree on the processor path that the build restores before
+        // this compile keys on it reads as the restored tree, not the stale one on disk.
+        appendCpTokens(lines, "pp:", request.processorPath(), cp::identity);
         return lines;
     }
 
@@ -590,6 +592,14 @@ public final class ActionKey {
     @FunctionalInterface
     public interface EntryToken {
         String of(Path entry) throws IOException;
+
+        /**
+         * The entry's content identity, as a processor-path line keys it: the tree on disk unless
+         * the reader knows the tree the build will restore there first (the forecast's view).
+         */
+        default String identity(Path entry) throws IOException {
+            return ClasspathFingerprint.entry(entry);
+        }
     }
 
     /**

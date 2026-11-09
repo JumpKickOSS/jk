@@ -146,6 +146,7 @@ final class PlannerCompileForecast {
                 && fresh.isPresent()
                 && pred.outcome() != JavaCompile.Outcome.CACHE_HIT
                 && ModuleOutputs.compileOutputsOnDisk(s.actionCache, out);
+        s.compileStampHeld = stampHolds;
         if (stampHolds) {
             pred = new JavaCompile.Prediction(
                     JavaCompile.Outcome.CACHE_HIT, pred.actionKey(), mainSrc.size(), "", List.of());

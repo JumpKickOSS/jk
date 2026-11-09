@@ -93,6 +93,12 @@ public final class ForecastScope implements StepForecast.Scope {
      */
     boolean depOnlyDirty;
 
+    /**
+     * The compile is held fresh by its freshness stamp, not by a key hit: the stamp vouches for the
+     * tree on disk, which is then what the build keeps.
+     */
+    boolean compileStampHeld;
+
     /** What this module's own edit looks like to its consumers; published into {@link #hints}. */
     SourceApiIndex.Hint ownHint = SourceApiIndex.Hint.UNKNOWN;
 
@@ -463,7 +469,11 @@ public final class ForecastScope implements StepForecast.Scope {
     void projectOwnOutputs() throws Exception {
         if (ownOutputsProjected) return;
         ownOutputsProjected = true;
-        if (compileDirty) return;
+        // A module dirty only for a dependency whose key still hits does not compile: the build
+        // restores its record, and its dependents key on that tree. Left unprojected, reverting an
+        // API edit priced every dependent of the reverted module against the tree it reverts from.
+        // A stamp-held compile keeps the tree on disk, stray files and all, so it projects nothing.
+        if (compileDirty && !(depOnlyDirty && !compileStampHeld)) return;
         Prepared p = prepared();
         try {
             if (classesTreeWhole(p.layout())) return;
