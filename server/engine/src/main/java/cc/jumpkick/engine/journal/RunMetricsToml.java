@@ -141,7 +141,11 @@ final class RunMetricsToml {
             Map<String, Map<String, Long>> modulePhaseTotals) {
         if (s == null || s.millis() <= 0) return;
         if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
-        String task = sanitize(s.name());
+        // A compile of part of the sources is a different cost from a whole one: kept apart.
+        String name = TaskNames.COMPILE_JAVA.equals(s.name()) && TaskNames.compiledPart(s.detail())
+                ? TaskNames.COMPILE_JAVA_INCREMENTAL
+                : s.name();
+        String task = sanitize(name);
         // Cache-restore / token hits can land as SUCCESS with absurdly short walls (e.g. native-image
         // 32ms). Those poison ETA means — never teach heavy steps below a floor.
         if (isImplausibleHeavyWall(task, s.millis())) return;

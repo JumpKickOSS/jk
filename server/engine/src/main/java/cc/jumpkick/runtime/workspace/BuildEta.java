@@ -399,7 +399,14 @@ public final class BuildEta {
                 cascadeRecheck++;
                 continue;
             }
-            running.add(s.name());
+            // A compile predicted to touch only some sources prices from the module's incremental
+            // history when it has one: its average over full compiles is several times that.
+            boolean incremental = TaskNames.COMPILE_JAVA.equals(s.name())
+                    && s.status() == TaskForecast.Status.PARTIAL
+                    && StepWalls.stepOkAvgMillisOwn(
+                                    metrics, BuildMetrics.slashKey(mdir.toString()), TaskNames.COMPILE_JAVA_INCREMENTAL)
+                            > 0;
+            running.add(incremental ? TaskNames.COMPILE_JAVA_INCREMENTAL : s.name());
         }
         // Rebuild with an empty step list still means "all work" — fall back to plan shape.
         if (running.isEmpty() && distrust) {

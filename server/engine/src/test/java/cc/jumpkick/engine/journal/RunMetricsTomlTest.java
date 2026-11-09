@@ -326,4 +326,21 @@ class RunMetricsTomlTest {
         assertThat(toml).contains("task.package-jar.wall-ms = 300");
         assertThat(toml).doesNotContain("task.compile-java.wall-ms");
     }
+
+    /** A compile of part of its sources is recorded apart: the ETA prices the next one from it. */
+    @Test
+    void a_partial_compile_is_recorded_under_its_own_name() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        var tasks = List.of(
+                new BuildRecord.Task("compile-java", "compile", "SUCCESS", 400, 0L, TaskNames.compiledLabel(1, 12)),
+                new BuildRecord.Task("compile-test", "compile", "SUCCESS", 900, 0L, TaskNames.compiledLabel(5, 5)));
+        String locator = requireNonNull(
+                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE));
+        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+        assertThat(toml).contains("task.compile-java-incremental.wall-ms = 400");
+        assertThat(toml).doesNotContain("task.compile-java.wall-ms");
+        assertThat(toml).contains("task.compile-test.wall-ms = 900");
+        assertThat(TaskNames.compiledPart(TaskNames.compiledLabel(12, 12))).isFalse();
+        assertThat(TaskNames.compiledPart("cache hit 1234abcd")).isFalse();
+    }
 }

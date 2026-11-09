@@ -219,4 +219,24 @@ public final class TaskNames {
     public static final String SELECT = "select";
     public static final String WIZARD = "wizard";
     public static final String SCAFFOLD = "scaffold";
+
+    /** The metrics name of a compile-java that compiled only part of its sources. */
+    public static final String COMPILE_JAVA_INCREMENTAL = "compile-java-incremental";
+
+    /** A finished compile's label: {@code compiled k of n sources}. */
+    public static String compiledLabel(int compiled, int sources) {
+        return "compiled " + compiled + " of " + sources + (sources == 1 ? " source" : " sources");
+    }
+
+    /** Whether {@code label} is a {@link #compiledLabel} for a compile of part of its sources. */
+    public static boolean compiledPart(String label) {
+        if (label == null || !label.startsWith("compiled ")) return false;
+        String[] w = label.split(" ");
+        if (w.length < 4 || !"of".equals(w[2])) return false;
+        try {
+            return Integer.parseInt(w[1]) < Integer.parseInt(w[3]);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
 }

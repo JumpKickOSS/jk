@@ -743,6 +743,11 @@ public final class PlannerCompile {
         if (r.cacheHit()) {
             ctx.label("cache hit " + r.actionKey().substring(0, 8));
             ctx.cached();
+        } else {
+            // What the compile did, as its record's detail: the ETA prices an incremental compile
+            // from incremental history, not from an average that full compiles dominate.
+            ctx.label(TaskNames.compiledLabel(
+                    r.compiledSources().size(), request.sources().size()));
         }
     }
 
