@@ -12,6 +12,7 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.command.system.SelfNukeCommand.Target;
 import cc.jumpkick.command.toolchain.ToolListCommand;
+import cc.jumpkick.desktop.DesktopIdentity;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Invocation;
@@ -269,6 +270,35 @@ class SelfNukeCommandTest {
                         + " purpose. Add a row for it in SelfNukeCommand.plan(), or name it in"
                         + " KEPT_ROOTS here with the reason it survives.")
                 .isEmpty();
+    }
+
+    @Test
+    void the_desktop_target_takes_the_default_homes_registration_and_icons_and_only_its_icons_elsewhere(
+            @TempDir Path userHome) throws Exception {
+        DesktopIdentity mine = new DesktopIdentity(
+                "Linux", JkDirs.of(name -> null, userHome.toString(), "Linux"), userHome, name -> null, argv -> true);
+        assertThat(SelfNukeCommand.desktopRows(mine)).isEmpty();
+        mine.register();
+        assertThat(SelfNukeCommand.desktopRows(mine))
+                .extracting(SelfNukeCommand.PurgeRow::path, SelfNukeCommand.PurgeRow::target)
+                .containsExactly(
+                        tuple(mine.entry(), Target.DESKTOP), tuple(mine.png().getParent(), Target.DESKTOP));
+
+        Map<String, String> scratch =
+                Map.of("JK_HOME", userHome.resolve("scratch").toString());
+        DesktopIdentity other = new DesktopIdentity(
+                "Linux", JkDirs.of(scratch::get, userHome.toString(), "Linux"), userHome, scratch::get, argv -> true);
+        assertThat(SelfNukeCommand.desktopRows(other))
+                .as("the shortcut and the desktop entry belong to the default home")
+                .isEmpty();
+    }
+
+    @Test
+    void the_desktop_flag_selects_only_the_desktop_target() {
+        Invocation desktop = Invocation.builder().flag("desktop", true).build();
+        assertThat(SelfNukeCommand.selectedTargets(desktop)).containsExactly(Target.DESKTOP);
+        assertThat(SelfNukeCommand.selectedTargets(Invocation.builder().build()))
+                .contains(Target.DESKTOP);
     }
 
     @Test

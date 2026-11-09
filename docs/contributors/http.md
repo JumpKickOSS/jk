@@ -403,6 +403,45 @@ answer and the first wins. The queue is `DecisionQueue`; the MCP rungs are `McpD
 settles the decision (`DecisionQueue.whenSettled`); `jk decide` reaches the same queue over the
 engine socket (`decisions-request`).
 
+### Desktop notifications
+
+`DecisionAlerts` carries out `[ui] ask` ([config](../user/config.md#decisions)) once a decision
+reaches `NEEDS-YOU`: a toast on Windows, `notify-send` on Linux, `osascript` on macOS, each
+withdrawn when the queue settles the decision. The name and icon they carry are
+`DesktopIdentity` (shared/core, `cc.jumpkick.desktop`), the one place that knows the
+AppUserModelID `cc.jumpkick.JumpKick`, the desktop entry `jumpkick` and the icons. `jk self
+desktop` (the installers run it for the default home) and `DesktopIdentity.ensure`, which the
+engine calls before its first notification, both register them. `ensure` runs once per engine and
+only for the default home, so a scratch `JK_HOME` never takes the shortcut or the desktop entry
+over.
+
+- **Windows.** A toast from an unpackaged app shows under an AppUserModelID that a Start-menu
+  shortcut carries, and takes its name and icon from that shortcut. No scriptable COM object sets
+  `System.AppUserModel.ID` on a `.lnk`, so the shortcut is written by a small C# class that
+  PowerShell compiles with `Add-Type` (`IShellLinkW` plus `IPropertyStore`). That takes a second
+  or two, once. Click-through is protocol activation (the toast's `launch` is the dashboard link),
+  so no COM activator is registered. Withdrawal is `ToastNotificationManager.History.Remove` with
+  the decision's id as the tag, under the same AppUserModelID.
+- **Linux.** `notify-send --app-name=JumpKick --icon=<home>/lib/desktop/jumpkick.png
+  --hint=string:desktop-entry:jumpkick`. GNOME names the notification and badges it from the
+  desktop entry; other servers use the app name and the icon.
+- **macOS.** `osascript` notifications are attributed to Script Editor, and only an app bundle
+  changes that. The options:
+  - *A small notifier bundle*, `~/.jk/lib/desktop/JumpKick.app`: a Swift program of about a hundred
+    lines on `UNUserNotificationCenter`, with bundle id `cc.jumpkick.JumpKick` and the icon as an
+    `.icns`. It gives what Windows and Linux have: the name and logo, click-through (its delegate
+    opens the link) and withdrawal (`removeDeliveredNotifications`). Cost: a Swift build on the
+    macOS release runner, a release artifact under the signed `SHA256SUMS`, Developer ID signing and
+    notarization for releases (ad hoc signing is enough for a snapshot, which nothing quarantines),
+    and the one-time permission prompt macOS shows for any app's first notification.
+  - *The installed dashboard (PWA)*: notifications under the PWA's name and icon at no native cost,
+    but only for a user who installed it and while it runs. The native notification is the
+    fallback for a user with no dashboard open, often one who has never run `jk web`, so the PWA
+    cannot replace it.
+  - `terminal-notifier` is not shipped: a third-party binary, and still not JumpKick's identity.
+
+  The recommendation is the notifier bundle; until it lands, macOS keeps `osascript`.
+
 ### `GET /report/<token>/<id>/<path>`
 
 A run's coverage HTML report, served from the checkout the run measured. The bearer token is a

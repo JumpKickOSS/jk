@@ -182,6 +182,20 @@ notification still showing goes away when its decision is answered or expires. T
 it each time it asks, so an edit applies without a restart. It is machine-scoped:
 `~/.jk/config.toml` only.
 
+On Windows and Linux the notification reads **JumpKick** with the JumpKick logo. The installer
+registers both for the default home, `~/.jk`, and the engine registers them before its first
+notification when they are missing:
+
+| Host | What is registered |
+|------|--------------------|
+| Windows | The Start-menu shortcut `JumpKick.lnk` in your Start menu's Programs folder, carrying the AppUserModelID `cc.jumpkick.JumpKick` that toasts are shown under and the icon `~/.jk/lib/desktop/jumpkick.ico` |
+| Linux | The desktop entry `jumpkick.desktop` in your applications directory, hidden from menus, and the icon `~/.jk/lib/desktop/jumpkick.png` |
+| macOS | Nothing: `osascript` notifications show as Script Editor's |
+
+Both entries open the dashboard (`jk web`). `jk self desktop` writes them again, and `jk self
+desktop --remove` (or `jk self nuke`, whose `--desktop` target is the same step) deletes them and the
+icons, the step to run before deleting `~/.jk` to uninstall.
+
 ## Network
 
 Corporate networks that only reach the internet through a proxy configure it once:

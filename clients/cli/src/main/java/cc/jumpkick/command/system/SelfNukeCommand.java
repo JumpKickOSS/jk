@@ -10,6 +10,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.desktop.DesktopIdentity;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.JkVersion;
@@ -46,6 +47,8 @@ import org.jspecify.annotations.Nullable;
  *       the installed tool envs — the launchers {@code jk install} wrote into {@code bin} for
  *       them go too, see {@link #toolOrphanRows}
  *   <li>{@code --config} — {@code <home>/config.toml} and the per-app {@code <home>/config} tree
+ *   <li>{@code --desktop} — the notifications' name and icon, as {@code jk self desktop --remove}
+ *       takes them away; see {@link #desktopRows}
  *   <li>{@code --all} — every target above (default when none are named)
  * </ul>
  *
@@ -62,7 +65,8 @@ public final class SelfNukeCommand implements CliCommand {
         CACHE("Cache tier"),
         STORE("Artifact store"),
         STATE("Engine sockets, builds, installed tools"),
-        CONFIG("User config");
+        CONFIG("User config"),
+        DESKTOP("Notification name and icon");
 
         final String what;
 
@@ -95,7 +99,8 @@ public final class SelfNukeCommand implements CliCommand {
     enum Kind {
         ROOT,
         LAUNCHER,
-        ENV
+        ENV,
+        DESKTOP
     }
 
     /**
@@ -137,7 +142,8 @@ public final class SelfNukeCommand implements CliCommand {
                 Opt.flag("Nuke the cache tier only (action outputs).", "-c", "--cache"),
                 Opt.flag("Nuke the artifact store (repos, tools, templates, completions).", "-S", "--store"),
                 Opt.flag("Nuke engine state, builds, tmp, and installed tools.", "-s", "--state"),
-                Opt.flag("Nuke user config.", "-n", "--config"));
+                Opt.flag("Nuke user config.", "-n", "--config"),
+                Opt.flag("Remove the notifications' name and icon from the desktop.", "-d", "--desktop"));
     }
 
     /**
@@ -197,6 +203,7 @@ public final class SelfNukeCommand implements CliCommand {
                 new ArrayList<>(rows.stream().filter(r -> !r.delegated()).toList());
         List<PurgeRow> orphans = toolOrphanRows(dirs, rows);
         pathRows.addAll(orphans);
+        if (selected.contains(Target.DESKTOP)) pathRows.addAll(desktopRows(DesktopIdentity.current()));
         boolean wantCache = selected.contains(Target.CACHE);
         boolean wantStoreTarget = selected.contains(Target.STORE);
         // The delegated wipes delete whatever root the request names — the store engine-side, the
@@ -421,13 +428,15 @@ public final class SelfNukeCommand implements CliCommand {
         boolean store = in.isSet("store");
         boolean state = in.isSet("state");
         boolean config = in.isSet("config");
-        boolean all = in.isSet("all") || !(cache || store || state || config);
+        boolean desktop = in.isSet("desktop");
+        boolean all = in.isSet("all") || !(cache || store || state || config || desktop);
         if (all) return EnumSet.allOf(Target.class);
         EnumSet<Target> set = EnumSet.noneOf(Target.class);
         if (cache) set.add(Target.CACHE);
         if (store) set.add(Target.STORE);
         if (state) set.add(Target.STATE);
         if (config) set.add(Target.CONFIG);
+        if (desktop) set.add(Target.DESKTOP);
         return set;
     }
 
@@ -510,6 +519,18 @@ public final class SelfNukeCommand implements CliCommand {
             }
         }
         return out;
+    }
+
+    /**
+     * The rows that take the notifications' name and icon away: the Start-menu shortcut or desktop
+     * entry when this is the default home, and the icon directory under the product lib. They are
+     * paths {@link DesktopIdentity} names, so they skip {@link #addRow}'s guard on the lib, the way
+     * the tool launchers skip the one on bin; the lib itself and the engine in it stay.
+     */
+    static List<PurgeRow> desktopRows(DesktopIdentity identity) {
+        return identity.installed().stream()
+                .map(p -> new PurgeRow(p, Target.DESKTOP.what, Target.DESKTOP, false, Kind.DESKTOP))
+                .toList();
     }
 
     /**

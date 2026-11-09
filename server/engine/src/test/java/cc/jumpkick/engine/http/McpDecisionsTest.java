@@ -8,6 +8,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.UiAsk;
+import cc.jumpkick.desktop.DesktopIdentity;
 import cc.jumpkick.engine.decisions.Decision;
 import cc.jumpkick.engine.decisions.DecisionAlerts;
 import cc.jumpkick.engine.decisions.DecisionQueue;
@@ -21,6 +22,8 @@ import cc.jumpkick.engine.http.mcp.tools.RunTool;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.util.JkDirs;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -51,9 +54,17 @@ class McpDecisionsTest {
     private final DecisionQueue queue = new DecisionQueue();
     private final List<List<String>> launched = Collections.synchronizedList(new ArrayList<>());
     private final Decisions decisions = new Decisions(queue, id -> BASE + "#decision/" + id + "?t=T")
-            .alerts(new DecisionAlerts(argv -> launched.add(argv), "Linux", name -> null))
+            .alerts(new DecisionAlerts(argv -> launched.add(argv), "Linux", name -> null, scratchIdentity()))
             .ask(() -> UiAsk.NOTIFY);
     private final AtomicInteger done = new AtomicInteger();
+
+    /** A desktop identity of a home other than the default one, which never registers itself. */
+    private static DesktopIdentity scratchIdentity() {
+        Map<String, String> env = Map.of("JK_HOME", "/nonexistent/jk-home");
+        return new DesktopIdentity(
+                "Linux", JkDirs.of(env::get, "/nonexistent"), Path.of("/nonexistent"), env::get, argv -> false);
+    }
+
     private final McpHandler mcp = handler();
 
     /** Asks before it does anything. */

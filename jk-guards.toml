@@ -486,6 +486,14 @@ in     = "shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/IntellijJdkTableTes
 reason = "fixtures for IntelliJ's own config location"
 
 [[guards.single-home-root.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/desktop/DesktopIdentity.java"
+reason = "the Start-menu shortcut (APPDATA) and the desktop entry (XDG_DATA_HOME) live where the desktop looks for them, which is not a jk layout"
+
+[[guards.single-home-root.allow]]
+in     = "shared/core/src/test/java/cc/jumpkick/desktop/DesktopIdentityTest.java"
+reason = "fixtures for where the desktop looks for the Start-menu shortcut and the desktop entry"
+
+[[guards.single-home-root.allow]]
 in     = "shared/core/src/test/java/cc/jumpkick/util/JkDirsTest.java"
 reason = "asserts that the retired XDG / AppData variables are ignored"
 

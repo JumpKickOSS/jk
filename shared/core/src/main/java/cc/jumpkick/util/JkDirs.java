@@ -226,10 +226,14 @@ public final class JkDirs {
      * repos/jk-local} with no pin naming it, where it shadows the default home's own installs.
      */
     public @Nullable Path borrowedDefaultStore(Path store) {
-        Path defaultHome = realOrNormal(Path.of(userHome).resolve(HOME_DIR));
-        if (realOrNormal(homeDir()).equals(defaultHome)) return null;
-        Path defaultStore = realOrNormal(defaultHome.resolve("store"));
+        if (isDefaultHome()) return null;
+        Path defaultStore = realOrNormal(Path.of(userHome).resolve(HOME_DIR).resolve("store"));
         return realOrNormal(store).equals(defaultStore) ? defaultStore : null;
+    }
+
+    /** True when this home is the default one, {@code $HOME/.jk}, however it is reached. */
+    public boolean isDefaultHome() {
+        return realOrNormal(homeDir()).equals(realOrNormal(Path.of(userHome).resolve(HOME_DIR)));
     }
 
     private static Path realOrNormal(Path path) {

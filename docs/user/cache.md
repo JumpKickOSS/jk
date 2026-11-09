@@ -91,9 +91,10 @@ One target per root, no aliases:
 | `--store` | `~/.jk/store`, whole-tree: `repos/`, `tools/`, `templates/`, `completions/`, `android-sdk/` | |
 | `--state` | `~/.jk/state` — engine sockets, builds, scratch tmp | |
 | `--config` | `~/.jk/config.toml` and the per-app `~/.jk/config/` tree | |
+| `--desktop` | The notifications' name and icon: the Start-menu shortcut or desktop entry, and `~/.jk/lib/desktop` — same as `jk self desktop --remove` ([Config](config.md#decisions)) | |
 
 Always kept, whichever targets you name: `~/.jk/bin` (PATH launchers), `~/.jk/lib` (the live
-engine and installed app jars), `~/.jk/creds` (forge and per-repo credentials — `jk repo
+engine and installed app jars; only `--desktop` takes its `desktop/` icons), `~/.jk/creds` (forge and per-repo credentials — `jk repo
 logout` removes those) and the managed JDKs. Those are roots of their own, so no target's
 delete reaches them.
 

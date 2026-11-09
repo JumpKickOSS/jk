@@ -85,6 +85,7 @@ public final class SelfCommand extends GroupCommand {
                 new WriteLauncherSub(),
                 new RetireOldEnginesSub(),
                 new SetupTerminalSub(),
+                new SelfDesktopCommand(),
                 new SelfNukeCommand());
     }
 

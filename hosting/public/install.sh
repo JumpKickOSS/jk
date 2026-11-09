@@ -625,6 +625,13 @@ main() {
       || note "terminal setup skipped (run 'jk self setup-terminal' later)"
   fi
 
+  # The name and icon desktop notifications carry: a desktop entry and its icon. They name one
+  # home, so only the default home registers them, as with the rc block below.
+  if [ "$JK_HOME_DIR" = "$DEFAULT_HOME_DIR" ]; then
+    run_jk self desktop >/dev/null 2>&1 \
+      || note "desktop registration skipped (run 'jk self desktop' later)"
+  fi
+
   # ---- activate --------------------------------------------------------------
 
   case "${SHELL##*/}" in

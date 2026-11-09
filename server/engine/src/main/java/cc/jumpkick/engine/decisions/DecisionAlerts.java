@@ -3,6 +3,8 @@ package cc.jumpkick.engine.decisions;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UiAsk;
+import cc.jumpkick.desktop.DesktopIdentity;
+import cc.jumpkick.desktop.PowerShell;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
 import java.io.BufferedReader;
@@ -10,8 +12,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.ProcessBuilder.Redirect;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,21 +30,18 @@ import org.jspecify.annotations.Nullable;
  * link: a desktop notification carrying the question and the decision's dashboard link, the browser
  * opened on it, or nothing. On Windows the notification is a toast whose click opens the link; on
  * Linux a {@code notify-send} that supports actions opens it on a click too; on macOS {@code
- * osascript} shows the link in the text. A notification still showing is withdrawn when its
- * decision settles. Best effort: a missing tool is reported, never thrown, since the tool result
- * already carries the link.
+ * osascript} shows the link in the text. Windows and Linux notifications carry JumpKick's name and
+ * icon through its {@link DesktopIdentity}, registered before the first one when it is missing. A
+ * notification still showing is withdrawn when its decision settles. Best effort: a missing tool is
+ * reported, never thrown, since the tool result already carries the link.
  */
 public final class DecisionAlerts implements AutoCloseable {
 
     /** The notification's title. */
     public static final String TITLE = "JumpKick needs you";
 
-    /** The name a notification shows as its sender, and the group every decision's toast is tagged under. */
-    static final String APP_NAME = "JumpKick";
-
-    /** PowerShell's own AppUserModelID: a toast shown under it needs no app registration. */
-    static final String POWERSHELL_AUMID =
-            "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe";
+    /** The group every decision's toast is tagged under. */
+    static final String TOAST_GROUP = DesktopIdentity.APP_NAME;
 
     /** The most of the body a toast carries, so the encoded command stays far under Windows' limit. */
     private static final int TOAST_TEXT_MAX = 1000;
@@ -85,18 +84,21 @@ public final class DecisionAlerts implements AutoCloseable {
     private final Launcher launcher;
     private final String os;
     private final Function<String, @Nullable String> env;
+    private final DesktopIdentity identity;
     private final Map<String, Waiting> waiting = new ConcurrentHashMap<>();
     private final Set<String> toasts = ConcurrentHashMap.newKeySet();
     private volatile @Nullable Boolean actions;
 
     public DecisionAlerts() {
-        this(new Processes(), Os.name(), ProcessEnv::get);
+        this(new Processes(), Os.name(), ProcessEnv::get, DesktopIdentity.current());
     }
 
-    public DecisionAlerts(Launcher launcher, String os, Function<String, @Nullable String> env) {
+    public DecisionAlerts(
+            Launcher launcher, String os, Function<String, @Nullable String> env, DesktopIdentity identity) {
         this.launcher = launcher;
         this.os = os;
         this.env = env;
+        this.identity = identity;
     }
 
     /** Does what {@code mode} says for {@code d}, whose dashboard link is {@code link}; answers what happened. */
@@ -137,16 +139,18 @@ public final class DecisionAlerts implements AutoCloseable {
     private boolean notify(Decision d, String link) {
         String body = body(d);
         if (Os.isDarwin(os)) return run(appleCommand(TITLE, body, link));
+        identity.ensure();
         if (Os.isWindows(os)) {
             if (!run(toastCommand(d.id(), TITLE, body, link))) return false;
             toasts.add(d.id());
             return true;
         }
-        if (!notifySendActions()) return run(notifySendCommand(TITLE, body, link));
+        Path icon = identity.png();
+        if (!notifySendActions()) return run(notifySendCommand(TITLE, body, link, icon));
         Waiting w = new Waiting();
         waiting.put(d.id(), w);
         Watch watch = launcher.watch(
-                notifySendActionCommand(TITLE, body, link),
+                notifySendActionCommand(TITLE, body, link, icon),
                 line -> {
                     String s = line.strip();
                     if (s.equals("default")) run(openCommand(link));
@@ -201,20 +205,30 @@ public final class DecisionAlerts implements AutoCloseable {
                 "osascript", "-e", "display notification " + appleQuote(text) + " with title " + appleQuote(title));
     }
 
-    /** {@code notify-send} showing {@code body} with {@code link} under it: no click-through. */
-    static List<String> notifySendCommand(String title, String body, String link) {
-        return List.of("notify-send", "--app-name=" + APP_NAME, "--icon=dialog-question", title, body + "\n" + link);
+    /**
+     * {@code notify-send} showing {@code body} with {@code link} under it: no click-through. The
+     * desktop-entry hint is what GNOME names and badges the notification by.
+     */
+    static List<String> notifySendCommand(String title, String body, String link, Path icon) {
+        return List.of(
+                "notify-send",
+                "--app-name=" + DesktopIdentity.APP_NAME,
+                "--icon=" + icon,
+                "--hint=string:desktop-entry:" + DesktopIdentity.DESKTOP_ENTRY,
+                title,
+                body + "\n" + link);
     }
 
     /**
      * {@code notify-send} that prints the notification's id, waits, and prints {@code default} when
      * the notification is clicked. The text keeps the link for a server that shows no actions.
      */
-    static List<String> notifySendActionCommand(String title, String body, String link) {
+    static List<String> notifySendActionCommand(String title, String body, String link, Path icon) {
         return List.of(
                 "notify-send",
-                "--app-name=" + APP_NAME,
-                "--icon=dialog-question",
+                "--app-name=" + DesktopIdentity.APP_NAME,
+                "--icon=" + icon,
+                "--hint=string:desktop-entry:" + DesktopIdentity.DESKTOP_ENTRY,
                 "--action=default=Open",
                 "--print-id",
                 "--wait",
@@ -235,8 +249,8 @@ public final class DecisionAlerts implements AutoCloseable {
     }
 
     /**
-     * PowerShell showing a toast tagged {@code id} whose click opens {@code link}. Every value
-     * reaches the script base64-encoded, so no text can end a literal and run as script.
+     * PowerShell showing a toast tagged {@code id}, under JumpKick's AppUserModelID, whose click opens
+     * {@code link}.
      */
     static List<String> toastCommand(String id, String title, String body, String link) {
         String xml = "<toast activationType=\"protocol\" launch=\"" + xmlEscape(link) + "\">"
@@ -244,34 +258,28 @@ public final class DecisionAlerts implements AutoCloseable {
                 + "<text>" + xmlEscape(title) + "</text>"
                 + "<text>" + xmlEscape(clip(body)) + "</text>"
                 + "</binding></visual></toast>";
-        String script = POWERSHELL_PRELUDE
+        String script = TOAST_PRELUDE
                 + "[void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType=WindowsRuntime]\n"
                 + "$x = New-Object Windows.Data.Xml.Dom.XmlDocument\n"
-                + "$x.LoadXml((D '" + b64(xml) + "'))\n"
+                + "$x.LoadXml(" + PowerShell.literal(xml) + ")\n"
                 + "$t = New-Object Windows.UI.Notifications.ToastNotification $x\n"
-                + "$t.Tag = D '" + b64(id) + "'\n"
-                + "$t.Group = D '" + b64(APP_NAME) + "'\n"
-                + "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier((D '"
-                + b64(POWERSHELL_AUMID) + "')).Show($t)\n";
-        return powershell(script);
+                + "$t.Tag = " + PowerShell.literal(id) + "\n"
+                + "$t.Group = " + PowerShell.literal(TOAST_GROUP) + "\n"
+                + "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
+                + PowerShell.literal(DesktopIdentity.AUMID) + ").Show($t)\n";
+        return PowerShell.command(script);
     }
 
     /** PowerShell removing the toast tagged {@code id} from the notification center. */
     static List<String> toastRemoveCommand(String id) {
-        String script = POWERSHELL_PRELUDE
-                + "[Windows.UI.Notifications.ToastNotificationManager]::History.Remove((D '" + b64(id) + "'), (D '"
-                + b64(APP_NAME) + "'), (D '" + b64(POWERSHELL_AUMID) + "'))\n";
-        return powershell(script);
+        String script = TOAST_PRELUDE
+                + "[Windows.UI.Notifications.ToastNotificationManager]::History.Remove(" + PowerShell.literal(id)
+                + ", " + PowerShell.literal(TOAST_GROUP) + ", " + PowerShell.literal(DesktopIdentity.AUMID) + ")\n";
+        return PowerShell.command(script);
     }
 
-    private static final String POWERSHELL_PRELUDE = "$ErrorActionPreference = 'Stop'\n"
-            + "function D($s) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s)) }\n"
+    private static final String TOAST_PRELUDE = PowerShell.PRELUDE
             + "[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime]\n";
-
-    private static List<String> powershell(String script) {
-        String encoded = Base64.getEncoder().encodeToString(script.getBytes(StandardCharsets.UTF_16LE));
-        return List.of("powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded);
-    }
 
     /** The argv that opens {@code link}: {@code $BROWSER} when set, else the platform's opener. */
     List<String> openCommand(String link) {
@@ -290,10 +298,6 @@ public final class DecisionAlerts implements AutoCloseable {
     /** {@code s} as an AppleScript string literal. */
     private static String appleQuote(String s) {
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-    }
-
-    private static String b64(String s) {
-        return Base64.getEncoder().encodeToString(s.getBytes(StandardCharsets.UTF_8));
     }
 
     private static String clip(String s) {

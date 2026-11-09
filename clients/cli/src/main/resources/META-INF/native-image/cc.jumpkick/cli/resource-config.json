@@ -17,6 +17,9 @@
         "pattern": "cc/jumpkick/command/toolchain/wrapper/.*"
       },
       {
+        "pattern": "cc/jumpkick/desktop/jumpkick\\.(png|ico)"
+      },
+      {
         "pattern": "cc/jumpkick/docs/.*"
       },
       {

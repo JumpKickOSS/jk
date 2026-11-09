@@ -4,9 +4,13 @@ package cc.jumpkick.engine.decisions;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.UiAsk;
+import cc.jumpkick.desktop.DesktopIdentity;
 import cc.jumpkick.form.Form;
+import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -18,6 +22,7 @@ import java.util.regex.Pattern;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
@@ -71,8 +76,26 @@ class DecisionAlertsTest {
 
     private final Recorder launcher = new Recorder();
 
+    /** What the desktop identity ran to register itself. */
+    private final List<List<String>> registered = new ArrayList<>();
+
+    @TempDir
+    Path userHome;
+
     private DecisionAlerts on(String os, Map<String, String> env) {
-        return new DecisionAlerts(launcher, os, env::get);
+        return new DecisionAlerts(launcher, os, env::get, identity(os));
+    }
+
+    private DesktopIdentity identity(String os) {
+        return new DesktopIdentity(
+                os, JkDirs.of(name -> null, userHome.toString(), os), userHome, name -> null, argv -> {
+                    registered.add(argv);
+                    return true;
+                });
+    }
+
+    private Path icon() {
+        return userHome.resolve(".jk").resolve("lib").resolve("desktop").resolve("jumpkick.png");
     }
 
     private static Decision decision() {
@@ -107,9 +130,13 @@ class DecisionAlertsTest {
         assertThat(alerts.raise(UiAsk.NOTIFY, decision(), LINK)).isEqualTo("sent a desktop notification");
         assertThat(launcher.watches).isEmpty();
         assertThat(launcher.launched).singleElement().satisfies(argv -> {
-            assertThat(argv.subList(0, 4))
+            assertThat(argv.subList(0, 5))
                     .containsExactly(
-                            "notify-send", "--app-name=JumpKick", "--icon=dialog-question", DecisionAlerts.TITLE);
+                            "notify-send",
+                            "--app-name=JumpKick",
+                            "--icon=" + icon(),
+                            "--hint=string:desktop-entry:jumpkick",
+                            DecisionAlerts.TITLE);
             assertThat(argv).noneMatch(a -> a.startsWith("--action") || a.equals("--wait"));
             assertThat(argv.getLast()).isEqualTo("Clean jk's cache?\nAnswer it in the dashboard.\n" + LINK);
         });
@@ -128,7 +155,8 @@ class DecisionAlertsTest {
                     .containsExactly(
                             "notify-send",
                             "--app-name=JumpKick",
-                            "--icon=dialog-question",
+                            "--icon=" + icon(),
+                            "--hint=string:desktop-entry:jumpkick",
                             "--action=default=Open",
                             "--print-id",
                             "--wait",
@@ -223,7 +251,7 @@ class DecisionAlertsTest {
                 .contains("ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime")
                 .contains("CreateToastNotifier(");
         List<String> values = embedded(script);
-        assertThat(values).contains("abc", DecisionAlerts.APP_NAME, DecisionAlerts.POWERSHELL_AUMID);
+        assertThat(values).contains("abc", "JumpKick", "cc.jumpkick.JumpKick");
 
         Element toast = toast(values);
         assertThat(toast.getAttribute("activationType")).isEqualTo("protocol");
@@ -259,7 +287,39 @@ class DecisionAlertsTest {
         assertThat(launcher.launched).hasSize(2);
         String script = script(launcher.launched.getLast());
         assertThat(script).contains("::History.Remove(");
-        assertThat(embedded(script)).containsExactly("abc", DecisionAlerts.APP_NAME, DecisionAlerts.POWERSHELL_AUMID);
+        assertThat(embedded(script)).containsExactly("abc", "JumpKick", "cc.jumpkick.JumpKick");
+    }
+
+    @Test
+    void the_first_linux_notification_registers_the_desktop_entry_and_its_icon_once() throws Exception {
+        launcher.outputs.put(List.of("notify-send", "--version"), "notify-send 0.7.9\n");
+        DecisionAlerts alerts = on("Linux", Map.of());
+        alerts.raise(UiAsk.NOTIFY, decision(), LINK);
+        Path entry = identity("Linux").entry();
+        assertThat(entry).content().contains("Name=JumpKick\n", "Icon=" + icon() + "\n", "NoDisplay=true\n");
+        assertThat(Files.readAllBytes(icon())).startsWith(0x89, 'P', 'N', 'G');
+
+        Files.delete(entry);
+        alerts.raise(UiAsk.NOTIFY, decision(), LINK);
+        assertThat(entry).as("registered once per engine").doesNotExist();
+    }
+
+    @Test
+    void the_first_windows_toast_writes_the_start_menu_shortcut_before_it_shows() {
+        DecisionAlerts alerts = on("Windows 11", Map.of());
+        alerts.raise(UiAsk.NOTIFY, decision(), LINK);
+        alerts.raise(UiAsk.NOTIFY, decision(), LINK);
+        assertThat(registered).singleElement().satisfies(argv -> {
+            String script = script(argv);
+            assertThat(script).contains("Add-Type -TypeDefinition", "::Save(");
+            assertThat(embedded(script))
+                    .contains(
+                            "cc.jumpkick.JumpKick",
+                            "web",
+                            userHome.resolve(".jk/lib/desktop/jumpkick.ico").toString())
+                    .anyMatch(v -> v.endsWith("JumpKick.lnk"));
+        });
+        assertThat(launcher.launched).hasSize(2);
     }
 
     @Test
