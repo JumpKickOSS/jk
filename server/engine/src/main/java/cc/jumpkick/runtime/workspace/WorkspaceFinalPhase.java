@@ -140,7 +140,7 @@ final class WorkspaceFinalPhase {
                     run.executeWallMs(),
                     resources.dirtyUnits().size(),
                     BuildEta.realWork(model.costs()),
-                    model.full(),
+                    model.shape(),
                     startedWarm);
         });
         StepTimings.record(request.cache(), resources.timingSamples(), StepTimings.DEFAULT_ALPHA, now);

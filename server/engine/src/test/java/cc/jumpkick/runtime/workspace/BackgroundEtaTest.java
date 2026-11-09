@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.runtime.base.ScheduleBias;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -14,7 +15,7 @@ import org.junit.jupiter.api.Test;
 class BackgroundEtaTest {
 
     private static BuildService.EtaModel model(long ms) {
-        return new BuildService.EtaModel(ms, List.of(), 1, true, ms, true, false, true);
+        return new BuildService.EtaModel(ms, List.of(), 1, true, ms, true, ScheduleBias.Shape.INCREMENTAL, true);
     }
 
     @Test

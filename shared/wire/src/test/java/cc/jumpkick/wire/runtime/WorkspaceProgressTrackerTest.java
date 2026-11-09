@@ -106,4 +106,13 @@ class WorkspaceProgressTrackerTest {
         assertThat(s.percent()).isNotNaN();
         assertThat(t.executeTotal()).isEqualTo(100);
     }
+
+    /** The work model can price fewer modules than the plan schedules: the plan's count stands. */
+    @Test
+    void a_work_model_seed_never_lowers_the_scheduled_module_count() {
+        WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        t.calibrate(100, 20);
+        WorkspaceProgressTracker.Snapshot s = t.seedWall(5_000, 1);
+        assertThat(s.modulesTotal()).isEqualTo(20);
+    }
 }

@@ -92,9 +92,14 @@ public final class ScheduleBias {
      *     simulated, rather than another shape's correction.
      */
     public static double current(Path entryDir, int dirtyModules, int realWork, boolean full, boolean workerWarm) {
+        return current(entryDir, dirtyModules, realWork, Shape.of(full), workerWarm);
+    }
+
+    /** {@link #current(Path, int, int, boolean, boolean)} for a build of {@code shape}. */
+    public static double current(Path entryDir, int dirtyModules, int realWork, Shape shape, boolean workerWarm) {
         try {
             Map<String, Double> m = load(file());
-            Double b = dirtyModules > 0 ? m.get(shapeKey(entryDir, dirtyModules, realWork, full, workerWarm)) : null;
+            Double b = dirtyModules > 0 ? m.get(shapeKey(entryDir, dirtyModules, realWork, shape, workerWarm)) : null;
             if (b == null) return 1.0;
             return Math.max(MIN_BIAS, Math.min(MAX_BIAS, b));
         } catch (RuntimeException e) {
@@ -114,22 +119,50 @@ public final class ScheduleBias {
 
     /** Whether a correction has been learned for this shape: until one has, the model runs unaided. */
     public static boolean learned(Path entryDir, int dirtyModules, int realWork, boolean full, boolean workerWarm) {
+        return learned(entryDir, dirtyModules, realWork, Shape.of(full), workerWarm);
+    }
+
+    /** {@link #learned(Path, int, int, boolean, boolean)} for a build of {@code shape}. */
+    public static boolean learned(Path entryDir, int dirtyModules, int realWork, Shape shape, boolean workerWarm) {
         try {
             return dirtyModules > 0
-                    && load(file()).containsKey(shapeKey(entryDir, dirtyModules, realWork, full, workerWarm));
+                    && load(file()).containsKey(shapeKey(entryDir, dirtyModules, realWork, shape, workerWarm));
         } catch (RuntimeException e) {
             return false;
         }
     }
 
     /**
-     * {@code full}: a rebuild of everything (forced, or most compiles predicted whole) rather than an
-     * incremental one. An API change that recompiles 211 dependents has a cold build's width and
-     * real-work count, and twice its correction: their compiles are measured under a cold build's
-     * contention, which the cold build's schedule then counts again.
+     * What kind of build a correction is learned for. An API change that recompiles 211 dependents
+     * has a cold build's width and real-work count, and twice its correction: their compiles are
+     * measured under a cold build's contention, which the cold build's schedule then counts again.
+     * And a cascade whose dependents compile whole over their own outputs (aggregating processors, a
+     * removed member) prices them as whole compiles where an added member prices them as partial
+     * ones: the same wall against twice the schedule, so the two halve each other's correction.
      */
-    private static String shapeKey(Path entryDir, int dirtyModules, int realWork, boolean full, boolean workerWarm) {
-        return key(entryDir) + "|w" + bucket(dirtyModules) + "|r" + bucket(realWork) + (full ? "|f" : "|i")
+    public enum Shape {
+        /** Everything from nothing: forced, or most compiles have no analysis to compile against. */
+        // "F", not the "f" a full build was filed under when any whole compile made one: those
+        // corrections mix in cascades and are left unread rather than carried over.
+        FULL("F"),
+        /** Most compiles go whole over outputs the modules already have. */
+        WHOLE("w"),
+        /** Everything else. */
+        INCREMENTAL("i");
+
+        private final String tag;
+
+        Shape(String tag) {
+            this.tag = tag;
+        }
+
+        public static Shape of(boolean full) {
+            return full ? FULL : INCREMENTAL;
+        }
+    }
+
+    private static String shapeKey(Path entryDir, int dirtyModules, int realWork, Shape shape, boolean workerWarm) {
+        return key(entryDir) + "|w" + bucket(dirtyModules) + "|r" + bucket(realWork) + "|" + shape.tag
                 + (workerWarm ? "" : "|cold");
     }
 
@@ -145,6 +178,18 @@ public final class ScheduleBias {
             int realWork,
             boolean full,
             boolean workerWarm) {
+        observe(entryDir, rawScheduleMs, actualMs, dirtyModules, realWork, Shape.of(full), workerWarm);
+    }
+
+    /** {@link #observe(Path, long, long, int, int, boolean, boolean)} for a build of {@code shape}. */
+    public static void observe(
+            Path entryDir,
+            long rawScheduleMs,
+            long actualMs,
+            int dirtyModules,
+            int realWork,
+            Shape shape,
+            boolean workerWarm) {
         if (dirtyModules < MIN_MODULES || rawScheduleMs < MIN_RAW_MS || actualMs <= 0) return;
         // Clamped first, so one observation moves the EWMA by at most a quarter of the way to a
         // bound: a build that finished in a seventh of its schedule teaches 0.4, not 0.15.
@@ -155,7 +200,7 @@ public final class ScheduleBias {
             Path f = file();
             FileLocks.withLock(lockFile(f), () -> {
                 Map<String, Double> m = load(f);
-                String k = shapeKey(entryDir, dirtyModules, realWork, full, workerWarm);
+                String k = shapeKey(entryDir, dirtyModules, realWork, shape, workerWarm);
                 Double prev = m.get(k);
                 m.put(k, prev == null ? ratio : fold(prev, ratio));
                 write(f, m);

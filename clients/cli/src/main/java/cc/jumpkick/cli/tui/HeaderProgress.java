@@ -237,6 +237,8 @@ final class HeaderProgress {
                 countdown.r0SetAtElapsedMs(),
                 elapsedMillis,
                 countdown.residual(),
-                done.getAsBoolean());
+                done.getAsBoolean(),
+                countdown.residualSetAtElapsedMs(),
+                modulesTotal > 0 ? Math.max(0, modulesTotal - modulesComplete) : -1);
     }
 }

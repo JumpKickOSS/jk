@@ -91,6 +91,10 @@ final class Countdown {
         return residualMs;
     }
 
+    long residualSetAtElapsedMs() {
+        return residualSetAtElapsedMs;
+    }
+
     long etaEstimateMs() {
         return etaEstimateMs;
     }

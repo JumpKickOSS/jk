@@ -45,6 +45,10 @@ public final class WorkspaceProgressTracker {
     private int modulesTotal;
 
     private long annotatedRemainingMs = -1;
+
+    /** Elapsed ms when {@link #annotatedRemainingMs} last changed: the bar counts it down from there. */
+    private long remainingAtElapsedMs;
+
     private long annotatedR0ms;
     /** Elapsed base when R0 was seeded (millis, same clock as {@link #elapsedClockMs}). */
     private long seedAtElapsedMs;
@@ -139,7 +143,11 @@ public final class WorkspaceProgressTracker {
         long r0 = Math.max(0, R0ms);
         this.annotatedR0ms = r0;
         this.annotatedRemainingMs = r0;
-        if (modulesTotal > 0) this.modulesTotal = modulesTotal;
+        // The work model prices the scheduled modules that do work, which can be fewer than the
+        // plan schedules (a dependent forecast as a cache hit still runs and completes): never
+        // lower the plan's count, or pending reads 0 while modules still run and the bar's
+        // residual counts down mid-build.
+        if (modulesTotal > 0) this.modulesTotal = Math.max(this.modulesTotal, modulesTotal);
         tickElapsed();
         // Every accepted seed re-anchors the clock base — matching the CLI, whose pre-execute
         // re-seed always re-anchors (setRemainingWorkEstimate). The old `seedAtElapsedMs == 0`
@@ -147,6 +155,8 @@ public final class WorkspaceProgressTracker {
         // re-seed kept the stale anchor iff the first seed landed later than tracker-elapsed 0,
         // and SSE percent silently diverged from the TUI bar.
         if (r0 > 0) seedAtElapsedMs = seedAnchor();
+        // The seed is the first residual, taken where the clock counts from (as the CLI does).
+        remainingAtElapsedMs = seedAtElapsedMs;
         return recompute();
     }
 
@@ -161,7 +171,14 @@ public final class WorkspaceProgressTracker {
 
     /** Annotate residual remaining (wire only for countdown clients). */
     public synchronized Snapshot noteRemaining(long remainingMs, long R0ms) {
-        this.annotatedRemainingMs = Math.max(0, remainingMs);
+        long rem = Math.max(0, remainingMs);
+        // An unchanged re-note (every plan tick re-notes) carries nothing new: re-anchoring on it
+        // would stop the countdown between real changes.
+        if (rem != this.annotatedRemainingMs) {
+            tickElapsed();
+            this.remainingAtElapsedMs = elapsedClockMs;
+        }
+        this.annotatedRemainingMs = rem;
         if (R0ms > 0) {
             if (this.annotatedR0ms <= 0) {
                 // First R0 via residual path — treat as seed.
@@ -299,7 +316,15 @@ public final class WorkspaceProgressTracker {
         // or noteRemaining refreshed it (same field). Always pass it: elapsed/(elapsed+R) at t=0
         // is 0, matching open-loop.
         HeaderProgressState st = new HeaderProgressState(
-                weightNum, weightDen, annotatedR0ms, seedAtElapsedMs, elapsedClockMs, residual, settled);
+                weightNum,
+                weightDen,
+                annotatedR0ms,
+                seedAtElapsedMs,
+                elapsedClockMs,
+                residual,
+                settled,
+                remainingAtElapsedMs,
+                modulesTotal > 0 ? Math.max(0, modulesTotal - modulesComplete) : -1);
         // Feed weights so weighted strategy peak tracks; clock uses residual + elapsed.
         long[] d = strat.onWeightProgress(st, weightNum, weightDen);
         // Prefer strategy display pair for percent; keep weight units on the wire for den/num

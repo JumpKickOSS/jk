@@ -9,6 +9,7 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
@@ -235,12 +236,12 @@ public final class BuildService {
              * bias that gap overshot every later build until the bias decayed.
              */
             boolean measured,
-            /** A rebuild of everything rather than an incremental build: a {@link ScheduleBias} shape. */
-            boolean full,
+            /** Full, whole-over-outputs or incremental: a {@link ScheduleBias} shape. */
+            ScheduleBias.Shape shape,
             /** Whether the build started with a warm compiler worker: a {@link ScheduleBias} shape. */
             boolean workerWarm) {
         public EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
-            this(etaMs, costs, concurrency, serial, 0, false, false, true);
+            this(etaMs, costs, concurrency, serial, 0, false, ScheduleBias.Shape.INCREMENTAL, true);
         }
 
         static EtaModel empty() {

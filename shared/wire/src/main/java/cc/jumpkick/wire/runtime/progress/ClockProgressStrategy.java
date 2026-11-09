@@ -38,9 +38,10 @@ public final class ClockProgressStrategy implements HeaderProgressStrategy {
         if (state.settled()) return new long[] {SCALE, SCALE};
 
         long elapsed = Math.max(0L, state.elapsedMs());
-        // Adaptive once the residual firms up mid-run; open-loop on R0 from its anchor until then.
+        // Adaptive once the residual firms up mid-run, counted down between samples as the
+        // countdown is; open-loop on R0 from its anchor until then.
         long remaining = state.hasResidual()
-                ? Math.max(0L, state.residualRemainingMs())
+                ? Math.max(0L, state.residualNowMs())
                 : Math.max(0L, state.r0Ms() - state.elapsedSinceSeed());
         long denom = elapsed + remaining;
         double raw = denom <= 0 ? DISPLAY_CAP : (double) elapsed / (double) denom;

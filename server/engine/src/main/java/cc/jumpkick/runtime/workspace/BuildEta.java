@@ -138,10 +138,10 @@ public final class BuildEta {
             int concurrency = etaConcurrency(maxModuleConcurrency);
             boolean serialEta = concurrency <= 1;
             if (costs.isEmpty()) return new BuildService.EtaModel(0, costs, concurrency, serialEta);
-            boolean full = fullRebuild(plan);
+            ScheduleBias.Shape shape = buildShape(plan);
             Seed seed = seedEta(
                     entryDir,
-                    full,
+                    shape,
                     workerWarm,
                     costs,
                     costDirs(costs),
@@ -183,11 +183,11 @@ public final class BuildEta {
                         "serial",
                         serialEta,
                         "bias",
-                        ScheduleBias.current(entryDir, costs.size(), realWork(costs), full, workerWarm));
+                        ScheduleBias.current(entryDir, costs.size(), realWork(costs), shape, workerWarm));
             }
             boolean measured = measuredShare(costs, BuildMetrics.load(BuildMetrics.defaultFile())) >= 0.5;
             return new BuildService.EtaModel(
-                    seed.etaMs(), costs, concurrency, serialEta, seed.rawScheduleMs(), measured, full, workerWarm);
+                    seed.etaMs(), costs, concurrency, serialEta, seed.rawScheduleMs(), measured, shape, workerWarm);
         } catch (RuntimeException e) {
             // Never fail explain/build over the estimate — but do not silently advertise 0s/empty.
             Log.warn("jk: ETA estimate failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
@@ -245,7 +245,7 @@ public final class BuildEta {
     }
 
     /**
-     * Order module costs in the same sequence as {@code units} (workspace topo / dirty list) so
+     * The costs of the scheduled {@code units}, in their sequence (workspace topo / dirty list) so
      * first-ready schedule admission matches {@link WorkspaceScheduler}.
      */
     static List<ModuleWorkCost> orderCostsLikeUnits(
@@ -265,10 +265,9 @@ public final class BuildEta {
                 }
             }
         }
-        // Any leftover (shouldn't happen) — append in original cost order.
-        for (EffortWeights.ModuleCost c : byDir.values()) {
-            ordered.add(c.toWorkCost());
-        }
+        // A module the forecast priced but the build does not schedule (a clean one: the forecast
+        // covers the workspace) never starts or finishes, so it is left out: kept, it held the
+        // residual up to its share of the schedule and the bar stalled two thirds of the way.
         return ordered;
     }
 
@@ -655,23 +654,47 @@ public final class BuildEta {
     }
 
     /**
-     * Whether this build rebuilds everything: forced, or at least half the modules that compile
-     * are predicted to compile whole.
+     * The build's {@link ScheduleBias.Shape}: forced, or at least half the modules that compile are
+     * predicted to compile whole from scratch ({@link #fromScratch}), is FULL; at least half
+     * compiling whole over their own outputs is WHOLE; anything else is INCREMENTAL.
      */
-    static boolean fullRebuild(ExplainPlan plan) {
+    static ScheduleBias.Shape buildShape(ExplainPlan plan) {
         var cfg = SessionContext.current().config();
-        if (cfg.rebuildOr(false) || cfg.forceOr(false)) return true;
+        if (cfg.rebuildOr(false) || cfg.forceOr(false)) return ScheduleBias.Shape.FULL;
         int compiling = 0;
+        int scratch = 0;
         int whole = 0;
         for (TaskForecast.Module m : plan.modules()) {
             for (TaskForecast.Task t : m.steps()) {
                 if (!isCompileStepName(t.name()) || t.cached()) continue;
                 compiling++;
-                if (t.status() == TaskForecast.Status.FULL) whole++;
+                if (t.status() == TaskForecast.Status.FULL) {
+                    if (fromScratch(t.text())) scratch++;
+                    else whole++;
+                }
                 break;
             }
         }
-        return compiling > 0 && whole * 2 >= compiling;
+        if (compiling == 0) return ScheduleBias.Shape.INCREMENTAL;
+        if (scratch * 2 >= compiling) return ScheduleBias.Shape.FULL;
+        if ((scratch + whole) * 2 >= compiling) return ScheduleBias.Shape.WHOLE;
+        return ScheduleBias.Shape.INCREMENTAL;
+    }
+
+    /**
+     * Whether a whole compile starts from nothing: no analysis or record to compile against, as on
+     * a cold tree. A module that compiles whole over its own outputs (aggregating processors, a
+     * removed member its dependents read) is an incremental build's shape: its schedule runs against
+     * warm outputs and its learned correction differs from a cold build's by half.
+     */
+    static boolean fromScratch(String text) {
+        // "full compile · N sources" with no reason after it: a Kotlin or Groovy compile with no
+        // prior record (its miss reason is empty then).
+        if (text.split(" · ").length <= 2) return true;
+        return text.contains(" · no zinc analysis")
+                || text.contains(" · no prior compile record")
+                // The worker could not plan it: a sibling's output it reads is not built yet.
+                || text.contains(" · no plan: ");
     }
 
     /**
@@ -719,7 +742,7 @@ public final class BuildEta {
      */
     private static Seed seedEta(
             Path entryDir,
-            boolean full,
+            ScheduleBias.Shape buildShape,
             boolean workerWarm,
             List<EffortWeights.ModuleCost> costs,
             Set<Path> dirs,
@@ -775,7 +798,8 @@ public final class BuildEta {
         // one, because it is a JVM walking the tree while test JVMs compete for the same machine.
         // It contends like everything else here, so it scales like everything else here.
         if (costs.size() >= ScheduleBias.MIN_MODULES) {
-            base = Math.round(base * ScheduleBias.current(entryDir, costs.size(), realWork(costs), full, workerWarm));
+            base = Math.round(
+                    base * ScheduleBias.current(entryDir, costs.size(), realWork(costs), buildShape, workerWarm));
         }
         if (coldFull && base > 0) {
             base = Math.round(base * 1.08);
@@ -784,7 +808,7 @@ public final class BuildEta {
         // learned. Once this shape has a learned correction it only fights it: the floor leans on
         // the slowest build on record, which for a rebuild is one that also paid a cold worker,
         // and held a warm rebuild 1.5x high while the shape's own correction read 0.3.
-        boolean shapeLearned = ScheduleBias.learned(entryDir, costs.size(), realWork(costs), full, workerWarm);
+        boolean shapeLearned = ScheduleBias.learned(entryDir, costs.size(), realWork(costs), buildShape, workerWarm);
         if (fullWork && !shapeLearned) {
             BuildMetrics.Stats plainFull =
                     okHistory(entryDir, new BuildService.HistoryShape(false, hist.dirtyModules()));

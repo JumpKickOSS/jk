@@ -3,7 +3,9 @@ package cc.jumpkick.runtime.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
@@ -78,19 +80,26 @@ class EtaTailWeightSurvivesTest {
     }
 
     /**
-     * The live workspace ETA orders costs to match the scheduled units before pricing them. Both
-     * arms of that ordering — matched and leftover — dropped the tail.
+     * The live workspace ETA orders costs to match the scheduled units before pricing them; the
+     * matched arm dropped the tail. A cost the build does not schedule is left out: that module
+     * never finishes, and kept, it held the residual up for the whole build.
      */
     @Test
-    void ordering_costs_for_the_live_eta_carries_the_tail() {
-        // Leftover arm: no units at all, so every cost falls through to the tail of the method.
-        List<ModuleWorkCost> leftover = BuildEta.orderCostsLikeUnits(List.of(), List.of(cliShaped()));
-        assertThat(leftover)
-                .as("the leftover arm must not strip the tail either")
+    void ordering_costs_for_the_live_eta_carries_the_tail_and_drops_unscheduled_modules() {
+        var manifest = JkBuildParser.parse("""
+                group = "g"
+                name = "cli"
+                version = "1"
+                """);
+        var cli = new BuildGraph.BuildUnit(CLI, manifest, "g:cli", BuildGraph.Origin.MODULE);
+        var clean = new EffortWeights.ModuleCost(Path.of("/clean"), Set.of(), 5, 0, 0);
+        List<ModuleWorkCost> ordered = BuildEta.orderCostsLikeUnits(List.of(cli), List.of(clean, cliShaped()));
+        assertThat(ordered)
+                .as("only the scheduled module, with its tail")
                 .singleElement()
                 .extracting(ModuleWorkCost::tailWeight)
                 .isEqualTo(37);
-        assertThat(WorkSchedule.moduleWall(leftover.getFirst())).isEqualTo(43);
+        assertThat(WorkSchedule.moduleWall(ordered.get(0))).isEqualTo(43);
     }
 
     /**
