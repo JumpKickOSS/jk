@@ -20,7 +20,7 @@ import { cardMethods } from './cards.js';
 import { BuildBars, ModuleDepGraph } from './chart.js';
 import { CodeView } from './code.js';
 import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
-import { DecisionPage } from './decisions.js';
+import { DecisionDialog, decisionData, decisionMethods } from './decisions.js';
 import { foldEvent, seedFromHistory } from './fold.js';
 import {
   ago as agoOf,
@@ -53,6 +53,7 @@ if (typeof document !== 'undefined') bootstrapToken();
 export const appOptions = {
   data: () => ({
     ...consoleData(routeFromHash()),
+    ...decisionData(routeFromHash()),
     view: routeFromHash().view, // 'console' | 'projects' | 'project' | 'status' | 'new'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
@@ -63,8 +64,6 @@ export const appOptions = {
     codeMsg: routeFromHash().msg || '',
     pinnedRun: routeFromHash().run || 0, // #project/<id>/run/<n>: 0 follows the newest run
     projectTab: routeFromHash().tab, // the project page's tab: 'runs' | 'sessions'
-    decisionId: routeFromHash().decisionId || null, // #decision/<id>
-    decisionEvent: null, // the newest SSE decision payload, for the open decision page
     // The checkout the route names (#project/<id>?dir=…) — picked on the page, or carried by an
     // MCP / CLI link. Null while the id implies its one checkout; projectDir() folds in the
     // engine's answer.
@@ -110,7 +109,9 @@ export const appOptions = {
     const authed = await this.checkAuth();
     if (authed) {
       // The console's reads go first: they are what the landing page paints from.
+      // The bell counts open decisions on every page; the console adds its sessions.
       if (this.view === 'console') this.loadConsole();
+      else this.loadDecisions();
       this.connectEvents();
       this.refresh();
       this.loadHistory(); // backfill past builds so a reload/restart doesn't start from an empty feed
@@ -120,7 +121,10 @@ export const appOptions = {
       if (this.view === 'new') this.enterWizard();
     }
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
-    window.addEventListener('hashchange', () => this.applyRoute());
+    window.addEventListener('hashchange', (e) => this.applyRoute(e));
+    // The bell's menu folds on a click outside it or on Esc.
+    document.addEventListener('pointerdown', (e) => this.foldBell(e));
+    document.addEventListener('keydown', (e) => this.foldBell(e));
     // A page that leaves closes its stream; one the back/forward cache restores reopens it.
     window.addEventListener('pagehide', () => this.suspendEvents());
     window.addEventListener('pageshow', (event) => this.resumeEvents(event));
@@ -153,6 +157,7 @@ export const appOptions = {
   methods: {
     ...projectMethods,
     ...consoleMethods,
+    ...decisionMethods,
     ...cardMethods,
     ...statusMethods,
     ...wizardMethods,
@@ -323,6 +328,7 @@ export const appOptions = {
             this.loadHistory();
             this.loadProjectHistory();
             if (wasOffline && this.view === 'console') this.loadConsole();
+            else if (wasOffline) this.loadDecisions();
           } else if (state === 'offline') {
             // EventSource's own retry cadence (~3s on refused connections) is shorter than the
             // poll delay — re-arming on every onerror would perpetually reset the pending timer
@@ -378,9 +384,11 @@ export const appOptions = {
       else this.setView('projects');
     },
     // Re-derive view + selected project from the hash, loading whatever that route needs.
-    applyRoute() {
+    applyRoute(change) {
       if (this.authModal) return;
       const r = routeFromHash();
+      // #decision/<id> opens its dialog over the page that is showing.
+      if (this.routeDecision(r, change)) return;
       const idChanged = r.projectId !== this.selectedProjectId;
       const dirChanged = (r.dir || null) !== this.selectedProjectDir;
       this.view = r.view;
@@ -395,7 +403,6 @@ export const appOptions = {
       this.pinnedRun = r.run || 0;
       this.projectTab = r.tab;
       this.consoleSession = r.session || null;
-      this.decisionId = r.decisionId || null;
       // Collapse the expensive graph panel when leaving project view or switching projects.
       if (r.view !== 'project' || idChanged || r.files) this.projectGraphOpen = false;
       // Project identity cannot change between two clicks on the same #project/<id> route, and
@@ -665,7 +672,7 @@ if (typeof Vue !== 'undefined' && typeof document !== 'undefined') {
     .component('build-bars', BuildBars)
     .component('module-dep-graph', ModuleDepGraph)
     .component('code-view', CodeView)
-    .component('decision-page', DecisionPage)
+    .component('decision-dialog', DecisionDialog)
     .mount('#app');
 
   // Themed tooltips for data-tip / title (native title= is unstyleable OS chrome).

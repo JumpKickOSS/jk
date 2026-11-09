@@ -322,7 +322,7 @@ JumpKick asks by the first rung the session supports ([revisions](#protocol-revi
 1. **Form elicitation.** The host renders the question (`answer`: yes / no) and the call resumes
    with the answer. A host that also takes links gets a third choice, *Show me the details*, which
    moves the question to rung 2.
-2. **URL elicitation.** The host asks the user to open the decision's dashboard page,
+2. **URL elicitation.** The host asks the user to open the decision in the dashboard,
    `#decision/<id>`; the call resumes when the decision is settled and JumpKick sends
    `notifications/elicitation/complete`. A client that declared URL mode but has no way back on
    this request gets the `-32042` error carrying the link instead, and calls again once the user
@@ -343,7 +343,7 @@ JumpKick asks by the first rung the session supports ([revisions](#protocol-revi
 When another surface answers while the host's question is still open, JumpKick withdraws it: a form
 question gets `notifications/cancelled`, a link gets `notifications/cancelled` and
 `notifications/elicitation/complete`, the desktop notification is closed, and the dashboard's
-Needs-you banner drops the decision.
+bell and Needs-you banner drop the decision.
 
 `run(decision=<id>)` makes the original call again with the decision: it proceeds once the
 decision is accepted (once only), answers `DECLINED` or `EXPIRED` when it was not, and while it is

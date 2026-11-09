@@ -51,7 +51,7 @@ export function parseTruthy(raw) {
  *  #console                                   (the landing page: no hash, or one no route claims)
  *  #console/<sessionId>                       (the console with one session selected)
  *  #new?<key>=<value>&…                       (the new-project wizard, pre-filled)
- *  #decision/<id>                             (one decision; decisions.js)
+ *  #decision/<id>                             (a decision's dialog over the page under it; decisions.js)
  *  #project/<id>
  *  #project/<id>/run/<buildNumber>            (pin one run; without it the page follows the newest)
  *  #project/<id>/sessions                     (the project's Sessions tab)
@@ -102,7 +102,7 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
   }
   if (pathPart.startsWith('#decision/')) {
     const id = decodeComp(pathPart.slice('#decision/'.length));
-    return id ? routeFields({ view: 'decision', decisionId: id }) : empty;
+    return id ? routeFields({ decisionId: id }) : empty;
   }
   if (pathPart.startsWith('#project/')) {
     const segs = pathPart.slice('#project/'.length).split('/');

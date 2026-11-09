@@ -38,7 +38,7 @@ test('an engine with no decision queue leaves the banner absent', async () => {
   await assert.rejects(fetchDecisions(() => Promise.reject({ status: 401 })), (e) => e.status === 401, 'a 401 still reaches the auth gate');
 });
 
-test('a banner row names who asks and links the decision page, where it is answered', () => {
+test('a banner row names who asks and links the decision, whose dialog answers it', () => {
   const sessions = [{ id: 'mcp-91be', origin: 'mcp', label: 'codex 91be' }];
   const [row] = bannerRows([d('dec 1', 10)], sessions);
   assert.equal(row.askedBy, 'codex 91be');

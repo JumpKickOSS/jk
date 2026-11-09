@@ -19,7 +19,7 @@ working, green done, red failed, amber needs you, cyan identity.
 `#console` is the landing page. From top to bottom and left to right:
 
 - **Needs you**: the decisions an agent is blocked on, oldest first, each with who asked, how
-  long ago, and **Review**, which opens the decision (`#decision/<id>`). Absent when nothing waits, and on an engine without a decision queue.
+  long ago, and **Review**, which opens the decision's dialog (`#decision/<id>`). Absent when nothing waits, and on an engine without a decision queue.
 - **Sessions**: one card per live or idle session, and those that ended within the last hour. A
   card shows the host (`claude-code 3f9a`, `IntelliJ-BSP 7b2c`, `shell`), the current episode's
   title and where it came from (*goal from the agent*, *last goal*, *inferred*, or *your own
@@ -238,15 +238,22 @@ agent, and the new project's page says the agent was not told.
 
 ## Decisions
 
-Your agent asks you; this page is where the details live. An operation that waits for a person (a
-destructive clean, an uninstall) is a decision ([MCP](mcp.md#decisions)). `#decision/<id>` shows
-one: the question, who asked and where, the lines that explain it, and its answers: pick one and
-**Answer**, or **Decline**. The agent's host sends you there by URL elicitation, a desktop
-notification carries the link under `[ui] ask = notify`, and a `NEEDS-YOU` result names it. Every
-decision is answered here, whatever it concerns.
+Your agent asks you; the dashboard is where the details live. An operation that waits for a person
+(a destructive clean, an uninstall) is a decision ([MCP](mcp.md#decisions)). The bell in the header
+counts the open decisions on every page and lists them. A bell entry, a Needs-you row, the link a
+desktop notification carries under `[ui] ask = notify`, the agent host's URL elicitation and the
+link a `NEEDS-YOU` result names all open `#decision/<id>`: a dialog over whatever page is showing,
+with the question, who asked and where, the lines that explain it, and its answers.
 
-The first answer wins, wherever it came from; the page then says how and where it was settled, and
-the host's question, the desktop notification and the Needs-you row close.
+The answers are the buttons. A confirmation shows one button per choice, labelled as the agent's
+host labels it and in the same order (**Yes, delete them** and **No, leave it as it is**): the yes
+accepts, the no declines. A longer list of choices is a column of buttons. Only a form with real
+inputs shows fields, **Submit** and **Decline**. Closing the dialog (Esc, the close button, a click
+outside it) answers nothing: the decision stays open in the bell.
+
+The first answer wins, wherever it came from. When another surface answers first, an open dialog
+says how and where it was settled and closes, and the host's question, the desktop notification,
+the bell entry and the Needs-you row close.
 Settled decisions are kept under the same `[history]` retention as sessions.
 `GET /api/decisions` lists open decisions first, then recently settled ones; `GET
 /api/decisions/<id>` returns one; `POST /api/decisions/<id>` answers it; every change is an SSE

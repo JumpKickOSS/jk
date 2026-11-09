@@ -175,7 +175,7 @@ export const consoleMethods = {
     const { type, data } = event;
     if (type === SSE.decision) {
       this.decisions = foldDecision(this.decisions, data);
-      this.decisionEvent = data; // the open #decision/<id> page follows it too
+      this.decisionEvent = data; // the open decision dialog follows it too
       const stamp = frameStamp(type, data);
       if (stamp) this.markConsoleEvent(stamp, () => this.needsYou.some((d) => d.id === stamp.id));
       return true;

@@ -11,7 +11,7 @@ public enum DecisionSurface {
     HOST_FORM,
     /** The agent's host, declining or dismissing the URL elicitation that links to the decision. */
     HOST_URL,
-    /** The dashboard: the decision page, from the banner, a notification or a link. */
+    /** The dashboard: the decision dialog, from the bell, the banner, a notification or a link. */
     DASHBOARD,
     /** {@code jk decide}. */
     CLI;

@@ -39,7 +39,7 @@ public final class DashboardLinks {
         return route.toString();
     }
 
-    /** The decision page {@code #decision/<id>}, authenticated; {@code null} when HTTP is not serving. */
+    /** The decision's dialog {@code #decision/<id>}, authenticated; {@code null} when HTTP is not serving. */
     public static @Nullable String decision(@Nullable String baseUrl, @Nullable String token, String id) {
         if (baseUrl == null || baseUrl.isBlank()) return null;
         StringBuilder route = new StringBuilder(baseUrl.endsWith("/") ? baseUrl : baseUrl + "/")

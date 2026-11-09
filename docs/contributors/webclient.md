@@ -27,7 +27,7 @@ stopped providing.
 | `cards.js` | A run card's methods for the console's live builds and the run page: progress, ETA, badge, diagnostics |
 | `console.js` | The console's view models: the sessions rail, the session log's frames folded, an episode's timeline, its header and arc, earlier episodes, the right rail, the run page's attempt, the project's Sessions tab |
 | `consoleview.js` | The console's root-component mixins: `/api/sessions`, one session's page, `/api/decisions`, the log and decision frames, the first-paint and event marks |
-| `needs.js` | The Needs-you banner: open decisions, the `decision` frame folded, a 404 read as "no queue" |
+| `needs.js` | The open decisions the bell and the Needs-you banner list: the `decision` frame folded, a 404 read as "no queue" |
 | `strip.js` | A run as one line: what it is doing, one cell per module, and which modules the run page opens (failed, slow) |
 | `status.js` | The Status view: the `/api/{status,cache,metrics,log,config}` reads and its meters |
 | `projects.js` | The Projects tab and Project page: history records grouped per project, and the run the page follows or pins |
@@ -35,7 +35,7 @@ stopped providing.
 | `delta.js` | `<run-delta>`: the iteration strip — a record's `delta` as chips with the rows behind them |
 | `sessions.js` | Who asked: origin labels, the followed-or-pinned run, the pin route |
 | `wizard.js` | New Project and the directory browser its path fields open |
-| `decisions.js` | `<decision-page>`: the `#decision/<id>` page, and `openDecisions`, the Needs-you rows from `GET /api/decisions` |
+| `decisions.js` | `<decision-dialog>`: the fixed-size dialog `#decision/<id>` opens over the page, its answers as buttons, and the root's bell and route glue |
 | `icons.js` | `<jk-icon>`: the inline-SVG glyph set |
 | `phase.js` | `<phase-chain>`: the coarse plan-phase strip on a card |
 | `report.js` | `<fail-report>`: one failure body for the compact card and the module branch |
@@ -133,7 +133,7 @@ With no session in the route (`#console/<id>`), the console holds the rail's fir
 
 The wire tokens live in `wire.js`: `LOG` (`session`, `episode`, `action`, held to
 `EventCatalog.DASHBOARD_ONLY` by `WireTokenParityTest`) and `QUEUE` (`decision`); `api.js` listens
-for every one. The decision page itself (`#decision/<id>`) and answering are the decision queue's.
+for every one. The decision dialog (`#decision/<id>`, over whatever page is showing) and answering are the decision queue's.
 
 **First meaningful paint.** Once the rail and the selected episode (or the empty state) are
 rendered, `markConsolePainted` waits for Vue's patch and the next frame, then sets
