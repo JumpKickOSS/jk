@@ -35,14 +35,14 @@ import org.jspecify.annotations.Nullable;
 public final class DecisionAlerts implements AutoCloseable {
 
     /** The notification's title. */
-    public static final String TITLE = "jk needs you";
+    public static final String TITLE = "JumpKick needs you";
+
+    /** The name a notification shows as its sender, and the group every decision's toast is tagged under. */
+    static final String APP_NAME = "JumpKick";
 
     /** PowerShell's own AppUserModelID: a toast shown under it needs no app registration. */
     static final String POWERSHELL_AUMID =
             "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe";
-
-    /** The toast group every decision's toast is tagged under. */
-    static final String TOAST_GROUP = "jk";
 
     /** The most of the body a toast carries, so the encoded command stays far under Windows' limit. */
     private static final int TOAST_TEXT_MAX = 1000;
@@ -203,7 +203,7 @@ public final class DecisionAlerts implements AutoCloseable {
 
     /** {@code notify-send} showing {@code body} with {@code link} under it: no click-through. */
     static List<String> notifySendCommand(String title, String body, String link) {
-        return List.of("notify-send", "--app-name=jk", "--icon=dialog-question", title, body + "\n" + link);
+        return List.of("notify-send", "--app-name=" + APP_NAME, "--icon=dialog-question", title, body + "\n" + link);
     }
 
     /**
@@ -213,7 +213,7 @@ public final class DecisionAlerts implements AutoCloseable {
     static List<String> notifySendActionCommand(String title, String body, String link) {
         return List.of(
                 "notify-send",
-                "--app-name=jk",
+                "--app-name=" + APP_NAME,
                 "--icon=dialog-question",
                 "--action=default=Open",
                 "--print-id",
@@ -250,7 +250,7 @@ public final class DecisionAlerts implements AutoCloseable {
                 + "$x.LoadXml((D '" + b64(xml) + "'))\n"
                 + "$t = New-Object Windows.UI.Notifications.ToastNotification $x\n"
                 + "$t.Tag = D '" + b64(id) + "'\n"
-                + "$t.Group = D '" + b64(TOAST_GROUP) + "'\n"
+                + "$t.Group = D '" + b64(APP_NAME) + "'\n"
                 + "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier((D '"
                 + b64(POWERSHELL_AUMID) + "')).Show($t)\n";
         return powershell(script);
@@ -260,7 +260,7 @@ public final class DecisionAlerts implements AutoCloseable {
     static List<String> toastRemoveCommand(String id) {
         String script = POWERSHELL_PRELUDE
                 + "[Windows.UI.Notifications.ToastNotificationManager]::History.Remove((D '" + b64(id) + "'), (D '"
-                + b64(TOAST_GROUP) + "'), (D '" + b64(POWERSHELL_AUMID) + "'))\n";
+                + b64(APP_NAME) + "'), (D '" + b64(POWERSHELL_AUMID) + "'))\n";
         return powershell(script);
     }
 

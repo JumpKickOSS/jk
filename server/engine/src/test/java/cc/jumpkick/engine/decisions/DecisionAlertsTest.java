@@ -108,7 +108,8 @@ class DecisionAlertsTest {
         assertThat(launcher.watches).isEmpty();
         assertThat(launcher.launched).singleElement().satisfies(argv -> {
             assertThat(argv.subList(0, 4))
-                    .containsExactly("notify-send", "--app-name=jk", "--icon=dialog-question", DecisionAlerts.TITLE);
+                    .containsExactly(
+                            "notify-send", "--app-name=JumpKick", "--icon=dialog-question", DecisionAlerts.TITLE);
             assertThat(argv).noneMatch(a -> a.startsWith("--action") || a.equals("--wait"));
             assertThat(argv.getLast()).isEqualTo("Clean jk's cache?\nAnswer it in the dashboard.\n" + LINK);
         });
@@ -126,7 +127,7 @@ class DecisionAlertsTest {
             assertThat(w.argv())
                     .containsExactly(
                             "notify-send",
-                            "--app-name=jk",
+                            "--app-name=JumpKick",
                             "--icon=dialog-question",
                             "--action=default=Open",
                             "--print-id",
@@ -222,7 +223,7 @@ class DecisionAlertsTest {
                 .contains("ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime")
                 .contains("CreateToastNotifier(");
         List<String> values = embedded(script);
-        assertThat(values).contains("abc", DecisionAlerts.TOAST_GROUP, DecisionAlerts.POWERSHELL_AUMID);
+        assertThat(values).contains("abc", DecisionAlerts.APP_NAME, DecisionAlerts.POWERSHELL_AUMID);
 
         Element toast = toast(values);
         assertThat(toast.getAttribute("activationType")).isEqualTo("protocol");
@@ -258,8 +259,7 @@ class DecisionAlertsTest {
         assertThat(launcher.launched).hasSize(2);
         String script = script(launcher.launched.getLast());
         assertThat(script).contains("::History.Remove(");
-        assertThat(embedded(script))
-                .containsExactly("abc", DecisionAlerts.TOAST_GROUP, DecisionAlerts.POWERSHELL_AUMID);
+        assertThat(embedded(script)).containsExactly("abc", DecisionAlerts.APP_NAME, DecisionAlerts.POWERSHELL_AUMID);
     }
 
     @Test

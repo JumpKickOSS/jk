@@ -77,7 +77,7 @@
         <!-- Sessions rail: one card per live or recently idle session; your shell is one too. -->
         <aside class="rail-sessions" aria-label="Sessions">
           <div class="rail-head"><span class="lbl">sessions</span><span class="spacer"></span><span class="dim small">{{ sessionRail.length || '' }}</span></div>
-          <p v-if="sessionsLoaded && !sessionRail.length" class="empty small">No sessions yet. An agent's first jk call, or your own <code>jk build</code>, opens one.</p>
+          <p v-if="sessionsLoaded && !sessionRail.length" class="empty small">No sessions yet. An agent's first call to JumpKick, or your own <code>jk build</code>, opens one.</p>
           <button v-for="s in sessionRail" :key="s.id" type="button" class="sess-card" :class="[s.state, { sel: s.id === selectedSessionId }]"
                   :aria-pressed="s.id === selectedSessionId" @click="selectSession(s.id)">
             <span class="sess-top"><span class="sess-dot" :class="s.state"></span><span class="sess-host">{{ s.host }}</span>
@@ -104,7 +104,7 @@
               <span>episode <b>{{ consoleEpisode.header.number }}</b> of {{ consoleEpisode.header.of }}</span>
               <span v-if="consoleEpisode.header.project">{{ consoleEpisode.header.project }}</span>
               <span><b>{{ duration(consoleEpisode.header.wallMillis) }}</b> wall</span>
-              <span data-tip="jk's own time on this episode's actions and runs"><b>{{ duration(consoleEpisode.header.jkMillis) }}</b> in jk</span>
+              <span data-tip="JumpKick's own time on this episode's actions and runs"><b>{{ duration(consoleEpisode.header.jkMillis) }}</b> in JumpKick</span>
               <span><b>{{ consoleEpisode.header.files }}</b> files</span>
             </div>
             <div v-if="consoleEpisode.header.arc.length" class="arc" role="img" :aria-label="consoleEpisode.header.arc.length + ' attempts'">
@@ -175,11 +175,11 @@
             </dl>
           </section>
           <section v-if="sessionService" class="panel">
-            <div class="rail-head"><span class="lbl">how jk served the agent</span></div>
+            <div class="rail-head"><span class="lbl">how JumpKick served the agent</span></div>
             <dl class="kv">
               <dt>tool calls</dt><dd>{{ sessionService.calls }}</dd>
               <dt>runs</dt><dd>{{ sessionService.runs }}</dd>
-              <dt>jk wall</dt><dd>{{ duration(sessionService.wallMillis) }}</dd>
+              <dt>JumpKick wall</dt><dd>{{ duration(sessionService.wallMillis) }}</dd>
               <dt data-tip="Tasks the cache or an up-to-date check skipped, across this session's runs">tasks cached</dt><dd>{{ sessionService.cachedPct == null ? '—' : sessionService.cachedPct + '%' }}</dd>
             </dl>
           </section>
@@ -696,7 +696,7 @@
               <span v-if="cache" class="mono dim">{{ gib(artifactStorageBytes()) }}</span></div>
             <template v-if="cache">
               <dl>
-                <dt>jk-owned (repos / workers)</dt><dd>{{ count(cache.workerJarsCount) }} · {{ gib(cache.workerJarsBytes) }}</dd>
+                <dt>JumpKick-owned (repos / workers)</dt><dd>{{ count(cache.workerJarsCount) }} · {{ gib(cache.workerJarsBytes) }}</dd>
                 <dt>Maven local (not budgeted)</dt><dd>{{ count(cache.mavenLocalCount || 0) }} · {{ gib(cache.mavenLocalBytes || 0) }}</dd>
               </dl>
             </template>
@@ -825,7 +825,7 @@
           <dt>Dashboard docs</dt><dd class="mono">docs/contributors/webclient.md</dd>
         </dl>
         <div class="modal-foot">
-          <span class="dim small">Sessions, episodes and builds stream over SSE. Run <code>jk build</code> in any workspace, or let an agent call jk, to see it on the console.</span>
+          <span class="dim small">Sessions, episodes and builds stream over SSE. Run <code>jk build</code> in any workspace, or let an agent call JumpKick, to see it on the console.</span>
         </div>
       </div>
     </div>

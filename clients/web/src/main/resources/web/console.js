@@ -226,7 +226,7 @@ function editItem(rec, at) {
     state: '',
     title: 'edited ' + files.count + (files.count === 1 ? ' file' : ' files'),
     sub: shown.join(' · ') + (more > 0 ? ' · +' + more + ' more' : ''),
-    tip: 'jk sees edits at the next run, through its file delta; they are placed just before it',
+    tip: 'JumpKick sees edits at the next run, through its file delta; they are placed just before it',
   };
 }
 
