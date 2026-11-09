@@ -449,7 +449,8 @@ class CompilerPoolTest {
     }
 
     private static CompilerPool pool(Path dir, Fakes fakes) {
-        return new CompilerPool("test", null, fakes, req -> Files.createTempFile(dir, "spec", ".spec"));
+        return new CompilerPool(
+                "test", null, fakes, req -> Files.createTempFile(dir, "spec", ".spec"), Duration.ofMillis(50));
     }
 
     private static List<CompileWork> items(Path dir, int n, long job) {

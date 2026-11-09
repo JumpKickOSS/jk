@@ -7,6 +7,7 @@ import cc.jumpkick.cli.watch.AppWatchLoop.Pass;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,23 +45,36 @@ class WatchPassTest {
         Path proto = Files.createDirectories(src.resolve("main/proto"));
 
         try (SourceWatch watch = SourceWatch.open(project, List.of(src), 200)) {
-            Files.writeString(resources.resolve("application.yaml"), "app:\n  greeting: Howdy\n");
-            assertThat(pass(watch)).as("a resource").isEqualTo(Pass.COPY_RESOURCES);
-
-            Files.writeString(proto.resolve("greet.proto"), "syntax = \"proto3\";\n");
-            assertThat(pass(watch))
+            assertThat(pass(watch, resources, "application.yaml"))
+                    .as("a resource")
+                    .isEqualTo(Pass.COPY_RESOURCES);
+            assertThat(pass(watch, proto, "greet.proto"))
                     .as("a generator's input outside resources: the compile goal runs the generator")
                     .isEqualTo(Pass.COPY_RESOURCES);
-
-            Files.writeString(java.resolve("Main.java"), "package ex; class Main {}\n");
-            assertThat(pass(watch)).as("a source").isEqualTo(Pass.RECOMPILE);
-
-            Files.writeString(project.resolve("jk.toml"), "name = \"app\"\nversion = \"1\"\n");
-            assertThat(pass(watch)).as("the manifest").isEqualTo(Pass.REBUILD);
+            assertThat(pass(watch, java, "Main.java")).as("a source").isEqualTo(Pass.RECOMPILE);
+            assertThat(pass(watch, project, "jk.toml")).as("the manifest").isEqualTo(Pass.REBUILD);
+            assertThat(watch.classify(project, project.resolve("README.md")))
+                    .as("the project directory itself, outside the watched roots")
+                    .isNull();
         }
     }
 
-    private static Pass pass(SourceWatch watch) throws Exception {
-        return Pass.of(watch.pollChange(30, TimeUnit.SECONDS).orElseThrow());
+    @Test
+    void an_edit_on_disk_reaches_the_watch(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\n");
+        Path java = Files.createDirectories(project.resolve("src/main/java/ex"));
+
+        try (SourceWatch watch = SourceWatch.open(project, List.of(project.resolve("src")), 200)) {
+            Files.writeString(java.resolve("Main.java"), "package ex; class Main {}\n");
+            assertThat(Pass.of(watch.pollChange(30, TimeUnit.SECONDS).orElseThrow()))
+                    .isEqualTo(Pass.RECOMPILE);
+        }
+    }
+
+    private static Pass pass(SourceWatch watch, Path dir, String file) throws Exception {
+        Path changed = dir.resolve(file);
+        Files.writeString(changed, "x\n");
+        return Pass.of(Objects.requireNonNull(watch.classify(dir, changed), file));
     }
 }

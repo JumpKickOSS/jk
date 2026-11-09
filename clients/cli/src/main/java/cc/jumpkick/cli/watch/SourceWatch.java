@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Debounced recursive directory watch for live loops ({@code jk watch}, {@code jk dev}). One
@@ -158,37 +159,41 @@ public final class SourceWatch implements AutoCloseable {
             for (WatchEvent<?> event : key.pollEvents()) {
                 if (!(event.context() instanceof Path rel) || dir == null) continue;
                 Path changed = dir.resolve(rel);
-                String name = rel.getFileName().toString();
-                if (skip(changed)) continue;
-                if (dir.equals(projectDir)) {
-                    if (name.equals(ManifestPaths.MANIFEST)) manifest = true;
-                    if (!wholeDir) continue;
-                }
+                Changes c = classify(dir, changed);
+                if (c == null) continue;
                 if (Files.isDirectory(changed) && event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
                     registerTree(changed);
                 }
-                String relPath;
-                try {
-                    relPath = projectDir.relativize(changed).toString().replace('\\', '/');
-                } catch (IllegalArgumentException e) {
-                    continue;
-                }
-                if (relPath.contains("/resources/")) {
-                    resources = true;
-                } else if (name.endsWith(".java")
-                        || name.endsWith(".kt")
-                        || name.endsWith(".kts")
-                        || name.endsWith(".groovy")) {
-                    sources = true;
-                } else if (!Files.isDirectory(changed) && isInteresting(name)) {
-                    resources = true;
-                }
+                sources |= c.sources();
+                resources |= c.resources();
+                manifest |= c.manifest();
             }
             if (!key.reset()) keys.remove(key);
             long remaining = settleUntil - System.currentTimeMillis();
             key = remaining > 0 ? watcher.poll(remaining, TimeUnit.MILLISECONDS) : watcher.poll();
         }
         return new Changes(sources, resources, manifest);
+    }
+
+    /** What a change to {@code changed}, an entry of the watched {@code dir}, asks for; null when it is ignored. */
+    @Nullable
+    Changes classify(Path dir, Path changed) {
+        if (skip(changed)) return null;
+        String name = changed.getFileName().toString();
+        boolean manifest = dir.equals(projectDir) && name.equals(ManifestPaths.MANIFEST);
+        Changes manifestOnly = manifest ? new Changes(false, false, true) : null;
+        if (dir.equals(projectDir) && !wholeDir) return manifestOnly;
+        String relPath;
+        try {
+            relPath = projectDir.relativize(changed).toString().replace('\\', '/');
+        } catch (IllegalArgumentException e) {
+            return manifestOnly;
+        }
+        if (relPath.contains("/resources/")) return new Changes(false, true, manifest);
+        if (name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".kts") || name.endsWith(".groovy")) {
+            return new Changes(true, false, manifest);
+        }
+        return new Changes(false, !Files.isDirectory(changed) && isInteresting(name), manifest);
     }
 
     private static boolean isInteresting(String name) {

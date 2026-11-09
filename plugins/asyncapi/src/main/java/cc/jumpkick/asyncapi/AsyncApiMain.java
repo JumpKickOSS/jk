@@ -12,7 +12,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -121,16 +120,18 @@ public final class AsyncApiMain {
         ObjectMapper mapper = name.endsWith(".json") ? new ObjectMapper() : new ObjectMapper(new YAMLFactory());
         JsonNode root = mapper.readTree(document.toFile());
         Map<String, JsonNode> files = new LinkedHashMap<>();
-        for (Map.Entry<String, JsonNode> s : fields(root.path("components").path("schemas"))) {
+        for (Map.Entry<String, JsonNode> s :
+                root.path("components").path("schemas").properties()) {
             files.put(className(s.getKey()), s.getValue());
         }
         Map<String, JsonNode> messages = new LinkedHashMap<>();
-        for (Map.Entry<String, JsonNode> m : fields(root.path("components").path("messages"))) {
+        for (Map.Entry<String, JsonNode> m :
+                root.path("components").path("messages").properties()) {
             messages.put(m.getKey(), m.getValue());
         }
-        for (Map.Entry<String, JsonNode> channel : fields(root.path("channels"))) {
+        for (Map.Entry<String, JsonNode> channel : root.path("channels").properties()) {
             JsonNode c = channel.getValue();
-            for (Map.Entry<String, JsonNode> m : fields(c.path("messages")))
+            for (Map.Entry<String, JsonNode> m : c.path("messages").properties())
                 collect(m.getKey(), m.getValue(), root, messages);
             for (String op : List.of("publish", "subscribe")) {
                 JsonNode message = c.path(op).path("message");
@@ -252,8 +253,7 @@ public final class AsyncApiMain {
             if (ref != null && ref.isTextual() && ref.asText().startsWith(SCHEMAS)) {
                 object.set("$ref", TextNode.valueOf(className(ref.asText().substring(SCHEMAS.length())) + ".json"));
             }
-            for (Iterator<Map.Entry<String, JsonNode>> it = object.fields(); it.hasNext(); )
-                rewrite(it.next().getValue());
+            for (Map.Entry<String, JsonNode> e : object.properties()) rewrite(e.getValue());
         } else if (node.isArray()) {
             for (JsonNode child : node) rewrite(child);
         }
@@ -274,11 +274,5 @@ public final class AsyncApiMain {
         }
         if (out.isEmpty() || !Character.isJavaIdentifierStart(out.charAt(0))) out.insert(0, '_');
         return out.toString();
-    }
-
-    private static List<Map.Entry<String, JsonNode>> fields(JsonNode node) {
-        List<Map.Entry<String, JsonNode>> out = new ArrayList<>();
-        if (node.isObject()) node.fields().forEachRemaining(out::add);
-        return out;
     }
 }

@@ -136,11 +136,21 @@ final class CompilerPool {
 
     private @Nullable Thread reaper;
 
+    /** How long a worker must have had nothing to do before it is told to trim. */
+    static final Duration TRIM_AFTER_IDLE = Duration.ofSeconds(5);
+
+    final Duration trimAfterIdle;
+
     CompilerPool(String key, @Nullable Long job, Starter starter, SpecFile specs) {
+        this(key, job, starter, specs, TRIM_AFTER_IDLE);
+    }
+
+    CompilerPool(String key, @Nullable Long job, Starter starter, SpecFile specs, Duration trimAfterIdle) {
         this.key = key;
         this.job = job;
         this.starter = starter;
         this.specs = specs;
+        this.trimAfterIdle = trimAfterIdle;
         LIVE.add(this);
     }
 

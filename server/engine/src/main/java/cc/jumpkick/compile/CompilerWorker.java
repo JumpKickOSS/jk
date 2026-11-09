@@ -101,9 +101,6 @@ final class CompilerWorker {
     /** Bumped each time the worker goes idle, so a trim scheduled for an earlier idle is dropped. */
     private final AtomicInteger idleGeneration = new AtomicInteger();
 
-    /** How long a worker must have had nothing to do before it is told to trim. */
-    static final long TRIM_AFTER_IDLE_MS = 5_000;
-
     private @Nullable Thread io;
 
     CompilerWorker(CompilerPool pool, long scope, Launcher launcher) {
@@ -295,15 +292,15 @@ final class CompilerWorker {
     }
 
     /**
-     * The worker has nothing in flight: tell it to collect once it has stayed idle for {@link
-     * #TRIM_AFTER_IDLE_MS}. A compile in between cancels the trim, so a build that pauses between
+     * The worker has nothing in flight: tell it to collect once it has stayed idle for the pool's
+     * {@link CompilerPool#trimAfterIdle}. A compile in between cancels the trim, so a build that pauses between
      * modules does not pay a full collection at every pause.
      */
     void idleNow() {
         int generation = idleGeneration.incrementAndGet();
         detached("jk-javac-trim-" + scope, () -> {
             try {
-                Thread.sleep(TRIM_AFTER_IDLE_MS);
+                Thread.sleep(pool.trimAfterIdle);
             } catch (InterruptedException e) {
                 return;
             }
