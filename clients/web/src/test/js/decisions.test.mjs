@@ -43,6 +43,7 @@ const {
   DECLINE_BODY,
   DecisionDialog,
   SETTLED_CLOSE_MS,
+  batchBody,
   choiceBody,
   decisionData,
   decisionHash,
@@ -141,6 +142,88 @@ test('a list of choices is a column of buttons; a form with real inputs keeps fi
     ['name', 'force'],
   );
   assert.deepEqual(DECLINE_BODY, { action: 'decline' });
+});
+
+const setup = (over) =>
+  decision({
+    id: 's1',
+    kind: 'setup',
+    label: undefined,
+    question: 'Set up this machine for faster builds',
+    detail: ['Windows shows one prompt for the changes that need an administrator.'],
+    form: {
+      id: 'setup',
+      title: 'Set up this machine for faster builds',
+      steps: [
+        {
+          id: 'decision',
+          title: 'Decision',
+          fields: [
+            {
+              key: 'changes',
+              label: 'Changes',
+              kind: 'multi',
+              required: true,
+              default: ['exclude-a', 'long-paths'],
+              options: [
+                { id: 'exclude-a', label: 'Exclude C:\\Users\\ada\\.jk from Defender', help: 'Measured here: 1.9 s per 1,000 build files with the scan.' },
+                { id: 'long-paths', label: 'Turn on long paths in Windows', help: 'Windows stops paths at 260 characters.' },
+              ],
+            },
+            {
+              key: 'answer',
+              label: 'Answer',
+              kind: 'choice',
+              required: true,
+              options: [
+                { id: 'yes', label: 'Apply the ticked changes (one Windows prompt)' },
+                { id: 'no', label: 'No, leave it as it is' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    ...over,
+  });
+
+test('a batch is a checklist of changes, each with what it does and why, then the answer buttons', () => {
+  const view = decisionView(setup());
+  assert.equal(view.mode, 'batch');
+  assert.equal(view.who, 'JumpKick');
+  assert.deepEqual(
+    view.fields[0].options.map((o) => [o.id, o.label, o.help]),
+    [
+      ['exclude-a', 'Exclude C:\\Users\\ada\\.jk from Defender', 'Measured here: 1.9 s per 1,000 build files with the scan.'],
+      ['long-paths', 'Turn on long paths in Windows', 'Windows stops paths at 260 characters.'],
+    ],
+  );
+  assert.deepEqual(
+    view.choices.map((c) => [c.id, c.declines]),
+    [
+      ['yes', false],
+      ['no', true],
+    ],
+  );
+});
+
+test('every change starts ticked; yes sends the ticked ones in form order, no declines', async () => {
+  requests.length = 0;
+  reply = (method) => ({ status: 200, body: method === 'POST' ? setup({ state: 'accepted', answeredBy: 'dashboard' }) : setup() });
+  const v = dialog('s1');
+  await v.load();
+  assert.equal(v.ticked('changes', 'exclude-a'), true);
+  assert.equal(v.ticked('changes', 'long-paths'), true);
+  v.toggleMulti('changes', 'exclude-a');
+  v.toggleMulti('changes', 'exclude-a');
+  assert.deepEqual(batchBody(v.view.choices[0], v.values, v.view), {
+    action: 'accept',
+    answers: { answer: 'yes', changes: ['exclude-a', 'long-paths'] },
+  });
+  v.toggleMulti('changes', 'long-paths');
+  await v.answer(v.view.choices[0]);
+  assert.deepEqual(requests.at(-1).body, { action: 'accept', answers: { answer: 'yes', changes: ['exclude-a'] } });
+  assert.deepEqual(batchBody(v.view.choices[1], v.values, v.view), DECLINE_BODY);
 });
 
 test('a settled decision says how and by whom', () => {

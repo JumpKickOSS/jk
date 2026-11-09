@@ -9,27 +9,48 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The host changes recommended for this machine now, in the order a person reads them: the Defender
- * exclusions first, then long paths, then the per-user settings. A change already in place is left
- * out, so a set-up machine has an empty plan.
+ * exclusions first, then long paths, then the per-user settings. Each is one row with its own
+ * checkbox, so a later kind of change joins the same list. A change already in place is left out,
+ * so a set-up machine has an empty plan.
+ *
+ * @param measuredMs the scan probe's cost per 1,000 files in {@code measuredIn} before any change;
+ *     -1 when not measured
+ * @param measuredIn the folder the probe ran in, the first proposed exclusion; null when none
  */
-public record SetupPlan(List<SetupChange> changes) {
+public record SetupPlan(
+        List<SetupChange> changes,
+        long measuredMs,
+        @Nullable String measuredIn) {
 
     public SetupPlan {
         changes = List.copyOf(changes);
     }
 
-    /** The plan for {@code check}'s machine, excluding the roots {@code discovery} proposes. */
-    public static SetupPlan of(WindowsHostCheck check, List<RootDiscovery.Root> roots) {
+    public SetupPlan(List<SetupChange> changes) {
+        this(changes, -1, null);
+    }
+
+    /**
+     * The plan for {@code check}'s machine, excluding the roots discovery proposes. {@code probe}
+     * measures the first exclusion's folder, so each exclusion shows what the scan costs here.
+     */
+    public static SetupPlan of(WindowsHostCheck check, List<RootDiscovery.Root> roots, ScanCost.Probe probe) {
         List<SetupChange> out = new ArrayList<>();
+        long measured = -1;
+        String measuredIn = null;
         if (check.defenderState() == WindowsHostCheck.Defender.ON) {
             for (RootDiscovery.Root root : roots) {
                 String path = root.path().toString();
                 if (check.memo().exclusion(path) == SetupMemo.Exclusion.VERIFIED) continue;
+                if (measuredIn == null) {
+                    measuredIn = path;
+                    measured = probe.perThousand(root.path());
+                }
                 out.add(new SetupChange(
                         SetupChange.excludeId(path),
                         "Exclude " + path + " from Defender",
                         capitalized(root.why()) + "; Defender scans every file a build writes there.",
-                        root.note() == null ? "Builds and the cache stop paying for that scan." : root.note() + ".",
+                        effect(root, path, measuredIn, measured),
                         SetupChange.Kind.EXCLUDE,
                         path));
             }
@@ -62,7 +83,16 @@ public record SetupPlan(List<SetupChange> changes) {
                     SetupChange.Kind.EXECUTION_POLICY,
                     null));
         }
-        return new SetupPlan(out);
+        return new SetupPlan(out, measured, measuredIn);
+    }
+
+    private static String effect(RootDiscovery.Root root, String path, String measuredIn, long measured) {
+        String note = root.note() == null ? "" : " " + capitalized(root.note()) + ".";
+        if (measured <= 0) return "Builds and the cache stop paying for that scan." + note;
+        String cost = ScanCost.seconds(measured) + " per 1,000 build files";
+        if (path.equals(measuredIn))
+            return "Measured here: writing and reading back costs " + cost + " with the scan." + note;
+        return "Measured in " + measuredIn + ": " + cost + " with the scan." + note;
     }
 
     public boolean isEmpty() {

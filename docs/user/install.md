@@ -304,13 +304,15 @@ warning names its fix; `jk doctor -O jsonl` and the MCP `doctor` tool carry the 
 | `volumes` | The project and `JK_HOME` are on different volumes, so the cache copies files instead of linking them; the row also names the filesystem (NTFS, ReFS) |
 | `arch` | An x64 `jk` or JDK runs under ARM64 emulation |
 
-### `jk doctor --fix`
+### `jk doctor --fix`: set up the machine once
 
-`jk doctor --fix` puts the recommended changes to you as one decision: Defender exclusions for
-the folders where you keep code, Windows and git long paths, and the PowerShell policy the
-profile block needs. Each change has its own checkbox, ticked to start. Approve once, and Windows
-shows one UAC prompt for the changes that need an administrator. `-y` takes every change without
-asking.
+`jk doctor --fix` puts the recommended changes to you as one decision. Each change is a row with
+its own checkbox, ticked to start, saying what it does, why, and its effect: Defender exclusions for
+the folders where you keep code (with what the scan costs there, measured by writing and reading
+back a batch of build-sized files), Windows and git long paths, and the PowerShell policy the
+profile block needs. Approve once, and Windows shows one UAC prompt for the changes that need an
+administrator. Afterwards the same probe runs again, and `jk doctor` shows the before and after.
+`-y` takes every change without asking.
 
 JumpKick finds the folders itself: `JK_HOME`, the projects it has built, IntelliJ's and VS Code's
 recent projects, and the usual container folders (`IdeaProjects`, `source\repos`, `src`, `dev`,
@@ -318,11 +320,18 @@ recent projects, and the usual container folders (`IdeaProjects`, `source\repos`
 each project. It never proposes a drive root, your profile, Documents or Desktop themselves,
 Downloads, AppData (except `JK_HOME`), Windows or the program folders. The elevated script
 enforces the same rules again, adds each folder as a literal path, and then asks Defender which
-folders it actually excludes. The answer goes to `~/.jk/state/windows-host.toml`, so later
-`jk doctor` runs report the exclusions as checked.
+folders it actually excludes.
 
-The decision is in the engine's queue, so the dashboard's bell, a desktop notification and
-`jk decide` show it too. An agent can raise it through the MCP `doctor` tool with `fix=true`.
+The decision opens in the engine's queue, so it shows wherever you are: the terminal that ran
+`jk doctor --fix`, the dashboard's bell (as a dialog listing the changes), a desktop notification
+that opens that dialog, `jk decide`, or the agent's host when an agent raised it through the MCP
+`doctor` tool with `fix=true`. Any of them may answer; the UAC prompt is Windows' own consent.
+
+The answer is remembered for this machine in `~/.jk/state/windows-host.toml`. Accepted or
+declined, an agent does not raise it again; run `jk doctor --fix` to change your mind. The
+exclusions are a strong recommendation, never a requirement: if you decline (many people build
+inside a WSL guest instead), JumpKick works as before, and `jk doctor` and the dashboard's Status
+view show one quiet `slower: Defender scans …` line.
 
 ## Official URLs
 

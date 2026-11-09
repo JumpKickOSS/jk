@@ -635,6 +635,7 @@
       <p v-if="!status" class="empty">No status yet; the engine has not answered.</p>
       <template v-if="status">
         <!-- Host vitals, live over SSE: the console's Engine card shows the same two. -->
+        <p v-for="n in hostNotes" :key="n.id" class="host-note" :data-host-note="n.id">{{ n.detail }}<template v-if="n.fix"> · <code>{{ n.fix }}</code></template></p>
         <div class="panels">
           <div class="panel">
             <div class="panel-head"><span class="lbl">host cpu</span><span class="spacer"></span>

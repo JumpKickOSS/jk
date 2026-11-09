@@ -2767,6 +2767,17 @@ details.earlier .tl { margin-top: 6px; }
 .decision-fields { display: grid; gap: 12px; margin-top: 16px; }
 .decision-field { display: grid; gap: 5px; font: 600 11.5px var(--mono); color: var(--mu); }
 .decision-multi { display: flex; flex-wrap: wrap; gap: 6px; }
+.host-note { margin: 0 0 10px; color: var(--mu); font-size: 12px; overflow-wrap: anywhere; }
+.host-note code { color: var(--tx); }
+.decision-changes { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
+.decision-changes label {
+  display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; cursor: pointer;
+  padding: 10px 12px; border: 1px solid var(--bd2); border-radius: 6px;
+}
+.decision-changes input { margin-top: 2px; }
+.decision-change { display: grid; gap: 3px; min-width: 0; }
+.decision-change-what { font: 600 12.5px/1.4 var(--mono); color: var(--bright); overflow-wrap: anywhere; }
+.decision-change-why { font-size: 12px; line-height: 1.45; color: var(--mu); overflow-wrap: anywhere; }
 .decision-foot { flex: none; display: grid; gap: 10px; padding: 14px 22px 18px; border-top: 1px solid var(--bd2); }
 .decision-foot p { margin: 0; }
 .decision-settled { color: var(--mu); }

@@ -24,7 +24,13 @@ import java.util.Set;
  * @param resultFile where the elevated script writes its outcome lines
  */
 public record MachineSetup(
-        Elevator elevator, UserCommands user, Forbidden rules, Path memoFile, Path resultFile, Clock clock) {
+        Elevator elevator,
+        UserCommands user,
+        Forbidden rules,
+        Path memoFile,
+        Path resultFile,
+        Clock clock,
+        ScanCost.Probe probe) {
 
     /** How long the prompt and the script may take together. */
     public static final Duration WAIT = Duration.ofMinutes(5);
@@ -55,7 +61,8 @@ public record MachineSetup(
                 rules,
                 SetupMemo.file(state),
                 state.resolve("windows-host-result.txt"),
-                Clock.SYSTEM);
+                Clock.SYSTEM,
+                ScanCost.LIVE);
     }
 
     /** Applies {@code chosen} from {@code plan}; the rest of the plan's roots are recorded as left out. */
@@ -71,6 +78,8 @@ public record MachineSetup(
         Set<String> missing = new LinkedHashSet<>(before.notExcluded());
         Map<String, String> refused = new LinkedHashMap<>(before.refused());
         long checked = before.checkedAt();
+        long beforeMs = before.beforeMs();
+        long afterMs = before.afterMs();
         if (!roots.isEmpty() || longPaths) {
             Files.deleteIfExists(resultFile);
             String script = ElevatedScript.render(roots, longPaths, resultFile.toString(), rules);
@@ -97,34 +106,18 @@ public record MachineSetup(
                 }
                 case Elevator.Outcome.Ran r -> {
                     checked = clock.millis();
-                    for (String line : readResult()) {
-                        String[] f = line.split("\t", 3);
-                        String what = f[0], subject = f.length > 1 ? f[1] : "", why = f.length > 2 ? f[2] : "";
-                        String id = idOf.getOrDefault(subject, "");
-                        switch (what) {
-                            case "verified" -> {
-                                verified.add(subject);
-                                missing.remove(subject);
-                                refused.remove(subject);
-                                lines.add(new Result(id, true, "excluded " + subject + " from Defender (verified)"));
-                            }
-                            case "missing" -> {
-                                missing.add(subject);
-                                verified.remove(subject);
-                                lines.add(new Result(id, false, "not excluded " + subject + ": " + why));
-                            }
-                            case "refused", "failed" -> {
-                                refused.put(subject, why);
-                                lines.add(new Result(id, false, what + " " + subject + ": " + why));
-                            }
-                            case "longpaths" ->
-                                lines.add(new Result(
-                                        SetupChange.LONG_PATHS,
-                                        subject.equals("ok"),
-                                        subject.equals("ok")
-                                                ? "turned on long paths in Windows"
-                                                : "long paths: " + why));
-                            default -> {}
+                    record(lines, idOf, verified, missing, refused);
+                    String measuredIn = plan.measuredIn();
+                    if (plan.measuredMs() > 0 && measuredIn != null && verified.contains(measuredIn)) {
+                        long after = probe.perThousand(Path.of(measuredIn));
+                        if (after > 0) {
+                            beforeMs = plan.measuredMs();
+                            afterMs = after;
+                            lines.add(new Result(
+                                    SetupChange.excludeId(measuredIn),
+                                    true,
+                                    "build files in " + measuredIn + ": " + ScanCost.seconds(beforeMs) + " -> "
+                                            + ScanCost.seconds(afterMs) + " per 1,000 with the exclusion"));
                         }
                     }
                     if (lines.isEmpty()) {
@@ -164,8 +157,8 @@ public record MachineSetup(
                 List.copyOf(missing),
                 List.copyOf(leftOut),
                 refused,
-                before.beforeMs(),
-                before.afterMs());
+                beforeMs,
+                afterMs);
         memo.write(memoFile);
         return new Applied(lines, memo, false);
     }
@@ -187,6 +180,44 @@ public record MachineSetup(
                 before.afterMs());
         memo.write(memoFile);
         return new Applied(List.of(new Result("", true, line)), memo, true);
+    }
+
+    /** Reads the elevated script's outcome lines into {@code lines} and the memo's sets. */
+    private void record(
+            List<Result> lines,
+            Map<String, String> idOf,
+            Set<String> verified,
+            Set<String> missing,
+            Map<String, String> refused)
+            throws IOException {
+        for (String line : readResult()) {
+            String[] f = line.split("\t", 3);
+            String what = f[0], subject = f.length > 1 ? f[1] : "", why = f.length > 2 ? f[2] : "";
+            String id = idOf.getOrDefault(subject, "");
+            switch (what) {
+                case "verified" -> {
+                    verified.add(subject);
+                    missing.remove(subject);
+                    refused.remove(subject);
+                    lines.add(new Result(id, true, "excluded " + subject + " from Defender (verified)"));
+                }
+                case "missing" -> {
+                    missing.add(subject);
+                    verified.remove(subject);
+                    lines.add(new Result(id, false, "not excluded " + subject + ": " + why));
+                }
+                case "refused", "failed" -> {
+                    refused.put(subject, why);
+                    lines.add(new Result(id, false, what + " " + subject + ": " + why));
+                }
+                case "longpaths" ->
+                    lines.add(new Result(
+                            SetupChange.LONG_PATHS,
+                            subject.equals("ok"),
+                            subject.equals("ok") ? "turned on long paths in Windows" : "long paths: " + why));
+                default -> {}
+            }
+        }
     }
 
     private List<String> readResult() throws IOException {

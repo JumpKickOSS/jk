@@ -45,7 +45,9 @@ class MachineSetupTest {
             new SetupChange(SetupChange.GIT_LONG_PATHS, "git", "why", "effect", SetupChange.Kind.GIT_LONG_PATHS, null);
 
     private final SetupPlan plan = new SetupPlan(
-            List.of(exclude("C:\\Users\\ada\\.jk"), exclude("C:\\Users\\ada\\IdeaProjects"), exclude("D:\\src"), GIT));
+            List.of(exclude("C:\\Users\\ada\\.jk"), exclude("C:\\Users\\ada\\IdeaProjects"), exclude("D:\\src"), GIT),
+            1_900L,
+            "C:\\Users\\ada\\.jk");
 
     private MachineSetup setup(Elevator elevator) {
         UserCommands user = new UserCommands() {
@@ -60,7 +62,8 @@ class MachineSetupTest {
                 return true;
             }
         };
-        return new MachineSetup(elevator, user, rules, SetupMemo.file(state), state.resolve("result.txt"), FIXED);
+        return new MachineSetup(
+                elevator, user, rules, SetupMemo.file(state), state.resolve("result.txt"), FIXED, folder -> 900L);
     }
 
     /** An elevator that "runs" the script by writing {@code lines} to its result file. */
@@ -97,13 +100,18 @@ class MachineSetupTest {
                 .containsExactly(
                         tuple(SetupChange.excludeId("C:\\Users\\ada\\.jk"), true),
                         tuple(SetupChange.excludeId("C:\\Users\\ada\\IdeaProjects"), false),
+                        tuple(SetupChange.excludeId("C:\\Users\\ada\\.jk"), true),
                         tuple(SetupChange.GIT_LONG_PATHS, true));
+        assertThat(applied.lines())
+                .contains("build files in C:\\Users\\ada\\.jk: 1.9 s -> 900 ms per 1,000 with the exclusion");
         SetupMemo memo = SetupMemo.read(SetupMemo.file(state));
         assertThat(memo.answer()).isEqualTo(SetupMemo.Answer.ACCEPTED);
         assertThat(memo.verified()).containsExactly("C:\\Users\\ada\\.jk");
         assertThat(memo.notExcluded()).containsExactly("C:\\Users\\ada\\IdeaProjects");
         assertThat(memo.declined()).containsExactly("D:\\src");
         assertThat(memo.checkedAt()).isEqualTo(1_000L);
+        assertThat(memo.beforeMs()).isEqualTo(1_900L);
+        assertThat(memo.afterMs()).isEqualTo(900L);
     }
 
     @Test

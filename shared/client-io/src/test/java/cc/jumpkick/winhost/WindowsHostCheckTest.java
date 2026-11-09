@@ -99,6 +99,9 @@ class WindowsHostCheckTest {
         HostRow row = check(memo).defender();
         assertThat(row.status()).isEqualTo(HostRow.Status.OK);
         assertThat(row.detail()).contains("JK_HOME and this project excluded (checked 2025-11-09)");
+        SetupMemo measured = new SetupMemo(
+                memo.answer(), 1, memo.checkedAt(), memo.verified(), List.of(), List.of(), Map.of(), 1_900, 400);
+        assertThat(check(measured).defender().detail()).endsWith("; build files 1.9 s -> 400 ms per 1,000");
     }
 
     @Test

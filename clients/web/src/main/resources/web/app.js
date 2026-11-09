@@ -81,6 +81,7 @@ export const appOptions = {
     status: null, // the /api/status payload
     metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
     cache: null, // /api/cache + live `cache` SSE: cache tier + artifact store breakdown
+    hostNotes: [], // /api/host: quiet host lines for the Status view (`slower: Defender scans …`)
     engineLog: '', // the /api/log tail, shown on the Status view
     configPath: null, // absolute path of the machine config.toml
     configRows: [], // EffectiveUserConfig rows: {key, default, value, overridden}

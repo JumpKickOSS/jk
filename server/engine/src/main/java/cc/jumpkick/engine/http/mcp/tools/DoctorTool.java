@@ -30,7 +30,8 @@ import org.jspecify.annotations.Nullable;
  * {@code doctor} — host health, off the same memoized cache walk as {@code disk}; on Windows also
  * the host conditions that slow or block builds, each with its fix. {@code fix=true} puts the
  * recommended changes to the person as one decision (form elicitation where the host renders forms,
- * else the dashboard and a notification), then applies the ticked ones behind one UAC prompt. Only
+ * else the dashboard and a notification), then applies the ticked ones behind one UAC prompt. A
+ * machine that answered it before is not asked again: {@code jk doctor --fix} changes the answer. Only
  * changes from JumpKick's own proposal can be ticked; no path is taken from the call.
  */
 public final class DoctorTool implements McpTool {
@@ -62,6 +63,10 @@ public final class DoctorTool implements McpTool {
     private Map<String, Object> fix(McpCall in) {
         if (!Os.isWindows()) return in.text("nothing to set up: the host fixes are for Windows\n");
         WindowsHostCheck check = WindowsSetup.check(MachineSetupDecisions.project(in.dir()));
+        if (!check.memo().mayAsk() && in.str(McpDecisions.DECISION) == null) {
+            return in.text("ANSWERED machine setup was " + check.memo().answered() + "; it is not asked again\n"
+                    + "the user changes the answer with `jk doctor --fix`\n");
+        }
         SetupPlan plan = WindowsSetup.plan(check, MachineSetupDecisions.served());
         if (plan.isEmpty()) return in.text("this machine is set up: nothing to change\n");
         List<DecisionForms.Item> items = plan.changes().stream()
@@ -70,9 +75,7 @@ public final class DoctorTool implements McpTool {
         McpDecisions.Ask ask = new McpDecisions.Ask(
                 WindowsSetup.KIND,
                 WindowsSetup.QUESTION,
-                List.of(
-                        "Approve the Windows prompt that follows; it may flash on the taskbar.",
-                        WindowsSetup.detail().getLast()),
+                WindowsSetup.detail("Approve the Windows prompt that follows; it may flash on the taskbar."),
                 WindowsSetup.YES,
                 items,
                 true);

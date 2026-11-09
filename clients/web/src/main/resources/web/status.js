@@ -97,6 +97,17 @@ export const statusMethods = {
     });
   },
   /** Full cache breakdown for Status panels (REST). Footer uses thin SSE while live. */
+  /** The host notes (`slower: Defender scans …`): one quiet line each on the Status view. */
+  async refreshHost() {
+    return this.fetchOnce('host', async () => {
+      try {
+        const host = await get('/api/host');
+        this.hostNotes = Array.isArray(host && host.notes) ? host.notes : [];
+      } catch (e) {
+        this.handleHttpError(e);
+      }
+    });
+  },
   async refreshCache() {
     if (this.authModal) return;
     return this.fetchOnce('cache', async () => {
@@ -159,6 +170,7 @@ export const statusMethods = {
       await this.refreshConfig();
       await this.refreshMetrics();
       await this.refreshCache(); // full breakdown for dual Status panels
+      await this.refreshHost();
       return;
     }
     if (this.view === 'projects' || this.view === 'project') {

@@ -6,6 +6,8 @@ import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -112,6 +114,26 @@ public record SetupMemo(
         Path parent = file.getParent();
         if (parent != null) Files.createDirectories(parent);
         AtomicWrites.replace(file, MinimalToml.writeFlat(m));
+    }
+
+    /**
+     * Whether a surface that was not asked to may put the setup decision to the person: only on a
+     * machine that never answered it. {@code jk doctor --fix} asks regardless, which is how a person
+     * changes the answer.
+     */
+    public boolean mayAsk() {
+        return answer == null;
+    }
+
+    /** One line naming the remembered answer: {@code declined on 2026-11-09}. */
+    public String answered() {
+        String day = answeredAt <= 0
+                ? "earlier"
+                : "on "
+                        + Instant.ofEpochMilli(answeredAt)
+                                .atZone(ZoneOffset.UTC)
+                                .toLocalDate();
+        return (answer == null ? "not answered" : answer.wire()) + " " + day;
     }
 
     /** Whether {@code folder} is excluded, by the verified roots, the scanned ones and the declined ones. */

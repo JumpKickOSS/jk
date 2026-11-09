@@ -35,7 +35,7 @@ public final class WindowsSetup {
 
     /** The plan for {@code check}'s machine; {@code known} are projects already known to be projects. */
     public static SetupPlan plan(WindowsHostCheck check, List<Path> known) {
-        return SetupPlan.of(check, discovery(check, known).propose());
+        return SetupPlan.of(check, discovery(check, known).propose(), ScanCost.LIVE);
     }
 
     static RootDiscovery discovery(WindowsHostCheck check, List<Path> known) {
@@ -58,11 +58,17 @@ public final class WindowsSetup {
                 Forbidden.of(f, check.home().toString()));
     }
 
-    /** The lines under the question: what applying does and what declining leaves. */
+    /** The lines under the question: what applying does, what declining leaves, and that it is remembered. */
     public static List<String> detail() {
+        return detail("Windows shows one prompt for the changes that need an administrator.");
+    }
+
+    /** {@link #detail()} with {@code prompt} saying how the Windows prompt shows on this surface. */
+    public static List<String> detail(String prompt) {
         return List.of(
-                "Windows shows one prompt for the changes that need an administrator.",
-                "Declining is fine: JumpKick keeps working, only slower while Defender scans its files.");
+                prompt,
+                "Declining is fine: JumpKick keeps working, only slower while Defender scans its files.",
+                "The answer is remembered for this machine; `jk doctor --fix` asks again.");
     }
 
     /** The plan's changes as the decision's items. */

@@ -37,9 +37,9 @@ const SHOW = 'show';
 const ANSWER = 'answer';
 const NO = 'no';
 
-/** An option as the form carries it (a bare id or `{id, label, help}`), as `{id, label}`. */
+/** An option as the form carries it (a bare id or `{id, label, help}`), as `{id, label, help}`. */
 function option(o) {
-  return typeof o === 'string' ? { id: o, label: o } : { id: o.id, label: o.label || o.id };
+  return typeof o === 'string' ? { id: o, label: o, help: '' } : { id: o.id, label: o.label || o.id, help: o.help || '' };
 }
 
 /** Every field of the decision's form, in step order. */
@@ -63,6 +63,26 @@ export function decisionChoices(decision) {
     .filter((o) => o.id !== SHOW)
     .map((o) => ({ ...o, key: field.key, declines: field.key === ANSWER && o.id === NO }));
   return choices.length ? choices : null;
+}
+
+/** A field as the dialog renders it. */
+function inputField(f) {
+  return {
+    key: f.key,
+    label: f.label || f.key,
+    help: f.help || '',
+    kind: f.kind,
+    required: !!f.required,
+    options: (f.options || []).map(option),
+  };
+}
+
+/** The confirmation's answer field when the form has other fields too (a batch), else null. */
+function batchAnswer(decision) {
+  const fields = formFields(decision);
+  if (fields.length < 2) return null;
+  const answer = fields.find((f) => f.key === ANSWER && f.kind === 'choice');
+  return answer || null;
 }
 
 /** A form with real inputs: its fields as the dialog renders them. */
@@ -100,27 +120,63 @@ export function settledLine(decision) {
 
 /**
  * What the dialog shows for `decision`. `mode` is `choices` (the answers are the buttons, a row of
- * two or a column of more) or `form` (fields, a submit and a decline).
+ * two or a column of more), `batch` (a checklist of changes, each with what it does and why, then
+ * the confirmation's answers as the buttons) or `form` (fields, a submit and a decline).
  */
 export function decisionView(decision) {
   if (!decision) return null;
   const open = decision.state === 'open';
+  const answer = batchAnswer(decision);
+  if (answer) {
+    const choices = (answer.options || [])
+      .map(option)
+      .filter((o) => o.id !== SHOW)
+      .map((o) => ({ ...o, key: ANSWER, declines: o.id === NO }));
+    return {
+      ...baseView(decision, open),
+      mode: 'batch',
+      layout: 'row',
+      choices,
+      fields: formFields(decision).filter((f) => f.key !== ANSWER).map(inputField),
+    };
+  }
   const choices = decisionChoices(decision);
   return {
-    id: decision.id,
-    question: decision.question,
-    detail: Array.isArray(decision.detail) ? decision.detail : [],
-    who: decision.label || 'an agent',
-    project: decision.project || null,
-    deadline: decision.deadline || null,
-    state: decision.state,
-    open,
-    settled: settledLine(decision),
+    ...baseView(decision, open),
     mode: choices ? 'choices' : 'form',
     layout: choices && choices.length === 2 ? 'row' : 'column',
     choices: choices || [],
     fields: choices ? [] : inputFields(decision),
   };
+}
+
+/** What every view carries: the question, who asked, the deadline and how it stands. */
+function baseView(decision, open) {
+  return {
+    id: decision.id,
+    question: decision.question,
+    detail: Array.isArray(decision.detail) ? decision.detail : [],
+    who: decision.label || (decision.kind === 'setup' ? 'JumpKick' : 'an agent'),
+    project: decision.project || null,
+    deadline: decision.deadline || null,
+    state: decision.state,
+    open,
+    settled: settledLine(decision),
+  };
+}
+
+/**
+ * The body a batch's answer button sends: its yes accepts with the ticked changes, its no declines.
+ * The ticked changes keep the form's order.
+ */
+export function batchBody(choice, values, view) {
+  if (choice.declines) return DECLINE_BODY;
+  const answers = { [ANSWER]: choice.id };
+  for (const f of view.fields) {
+    const v = values[f.key];
+    answers[f.key] = f.kind === 'multi' ? f.options.map((o) => o.id).filter((id) => (v || []).includes(id)) : v;
+  }
+  return { action: 'accept', answers };
 }
 
 /** The POST /api/decisions/<id> body that answers with `choice`: the engine settles it by the choice. */
@@ -282,7 +338,10 @@ export const DecisionDialog = {
       }
     },
     answer(choice) {
-      return this.send(choiceBody(choice));
+      return this.send(this.view.mode === 'batch' ? batchBody(choice, this.values, this.view) : choiceBody(choice));
+    },
+    ticked(key, id) {
+      return Array.isArray(this.values[key]) && this.values[key].includes(id);
     },
     submit() {
       return this.send(formBody(this.values));
@@ -312,6 +371,17 @@ export const DecisionDialog = {
           <template v-if="view">
             <h3 id="decision-q" class="decision-q">{{ view.question }}</h3>
             <p class="decision-who">Asked by {{ view.who }}<template v-if="view.project"> in <code>{{ view.project }}</code></template></p>
+            <ul v-if="view.open && view.mode === 'batch'" class="decision-changes">
+              <template v-for="f in view.fields" :key="f.key">
+                <li v-for="o in f.options" :key="o.id" :data-change="o.id">
+                  <label>
+                    <input type="checkbox" :checked="ticked(f.key, o.id)" :disabled="busy" @change="toggleMulti(f.key, o.id)">
+                    <span class="decision-change"><span class="decision-change-what">{{ o.label }}</span>
+                      <span v-if="o.help" class="decision-change-why">{{ o.help }}</span></span>
+                  </label>
+                </li>
+              </template>
+            </ul>
             <ul v-if="view.detail.length" class="decision-detail"><li v-for="(line, i) in view.detail" :key="i"><code>{{ line }}</code></li></ul>
             <div v-if="view.open && view.mode === 'form'" class="decision-fields">
               <label v-for="f in view.fields" :key="f.key" class="decision-field" :data-field="f.key">
@@ -330,7 +400,7 @@ export const DecisionDialog = {
         <div class="decision-foot">
           <p v-if="error" class="error">{{ error }}</p>
           <p v-if="view && !view.open" class="decision-settled">{{ view.settled }}</p>
-          <div v-if="view && view.open && view.mode === 'choices'" class="decision-choices" :class="view.layout">
+          <div v-if="view && view.open && (view.mode === 'choices' || view.mode === 'batch')" class="decision-choices" :class="view.layout">
             <button v-for="c in view.choices" :key="c.id" type="button" :class="c.declines ? 'declines' : 'accepts'"
                     :disabled="busy" :data-choice="c.id" @click="answer(c)">{{ c.label }}</button>
           </div>

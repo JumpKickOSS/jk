@@ -265,8 +265,14 @@ public record WindowsHostCheck(
             return HostRow.warn(id, label, "slower: Defender scans " + String.join(" and ", scanned), FIX);
         }
         if (allVerified) {
+            String saved = memo.beforeMs() > 0 && memo.afterMs() > 0
+                    ? "; build files " + ScanCost.seconds(memo.beforeMs()) + " -> " + ScanCost.seconds(memo.afterMs())
+                            + " per 1,000"
+                    : "";
             return HostRow.ok(
-                    id, label, "real-time on; " + names() + " excluded (checked " + day(memo.checkedAt()) + ")");
+                    id,
+                    label,
+                    "real-time on; " + names() + " excluded (checked " + day(memo.checkedAt()) + ")" + saved);
         }
         return HostRow.ok(
                 id,
