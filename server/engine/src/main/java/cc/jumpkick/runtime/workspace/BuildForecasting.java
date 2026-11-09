@@ -13,6 +13,7 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildLogicScripts;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
+import cc.jumpkick.runtime.PreflightPartial;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
@@ -20,13 +21,17 @@ import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.NullMarked;
@@ -235,6 +240,8 @@ public final class BuildForecasting {
                 return new Preflight(
                         memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of());
             }
+            Optional<Preflight> cone = coneIfPartial(graph, cache, skipTests, entryDir, t, profile, persistMemo, all);
+            if (cone.isPresent()) return cone.get();
             PreflightMemo.Snapshot snapshot = PreflightMemo.snapshotFingerprints(graph, skipTests);
             fps = snapshot.fingerprints();
             uncertain = snapshot.uncertain();
@@ -294,6 +301,110 @@ public final class BuildForecasting {
             Log.warn("jk: forecast failed — the build will not treat every module as dirty", e);
             throw e;
         }
+    }
+
+    /** The cone forecast when the memo missed only for modules whose own inputs moved; empty otherwise. */
+    private static Optional<Preflight> coneIfPartial(
+            BuildGraph.Result graph,
+            Path cache,
+            boolean skipTests,
+            Path entryDir,
+            WorkspaceTarget t,
+            @Nullable String profile,
+            boolean persistMemo,
+            Set<Path> all) {
+        ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
+        var partial = PreflightMemo.tryLoadPartial(entryDir, graph, skipTests, profile, ac);
+        if (partial.isEmpty() || partial.get().changed().isEmpty()) return Optional.empty();
+        // A root manifest a member inherits from (version, java, layout, profiles, publish) moves
+        // only the root's own fingerprint: its members' verdicts cannot be taken on trust.
+        Path root = entryDir.toAbsolutePath().normalize();
+        for (Path c : partial.get().changed()) {
+            if (c.toAbsolutePath().normalize().equals(root)) return Optional.empty();
+        }
+        // A module the memo still holds dirty (a build that failed or was cancelled) is walked as
+        // the whole walk would: its dependents must see it as a dirty prerequisite.
+        Set<Path> seeds = new LinkedHashSet<>(partial.get().changed());
+        seeds.addAll(partial.get().dirty());
+        Set<Path> cone = downstreamCone(graph, seeds);
+        if (cone.size() >= all.size()) return Optional.empty();
+        Perf.note("preflight-memo partial", "changed", partial.get().changed().size(), "cone", cone.size());
+        return Optional.of(
+                forecastCone(graph, cache, skipTests, entryDir, t, profile, persistMemo, partial.get(), cone));
+    }
+
+    /**
+     * {@code changed} and every module downstream of one of them, by the graph's read order (test
+     * edges included), as the graph spells module directories.
+     */
+    static Set<Path> downstreamCone(BuildGraph.Result graph, Set<Path> changed) {
+        Map<Path, Path> byNormalized = new HashMap<>();
+        for (BuildGraph.BuildUnit u : graph.topoOrder())
+            byNormalized.put(u.dir().toAbsolutePath().normalize(), u.dir());
+        Map<Path, List<Path>> dependents = new HashMap<>();
+        for (Map.Entry<Path, Set<Path>> e : graph.readOrder().entrySet()) {
+            for (Path prereq : e.getValue())
+                dependents.computeIfAbsent(prereq, k -> new ArrayList<>()).add(e.getKey());
+        }
+        Set<Path> cone = new LinkedHashSet<>();
+        Deque<Path> queue = new ArrayDeque<>();
+        for (Path c : changed) {
+            Path dir = byNormalized.getOrDefault(c.toAbsolutePath().normalize(), c);
+            if (cone.add(dir)) queue.add(dir);
+        }
+        while (!queue.isEmpty()) {
+            for (Path d : dependents.getOrDefault(queue.poll(), List.of())) {
+                if (cone.add(d)) queue.add(d);
+            }
+        }
+        return cone;
+    }
+
+    /**
+     * The preflight when the memo set aside only {@code partial}'s changed modules: their cone is
+     * forecast, every other module takes its stored verdict — the same verdict a whole memo hit
+     * would have given it, since neither its inputs nor anything upstream of it moved. On a
+     * one-module leaf edit of Helidon the cache check walked 223 modules for one.
+     */
+    private static Preflight forecastCone(
+            BuildGraph.Result graph,
+            Path cache,
+            boolean skipTests,
+            Path entryDir,
+            WorkspaceTarget t,
+            @Nullable String profile,
+            boolean persistMemo,
+            PreflightPartial partial,
+            Set<Path> cone) {
+        Cas cas = JkStores.storeCas();
+        ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
+        // The cone, and the modules the memo says only restore: they are forecast too, as a memo
+        // hit prices them, so the ETA and explain see their steps rather than empty placeholders.
+        Map<Path, Path> byNormalized = new HashMap<>();
+        for (BuildGraph.BuildUnit u : graph.topoOrder())
+            byNormalized.put(u.dir().toAbsolutePath().normalize(), u.dir());
+        Set<Path> walk = new LinkedHashSet<>(cone);
+        for (Path d : partial.restoreNeeded())
+            walk.add(byNormalized.getOrDefault(d.toAbsolutePath().normalize(), d));
+        List<TaskForecast.Module> modules = ForecastWalk.of(graph, cas, ac, cache, skipTests, t, profile, walk);
+        Set<Path> dirty = new HashSet<>();
+        Set<Path> restoreNeeded = new HashSet<>();
+        for (TaskForecast.Module m : modules) {
+            if (!m.dirty() || !walk.contains(m.dir())) continue;
+            if (isRestoreOnly(m)) restoreNeeded.add(m.dir());
+            else dirty.add(m.dir());
+            if (Perf.enabled()) {
+                for (TaskForecast.Task p : m.steps()) {
+                    if (!p.cached()) Perf.note("dirty " + m.coord() + " " + p.name(), "text", p.text());
+                }
+            }
+        }
+        withStaleOutputs(graph, entryDir, cache, partial.fingerprints(), dirty);
+        if (persistMemo) PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, dirty, partial.fingerprints());
+        for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+            if (!dirty.contains(u.dir()) && BuildLogicScripts.anyAlways(u.dir())) dirty.add(u.dir());
+        }
+        return new Preflight(dirty, restoreNeeded, partial.fingerprints(), modules, Map.of());
     }
 
     /**

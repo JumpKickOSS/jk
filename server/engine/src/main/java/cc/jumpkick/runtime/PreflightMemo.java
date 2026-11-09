@@ -7,7 +7,6 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
-import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
@@ -43,6 +42,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -225,6 +225,31 @@ public final class PreflightMemo {
             boolean skipTests,
             @Nullable String profile,
             @Nullable ActionCache actionCache) {
+        return load(entryDir, graph, skipTests, profile, actionCache, false)
+                .filter(p -> p.changed().isEmpty())
+                .map(p -> new DirtyMemo(p.dirty(), p.fingerprints(), p.restoreNeeded()));
+    }
+
+    /**
+     * The memo with the modules whose own inputs moved set aside ({@link PreflightPartial#changed})
+     * rather than missed; empty for any other kind of miss.
+     */
+    public static Optional<PreflightPartial> tryLoadPartial(
+            Path entryDir,
+            BuildGraph.Result graph,
+            boolean skipTests,
+            @Nullable String profile,
+            @Nullable ActionCache actionCache) {
+        return load(entryDir, graph, skipTests, profile, actionCache, true);
+    }
+
+    private static Optional<PreflightPartial> load(
+            Path entryDir,
+            BuildGraph.Result graph,
+            boolean skipTests,
+            @Nullable String profile,
+            @Nullable ActionCache actionCache,
+            boolean allowChanged) {
         Path file = resolveDirtyMemoFile(entryDir);
         if (file == null || !Files.isRegularFile(file)) return Optional.empty();
         try {
@@ -243,9 +268,11 @@ public final class PreflightMemo {
 
             Set<Path> dirty = new LinkedHashSet<>();
             Set<Path> restoreNeeded = new LinkedHashSet<>();
+            Set<Path> changed = new LinkedHashSet<>();
             Map<Path, String> fps = new LinkedHashMap<>();
             Set<String> seen = new LinkedHashSet<>();
             Map<Path, String> saltByRoot = new LinkedHashMap<>();
+            Map<Path, Fingerprint> current = ModuleFingerprints.all(units, skipTests, saltByRoot);
             for (BuildGraph.BuildUnit u : units) {
                 Path dir = u.dir().toAbsolutePath().normalize();
                 String rel = relKey(root, dir);
@@ -253,14 +280,20 @@ public final class PreflightMemo {
                 if (row == null) return miss("no-row", "module", rel);
                 // The same salt the stored rows carry: a guarded workspace's rows never matched a
                 // bare recomputation, so its memo missed on every build.
-                Fingerprint now = fingerprintModule(dir, u.manifest(), skipTests, guardSaltFor(dir, saltByRoot));
+                Fingerprint now = Objects.requireNonNull(current.get(dir));
                 if (!(now instanceof Known known)) {
                     return miss("unreadable-input", "module", rel, "cause", now);
                 }
                 if (!row.fp().equals(known.hex())) {
-                    // A source, manifest, or root-guard change can move a downstream classpath.
-                    // The whole memo misses so the forecast walks dependents, not just this module.
-                    return miss("fingerprint", "module", rel, "stored", row.fp(), "now", known.hex());
+                    // A source, manifest, or root-guard change can move a downstream classpath:
+                    // either the whole memo misses, or the module is set aside for the caller to
+                    // forecast with everything downstream of it.
+                    if (!allowChanged)
+                        return miss("fingerprint", "module", rel, "stored", row.fp(), "now", known.hex());
+                    changed.add(dir);
+                    fps.put(dir, known.hex());
+                    seen.add(rel);
+                    continue;
                 }
                 String logic = MemoInputs.logicToken(dir, root);
                 if (logic == null) return miss("unreadable-logic", "module", rel);
@@ -285,7 +318,7 @@ public final class PreflightMemo {
                 }
             }
             if (!seen.equals(rows.keySet())) return miss("row-set");
-            return Optional.of(new DirtyMemo(dirty, fps, restoreNeeded));
+            return Optional.of(new PreflightPartial(changed, dirty, fps, restoreNeeded));
         } catch (IOException e) {
             // The memo itself would not read: not a miss to hide. Every module takes the walk.
             Log.warn(
@@ -310,17 +343,7 @@ public final class PreflightMemo {
      * inputs would not read lands in {@link Snapshot#uncertain} instead.
      */
     public static Snapshot snapshotFingerprints(BuildGraph.Result graph, boolean skipTests) {
-        Map<Path, String> fps = new LinkedHashMap<>();
-        Map<Path, Uncertain> uncertain = new LinkedHashMap<>();
-        Map<Path, String> saltByRoot = new LinkedHashMap<>();
-        for (BuildGraph.BuildUnit u : graph.topoOrder()) {
-            Path dir = u.dir().toAbsolutePath().normalize();
-            switch (fingerprintModule(dir, u.manifest(), skipTests, guardSaltFor(dir, saltByRoot))) {
-                case Known k -> fps.put(dir, k.hex());
-                case Uncertain u2 -> uncertain.put(dir, u2);
-            }
-        }
-        return new Snapshot(fps, uncertain);
+        return ModuleFingerprints.snapshot(graph, skipTests);
     }
 
     /**
@@ -328,28 +351,6 @@ public final class PreflightMemo {
      * remembered in {@code saltByRoot}. Store and load must call this the same way, or a
      * module's stored row can never match its recomputation.
      */
-    private static String guardSaltFor(Path dir, Map<Path, String> saltByRoot) {
-        Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
-        return saltByRoot.computeIfAbsent(root, PreflightMemo::guardSalt);
-    }
-
-    /**
-     * The guard rule, baseline and fixture files as a module input: an edit to any of them re-plans
-     * every module, or the lanes and proofs never run again. Empty for a workspace without guards.
-     */
-    static String guardSalt(Path root) {
-        if (!PlannerGuards.enabledAt(root)) return "";
-        try {
-            MessageDigest md = Hashing.newSha256();
-            feedFile(md, GuardsPresence.rulesFile(root));
-            feedFile(md, GuardsPresence.baselineFile(root));
-            feed(md, GuardFixtures.digest(root));
-            return "guards=" + Hashing.hex(md.digest());
-        } catch (IOException e) {
-            return "guards=unreadable";
-        }
-    }
-
     /** Store the memo of a build with no {@code --profile}. */
     public static void storeDirty(
             Path entryDir,
@@ -838,7 +839,9 @@ public final class PreflightMemo {
     /** As {@link #sourceFingerprint(Path)}, the guard salt taken once per root across calls sharing {@code saltByRoot}. */
     public static @Nullable String sourceFingerprint(Path moduleDir, Map<Path, String> saltByRoot) {
         Path dir = moduleDir.toAbsolutePath().normalize();
-        return fingerprintModule(dir, null, false, guardSaltFor(dir, saltByRoot)) instanceof Known k ? k.hex() : null;
+        return fingerprintModule(dir, null, false, ModuleFingerprints.guardSaltFor(dir, saltByRoot)) instanceof Known k
+                ? k.hex()
+                : null;
     }
 
     static Fingerprint fingerprintModule(Path moduleDir, boolean skipTests) {
@@ -1003,7 +1006,7 @@ public final class PreflightMemo {
     }
 
     /** Log why the dirty memo did not hand back a verdict, then miss. */
-    private static Optional<DirtyMemo> miss(String reason, @Nullable Object... detail) {
+    private static <T> Optional<T> miss(String reason, @Nullable Object... detail) {
         if (Perf.enabled()) {
             Object[] all = new Object[detail.length + 2];
             all[0] = "reason";
