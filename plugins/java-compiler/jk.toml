@@ -1,7 +1,7 @@
 name = "jk-java-compiler"
 description = "JumpKick's Java compiler plugin"
-# A module that pins an older JDK compiles in a worker on that JDK (CompilerJdk.WORKER_FLOOR).
-java = 21
+# Built for JDK 17, jk's floor: a module that pins JDK 17 or later compiles in a worker on that JDK (CompilerJdk.WORKER_FLOOR).
+java = 17
 
 [dependencies]
 jk-plugin-sdk.workspace = true

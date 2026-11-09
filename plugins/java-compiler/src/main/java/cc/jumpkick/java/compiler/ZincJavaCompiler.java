@@ -112,6 +112,13 @@ public final class ZincJavaCompiler {
         sharedStamper = newStamper();
     }
 
+    /**
+     * Whether javac tells the file manager which sources a generated file came from: JDK 18 added
+     * the call. Below it, a compile that runs processors cannot be compiled in part, so it is marked
+     * as an aggregating one and the next compile goes whole.
+     */
+    static final boolean FILER_PROVENANCE = Runtime.version().feature() >= 18;
+
     private ZincJavaCompiler() {}
 
     public record Result(
@@ -436,7 +443,7 @@ public final class ZincJavaCompiler {
             // its source set, so their class files are unattributed products it never prunes.
             GeneratedProvenance.of(classOutput)
                     .reconcile(sourceOutput, classOutput, sources, javac.compiledSources(), provenance.generated);
-            zinced.markAggregating(provenance.aggregating());
+            zinced.markAggregating(provenance.aggregating() || (processors.any() && !FILER_PROVENANCE));
             phases.mark("reconcile");
             // The edges javac erased (inlined constants) go into the analysis before it is written:
             // Zinc's own Java analysis never saw them, and without them the next compile cannot
@@ -558,6 +565,10 @@ public final class ZincJavaCompiler {
         ZincWorkdir zinced = ZincWorkdir.of(workdir);
         if (!zinced.hasAnalysis()) {
             return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
+        }
+        if (!FILER_PROVENANCE && processorPath != null && !processorPath.isEmpty()) {
+            String why = "annotation processors on a JDK below 18";
+            return new Plan(true, why, allSources(sources, why));
         }
         if (zinced.aggregating()) {
             return new Plan(

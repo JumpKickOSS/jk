@@ -177,13 +177,15 @@ class CompileServerTest {
             BufferedReader in = new BufferedReader(new PipedReader(writer, 1 << 16));
             toServer = new PrintWriter(writer, true);
             CompileServer server = new CompileServer(in, frames::add, compiler);
-            Thread.ofPlatform().daemon().start(() -> {
+            Thread serving = new Thread(() -> {
                 try {
                     exit.complete(server.serve());
                 } catch (Exception e) {
                     exit.completeExceptionally(e);
                 }
             });
+            serving.setDaemon(true);
+            serving.start();
         }
 
         void send(String line) {
@@ -198,7 +200,7 @@ class CompileServerTest {
 
         String await(String type) throws InterruptedException {
             awaitTrue(() -> !frames(type).isEmpty(), "a " + type + " frame");
-            return frames(type).getFirst();
+            return frames(type).get(0);
         }
 
         void awaitCount(String type, int n) throws InterruptedException {

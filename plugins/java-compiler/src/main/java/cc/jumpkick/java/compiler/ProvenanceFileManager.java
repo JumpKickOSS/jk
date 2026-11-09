@@ -6,6 +6,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.io.Writer;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.Function;
@@ -44,41 +47,119 @@ final class ProvenanceFileManager extends ForwardingJavaFileManager<JavaFileMana
     /** Makes a file object for a path, as the standard manager underneath does. */
     private final Function<Path, FileObject> files;
 
+    /**
+     * Whether javac's Filer opens its files through the plain output calls (JDK 17): it then names
+     * no origins, so what a processor writes is recorded with none, which marks the compile
+     * aggregating and lists the file for the next compile to delete.
+     */
+    private final boolean legacyFiler;
+
     ProvenanceFileManager(
             JavaFileManager fm, ApProvenance provenance, @Nullable Path sourceRoot, Function<Path, FileObject> files) {
+        this(fm, provenance, sourceRoot, files, !ZincJavaCompiler.FILER_PROVENANCE);
+    }
+
+    ProvenanceFileManager(
+            JavaFileManager fm,
+            ApProvenance provenance,
+            @Nullable Path sourceRoot,
+            Function<Path, FileObject> files,
+            boolean legacyFiler) {
         super(fm);
         this.provenance = provenance;
         this.sourceRoot = sourceRoot;
         this.files = files;
+        this.legacyFiler = legacyFiler;
     }
 
-    @Override
+    /**
+     * The Filer's output call on JDK 18 and later. The worker is built for JDK 17, whose {@code
+     * JavaFileManager} lacks it, so this is a plain method of the same signature: javac 18+ calls it
+     * as the override it is, and javac 17 never does (there a compile with processors goes whole).
+     */
     public JavaFileObject getJavaFileForOutputForOriginatingFiles(
             Location location, String className, JavaFileObject.Kind kind, FileObject... originatingFiles)
             throws IOException {
         JavaFileObject file =
-                super.getJavaFileForOutputForOriginatingFiles(location, className, kind, originatingFiles);
+                (JavaFileObject) Jdk18.call(Jdk18.JAVA_FILE, fileManager, location, className, kind, originatingFiles);
         return new FilerJavaFile(file, new Use(provenance, originatingFiles));
     }
 
-    @Override
+    /** The Filer's resource output call on JDK 18 and later; see the method above. */
     public FileObject getFileForOutputForOriginatingFiles(
             Location location, String pkg, String relativeName, FileObject... originatingFiles) throws IOException {
-        FileObject file = super.getFileForOutputForOriginatingFiles(location, pkg, relativeName, originatingFiles);
+        FileObject file =
+                (FileObject) Jdk18.call(Jdk18.FILE, fileManager, location, pkg, relativeName, originatingFiles);
         return new FilerFile(file, new Use(provenance, originatingFiles));
+    }
+
+    /** The delegate's JDK 18 output calls, looked up the first time javac makes one. */
+    private static final class Jdk18 {
+        static final MethodHandle JAVA_FILE = find(
+                "getJavaFileForOutputForOriginatingFiles",
+                MethodType.methodType(
+                        JavaFileObject.class,
+                        Location.class,
+                        String.class,
+                        JavaFileObject.Kind.class,
+                        FileObject[].class));
+        static final MethodHandle FILE = find(
+                "getFileForOutputForOriginatingFiles",
+                MethodType.methodType(
+                        FileObject.class, Location.class, String.class, String.class, FileObject[].class));
+
+        private static MethodHandle find(String name, MethodType type) {
+            try {
+                // Fixed arity: the origins array is one argument, not a varargs list to spread.
+                return MethodHandles.publicLookup()
+                        .findVirtual(JavaFileManager.class, name, type)
+                        .asFixedArity();
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("javac called " + name + " on a JDK without it", e);
+            }
+        }
+
+        static Object call(MethodHandle h, JavaFileManager fm, Object... args) throws IOException {
+            try {
+                return h.invokeWithArguments(prepend(fm, args));
+            } catch (IOException | RuntimeException | Error e) {
+                throw e;
+            } catch (Throwable t) {
+                throw new IllegalStateException(t);
+            }
+        }
+
+        private static Object[] prepend(Object first, Object[] rest) {
+            Object[] all = new Object[rest.length + 1];
+            all[0] = first;
+            System.arraycopy(rest, 0, all, 1, rest.length);
+            return all;
+        }
     }
 
     @Override
     public @Nullable JavaFileObject getJavaFileForOutput(
             Location location, String className, JavaFileObject.Kind kind, @Nullable FileObject sibling)
             throws IOException {
-        return super.getJavaFileForOutput(location, className, kind, sibling == null ? null : unwrap(sibling));
+        JavaFileObject file =
+                super.getJavaFileForOutput(location, className, kind, sibling == null ? null : unwrap(sibling));
+        // On JDK 17 a generated source comes through here; javac's own class files never go to
+        // SOURCE_OUTPUT, so only the Filer's writes are recorded.
+        if (legacyFiler && file != null && location == StandardLocation.SOURCE_OUTPUT) {
+            return new FilerJavaFile(file, new Use(provenance, new FileObject[0]));
+        }
+        return file;
     }
 
     @Override
     public @Nullable FileObject getFileForOutput(
             Location location, String pkg, String relativeName, @Nullable FileObject sibling) throws IOException {
-        return super.getFileForOutput(location, pkg, relativeName, sibling == null ? null : unwrap(sibling));
+        FileObject file = super.getFileForOutput(location, pkg, relativeName, sibling == null ? null : unwrap(sibling));
+        // On JDK 17 a processor's resource (a META-INF/services file, a registry) comes through here.
+        boolean filerOutput = location == StandardLocation.CLASS_OUTPUT || location == StandardLocation.SOURCE_OUTPUT;
+        if (legacyFiler && file != null && filerOutput)
+            return new FilerFile(file, new Use(provenance, new FileObject[0]));
+        return file;
     }
 
     /**

@@ -19,11 +19,11 @@ import org.jspecify.annotations.Nullable;
 public final class CompilerJdk {
 
     /**
-     * The oldest JDK the compiler worker runs on: it reads javac's provenance of generated files
-     * through {@code JavaFileManager.getJavaFileForOutputForOriginatingFiles}, which JDK 18 added,
-     * and the worker is built for the LTS after it.
+     * The oldest JDK the compiler worker runs on: jk's own floor. On a JDK below 18 javac does not
+     * say which sources a generated file came from, so there a module that runs annotation
+     * processors compiles whole.
      */
-    public static final int WORKER_FLOOR = 21;
+    public static final int WORKER_FLOOR = 17;
 
     private CompilerJdk() {}
 

@@ -110,7 +110,7 @@ class ReferencesTest {
             String text = Files.readString(file);
             Path index = References.dirFor(classes).resolve(References.relative(dir, file) + ".refs");
             List<String> lines = Files.readAllLines(index);
-            assertThat(lines.getFirst()).isEqualTo(References.HEADER + References.sha256(Files.readAllBytes(file)));
+            assertThat(lines.get(0)).isEqualTo(References.HEADER + References.sha256(Files.readAllBytes(file)));
             List<String> symbols = new ArrayList<>();
             int start = 0;
             for (String line : lines.subList(1, lines.size())) {

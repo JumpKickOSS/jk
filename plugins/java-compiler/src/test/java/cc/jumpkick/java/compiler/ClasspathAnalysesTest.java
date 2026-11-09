@@ -235,7 +235,8 @@ class ClasspathAnalysesTest {
         List<Path> compile() throws IOException {
             JavaCompileJob job = job();
             ZincJavaCompiler.Result[] result = new ZincJavaCompiler.Result[1];
-            Thread t = Thread.ofPlatform().start(() -> result[0] = ZincJavaCompiler.compileJava(job));
+            Thread t = new Thread(() -> result[0] = ZincJavaCompiler.compileJava(job));
+            t.start();
             try {
                 t.join();
             } catch (InterruptedException e) {

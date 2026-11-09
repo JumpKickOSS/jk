@@ -1,10 +1,10 @@
 version = 1
 generated-by = "jk 0.50.4-SNAPSHOT"
-generated-by-build = "4f078425ab15"
-generated-by-build-time = "2026-11-08T16:46:24Z"
+generated-by-build = "136b62403c1b"
+generated-by-build-time = "2026-11-09T07:38:25Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "866b572f41c6abd734bcab57b225a57ca98a1e45231de97ba2486995f7fc1f0c"
+manifests-sha256 = "ef7140c5f78a19288782a195e4af400dd25e0940cb6a8d264569e78a9741c2a9"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -7386,7 +7386,7 @@ path    = "plugins/java-compiler"
 group   = "cc.jumpkick"
 name    = "jk-java-compiler"
 version = "0.50.4"
-java    = 21
+java    = 17
 description = "JumpKick's Java compiler plugin"
 install.destination = "jk"
 

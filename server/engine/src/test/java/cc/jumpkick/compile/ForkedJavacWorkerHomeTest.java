@@ -61,6 +61,10 @@ class ForkedJavacWorkerHomeTest {
                 .as("jdk = 21, java = 17")
                 .isEqualTo(jdk21);
         assertThat(CompilerJdk.home(jdk17, 17, true, host))
+                .as("jdk = 17, jk's floor, compiles on JDK 17")
+                .isEqualTo(jdk17);
+        Path jdk11 = jdk(dir.resolve("jdk-11"), 11);
+        assertThat(CompilerJdk.home(jdk11, 11, true, host))
                 .as("below the worker's floor the runtime compiles it")
                 .isEqualTo(host);
         assertThat(CompilerJdk.home(jdk21, 25, true, host))

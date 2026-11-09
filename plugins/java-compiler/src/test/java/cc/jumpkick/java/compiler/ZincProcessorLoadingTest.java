@@ -26,11 +26,11 @@ class ZincProcessorLoadingTest {
             assertThat(first).extracting(p -> p.getClass().getName()).containsExactly("noop.NoopProc");
             assertThat(second).extracting(p -> p.getClass().getName()).containsExactly("noop.NoopProc");
             // Defined by this loader — not a Processor SPI the worker classpath happens to carry.
-            assertThat(first.getFirst().getClass().getClassLoader()).isSameAs(loader);
+            assertThat(first.get(0).getClass().getClassLoader()).isSameAs(loader);
             // Same class (one loader for the whole compile), distinct instances (init is
             // single-shot, so each Zinc cycle's JavacTask needs its own set).
-            assertThat(first.getFirst().getClass()).isSameAs(second.getFirst().getClass());
-            assertThat(first.getFirst()).isNotSameAs(second.getFirst());
+            assertThat(first.get(0).getClass()).isSameAs(second.get(0).getClass());
+            assertThat(first.get(0)).isNotSameAs(second.get(0));
         }
     }
 
