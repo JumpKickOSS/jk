@@ -150,17 +150,25 @@ final class TextEvaluator implements BatchEvaluator {
         String miss = t.isString("miss") ? t.getString("miss") : null;
         p.hit = hit;
         if (hit != null) {
-            Object view = project(hit, p.blank, TextFiles.Language.JAVA);
+            Object view = project(hit, p.blank, snippetLanguage(p));
             if (!anyMatch(p.patterns, viewText(view))) {
                 return "hit does not match through the `" + blankName(p.blank)
                         + "` view; the pattern reads the wrong layer, or the hit is wrong";
             }
         }
         if (miss != null) {
-            Object view = project(miss, p.blank, TextFiles.Language.JAVA);
+            Object view = project(miss, p.blank, snippetLanguage(p));
             if (anyMatch(p.patterns, viewText(view))) return "miss matches: the pattern is wider than the rule says";
         }
         return null;
+    }
+
+    /** The language {@code hit} and {@code miss} are read as: the rule's first {@code languages} entry, else Java. */
+    private static TextFiles.Language snippetLanguage(Prepared p) {
+        for (TextFiles.Language l : TextFiles.Language.values()) {
+            if (!p.languages.isEmpty() && l.id().equals(p.languages.getFirst())) return l;
+        }
+        return TextFiles.Language.JAVA;
     }
 
     /**
@@ -207,9 +215,11 @@ final class TextEvaluator implements BatchEvaluator {
      * The view a rule scans. Code views ({@code comments}, {@code comments+strings}) are squashed so a
      * wrapped call cannot evade a one-line pattern; {@code none} is the text as written, because a
      * rule that asked for everything is matching prose, markup and keys where adjacency means what
-     * it says ({@code class="x"} is not {@code "class"}); {@code code} is the comments alone.
+     * it says ({@code class="x"} is not {@code "class"}); {@code code} is the comments alone, and in
+     * prose the text outside code ({@link MarkdownProse}).
      */
     private static Object project(String text, CodeText.Blank mode, TextFiles.Language lang) {
+        if (lang == TextFiles.Language.PROSE && mode == CodeText.Blank.CODE) return MarkdownProse.blank(text);
         if (!lang.lexable || mode == CodeText.Blank.NONE) return text;
         String blanked = CodeText.blank(text, mode, lang == TextFiles.Language.JS);
         return mode == CodeText.Blank.CODE ? blanked : Squashed.of(blanked);

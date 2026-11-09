@@ -52,4 +52,30 @@ class DocsCheckTest {
         Files.writeString(root.resolve("README.md"), "# Readme\n\nFixed upstream.\n");
         assertThat(DocsCheck.check(root, load.rules(), Baseline.EMPTY).text()).isEqualTo("OK guard docs · 1 rules");
     }
+
+    @Test
+    void the_code_view_of_markdown_reads_prose_and_skips_code(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.product-name]
+                kind = "text"
+                files = ["**/*.md"]
+                languages = ["prose"]
+                blank = "code"
+                pattern = '\\bwidget\\b'
+                hit = "the widget is fast"
+                miss = "run `widget build`"
+                instead = "Widgetron"
+                why = "the product has a name"
+                """);
+        Files.writeString(
+                root.resolve("README.md"),
+                "# Readme\n\nRun `widget build`.\n\n```\nwidget test\n```\n\nSee [docs](widget/a.md).\n");
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        assertThat(DocsCheck.check(root, load.rules(), Baseline.EMPTY).text()).isEqualTo("OK guard docs · 1 rules");
+
+        Files.writeString(root.resolve("README.md"), "# Readme\n\n```\nwidget\n```\nThe widget keeps 186 MiB.\n");
+        assertThat(DocsCheck.check(root, load.rules(), Baseline.EMPTY).text())
+                .contains("GUARD product-name", "README.md:6");
+    }
 }

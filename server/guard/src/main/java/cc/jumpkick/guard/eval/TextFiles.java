@@ -40,7 +40,7 @@ final class TextFiles {
         JS(true, true),
         GROOVY(false, true),
         SCALA(false, true),
-        /** Markdown, text, AsciiDoc: no code, scanned whole under every mode. */
+        /** Markdown, text, AsciiDoc: scanned whole, except that the {@code code} view blanks Markdown's code. */
         PROSE(false, false),
         /** TOML, YAML, JSON, XML, properties, shell: not lexed; scanned whole under every mode. */
         CONFIG(false, false),

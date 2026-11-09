@@ -258,7 +258,7 @@ final class KindSchemas {
                                 STRING,
                                 false,
                                 BLANK_MODES,
-                                "the view: comments blanked (default), comments+strings, none, or code (comments only)"),
+                                "the view: comments blanked (default), comments+strings, none, or code (comments only; in Markdown, the prose outside code)"),
                         optional("count", TABLE, "{ exactly | min | max, per = file | tree | match }"),
                         optional("owner", STRING_OR_LIST, "files where a match is legal"),
                         optional("languages", STRING_LIST, "restrict to these source languages")),

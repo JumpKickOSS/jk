@@ -179,7 +179,7 @@ Every key the loader accepts, by kind; `common` keys apply to every kind.
 | text | hit |  | string | a snippet the pattern must match through the chosen view — the bite proof |
 | text | miss |  | string | a snippet the pattern must not match |
 | text | files |  | string list | file globs; default the module source trees |
-| text | blank |  | string | the view: comments blanked (default), comments+strings, none, or code (comments only) [comments \| comments+strings \| none \| code] |
+| text | blank |  | string | the view: comments blanked (default), comments+strings, none, or code (comments only; in Markdown, the prose outside code) [comments \| comments+strings \| none \| code] |
 | text | count |  | table | { exactly \| min \| max, per = file \| tree \| match } |
 | text | owner |  | string or list | files where a match is legal |
 | text | languages |  | string list | restrict to these source languages |
