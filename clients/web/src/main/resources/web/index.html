@@ -6,6 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JumpKick - JVM Buildtool</title>
   <link rel="icon" href="/jk-logo.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0a0d11">
+  <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -852,6 +855,11 @@
           <dt>Available RAM</dt><dd class="mono">{{ status ? gib(status.availableMemoryBytes) : '—' }}</dd>
           <dt>Dashboard docs</dt><dd class="mono">docs/contributors/webclient.md</dd>
         </dl>
+        <!-- Offered once the browser says the dashboard may install; gone once it is (pwa.js). -->
+        <div v-if="installable" class="about-install">
+          <span class="dim small">Run the dashboard in its own window, with notifications under the JumpKick name.</span>
+          <button type="button" class="action-cyan" @click="installApp()">Install JumpKick</button>
+        </div>
         <div class="modal-foot">
           <span class="dim small">Sessions, episodes and builds stream over SSE. Run <code>jk build</code> in any workspace, or let an agent call JumpKick, to see it on the console.</span>
         </div>

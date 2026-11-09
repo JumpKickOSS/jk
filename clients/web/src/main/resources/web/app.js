@@ -36,6 +36,7 @@ import {
 } from './format.js';
 import { JkIcon } from './icons.js';
 import { PhaseChain } from './phase.js';
+import { installData, installMethods, registerWorker } from './pwa.js';
 import { RunCoverage } from './coverage.js';
 import { RunDelta } from './delta.js';
 import { projectComputed, projectMethods } from './projects.js';
@@ -56,6 +57,7 @@ export const appOptions = {
     ...consoleData(routeFromHash()),
     ...decisionData(routeFromHash()),
     ...notifyData(),
+    ...installData(),
     view: routeFromHash().view, // 'console' | 'projects' | 'project' | 'status' | 'new'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
@@ -122,6 +124,9 @@ export const appOptions = {
       if (this.view === 'project' && this.projectTab === 'sessions') this.loadProjectSessions();
       if (this.view === 'new') this.enterWizard();
     }
+    // The service worker: installability, and notifications whose clicks come back as messages.
+    registerWorker(navigator.serviceWorker, (message) => this.workerMessage(message));
+    this.watchInstall(window);
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', (e) => this.applyRoute(e));
     // The bell's menu folds on a click outside it or on Esc.
@@ -166,6 +171,7 @@ export const appOptions = {
     ...consoleMethods,
     ...decisionMethods,
     ...notifyMethods,
+    ...installMethods,
     ...cardMethods,
     ...statusMethods,
     ...wizardMethods,

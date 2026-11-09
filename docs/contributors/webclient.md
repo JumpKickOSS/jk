@@ -35,6 +35,10 @@ stopped providing.
 | `delta.js` | `<run-delta>`: the iteration strip — a record's `delta` as chips with the rows behind them |
 | `sessions.js` | Who asked: origin labels, the followed-or-pinned run, the pin route |
 | `wizard.js` | New Project and the directory browser its path fields open |
+| `notify.js` | Telling the person once: presence reports, the `notify` frame, the notification adapters, the service worker's messages |
+| `pwa.js` | The installed app: the service worker's registration and the **Install JumpKick** entry |
+| `sw.js` | The service worker, a classic script the page registers by URL, never imported |
+| `manifest.webmanifest`, `icon-*.png` | The web app manifest and its icons |
 | `decisions.js` | `<decision-dialog>`: the fixed-size dialog `#decision/<id>` opens over the page, its answers as buttons, and the root's bell and route glue |
 | `icons.js` | `<jk-icon>`: the inline-SVG glyph set |
 | `phase.js` | `<phase-chain>`: the coarse plan-phase strip on a card |
@@ -141,6 +145,70 @@ shows the `notify` frame's notification only from a hidden tab that may (a visib
 bell, `bellPulse`), closes a settled decision's notification by tag, and puts the one permission
 ask, behind a click, at the foot of the bell's menu while the permission is `default`. The tests are
 `notify.test.mjs`.
+
+## The installed app
+
+The dashboard is a web app the browser can install: `manifest.webmanifest` names it JumpKick, with
+`display: standalone`, `start_url`, `scope` and `id` at the root, and the header's colour as
+`theme_color` (the shell's `<meta name="theme-color">` says the same; `pwa.test.mjs` holds them
+together). Its icons are rendered from `jk-logo.svg` by `scripts/render-icons.sh`, with the desktop
+notification icons: `icon-192.png` and `icon-512.png` as drawn, and `icon-maskable-512.png`, the
+mark without its border on a full-bleed canvas of the panel colour so a platform's mask never cuts
+into it. Run the script after changing the logo and commit the output.
+
+`pwa.js` registers `sw.js` on every load, with scope `/` and `updateViaCache: 'none'`, and keeps
+the browser's `beforeinstallprompt` for the **Install JumpKick** entry in the About dialog instead
+of letting the browser show its own banner. The entry shows only while the browser offers to
+install, and never in the installed window (`display-mode: standalone`) or after `appinstalled`.
+
+**The worker.** `sw.js` makes the dashboard installable and owns notification clicks. It has no
+`fetch` handler, so every request goes to the engine as if no worker were installed: it caches
+neither the shell nor any `/api` response, and takes no push. `sw.test.mjs` fails on a `fetch`
+listener, a reference to Cache Storage or a push subscription. Current Chromium needs no fetch
+handler to install, and a pass-through one would only add a hop to every request.
+
+**Updates.** Because the worker serves nothing, a stale worker cannot pin an old dashboard: the
+shell and its modules always come from the engine, revalidated (`Cache-Control: no-cache` and the
+jar's ETag). The worker itself is re-checked on every load, bypassing the HTTP cache
+(`updateViaCache: 'none'`); when an upgraded engine ships different bytes, the new worker installs,
+`skipWaiting` and `clients.claim` put it in charge of open pages at once, and it holds no state an
+open page relies on.
+
+**Serving.** `StaticContent` serves `sw.js` at the root, so its scope is the whole dashboard, as
+`text/javascript` with the shell's policy, whose `worker-src 'self'` lets the page register it, and `manifest.webmanifest` as `application/manifest+json`.
+The worker comes only from where the shell comes from: the jar, or a `web-root` the user set (a
+dashboard source tree). A worker controls every page of its origin and outlives its file, so one a
+build wrote into the default, build-writable `state/web` is never served.
+
+**Notifications through the worker.** `notify.js` shows and closes notifications through an
+adapter chosen per notification: while a worker controls the page (`navigator.serviceWorker.controller`)
+it is `registration.showNotification` and `registration.getNotifications({tag})`, else the page's
+own `Notification`. Closing asks both, so a notification shown before the worker took over still
+closes by tag. The channel rule and the presence reports do not change.
+
+A click on a worker's notification runs `notificationclick` in `sw.js`: it focuses the most
+recently focused dashboard window and posts it `{type: 'open-decision', id}`, which the page turns
+into `openDecision(id)`; with no window open it opens one at `#decision/<id>`.
+
+**Buttons.** Only a worker's notifications may carry actions. A decision answered by one choice
+(`decisionChoices`) gets one action per choice, in the dialog's order, when the browser has room
+for all of them (`Notification.maxActions`, two in Chromium); otherwise none, never some. A button
+click posts the focused window `{type: 'answer-decision', id, choice}`, and the page's
+`answerDecision` reads the decision, finds the choice and sends the dialog's own body
+(`choiceBody`) to `POST /api/decisions/<id>`; a settled decision or an unknown choice opens the
+dialog instead. The page posts, not the worker: the bearer token stays in the page's storage, the
+request carries the page's engine epoch like every other mutation, and a worker that can answer
+decisions with no page open would be a second credential holder that outlives the tab. With no
+window open, a button opens the dialog and answers nothing, so no URL can answer a decision by
+being opened.
+
+**Origins.** An installed app, its worker and its notification permission all belong to one
+origin, scheme, host and port together, so each engine port is its own app.
+
+**Browsers.** Chrome and Edge install from the entry or the address bar and show the buttons.
+Safari on macOS installs with File > Add to Dock and has no `beforeinstallprompt`, so the entry
+never shows; its notifications carry no buttons. Firefox registers the worker but does not install
+web apps, and shows no buttons.
 
 **First meaningful paint.** Once the rail and the selected episode (or the empty state) are
 rendered, `markConsolePainted` waits for Vue's patch and the next frame, then sets
@@ -385,6 +453,9 @@ the host and never skip. See [CONTRIBUTING.md](../../CONTRIBUTING.md).
 ```bash
 jk test -m clients/web
 ```
+
+`pwa.test.mjs` covers the manifest, the registration and the install entry; `sw.test.mjs` runs
+`sw.js` in a `node:vm` context with a fake worker global.
 
 Server-side rendering/auth behavior is covered by `HttpStaticContentTest` and `HttpApiAuthTest` in
 `server/engine` (both over the shared `HttpEngineServerHarness`).

@@ -263,8 +263,9 @@ by the first of these that applies:
 1. **A dashboard tab is visible.** Nothing pops up. The bell rings and its count rises; the dialog
    waits for you to open it, so a decision never lands over what you are typing.
 2. **A hidden dashboard tab may notify.** One browser notification, **JumpKick needs you**, with the
-   question. A click brings that tab forward with the dialog open. It closes when the decision is
-   answered anywhere. The desktop notification is skipped.
+   question. A click brings the dashboard forward with the dialog open: the window you used last,
+   the installed app's when you [installed it](#install-as-an-app), or a new one when none is open.
+   It closes when the decision is answered anywhere. The desktop notification is skipped.
 3. **Otherwise** the desktop notification, as [Config](config.md#decisions) describes.
 
 To let the dashboard notify, open the bell and click **Turn on notifications**; the browser asks
@@ -275,6 +276,31 @@ fires instead.
 
 The browser keeps the permission per origin, and the port is part of the origin: each engine's
 dashboard port (`127.0.0.1:8910`, `127.0.0.1:8920`, `localhost:8910`) asks separately.
+
+A decision answered by one choice, such as a confirmation, carries its choices as buttons on the
+notification in Chrome and Edge. A button answers as the dialog's button would, from the dashboard
+window it brings forward. When no dashboard window is open, it opens one on the dialog and answers
+nothing until you click there. Other browsers show the notification without buttons.
+
+### Install as an app
+
+The dashboard installs as an app named JumpKick, with its own window, its own taskbar or Dock
+entry and the JumpKick icon, and its notifications show under the JumpKick name. In Chrome or Edge,
+open **About & help** (the **?** in the header) and click **Install JumpKick**; the entry appears
+only once the browser offers to install, and is gone once the app is installed. The browser's own
+install button in the address bar does the same. Safari on macOS installs it with **File > Add to
+Dock**. Firefox does not install it; the dashboard works in a tab as before.
+
+The app opens the dashboard root, and keeps no copy of the dashboard or of any engine data: it
+loads everything from the engine each time, so after an engine upgrade it shows the new dashboard,
+and with the engine stopped it shows the browser's error page. Notifications in the app follow the
+same rule as in a tab: the app's window counts as a tab, visible or hidden.
+
+An installed app belongs to its origin, the scheme, host and port together, like the notification
+permission. Each engine port is its own app: `http://127.0.0.1:8910` and `http://localhost:8910`
+install separately, and an engine on another port needs its own install. Installing and browser
+notifications need a secure origin, which a loopback address is; a dashboard reached over plain
+HTTP from another machine can do neither.
 Settled decisions are kept under the same `[history]` retention as sessions.
 `GET /api/decisions` lists open decisions first, then recently settled ones; `GET
 /api/decisions/<id>` returns one; `POST /api/decisions/<id>` answers it; every change is an SSE

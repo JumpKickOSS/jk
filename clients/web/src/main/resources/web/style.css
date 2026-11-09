@@ -1974,6 +1974,14 @@ label.check:hover .check-box {
 }
 .about-dl dt { color: var(--mu); }
 .about-dl dd { margin: 0; text-align: right; color: var(--bright); overflow-wrap: anywhere; }
+.about-install {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--bd2);
+}
+.about-install .action-cyan { flex: none; padding: 5px 10px; font-size: 12px; border-color: rgba(var(--cn-rgb), 0.35); color: var(--cn); }
 
 /* ---- #project/<id>/files viewer (layout only; syntax colours come from Monaco's vs-dark) ---- */
 main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: column; min-height: 0; }

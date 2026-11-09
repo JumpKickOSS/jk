@@ -48,6 +48,9 @@ class WebClientJsTest {
     /** The in-DOM Vue template and the SPA's single {@code <script type="module">} entry point. */
     private static final String SHELL = "index.html";
 
+    /** The web app manifest, which pwa.test.mjs reads. */
+    private static final String MANIFEST = "manifest.webmanifest";
+
     private static final Path JS_SUITES = Path.of("src/test/js");
 
     /** Node's TAP epilogue: {@code # tests 94}, {@code # fail 0}. */
@@ -85,6 +88,7 @@ class WebClientJsTest {
         // The shell too: shell.test.mjs reads it to check that index.html's one module entry point
         // reaches every file the dashboard ships, and calls nothing the root component dropped.
         Files.copy(assets.resolve(SHELL), stage.resolve(SHELL));
+        Files.copy(assets.resolve(MANIFEST), stage.resolve(MANIFEST));
         Files.writeString(stage.resolve("package.json"), "{\"type\":\"module\"}\n");
         nodeEnv = Map.of("JK_APP_DIR", stage.toString());
     }

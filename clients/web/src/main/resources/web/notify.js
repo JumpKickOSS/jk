@@ -8,12 +8,13 @@
 // again whenever either changes. The engine sends the chosen tab a `notify` frame; every tab closes
 // a settled decision's notification by its tag.
 //
-// Showing and closing go through a `notifications` adapter ({ show, close }) and a click lands in
-// `openDecision`, so a service worker can take over `showNotification` and `notificationclick`
-// without changing the rule or the callers.
+// Showing and closing go through a `notifications` adapter ({ show, close }). While the dashboard's
+// service worker (sw.js) controls the page, it shows them, and they may carry the decision's
+// choices as buttons; the page's own `Notification` is the fallback. A click lands in
+// `openDecision`, a button in `answerDecision`, which answers as the dialog does.
 
-import { post } from './api.js';
-import { decisionHash, frameDecision } from './decisions.js';
+import { get, post } from './api.js';
+import { choiceBody, decisionChoices, decisionHash, frameDecision } from './decisions.js';
 import { isOpen } from './needs.js';
 import { SSE } from './wire.js';
 
@@ -26,6 +27,11 @@ export const PULSE_MS = 2400;
 /** The browser's `Notification`, or null where there is none. */
 function notificationApi() {
   return typeof Notification === 'undefined' ? null : Notification;
+}
+
+/** How many buttons a notification may carry here: 0 where the browser shows none. */
+export function maxActions(api) {
+  return api && Number.isInteger(api.maxActions) ? api.maxActions : 0;
 }
 
 /** `default`, `granted`, `denied`, or `unsupported` where the browser has no notifications. */
@@ -51,18 +57,30 @@ export function pageChannel(state) {
   return state.permission === 'granted' ? 'browser' : 'none';
 }
 
-/** The notification for decision `d`: tagged with its id, so tabs replace rather than repeat it. */
-export function notificationFor(d) {
+/** The messages the service worker posts to a page; sw.js names the same two. */
+export const WORKER_MESSAGE = Object.freeze({ open: 'open-decision', answer: 'answer-decision' });
+
+/** The browser's `navigator.serviceWorker`, or null where there is none. */
+function workerContainer() {
+  return typeof navigator !== 'undefined' && navigator.serviceWorker ? navigator.serviceWorker : null;
+}
+
+/**
+ * The notification for decision `d`: tagged with its id, so tabs replace rather than repeat it.
+ * With room for `maxActions` buttons, a decision answered by one choice carries every choice as a
+ * button, in the dialog's order; with too little room it carries none rather than some.
+ */
+export function notificationFor(d, maxActions = 0) {
   const who = d.label ? 'Asked by ' + d.label + '. ' : '';
-  return {
-    title: NOTIFY_TITLE,
-    options: {
-      body: d.question + '\n' + who + 'Answer it in the dashboard.',
-      tag: d.id,
-      icon: '/jk-logo.svg',
-      data: { id: d.id, hash: decisionHash(d.id) },
-    },
+  const options = {
+    body: d.question + '\n' + who + 'Answer it in the dashboard.',
+    tag: d.id,
+    icon: '/icon-192.png',
+    data: { id: d.id, hash: decisionHash(d.id) },
   };
+  const choices = decisionChoices(d);
+  if (choices && choices.length <= maxActions) options.actions = choices.map((c) => ({ action: c.id, title: c.label }));
+  return { title: NOTIFY_TITLE, options };
 }
 
 /** The bell's one line asking for permission, or '' once the browser was answered (or cannot ask). */
@@ -72,14 +90,13 @@ export function askLine(permission) {
 
 /**
  * Notifications shown from the page itself: `show(title, options)` and `close(tag)`, a click
- * focusing this tab and handing the decision id to `onOpen`. A service worker's adapter answers the
- * same two calls with `registration.showNotification` and `registration.getNotifications({tag})`,
- * and its `notificationclick` posts the id back to `onOpen`.
+ * focusing this tab and handing the decision id to `onOpen`. Only a service worker's notifications
+ * may carry buttons, so these drop them.
  */
 export function pageNotifications(api, onOpen, win = typeof window === 'undefined' ? null : window) {
   const shown = new Map();
   return {
-    show(title, options) {
+    show(title, { actions, ...options }) {
       if (!api) return null;
       const n = new api(title, options);
       shown.set(options.tag, n);
@@ -102,6 +119,46 @@ export function pageNotifications(api, onOpen, win = typeof window === 'undefine
   };
 }
 
+/**
+ * Notifications the service worker shows, through its registration once `container.ready`: the same
+ * `show` and `close`, buttons kept. sw.js routes their clicks.
+ */
+export function workerNotifications(container) {
+  return {
+    async show(title, options) {
+      const registration = await container.ready;
+      return registration.showNotification(title, options);
+    },
+    async close(tag) {
+      const registration = await container.ready;
+      for (const n of await registration.getNotifications({ tag })) n.close();
+    },
+  };
+}
+
+/**
+ * The adapter the page uses: the worker's while a service worker controls the page (`via` says
+ * which), else the page's own. Closing asks both, so a notification shown before the worker took
+ * over still closes.
+ */
+export function notificationsFor(api, container, onOpen, win) {
+  const page = pageNotifications(api, onOpen, win);
+  const worker = container ? workerNotifications(container) : null;
+  const controlled = () => !!(worker && container.controller);
+  return {
+    get via() {
+      return controlled() ? 'worker' : 'page';
+    },
+    show(title, options) {
+      return (controlled() ? worker : page).show(title, options);
+    },
+    close(tag) {
+      page.close(tag);
+      if (controlled()) worker.close(tag).catch(() => {});
+    },
+  };
+}
+
 /** The root component's share. */
 export function notifyData() {
   return {
@@ -115,13 +172,40 @@ export const notifyMethods = {
   /** The adapter that shows and closes notifications; built once, on first use. */
   notifications() {
     if (!this._notifications) {
-      this._notifications = pageNotifications(notificationApi(), (id) => this.openDecision(id));
+      this._notifications = notificationsFor(notificationApi(), workerContainer(), (id) => this.openDecision(id));
     }
     return this._notifications;
   },
   /** A notification's click: the decision's dialog, over whatever page is showing. */
   openDecision(id) {
     location.hash = decisionHash(id);
+  },
+  /**
+   * A notification button: the answer `choice` posts as the dialog's button would, with this page's
+   * token. A decision that is no longer open, a choice it does not offer, or a refused answer opens
+   * the dialog instead, which says how it stands.
+   */
+  async answerDecision(id, choice) {
+    const path = '/api/decisions/' + encodeURIComponent(id);
+    try {
+      const d = await get(path);
+      const c = d && d.state === 'open' && (decisionChoices(d) || []).find((x) => x.id === choice);
+      if (c) {
+        await post(path, choiceBody(c));
+        return;
+      }
+    } catch {
+      // Fall through to the dialog.
+    }
+    this.openDecision(id);
+  },
+  /** A message from the service worker: a notification's click or button. */
+  workerMessage(message) {
+    if (!message || typeof message.id !== 'string') return;
+    if (message.type === WORKER_MESSAGE.open) this.openDecision(message.id);
+    else if (message.type === WORKER_MESSAGE.answer && typeof message.choice === 'string') {
+      this.answerDecision(message.id, message.choice);
+    }
   },
   /**
    * The presence ping and notify frames, handled here (true); a decision frame also pulses the bell
@@ -139,7 +223,7 @@ export const notifyMethods = {
       if (!d) return true;
       const channel = pageChannel(this.tabState());
       if (channel === 'browser') {
-        const n = notificationFor(d);
+        const n = notificationFor(d, maxActions(notificationApi()));
         this.notifications().show(n.title, n.options);
       } else if (channel === 'in-app') this.pulseBell();
       return true;

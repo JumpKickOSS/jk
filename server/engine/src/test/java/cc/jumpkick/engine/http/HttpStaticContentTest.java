@@ -97,11 +97,37 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
                     HttpResponse.BodyHandlers.ofString());
             assertThat(resp.body()).isEqualTo("<html>dev dash</html>");
             assertThat(resp.headers().firstValue("Content-Security-Policy")).contains(StaticContent.SHELL_POLICY);
+            // A dashboard source tree serves its own service worker too.
+            Files.writeString(dev.resolve(StaticContent.WORKER), "// dev worker");
+            HttpResponse<String> worker = client.send(
+                    HttpRequest.newBuilder(URI.create(requireNonNull(devServer.url()) + StaticContent.WORKER))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(worker.body()).isEqualTo("// dev worker");
         } finally {
             devServer.close();
         }
         assertThat(get("/index.html").headers().firstValue("Content-Security-Policy"))
                 .contains(StaticContent.SANDBOX_POLICY);
+    }
+
+    @Test
+    void the_service_worker_comes_from_the_shell_and_never_from_the_default_disk_root() throws Exception {
+        // A worker controls every page of the origin and outlives its file: one planted in the
+        // build-writable default root must not shadow the shipped one.
+        Files.writeString(webRoot.resolve(StaticContent.WORKER), "self.addEventListener('fetch', () => {});");
+        HttpResponse<String> worker = get("/sw.js");
+        assertThat(worker.statusCode()).isEqualTo(200);
+        assertThat(worker.body()).contains("notificationclick").doesNotContain("'fetch'");
+        assertThat(worker.headers().firstValue("Content-Type")).contains("text/javascript; charset=utf-8");
+        // Revalidated on every update check, so an engine upgrade installs its own worker.
+        assertThat(worker.headers().firstValue("Cache-Control")).contains("no-cache");
+
+        HttpResponse<String> manifest = get("/manifest.webmanifest");
+        assertThat(manifest.statusCode()).isEqualTo(200);
+        assertThat(manifest.headers().firstValue("Content-Type")).contains("application/manifest+json; charset=utf-8");
+        assertThat(manifest.body()).contains("\"display\": \"standalone\"");
+        assertThat(get("/icon-512.png").headers().firstValue("Content-Type")).contains("image/png");
     }
 
     @Test
@@ -149,7 +175,7 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
         assertThat(csp)
                 .startsWith("default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; ")
                 .contains("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; ")
-                .contains("font-src https://fonts.gstatic.com data:; worker-src blob:")
+                .contains("font-src https://fonts.gstatic.com data:; worker-src 'self' blob:")
                 .contains("form-action 'none'");
     }
 

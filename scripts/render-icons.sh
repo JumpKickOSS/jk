@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Render the icons desktop notifications carry from the jk mark (clients/web/.../web/jk-logo.svg)
-# into shared/core's resources: jumpkick.png (256 px, the Linux notification and desktop-entry
-# icon) and jumpkick.ico (16 to 256 px, PNG-compressed, the Windows Start-menu shortcut's icon).
+# Render the app icons from the jk mark (clients/web/.../web/jk-logo.svg).
+#
+# shared/core's resources: jumpkick.png (256 px, the Linux notification and desktop-entry icon) and
+# jumpkick.ico (16 to 256 px, PNG-compressed, the Windows Start-menu shortcut's icon).
+# The dashboard's web root: icon-192.png and icon-512.png (the installed web app's icons, the mark
+# as drawn) and icon-maskable-512.png (the borderless mark on a full-bleed canvas of its own panel
+# colour, so a platform's circle or squircle mask never cuts into it).
 # Run after changing the logo and commit the output; the build does not render them.
 #
 # Needs ImageMagick with its librsvg delegate (`magick -list format` lists RSVG) and python3.
@@ -10,6 +14,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 svg="$root/clients/web/src/main/resources/web/jk-logo.svg"
 out="$root/shared/core/src/main/resources/cc/jumpkick/desktop"
+web="$root/clients/web/src/main/resources/web"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
@@ -40,4 +45,12 @@ for blob in blobs:
 with open(out, "wb") as f:
     f.write(head + entries + b"".join(blobs))
 PY
-echo "rendered $out/jumpkick.png and $out/jumpkick.ico"
+render 192 "$web/icon-192.png"
+render 512 "$web/icon-512.png"
+# The maskable mark drops the panel's border, which a mask would cut into, and keeps its glyphs
+# inside the 80% safe circle.
+grep -v 'stroke="#2a3742"' "$svg" >"$work/borderless.svg"
+magick -background none -density 1536 "$work/borderless.svg" -resize 448x448 -strip "png32:$work/maskable-mark.png"
+magick -size 512x512 xc:'#0f141b' "$work/maskable-mark.png" -gravity center -composite -strip \
+  "png32:$web/icon-maskable-512.png"
+echo "rendered $out/jumpkick.{png,ico} and $web/icon-{192,512,maskable-512}.png"

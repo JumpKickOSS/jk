@@ -113,6 +113,8 @@ test('every shipped module is reachable from the entry point', () => {
   // Reached only through a lazy `await import()`, deliberately: it must not be on the shell's
   // critical path, and the browser fetches it on the first #project/<id>/files open.
   seen.add('api.js');
+  // The service worker: the page registers it by URL, and it runs apart from the page.
+  seen.add('sw.js');
   const orphans = modules.filter((m) => !seen.has(m));
   assert.deepEqual(orphans, [], 'an unimported module never loads in the browser, and nothing says so');
 });

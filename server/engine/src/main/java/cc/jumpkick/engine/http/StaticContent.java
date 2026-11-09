@@ -30,10 +30,17 @@ import org.jspecify.annotations.Nullable;
  * <p>The default disk root is sandboxed ({@code Content-Security-Policy: sandbox}); a root the user
  * set ({@link cc.jumpkick.config.JkHttpConfig#devWebRoot}) is a dashboard source tree and gets the
  * shell's policy, so the dashboard runs from it.
+ *
+ * <p>The dashboard's service worker ({@value #WORKER}) comes only from where the shell comes from:
+ * the classpath, or a root the user set. A worker controls every page of the origin and outlives
+ * its file, so one a build planted in the default root must never register.
  */
 final class StaticContent {
 
     private static final String CLASSPATH_PREFIX = "/web/";
+
+    /** The dashboard's service worker, at the root so its scope is the whole dashboard. */
+    static final String WORKER = "sw.js";
 
     private static final DateTimeFormatter HTTP_DATE =
             DateTimeFormatter.RFC_1123_DATE_TIME.withLocale(Locale.US).withZone(ZoneOffset.UTC);
@@ -45,6 +52,7 @@ final class StaticContent {
             Map.entry("js", "text/javascript; charset=utf-8"),
             Map.entry("mjs", "text/javascript; charset=utf-8"),
             Map.entry("json", "application/json; charset=utf-8"),
+            Map.entry("webmanifest", "application/manifest+json; charset=utf-8"),
             Map.entry("md", "text/markdown; charset=utf-8"),
             Map.entry("txt", "text/plain; charset=utf-8"),
             Map.entry("xml", "application/xml; charset=utf-8"),
@@ -72,10 +80,12 @@ final class StaticContent {
      * the unpkg bundle; 'unsafe-inline' in style-src — the editor positions every view line, cursor
      * and widget with inline style attributes (~100 per paint), which no hash or nonce can cover;
      * data: in font-src — editor.main.css inlines the codicon font (gutter/find-widget icons).
+     * 'self' in worker-src registers the dashboard's service worker ({@value #WORKER}); without it
+     * worker-src would allow only Monaco's blobs.
      */
     static final String SHELL_POLICY = "default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
             + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
-            + "font-src https://fonts.gstatic.com data:; worker-src blob:; "
+            + "font-src https://fonts.gstatic.com data:; worker-src 'self' blob:; "
             // Preview pane: auth-fetch → blob: for in-repo images; https: for badges / remote README
             // images (shields.io, etc.); data: for rare inlines.
             + "img-src 'self' blob: data: https: http:; "
@@ -98,6 +108,9 @@ final class StaticContent {
     /** The policy disk files are served under: the shell's for a dev root, else the sandbox. */
     private final String diskPolicy;
 
+    /** Whether the user set {@link #root}, which may then serve the service worker. */
+    private final boolean devRoot;
+
     /**
      * {@code "jk-<version>-<mtime-hex>"}. Classpath assets always revalidate ({@code no-cache}) so
      * a new engine jar is visible on the next load; the stamp is the jar (or {@code /web/index.html})
@@ -113,6 +126,7 @@ final class StaticContent {
     StaticContent(Path root, String version, boolean devRoot) {
         this.root = root.normalize();
         this.diskPolicy = devRoot ? SHELL_POLICY : SANDBOX_POLICY;
+        this.devRoot = devRoot;
         this.classpathEtag = "\"jk-" + version + "-" + classpathStamp() + "\"";
     }
 
@@ -154,7 +168,7 @@ final class StaticContent {
             HttpResponses.sendText(exchange, 404, "not found\n");
             return;
         }
-        if (serveFromDisk(exchange, rel, head)) return;
+        if ((devRoot || !rel.equals(WORKER)) && serveFromDisk(exchange, rel, head)) return;
         if (serveFromClasspath(exchange, rel, head)) return;
         HttpResponses.sendText(exchange, 404, "not found\n");
     }

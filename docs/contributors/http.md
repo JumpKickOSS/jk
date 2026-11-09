@@ -154,7 +154,10 @@ other build-written content may land) are served with `Content-Security-Policy: 
 unique opaque origin with scripts and forms disabled, so nothing dropped there can script the
 dashboard origin or read the stored bearer token. A `web-root` the user set (`JK_HTTP_WEB_ROOT` or
 `[http] web-root`) is a dashboard source tree they pointed the engine at, so its files get the
-shell's policy and the dashboard runs from it.
+shell's policy and the dashboard runs from it. The service worker, `/sw.js`, is the one exception
+to disk first: it comes from the jar unless the user set `web-root`, since a worker planted in the
+default root would control every page of the origin and outlive its file
+([web client](webclient.md#the-installed-app)).
 
 Classpath shell files are `Cache-Control: no-cache` plus a version+mtime `ETag`, so a new
 engine jar is visible on the next load (revalidate always; unchanged bytes are a `304`). Disk
@@ -416,13 +419,12 @@ three pings) old; a frozen tab or a slept machine stops answering and so falls b
 closed stream leaves at once.
 
 The page shows the notification titled **JumpKick needs you**, tagged with the decision id (a
-repeat replaces it), and a click focuses that tab and opens `#decision/<id>`. Every tab closes the
-notification by tag when the `decision` frame settles it. Showing and closing go through
-`notify.js`'s `{ show, close }` adapter, and a click through `openDecision(id)`, so a service
-worker can take over with `registration.showNotification`, `getNotifications({ tag })` and
-`notificationclick` without changing the rule; notification actions (the choices as buttons) need
-that service worker, since only persistent notifications carry them. No Web Push: a page notifies
-only while a tab is open.
+repeat replaces it), and a click brings a dashboard window forward and opens `#decision/<id>`. Every
+tab closes the notification by tag when the `decision` frame settles it. While the dashboard's
+service worker controls the page, it shows the notification, which may carry the decision's
+choices as buttons, and routes the clicks; a button's answer is the page's
+`POST /api/decisions/<id>` ([web client](webclient.md#the-installed-app)). No Web Push: a page
+notifies only while a tab is open.
 
 Permission is per origin, port included, so each engine port asks on its own.
 
