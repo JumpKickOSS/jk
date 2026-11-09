@@ -49,6 +49,7 @@ public final class AggregateContext {
      */
     public void applySnapshot(WorkspaceProgressTracker.Snapshot snap) {
         if (snap == null) return;
+        cm.estimating("preflight".equals(snap.phase()));
         if (snap.denominator() > 0) cm.progress(snap.numerator(), snap.denominator());
         // Residual RemainingWork: adaptive clock bar + countdown re-anchor (ends on time with R(t)).
         if (snap.remainingMs() >= 0) cm.setBarResidualRemaining(snap.remainingMs());

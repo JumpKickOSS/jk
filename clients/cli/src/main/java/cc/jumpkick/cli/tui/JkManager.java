@@ -358,6 +358,20 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
         header.progress(numerator, denominator);
     }
 
+    /** The engine is (or is no longer) in its workspace preflight; see {@link HeaderProgress#indeterminate}. */
+    public void estimating(boolean estimating) {
+        synchronized (lock) {
+            header.estimating(estimating);
+        }
+    }
+
+    /** Whether the header has no bar yet; see {@link HeaderProgress#indeterminate}. */
+    boolean indeterminate() {
+        synchronized (lock) {
+            return header.indeterminate();
+        }
+    }
+
     /** Numerator/denominator for the painted bar; see {@link HeaderProgress#displayBar}. */
     long[] displayBar(long elapsedMillis) {
         return header.displayBar(elapsedMillis);

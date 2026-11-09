@@ -53,6 +53,16 @@ final class HeaderProgress {
 
     private long numerator;
     private long denominator;
+
+    /**
+     * The engine reports its workspace preflight under way: until it seeds an estimate, nothing says
+     * whether this is a no-op, a one-file edit or a cold build, so no bar is honest.
+     */
+    private boolean estimating;
+
+    /** The latest preflight stage's text ("Checking cache…"), shown while there is no bar. */
+    private String stageLabel = "";
+
     private int modulesComplete;
     private int modulesTotal; // 0 = hide module remaining
 
@@ -87,6 +97,25 @@ final class HeaderProgress {
         return solveLabel;
     }
 
+    /** Whether the engine is in its workspace preflight. Must hold {@code lock}. */
+    void estimating(boolean estimating) {
+        this.estimating = estimating;
+    }
+
+    /**
+     * No bar yet: the engine is still in its preflight and has seeded no estimate. The header shows
+     * the breathing orb, the stage and the clock, and the taskbar the indeterminate state, until the
+     * estimate (or execute) arrives. Must hold {@code lock}.
+     */
+    boolean indeterminate() {
+        return estimating && !countdown.seeded();
+    }
+
+    /** The preflight stage's text, for the header while {@link #indeterminate}. Must hold {@code lock}. */
+    String stageLabel() {
+        return stageLabel;
+    }
+
     int modulesComplete() {
         return modulesComplete;
     }
@@ -107,6 +136,8 @@ final class HeaderProgress {
 
     /** The label shown while the bar has no denominator; the preflight pill writes it. Must hold {@code lock}. */
     void preflightLabel(String pill, int done, int total, String label) {
+        if (label != null && !label.isEmpty()) this.stageLabel = label;
+        else if (pill != null && !pill.isEmpty()) this.stageLabel = pill + "…";
         if (denominator > 0) return;
         if (label != null && !label.isEmpty()) this.solveLabel = label;
         else if (total > 0) this.solveLabel = pill + " " + done + "/" + total;

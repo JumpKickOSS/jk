@@ -387,8 +387,12 @@ final class JkManagerView {
         appendTaskbar(f, m.elapsedMillis());
     }
 
-    /** The OS taskbar is told the bar's percent when it changes. */
+    /** The OS taskbar is told the bar's percent when it changes, or that there is none yet. */
     private void appendTaskbar(StringBuilder f, long elapsedMillis) {
+        if (m.indeterminate()) {
+            m.painter.status(f, Osc.taskbarIndeterminate());
+            return;
+        }
         long[] bd = m.displayBar(elapsedMillis);
         m.painter.status(f, Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
     }
@@ -684,12 +688,17 @@ final class JkManagerView {
         // m.header.denominator()/m.header.solveLabel() on plain JMM visibility.
         long den;
         String sl;
+        boolean indeterminate;
         synchronized (m.lock) {
             den = m.header.denominator();
             sl = m.header.solveLabel();
+            indeterminate = m.header.indeterminate();
+            // Before the estimate: the orb breathes beside the stage and the clock, and no bar is
+            // drawn, since none would be honest yet.
+            if (indeterminate) sl = m.header.stageLabel();
         }
-        boolean hasBar = barDen > 0 || den > 0;
-        boolean phase1 = !hasBar && !sl.isEmpty();
+        boolean hasBar = !indeterminate && (barDen > 0 || den > 0);
+        boolean phase1 = !hasBar && (indeterminate || !sl.isEmpty());
         long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
         Countdown.Face face;
         synchronized (m.lock) {
@@ -698,8 +707,12 @@ final class JkManagerView {
         RichText clock = clockFace(face, elapsedSec);
         RenderContext ctx = frameCtx.withCaps(m.nerdFont).withFrame(m.frame);
         if (phase1) {
-            RichText msg = RichText.of(
-                    RichText.ansi(Theme.colorize(sl, Theme.active().brightWhite())), RichText.plain(" "), clock);
+            RichText msg = sl.isEmpty()
+                    ? clock
+                    : RichText.of(
+                            RichText.ansi(Theme.colorize(sl, Theme.active().brightWhite())),
+                            RichText.plain(" "),
+                            clock);
             return new JkWedge(Icon.spinner(), m.name, msg)
                     .variant(JkWedge.Variant.WORK)
                     .renderLiveLine(ctx);
