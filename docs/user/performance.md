@@ -88,7 +88,8 @@ and write the plain jar, and no more. The exact commands are in the
   `bench/scoreboard --render` from the same rows, so it cannot say faster where the table says
   slower; no other page may compare speed or memory by hand.
 - **One project, one module.** spring-petclinic is 25 main classes. A multi-module project moves
-  every ratio, and this page claims nothing about one.
+  every ratio, and the table above claims nothing about one; [Helidon](#a-multi-module-project-helidon),
+  below, is a separate measurement of one, against Maven.
 - **Dependencies are warm for everyone.** The jk store, Gradle's dependency cache and `~/.m2` all
   hold the project's dependencies before the timed runs; no row measures a download.
 
@@ -101,3 +102,47 @@ bench/wall/measure --tool jk --scenario edit --runs 3
 
 The first run clones the project and provisions a working copy per tool under `~/src/scratch/wall`
 (`$WALL_HOME`); later runs only measure.
+
+## A multi-module project: Helidon
+
+[Helidon](https://github.com/helidon-io/helidon) 27.0.1 is 223 Maven modules on Java 27. Imported
+with `jk import`, it builds and tests under jk; Maven builds the same tag from its own POMs. Helidon
+has no Gradle build, so there is no Gradle column.
+
+| Scenario | jk | Maven |
+|---|---:|---:|
+| Cold build, all 223 modules | 12.9 s | 23.3 s |
+| No-op | 0.8 s | 21.6 s |
+| One-file edit, leaf module (`webserver/static-content`) | 1.5 s | 21.8 s |
+| One-file edit, mid-graph module (`common/common`) | 2.2 s | 23.3 s |
+| Tests, one module (`webserver/webserver`) | 1.1 s | 16.2 s |
+
+Medians of three timed runs on one host (24 logical CPUs, 30 GiB RAM, Fedora, Linux 7.2); Temurin
+27.0.1 for both tools; Maven 3.9.15; jk 0.50.4 at tree d96e985b0; measured 2026-11-09.
+
+| Row | jk | Maven |
+|---|---|---|
+| Cold build | every `target/` removed, then `jk build --skip-tests --redo`: the action cache is bypassed | `mvn clean`, then `mvn -B -q -T1C -DskipTests package` |
+| No-op | `jk build --skip-tests` | `mvn -B -q -T1C -DskipTests package` |
+| One-file edit | a unique comment appended to one source, then the no-op command | the same edit, then the same command |
+| Tests | `jk test -m webserver/webserver` | `mvn -B -q -pl webserver/webserver test` |
+
+- **Each tool runs its own default build.** Maven runs `package` with the plugins Helidon binds
+  (enforcer, dependency analysis, service files and the rest), in parallel at one thread per core;
+  jk runs `jk build`, which also writes a sources jar for every library module.
+- **The test row is not quite the same work.** Maven's `-pl` run compiles against the published
+  27.0.1 jars of every upstream module in `~/.m2`; jk builds or restores the upstream workspace
+  modules and tests against them. Both rows are warm re-runs.
+- **Dependencies are warm for both**, as on the table above: one untimed build primes `~/.m2` and
+  the jk store.
+- **This table is not banked.** The scoreboard measures spring-petclinic only; these walls are one
+  run of the port's own harness, not a ratcheted row.
+
+The port and its harness are in
+[jk-examples](https://github.com/JumpKickOSS/jk-examples/tree/e9bfa2dd5ca22265e0c0d993591a666ab986754a/ports/helidon):
+
+```bash
+cd ports/helidon
+./setup.sh                          # import Helidon 27.0.1 and apply the port's overlay
+RUNS=3 ./scripts/bench-helidon.sh   # both tools; MVN=/path/to/mvn if Maven is not on PATH
+```
