@@ -48,12 +48,13 @@ class SecretVaultTest {
         locked.locked = "the default keyring is locked, and jk never asks to unlock it";
         SecretVault vault = SecretVault.of(SecretVault.Choice.AUTO, List.of(locked));
 
-        SecretVault.Stored stored = vault.store("repo/nexus", "l", "tok", Path.of("/home/u/.jk/creds/repo/nexus"));
+        Path record = Path.of("/home/u/.jk/creds/repo/nexus");
+        SecretVault.Stored stored = vault.store("repo/nexus", "l", "tok", record);
 
         assertThat(stored.pointer()).isNull();
         assertThat(stored.notice())
                 .contains("Fake Keychain: the default keyring is locked")
-                .contains("/home/u/.jk/creds/repo/nexus")
+                .contains(record.toString())
                 .contains("[credentials] store = \"file\"");
         assertThat(locked.calls).isEmpty();
     }

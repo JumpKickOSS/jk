@@ -24,10 +24,10 @@ class TemplateLintTest {
         assertThat(result.checked()).isEqualTo(3);
         assertThat(result.failures()).hasSize(2);
         assertThat(result.failures().get(0))
-                .startsWith("java/none/bad.g8/.jk-template.toml: ")
+                .startsWith(Path.of("java/none/bad.g8", ".jk-template.toml") + ": ")
                 .contains("default.properties sets 'flavour'");
         assertThat(result.failures().get(1))
-                .startsWith("kotlin/none/moved.g8/.jk-template.toml: ")
+                .startsWith(Path.of("kotlin/none/moved.g8", ".jk-template.toml") + ": ")
                 .contains("declares kotlin/none/elsewhere but sits at kotlin/none/moved");
     }
 

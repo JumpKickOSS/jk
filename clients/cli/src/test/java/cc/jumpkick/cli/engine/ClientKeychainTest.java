@@ -12,10 +12,10 @@ import cc.jumpkick.secret.SecretBackend;
 import cc.jumpkick.secret.SecretBackendException;
 import cc.jumpkick.secret.SecretVault;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -144,6 +144,6 @@ class ClientKeychainTest {
         Path records = Files.createDirectories(JkDirs.creds().resolve("repo"));
         Path record = records.resolve(id);
         Files.writeString(record, "bearer https://repo.example keychain\n" + pointer + "\n");
-        Files.setPosixFilePermissions(record, PosixFilePermissions.fromString("rw-------"));
+        OwnerOnlyFiles.setOwnerOnly(record, "rw-------");
     }
 }

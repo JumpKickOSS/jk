@@ -8,11 +8,9 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.SafeUri;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -123,9 +121,33 @@ class SettingsExpansionTest {
 
         assertThat(settings.mirrors()).singleElement().satisfies(m -> assertThat(m.url())
                 .hasToString("https://nexus.example/m2/"));
-        assertThat(settings.profileRepositories())
-                .extracting(RepositorySpec::url)
-                .containsExactly(URI.create("file:" + System.getProperty("user.home") + "/team-repo/"));
+        assertThat(settings.profileRepositories()).singleElement().satisfies(r -> {
+            assertThat(Path.of(r.url())).isEqualTo(Path.of(System.getProperty("user.home"), "team-repo"));
+            assertThat(r.url().getPath()).endsWith("/team-repo/");
+        });
+    }
+
+    /** What {@code file:${user.home}/repo} expands to on Windows, and a path with a space: both are paths. */
+    @Test
+    void a_file_url_maven_takes_but_a_uri_refuses_is_the_path_it_names(@TempDir Path dir) throws Exception {
+        Path xml = write(dir, """
+                <settings>
+                  <profiles>
+                    <profile>
+                      <id>team</id>
+                      <repositories>
+                        <repository><id>windows</id><url>file:C:\\Users\\me/team-repo/</url></repository>
+                        <repository><id>spaced</id><url>file:/srv/team repo/</url></repository>
+                      </repositories>
+                    </profile>
+                  </profiles>
+                  <activeProfiles><activeProfile>team</activeProfile></activeProfiles>
+                </settings>
+                """);
+
+        assertThat(MavenSettings.loadFrom(xml, k -> null).profileRepositories())
+                .extracting(r -> r.url().toString())
+                .containsExactly("file:/C:/Users/me/team-repo/", "file:/srv/team%20repo/");
     }
 
     @Test

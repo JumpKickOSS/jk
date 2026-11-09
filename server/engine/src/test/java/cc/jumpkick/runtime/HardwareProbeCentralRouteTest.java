@@ -62,7 +62,7 @@ class HardwareProbeCentralRouteTest {
                 [repositories.corp]
                 url = "http://127.0.0.1:47613/corp/"
                 mirror-of = ["central"]
-                token = "${cmd:touch %s}"
+                token = '${cmd:touch %s}'
                 """.formatted(ran));
 
         assertThat(HardwareProbe.centralBase()).isEqualTo("http://127.0.0.1:47613/corp/");
@@ -96,7 +96,7 @@ class HardwareProbeCentralRouteTest {
                     [repositories.corp]
                     url = "http://127.0.0.1:%d/corp/"
                     mirror-of = ["*"]
-                    token = "${cmd:touch %s}"
+                    token = '${cmd:touch %s}'
                     """.formatted(stub.getAddress().getPort(), ran));
 
             String base = Objects.requireNonNull(HardwareProbe.centralBase());

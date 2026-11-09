@@ -98,7 +98,8 @@ public final class Scripted {
             var ctx = new RenderContext(Theme.active(), false, NerdFontCaps.NONE, 80, 0);
             var asker = new Asker(tty, out, new BufferedReader(new StringReader(lines)), ctx);
             Optional<R> answer = body.apply(asker);
-            String transcript = bytes.toString(StandardCharsets.UTF_8);
+            // println ends a line with the platform's separator; the transcript reads the same everywhere.
+            String transcript = bytes.toString(StandardCharsets.UTF_8).replace(System.lineSeparator(), "\n");
             return new Run<>(answer, List.of(List.of(transcript.split("\n", -1))), transcript);
         }
     }

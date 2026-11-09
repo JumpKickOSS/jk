@@ -12,11 +12,11 @@ import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
+import cc.jumpkick.testing.FakePrograms;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,16 +40,19 @@ class RepoCredentialHelperTest {
 
     /** A helper that prints {@code token-<n>}, counting its runs in a file beside it. */
     private static Path countingHelper(Path dir) throws IOException {
-        Path script = dir.resolve("helper.sh");
-        Files.writeString(script, """
-                #!/bin/sh
-                n=$(cat "%1$s/count" 2>/dev/null || echo 0)
+        Path count = dir.resolve("count");
+        return FakePrograms.script(dir, "helper", new FakePrograms.Script("""
+                n=$(cat "%1$s" 2>/dev/null || echo 0)
                 n=$((n + 1))
-                echo "$n" > "%1$s/count"
+                echo "$n" > "%1$s"
                 echo "token-$n"
-                """.formatted(dir));
-        Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"));
-        return script;
+                """.formatted(count), """
+                set n=0
+                if exist "%1$s" set /p n=<"%1$s"
+                set /a n=n+1
+                >"%1$s" echo %%n%%
+                echo token-%%n%%
+                """.formatted(count)));
     }
 
     private static RepoCredentialResolver resolver(Path dir, List<RepositorySpec> user) {

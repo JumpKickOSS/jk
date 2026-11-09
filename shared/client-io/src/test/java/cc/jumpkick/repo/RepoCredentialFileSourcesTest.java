@@ -17,6 +17,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -35,6 +36,8 @@ import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -55,7 +58,7 @@ class RepoCredentialFileSourcesTest {
     private static Path secret(Path dir, String name, String body) throws IOException {
         Path file = dir.resolve(name);
         Files.writeString(file, body);
-        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
+        OwnerOnlyFiles.setOwnerOnly(file, "rw-------");
         return file;
     }
 
@@ -178,7 +181,9 @@ class RepoCredentialFileSourcesTest {
                 .hasMessageContaining("JK_REPO_CORP_TOKEN and JK_REPO_CORP_TOKEN_FILE are both set");
     }
 
+    /** Windows has no group or other read bit, so jk checks nothing there. */
     @Test
+    @DisabledOnOs(OS.WINDOWS)
     void a_token_file_others_can_read_is_refused(@TempDir Path dir) throws IOException {
         Path token = secret(dir, "ci-token", "ci-secret");
         Files.setPosixFilePermissions(token, PosixFilePermissions.fromString("rw-r-----"));

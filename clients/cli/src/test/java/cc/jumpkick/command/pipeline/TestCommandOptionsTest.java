@@ -84,7 +84,7 @@ class TestCommandOptionsTest {
     @Test
     void install_parses_the_jdks_dir_it_hands_the_pre_flight_and_the_engine() throws Exception {
         Invocation in = ArgParser.parse(new ToolInstallCommand(), List.of("--jdks-dir", "/opt/jdks", "--skip-tests"));
-        assertThat(CommonOpts.jdksDirValue(in)).isEqualTo(Path.of("/opt/jdks"));
+        assertThat(CommonOpts.jdksDirValue(in)).isEqualTo(Path.of("/opt/jdks").toAbsolutePath());
     }
 
     /** One flag, one meaning, on every verb that builds through the test stage. */

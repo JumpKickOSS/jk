@@ -493,6 +493,7 @@ class WrapperTemplateTest {
      */
     @ParameterizedTest
     @CsvSource({"ARM64, aarch64", "AMD64, x86_64", "SPARC, sparc"})
+    @Tag("integration") // each case runs the wrapper twice, PowerShell and a JVM both times: over 20s on Windows
     void windows_wrapper_installs_the_jvm_client_where_the_release_lists_no_native_one(
             String processorArchitecture, String arch, @TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
@@ -527,6 +528,7 @@ class WrapperTemplateTest {
 
     /** {@code JK_CLIENT=native} refuses the JVM client and installs nothing. */
     @Test
+    @Tag("integration") // compiles the fake client, then runs the wrapper: near 20s on a busy Windows host
     void windows_wrapper_refuses_the_jvm_client_when_JK_CLIENT_is_native(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         KeyPair key = Keys.RELEASE;

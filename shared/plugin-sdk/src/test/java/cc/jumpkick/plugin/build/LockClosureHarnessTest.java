@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.build;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -74,8 +75,8 @@ class LockClosureHarnessTest {
         assertThat(out.pins()).containsExactly("io.q:arc:1-deployment", "org.junit:junit:6!pom", "fx:" + seed);
         assertThat(out.lines())
                 .as("a file the resolver holds rides with its path")
-                .anyMatch(l ->
-                        l.contains("org.junit:junit:6!pom") && l.contains("\"path\":\"" + dir.resolve("junit.jar")));
+                .anyMatch(l -> "org.junit:junit:6!pom".equals(Jsonl.str(l, "coordinate"))
+                        && dir.resolve("junit.jar").toString().equals(Jsonl.str(l, "path")));
     }
 
     @Test
@@ -123,9 +124,7 @@ class LockClosureHarnessTest {
         List<String> pins() {
             List<String> out = new ArrayList<>();
             for (String line : lines()) {
-                if (!line.contains("\"t\":\"pin\"")) continue;
-                int at = line.indexOf("\"coordinate\":\"") + "\"coordinate\":\"".length();
-                out.add(line.substring(at, line.indexOf('"', at)));
+                if (line.contains("\"t\":\"pin\"")) out.add(Jsonl.requiredStr(line, "coordinate"));
             }
             return out;
         }

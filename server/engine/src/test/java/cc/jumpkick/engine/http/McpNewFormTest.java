@@ -551,7 +551,9 @@ class McpNewFormTest {
 
         String form = mcp.handle(rpc(Map.of("action", "form", "template", "mine.g8", "dir", work.toString())), session)
                 .body();
-        assertThat(form).as(form).contains(work.resolve("mine.g8").toString());
+        assertThat(form)
+                .as(form)
+                .contains(Jsonl.quote(work.resolve("mine.g8").toString()).replaceAll("^\"|\"$", ""));
 
         // No parentDir: the project goes beside the bound dir, and the template is still the bound dir's.
         String created = mcp.handle(

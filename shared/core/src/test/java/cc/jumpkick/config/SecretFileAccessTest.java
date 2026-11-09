@@ -12,13 +12,17 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The secret-file permission rule: strict everywhere, and a container platform's default secret
  * mount accepted under a mount root when only its owner, root or the user, can write it. The roots
- * are a temporary directory here, so no test needs root.
+ * are a temporary directory here, so no test needs root. The rule reads POSIX modes, which Windows
+ * does not have, so it checks nothing there.
  */
+@DisabledOnOs(OS.WINDOWS)
 class SecretFileAccessTest {
 
     private static final String WHERE = "repositories.corp.token";

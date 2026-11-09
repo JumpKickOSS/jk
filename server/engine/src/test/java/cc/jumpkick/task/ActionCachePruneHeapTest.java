@@ -84,7 +84,7 @@ class ActionCachePruneHeapTest {
         Path tasks = Files.createDirectories(root.resolve("actions").resolve("tasks"));
         for (int k = 0; k < KEYS; k++) {
             String actionKey = "key-" + k;
-            String taskId = "compile-main@" + k + ":references";
+            String taskId = JavaCompile.referencesTaskId("compile-main@" + k);
             Path keyFile = keys.resolve(actionKey);
             Files.writeString(
                     keyFile, "TASK " + taskId + "\nKEY " + actionKey + "\n" + outputs, StandardCharsets.UTF_8);

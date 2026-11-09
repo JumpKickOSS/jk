@@ -14,6 +14,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -24,6 +25,9 @@ import org.jspecify.annotations.Nullable;
  * anything; a file that does not parse, or is not there, is empty.
  */
 final class SettingsXml {
+
+    /** {@code C:/} at the start of a path: a Windows drive. */
+    private static final Pattern WINDOWS_DRIVE = Pattern.compile("[A-Za-z]:/");
 
     /** One parsed file: what {@link #read} expands, kept while the file is unchanged. */
     record Document(Path file, MinimalXml.Element root) {}
@@ -248,6 +252,22 @@ final class SettingsXml {
         try {
             URI uri = new URI(text);
             return uri.getScheme() == null ? null : uri;
+        } catch (URISyntaxException e) {
+            return fileUri(text);
+        }
+    }
+
+    /**
+     * A {@code file:} URL Maven takes but {@link URI} refuses, read as the path it names: {@code
+     * file:${user.home}/repo} on Windows ({@code file:C:\Users\me/repo}), or a path with a space.
+     */
+    private static @Nullable URI fileUri(String text) {
+        if (!text.regionMatches(true, 0, "file:", 0, "file:".length())) return null;
+        String path = text.substring("file:".length()).replace('\\', '/');
+        if (WINDOWS_DRIVE.matcher(path).lookingAt()) path = "/" + path;
+        if (!path.startsWith("/")) return null;
+        try {
+            return new URI("file", null, path, null);
         } catch (URISyntaxException e) {
             return null;
         }

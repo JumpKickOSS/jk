@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.tomlj.Toml;
 
@@ -32,7 +35,7 @@ class FileReferencesTest {
     private static Path secret(Path dir, String name, String body) throws IOException {
         Path file = dir.resolve(name);
         Files.writeString(file, body);
-        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
+        OwnerOnlyFiles.setOwnerOnly(file, "rw-------");
         return file;
     }
 
@@ -124,7 +127,9 @@ class FileReferencesTest {
                 .hasMessageContaining(absent + ", which does not exist");
     }
 
+    /** Windows has no group or other read bit, so jk checks nothing there. */
     @Test
+    @DisabledOnOs(OS.WINDOWS)
     void a_file_its_group_or_others_can_read_is_refused_naming_chmod_600(@TempDir Path dir) throws IOException {
         Path token = secret(dir, "token", "s3cret");
         Files.setPosixFilePermissions(token, PosixFilePermissions.fromString("rw-r--r--"));

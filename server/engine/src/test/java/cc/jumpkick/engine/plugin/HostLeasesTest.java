@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.Sleepers;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -314,7 +315,7 @@ class HostLeasesTest {
 
     /** A process that outlives the test unless it is stopped. */
     private static Process sleeper() throws Exception {
-        return new ProcessBuilder("sleep", "120")
+        return Sleepers.sleeper(120)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectErrorStream(true)
                 .start();

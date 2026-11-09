@@ -4,8 +4,10 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.task.IoLedger;
+import java.io.File;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -23,12 +25,21 @@ import org.tomlj.Toml;
 /** {@code ${cmd:...}}: argv, the run itself, its errors, the cache and where it may be written. */
 class CredentialHelpersTest {
 
+    /** Where Windows keeps {@code cmd.exe}; a helper runs under an empty environment, so it is named in full. */
+    private static final Path CMD =
+            Path.of(System.getenv().getOrDefault("SystemRoot", "C:\\Windows"), "System32", "cmd.exe");
+
     private CredentialHelpers.@Nullable Runner previous;
 
     @AfterEach
     void restore() {
         if (previous != null) CredentialHelpers.runner(previous);
         CredentialHelpers.clear();
+    }
+
+    /** {@code script} under {@code /bin/sh}, or {@code batch} under {@code cmd.exe} on Windows. */
+    private static List<String> shell(String script, String batch) {
+        return Os.isWindows() ? List.of(CMD.toString(), "/d", "/c", batch) : List.of("/bin/sh", "-c", script);
     }
 
     /** A runner that counts its runs and answers {@code token-<n>}, after {@code delayMillis}. */
@@ -73,7 +84,7 @@ class CredentialHelpersTest {
     @Test
     void the_value_is_the_helpers_trimmed_stdout() {
         String value = CredentialHelpers.run(
-                List.of("/bin/sh", "-c", "printf '  ya29.token \\n'"), Map.of(), Duration.ofSeconds(10), "w");
+                shell("printf '  ya29.token \\n'", "echo   ya29.token "), Map.of(), Duration.ofSeconds(10), "w");
 
         assertThat(value).isEqualTo("ya29.token");
     }
@@ -81,7 +92,7 @@ class CredentialHelpersTest {
     @Test
     void a_non_zero_exit_names_the_position_the_command_and_its_stderr() {
         assertThatThrownBy(() -> CredentialHelpers.run(
-                        List.of("/bin/sh", "-c", "echo 'not logged in' >&2; exit 3"),
+                        shell("echo 'not logged in' >&2; exit 3", "echo not logged in 1>&2 & exit 3"),
                         Map.of(),
                         Duration.ofSeconds(10),
                         "repositories.gar.token"))
@@ -94,7 +105,7 @@ class CredentialHelpersTest {
     @Test
     void empty_output_is_an_error() {
         assertThatThrownBy(() -> CredentialHelpers.run(
-                        List.of("/bin/sh", "-c", "true"), Map.of(), Duration.ofSeconds(10), "repositories.gar.token"))
+                        shell("true", "exit 0"), Map.of(), Duration.ofSeconds(10), "repositories.gar.token"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("printed nothing");
     }
@@ -103,7 +114,7 @@ class CredentialHelpersTest {
     void a_helper_that_does_not_answer_in_time_is_killed_and_the_resolve_fails() {
         long start = Clock.SYSTEM.nanos();
         assertThatThrownBy(() -> CredentialHelpers.run(
-                        List.of("/bin/sh", "-c", "sleep 30"),
+                        shell("sleep 30", CMD.resolveSibling("PING.EXE") + " -n 31 127.0.0.1 > nul"),
                         Map.of(),
                         Duration.ofMillis(300),
                         "repositories.gar.token"))
@@ -114,9 +125,16 @@ class CredentialHelpersTest {
 
     @Test
     void the_executable_is_found_on_the_requests_path_not_the_engines() {
-        assertThat(CredentialHelpers.executable("sh", Map.of("PATH", "/nowhere:/bin:/usr/bin"), "w"))
-                .endsWith("/sh");
-        assertThatThrownBy(() -> CredentialHelpers.executable("sh", Map.of("PATH", "/nowhere"), "repositories.x.token"))
+        String name = Os.isWindows() ? "cmd" : "sh";
+        Path nowhere = Path.of("/nowhere").toAbsolutePath();
+        String path = Os.isWindows()
+                ? nowhere + File.pathSeparator + CMD.getParent()
+                : nowhere + File.pathSeparator + "/bin" + File.pathSeparator + "/usr/bin";
+        assertThat(Path.of(CredentialHelpers.executable(name, Map.of("PATH", path), "w"))
+                        .getFileName())
+                .hasToString(Os.isWindows() ? "cmd.exe" : "sh");
+        assertThatThrownBy(() ->
+                        CredentialHelpers.executable(name, Map.of("PATH", nowhere.toString()), "repositories.x.token"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("not on your PATH");
     }

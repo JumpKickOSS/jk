@@ -266,6 +266,11 @@ public final class JavaCompile {
         return Hashing.sha256Hex(key + "\nreferences");
     }
 
+    /** The task the reference index of {@code taskId}'s compile is cached under: a file name on every OS. */
+    static String referencesTaskId(String taskId) {
+        return taskId + "+references";
+    }
+
     /**
      * Caches the reference index beside the classes the compile keyed {@code key} wrote: it lives
      * outside the class output, so without this a compile served from the cache left the index
@@ -284,7 +289,7 @@ public final class JavaCompile {
                 if (!cas.contains(hex)) cas.putFile(file, hex);
                 files.put(dir.relativize(file).toString().replace('\\', '/'), hex);
             });
-            if (!files.isEmpty()) cache.storeWithOutputs(taskId + ":references", referencesKey(key), Map.of(), files);
+            if (!files.isEmpty()) cache.storeWithOutputs(referencesTaskId(taskId), referencesKey(key), Map.of(), files);
         } catch (IOException | RuntimeException unstored) {
             Log.debug("reference index not cached for " + out, unstored);
         }

@@ -45,7 +45,8 @@ class WorkerGcTest {
     /** The JVM's default rotation moved the empty log aside as {@code <log>.0}, which nothing deleted. */
     @Test
     void the_log_flag_turns_rotation_off() {
-        assertThat(WorkerGc.flag(Path.of("/t/gc-1.log"))).endsWith("/t/gc-1.log::filecount=0");
+        Path log = Path.of("/t/gc-1.log");
+        assertThat(WorkerGc.flag(log)).endsWith(log.toAbsolutePath() + "::filecount=0");
     }
 
     @Test

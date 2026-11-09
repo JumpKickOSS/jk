@@ -57,9 +57,10 @@ class ArgumentsTest {
 
     @Test
     void an_extra_names_the_step_dependency_s_path() {
-        Arguments.Scope scope = new Arguments.Scope(List.of(), null, OUT, MODULE, name -> Path.of("/tools/" + name));
+        Path tools = Path.of("/tools").toAbsolutePath();
+        Arguments.Scope scope = new Arguments.Scope(List.of(), null, OUT, MODULE, tools::resolve);
 
         assertThat(Arguments.expand(List.of("--protoc", "${extra:protoc}", "-I${extra:protobuf-java}"), scope))
-                .containsExactly("--protoc", "/tools/protoc", "-I/tools/protobuf-java");
+                .containsExactly("--protoc", tools.resolve("protoc").toString(), "-I" + tools.resolve("protobuf-java"));
     }
 }

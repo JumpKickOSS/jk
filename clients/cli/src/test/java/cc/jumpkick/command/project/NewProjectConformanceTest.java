@@ -488,9 +488,12 @@ class NewProjectConformanceTest {
             Files.writeString(stage.resolve("drive.mjs"), DRIVER);
             Path in = Files.writeString(stage.resolve("input.json"), input);
             String home = System.getenv("NODE_HOME");
+            // A Unix Node.js keeps its binary in bin/; the Windows zip is flat, node.exe at its root.
             String node = home == null || home.isBlank()
                     ? "node"
-                    : Path.of(home, "bin", "node").toString();
+                    : Files.isRegularFile(Path.of(home, "bin", "node"))
+                            ? Path.of(home, "bin", "node").toString()
+                            : Path.of(home, "node.exe").toString();
             Process p = new ProcessBuilder(node, "drive.mjs")
                     .directory(stage.toFile())
                     .redirectInput(in.toFile())

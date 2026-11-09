@@ -200,14 +200,6 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
     }
 
     /**
-     * The user's AOT properties file, or {@code null} to use jk's defaults.
-     *
-     * <p>An <em>unset</em> {@code aot-config} falls back: {@code aot.properties} if it happens to
-     * be there, else defaults. An <em>explicitly set</em> one does not — a typo'd path would
-     * otherwise produce a green build that silently optimized with jk's defaults instead of the
-     * configuration the user wrote, and nothing in the output would say so.
-     */
-    /**
      * The module-relative properties file this build reads: {@code aot-config} when set, else the
      * conventional {@code aot.properties}. One spelling for the declared input and the step body,
      * so the action key covers the file the body actually opens.
@@ -219,6 +211,14 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
                 .orElse(DEFAULT_AOT_CONFIG);
     }
 
+    /**
+     * The user's AOT properties file, or {@code null} to use jk's defaults.
+     *
+     * <p>An <em>unset</em> {@code aot-config} falls back: {@code aot.properties} if it happens to
+     * be there, else defaults. An <em>explicitly set</em> one does not — a typo'd path would
+     * otherwise produce a green build that silently optimized with jk's defaults instead of the
+     * configuration the user wrote, and nothing in the output would say so.
+     */
     static @Nullable Path userConfigFile(Path moduleDir, @Nullable String configured) throws IOException {
         String spec = configured == null ? "" : configured.trim();
         if (spec.isEmpty()) {
@@ -227,7 +227,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         }
         Path named = moduleDir.resolve(spec);
         if (!Files.isRegularFile(named)) {
-            throw new IOException("[micronaut] aot-config: no file at "
+            throw new IOException("[micronaut] aot-config = \"" + spec + "\": no file at "
                     + named.toAbsolutePath().normalize() + "; fix the path or remove the key");
         }
         return named;

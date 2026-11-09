@@ -61,6 +61,7 @@ class MavenRepoMirrorTest {
         SessionContext.reset();
     }
 
+    private static final Path USER_CONFIG = Path.of("/home/me/.jk/config.toml");
     private static final Coordinate WIDGET = Coordinate.of("com.example", "widget", "1.0");
     private static final byte[] POM = """
             <project>
@@ -181,7 +182,7 @@ class MavenRepoMirrorTest {
                 new MirrorOf(List.of("*")),
                 new RepoCredential.Bearer("corp-token"),
                 false,
-                Path.of("/home/me/.jk/config.toml"));
+                USER_CONFIG);
         MavenRepo central = new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas")));
 
         MavenRepo mirrored = RepoMirrors.apply(central, List.of(corpMirror), settings, creds(settings, dir));
@@ -189,7 +190,7 @@ class MavenRepoMirrorTest {
 
         assertThat(mirrored.mirror()).hasValueSatisfying(m -> {
             assertThat(m.id()).isEqualTo("corp");
-            assertThat(m.label()).isEqualTo("mirror `corp` (/home/me/.jk/config.toml)");
+            assertThat(m.label()).isEqualTo("mirror `corp` (" + USER_CONFIG + ")");
             assertThat(m.refusal()).isNull();
         });
         assertThat(corp.headersFor("/com/example/widget/1.0/widget-1.0.pom"))
@@ -207,7 +208,7 @@ class MavenRepoMirrorTest {
                 new MirrorOf(List.of("central")),
                 null,
                 true,
-                Path.of("/home/me/.jk/config.toml"));
+                USER_CONFIG);
         MavenRepo central = new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas")));
 
         MavenRepo mirrored = RepoMirrors.apply(
@@ -227,8 +228,8 @@ class MavenRepoMirrorTest {
             throws Exception {
         origin.serve("/com/example/widget/1.0/widget-1.0.pom", new String(POM, StandardCharsets.UTF_8));
         try (DeadEndpoint dead = DeadEndpoint.open()) {
-            RepositoryMirror corp = new RepositoryMirror(
-                    "corp", dead.uri(), new MirrorOf(List.of("*")), null, false, Path.of("/home/me/.jk/config.toml"));
+            RepositoryMirror corp =
+                    new RepositoryMirror("corp", dead.uri(), new MirrorOf(List.of("*")), null, false, USER_CONFIG);
             MavenRepo optional = new MavenRepo("central", origin.base(), Http.failFast(), new Cas(dir.resolve("cas")))
                     .withOptional(true);
 
@@ -237,7 +238,7 @@ class MavenRepoMirrorTest {
 
             assertThatThrownBy(() -> mirrored.fetchPom(WIDGET))
                     .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
-                    .hasMessageContaining("its mirror `corp` (/home/me/.jk/config.toml)")
+                    .hasMessageContaining("its mirror `corp` (" + USER_CONFIG + ")")
                     .hasMessageContaining("fix or start the mirror");
         }
         assertThat(origin.requested()).isEmpty();
@@ -251,8 +252,8 @@ class MavenRepoMirrorTest {
             exchange.close();
         });
         origin.serve("/com/example/widget/1.0/widget-1.0.pom", new String(POM, StandardCharsets.UTF_8));
-        RepositoryMirror corp = new RepositoryMirror(
-                "corp", nexus.base(), new MirrorOf(List.of("*")), null, false, Path.of("/home/me/.jk/config.toml"));
+        RepositoryMirror corp =
+                new RepositoryMirror("corp", nexus.base(), new MirrorOf(List.of("*")), null, false, USER_CONFIG);
         MavenRepo central = new MavenRepo("central", origin.base(), new Http(), new Cas(dir.resolve("cas")));
 
         MavenRepo mirrored =

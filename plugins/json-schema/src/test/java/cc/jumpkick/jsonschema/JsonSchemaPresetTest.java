@@ -82,9 +82,9 @@ class JsonSchemaPresetTest {
             "/store/s/json/x.json"
         });
 
-        assertThat(cli)
-                .containsExactly(
-                        "-t", "/out", "-a", "JACKSON2", "-s", "/m/src/main/resources/json,/store/s/json/x.json");
+        String root = Path.of("/m/src/main/resources/json").toAbsolutePath().toString();
+        String loose = Path.of("/store/s/json/x.json").toAbsolutePath().toString();
+        assertThat(cli).containsExactly("-t", "/out", "-a", "JACKSON2", "-s", root + "," + loose);
     }
 
     /** A schema naming another file by $ref generates both, the referenced one in its subpackage. */
