@@ -28,6 +28,11 @@ class EngineSpawnLineTest {
         List<String> cmd = EngineSpawn.jarCommand(paths, jarTarget(), new JkEngineConfig(64));
 
         assertThat(cmd).containsAll(EngineJvmFlags.BASE);
+        assertThat(cmd).as("the memory flags").contains("-XX:+UseCompactObjectHeaders");
+        assertThat(EngineJvmFlags.memory(24)).contains("-XX:CICompilerCount=4");
+        assertThat(EngineJvmFlags.memory(4))
+                .as("below 8 cores HotSpot starts no more compiler threads than that")
+                .noneMatch(f -> f.startsWith("-XX:CICompilerCount"));
         assertThat(cmd).contains("-XX:+ExitOnOutOfMemoryError", "-XX:+HeapDumpOnOutOfMemoryError");
         assertThat(cmd)
                 .as("a directory, so every exit writes its own java_pid<pid>.hprof")

@@ -655,6 +655,7 @@ public final class EngineSpawn {
         // The OOM heap dump lands in the engine directory beside the log, one file per exit
         // (HotSpot names a dump into a directory java_pid<pid>.hprof).
         command.addAll(EngineJvmFlags.BASE);
+        command.addAll(EngineJvmFlags.memory(Runtime.getRuntime().availableProcessors()));
         command.add(EngineJvmFlags.heapDumpPath(EnginePaths.heapDumpDir(paths)));
         // Metaspace/stack mirror what workers already get from JvmOptions.
         command.add("-XX:MaxMetaspaceSize=256m");

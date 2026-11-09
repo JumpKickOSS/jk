@@ -41,6 +41,19 @@ public final class EngineJvmFlags {
             "--add-opens=java.base/sun.nio.fs=ALL-UNNAMED");
 
     /**
+     * Flags that lower the engine's resident memory, for a host with {@code cores} processors. The
+     * engine runs on JDK 25 or newer, so both are safe. Compact object headers shrink every object by
+     * a word. Four JIT compiler threads, where HotSpot would start about twelve on 24 cores, cap the
+     * compilers' scratch memory during warm-up: on Helidon the engine's peak RSS during a cold build
+     * fell from ~375 to ~330 MiB with no wall change. Below 8 cores HotSpot already starts no more.
+     */
+    public static List<String> memory(int cores) {
+        return cores >= 8
+                ? List.of("-XX:+UseCompactObjectHeaders", "-XX:CICompilerCount=4")
+                : List.of("-XX:+UseCompactObjectHeaders");
+    }
+
+    /**
      * Where {@code -XX:+HeapDumpOnOutOfMemoryError} writes. A directory: HotSpot then names each dump
      * {@code java_pid<pid>.hprof}, so every exit leaves its own file. Per engine home, so not in
      * the shared list.
