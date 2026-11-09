@@ -21,6 +21,7 @@ import { BuildBars, ModuleDepGraph } from './chart.js';
 import { CodeView } from './code.js';
 import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
 import { DecisionDialog, decisionData, decisionMethods } from './decisions.js';
+import { askLine, notifyData, notifyMethods } from './notify.js';
 import { foldEvent, seedFromHistory } from './fold.js';
 import {
   ago as agoOf,
@@ -54,6 +55,7 @@ export const appOptions = {
   data: () => ({
     ...consoleData(routeFromHash()),
     ...decisionData(routeFromHash()),
+    ...notifyData(),
     view: routeFromHash().view, // 'console' | 'projects' | 'project' | 'status' | 'new'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
@@ -130,6 +132,7 @@ export const appOptions = {
     window.addEventListener('pageshow', (event) => this.resumeEvents(event));
     // pause offline REST polling while the tab is hidden; keep SSE open (orphan engine).
     document.addEventListener('visibilitychange', () => {
+      this.reportPresence(); // the engine notifies through the browser only while no tab is visible
       if (document.hidden) this.clearOfflineStatusFallback();
       else if (this.connection !== 'live' && this.connection !== 'unauthorized') {
         this.scheduleOfflineStatusFallback();
@@ -140,6 +143,10 @@ export const appOptions = {
   },
 
   computed: {
+    /** The bell's line asking for notification permission; empty once the browser was answered. */
+    notifyAsk() {
+      return askLine(this.notifyPermission);
+    },
     ...wizardComputed,
     ...projectComputed,
     ...consoleComputed,
@@ -158,6 +165,7 @@ export const appOptions = {
     ...projectMethods,
     ...consoleMethods,
     ...decisionMethods,
+    ...notifyMethods,
     ...cardMethods,
     ...statusMethods,
     ...wizardMethods,
@@ -276,6 +284,8 @@ export const appOptions = {
       this._eventSource = events(
         (event) => {
           if (this.authModal || this.connection === 'unauthorized') return;
+          // The stream's presence ping and the notifications the engine routes through this tab.
+          if (this.notifyEvent(event)) return;
           // The session log and the decision queue feed the console.
           if (this.applyConsoleEvent(event)) return;
           // Live vitals: change-gated on the server; apply without folding cards.

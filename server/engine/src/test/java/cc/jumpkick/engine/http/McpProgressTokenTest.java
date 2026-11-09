@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.decisions.Dashboards;
 import cc.jumpkick.engine.jobs.JobSpec;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +66,7 @@ class McpProgressTokenTest {
         ProgressTokenRegistry tokens = new ProgressTokenRegistry();
         HttpEvents hub = new HttpEvents();
         try (LiveVitals vitals = new LiveVitals(hub, () -> null, () -> null)) {
-            SseEndpoint sse = new SseEndpoint(hub, vitals, tokens, line -> {});
+            SseEndpoint sse = new SseEndpoint(hub, new Dashboards(), vitals, tokens, line -> {});
             try (HttpEvents.Subscription s =
                     hub.subscribeFollowing(HttpEvents.FrameStyle.MCP, sse.mcpEventFilter("progressToken=t-1"))) {
                 hub.publish("eta", JsonOut.object().put("jid", 42L));

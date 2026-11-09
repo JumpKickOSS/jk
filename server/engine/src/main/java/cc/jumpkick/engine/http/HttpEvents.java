@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.EventCatalog;
 import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.List;
@@ -182,7 +183,10 @@ public final class HttpEvents {
             EngineProtocol.MODULE_FINISH,
             EngineProtocol.BUILDPLAN_FINISH,
             "plan",
-            "error");
+            "error",
+            EventCatalog.SSE_DECISION,
+            EventCatalog.SSE_PRESENCE,
+            EventCatalog.SSE_NOTIFY);
 
     /**
      * Critical for live dashboard UX — never shed these for an {@code output} flood. Everything

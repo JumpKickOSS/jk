@@ -101,10 +101,12 @@ public final class EventCatalog {
     public static final String SSE_EPISODE = "episode";
     public static final String SSE_ACTION = "action";
     public static final String SSE_DECISION = "decision";
+    public static final String SSE_PRESENCE = "presence";
+    public static final String SSE_NOTIFY = "notify";
 
     /** SSE frames published to dashboard subscribers alone ({@code publishDashboard}): not sent to MCP. */
     public static final Set<String> DASHBOARD_ONLY =
-            Set.of(SSE_STATUS, SSE_CACHE, SSE_SESSION, SSE_EPISODE, SSE_ACTION, SSE_DECISION);
+            Set.of(SSE_STATUS, SSE_CACHE, SSE_SESSION, SSE_EPISODE, SSE_ACTION, SSE_DECISION, SSE_PRESENCE, SSE_NOTIFY);
 
     // Console JSONL record names that are not wire types.
     public static final String JSONL_WORKSPACE_START = "workspace-start";
@@ -346,6 +348,16 @@ public final class EventCatalog {
                     new Omitted("the engine's decision queue; the CLI reads it with jk decide"),
                     new Omitted("the engine's decision queue; -O jsonl prints one command's run"),
                     Carried.as(SSE_DECISION, "dashboard only: a decision opened or settled (DecisionQueue)")),
+            new Row(
+                    SSE_PRESENCE,
+                    new Omitted("the dashboard's own stream: its id and the ping each tab answers with its state"),
+                    new Omitted("the dashboard's own stream"),
+                    Carried.as(SSE_PRESENCE, "dashboard only, to one stream: on connect and every 15s (Dashboards)")),
+            new Row(
+                    SSE_NOTIFY,
+                    new Omitted("a browser notification; the CLI's are the engine's native ones"),
+                    new Omitted("a browser notification"),
+                    Carried.as(SSE_NOTIFY, "dashboard only, to the one hidden tab chosen to notify (Dashboards)")),
             new Row(
                     EngineProtocol.GUARD_EVENT,
                     new Omitted("written by the CLI from the guard's result"),

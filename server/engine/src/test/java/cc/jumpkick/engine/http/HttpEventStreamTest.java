@@ -6,7 +6,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.decisions.Dashboards;
+import cc.jumpkick.engine.decisions.Decision;
+import cc.jumpkick.engine.decisions.DecisionForms;
+import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.wire.protocol.EventCatalog;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -36,6 +41,42 @@ class HttpEventStreamTest extends HttpEngineServerHarness {
         // Connect hydrate may publish status/cache before our frame.
         events.publish("request-start", JsonOut.object().put("jid", 1).put("kind", "build"));
         assertThat(awaitSseEvent(lines, "request-start")).isEqualTo("data: {\"jid\":1,\"kind\":\"build\"}");
+    }
+
+    @Test
+    void a_dashboard_stream_names_itself_takes_its_tabs_reports_and_carries_its_notifications() throws Exception {
+        server.sse().pingMillis(100);
+        var lines = openEvents("");
+        String hello = awaitSseEvent(lines, EventCatalog.SSE_PRESENCE);
+        String stream = hello.replaceAll(".*\"stream\":\"([^\"]+)\".*", "$1");
+        assertThat(awaitSseEvent(lines, EventCatalog.SSE_PRESENCE))
+                .as("pinged again")
+                .isEqualTo(hello);
+
+        assertThat(postPresence(stream, "{\"visible\":false,\"permission\":\"granted\"}")
+                        .statusCode())
+                .isEqualTo(200);
+        assertThat(server.dashboards().channel()).isEqualTo(new Dashboards.Channel.Browser(stream));
+        assertThat(postPresence(stream, "{\"visible\":true,\"permission\":\"granted\"}")
+                        .statusCode())
+                .isEqualTo(200);
+        assertThat(server.dashboards().channel()).isEqualTo(new Dashboards.Channel.InApp());
+        assertThat(postPresence("no-such-stream", "{\"visible\":true}").statusCode())
+                .isEqualTo(404);
+        assertThat(postPresence(stream, "[]").statusCode()).isEqualTo(400);
+
+        Decision d = new DecisionQueue()
+                .open(new DecisionQueue.Ask(
+                        "disk-clean",
+                        "Clean jk's cache?",
+                        List.of(),
+                        DecisionForms.confirm("disk-clean", "Clean jk's cache?", "Yes"),
+                        null,
+                        null,
+                        null,
+                        null));
+        assertThat(server.dashboards().notify(stream, d)).isTrue();
+        assertThat(awaitSseEvent(lines, EventCatalog.SSE_NOTIFY)).contains("\"id\":\"" + d.id() + "\"");
     }
 
     @Test
@@ -196,5 +237,16 @@ class HttpEventStreamTest extends HttpEngineServerHarness {
         assertThat(server.matchLiveRun(Map.of("dir", "/w"))).isEqualTo(run); // legacy stub
         assertThat(server.matchLiveRun(Map.of("dir", "/w", "buildNumber", 5L)))
                 .isNull(); // stale record, wrong build — no dir-only rebind
+    }
+
+    private HttpResponse<String> postPresence(String stream, String body) throws Exception {
+        return client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/events/" + stream))
+                        .header("Authorization", "Bearer " + token())
+                        .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 }

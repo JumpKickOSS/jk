@@ -336,14 +336,16 @@ JumpKick asks by the first rung the session supports ([revisions](#protocol-revi
    run(decision=3f9a0c1e…)
    ```
 
-   Then `[ui] ask` ([Config](config.md#decisions)) applies once: `notify` (default) sends a desktop
-   notification carrying the link (a click opens it on Windows and Linux), `open` opens the
-   browser on it, `quiet` leaves the link in the result.
+   Then `[ui] ask` ([Config](config.md#decisions)) applies once: `notify` (default) rings the bell
+   of a visible dashboard, or shows a browser notification from a hidden one that may notify, or
+   else sends a desktop notification carrying the link (a click opens it on Windows and Linux)
+   ([Web](web.md#notifications)); `open` opens the browser on it, `quiet` leaves the link in the
+   result.
 
 When another surface answers while the host's question is still open, JumpKick withdraws it: a form
 question gets `notifications/cancelled`, a link gets `notifications/cancelled` and
-`notifications/elicitation/complete`, the desktop notification is closed, and the dashboard's
-bell and Needs-you banner drop the decision.
+`notifications/elicitation/complete`, the desktop or browser notification is closed, and the
+dashboard's bell and Needs-you banner drop the decision.
 
 `run(decision=<id>)` makes the original call again with the decision: it proceeds once the
 decision is accepted (once only), answers `DECLINED` or `EXPIRED` when it was not, and while it is

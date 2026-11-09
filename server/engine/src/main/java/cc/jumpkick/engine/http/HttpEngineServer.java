@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.decisions.Dashboards;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.decisions.Decisions;
 import cc.jumpkick.engine.http.mcp.McpConnections;
@@ -61,6 +62,9 @@ public final class HttpEngineServer implements AutoCloseable {
     private final EngineHttpJobs jobs;
     private final ProgressTokenRegistry progressTokens;
     private final SseEndpoint sse;
+    /** The dashboard tabs on {@code /api/events} and what each reports: who a decision notifies. */
+    private final Dashboards dashboards = new Dashboards();
+
     private final BuildJournal journal;
     private final Supplier<List<BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
@@ -144,7 +148,8 @@ public final class HttpEngineServer implements AutoCloseable {
         api.registerPrefix("POST", HttpDecisionsApi.PREFIX, decisionsApi::handleAnswer);
         queue.onChange(d -> events.publishDashboard(EventCatalog.SSE_DECISION, JsonOut.rawObject(d.toMap())));
         if (mcp != null) {
-            Decisions decisions = new Decisions(queue, id -> DashboardLinks.decision(url(), tokens.tokenText(), id));
+            Decisions decisions =
+                    new Decisions(queue, id -> DashboardLinks.decision(url(), tokens.tokenText(), id), dashboards);
             this.decisions = decisions;
             mcp.decisions(decisions);
         }
@@ -223,7 +228,7 @@ public final class HttpEngineServer implements AutoCloseable {
         if (this.mcp != null) this.mcp.cacheSnapshot(cache);
         // details serves a budgeted tail of the journal-owned details.jsonl transcript.
         if (this.mcp != null) this.mcp.detailsFile(journal::detailsFile);
-        this.sse = new SseEndpoint(events, liveVitals, progressTokens, this.log);
+        this.sse = new SseEndpoint(events, dashboards, liveVitals, progressTokens, this.log);
         this.mcpFront = this.mcp == null ? null : new McpFront(this.mcp, sse, version);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.coverageReport = new HttpCoverageReport(journal, tokens);
@@ -235,6 +240,7 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/status", readApi::handleStatus);
         api.register("GET", "/api/config", readApi::handleConfig);
         api.register("GET", "/api/events", sse::serveDashboard);
+        api.registerPrefix("POST", SseEndpoint.PRESENCE_PREFIX, sse::report);
         api.register("GET", "/api/log", readApi::handleLog);
         api.register("GET", "/api/fs", readApi::handleFs);
         api.register("POST", "/api/build", readApi::handleBuild);
@@ -481,6 +487,10 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Test seam: the SSE endpoint, for its heartbeat and filter knobs. */
     SseEndpoint sse() {
         return sse;
+    }
+
+    Dashboards dashboards() {
+        return dashboards;
     }
 
     /** How many long-lived SSE streams are attached right now (dashboard + MCP); see {@link HttpAdmission}. */

@@ -332,6 +332,13 @@ const COALESCE_TYPES = new Set([
 ]);
 
 /**
+ * Frames handed over as they arrive, never queued: the engine's presence ping, which the tab
+ * answers with its state, and a browser notification to show. Both matter most in a hidden tab,
+ * where the drain's timers run late.
+ */
+const IMMEDIATE_TYPES = new Set([SSE.presence, SSE.notify]);
+
+/**
  * True for an error-typed event that is really an engine frame (`event: error` with a payload),
  * false for EventSource's own data-less error when the connection drops. Exported for the
  * headless suite.
@@ -456,7 +463,14 @@ export function events(onEvent, onState) {
   for (const type of EVENT_TYPES) {
     source.addEventListener(type, (e) => {
       try {
-        enqueue({ type, data: JSON.parse(e.data) });
+        const event = { type, data: JSON.parse(e.data) };
+        // A hidden tab's timers are throttled to a minute: the ping and a notification to show
+        // cannot wait in the drain queue.
+        if (IMMEDIATE_TYPES.has(type)) {
+          onEvent(event);
+          return;
+        }
+        enqueue(event);
         scheduleDrain();
       } catch {
         // a malformed frame is dropped, never fatal to the stream

@@ -145,6 +145,31 @@ test('a named error frame is an event, not a disconnect', async () => {
   assert.deepEqual(states, ['live', 'offline']);
 });
 
+// A hidden tab's timers run as late as once a minute: the presence ping and a notification to show
+// are handed over as they arrive, not queued behind the drain.
+test('the presence ping and a notification skip the drain queue', () => {
+  const sources = [];
+  globalThis.document = { hidden: true, addEventListener() {}, removeEventListener() {} };
+  globalThis.EventSource = class {
+    static CLOSED = 2;
+    constructor() {
+      this.readyState = 1;
+      this.listeners = new Map();
+      sources.push(this);
+    }
+    addEventListener(type, fn) {
+      this.listeners.set(type, fn);
+    }
+  };
+  const got = [];
+  events((ev) => got.push(ev), () => {});
+  const source = sources[0];
+  source.listeners.get('presence')({ data: JSON.stringify({ stream: 's-1' }) });
+  source.listeners.get('notify')({ data: JSON.stringify({ id: 'd1' }) });
+  source.listeners.get('status')({ data: JSON.stringify({}) });
+  assert.deepEqual(got.map((e) => e.type), ['presence', 'notify'], 'synchronously, before any drain');
+});
+
 test('isServerFrame tells an engine frame from a dropped connection', () => {
   assert.equal(isServerFrame({ type: 'error', data: '{}' }), true);
   assert.equal(isServerFrame({ type: 'error' }), false);

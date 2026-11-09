@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.UiAsk;
 import cc.jumpkick.desktop.DesktopIdentity;
+import cc.jumpkick.engine.decisions.Dashboards;
 import cc.jumpkick.engine.decisions.Decision;
 import cc.jumpkick.engine.decisions.DecisionAlerts;
 import cc.jumpkick.engine.decisions.DecisionQueue;
@@ -53,7 +54,7 @@ class McpDecisionsTest {
     private final ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor();
     private final DecisionQueue queue = new DecisionQueue();
     private final List<List<String>> launched = Collections.synchronizedList(new ArrayList<>());
-    private final Decisions decisions = new Decisions(queue, id -> BASE + "#decision/" + id + "?t=T")
+    private final Decisions decisions = new Decisions(queue, id -> BASE + "#decision/" + id + "?t=T", new Dashboards())
             .alerts(new DecisionAlerts(argv -> launched.add(argv), "Linux", name -> null, scratchIdentity()))
             .ask(() -> UiAsk.NOTIFY);
     private final AtomicInteger done = new AtomicInteger();

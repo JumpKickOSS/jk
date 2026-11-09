@@ -54,7 +54,7 @@
       <div class="hdr-actions">
         <!-- The bell: open decisions on every page; an entry opens its dialog (#decision/<id>). -->
         <div class="bell">
-          <button class="icon-btn bell-btn" :class="{ waiting: needsYou.length }" @click="toggleBell()"
+          <button class="icon-btn bell-btn" :class="{ waiting: needsYou.length, pulse: bellPulse }" @click="toggleBell()"
                   aria-haspopup="true" :aria-expanded="bellOpen"
                   :aria-label="needsYou.length ? needsYou.length + ' decisions need you' : 'Decisions'"
                   :data-tip="bellOpen ? null : 'Decisions waiting on you'">
@@ -71,6 +71,11 @@
                 <span class="needs-meta">{{ d.askedBy }}<template v-if="d.openedAt"> · asked {{ ago(d.openedAt) }}</template></span>
               </span>
             </a>
+            <!-- The one ask for notification permission: on a click, never on load, gone once answered. -->
+            <div v-if="notifyAsk" class="bell-ask">
+              <p>{{ notifyAsk }}</p>
+              <button type="button" class="action-cyan" @click="askNotifications()">Turn on notifications</button>
+            </div>
           </div>
         </div>
         <button class="icon-btn" @click="help = true" aria-label="Help" data-tip="About &amp; help"><jk-icon name="help"></jk-icon></button>

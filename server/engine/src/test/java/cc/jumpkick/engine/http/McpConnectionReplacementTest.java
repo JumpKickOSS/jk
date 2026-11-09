@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionExpiry;
+import cc.jumpkick.engine.decisions.Dashboards;
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.SessionJournal;
@@ -261,8 +262,8 @@ class McpConnectionReplacementTest {
     private URI serve(McpHandler handler) throws Exception {
         HttpEvents hub = new HttpEvents();
         LiveVitals vitals = new LiveVitals(hub, () -> null, () -> null);
-        McpFront front =
-                new McpFront(handler, new SseEndpoint(hub, vitals, new ProgressTokenRegistry(), line -> {}), "1");
+        McpFront front = new McpFront(
+                handler, new SseEndpoint(hub, new Dashboards(), vitals, new ProgressTokenRegistry(), line -> {}), "1");
         HttpServer s = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         s.createContext("/mcp", exchange -> {
             try (exchange) {

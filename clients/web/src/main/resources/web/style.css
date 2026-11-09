@@ -2704,6 +2704,24 @@ details.earlier .tl { margin-top: 6px; }
 .bell-row:hover { background: rgba(var(--warn-rgb), 0.07); }
 .bell-row .dot-warn { margin-top: 6px; }
 .bell-row .needs-body { display: grid; gap: 2px; }
+/* A decision that arrives while the tab is in front of someone rings the bell; nothing pops up. */
+@keyframes bellRing {
+  0%, 100% { transform: rotate(0); }
+  10%, 30%, 50% { transform: rotate(14deg); }
+  20%, 40%, 60% { transform: rotate(-14deg); }
+  70% { transform: rotate(0); }
+}
+.bell-btn.pulse .ico { animation: bellRing 1.2s var(--ease) 2; transform-origin: 50% 10%; }
+.bell-ask {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 12px 14px;
+  border-top: 1px solid var(--bd2);
+  background: rgba(var(--cn-rgb), 0.04);
+}
+.bell-ask p { margin: 0; color: var(--mu); font-size: 12px; line-height: 1.45; }
+.bell-ask .action-cyan { padding: 5px 10px; font-size: 12px; border-color: rgba(var(--cn-rgb), 0.35); color: var(--cn); }
 
 .decision-modal-bg { z-index: 75; }
 .modal.decision-modal {

@@ -254,6 +254,27 @@ outside it) answers nothing: the decision stays open in the bell.
 The first answer wins, wherever it came from. When another surface answers first, an open dialog
 says how and where it was settled and closes, and the host's question, the desktop notification,
 the bell entry and the Needs-you row close.
+
+### Notifications
+
+Under `[ui] ask = notify` ([Config](config.md#decisions)) JumpKick tells you about a decision once,
+by the first of these that applies:
+
+1. **A dashboard tab is visible.** Nothing pops up. The bell rings and its count rises; the dialog
+   waits for you to open it, so a decision never lands over what you are typing.
+2. **A hidden dashboard tab may notify.** One browser notification, **JumpKick needs you**, with the
+   question. A click brings that tab forward with the dialog open. It closes when the decision is
+   answered anywhere. The desktop notification is skipped.
+3. **Otherwise** the desktop notification, as [Config](config.md#decisions) describes.
+
+To let the dashboard notify, open the bell and click **Turn on notifications**; the browser asks
+once. The bell never asks on its own, and the button is gone once you have answered either way
+(change it later in the browser's site settings). A tab the browser froze, or a machine that slept,
+stops answering the engine; after 45 seconds it counts for nothing and the desktop notification
+fires instead.
+
+The browser keeps the permission per origin, and the port is part of the origin: each engine's
+dashboard port (`127.0.0.1:8910`, `127.0.0.1:8920`, `localhost:8910`) asks separately.
 Settled decisions are kept under the same `[history]` retention as sessions.
 `GET /api/decisions` lists open decisions first, then recently settled ones; `GET
 /api/decisions/<id>` returns one; `POST /api/decisions/<id>` answers it; every change is an SSE

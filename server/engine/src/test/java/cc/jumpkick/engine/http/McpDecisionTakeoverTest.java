@@ -8,6 +8,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionExpiry;
+import cc.jumpkick.engine.decisions.Dashboards;
 import cc.jumpkick.engine.decisions.Decision;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.decisions.DecisionSurface;
@@ -188,7 +189,7 @@ class McpDecisionTakeoverTest {
                 "0.13.7");
         h.sessions(log);
         h.tools(new McpTools(List.of(new Update(), new RunTool())));
-        h.decisions(new Decisions(queue, id -> null));
+        h.decisions(new Decisions(queue, id -> null, new Dashboards()));
         h.waitSecondMs(1);
         return new Engine(h, queue);
     }

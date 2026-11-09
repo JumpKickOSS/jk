@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.api.HttpLive;
+import cc.jumpkick.engine.decisions.Dashboards;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.decisions.Decisions;
 import cc.jumpkick.engine.http.AdmissionYield;
@@ -130,7 +131,7 @@ public final class McpContext {
      * {@code jk decide}.
      */
     @Setter
-    private volatile Decisions decisions = new Decisions(new DecisionQueue(), id -> null);
+    private volatile Decisions decisions = new Decisions(new DecisionQueue(), id -> null, new Dashboards());
 
     /** The tool registered under a name, for {@code run(decision=<id>)} to call again; null for none. */
     @Getter(AccessLevel.PACKAGE)

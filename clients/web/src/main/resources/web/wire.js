@@ -24,7 +24,8 @@ export const EVENT = Object.freeze({
 /**
  * The dashboard's own SSE vocabulary — request lifecycle, mid-flight catch-up, chrome vitals. No
  * socket-protocol token spells these; the engine writes them as literals (SsePublisher, LiveRuns,
- * LiveVitals), which is what the parity test checks them against.
+ * LiveVitals) or names them in EventCatalog (`decision`, and `presence` / `notify`: the stream's id
+ * and ping, and a browser notification to show), which is what the parity test checks them against.
  */
 export const SSE = Object.freeze({
   requestQueued: 'request-queued',
@@ -34,6 +35,8 @@ export const SSE = Object.freeze({
   plan: 'plan',
   cache: 'cache',
   decision: 'decision',
+  presence: 'presence',
+  notify: 'notify',
 });
 
 /**

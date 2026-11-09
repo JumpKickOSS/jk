@@ -135,6 +135,13 @@ The wire tokens live in `wire.js`: `LOG` (`session`, `episode`, `action`, held t
 `EventCatalog.DASHBOARD_ONLY` by `WireTokenParityTest`) and `QUEUE` (`decision`); `api.js` listens
 for every one. The decision dialog (`#decision/<id>`, over whatever page is showing) and answering are the decision queue's.
 
+`notify.js` is the tab's half of telling the person once ([HTTP](http.md#one-channel-per-decision)):
+it answers the stream's `presence` ping with the tab's visibility and `Notification.permission`,
+shows the `notify` frame's notification only from a hidden tab that may (a visible one rings the
+bell, `bellPulse`), closes a settled decision's notification by tag, and puts the one permission
+ask, behind a click, at the foot of the bell's menu while the permission is `default`. The tests are
+`notify.test.mjs`.
+
 **First meaningful paint.** Once the rail and the selected episode (or the empty state) are
 rendered, `markConsolePainted` waits for Vue's patch and the next frame, then sets
 `performance.mark('jk-console-painted')` and `<html data-console-painted-ms>` (milliseconds since

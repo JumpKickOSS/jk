@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.decisions.Dashboards;
+import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.wire.protocol.EventCatalog;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -15,6 +22,12 @@ import org.jspecify.annotations.Nullable;
  * event fall between the hydrate snapshot and the live queue, then the heartbeat and batch drain.
  * Holds an SSE-budget slot (not an RPC admission permit) for the stream's life; a dead-client write
  * or the server's shutdown interrupt ends it.
+ *
+ * <p>A dashboard stream is also how the engine knows the tab: it opens with a {@code presence}
+ * frame naming the stream, repeats it every {@link Dashboards#PING_EVERY}, and the tab answers each
+ * with {@code POST /api/events/<stream>} saying whether it is visible and may notify. EventSource
+ * cannot write upstream, so that post is the stream's return half, not a second channel: it names
+ * no tab the stream does not hold, and the tab leaves {@link Dashboards} when its stream ends.
  */
 final class SseEndpoint {
 
@@ -27,7 +40,11 @@ final class SseEndpoint {
      */
     static final long DEFAULT_HEARTBEAT_MILLIS = 1_000;
 
+    /** Where {@code POST /api/events/<stream>} reports land. */
+    static final String PRESENCE_PREFIX = "/api/events/";
+
     private final HttpEvents events;
+    private final Dashboards dashboards;
     private final LiveVitals liveVitals;
     private final ProgressTokenRegistry progressTokens;
     private final Consumer<String> log;
@@ -41,9 +58,16 @@ final class SseEndpoint {
     private volatile Consumer<HttpEvents.Subscription> onConnect = s -> {};
 
     private long heartbeatMillis = DEFAULT_HEARTBEAT_MILLIS;
+    private long pingMillis = Dashboards.PING_EVERY.toMillis();
 
-    SseEndpoint(HttpEvents events, LiveVitals liveVitals, ProgressTokenRegistry progressTokens, Consumer<String> log) {
+    SseEndpoint(
+            HttpEvents events,
+            Dashboards dashboards,
+            LiveVitals liveVitals,
+            ProgressTokenRegistry progressTokens,
+            Consumer<String> log) {
         this.events = events;
+        this.dashboards = dashboards;
         this.liveVitals = liveVitals;
         this.progressTokens = progressTokens;
         this.log = log;
@@ -57,6 +81,39 @@ final class SseEndpoint {
     /** Test seam: shrink the SSE heartbeat so quiet-stream behavior is testable in milliseconds. */
     void heartbeatMillis(long millis) {
         this.heartbeatMillis = millis;
+    }
+
+    /** Test seam: shrink the presence ping. */
+    void pingMillis(long millis) {
+        this.pingMillis = millis;
+    }
+
+    /**
+     * {@code POST /api/events/<stream>} with {@code {"visible": bool, "permission": "default" |
+     * "granted" | "denied" | "unsupported"}}: the tab on that stream says how it stands. {@code 200},
+     * {@code 404} once the stream has ended (the tab's next connect names a new one), {@code 400} for
+     * a body that is not an object.
+     */
+    void report(HttpExchange exchange) throws IOException {
+        String stream = exchange.getRequestURI().getPath().substring(PRESENCE_PREFIX.length());
+        Object parsed = MiniJson.parse(HttpRequests.body(exchange));
+        if (!(parsed instanceof Map<?, ?> body)) {
+            HttpResponses.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "the body is a JSON object").toString());
+            return;
+        }
+        boolean visible = Boolean.TRUE.equals(body.get("visible"));
+        Dashboards.Permission permission = Dashboards.Permission.parse(MiniJson.str(body, "permission"));
+        if (!dashboards.report(stream, visible, permission)) {
+            HttpResponses.sendJson(
+                    exchange,
+                    404,
+                    JsonOut.object().put("error", "no such stream: " + stream).toString());
+            return;
+        }
+        HttpResponses.sendJson(exchange, 200, "{}");
     }
 
     /**
@@ -75,7 +132,12 @@ final class SseEndpoint {
         // If anything below throws before attach, the subscription was never in the
         // hub, so hasSubscribers() cannot stay true for the process's life.
         HttpEvents.Subscription subscription = events.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
+        String stream = UUID.randomUUID().toString();
+        JsonOut presence = JsonOut.object().put("stream", stream).put("every", pingMillis);
         try {
+            dashboards.open(
+                    stream, d -> events.deliverTo(subscription, EventCatalog.SSE_NOTIFY, JsonOut.rawObject(d.toMap())));
+            events.deliverTo(subscription, EventCatalog.SSE_PRESENCE, presence);
             liveVitals.onSubscriberJoined();
             // Connect hydrate: deliver current vitals to THIS subscription only (change-gate
             // skipped) so the tab does not wait for the first 2s / 60s sampler tick — without
@@ -99,8 +161,13 @@ final class SseEndpoint {
             // write+flush per event (that stalls the socket while the CLI TUI stays smooth).
             List<String> batch = new ArrayList<>(64);
             byte[] heartbeat = ": heartbeat\n\n".getBytes(StandardCharsets.UTF_8);
+            long nextPing = Clock.SYSTEM.nanos() + pingMillis * 1_000_000L;
             while (true) {
-                String first = subscription.next(heartbeatMillis);
+                if (Clock.SYSTEM.nanos() - nextPing >= 0) {
+                    events.deliverTo(subscription, EventCatalog.SSE_PRESENCE, presence);
+                    nextPing = Clock.SYSTEM.nanos() + pingMillis * 1_000_000L;
+                }
+                String first = subscription.next(Math.min(heartbeatMillis, pingMillis));
                 if (first == null) {
                     out.write(heartbeat);
                     out.flush();
@@ -119,6 +186,7 @@ final class SseEndpoint {
         } catch (IOException e) {
             // The client closed the tab — routine stream end, not an error.
         } finally {
+            dashboards.close(stream);
             subscription.close();
             liveVitals.onSubscriberLeft();
         }

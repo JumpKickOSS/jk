@@ -185,7 +185,7 @@ class DecisionAlertsTest {
         launcher.outputs.put(List.of("notify-send", "--version"), "notify-send 0.8.3\n");
         DecisionQueue queue = new DecisionQueue();
         DecisionAlerts alerts = on("Linux", Map.of());
-        new Decisions(queue, id -> null).alerts(alerts);
+        new Decisions(queue, id -> null, new Dashboards()).alerts(alerts);
         Decision d = queue.open(new DecisionQueue.Ask(
                 "disk-clean",
                 "Clean jk's cache?",

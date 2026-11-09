@@ -366,7 +366,7 @@ public final class McpDecisions {
         out.append("the user answers it: ")
                 .append(link != null ? link : d.command())
                 .append('\n');
-        if (alert && link != null) decisions.alerts().raise(decisions.ask(), d, link);
+        if (alert && link != null) decisions.alert(d, link);
         out.append("run(decision=").append(d.id()).append(")\n");
         return stop(in.text(out.toString()));
     }

@@ -403,10 +403,32 @@ answer and the first wins. The queue is `DecisionQueue`; the MCP rungs are `McpD
 settles the decision (`DecisionQueue.whenSettled`); `jk decide` reaches the same queue over the
 engine socket (`decisions-request`).
 
+### One channel per decision
+
+`Decisions.alert` carries out `[ui] ask` once a decision reaches `NEEDS-YOU`. Under `notify` it asks
+`Dashboards.channel()`, which picks from what each dashboard tab last reported over its event
+stream ([below](#dashboard-presence)): **in-app** when any fresh tab is visible (nothing notifies;
+the page rings its bell and never opens the dialog by itself, so a stray keypress cannot answer a
+dialog that appeared under it), **browser** when a fresh hidden tab reports `granted` (the freshest
+such tab gets a `notify` frame; the desktop notification is skipped), else **native**
+(`DecisionAlerts`, below). A report counts while it is at most `Dashboards.STALE_AFTER` (45 s,
+three pings) old; a frozen tab or a slept machine stops answering and so falls back to native. A
+closed stream leaves at once.
+
+The page shows the notification titled **JumpKick needs you**, tagged with the decision id (a
+repeat replaces it), and a click focuses that tab and opens `#decision/<id>`. Every tab closes the
+notification by tag when the `decision` frame settles it. Showing and closing go through
+`notify.js`'s `{ show, close }` adapter, and a click through `openDecision(id)`, so a service
+worker can take over with `registration.showNotification`, `getNotifications({ tag })` and
+`notificationclick` without changing the rule; notification actions (the choices as buttons) need
+that service worker, since only persistent notifications carry them. No Web Push: a page notifies
+only while a tab is open.
+
+Permission is per origin, port included, so each engine port asks on its own.
+
 ### Desktop notifications
 
-`DecisionAlerts` carries out `[ui] ask` ([config](../user/config.md#decisions)) once a decision
-reaches `NEEDS-YOU`: a toast on Windows, `notify-send` on Linux, `osascript` on macOS, each
+`DecisionAlerts` shows the native notification: a toast on Windows, `notify-send` on Linux, `osascript` on macOS, each
 withdrawn when the queue settles the decision. The name and icon they carry are
 `DesktopIdentity` (shared/core, `cc.jumpkick.desktop`), the one place that knows the
 AppUserModelID `cc.jumpkick.JumpKick`, the desktop entry `jumpkick` and the icons. `jk self
@@ -623,6 +645,18 @@ The sampled `status`/`cache` frames are **dashboard-stream chrome**: MCP SSE sub
 
 The decision queue's `decision` frame is dashboard-only as well: the decision as `GET
 /api/decisions` lists it, on every open and settle (expiry included).
+
+#### Dashboard presence
+
+Each dashboard stream is delivered, to it alone, a `presence` frame `{ stream, every }` on connect
+and every `Dashboards.PING_EVERY` (15 s). The tab answers each, and every visibility or permission
+change, with `POST /api/events/<stream>` and `{ visible, permission }` (`permission` is
+`Notification.permission`, or `unsupported`): **200**, **404** once that stream has ended, **400**
+for a body that is not an object. EventSource cannot write upstream, so the post is the stream's
+return half; it names no tab the stream does not hold. The page handles `presence` and `notify`
+as they arrive rather than through its drain queue, whose timers a hidden tab runs late, and the
+hub never sheds them (nor `decision`) for an output flood. `notify` carries the decision as `GET
+/api/decisions/<id>` returns it, to the one tab `Dashboards` chose.
 
 The session log's frames are dashboard-only too (`EventCatalog.DASHBOARD_ONLY`): an agent reads
 its own session through the tools it calls, not as a stream. Neither the engine wire nor console
