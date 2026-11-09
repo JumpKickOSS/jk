@@ -19,7 +19,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * After {@code jk import}: an imported project's exact pins meet its dependencies' POMs the way
- * every other version does, highest wins. A probe solve reads each pin as a floor; every pin a
+ * every other version does: the highest declared floor wins. A probe solve reads each pin as a floor; every pin a
  * parent needs higher is raised in the written manifest to the version the graph resolves, so the
  * project locks as written. Nothing else changes, and nothing is locked.
  */

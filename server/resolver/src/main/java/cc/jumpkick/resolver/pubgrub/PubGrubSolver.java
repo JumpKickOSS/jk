@@ -766,8 +766,8 @@ public class PubGrubSolver {
 
     /**
      * The only candidates of a floored pin's package: the pin, and the lowest version each recorded
-     * dependency edge onto the package admits. Empty when {@code pkg} has no pin floor. Highest wins
-     * resolves to one of these, so no other release is tried, and a conflict cannot walk every newer
+     * dependency edge onto the package admits. Empty when {@code pkg} has no pin floor. The highest
+     * declared floor is one of these, so no other release is tried, and a conflict cannot walk every newer
      * release. Edges are only ever added, so the set only grows as the solve reads POMs.
      */
     private Optional<Set<String>> pinCandidates(String pkg) {
@@ -979,7 +979,7 @@ public class PubGrubSolver {
         positive.asExactSingleton().ifPresent(named::add);
         // A range is not an exact pin and records no declared version. Keeping only the newest
         // slice drops every release the range still allows once the catalog is longer than the cap.
-        // Only a set with a ceiling earns that: an open `>= x` — the ordinary highest-wins fill —
+        // Only a set with a ceiling earns that: an open `>= x` — the ordinary bare-version floor —
         // admits nearly the whole catalog, and keeping all of it is the cap not firing at all.
         boolean bounded = positive.hasUpperBound();
         List<String> kept = new ArrayList<>(versions.subList(0, MAX_EXPANDED_VERSIONS));

@@ -50,7 +50,7 @@ import org.jspecify.annotations.Nullable;
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
  * metadata on {@link JkThreads#io} when no preferred pin is known. Platform policy (default
  * {@link PlatformPolicy#ENFORCED}) controls BOM-map pins; without a BOM map, bare edges stay
- * highest-wins floors. BOM/lock prefs seed lazy singleton universes via {@link #preferredVersion}.
+ * floors and the highest floor an edge declares wins. BOM/lock prefs seed lazy singleton universes via {@link #preferredVersion}.
  * POM exclusions strip modules when expanding a package.
  */
 public final class MavenPackageSource implements PackageSource {
@@ -600,7 +600,8 @@ public final class MavenPackageSource implements PackageSource {
         Set<String> wanted = wantedVersions(pkg);
         return cachedCandidates(versionCache, pkg, wanted, () -> {
             long t0 = ResolveProfile.on() ? Clock.SYSTEM.nanos() : 0L;
-            // highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
+            // The pick is the soft-prefer pin, a version an edge declared, or one of the newest
+            // releases when only a range is in play, so a short window suffices.
             // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
             List<String> ordered = orderedVersions(pkg, wanted);
             // `snapshot` asked for the bleeding edge explicitly, so leave its window unnarrowed.
@@ -775,7 +776,7 @@ public final class MavenPackageSource implements PackageSource {
         // no dependencies of its own, so its one edge is to the target — which is how Maven and
         // Gradle render it too. Chains terminate because each hop is a normal package expansion.
         // The edge carries the target's version the way a POM dependency carries its own: a floor
-        // under highest-wins that another edge onto the target may raise, so a stub whose line ended
+        // that a higher floor on another edge onto the target may raise, so a stub whose line ended
         // at one version does not pin the target below what the rest of the graph needs.
         Pom.Relocation moved = pom.relocation();
         if (moved != null && moved.redirects(coord)) {
@@ -956,18 +957,17 @@ public final class MavenPackageSource implements PackageSource {
     /**
      * PubGrub constraint for one POM edge.
      *
-     * <p>Bare versions (after {@link EffectivePom} fills dependencyManagement) are not Maven
-     * floors — Maven treats them as the chosen version. jk's historical default without a
-     * platform was highest-wins ({@code atLeast}). That must <em>not</em> apply under a platform
-     * BOM: lifting a filled pin (parent or import depMgmt) silently breaks the BOM contract
+     * <p>Maven treats a bare version (after {@link EffectivePom} fills dependencyManagement) as the
+     * chosen version; jk reads it as a floor ({@code atLeast}), and the highest floor any edge
+     * declares wins. That must <em>not</em> apply to a pin a platform BOM fills: lifting a filled pin (parent or import depMgmt) silently breaks the BOM contract
      * (e.g. {@code named-locks} 2.x next to {@code maven-resolver-api} 1.9).
      *
      * <ul>
      * <li><b>No platform BOM</b> ({@code bomConstraints} empty): bare → {@code atLeast}
-     * (highest-wins). Explicit user ranges / open selectors still use their VersionSet.
+     * (the highest declared floor wins). Explicit user ranges / open selectors still use their VersionSet.
      * <li><b>Platform BOM present + {@link PlatformPolicy#ENFORCED}</b> (default): BOM-map GAs
      * use {@code exact(bomPin)}; unmapped bare fills follow {@link
-     * cc.jumpkick.model.UnmappedPolicy} — highest-wins by default, {@code exact} under
+     * cc.jumpkick.model.UnmappedPolicy} — highest-floor mediation by default, {@code exact} under
      * {@code strict}.
      * <li><b>Platform BOM + {@link PlatformPolicy#FLOOR}</b>: BOM-map GAs use {@code
      * atLeast(max(bomPin, edge))} (may lift, never clamps below the edge's declared
@@ -1015,11 +1015,11 @@ public final class MavenPackageSource implements PackageSource {
         if (!bomConstraints.isEmpty() && unmappedPolicy == UnmappedPolicy.STRICT) {
             // [resolve] unmapped = "strict": exact fills for unmanaged GAs — every diamond on
             // them is a hard error (maximum reproducibility). Default is MEDIATE
-            // fall through to highest-wins, Maven/Gradle parity; the named-locks hazard class
+            // fall through to highest-floor mediation; the named-locks hazard class
             // is covered by family-align MAPPING those GAs into the BOM constraints.
             return VersionSet.exact(trimmed);
         }
-        // No platform, or unmapped-mediate: highest-wins bare versions. Lock prefs only reorder candidates.
+        // No platform, or unmapped-mediate: a bare version is a floor. Lock prefs only reorder candidates.
         return VersionSelectors.constraintFromPomVersion(trimmed);
     }
 

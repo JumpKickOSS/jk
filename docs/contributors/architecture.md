@@ -379,10 +379,12 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
 ## Dependency resolution
 
 - **Algorithm:** PubGrub (same family as Dart `pub` / `uv`).
-- **Conflict policy:** bare POM versions are highest-wins floors (not Maven nearest-wins).
+- **Conflict policy:** bare POM versions are floors, and the highest floor any edge declares wins:
+  the lowest version that satisfies every edge, as Go's minimal version selection picks, never a
+  release nobody declared (not Maven nearest-wins).
   **With** a platform BOM and default policy **enforced**, BOM-map GAs use the BOM pin
   exactly; opt-in **`[resolve] platform = "floor"`** / `jk update -p floor` treats
-  BOM-map pins as lower bounds only. GAs the BOM does not manage keep highest-wins mediation
+  BOM-map pins as lower bounds only. GAs the BOM does not manage keep highest-floor mediation
   by default; **`[resolve] unmapped = "strict"`** makes their fills exact. Explicit
   Maven ranges stay open.
 - **Lockfile:** one root `jk-lock.toml`; builds never re-resolve.
@@ -776,7 +778,7 @@ beside the owner's shadow and later builds reuse it; the repository gains no fil
 root for a leaf — and `LockPaths.lockFile` places the file under that owner's `target/jk/shadow/`
 when the owner is shadowed, so every site that resolves modules, `.env` files or JDK pins against
 the lock owner reads the real tree. Bare versions are exact pins, BOM imports are enforced
-platforms, and everything resolves highest-wins by PubGrub, as a `jk.toml` does; a POM pin below a
+platforms, and everything resolves to the highest declared floor by PubGrub, as a `jk.toml` does; a POM pin below a
 transitive's floor is a refusal here, which `jk import` (`ImportPinRaises`) raises instead.
 A `<mirror>` in Maven's `settings.xml` (`cc.jumpkick.m2.MavenSettings`) is applied where the
 repository group is built (`RepoMirrors`, on every `MavenRepo` including the ones a dependency's

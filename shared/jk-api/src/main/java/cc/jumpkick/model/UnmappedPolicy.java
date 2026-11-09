@@ -8,8 +8,8 @@ import java.util.Locale;
  * platform is declared.
  *
  * <ul>
- * <li>{@link #MEDIATE} (default) — unmapped fills stay highest-wins floors, Maven/Gradle
- * mediation parity: an everyday diamond (two transitives filling different versions of an
+ * <li>{@link #MEDIATE} (default) — unmapped fills stay floors and the highest one declared
+ * wins: an everyday diamond (two transitives filling different versions of an
  * unmanaged GA) resolves instead of hard-conflicting. The named-locks class of hazard is
  * covered separately by family-align mapping the risky GAs INTO the BOM constraints.
  * <li>{@link #STRICT} (opt-in, {@code [resolve] unmapped = "strict"}) — unmapped fills are

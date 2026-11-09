@@ -245,7 +245,7 @@ public final class ManifestUpdates {
     }
 
     /**
-     * The pins a highest-wins solve raised: each exact dependency pin in the lock scope at {@code
+     * The pins a floors solve raised: each exact dependency pin in the lock scope at {@code
      * lockDir} that {@code probe}, a lock resolved with pins read as floors, holds at a higher
      * version moves to it. A workspace member's pin is read against the member's rows.
      */

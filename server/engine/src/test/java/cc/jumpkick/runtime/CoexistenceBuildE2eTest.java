@@ -40,7 +40,7 @@ import org.junit.jupiter.api.io.TempDir;
  * End-to-end: a directory with a {@code pom.xml} and no {@code jk.toml} builds and tests in place.
  * The manifest is the shadow rendered from the effective POM under {@code target/jk/shadow/}, the
  * lock sits beside it, the repository gains no {@code jk.toml} or {@code jk-lock.toml}, the POM
- * resolves highest-wins like any manifest, a Tier-3 row of the import report is one warning
+ * resolves to the highest declared floor like any manifest, a Tier-3 row of the import report is one warning
  * with the {@code jk import} remedy, and {@code jk explain} plans the same steps a {@code jk.toml}
  * module with the same manifest gets. A reactor builds as a workspace whose root shadow lists the
  * leaves and whose lock sits beside the root shadow; a shadow lists the POM files it read, so an

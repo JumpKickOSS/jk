@@ -28,7 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A Gradle metadata constraint's {@code rejects} fences off releases even inside its {@code
  * requires}: {@code guard} constrains {@code lib} to {@code requires 1.2, rejects 1.3}, so a graph
- * whose highest-wins pick would be 1.3 moves past it to 1.4, and one that needs exactly 1.3 fails
+ * whose highest declared floor would be 1.3 moves past it to 1.4, and one that needs exactly 1.3 fails
  * naming the module that rejected it.
  */
 class GmmRejectsResolveTest {
@@ -70,7 +70,7 @@ class GmmRejectsResolveTest {
                   ]
                 }
                 """.formatted(GROUP));
-        // bumper raises lib's floor to 1.3, so highest-wins alone picks 1.3.
+        // bumper raises lib's floor to 1.3, so mediation alone picks 1.3.
         upstream.metadata(GROUP, "bumper", "1.0");
         upstream.pom(GROUP, "bumper", "1.0", plainPom("bumper", "1.0", "lib", "1.3"));
         // strict needs exactly the rejected release.

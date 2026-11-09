@@ -32,7 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A project pins {@code jakarta.inject-api 2.0.1}; its dependency {@code cryptofs 2.10.0} declares
  * {@code 2.0.1.MR}, a floor the pin sits below. A project's own pin is exact, so its lock refuses the
- * conflict. Read as floors — the import's probe — highest wins: the pin rises to the version the
+ * conflict. Read as floors — the import's probe — the highest declared floor wins: the pin rises to the version the
  * graph needs, and a pin nothing asks above stays where it is rather than floating to the newest
  * release. The same holds across a workspace.
  */

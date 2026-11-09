@@ -309,7 +309,7 @@ public final class ProjectImport {
     }
 
     /**
-     * Raises the written project's exact pins that a highest-wins solve needs higher, returning one
+     * Raises the written project's exact pins that a floors solve needs higher, returning one
      * line per raise; {@code progress} hears its solves. The engine supplies it; the import alone
      * cannot solve.
      */

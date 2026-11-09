@@ -9,8 +9,8 @@ import java.util.Locale;
  *
  * <ul>
  * <li>{@link #ENFORCED} (default) — BOM map pin is exact (Maven depMgmt contract).
- * <li>{@link #FLOOR} (opt-in) — BOM map pin is a lower bound ({@code atLeast}); highest-wins may
- * lift above the pin.
+ * <li>{@link #FLOOR} (opt-in) — BOM map pin is a lower bound ({@code atLeast}); a higher floor another
+ * edge declares lifts it.
  * </ul>
  */
 public enum PlatformPolicy {

@@ -185,8 +185,32 @@ dependency it never declared fails its compile, as it does under Maven. This is 
 (a fork beside the library it forked), the jar the module declared is the one javac and the JVM see
 first. The order is a compile input, so moving a declaration recompiles the module.
 
+### How a version is chosen
+
+**jk builds the lowest version that satisfies every dependency edge**, which is the highest version
+any edge declares. A version a POM writes is a floor ("this or later"), and the highest floor wins.
+Go's minimal version selection and NuGet give the same answer. A release nobody asked for is never
+picked, so a version published yesterday cannot enter the graph on its own. Newer versions come in
+only when you ask: `jk add` writes today's newest stable, `jk update` raises your pins, and the
+opt-in selectors (`^`, `~`, `latest`, ranges) float on purpose.
+
+| Tool | Two dependencies ask for `1.2` and `1.5`; `1.9` is the newest release |
+|---|---|
+| **jk**, Go, NuGet, Gradle | `1.5`: the highest version anyone declared |
+| Maven | whichever declaration is nearest the root, `1.2` or `1.5`: it can pick below what a dependency needs |
+| npm, Cargo (caret ranges) | `1.9`: the newest release the ranges allow |
+
+Three places pick otherwise, each on purpose:
+
+- **Ranges float.** A range, in your manifest or in a dependency's POM, takes the newest release it
+  allows ([Managed versions](#managed-versions), under *Ranges in dependency POMs*).
+- **An enforced platform governs.** A module a platform BOM manages takes the BOM's version, even
+  below a floor a dependency declares ([Platforms](platforms.md)).
+- **The lock holds.** Relocking prefers each module's locked version while it still satisfies every
+  edge ([Lockfile](lockfile.md)).
+
 A dependency that only transitive POMs name resolves to the **highest version any of those
-POMs declares** (Gradle's rule, not Maven nearest-wins), never to a newer release the
+POMs declares** (not Maven nearest-wins), never to a newer release the
 repository happens to advertise; only your own opt-in selectors (`^`, `~`, `latest`, ranges)
 reach for the newest release in range — a bare version is a pin. Version order is Maven's, so
 an unknown qualifier such as `2.0.1.MR` counts as newer than `2.0.1` when a selector floats —

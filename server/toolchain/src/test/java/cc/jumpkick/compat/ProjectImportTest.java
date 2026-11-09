@@ -187,7 +187,7 @@ class ProjectImportTest {
         }
     }
 
-    /** Gradle resolved the graph it modelled, so its pins are already what highest-wins gives: no probe. */
+    /** Gradle resolved the graph it modelled, so its pins already sit at the highest declared floor: no probe. */
     @Test
     void a_gradle_build_read_through_its_model_is_not_pin_checked(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("settings.gradle.kts"), "rootProject.name = \"solo\"\n");

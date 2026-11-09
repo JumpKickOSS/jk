@@ -41,7 +41,7 @@ public sealed interface LockMode {
 
     /**
      * {@code jk import}'s probe: every exact pin reads as a floor the graph may raise, so the lock it
-     * resolves, never written, shows the version highest-wins gives each pinned module.
+     * resolves, never written, shows the highest declared floor of each pinned module.
      */
     record PinFloors() implements LockMode {}
 }

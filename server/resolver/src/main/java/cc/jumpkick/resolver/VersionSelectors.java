@@ -31,8 +31,8 @@ public final class VersionSelectors {
      * Constraint for a version string found in a Maven POM dependency declaration (R4).
      *
      * <ul>
-     *   <li>Bare versions ({@code 1.2.3}) → {@code atLeast} (highest-wins / Gradle-style lower
-     *       bound).
+     *   <li>Bare versions ({@code 1.2.3}) → {@code atLeast}, a floor; the highest floor an edge
+     *       declares wins.
      *   <li>Maven bracket ranges ({@code [1.0,2.0)}, {@code (,2.0]}) and multi-ranges ({@code
      *       [1.0,2.0),[3.0,4.0]}) → {@link #parseRange}.
      *   <li>Comparator lists ({@code >=1.0, <2.0}) → {@link #parseRange}.

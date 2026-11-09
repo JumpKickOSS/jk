@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Platform BOM present → bare EffectivePom versions are exact (enforced contract). Without a
- * platform, bare versions stay highest-wins floors.
+ * platform, bare versions stay floors.
  */
 class MavenPackageSourceConstraintTest {
 
@@ -50,7 +50,7 @@ class MavenPackageSourceConstraintTest {
 
     @Test
     void platform_present_unmapped_bare_mediates_by_default(@TempDir Path tmp) {
-        // unmapped GAs go back to highest-wins mediation (Maven/Gradle parity) — the
+        // unmapped GAs go back to highest-floor mediation — the
         // named-locks hazard class is covered by family-align MAPPING those GAs into the BOM.
         MavenPackageSource src = source(tmp, Map.of("com.foo:other", "9.0.0"));
         VersionSet vs = src.constraintForManagedEdge("org.example:unmanaged:jar:", "1.9.24");

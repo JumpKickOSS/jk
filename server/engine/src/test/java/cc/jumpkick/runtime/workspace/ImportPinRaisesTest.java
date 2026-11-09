@@ -20,8 +20,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * An imported member pins {@code jakarta.inject-api 2.0.1}, below the {@code 2.0.1.MR} its
- * dependency {@code cryptofs 2.10.0} declares. The raise lifts that pin to what highest-wins
- * resolves, reports it, leaves every other pin where the POM put it, and the project then locks.
+ * dependency {@code cryptofs 2.10.0} declares. The raise lifts that pin to the highest declared
+ * floor, reports it, leaves every other pin where the POM put it, and the project then locks.
  */
 class ImportPinRaisesTest {
 

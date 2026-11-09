@@ -95,11 +95,11 @@ public record Variants(List<Dimension> dimensions) {
 
     /**
      * Folds every value's dependency overlays into one union graph for {@code jk lock}.
-     * Same module with different selectors across values is a hard error (not highest-wins).
+     * Same module with different selectors across values is a hard error (not mediated to the higher version).
      */
     public static JkBuild unionDependencies(JkBuild build) {
         if (build.variants().isEmpty()) return build;
-        // Same-module different-selector across the union is a hard error: highest-wins would
+        // Same-module different-selector across the union is a hard error: mediating to the higher version would
         // silently build the "losing" value against the other value's version.
         Map<String, String[]> seen = new HashMap<>(); // scope|module → {selector, origin}
         Map<Scope, LinkedHashSet<Dependency>> merged = new EnumMap<>(Scope.class);

@@ -297,8 +297,8 @@ public final class LockOrchestrator {
     }
 
     /**
-     * Read every root's exact pin as a floor: the graph raises a pin a parent needs higher, as
-     * highest-wins does, and the lock records the raised version. The import's probe solve; a
+     * Read every root's exact pin as a floor: the graph raises a pin a parent needs higher to
+     * the highest declared floor, and the lock records the raised version. The import's probe solve; a
      * project's own lock keeps its pins exact.
      */
     public LockOrchestrator withPinsAsFloors(boolean floors) {

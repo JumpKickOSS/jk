@@ -177,7 +177,7 @@ class VariantApplyTest {
 
     @Test
     void conflicting_versions_across_values_fail_the_union_loudly(@TempDir Path dir) throws Exception {
-        // The resolver settles duplicate roots by highest-wins, so a silent union would build
+        // The resolver settles duplicate roots to the higher version, so a silent union would build
         // the "losing" value against the other value's version — fail at lock time instead.
         JkBuild build = parse(dir, """
                 [variants.tier.free.dependencies]

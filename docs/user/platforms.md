@@ -19,7 +19,7 @@ transitive edges. Explicit Maven ranges on a POM edge remain open ranges.
 | Policy | Config | BOM-map pin |
 |--------|--------|-------------|
 | **enforced** (default) | omit / `[resolve] platform = "enforced"` | exact |
-| **floor** (opt-in) | `[resolve] platform = "floor"` or `jk update -p floor` | lower bound (may highest-wins lift) |
+| **floor** (opt-in) | `[resolve] platform = "floor"` or `jk update -p floor` | lower bound (a higher floor another edge declares lifts it) |
 
 ```toml
 [platform-dependencies]
@@ -97,7 +97,7 @@ differs; and 30 pairs over 5 coordinates are inline
 `<dependencyManagement>` entries that reached no `[managed-dependencies]` table.
 
 GAs the platform does **not** manage resolve to the highest version the POMs that name
-them declare (Maven/Gradle parity). Opt into exact fills for unmanaged GAs with
+them declare ([how](dependencies.md#how-a-version-is-chosen)). Opt into exact fills for unmanaged GAs with
 `[resolve] unmapped = "strict"` (every unmanaged diamond is a hard error). Exact user
 roots still override the BOM for that GA.
 

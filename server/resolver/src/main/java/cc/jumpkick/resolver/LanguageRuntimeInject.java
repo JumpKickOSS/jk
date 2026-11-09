@@ -88,7 +88,8 @@ public final class LanguageRuntimeInject {
             VersionSelector scala = ToolVersions.exactOr(tools.scala(), p.scala());
             addRuntime(bomConstraints, mainDeduped, added, LanguageRuntimes.SCALA, scala, "3");
             // On 3.8+ the stub's own `scala-library` edge is the real stdlib, declared as a Maven soft
-            // version that highest-wins would float past the compiler (3.8.4 stub, 3.9.0 library).
+            // version that a higher floor elsewhere in the graph would lift past the compiler (3.8.4 stub, 3.9.0
+            // library).
             // Root it exactly too, so the lock carries one Scala version.
             if (tools.scala() != null && ScalaVersions.stdlibIsScalaLibrary(tools.scala())) {
                 addRuntime(bomConstraints, mainDeduped, added, LanguageRuntimes.SCALA_LIBRARY, scala, "3");

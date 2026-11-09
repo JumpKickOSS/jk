@@ -130,8 +130,9 @@ The daily tools ship in the binary, not as plugins a project has to discover:
 
 `jk.toml` is TOML: plugins add tables, never a language ([Projects](projects.md)).
 `jk-lock.toml` records every version and checksum, and `jk build` never re-resolves a valid lock
-([Lockfile](lockfile.md)). PubGrub resolves highest-wins, enforces a BOM as a platform, and
-explains a conflict in prose ([Dependencies](dependencies.md)). Git and path dependencies are
+([Lockfile](lockfile.md)). PubGrub builds the lowest version that satisfies every dependency, as
+Go and NuGet do, never a release nobody asked for; it enforces a BOM as a platform and explains a
+conflict in prose ([Dependencies](dependencies.md#how-a-version-is-chosen)). Git and path dependencies are
 SHA-pinned in the lock; a workspace has one root lockfile ([Workspaces](workspaces.md)).
 `jk add` and `jk new` write today's newest stable, and `jk outdated` / `jk update` keep it there.
 

@@ -41,7 +41,7 @@ Change the shape in place — never mint a v2 and keep v1 alive.
 ## Goals
 
 - Fast, predictable builds: lockfile is law; skip work the cache can prove is done.
-- Correct resolution: PubGrub; highest-wins without a platform BOM; enforced platform when a BOM is present (opt-in floor); readable conflict diagnostics.
+- Correct resolution: PubGrub; a bare version is a floor and the highest floor any edge declares wins — the lowest version that satisfies every edge, as Go's minimal version selection and NuGet choose, never a release nobody asked for; enforced platform when a BOM is present (opt-in floor); readable conflict diagnostics.
 - Small mental model: declarative `jk.toml`, no build-script programming language.
 - Adoption path: run existing Maven/Gradle builds; import/export when ready.
 - Client/engine split: thin native client, heavy work in a capped engine process.

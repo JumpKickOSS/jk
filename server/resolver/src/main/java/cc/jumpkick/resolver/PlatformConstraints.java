@@ -37,7 +37,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The managed table folds first, so a BOM that manages one of its modules at another version
  * gives way: the project's own entry is its say. Two BOMs that manage one module at different
- * versions resolve as every other disagreement does, highest wins. Either way the losing say is
+ * versions resolve as every other disagreement does: the higher version wins. Either way the losing say is
  * kept as an override the lock reports.
  */
 public final class PlatformConstraints {

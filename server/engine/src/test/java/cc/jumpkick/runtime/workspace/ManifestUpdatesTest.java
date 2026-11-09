@@ -602,7 +602,7 @@ class ManifestUpdatesTest {
 
     // ---- fixture ---------------------------------------------------------------
 
-    // ---- raising pins a highest-wins probe holds higher -----------------------------
+    // ---- raising pins a floors probe holds higher ------------------------------------
 
     /**
      * The probe holds guava above the root's pin and the jackson {@code lib} reads above its own;

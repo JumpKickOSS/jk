@@ -62,7 +62,7 @@ class PubGrubSolverTest {
                 .build();
         PackageSource src = counting(inner, versionsCalls, Map.of("widget", "2.0"));
 
-        // Open constraint (highest-wins style) + soft-prefer pin → seed 2.0 without metadata.
+        // Open constraint (a bare floor) + soft-prefer pin → seed 2.0 without metadata.
         Map<String, String> solution = new PubGrubSolver(src)
                 .solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("1.0", true))));
 
@@ -103,7 +103,7 @@ class PubGrubSolverTest {
         Map<String, String> solution = new PubGrubSolver(src)
                 .solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("1.0", true))));
 
-        // Soft-prefer 3.0 fails; expand + highest-wins among remaining → 2.0.
+        // Soft-prefer 3.0 fails; expand + highest allowed among remaining → 2.0.
         assertThat(solution).containsEntry("widget", "2.0");
         assertThat(versionsCalls.get()).isGreaterThanOrEqualTo(1);
     }

@@ -157,7 +157,7 @@ public final class ShadowManifests {
 
     /**
      * Raise the shadow's pins as {@code jk import} raises a manifest's: a pin below what its
-     * dependencies need is read as a floor and written as the version highest-wins resolves, so
+     * dependencies need is read as a floor and written as the highest floor the graph declares, so
      * the in-place build locks what Maven's POM asks for under jk's rule. A probe that cannot
      * resolve (offline, a repository down) leaves the pins as written and says so; the lock then
      * reports any pin it cannot hold.

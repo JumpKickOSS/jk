@@ -238,8 +238,8 @@ the reactor edges onto it as workspace edges.
 ## Members that disagree
 
 Each member resolves on its own graph, as each module of a Maven reactor does: its own roots, the
-siblings it depends on and what their POMs declare, under its own platform table. Highest-wins
-mediates *within* that graph — two of the member's dependencies that ask for `1.0` and `2.0` give it
+siblings it depends on and what their POMs declare, under its own platform table. The highest
+declared version mediates *within* that graph — two of the member's dependencies that ask for `1.0` and `2.0` give it
 `2.0` — and nothing outside it reaches the member: another member's pin, or a version another
 member's dependencies ask for, never raises or lowers it. The lock is still one file. Its plain rows
 are the merged solve of every member, and a member whose own graph resolves a coordinate

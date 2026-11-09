@@ -123,7 +123,7 @@ class PomImporterTest {
     }
 
     /**
-     * An imported manifest resolves as every other does, highest wins: neither a single POM's
+     * An imported manifest resolves as every other does, to the highest declared floor: neither a single POM's
      * manifest nor a reactor's root and members carry a {@code [resolve]} table.
      */
     @Test

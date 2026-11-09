@@ -146,8 +146,8 @@ advancing for that long fails naming the coordinate it was reading and the URL i
 [Dependencies](dependencies.md#optional-dependencies).
 
 **A direct version below a dependency's floor is raised.** Import writes every `<dependency>`
-version as an exact pin, and the imported project resolves as every jk project does: highest wins,
-as under Gradle — not Maven's nearest-wins, under which the POM's own version beats whatever a
+version as an exact pin, and the imported project resolves as every jk project does: the highest
+version any edge declares wins ([how](dependencies.md#how-a-version-is-chosen)) — not Maven's nearest-wins, under which the POM's own version beats whatever a
 dependency asks for. Where a pin sits below what its dependencies need, the import raises it: once
 the manifests are written it resolves the project with each pin read as a floor, rewrites every pin
 that resolve holds higher to exactly the version it holds, and adds a report row per raise naming
@@ -237,7 +237,8 @@ jk explain                # the same steps a jk.toml module gets
 ```
 
 Resolution reads the POM as jk reads every manifest: a bare version is an exact pin, a BOM import is
-an enforced platform, and highest wins. A POM's direct version below what one of its dependencies
+an enforced platform, and the highest version any edge declares wins
+([how](dependencies.md#how-a-version-is-chosen)). A POM's direct version below what one of its dependencies
 needs is raised to the version the graph resolves, as `jk import` raises it, and the build after the
 POM changed says so once; `jk mvn` runs Maven itself. A frontend-maven-plugin build is built in
 place too, without moving or rewriting a file
@@ -650,8 +651,8 @@ producer's test dependencies. A project's edge on itself is dropped: its own tes
 and fixtures already. Fixture resources have no jk home, and a row says so.
 
 Each pin is the version Gradle resolved for it: a declared version Gradle's conflict resolution
-lifted is written as the lifted one, with a row. Gradle has already resolved the graph highest-wins,
-so a Gradle import runs no pin check after writing; a build only the scanner could read is checked
+lifted is written as the lifted one, with a row. Gradle has already resolved the graph by its own
+highest-version rule, so a Gradle import runs no pin check after writing; a build only the scanner could read is checked
 as a Maven import is.
 
 Each project also reports the versions its classpaths resolve to, read after its declared
