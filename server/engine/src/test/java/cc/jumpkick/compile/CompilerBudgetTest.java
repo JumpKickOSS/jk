@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.MemoryProbe;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -70,5 +71,45 @@ class CompilerBudgetTest {
         assertThat(few.xmxBytes())
                 .as("an explicit -Xmx below the JVM's own share")
                 .isEqualTo(4 * GIB);
+    }
+
+    @Test
+    void the_ceiling_leaves_the_host_its_reserve_of_what_is_free_now() {
+        // Helidon on a 30 GiB desktop: 24 compiles ask 12 GiB, 13 GiB is free, 3 GiB stays with the host.
+        CompilerBudget.Heap busy = CompilerBudget.plan(30 * GIB, 30 * GIB, 0, false, 24, 13 * GIB);
+        assertThat(busy.ceilingBytes()).isEqualTo(10 * GIB);
+        assertThat(busy.xmxBytes()).isEqualTo(10 * GIB);
+
+        CompilerBudget.Heap idle = CompilerBudget.plan(30 * GIB, 30 * GIB, 0, false, 24, 28 * GIB);
+        assertThat(idle.ceilingBytes())
+                .as("a quiet host: the per-compile rule decides")
+                .isEqualTo(12 * GIB);
+
+        CompilerBudget.Heap starved = CompilerBudget.plan(30 * GIB, 30 * GIB, 0, false, 24, 2 * GIB);
+        assertThat(starved.ceilingBytes()).as("never below the least heap").isEqualTo(CompilerBudget.LEAST_HEAP_BYTES);
+
+        CompilerBudget.Heap unknown = CompilerBudget.plan(30 * GIB, 30 * GIB, 0, false, 24, -1);
+        assertThat(unknown.ceilingBytes())
+                .as("no reading: RAM alone, as before")
+                .isEqualTo(12 * GIB);
+    }
+
+    @Test
+    void a_short_host_admits_no_second_compile_until_memory_returns() {
+        try {
+            CompilerBudget.hostForTests(() -> new MemoryProbe.Memory(30 * GIB, GIB));
+            assertThat(CompilerBudget.hostAdmits(0))
+                    .as("nothing in flight: progress regardless")
+                    .isTrue();
+            assertThat(CompilerBudget.hostAdmits(3))
+                    .as("1 GiB free of 30 is short")
+                    .isFalse();
+            CompilerBudget.hostForTests(() -> new MemoryProbe.Memory(30 * GIB, 6 * GIB));
+            assertThat(CompilerBudget.hostAdmits(3)).isTrue();
+            CompilerBudget.hostForTests(() -> new MemoryProbe.Memory(30 * GIB, -1));
+            assertThat(CompilerBudget.hostAdmits(3)).as("no reading admits").isTrue();
+        } finally {
+            CompilerBudget.hostForTests(null);
+        }
     }
 }

@@ -304,14 +304,18 @@ final class CompilerPool {
      * Whether {@code worker} may be sent another item now. This is the one place that decides it:
      * a free thread on the worker (half of them for a while after a death by running out of heap,
      * one while compiles a death put back have not answered), and a free compile slot engine-wide
-     * ({@link CompilerBudget}), and room for {@code next} in the worker's heap ({@link #heapAdmits}).
+     * ({@link CompilerBudget}), room for {@code next} in the worker's heap ({@link #heapAdmits}), and
+     * a host that is not short of memory ({@link CompilerBudget#hostAdmits}).
      */
     synchronized boolean mayAdmit(CompilerWorker worker, CompileWork next) {
         if (!worker.ready()) return false;
         int credits = worker.threads();
         if (CLOCK.nanos() - halvedUntilNanos < 0) credits = Math.max(1, credits / 2);
         if (revivedPending > 0) credits = 1;
-        return worker.inflight.size() < credits && CompilerBudget.slotFree() && heapAdmits(worker, next);
+        return worker.inflight.size() < credits
+                && CompilerBudget.slotFree()
+                && heapAdmits(worker, next)
+                && CompilerBudget.hostAdmits(worker.inflight.size());
     }
 
     /** The share of a worker's heap ceiling the compiles in flight may be estimated to hold together. */

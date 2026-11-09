@@ -2,9 +2,12 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.config.AvailableCpus;
+import cc.jumpkick.engine.plugin.MemoryProbe;
+import cc.jumpkick.host.time.Clock;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -57,6 +60,53 @@ final class CompilerBudget {
      */
     record Heap(@Nullable Long xmxBytes, long ceilingBytes, long capBytes) {}
 
+    /** What a new worker's ceiling leaves the rest of the host: a tenth of RAM, at least 2 GiB. */
+    static long hostReserve(long ramBytes) {
+        return Math.max(2L << 30, Math.max(0, ramBytes) / 10);
+    }
+
+    /**
+     * Below this much free memory the host is short: a twentieth of RAM, at least 1 GiB. A worker's
+     * heap grows with the compiles in flight, and committed heap is not handed back mid-build, so
+     * admitting more while the host pages is what turns a slow build into a swap storm.
+     */
+    static long shortBelow(long ramBytes) {
+        return Math.max(1L << 30, Math.max(0, ramBytes) / 20);
+    }
+
+    /** How long one reading of host memory answers admission. */
+    private static final long HOST_READING_NANOS = 200_000_000L;
+
+    private static volatile long hostReadAt;
+    private static volatile boolean hostShort;
+    private static volatile @Nullable Supplier<MemoryProbe.Memory> hostForTests;
+
+    /**
+     * Whether a compile may join {@code inflight} others as far as the host's memory goes: always
+     * when nothing is in flight, so a build makes progress however short the host is; otherwise only
+     * while the host has at least {@link #shortBelow} free. Each finishing compile asks again.
+     */
+    static boolean hostAdmits(int inflight) {
+        if (inflight == 0) return true;
+        Supplier<MemoryProbe.Memory> seam = hostForTests;
+        if (seam != null) return !isShort(seam.get());
+        long now = Clock.SYSTEM.nanos();
+        if (now - hostReadAt > HOST_READING_NANOS) {
+            hostShort = isShort(MemoryProbe.current());
+            hostReadAt = now;
+        }
+        return !hostShort;
+    }
+
+    private static boolean isShort(MemoryProbe.Memory m) {
+        return m.availableBytes() > 0 && m.totalBytes() > 0 && m.availableBytes() < shortBelow(m.totalBytes());
+    }
+
+    /** Test seam: the host memory {@link #hostAdmits} reads, or {@code null} for the real host. */
+    static void hostForTests(@Nullable Supplier<MemoryProbe.Memory> host) {
+        hostForTests = host;
+    }
+
     /** Compiles every pool together may have in flight. */
     static int slots() {
         int pinned = slotsForTests;
@@ -91,13 +141,14 @@ final class CompilerBudget {
      * ramBytes}; {@code contained} says each worker gets its own cgroup capped at the budget. Held
      * until {@link #release}.
      */
-    static Heap reserve(CompilerWorker worker, long ramBytes, long budgetBytes, boolean contained) {
+    static Heap reserve(
+            CompilerWorker worker, long ramBytes, long budgetBytes, boolean contained, long availableBytes) {
         synchronized (CEILINGS) {
             long others = 0;
             for (Map.Entry<CompilerWorker, Long> e : CEILINGS.entrySet()) {
                 if (e.getKey() != worker) others += e.getValue();
             }
-            Heap heap = plan(ramBytes, budgetBytes, others, contained, slots());
+            Heap heap = plan(ramBytes, budgetBytes, others, contained, slots(), availableBytes);
             CEILINGS.put(worker, heap.ceilingBytes());
             return heap;
         }
@@ -124,12 +175,25 @@ final class CompilerBudget {
      * applies no such bound.
      */
     static Heap plan(long ramBytes, long budgetBytes, long otherCeilings, boolean contained, int compiles) {
+        return plan(ramBytes, budgetBytes, otherCeilings, contained, compiles, -1);
+    }
+
+    /**
+     * As above on a host with {@code availableBytes} free right now ({@code MemAvailable}; {@code <= 0}
+     * when unknown): the ceiling also leaves {@link #hostReserve} of it to everything else on the
+     * host. Total RAM says what the machine has, not what a desktop with a browser, an editor and
+     * another session leaves; a ceiling sized from RAM alone grew a Helidon worker to 12 GiB against
+     * 13 GiB free, pushed swap full and ran a 14 s build in 125 s.
+     */
+    static Heap plan(
+            long ramBytes, long budgetBytes, long otherCeilings, boolean contained, int compiles, long availableBytes) {
         long natural = (long) (Math.max(0, ramBytes) * MAX_RAM_FRACTION);
         long ceiling = natural;
         if (compiles > 0)
             ceiling = Math.min(ceiling, Math.max(LEAST_WORK_HEAP_BYTES, HEAP_PER_COMPILE_BYTES * compiles));
         if (contained && budgetBytes > 0) ceiling = Math.min(ceiling, budgetBytes - NATIVE_HEADROOM_BYTES);
         if (budgetBytes > 0) ceiling = Math.min(ceiling, budgetBytes - Math.max(0, otherCeilings));
+        if (availableBytes > 0) ceiling = Math.min(ceiling, availableBytes - hostReserve(ramBytes));
         ceiling = Math.max(LEAST_HEAP_BYTES, ceiling);
         boolean explicit = contained || ceiling < natural;
         long cap = contained && budgetBytes > 0 ? budgetBytes : -1L;

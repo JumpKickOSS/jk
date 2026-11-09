@@ -173,11 +173,9 @@ public final class JavaCompilerHost {
         String workerCp = ForkedJavac.workerClasspath(template);
         WorkerContainment.Report containment = WorkerContainment.report();
         boolean contained = containment.mode() == WorkerContainment.Mode.CGROUP && containment.perWorker();
+        MemoryProbe.Memory memory = MemoryProbe.current();
         CompilerBudget.Heap heap = CompilerBudget.reserve(
-                worker,
-                MemoryProbe.current().totalBytes(),
-                WorkerLeases.engine().capacityBytes(),
-                contained);
+                worker, memory.totalBytes(), WorkerLeases.engine().capacityBytes(), contained, memory.availableBytes());
         List<String> jvmFlags = ForkedJavac.workerJvmFlags(
                 WorkerAotCache.flags(
                         "java-compiler",
