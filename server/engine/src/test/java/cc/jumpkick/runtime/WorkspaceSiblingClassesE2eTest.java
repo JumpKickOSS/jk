@@ -83,7 +83,7 @@ class WorkspaceSiblingClassesE2eTest {
         assertThat(first.appCompiledBeforeLibPackaged())
                 .as("app's compile is admitted on lib's classes tree, ahead of lib's jar")
                 .isTrue();
-        assertThat(first.label("app", TaskNames.COMPILE_JAVA)).startsWith("compiling");
+        assertThat(first.label("app", TaskNames.COMPILE_JAVA)).startsWith("compiled ");
         assertThat(nestedLibClass(app.assemblyJar()))
                 .as("app's assembly nests lib's classes from lib's jar")
                 .contains("lib-v1");
@@ -96,7 +96,7 @@ class WorkspaceSiblingClassesE2eTest {
         assertThat(afterEdit.success())
                 .as("after the edit; failed steps " + edited.failed())
                 .isTrue();
-        assertThat(edited.label("lib", TaskNames.COMPILE_JAVA)).startsWith("compiling");
+        assertThat(edited.label("lib", TaskNames.COMPILE_JAVA)).startsWith("compiled ");
         assertThat(edited.label("app", TaskNames.COMPILE_JAVA))
                 .as("app's compile is answered without javac: lib's tree changed, its ABI did not")
                 .doesNotStartWith("compiling");
@@ -123,7 +123,7 @@ class WorkspaceSiblingClassesE2eTest {
         assertThat(result.success())
                 .as("mixed sibling; failed steps " + probe.failed())
                 .isTrue();
-        assertThat(probe.label("app", TaskNames.COMPILE_JAVA)).startsWith("compiling");
+        assertThat(probe.label("app", TaskNames.COMPILE_JAVA)).startsWith("compiled ");
         assertThat(app.classesDir().resolve("com/example/app/Main.class")).isRegularFile();
     }
 
@@ -151,7 +151,7 @@ class WorkspaceSiblingClassesE2eTest {
         assertThat(probe.appCompiledBeforeLibPackaged())
                 .as("app is admitted on mid's classes tree while lib's jar is still held")
                 .isTrue();
-        assertThat(probe.label("app", TaskNames.COMPILE_JAVA)).startsWith("compiling");
+        assertThat(probe.label("app", TaskNames.COMPILE_JAVA)).startsWith("compiled ");
         assertThat(nestedLibClass(app.assemblyJar()))
                 .as("app's package step waited for lib's jar and nested it")
                 .contains("lib-v1");
