@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 class BackgroundEtaTest {
 
     private static BuildService.EtaModel model(long ms) {
-        return new BuildService.EtaModel(ms, List.of(), 1, true, ms);
+        return new BuildService.EtaModel(ms, List.of(), 1, true, ms, true, false, true);
     }
 
     @Test

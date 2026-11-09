@@ -58,7 +58,7 @@ public final class ScheduleBias {
      * they are reciprocal: the fold runs in log space, where 2.5x hot and 2.5x cold are the same
      * distance from 1.
      */
-    static final double MIN_BIAS = 0.4;
+    static final double MIN_BIAS = 0.25;
 
     static final double MAX_BIAS = 2.5;
 
@@ -73,7 +73,7 @@ public final class ScheduleBias {
      * the wall: a build predicted at 36 s that took 5 s is an over-estimate to learn, and a floor
      * on the actual wall would discard exactly the observations that pull the bias down.
      */
-    static final long MIN_RAW_MS = 5_000;
+    static final long MIN_RAW_MS = 250;
 
     private ScheduleBias() {}
 
@@ -84,24 +84,22 @@ public final class ScheduleBias {
     /**
      * The bias to multiply a raw simulated schedule by; {@code 1.0} until observations exist.
      *
-     * @param dirtyModules how many modules this build will run, which selects the shape bucket;
-     *     {@code <= 0} reads the project-wide entry only
+     * @param dirtyModules how many modules this build will run
+     * @param realWork how many of them do real work rather than a cache-hit recheck; with {@code
+     *     dirtyModules}, the shape bucket. A 212-module cascade of rechecks and a 223-module cold
+     *     build share a module count and nothing else: one shared correction taught each the
+     *     other's, and the cascade read 3x high. An unseen shape reads {@code 1.0}, the model as
+     *     simulated, rather than another shape's correction.
      */
-    public static double current(Path entryDir, int dirtyModules) {
+    public static double current(Path entryDir, int dirtyModules, int realWork, boolean full, boolean workerWarm) {
         try {
             Map<String, Double> m = load(file());
-            Double b = dirtyModules > 0 ? m.get(shapeKey(entryDir, dirtyModules)) : null;
-            if (b == null) b = m.get(key(entryDir)); // pre-bucketing store, or an unseen shape
+            Double b = dirtyModules > 0 ? m.get(shapeKey(entryDir, dirtyModules, realWork, full, workerWarm)) : null;
             if (b == null) return 1.0;
             return Math.max(MIN_BIAS, Math.min(MAX_BIAS, b));
         } catch (RuntimeException e) {
             return 1.0;
         }
-    }
-
-    /** Project-wide read, for callers with no module count to hand. */
-    public static double current(Path entryDir) {
-        return current(entryDir, 0);
     }
 
     /**
@@ -114,15 +112,39 @@ public final class ScheduleBias {
         return Integer.highestOneBit(n);
     }
 
-    private static String shapeKey(Path entryDir, int dirtyModules) {
-        return key(entryDir) + "|w" + bucket(dirtyModules);
+    /** Whether a correction has been learned for this shape: until one has, the model runs unaided. */
+    public static boolean learned(Path entryDir, int dirtyModules, int realWork, boolean full, boolean workerWarm) {
+        try {
+            return dirtyModules > 0
+                    && load(file()).containsKey(shapeKey(entryDir, dirtyModules, realWork, full, workerWarm));
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * {@code full}: a rebuild of everything (forced, or most compiles predicted whole) rather than an
+     * incremental one. An API change that recompiles 211 dependents has a cold build's width and
+     * real-work count, and twice its correction: their compiles are measured under a cold build's
+     * contention, which the cold build's schedule then counts again.
+     */
+    private static String shapeKey(Path entryDir, int dirtyModules, int realWork, boolean full, boolean workerWarm) {
+        return key(entryDir) + "|w" + bucket(dirtyModules) + "|r" + bucket(realWork) + (full ? "|f" : "|i")
+                + (workerWarm ? "" : "|cold");
     }
 
     /**
      * Fold one successful build's outcome into the EWMA of {@code ln(actual / simulated)}. No-ops
      * for builds whose simulated schedule is too small to have exercised the model.
      */
-    public static void observe(Path entryDir, long rawScheduleMs, long actualMs, int dirtyModules) {
+    public static void observe(
+            Path entryDir,
+            long rawScheduleMs,
+            long actualMs,
+            int dirtyModules,
+            int realWork,
+            boolean full,
+            boolean workerWarm) {
         if (dirtyModules < MIN_MODULES || rawScheduleMs < MIN_RAW_MS || actualMs <= 0) return;
         // Clamped first, so one observation moves the EWMA by at most a quarter of the way to a
         // bound: a build that finished in a seventh of its schedule teaches 0.4, not 0.15.
@@ -133,7 +155,7 @@ public final class ScheduleBias {
             Path f = file();
             FileLocks.withLock(lockFile(f), () -> {
                 Map<String, Double> m = load(f);
-                String k = shapeKey(entryDir, dirtyModules);
+                String k = shapeKey(entryDir, dirtyModules, realWork, full, workerWarm);
                 Double prev = m.get(k);
                 m.put(k, prev == null ? ratio : fold(prev, ratio));
                 write(f, m);
@@ -160,6 +182,44 @@ public final class ScheduleBias {
     private static String key(Path entryDir) {
         return entryDir.toAbsolutePath().normalize().toString();
     }
+
+    /**
+     * The project's learned close-out: from the last module finishing to the build reporting done
+     * (verdicts, the clean memo, the journal, the run snapshot). It is additive, not proportional:
+     * about a quarter of a second whether one module ran or two hundred, so on a one-module edit it
+     * was a fifth of the wall the estimate never counted. {@code 0} until a build has measured it.
+     */
+    public static long tailMs(Path entryDir) {
+        try {
+            Double t = load(file()).get(key(entryDir) + TAIL);
+            return t == null ? 0 : Math.round(Math.max(0, Math.min(MAX_TAIL_MS, t)));
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /** Fold one successful build's close-out into the project's tail (a linear EWMA). */
+    public static void observeTail(Path entryDir, long tailMs) {
+        if (tailMs < 0) return;
+        double observed = Math.min(MAX_TAIL_MS, tailMs);
+        try {
+            Path f = file();
+            FileLocks.withLock(lockFile(f), () -> {
+                Map<String, Double> m = load(f);
+                String k = key(entryDir) + TAIL;
+                Double prev = m.get(k);
+                m.put(k, prev == null ? observed : prev + ALPHA * (observed - prev));
+                write(f, m);
+            });
+        } catch (RuntimeException | IOException e) {
+            Log.debug("observeTail: best-effort", e);
+        }
+    }
+
+    private static final String TAIL = "|tail";
+
+    /** A close-out longer than this is a stall, not the shape of the project's close-out. */
+    private static final long MAX_TAIL_MS = 10_000;
 
     private static Map<String, Double> load(Path f) {
         Map<String, Double> m = new LinkedHashMap<>();
@@ -189,7 +249,7 @@ public final class ScheduleBias {
     private static void write(Path f, Map<String, Double> m) throws IOException {
         OwnerOnlyFiles.createDirectories(Objects.requireNonNull(f.getParent(), "a file has a directory"));
         StringBuilder sb = new StringBuilder(
-                "# schedule-bias — EWMA of actual/simulated wall per project|w<dirty-module bucket> (ScheduleBias)\n");
+                "# schedule-bias — EWMA of actual/simulated wall per project|w<dirty-module bucket>|r<real-work bucket>|f(ull) or i(ncremental) (ScheduleBias)\n");
         for (Map.Entry<String, Double> e : m.entrySet()) {
             sb.append('"')
                     .append(e.getKey())

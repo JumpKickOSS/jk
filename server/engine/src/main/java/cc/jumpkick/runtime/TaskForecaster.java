@@ -56,6 +56,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
@@ -117,6 +118,15 @@ public final class TaskForecaster {
             // forecastModules declares nothing checked; the memo scope's signature does.
             throw new IllegalStateException(impossible);
         }
+    }
+
+    /** Told each module the walk finishes, as (done, total); bound by the preflight's cache check. */
+    public static final ScopedValue<ModuleProgress> PROGRESS = ScopedValue.newInstance();
+
+    /** A forecast walk's progress: {@code done} of {@code total} modules priced. */
+    @FunctionalInterface
+    public interface ModuleProgress {
+        void moduleDone(int done, int total);
     }
 
     private static List<TaskForecast.Module> forecastModules(
@@ -211,9 +221,13 @@ public final class TaskForecaster {
         // moves. A module's verdict is published before any consumer starts, so a consumer reads
         // its prereqs' dirtiness complete.
         List<BuildGraph.BuildUnit> walked = new ArrayList<>(byDir.values());
+        // Read once on the caller: the lanes run on pool threads the scoped value does not reach.
+        ModuleProgress progress = PROGRESS.isBound() ? PROGRESS.get() : null;
+        AtomicInteger priced = new AtomicInteger();
         ForecastLanes.walk(walked, graph.readOrder(), lanes(walked.size()), laneContext(), u -> {
             one.accept(u);
             if (seeds.contains(u.dir())) dirty.add(u.dir());
+            if (progress != null) progress.moduleDone(priced.incrementAndGet(), walked.size());
         });
         // Anything the walk could not reach — a cycle the graph resolve should already have
         // refused — is still forecast, in dependency order, rather than silently missing.

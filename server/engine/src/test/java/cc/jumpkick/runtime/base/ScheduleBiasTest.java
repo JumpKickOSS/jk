@@ -47,7 +47,7 @@ class ScheduleBiasTest {
             Thread t = new Thread(() -> {
                 try {
                     start.await();
-                    ScheduleBias.observe(proj, 90_000, 120_000, 29);
+                    ScheduleBias.observe(proj, 90_000, 120_000, 29, 29, false, true);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } finally {
@@ -60,7 +60,7 @@ class ScheduleBiasTest {
         assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
 
         for (int i = 0; i < builds; i++) {
-            assertThat(ScheduleBias.current(home.resolve("proj-" + i), 29))
+            assertThat(ScheduleBias.current(home.resolve("proj-" + i), 29, 29, false, true))
                     .as("build %d's observation survived the others", i)
                     .isCloseTo(120_000 / 90_000.0, offset(1e-3)); // the store keeps four decimals
         }
@@ -75,32 +75,33 @@ class ScheduleBiasTest {
     void a_learned_over_estimate_is_applied_as_learned() throws Exception {
         Path proj = home.resolve("proj");
         // Sim said 100s, the build took 60s.
-        ScheduleBias.observe(proj, 100_000, 60_000, 29);
-        assertThat(ScheduleBias.current(proj, 29)).isCloseTo(0.6, offset(1e-3));
+        ScheduleBias.observe(proj, 100_000, 60_000, 29, 29, false, true);
+        assertThat(ScheduleBias.current(proj, 29, 29, false, true)).isCloseTo(0.6, offset(1e-3));
 
         // A hand-edited store below the fold floor reads as the floor, not as written.
         Files.writeString(
                 ScheduleBias.file(),
-                "\"" + proj.toAbsolutePath().normalize() + "|w16\" = 0.3000\n",
+                "\"" + proj.toAbsolutePath().normalize() + "|w16|r16|i\" = 0.1000\n",
                 StandardCharsets.UTF_8);
-        assertThat(ScheduleBias.current(proj, 29)).isEqualTo(ScheduleBias.MIN_BIAS);
+        assertThat(ScheduleBias.current(proj, 29, 29, false, true)).isEqualTo(ScheduleBias.MIN_BIAS);
     }
 
     @Test
     void unobserved_projects_use_neutral_bias() {
-        assertThat(ScheduleBias.current(home.resolve("proj"), 12)).isEqualTo(1.0);
+        assertThat(ScheduleBias.current(home.resolve("proj"), 12, 12, false, true))
+                .isEqualTo(1.0);
     }
 
     @Test
     void observations_fold_toward_the_measured_ratio() {
         Path proj = home.resolve("proj");
         // Sim said 90s, reality 120s → ratio 1.333; first observation seeds the EWMA directly.
-        ScheduleBias.observe(proj, 90_000, 120_000, 29);
-        assertThat(ScheduleBias.current(proj, 29)).isCloseTo(120_000 / 90_000.0, offset(0.01));
+        ScheduleBias.observe(proj, 90_000, 120_000, 29, 29, false, true);
+        assertThat(ScheduleBias.current(proj, 29, 29, false, true)).isCloseTo(120_000 / 90_000.0, offset(0.01));
         // A perfectly-priced follow-up pulls the bias back toward 1.0, a quarter of the way in log space.
-        ScheduleBias.observe(proj, 100_000, 100_000, 29);
+        ScheduleBias.observe(proj, 100_000, 100_000, 29, 29, false, true);
         double expected = Math.exp((1 - ScheduleBias.ALPHA) * Math.log(120_000 / 90_000.0));
-        assertThat(ScheduleBias.current(proj, 29)).isCloseTo(expected, offset(0.01));
+        assertThat(ScheduleBias.current(proj, 29, 29, false, true)).isCloseTo(expected, offset(0.01));
     }
 
     /** A ratio is a multiplier: running 2x hot and 2x cold pull the bias equally far from 1. */
@@ -121,15 +122,15 @@ class ScheduleBiasTest {
     @Test
     void a_fast_wide_build_teaches_the_bias_down() {
         Path proj = home.resolve("proj");
-        ScheduleBias.observe(proj, 36_601, 5_398, 13);
-        assertThat(ScheduleBias.current(proj, 13))
+        ScheduleBias.observe(proj, 36_601, 5_398, 13, 13, false, true);
+        assertThat(ScheduleBias.current(proj, 13, 13, false, true))
                 .as("the first observation seeds the w8 bucket at the clamped ratio")
                 .isEqualTo(ScheduleBias.MIN_BIAS);
 
         Path other = home.resolve("other");
-        ScheduleBias.observe(other, 40_000, 40_000, 13);
-        ScheduleBias.observe(other, 36_601, 5_398, 13);
-        assertThat(ScheduleBias.current(other, 13))
+        ScheduleBias.observe(other, 40_000, 40_000, 13, 13, false, true);
+        ScheduleBias.observe(other, 36_601, 5_398, 13, 13, false, true);
+        assertThat(ScheduleBias.current(other, 13, 13, false, true))
                 .as("a settled bucket moves down on a short actual")
                 .isCloseTo(Math.exp(ScheduleBias.ALPHA * Math.log(ScheduleBias.MIN_BIAS)), offset(1e-3))
                 .isLessThan(0.8);
@@ -143,11 +144,11 @@ class ScheduleBiasTest {
     @Test
     void a_wide_cascade_does_not_teach_the_narrow_shape() {
         Path proj = home.resolve("proj");
-        ScheduleBias.observe(proj, 40_000, 70_000, 13); // wide: simulated cold
-        ScheduleBias.observe(proj, 25_000, 21_000, 3); // narrow: simulated hot
+        ScheduleBias.observe(proj, 40_000, 70_000, 13, 13, false, true); // wide: simulated cold
+        ScheduleBias.observe(proj, 25_000, 21_000, 3, 3, false, true); // narrow: simulated hot
 
-        assertThat(ScheduleBias.current(proj, 13)).isCloseTo(70_000 / 40_000.0, offset(0.01));
-        assertThat(ScheduleBias.current(proj, 3)).isCloseTo(21_000 / 25_000.0, offset(0.01));
+        assertThat(ScheduleBias.current(proj, 13, 13, false, true)).isCloseTo(70_000 / 40_000.0, offset(0.01));
+        assertThat(ScheduleBias.current(proj, 3, 3, false, true)).isCloseTo(21_000 / 25_000.0, offset(0.01));
     }
 
     /** Counts round down to a power of two, so neighbouring widths share a history. */
@@ -165,36 +166,50 @@ class ScheduleBiasTest {
 
     /** An unseen shape is better served by the project's other history than by 1.0. */
     @Test
-    void an_unseen_shape_falls_back_to_the_project_wide_entry() throws Exception {
+    void a_cascade_of_rechecks_and_a_cold_build_of_the_same_width_learn_apart() {
         Path proj = home.resolve("proj");
-        Path store = ScheduleBias.file();
-        Files.createDirectories(store.getParent());
-        Files.writeString(store, "\"" + proj.toAbsolutePath().normalize() + "\" = 1.5000\n");
-
-        assertThat(ScheduleBias.current(proj, 7)).as("no w4 bucket yet").isCloseTo(1.5, offset(0.01));
-        // A shape's own observation seeds its bucket outright rather than folding into the
-        // project-wide number, so the fallback stops applying the moment real evidence exists.
-        ScheduleBias.observe(proj, 40_000, 40_000, 7);
-        assertThat(ScheduleBias.current(proj, 7))
-                .as("once the bucket exists it wins")
-                .isCloseTo(1.0, offset(0.01));
+        // 223 modules, all compiling: the schedule simulated hot.
+        ScheduleBias.observe(proj, 16_000, 13_000, 223, 223, false, true);
+        // 212 modules, one compiling and 211 cache-hit rechecks: simulated cold.
+        ScheduleBias.observe(proj, 3_200, 2_000, 212, 1, false, true);
+        assertThat(ScheduleBias.current(proj, 223, 223, false, true)).isCloseTo(13_000 / 16_000.0, offset(0.01));
+        assertThat(ScheduleBias.current(proj, 212, 1, false, true)).isCloseTo(2_000 / 3_200.0, offset(0.01));
+        assertThat(ScheduleBias.current(proj, 212, 40, false, true))
+                .as("an unseen shape is the model as simulated, not a neighbour's correction")
+                .isEqualTo(1.0);
     }
 
-    /** A schedule too small to have exercised the model teaches nothing, whatever the wall. */
     @Test
     void trivial_schedules_never_teach_the_bias() {
         Path proj = home.resolve("proj");
-        ScheduleBias.observe(proj, 1_000, 200_000, 29);
-        ScheduleBias.observe(proj, 4_999, 300, 29);
-        ScheduleBias.observe(proj, 90_000, 0, 29);
-        assertThat(ScheduleBias.current(proj, 29)).isEqualTo(1.0);
+        ScheduleBias.observe(proj, 200, 200_000, 29, 29, false, true);
+        ScheduleBias.observe(proj, 249, 300, 29, 29, false, true);
+        ScheduleBias.observe(proj, 90_000, 0, 29, 29, false, true);
+        assertThat(ScheduleBias.current(proj, 29, 29, false, true)).isEqualTo(1.0);
     }
 
     @Test
     void read_clamp_bounds_a_poisoned_store() {
         Path proj = home.resolve("proj");
         // One absurd observation (clamped to MAX_BIAS at fold and again on read).
-        ScheduleBias.observe(proj, 10_000, 500_000, 29);
-        assertThat(ScheduleBias.current(proj, 29)).isEqualTo(ScheduleBias.MAX_BIAS);
+        ScheduleBias.observe(proj, 10_000, 500_000, 29, 29, false, true);
+        assertThat(ScheduleBias.current(proj, 29, 29, false, true)).isEqualTo(ScheduleBias.MAX_BIAS);
+    }
+
+    @Test
+    void the_close_out_is_learned_as_a_fixed_cost_beside_the_bias() {
+        Path proj = home.resolve("proj");
+        assertThat(ScheduleBias.tailMs(proj)).as("unmeasured").isZero();
+        ScheduleBias.observeTail(proj, 240);
+        assertThat(ScheduleBias.tailMs(proj)).isEqualTo(240);
+        ScheduleBias.observeTail(proj, 200);
+        assertThat(ScheduleBias.tailMs(proj)).isEqualTo(230); // 240 + 0.25 * (200 - 240)
+        ScheduleBias.observeTail(proj, 3_600_000);
+        assertThat(ScheduleBias.tailMs(proj))
+                .as("a stall is clamped, not learned whole")
+                .isLessThan(3_000);
+        assertThat(ScheduleBias.current(proj, 1, 1, false, true))
+                .as("the tail is not a shape's bias")
+                .isEqualTo(1.0);
     }
 }

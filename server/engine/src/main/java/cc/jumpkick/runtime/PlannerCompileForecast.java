@@ -96,7 +96,9 @@ final class PlannerCompileForecast {
                 CompilerJdk.pinned(s.project, SessionContext.current())));
         Optional<FreshnessStamp.Stamp> fresh = Optional.empty();
         // A stamp over generated sources the KSP round is about to restore answers for the old ones.
-        if (!s.compileDepDirty && !s.force && !groovyJarUnavailable && !round.rewrites(mainSrc)) {
+        // Read for a dependency-dirty module too: it is the very test the build applies once the
+        // dependency is rebuilt, and unlike the action key it does not move with jk's own version.
+        if (!s.force && !groovyJarUnavailable && !round.rewrites(mainSrc)) {
             try {
                 fresh = FreshnessStamp.freshStamp(
                         out,
@@ -109,7 +111,7 @@ final class PlannerCompileForecast {
                 fresh = Optional.empty();
             }
         }
-        boolean stampFresh = fresh.isPresent();
+        boolean stampFresh = fresh.isPresent() && !s.compileDepDirty;
         ForecastSteps.noteCompileMain(out, req, mainSrc.size(), release, stampFresh, s.compileDepDirty);
         if (stampFresh) {
             // The stamp names the compile that produced this tree; that record is what the tree is
@@ -124,7 +126,7 @@ final class PlannerCompileForecast {
         Path stateDir = ActionKey.stateDir(
                 ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(s.cache)), TaskNames.COMPILE_MAIN, out);
         long tc = Perf.start();
-        var pred = JavaCompile.predict(
+        JavaCompile.Prediction pred = JavaCompile.predict(
                 taskId,
                 req,
                 BuildIdentity.cacheKeyVersion(),
@@ -135,7 +137,26 @@ final class PlannerCompileForecast {
                 WorkerEnv.forModule(s.project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()),
                 s.restored.abiToken());
         Perf.end("  predict-compile-main", tc);
-        s.compileMainKey = pred.actionKey();
+        // Nothing of this module's own moved, its dependencies' API reads as the stamp recorded and the
+        // tree the stamp names is on disk: the build will find it fresh once they are rebuilt, as a
+        // key hit says. A key that missed here missed on what the stamp leaves out — jk's own
+        // version and the compiler worker's bytes, which every upgrade moves — so after an upgrade
+        // every dependent of an edit forecast a recompile it would not run.
+        boolean stampHolds = s.compileDepDirty
+                && fresh.isPresent()
+                && pred.outcome() != JavaCompile.Outcome.CACHE_HIT
+                && ModuleOutputs.compileOutputsOnDisk(s.actionCache, out);
+        if (stampHolds) {
+            pred = new JavaCompile.Prediction(
+                    JavaCompile.Outcome.CACHE_HIT, pred.actionKey(), mainSrc.size(), "", List.of());
+        }
+        // The record the tree is held against: the stamp's when it holds (none when it names
+        // none), never the key that just missed.
+        s.compileMainKey = stampHolds
+                ? fresh.map(FreshnessStamp.Stamp::actionKey)
+                        .filter(k -> !k.isBlank())
+                        .orElse(null)
+                : pred.actionKey();
         TaskForecast.Task step =
                 ForecastSteps.compileStep(TaskNames.COMPILE_JAVA, pred, s.compileDepDirty || s.force, req, s.depHint);
         if (!step.cached()) s.compileDirty = true;

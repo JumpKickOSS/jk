@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
@@ -97,6 +98,37 @@ public final class BuildEta {
             boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency) {
+        return estimateEtaModel(
+                plan,
+                entryDir,
+                cache,
+                workers,
+                jdksDir,
+                profile,
+                skipTests,
+                verbose,
+                parallelTests,
+                maxModuleConcurrency,
+                JavaCompilerHost.anyWarmWorkerFor(entryDir));
+    }
+
+    /**
+     * As above for a build that starts with ({@code workerWarm}) or without a warm compiler worker,
+     * as measured when it started: a shape of its own, since a cold worker's warm-up is seconds the
+     * same work does not otherwise cost.
+     */
+    public static BuildService.EtaModel estimateEtaModel(
+            ExplainPlan plan,
+            Path entryDir,
+            Path cache,
+            int workers,
+            @Nullable Path jdksDir,
+            @Nullable String profile,
+            boolean skipTests,
+            boolean verbose,
+            boolean parallelTests,
+            int maxModuleConcurrency,
+            boolean workerWarm) {
         try {
             // Host calibration: cheap when present; bootstrap probe once when missing (network
             // unless --offline). Host scale then multiplies product baselines for cold steps.
@@ -106,8 +138,11 @@ public final class BuildEta {
             int concurrency = etaConcurrency(maxModuleConcurrency);
             boolean serialEta = concurrency <= 1;
             if (costs.isEmpty()) return new BuildService.EtaModel(0, costs, concurrency, serialEta);
+            boolean full = fullRebuild(plan);
             Seed seed = seedEta(
                     entryDir,
+                    full,
+                    workerWarm,
                     costs,
                     costDirs(costs),
                     concurrency,
@@ -148,9 +183,11 @@ public final class BuildEta {
                         "serial",
                         serialEta,
                         "bias",
-                        ScheduleBias.current(entryDir, costs.size()));
+                        ScheduleBias.current(entryDir, costs.size(), realWork(costs), full, workerWarm));
             }
-            return new BuildService.EtaModel(seed.etaMs(), costs, concurrency, serialEta, seed.rawScheduleMs());
+            boolean measured = measuredShare(costs, BuildMetrics.load(BuildMetrics.defaultFile())) >= 0.5;
+            return new BuildService.EtaModel(
+                    seed.etaMs(), costs, concurrency, serialEta, seed.rawScheduleMs(), measured, full, workerWarm);
         } catch (RuntimeException e) {
             // Never fail explain/build over the estimate — but do not silently advertise 0s/empty.
             Log.warn("jk: ETA estimate failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
@@ -371,7 +408,19 @@ public final class BuildEta {
             for (Task s : ModulePipeline.throughPackage(inputs).steps()) running.add(s.name());
         }
         if (running.isEmpty()) {
-            // Resource-only producer or pure cascade recheck — milliseconds, not suite walls.
+            // A pure cascade recheck is one token for the whole module: every step hits its cache,
+            // and on Helidon the module's wall is 40–60 ms, a third of one weight. Priced per step
+            // it was three, and a 21-module chain of cache hits simulated a 1 s build at 5 s. One
+            // whose dependency's API moved, or may have, recompiles for real, and a resource-only
+            // producer copies and repackages: both keep the per-step price.
+            // Only a compile the hint reads as body-only is a recheck; an unknown one ("dependency
+            // changed", no API baseline) may recompile, and keeps the per-step price.
+            boolean unsureCompile = m.steps().stream()
+                    .anyMatch(t -> !t.cached()
+                            && isCompileStepName(t.name())
+                            && (t.text() == null || !t.text().startsWith(TaskForecast.LIKELY_UP_TO_DATE)));
+            if (!resourceDrift && !testResourceDrift && !unsureCompile)
+                return EffortWeights.costOf(mdir, prereqs, EffortWeights.TOKEN, 0);
             int w = Math.max(EffortWeights.TOKEN, cascadeRecheck + (m.dirty() ? 1 : 0));
             return EffortWeights.costOf(mdir, prereqs, w, 0);
         }
@@ -453,6 +502,10 @@ public final class BuildEta {
         // TEST-resource drift reruns the suite for real — test action keys hash test resources —
         // so run-tests must keep its full wall no matter which rule below would discount it.
         if (TaskNames.RUN_TESTS.equals(name) && testResourceDrift) {
+            return false;
+        }
+        // A dependency's API moved: the compile runs for real, so it keeps its measured price.
+        if (isCompileStepName(name) && s.text() != null && s.text().startsWith(TaskForecast.LIKELY_RECOMPILE)) {
             return false;
         }
         // Cascade-forced compile/package without local source edits.
@@ -594,6 +647,60 @@ public final class BuildEta {
         return isCompileStepName(name) || TaskNames.PACKAGE_JAR.equals(name) || TaskNames.PACKAGE_ASSEMBLY.equals(name);
     }
 
+    /**
+     * Whether this build rebuilds everything: forced, or at least half the modules that compile
+     * are predicted to compile whole.
+     */
+    static boolean fullRebuild(ExplainPlan plan) {
+        var cfg = SessionContext.current().config();
+        if (cfg.rebuildOr(false) || cfg.forceOr(false)) return true;
+        int compiling = 0;
+        int whole = 0;
+        for (TaskForecast.Module m : plan.modules()) {
+            for (TaskForecast.Task t : m.steps()) {
+                if (!isCompileStepName(t.name()) || t.cached()) continue;
+                compiling++;
+                if (t.status() == TaskForecast.Status.FULL) whole++;
+                break;
+            }
+        }
+        return compiling > 0 && whole * 2 >= compiling;
+    }
+
+    /**
+     * The share of {@code costs}' modules that have a recorded compile wall of their own: what the
+     * schedule prices them from. Below a half, the schedule rests on cold priors.
+     */
+    static double measuredShare(List<EffortWeights.ModuleCost> costs, BuildMetrics metrics) {
+        int real = 0;
+        int n = 0;
+        for (EffortWeights.ModuleCost c : costs) {
+            if (!(c.weight() > EffortWeights.TOKEN || c.testWeight() > 0 || c.tailWeight() > 0)) continue;
+            real++;
+            String key = BuildMetrics.slashKey(c.dir().toString());
+            for (String step : List.of(TaskNames.COMPILE_JAVA, TaskNames.COMPILE_KOTLIN, TaskNames.COMPILE_GROOVY)) {
+                if (StepWalls.stepOkAvgMillisOwn(metrics, key, step) > 0) {
+                    n++;
+                    break;
+                }
+            }
+        }
+        // Only cache-hit rechecks: nothing priced from walls, nothing for the bias to mistake.
+        return real == 0 ? 1.0 : n / (double) real;
+    }
+
+    /**
+     * The modules of {@code costs} that do real work: anything priced above a lone recheck token,
+     * or with a suite or a packaging tail. With the module count, the {@link ScheduleBias} shape.
+     */
+    static int realWork(List<EffortWeights.ModuleCost> costs) {
+        int n = 0;
+        for (EffortWeights.ModuleCost c : costs) {
+            if (c.weight() > EffortWeights.TOKEN || c.testWeight() > 0 || c.tailWeight() > 0) n++;
+        }
+        return n;
+    }
+
     /** The seed plus the pre-bias schedule the observation loop compares actual walls against. */
     record Seed(long etaMs, long rawScheduleMs) {}
 
@@ -605,6 +712,8 @@ public final class BuildEta {
      */
     private static Seed seedEta(
             Path entryDir,
+            boolean full,
+            boolean workerWarm,
             List<EffortWeights.ModuleCost> costs,
             Set<Path> dirs,
             int concurrency,
@@ -659,12 +768,17 @@ public final class BuildEta {
         // one, because it is a JVM walking the tree while test JVMs compete for the same machine.
         // It contends like everything else here, so it scales like everything else here.
         if (costs.size() >= ScheduleBias.MIN_MODULES) {
-            base = Math.round(base * ScheduleBias.current(entryDir, costs.size()));
+            base = Math.round(base * ScheduleBias.current(entryDir, costs.size(), realWork(costs), full, workerWarm));
         }
         if (coldFull && base > 0) {
             base = Math.round(base * 1.08);
         }
-        if (fullWork) {
+        // The whole-build history floor catches a schedule that under-prices before anything is
+        // learned. Once this shape has a learned correction it only fights it: the floor leans on
+        // the slowest build on record, which for a rebuild is one that also paid a cold worker,
+        // and held a warm rebuild 1.5x high while the shape's own correction read 0.3.
+        boolean shapeLearned = ScheduleBias.learned(entryDir, costs.size(), realWork(costs), full, workerWarm);
+        if (fullWork && !shapeLearned) {
             BuildMetrics.Stats plainFull =
                     okHistory(entryDir, new BuildService.HistoryShape(false, hist.dirtyModules()));
             BuildMetrics.Stats floorSrc = higherAvg(okHist, plainFull);
@@ -703,7 +817,9 @@ public final class BuildEta {
         }
         // One-sided clamp for absurd over-estimates only (never pull incremental work up to history).
         // Then a tiny open-loop preference for mild over-estimate (finishing early feels worse than late).
-        return new Seed(preferSlightOverEstimate(applyHistoryPrior(base, okMatch)), rawSchedule);
+        // The close-out after the last module is a fixed cost, so it is added after the bias.
+        long seeded = preferSlightOverEstimate(applyHistoryPrior(base, okMatch)) + ScheduleBias.tailMs(entryDir);
+        return new Seed(seeded, rawSchedule);
     }
 
     /**

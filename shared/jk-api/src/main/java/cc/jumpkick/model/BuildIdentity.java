@@ -66,7 +66,21 @@ public final class BuildIdentity {
      * restores an older engine's results under the same key.
      */
     public static String cacheKeyVersion() {
+        String pinned = overrideKeyVersion;
+        if (pinned != null) return pinned;
         return compose(JkVersion.VERSION, buildId());
+    }
+
+    private static volatile @Nullable String overrideKeyVersion;
+
+    /**
+     * Pretend to be a jk whose action keys are all different: what an upgrade does, since keys hash
+     * the version and the compiler worker's bytes. {@code null} returns to the derived version. A
+     * release-version test classpath folds no build id into the key, so {@link
+     * #overrideBuildIdForTests} cannot move it.
+     */
+    public static void overrideCacheKeyVersionForTests(@Nullable String version) {
+        overrideKeyVersion = version;
     }
 
     /** Pure composition rule, separated for tests. */

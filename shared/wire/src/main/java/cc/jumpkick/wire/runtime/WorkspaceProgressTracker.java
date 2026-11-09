@@ -324,29 +324,27 @@ public final class WorkspaceProgressTracker {
 
     public static double preflightFraction(String stage, int done, int total) {
         if (stage == null) stage = "";
+        // In the order the stages run. The cache check reports per module forecast: on a 223-module
+        // incremental build it is 40% of the wall, and a band below the sync's held the bar still
+        // through all of it.
         return switch (stage) {
-            case "checking" -> 0.08;
             // A first lock downloads the project's jars: its settled files move its band.
-            case "lock" -> {
-                if (total <= 0) yield 0.20;
-                double within = Math.min(1.0, Math.max(0.0, (double) done / (double) total));
-                yield 0.20 + 0.10 * within;
-            }
-            case "graph" -> total > 0 && done >= total ? 0.40 : 0.35;
+            case "lock" -> band(0.00, 0.15, done, total);
+            case "graph" -> total > 0 && done >= total ? 0.18 : 0.15;
             // A cold sync is most of a first build's preflight: its settled files move a band of
-            // their own, between the graph and the plan.
-            case "sync" -> {
-                if (total <= 0) yield 0.40;
-                double within = Math.min(1.0, Math.max(0.0, (double) done / (double) total));
-                yield 0.40 + 0.25 * within;
-            }
-            case "plan" -> {
-                if (total <= 0) yield 0.65;
-                double within = Math.min(1.0, Math.max(0.0, (double) done / (double) total));
-                yield 0.65 + 0.30 * within;
-            }
+            // their own, between the graph and the check.
+            case "sync" -> band(0.18, 0.35, done, total);
+            case "checking" -> band(0.35, 0.65, done, total);
+            case "plan" -> band(0.65, 0.95, done, total);
             default -> 0.10;
         };
+    }
+
+    /** {@code from} plus the share of {@code from..to} that {@code done} of {@code total} is; {@code from} when unknown. */
+    private static double band(double from, double to, int done, int total) {
+        if (total <= 0) return from;
+        double within = Math.min(1.0, Math.max(0.0, (double) done / (double) total));
+        return from + (to - from) * within;
     }
 
     public static double percentOf(long numerator, long denominator) {

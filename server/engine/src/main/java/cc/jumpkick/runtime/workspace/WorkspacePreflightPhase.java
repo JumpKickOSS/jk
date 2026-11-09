@@ -314,8 +314,31 @@ public final class WorkspacePreflightPhase {
             if (core == null) {
                 dirty = Set.of();
             } else {
-                BuildForecasting.Preflight computed = BuildForecasting.forecastWithFingerprints(
-                        graph, request.cache(), request.skipTests(), request.entryDir(), core, true, request.profile());
+                int[] reported = {0};
+                TaskForecaster.ModuleProgress progress = (done, total) -> {
+                    // Lanes count and report on their own threads: never report a count already passed.
+                    synchronized (reported) {
+                        if (done <= reported[0]) return;
+                        reported[0] = done;
+                        listener.onPreflight("checking", done, total, "Checking cache (" + done + "/" + total + ")");
+                    }
+                };
+                BuildForecasting.Preflight computed;
+                try {
+                    computed = ScopedValue.where(TaskForecaster.PROGRESS, progress)
+                            .call(() -> BuildForecasting.forecastWithFingerprints(
+                                    graph,
+                                    request.cache(),
+                                    request.skipTests(),
+                                    request.entryDir(),
+                                    core,
+                                    true,
+                                    request.profile()));
+                } catch (RuntimeException e) {
+                    throw e;
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                }
                 preflight = Optional.of(computed);
                 dirty = computed.dirty();
                 restoreNeeded = computed.restoreNeeded();

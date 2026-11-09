@@ -12,6 +12,7 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -208,6 +209,37 @@ class JavaAbiCompileAvoidanceE2eTest {
         assertThat(Files.readAllBytes(usesLib))
                 .as("javac copied the new constant into the consumer")
                 .isNotEqualTo(usesLibInitial);
+    }
+
+    /**
+     * After an upgrade every action key moves (it hashes jk's version and the compiler worker's
+     * bytes) while the build's freshness stamps do not, and the build keeps skipping a dependent
+     * whose stamp still holds. The forecast must say the same: before, every dependent of an edit
+     * forecast a recompile it would not run, and the ETA priced it.
+     */
+    @Test
+    void a_dependents_forecast_follows_its_stamp_when_its_key_was_recorded_by_another_jk(@TempDir Path tmp)
+            throws Exception {
+        Path cache = TestCaches.dir("abi-upgrade-cache");
+        Path ws = workspace(tmp);
+        lock(ws, cache);
+        BuildIdentity.overrideCacheKeyVersionForTests("jk-before-the-upgrade");
+        try {
+            build(ws, cache, "initial, under the old jk");
+        } finally {
+            BuildIdentity.overrideCacheKeyVersionForTests("jk-after-the-upgrade");
+        }
+        try {
+            Files.writeString(ws.resolve("lib/src/com/example/Lib.java"), LIB_BODY_EDIT);
+            TaskForecast.Task app = forecast(ws, cache, "app", TaskNames.COMPILE_JAVA);
+            assertThat(app.text())
+                    .as("app's stamp holds against lib's unchanged API: " + app)
+                    .contains("likely up to date")
+                    .contains("body-only edit in lib");
+            assertNotCompiled(build(ws, cache, "after lib's body-only edit, under the new jk"), "after the upgrade");
+        } finally {
+            BuildIdentity.overrideCacheKeyVersionForTests(null);
+        }
     }
 
     /**

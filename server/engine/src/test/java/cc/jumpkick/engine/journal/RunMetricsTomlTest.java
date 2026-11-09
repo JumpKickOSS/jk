@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.compile.ColdWorkerRuns;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.TestSuiteRunners;
 import cc.jumpkick.wire.runtime.TestSuiteScaling;
@@ -274,6 +275,10 @@ class RunMetricsTomlTest {
 
     /** {@code base} with its task list replaced — the record is wide and all-positional. */
     private static BuildRecord withTasks(BuildRecord base, List<BuildRecord.Task> tasks) {
+        return withTasks(base, tasks, base.requestId());
+    }
+
+    private static BuildRecord withTasks(BuildRecord base, List<BuildRecord.Task> tasks, long requestId) {
         return new BuildRecord(
                 base.id(),
                 base.buildNumber(),
@@ -299,8 +304,26 @@ class RunMetricsTomlTest {
                 base.benefit(),
                 base.running(),
                 base.io(),
-                base.requestId(),
+                requestId,
                 null,
                 List.of());
+    }
+
+    /**
+     * A build that started without a warm compiler worker records no compile walls: they carry the
+     * worker's warm-up, and the ETA would price every later warm build from them.
+     */
+    @Test
+    void a_cold_worker_runs_compile_walls_are_not_recorded() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        var tasks = List.of(
+                new BuildRecord.Task("compile-java", "compile", "SUCCESS", 2000, 0L),
+                new BuildRecord.Task("package-jar", "package", "SUCCESS", 300, 0L));
+        ColdWorkerRuns.mark(4242L);
+        String locator = requireNonNull(
+                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks, 4242L), BuildJournal.Snapshot.NONE));
+        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+        assertThat(toml).contains("task.package-jar.wall-ms = 300");
+        assertThat(toml).doesNotContain("task.compile-java.wall-ms");
     }
 }

@@ -44,8 +44,9 @@ class WorkspaceProgressTrackerTest {
         t.elapsedEpochNanos = System.nanoTime() - 30_000_000_000L; // ~30s elapsed at re-seed, still preflight
         t.seedWall(60_000, 2); // provisional → refined
         t.calibrate(100, 2);
-        // Re-anchored: since-seed ≈ 0 of a 60s R0, not ~28s inherited from the stale anchor.
-        assertThat(t.snapshot().percent()).isLessThan(10.0);
+        // Re-anchored: the 60s are remaining from the re-seed, not ~28s used up from the stale
+        // anchor, and the 30s already spent count as progress: 30 / (30 + 60).
+        assertThat(t.snapshot().percent()).isBetween(30.0, 37.0);
     }
 
     /**

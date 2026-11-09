@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.builds.MetricsFile;
 import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.compile.ColdWorkerRuns;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.TaskPhases;
 import cc.jumpkick.runtime.base.TestClassWalls;
@@ -63,8 +64,10 @@ final class RunMetricsToml {
         // exists to calibrate (4×2s compile tasks must read 8s, not 2s).
         Map<String, Long> phaseTotals = new LinkedHashMap<>();
         Map<String, Map<String, Long>> modulePhaseTotals = new LinkedHashMap<>();
+        boolean coldWorker = ColdWorkerRuns.cold(finished.requestId());
         if (finished.steps() != null) {
             for (BuildRecord.Task s : finished.steps()) {
+                if (coldWorker && isCompile(s)) continue;
                 appendStepMetrics(sb, s, root, root, phaseTotals, modulePhaseTotals);
             }
         }
@@ -72,6 +75,8 @@ final class RunMetricsToml {
             for (BuildRecord.Module m : finished.modules()) {
                 if (m == null || m.steps() == null) continue;
                 for (BuildRecord.Task s : m.steps()) {
+                    // A compile on a worker still warming up is not this module's compile cost.
+                    if (coldWorker && isCompile(s)) continue;
                     appendStepMetrics(sb, s, m.dir(), root, phaseTotals, modulePhaseTotals);
                 }
             }
@@ -121,6 +126,10 @@ final class RunMetricsToml {
             rows.put(sanitize(e.getKey()), Long.toString(e.getValue()));
         }
         MetricsFile.appendClassWalls(sb, ModuleKeys.relative(moduleDir, root), rows);
+    }
+
+    private static boolean isCompile(BuildRecord.Task s) {
+        return s != null && s.name() != null && s.name().startsWith("compile-");
     }
 
     private static void appendStepMetrics(

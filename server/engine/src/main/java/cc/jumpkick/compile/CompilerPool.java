@@ -176,6 +176,19 @@ final class CompilerPool {
         return pool != null && pool.hasReadyWorker() ? pool : null;
     }
 
+    /**
+     * Whether a resident pool that has compiled for {@code project} holds a worker that has said
+     * hello: that project's next compile runs warm. Pools are per JDK, so another project's warm
+     * pool says nothing about this one's.
+     */
+    static boolean anyWarmResidentFor(Path project) {
+        Path root = project.toAbsolutePath().normalize();
+        for (CompilerPool pool : POOLS.values()) {
+            if (pool.job == null && pool.projects.contains(root) && pool.hasReadyWorker()) return true;
+        }
+        return false;
+    }
+
     /** A fresh scope for one resident worker. */
     static long nextScope() {
         return SCOPES.getAndIncrement();
@@ -290,7 +303,8 @@ final class CompilerPool {
         synchronized (this) {
             if (!closed) {
                 queue.addLast(w);
-                ensureWorker();
+                // A worker started for this job's compile: the job pays its warm-up.
+                if (ensureWorker()) ColdWorkerRuns.mark(w.job);
                 notifyAll();
                 return;
             }
@@ -298,15 +312,16 @@ final class CompilerPool {
         w.fail(new IOException("zinc worker pool closed"));
     }
 
-    /** Under the lock: start a worker unless a live one, not retiring, is already here. */
-    private void ensureWorker() {
+    /** Under the lock: start a worker unless a live one, not retiring, is already here; whether it started one. */
+    private boolean ensureWorker() {
         workers.removeIf(CompilerWorker::dead);
         for (CompilerWorker w : workers) {
-            if (!w.retiring()) return;
+            if (!w.retiring()) return false;
         }
         CompilerWorker worker = new CompilerWorker(this, workerScope(), starter.launcher());
         workers.add(worker);
         worker.start();
+        return true;
     }
 
     /**

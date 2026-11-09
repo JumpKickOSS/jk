@@ -228,9 +228,19 @@ public final class BuildService {
             int concurrency,
             boolean serial,
             /** The schedule simulation BEFORE the learned {@link ScheduleBias} — what bias observations compare against. */
-            long rawScheduleMs) {
+            long rawScheduleMs,
+            /**
+             * Whether most modules were priced from their own measured step walls. A schedule priced
+             * from cold priors is off by the missing history, not by contention, and teaching the
+             * bias that gap overshot every later build until the bias decayed.
+             */
+            boolean measured,
+            /** A rebuild of everything rather than an incremental build: a {@link ScheduleBias} shape. */
+            boolean full,
+            /** Whether the build started with a warm compiler worker: a {@link ScheduleBias} shape. */
+            boolean workerWarm) {
         public EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
-            this(etaMs, costs, concurrency, serial, 0);
+            this(etaMs, costs, concurrency, serial, 0, false, false, true);
         }
 
         static EtaModel empty() {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -65,8 +66,10 @@ final class WorkspaceResourcePhase {
         // The ETA walks the forecast of every scheduled module (seconds on a large workspace) and
         // nothing scheduling needs comes from it, so it is priced beside the build.
         WorkspaceRequest priced = request;
+        // Read before any compile can start a worker: the ETA is priced beside the run.
+        boolean workerWarm = JavaCompilerHost.anyWarmWorkerFor(request.entryDir());
         BackgroundEta eta = BackgroundEta.deferred(
-                () -> estimate(preflight, priced, incoming, dirtyUnits, parallelTests), model -> {
+                () -> estimate(preflight, priced, incoming, dirtyUnits, parallelTests, workerWarm), model -> {
                     List<ModuleWorkCost> ordered = BuildEta.orderCostsLikeUnits(dirtyUnits, model.costs());
                     listener.onWorkModel(
                             WorkModel.of(model.etaMs(), model.concurrency(), model.serial(), parallelTests, ordered));
@@ -94,7 +97,8 @@ final class WorkspaceResourcePhase {
             WorkspaceRequest request,
             WorkspaceRequest incoming,
             List<BuildGraph.BuildUnit> dirtyUnits,
-            boolean parallelTests) {
+            boolean parallelTests,
+            boolean workerWarm) {
         ExplainPlan etaPlan = etaPlan(preflight, request, dirtyUnits);
         return BuildEta.estimateEtaModel(
                 etaPlan,
@@ -106,7 +110,8 @@ final class WorkspaceResourcePhase {
                 request.skipTests(),
                 request.verbose(),
                 parallelTests,
-                request.maxModuleConcurrency());
+                request.maxModuleConcurrency(),
+                workerWarm);
     }
 
     private static ExplainPlan etaPlan(

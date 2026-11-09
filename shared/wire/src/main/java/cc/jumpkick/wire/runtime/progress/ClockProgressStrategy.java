@@ -2,17 +2,19 @@
 package cc.jumpkick.wire.runtime.progress;
 
 /**
- * Adaptive wall fill for the progress bar from residual remaining work.
- *
- * <p>When residual is known:
+ * Adaptive wall fill for the progress bar from the remaining work.
  *
  * <pre>
- *   frac = elapsed / (elapsed + residualRemaining)
+ *   frac = elapsed / (elapsed + remaining)
  * </pre>
  *
- * so the fill speeds up when work finishes faster than R0 and slows when residual grows — hits
- * ~100% as residual → 0 (same oracle the countdown re-anchors to). Without residual, falls back
- * to {@code elapsed / R0}. Cap 99% until settle; never goes backwards.
+ * where {@code elapsed} runs from the start of the command — preflight included — and {@code
+ * remaining} is the residual estimate when there is one, else R0 less the time since the seed's
+ * anchor. Counted from the command's start, the bar at execute start reads preflight / (preflight
+ * + R0), the wall fraction itself when R0 is right: on a 2 s incremental build the preflight is a
+ * third of the wall, and a bar that credited it a fixed tenth read 18–40 points behind the clock.
+ * Speeds up when work finishes faster than estimated, slows when it grows, reaches ~100% as the
+ * remaining work reaches 0. Cap 99% until settle; never goes backwards.
  */
 public final class ClockProgressStrategy implements HeaderProgressStrategy {
 
@@ -35,18 +37,13 @@ public final class ClockProgressStrategy implements HeaderProgressStrategy {
         if (!state.hasR0() && !state.hasResidual()) return new long[] {0, 0};
         if (state.settled()) return new long[] {SCALE, SCALE};
 
-        long elapsed = state.elapsedSinceSeed();
-        double raw;
-        if (state.hasResidual()) {
-            // Adaptive: remaining work firming up mid-run (private estimate only).
-            long residual = Math.max(0L, state.residualRemainingMs());
-            long denom = elapsed + residual;
-            if (denom <= 0) raw = DISPLAY_CAP;
-            else raw = (double) elapsed / (double) denom;
-        } else {
-            // Pure open-loop until residual is available.
-            raw = (double) elapsed / (double) state.r0Ms();
-        }
+        long elapsed = Math.max(0L, state.elapsedMs());
+        // Adaptive once the residual firms up mid-run; open-loop on R0 from its anchor until then.
+        long remaining = state.hasResidual()
+                ? Math.max(0L, state.residualRemainingMs())
+                : Math.max(0L, state.r0Ms() - state.elapsedSinceSeed());
+        long denom = elapsed + remaining;
+        double raw = denom <= 0 ? DISPLAY_CAP : (double) elapsed / (double) denom;
         if (raw < 0) raw = 0;
         if (raw > DISPLAY_CAP) raw = DISPLAY_CAP;
         raw = peak.raise(raw);

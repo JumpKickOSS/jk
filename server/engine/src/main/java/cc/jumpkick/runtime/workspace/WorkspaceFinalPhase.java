@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.compile.ColdWorkerRuns;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
@@ -121,12 +123,25 @@ final class WorkspaceFinalPhase {
         // never shown, and its schedule was never the one this run was measured against.
         resources.eta().close().ifPresent(model -> {
             BuildEta.logSeedQuality(
-                    model.etaMs(), run.executeWallMs(), resources.dirtyUnits().size());
+                    model.etaMs() - ScheduleBias.tailMs(request.entryDir()),
+                    run.executeWallMs(),
+                    resources.dirtyUnits().size());
+            Long requestId = JobWorkers.currentRequestId();
+            if (!model.measured()) {
+                // Nothing measured to protect yet: a cold worker's compile walls are the history
+                // there is (a CI agent with a fresh engine per job has no other).
+                ColdWorkerRuns.keepWalls(requestId);
+                return;
+            }
+            boolean startedWarm = requestId == null || !ColdWorkerRuns.cold(requestId);
             ScheduleBias.observe(
                     request.entryDir(),
                     model.rawScheduleMs(),
                     run.executeWallMs(),
-                    resources.dirtyUnits().size());
+                    resources.dirtyUnits().size(),
+                    BuildEta.realWork(model.costs()),
+                    model.full(),
+                    startedWarm);
         });
         StepTimings.record(request.cache(), resources.timingSamples(), StepTimings.DEFAULT_ALPHA, now);
         Calibration.learnFromSuccess(List.copyOf(resources.hostSamples()));
