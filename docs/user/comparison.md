@@ -15,7 +15,7 @@ These are true of JumpKick by default and not of stock Maven or stock Gradle, in
 the pitch in [Why JumpKick](why.md).
 
 1. **An agent gets a file and a tool, not a log.** `target/jk-results.md`, MCP, `jk skill` and
-   `jk graph` are first-party. The code graph needs nothing installed beside jk and stays current
+   `jk graph` are first-party. The code graph needs nothing installed beside JumpKick and stays current
    with the build, so an agent can rely on it in every project. `jk mvn` and `jk gradle` run the real tool and, for Maven, fold its
    events into that same report.
 2. **The action cache is on, and shared across checkouts.** Keys name content and a
@@ -50,7 +50,7 @@ directories it does not own as shared infrastructure.
 | **Where a JDK JumpKick (or the tool) installs lands** | IntelliJ's shared root: `~/.jdks`, or `~/Library/Java/JavaVirtualMachines` on macOS. Inventory and fingerprints stay in `~/.jk/state`, because the directory is shared. | Maven does not install JDKs. The toolchain plugin points at JDKs listed in `toolchains.xml`. | Detects an IntelliJ-installed JDK, then **installs its own** under the Gradle user home (`<gradle-user-home>/jdks`) when a toolchain resolver is configured. |
 | **Looks for a JDK before downloading** | A miss installs into the shared root. Probes: `JAVA_HOME`, JumpKick's own, IntelliJ, Gradle's provisioned JDKs, SDKMAN, JBang, mise, asdf, jenv, Homebrew, Jabba, the Coursier JVM cache, Linux `/usr/lib/jvm`, `/usr/java`, `/usr/lib64/jvm`, `/usr/local/java`, and `/opt/java`, macOS `/Library/Java/JavaVirtualMachines` and every home `/usr/libexec/java_home -V` lists, the Windows registry's JavaSoft `JavaHome` and Adoptium MSI `Path` entries, every `jdkHome` in Maven's `~/.m2/toolchains.xml`, and homes named by Gradle's `org.gradle.java.installations.paths`, `fromEnv`, and `maven-toolchains-file` (user-home and build-root `gradle.properties`) or by `JK_JDK_PATHS` and `JK_JDK_FROM_ENV`. | The JDK that launched Maven, plus every `jdkHome` in `toolchains.xml`. No download. | OS locations, `JAVA_HOME`, asdf, Jabba (`JABBA_HOME`), SDKMAN, Maven `toolchains.xml`, IntelliJ's JDK directory, and any path or env var named in Gradle properties. A miss provisions into the Gradle user home. |
 | **Older bytecode** | `java = 17` or `21` compiles with the host JDK 25 via `--release`. No second JDK. | `--release` on whatever JDK is running Maven. | A toolchain `languageVersion` of 17 selects or downloads a JDK 17. `--release` is a separate setting. |
-| **What a wipe will not touch** | `jk storage nuke` does not delete `~/.m2`. OS-packaged and IntelliJ-registered JDKs, Coursier's JVM cache, and homes that `toolchains.xml`, `gradle.properties`, or `JK_JDK_PATHS` only point at, are refused by `jk jdk uninstall`. SDKMAN, mise, JBang, jenv, asdf, Homebrew, and Jabba go through that tool first. jk deletes a JDK directory only under its managed root (`~/.jdks`, the macOS Library root, or `JK_JDKS_DIR`), symlinks resolved. Outside it, `JAVA_HOME`, Gradle's provisioned JDKs, and every other source without an owning tool are refused by name and path, and whatever an owning tool leaves in place stays. | Maven owns `~/.m2`. | Deleting the Gradle user home does not delete `~/.m2` or `~/.jdks`. |
+| **What a wipe will not touch** | `jk storage nuke` does not delete `~/.m2`. OS-packaged and IntelliJ-registered JDKs, Coursier's JVM cache, and homes that `toolchains.xml`, `gradle.properties`, or `JK_JDK_PATHS` only point at, are refused by `jk jdk uninstall`. SDKMAN, mise, JBang, jenv, asdf, Homebrew, and Jabba go through that tool first. JumpKick deletes a JDK directory only under its managed root (`~/.jdks`, the macOS Library root, or `JK_JDKS_DIR`), symlinks resolved. Outside it, `JAVA_HOME`, Gradle's provisioned JDKs, and every other source without an owning tool are refused by name and path, and whatever an owning tool leaves in place stays. | Maven owns `~/.m2`. | Deleting the Gradle user home does not delete `~/.m2` or `~/.jdks`. |
 | **Corporate Maven settings** | Mirrors, proxies, and server credentials in `~/.m2/settings.xml` apply. The lock still records Central's own URL. | This is Maven's file. | A Gradle build declares its own repositories. It does not read `settings.xml` as a default. |
 
 The distinction that matters: Gradle already **finds** a JDK IntelliJ installed. JumpKick
@@ -86,13 +86,13 @@ Details: [Install](install.md), [JDK](jdk.md), [Cache](cache.md), [Repositories]
 | **Import** | `jk import` writes `jk.toml` and a fidelity report graded per plugin. Common compiler, jar, Surefire, Boot, shade, and Kotlin mappings land. The report names what did not. | — | — |
 
 The agent loop is measured: over 165 broken-build scenarios, five coding agents from three
-vendors, the same prompt and budget for each tool. On the four agents that fix every scenario jk
+vendors, the same prompt and budget for each tool. On the four agents that fix every scenario JumpKick
 takes 5–6 turns against 5–8, 23–46k input tokens against 25–69k, and 11–19 s against 14–32 s
 (medians; one host, Gradle single-module guides — [the table](why.md#agents-reach-green)).
-Maven and Gradle have no first-party graph to ask; with jk's:
+Maven and Gradle have no first-party graph to ask; with JumpKick's:
 
 <!-- agents-claims:begin -->
-We asked coding agents from 6 vendors questions like "who calls this method?" With jk's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](why.md#asking-about-the-code).)
+We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 See [Why JumpKick](why.md) and [Agents](agents.md).
 
@@ -103,9 +103,9 @@ says what each row runs: Gradle with the configuration cache and the build cache
 without either because it has neither in stock form.
 
 <!-- wall-claims:begin -->
-On [spring-petclinic](performance.md), jk is faster than Gradle on every row: clean build (0.37 s against 2.69 s), warm rebuild (0.09 s against 0.57 s), no-op (0.05 s against 0.53 s), one-file edit (0.13 s against 0.61 s) and test run (8.54 s against 9.97 s). It is faster than Maven on every row: clean build (0.37 s against 3.16 s), warm rebuild (0.09 s against 3.16 s), no-op (0.05 s against 2.37 s), one-file edit (0.13 s against 3.14 s) and test run (8.54 s against 10.10 s).
+On [spring-petclinic](performance.md), JumpKick is faster than Gradle on every row: clean build (0.37 s against 2.69 s), warm rebuild (0.09 s against 0.57 s), no-op (0.05 s against 0.53 s), one-file edit (0.13 s against 0.61 s) and test run (8.54 s against 9.97 s). It is faster than Maven on every row: clean build (0.37 s against 3.16 s), warm rebuild (0.09 s against 3.16 s), no-op (0.05 s against 2.37 s), one-file edit (0.13 s against 3.14 s) and test run (8.54 s against 10.10 s).
 
-Between builds jk keeps 863 MiB resident: 171 MiB for the engine, whose heap is capped at 256 MiB and trimmed back after every job, and the rest for warm compilers that exit after 30 idle minutes or as soon as the host runs short of memory. One engine serves every project on the machine. Gradle keeps 1,734 MiB, 2.0× as much: its daemon, which idles for three hours by default, and its workers. Maven keeps nothing resident and starts a fresh JVM for every build instead (2.37 s for a no-op). Peak whole-tree RSS during a run is lower than Gradle's on clean build, warm rebuild, no-op and one-file edit and higher on test run; it is higher than Maven's on every row.
+Between builds JumpKick keeps 863 MiB resident: 171 MiB for the engine, whose heap is capped at 256 MiB and trimmed back after every job, and the rest for warm compilers that exit after 30 idle minutes or as soon as the host runs short of memory. One engine serves every project on the machine. Gradle keeps 1,734 MiB, 2.0× as much: its daemon, which idles for three hours by default, and its workers. Maven keeps nothing resident and starts a fresh JVM for every build instead (2.37 s for a no-op). Peak whole-tree RSS during a run is lower than Gradle's on clean build, warm rebuild, no-op and one-file edit and higher on test run; it is higher than Maven's on every row.
 <!-- wall-claims:end -->
 
 The engine's own heap defaults to **256 MiB** (512 MiB when `CI=1`), and it hands memory back to
@@ -150,7 +150,7 @@ When a row is won, change its score here and the matching cell above in the same
 | **Remote cache** | Gradle, and Maven's Build Cache Extension | A second machine restores an action-cache hit. Local keys are already shaped for that. The remote layer is not a product yet. |
 | **Memory during a run** | Maven, and Gradle on the test run | The whole process tree's peak on every [petclinic](performance.md) row at or under both tools'. [Speed and memory](#speed-and-memory) says where it stands today. |
 | **Import fidelity** | — | An imported Maven or Gradle build builds the same artifact without a fidelity-report row for the common plugins. Today an arbitrary exec, the release plugin, `war`, Tycho, OSGi, and a non-standard filtered resource directory are reports. |
-| **Measured agent loop** | jk ahead on five agents, one host; ahead of Maven on Maven-first repos | jk ahead of Gradle on Kotlin repos in turns and tokens, not only wall. Results, MCP, `jk mvn` and the agent report are already real. |
+| **Measured agent loop** | JumpKick ahead on five agents, one host; ahead of Maven on Maven-first repos | JumpKick ahead of Gradle on Kotlin repos in turns and tokens, not only wall. Results, MCP, `jk mvn` and the agent report are already real. |
 
 ### Held
 

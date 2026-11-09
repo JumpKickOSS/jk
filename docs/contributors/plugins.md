@@ -1,6 +1,6 @@
 # Authoring build plugins
 
-A build plugin teaches jk a new `jk.toml` table — `[spring-boot]`, `[grails]`, `[quarkus]`,
+A build plugin teaches JumpKick a new `jk.toml` table — `[spring-boot]`, `[grails]`, `[quarkus]`,
 `[android]`, `[protobuf]` — and shapes the standard commands around it. First-party examples
 live under [`plugins/`](../../plugins/) (start with [`plugins/spring-boot`](../../plugins/spring-boot)
 or [`plugins/quarkus`](../../plugins/quarkus)).
@@ -8,11 +8,11 @@ or [`plugins/quarkus`](../../plugins/quarkus)).
 **Who this is for:** **first-party** plugins in this monorepo, and plugins authored **outside**
 it against the published SDK coordinate `cc.jumpkick:jk-plugin-sdk:<jk version>` — see
 [Authoring against the published SDK](#authoring-against-the-published-sdk). A consumer pins any
-plugin not shipped inside jk by content (path or Maven pin + required `sha256`); there is no
+plugin not shipped inside JumpKick by content (path or Maven pin + required `sha256`); there is no
 marketplace. Pre-1.0 the SPI is additive-only by intent, not yet by contract
 ([compatibility](compatibility.md)).
 
-**The bar:** you declare *what*; jk owns *when* (ordering) and *whether it can be skipped*
+**The bar:** you declare *what*; JumpKick owns *when* (ordering) and *whether it can be skipped*
 (caching / action keys). You do not hand-manage the content-addressed store.
 
 ## Anatomy
@@ -25,7 +25,7 @@ templates/<lang>/<framework>/<name>.g8/  # optional Giter8 trees for jk new -t <
 <your classes>                      # optional code layer (forked process only)
 ```
 
-- **Declarative layer** — jk parses `jk-plugin.toml` (data; safe even for untrusted plugins)
+- **Declarative layer** — JumpKick parses `jk-plugin.toml` (data; safe even for untrusted plugins)
   and applies contributions itself. Zero plugin code in the engine JVM.
 - **Code layer** — runs in a **forked worker** over a JSONL protocol. The engine never
   classloads your classes.
@@ -37,10 +37,10 @@ they ride the user’s JVM).
 
 ### Authoring against the published SDK
 
-Every jk release publishes `cc.jumpkick:jk-plugin-sdk` and `cc.jumpkick:jk-host` (the SDK's one
+Every JumpKick release publishes `cc.jumpkick:jk-plugin-sdk` and `cc.jumpkick:jk-host` (the SDK's one
 dependency) at the release's version — sources and javadoc jars, a POM with the metadata Central
 requires, GPG-signed — to `https://jumpkick.build/repo/` and to Maven Central
-([releases](releases.md#maven-central)). jk resolves `cc.jumpkick` from jumpkick.build alone;
+([releases](releases.md#maven-central)). JumpKick resolves `cc.jumpkick` from jumpkick.build alone;
 Central is where a Maven or Gradle build finds them. A plugin outside this tree:
 
 ```toml
@@ -60,10 +60,10 @@ jk-compat = ">=0.13"          # the floor: the oldest jk line that loads this pl
 Two versions describe the SDK. `sdk` is the exact release the code compiled against, the same
 number as the `[dependencies]` pin: a consumer's `jk lock` pins the worker's SDK floor
 (`jk-plugin-sdk`, `jk-host`) at it, as `plugin`-scoped rows resolved from the consumer's
-repositories, so the worker forks on the SPI it was built for whatever jk is running. A manifest
-without `sdk` is pinned at the running jk's version and the lock notes that. `jk-compat` is the
+repositories, so the worker forks on the SPI it was built for whatever JumpKick is running. A manifest
+without `sdk` is pinned at the running JumpKick's version and the lock notes that. `jk-compat` is the
 contract between the two lines: a plugin built against release `N`'s SDK declares `>=N` and every
-later jk loads it, an older jk refuses it with an upgrade error before any code runs. Pick the
+later JumpKick loads it, an older one refuses it with an upgrade error before any code runs. Pick the
 oldest SDK whose SPI you use and name that release.
 
 The first-party plugins under `plugins/` keep the workspace edge on purpose: the self-host build
@@ -85,7 +85,7 @@ The guarded exceptions each carry a current product invariant:
 - `publisher → client-io`: repository uploads use the client-safe HTTP/file/object-store
   transports. The transport surface lives there specifically so the worker does not depend on
   server I/O.
-- `auditor → client-io`: OSV queries go through `Http`, the one client jk routes through the
+- `auditor → client-io`: OSV queries go through `Http`, the one client JumpKick routes through the
   configured proxy.
 - `android → client-io`: the SDK license feed is downloaded through `Http`, for the same reason.
 - `image-builder → jk-api`: image configuration and repository credentials are public model
@@ -349,15 +349,15 @@ application model. Implement `LockExtension` beside `Plugin`: `jk lock` sends th
 (`exec.runtimeEntries()` the production closure, the test runtime closure as a second list, your
 config, step tools, routed repositories and JDK, and an empty classes directory), and you answer
 every file as a `LockExtension.Pin`: `group:artifact:version[:classifier][!type]` (`!pom` for a
-POM) and, when your resolver holds the bytes, their path — jk takes those bytes into the store
+POM) and, when your resolver holds the bytes, their path — JumpKick takes those bytes into the store
 instead of downloading them again. Answer what your resolver *read*, POMs and parents included:
 the files a build will need, not only the ones it ships. Under `exec.extra("lock-closure.<name>")`
-you get a Maven-layout repository of what jk already holds of the closure, to read before the
+you get a Maven-layout repository of what JumpKick already holds of the closure, to read before the
 network. Each step `for-step` names receives the same extra holding exactly the pinned files, built
 from the store when the step runs, and is keyed by it; other steps neither see it nor key on it.
 The lock pins each file by digest ([Lockfile](../user/lockfile.md#closures-a-plugin-resolves)),
-`jk sync` stages them, and an offline build reads them. jk asks only when the module's inputs (your
-plugin's build — its version, jk's if jk bundles it, and its jar — the module, the module's own rows
+`jk sync` stages them, and an offline build reads them. JumpKick asks only when the module's inputs (your
+plugin's build — its version, JumpKick's if JumpKick bundles it, and its jar — the module, the module's own rows
 and the lock's tool rows)
 changed, so the answer must follow from those — not from your table, which a variant can rewrite.
 `entries` says which of the module's rows are the inputs: `runtime` for a closure the production
@@ -433,7 +433,7 @@ files      = { "src/main/resources/kafka/shared-schema.yaml#schemas" = "subjects
 credentials = { username = "sourceSchemaRegistryAPIKey", password = "sourceSchemaRegistryAPISecret" }
 ```
 
-A rule maps a Gradle plugin a project applies into a jk table. `version-to` takes the plugin's
+A rule maps a Gradle plugin a project applies into a JumpKick table. `version-to` takes the plugin's
 declared version. `properties` reads properties of the `extension` or `task` the rule names: the
 model query's init script reads them off the evaluated project, a `Provider` as its value and a file
 as a module-relative path. `files` reads a file the plugin reads, module-relative, with `#dotted.key`
@@ -470,7 +470,7 @@ Workers speak the same JSONL style as compiler plugins: one shared `SpecWriter` 
 spec, and the engine reads worker replies through a bounded line reader. Prefer the harness in
 `plugin-sdk` (`BuildPlugin`, `TaskSpec`/`TaskContribution` task and packager SPIs) over
 hand-rolled protocols. A plugin's `jk-compat = ">=x.y"` floor is enforced at manifest load —
-too-old jk refuses the plugin with an upgrade error.
+too-old JumpKick refuses the plugin with an upgrade error.
 
 ## Active plugins per module
 
@@ -521,7 +521,7 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   closure) declares `In.repositories()` and reads `TaskExec.repositories()`; a packager that
   fetches a tool or a base image declares the same input and reads `PackageIo.repositories()`.
   Either receives the module's `[repositories]` set over the built-in remotes, in resolve order,
-  each as jk routes it — a `settings.xml` mirror standing in for the repository, Maven Central
+  each as JumpKick routes it — a `settings.xml` mirror standing in for the repository, Maven Central
   rewritten to its mirror while Central is refusing this host — with the credential the request
   carries. The body asks exactly these and never names Central itself. The action key carries the
   declared set, not the routing; a body that did not declare the input reads an empty list.
@@ -562,7 +562,7 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
 
 | Path | Status |
 |---|---|
-| **First-party** plugins under `plugins/` | Ship with jk; `jk install` publishes them to `repos/jk-local` |
+| **First-party** plugins under `plugins/` | Ship with JumpKick; `jk install` publishes them to `repos/jk-local` |
 | **Private / vendored** jars (`[plugins]` + `sha256`) | Supported now — see below |
 | **Third-party** plugins against the published SDK | `cc.jumpkick:jk-plugin-sdk:<version>` on `jumpkick.build/repo` (publishable to Maven Central with `jk publish -c`; not on Central yet); pinned by content in the consumer |
 | **Plugin marketplace / registry** | Intentionally deferred (product anti-goal pre-freeze) |

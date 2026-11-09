@@ -109,7 +109,12 @@ def measure(ctx) -> list[dict]:
 # --------------------------------------------------------------------------- what the docs publish
 
 LABELS = {"clean": "Clean build", "rebuild": "Warm rebuild", "noop": "No-op", "edit": "One-file edit", "test": "Test run"}
-NAMES = {"jk": "jk", "gradle": "Gradle", "maven": "Maven"}
+NAMES = {"jk": "JumpKick", "gradle": "Gradle", "maven": "Maven"}
+
+
+def shown_version(version: str) -> str:
+    """A banked tool version as the docs name it: `jk --version` prints `jk <v>`, the product is JumpKick."""
+    return "JumpKick " + version[3:] if version.startswith("jk ") else version.replace(" via jk mvn", " via `jk mvn`")
 
 
 def pub(row: dict, field: str):
@@ -130,12 +135,12 @@ def footer(rows: list[dict]) -> str:
     bankings: dict[tuple[str, str], set[str]] = {}
     for r in rows:
         bankings.setdefault((pub(r, "date"), pub(r, "commit")), set()).add(NAMES[r["tool"]])
-    versions = "; ".join(sorted({pub(r, "tool-version") for r in rows}))
+    versions = "; ".join(sorted({shown_version(pub(r, "tool-version")) for r in rows}))
     walls = [r for r in rows if r.get("unit") == "s"]
     return (f"Measured on {rows[0].get('host', '')} (host `{rows[0]['host-id']}`); project "
             f"spring-projects/spring-petclinic; {versions}; {pub(walls[0] if walls else rows[0], 'runs')} timed "
             f"runs per cell. Banked "
-            + "; ".join(f"{date} at jk tree {commit}" + ("" if len(bankings) == 1 else f" ({', '.join(sorted(t))})")
+            + "; ".join(f"{date} at JumpKick tree {commit}" + ("" if len(bankings) == 1 else f" ({', '.join(sorted(t))})")
                         for (date, commit), t in sorted(bankings.items()))
             + ". Conditions: "
             + "; ".join(f"{NAMES[t]} {c}" for t in TOOLS
@@ -200,7 +205,7 @@ def claims(rows: list[dict], link: str) -> str:
             speed.append(f"slower than {name} on every row: {_join(losses)}")
     paragraphs = []
     if speed:
-        paragraphs.append(f"On [spring-petclinic]({link}), jk is " + ". It is ".join(speed) + ".")
+        paragraphs.append(f"On [spring-petclinic]({link}), JumpKick is " + ". It is ".join(speed) + ".")
 
     peak, peak_losses = [], False
     for other in ("gradle", "maven"):
@@ -218,7 +223,7 @@ def claims(rows: list[dict], link: str) -> str:
     if "jk" in idle:
         j = cell[("jk", "wall.idle-rss")]
         engine = int(pub(j, "root-rss") or 0) >> 20
-        resident = (f"Between builds jk keeps {idle['jk']:,} MiB resident"
+        resident = (f"Between builds JumpKick keeps {idle['jk']:,} MiB resident"
                     + ((f": {engine:,} MiB for the engine, whose heap is capped at {default_heap_mb()} MiB and "
                         f"trimmed back after every job, and {idle['jk'] - engine:,} MiB for warm workers"
                         if idle["jk"] - engine >= 16
@@ -268,7 +273,7 @@ def strip(rows: list[dict]) -> str:
             vs.append("Maven none: a cold JVM every build")
         tiles.append(("Resident between builds", f"{idle['jk']:,} MiB", " · ".join(vs),
                       f"one engine for every project, heap capped at {default_heap_mb()} MiB"))
-    versions = "; ".join(sorted({pub(r, "tool-version") for r in rows}))
+    versions = "; ".join(sorted({shown_version(pub(r, "tool-version")) for r in rows}))
     out = ['<div class="proof-strip">']
     for label, value, vs, lead in tiles:
         out += ['  <div class="proof-tile">',
@@ -280,7 +285,7 @@ def strip(rows: list[dict]) -> str:
         out.append("  </div>")
     out += ["</div>",
             f'<p class="proof-note">spring-petclinic, the same work for every tool; {html.escape(versions)}. '
-            f'<a href="{SITE_LINK}" target="_blank" rel="noopener noreferrer">How it is measured, and where jk loses →</a></p>']
+            f'<a href="{SITE_LINK}" target="_blank" rel="noopener noreferrer">How it is measured, and where JumpKick loses →</a></p>']
     return "\n".join(out)
 
 

@@ -1,6 +1,6 @@
 # Architecture
 
-How jk is structured today. For day-to-day usage see [user documentation](../user/README.md).
+How JumpKick is structured today. For day-to-day usage see [user documentation](../user/README.md).
 
 ## Design tenets
 
@@ -86,7 +86,7 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 - **JDK inventory** — managed installs live in the IntelliJ shared root (`~/.jdks`); JumpKick's
   record of them (`jk-jdks.toml`, fingerprints, Java/Graal defaults) lives under the platform
   **state** dir (`$JK_STATE_DIR`, default `~/.jk/state`). No `default-jdk` / `current-jdk`
-  symlinks under data, and no access log — jk never evicts a JDK, so there is nothing to rank.
+  symlinks under data, and no access log — JumpKick never evicts a JDK, so there is nothing to rank.
 - **Exclusivity** — one build-like job per checkout. Inside an engine the fingerprint table
   (`InFlightBuilds`, keyed by the checkout's real path) refuses a second same-checkout job with
   `Build #N is already running`; across engines on one machine (a draining predecessor beside
@@ -113,11 +113,11 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   Windows) and the staged one moved in, so an install that fails leaves the previous client on
   PATH. GC deletes retired jars and parked clients once the displaced engine drains. Handshake detects skew and takes over.
   **Newer always wins**: the lock's
-  `jk-min` is a *floor*, never a pin — a jk older than the floor refuses artifact jobs with an
+  `jk-min` is a *floor*, never a pin — a JumpKick older than the floor refuses artifact jobs with an
   upgrade error (`jk self update`) on every surface, and nothing ever fetches or runs an older
   engine to satisfy a lock. The lock pins inputs (artifacts, checksums, BOMs), not the operator;
-  `generated-by` is provenance only. Same lock ⇒ same resolved graph across jk versions until
-  `jk update`; tool behavior may still change pre-1.0 (a newer jk may rebuild).
+  `generated-by` is provenance only. Same lock ⇒ same resolved graph across JumpKick versions until
+  `jk update`; tool behavior may still change pre-1.0 (a newer JumpKick may rebuild).
 - **Liveness** — a listening socket alone is not proof the engine is healthy:
 
 | Layer | What proves health | Bound |
@@ -259,7 +259,7 @@ jk engine start
 # edit style.css / index.html / *.webp → hard-refresh the browser
 ```
 
-Relative `web-root` values resolve against the jk home root (`~/.jk`, or `$JK_HOME`).
+Relative `web-root` values resolve against the JumpKick home root (`~/.jk`, or `$JK_HOME`).
 Only files present under the root are overridden; anything missing still falls through to the jar.
 A root set this way is served under the shell's CSP, so the dashboard runs from it; the default
 root is sandboxed ([HTTP](http.md#auth-tiers)).
@@ -335,7 +335,7 @@ does not have, so a misspelt or retired key is an error, not a silent default.
 
 ## Repository layout
 
-Build: **jk** (the root `jk.toml` workspace; `jk-lock.toml`; `.jk/scripts/*.kts` build scripts). Runtime modules:
+Build: **JumpKick** (the root `jk.toml` workspace; `jk-lock.toml`; `.jk/scripts/*.kts` build scripts). Runtime modules:
 
 | Area | Modules | Role |
 |---|---|---|
@@ -500,7 +500,7 @@ and exclusions stay GA-scoped.
    and `const val`). Sources enter by content, a mixed module's Java sources enter the kotlinc key
    by declaration digest (`JavaSourceApi`), and options, the JDK and the compiler closure ride
    along: kotlinc's Build Tools API closure, groovyc's worker and runtime, and the launch
-   classpath of jk's own javac worker (`WorkerClosure`), each by content, so a reinstalled worker
+   classpath of JumpKick's own javac worker (`WorkerClosure`), each by content, so a reinstalled worker
    re-keys the compiles it drives under a release version too. The processor path stays full content. A body-only change in a dependency therefore
    leaves every consumer's compile key — and its freshness stamp — alone; the compilers still see
    the full jars and directories. A jar's ABI is extracted through `JarClassReader`, which scans
@@ -565,13 +565,13 @@ outputs. `jk storage nuke` does not delete `~/.m2`.
 
 **Installed slots.** `jk install` writes a project's thin jar and POM to one place:
 `~/.m2/repository` (the default `[install] destination = "m2"`) or the store's `repos/jk-local`
-(`"jk"`; always for a plugin worker). For `~/.m2`, `M2InstallMemo` records what jk wrote under
+(`"jk"`; always for a plugin worker). For `~/.m2`, `M2InstallMemo` records what JumpKick wrote under
 `<store>/m2-installs/<repository id>/<g>/<a>/<v>/install.jk` — three lines: `g:a:v`, the jar sha256,
 the POM sha256 — and never inside the repository. `InstallPlans` decides every install against it: a
 slot holding other bytes is replaced only when the version is a `-SNAPSHOT` and the files still hold
 the memo's bytes; a release version is installed once. `WorkspacePreflightPhase.installRefusals`
 refuses before any build only a snapshot hidden by its installed release; a release's bytes are compared at the install step, because a rebuild after an engine change reproduces them. `repos/jk-local` follows the same decision, with the `.jk` memo beside each file (`ArtifactMemo`) as
-the record of what jk wrote. The pinned shelf (`jk-shelf.toml`) records only `repos/jk-local` installs.
+the record of what JumpKick wrote. The pinned shelf (`jk-shelf.toml`) records only `repos/jk-local` installs.
 
 The files are written as Maven's own install writes them: the jar and POM, their `.sha1` and `.md5`
 sidecars, and a `_remote.repositories` line per file with an **empty** repository id. A named id
@@ -588,7 +588,7 @@ keys** when adding a read-only remote later — only add an optional remote look
 | Ingredient | Local today | Remote note |
 |---|---|---|
 | Task type / id | `task:` line, `<base>@<tag>` — the tag is the project id plus the workspace-relative output path | Portable across checkouts of one project |
-| jk version | `jk:` in key material | Pin engine version for cross-machine hits |
+| JumpKick version | `jk:` in key material | Pin engine version for cross-machine hits |
 | Toolchain / release | `--release`, Kotlin target | Include JDK major when outputs are version-sensitive |
 | Compiler argv | `options:` / `args:` with every absolute path spelled as a `PortablePath` (`ActionKey.optionsToken`) | The compiler still receives absolute paths; the key never does |
 | Sources | module-relative path + content SHA-256 | Portable: two checkouts of one module compute the same key |
@@ -624,7 +624,7 @@ Notable first-party packaging plugins:
 | `[quarkus]` | fast-jar (default) / uber-jar | Pure bootstrap augment; workspace path deps in `lib/main` |
 | `[grails]` | Boot-layout jar | Grails 8 + Groovy lane + `grails-app/` roots |
 
-There is no third-party marketplace yet; first-party plugins ship with jk and version together.
+There is no third-party marketplace yet; first-party plugins ship with JumpKick and version together.
 
 ## Extension surface
 
@@ -705,7 +705,7 @@ to residual so both end on time with `R → 0`. See [progress-contract.md](progr
 
 ### Project build logic (`.jk/scripts/`)
 
-`.jk/` is a project's checked-in jk state, one subdirectory per concern (`scripts/`, `ci/`);
+`.jk/` is a project's checked-in JumpKick state, one subdirectory per concern (`scripts/`, `ci/`);
 only `.jk/scripts/` next to a module's `jk.toml` is build logic (overridable via `[build].logic`):
 `before-compile.groovy` / `.kts` and sibling stems. Scripts left at the top of `.jk/` do not run;
 the build names them once (`BuildLogicToml.strayScripts`).
@@ -733,7 +733,7 @@ See [user build logic](../user/build-logic.md).
 ### Coexistence: a `pom.xml` as the manifest (design)
 
 **Goal.** `jk build` and `jk test` in a directory that has a `pom.xml` and no `jk.toml` run
-jk's engine, cache, incremental compiler and results writer with Maven's effective POM as the
+JumpKick's engine, cache, incremental compiler and results writer with Maven's effective POM as the
 project model. No manifest migration; the loop arrives first, the `jk.toml` later or never.
 
 **Where the POM enters: a shadow manifest, not a second loader.** The engine has no manifest
@@ -746,7 +746,7 @@ them is churn without a product gain. Instead:
   `dir/jk.toml` when that exists; otherwise, when `dir/pom.xml` exists, it answers the **shadow**
   `dir/target/jk/shadow/jk.toml` through the process's `ManifestPaths.ShadowSource`. The engine
   installs `ShadowManifests` at start-up, which renders the shadow on first read and again when
-  any POM file it read (or the running jk) differs from what the shadow's header names; the native
+  any POM file it read (or the running JumpKick) differs from what the shadow's header names; the native
   client installs nothing and only names the path. Every read site resolves through
   `manifestIn(dir)`; `ManifestPaths.moduleOf(manifest)` maps a manifest back to its module, so a
   shadow parsed through `JkBuildParser.parse` resolves its workspace from the module, not from
@@ -756,7 +756,7 @@ them is churn without a product gain. Instead:
   remedies: `jk import pom.xml` to own a `jk.toml`, or edit the POM.
 - The shadow is what `PomImporter` produces from the effective POM (parents flattened, managed
   versions applied, properties interpolated), rendered by `JkBuildRenderer` under a `ShadowStamp`
-  header (`PomShadow`): the first line carries a digest and the rendering jk's version, one `# read
+  header (`PomShadow`): the first line carries a digest and the rendering JumpKick's version, one `# read
   <path>` line per POM file the import read — the module's own and every parent its
   `<relativePath>` reaches on disk — and the digest covers those files' bytes, so editing a parent
   re-renders the child. It is a build artefact under `target/`, never committed. `jk import` still

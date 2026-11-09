@@ -33,7 +33,7 @@ no record behind. A restore is a hit only when it lays down every output the rec
 checked against its digest; a blob that is missing or wrong, or an output the disk refuses, makes
 it a miss — what it had written is removed and the step runs for real.
 
-`target/` is jk's. A successful build records, beside the module's outputs, the inputs they
+`target/` is JumpKick's. A successful build records, beside the module's outputs, the inputs they
 came from and the digest of every class file and jar it left there. The next build checks them
 (one stat per untouched file) and puts right a class replaced, a class added that no compile
 produced, or a jar from another build, from the action cache, before anything is packaged or
@@ -121,8 +121,8 @@ closure jars stay: they are shared with project resolution and are re-walked, no
 `jk doctor`'s `m2:` line hashes the Maven local repository's copy of every POM and jar the
 current project's `jk-lock.toml` names and compares it with the `.sha1` Maven wrote beside it. A
 mismatch is a warning naming the file: something rewrote it after Maven verified it, and every
-build that reads it fails until it is deleted and fetched again. jk never replaces or removes a file in `~/.m2` that it did not download: a slot that holds
-other bytes than the lock pins fails the fetch and names the file, and a file jk fetched that
+build that reads it fails until it is deleted and fetched again. JumpKick never replaces or removes a file in `~/.m2` that it did not download: a slot that holds
+other bytes than the lock pins fails the fetch and names the file, and a file JumpKick fetched that
 has since been damaged is replaced by temp and rename.
 
 ## Budgets
@@ -215,7 +215,7 @@ under pressure however often it runs.
 
 Under budget and inside every window there is nothing to evict, so `jk cache clean`
 reclaims only leaked temps, unreferenced blobs, whatever the small derived tiers have aged
-out of their own windows and caps, and anything under the cache root that jk no longer
+out of their own windows and caps, and anything under the cache root that JumpKick no longer
 writes — it can legitimately report “Nothing to clean up.” on a large cache.
 
 ## Beyond the action cache
@@ -232,14 +232,14 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
     10 GiB and 8% of the volume, the least life left going first.
   - *Tool installs* under `tools/`: Node and the package managers keep the install used most
     recently for a month and every other version for two days; Maven, Gradle, Kotlin and the
-    compiler closures jk keeps beside them (Scala, KSP, the Kotlin build tools, Groovy, Dokka, the
+    compiler closures JumpKick keeps beside them (Scala, KSP, the Kotlin build tools, Groovy, Dokka, the
     script host) keep the newest 90 days and the others 14; an archive unpacked for a step (an IDE distribution)
     lives in `state/tmp/unpacked/` and goes a week after its last use. Closure directories under
     `tools/plugin-tools/` — a plugin tool's runtime closure, or the repository of a closure a
     plugin resolved for the lock ([Lockfile](lockfile.md#closures-a-plugin-resolves)) — are links
     over the store: each goes a month after its own last use and is built again from the store
     when next needed; a staging directory a killed run left there goes after a day.
-  - *Repository trees* jk holds itself (`repos/<id>` for a repository no `settings.xml` names):
+  - *Repository trees* JumpKick holds itself (`repos/<id>` for a repository no `settings.xml` names):
     30 days, or a week for a file of 50 MB or more. The first-party `jk-local` and `jumpkick`
     trees are left to installs.
 
@@ -247,15 +247,15 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
   `jk storage nuke` removes everything on purpose.
 - **Test sandboxes** (`test-homes`, `test-store`): a green `jk test` deletes its module's
   sandbox as it finishes; a red one keeps it for two days to look at. The shared download pool
-  drops a unit unused for a week and is held to 4 GiB, about twice what jk's own heaviest test
+  drops a unit unused for a week and is held to 4 GiB, about twice what JumpKick's own heaviest test
   tiers fetch (8 GiB on CI).
 - **Container images** live once. A tarball is recorded by size, mtime and sha256 and a daemon
   image by the ID Docker or Podman reported, in a small record in the action cache — never as a
   second copy. `jk image` skips the build when the tarball is unchanged or the daemon still
   holds the image under that ID, and builds again when either is gone.
-- **The Maven local repository** (`~/.m2/repository`): jk never removes from it on its own
+- **The Maven local repository** (`~/.m2/repository`): JumpKick never removes from it on its own
   account. `jk cache clean --m2` (MCP: `disk` `action=m2-clean`) removes files unused for
-  `--older-than` days (default `[m2] clean-after-days`, 60) that jk's own memo proves jk
+  `--older-than` days (default `[m2] clean-after-days`, 60) that JumpKick's own memo proves it
   downloaded and nothing has changed since, and keeps what the current project's lockfile pins;
   `--dry-run` lists them. A build server that wants `~/.m2` bounded sets `[m2] auto-clean =
   true` (or `JK_M2_AUTO_CLEAN=true`) and the engine does the same at its idle boundary.

@@ -41,7 +41,7 @@ The reason is an asymmetry between clients, and it is the whole argument:
 - The **CLI** ensures a live, version-matched engine before every request, spawning one if none is
   listening. An engine that exited costs a cold start, not an error.
 - A **browser tab** cannot spawn anything. If the engine it was talking to is gone, the SPA is dead
-  until the user knows to drop to a terminal and run a jk command — which is an astonishing thing to
+  until the user knows to drop to a terminal and run a `jk` command — which is an astonishing thing to
   ask of someone whose primary interface is the dashboard.
 
 Concretely: a developer working through the Web UI who leaves the tab open overnight must find it
@@ -133,7 +133,7 @@ and, unless the suite opts in, HTTP disabled or
 bound on port {@code 0} so it cannot steal the host dashboard. `jk engine status` lists every
 resident engine this user owns. `jk engine stop` addresses the one this directory resolves to,
 `--all` stops **this home only** (nested tests must not kill the host engine running
-{@code jk build}), and `--pid <pid>[,<pid>…]` stops engines by pid, of any home.
+`jk build`), and `--pid <pid>[,<pid>…]` stops engines by pid, of any home.
 
 Every form of stop confirms the engine went and reports what actually happened; an engine that said
 it was exiting and did not is hard-killed. A graceful stop never kills for silence alone: a drain
@@ -564,7 +564,7 @@ closes its `EventSource` on `pagehide` and reopens it on a back/forward-cache `p
 reload or a cached page never holds one of the browser's six connections to the engine.
 
 **Which events each surface carries** is written in one place, `EventCatalog`
-(`shared/wire/.../protocol/EventCatalog.java`): every event jk streams, and for the engine wire,
+(`shared/wire/.../protocol/EventCatalog.java`): every event JumpKick streams, and for the engine wire,
 console JSONL (`-O jsonl` stdout), SSE and MCP either how it is carried (under which name, how
 sampled) or why it is omitted. `SseEventSink` asks it rather than dropping events in empty cases,
 and the catalog tests drive each surface's real encoder against it (`WireRecordContractTest`,

@@ -46,7 +46,7 @@ and the dependency tables are each member's own and never inherit.
 
 `jk new path/to/mod` and `jk add ./path` register modules for you.
 
-## Where jk looks for the workspace
+## Where JumpKick looks for the workspace
 
 A command finds its project by climbing from its directory (`-C`, else the working directory) to
 the nearest `jk.toml`, and its workspace by climbing on to the root whose `modules` list that
@@ -64,7 +64,7 @@ cd /work/scratch/demo && jk new app   # standalone, though /work/jk.toml is a wo
 
 A search that starts outside every ceiling climbs as it would without one; relative entries are
 ignored. The engine reads the variable from the environment it was started in, so export it in the
-shell profile, or run `jk engine stop` after changing it. jk sets it in every test JVM, at the
+shell profile, or run `jk engine stop` after changing it. JumpKick sets it in every test JVM, at the
 suite's temp roots, so a fixture project a test builds in a temp directory never joins the project
 under test.
 
@@ -406,7 +406,7 @@ form (`https://packages.confluent.io/maven/`).
 A workspace that declares no modules, or whose every module has no source tree, no extra
 source root and no build logic, fails `jk build` and `jk test` with exit 2 and a one-line
 `built nothing` reason naming the modules. A green build that compiled nothing would read as
-a passing build; jk does not report one. A module selection (`-m`) is judged by the selection
+a passing build; JumpKick does not report one. A module selection (`-m`) is judged by the selection
 alone.
 
 `jk test` on a workspace in which no module has a test suite is green with `No tests to run`.
@@ -455,7 +455,7 @@ content-based (not absolute paths). Generated / `target` trees are not fingerpri
 when an upstream sibling it depends on changed. Use a full `jk build` / `--force` when
 the graph matters more than incremental CI savings.
 
-Outside a git repo or with an invalid ref, jk prints a clear error. If nothing under the
+Outside a git repo or with an invalid ref, JumpKick prints a clear error. If nothing under the
 workspace matched, it exits 0 with “nothing affected” / “nothing selected”.
 
 ## Related

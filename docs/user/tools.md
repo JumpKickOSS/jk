@@ -51,7 +51,7 @@ not perform tool installs.
 
 ## Build tools
 
-The same verb installs the **build-tool distributions** jk provisions for itself — Kotlin
+The same verb installs the **build-tool distributions** JumpKick provisions for itself — Kotlin
 (for `.kt` sources and `.kts` build logic), Maven and Gradle (for `jk mvn` / `jk gradle`), Node
 and its package managers pnpm, Yarn (Berry only) and bun:
 

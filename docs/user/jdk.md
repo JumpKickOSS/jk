@@ -46,7 +46,7 @@ shows carries the source that found it:
 `jk jdk uninstall` deletes a directory only when its real path, symlinks resolved, is under the
 managed write root (`~/.jdks`, macOS `~/Library/Java/JavaVirtualMachines`, or `JK_JDKS_DIR`). A
 JDK there uninstalls whichever source reports it, `JAVA_HOME` included. Outside it, a source with an
-owning tool runs that tool's uninstall and jk deletes nothing itself; any other source is refused
+owning tool runs that tool's uninstall and JumpKick deletes nothing itself; any other source is refused
 with its name and path, and nothing is deleted.
 
 `JK_JDK_PROBES` ([Install](install.md)) narrows discovery to the named sources. Managed write root:

@@ -1,9 +1,9 @@
 # Forms
 
-**Audience:** contributors adding a question to jk, or a surface that asks one
+**Audience:** contributors adding a question to JumpKick, or a surface that asks one
 **Related:** [tui.md](tui.md#form-widgets) (the terminal widgets), [architecture.md](architecture.md)
 
-When jk has to ask a person something, the question is a **form**: one Java model that the engine
+When JumpKick has to ask a person something, the question is a **form**: one Java model that the engine
 serves as JSON and every surface renders. The terminal, the web wizard and MCP elicitation all draw
 the same fields, so an answer means the same thing whichever surface collected it. The model lives
 in `shared/jk-api` (`cc.jumpkick.form`): it is client-safe, links only `:host`, and uses no
@@ -101,19 +101,19 @@ POSIX shell.
 
 ## The new-project form
 
-`jk new`, MCP `new` and the dashboard's wizard render one form, which the engine builds (`NewProjectForm`): jk's step, then
-the template's own `[[ask]]` step. jk's step is one field list, `NewProjectStep` in `:core`, which the
+`jk new`, MCP `new` and the dashboard's wizard render one form, which the engine builds (`NewProjectForm`): JumpKick's step, then
+the template's own `[[ask]]` step. JumpKick's step is one field list, `NewProjectStep` in `:core`, which the
 engine serves and the CLI and MCP read their keys from: `lang`, `template` (a search over the
 catalogue, default `app`), `name`, `group`, `dir` (the parent directory, derived per surface:
 `--dir`/the cwd in the CLI, `parentDir` in MCP, a guess from build history in the web wizard), and `layout` when the template renders more than
-one. Once a template is chosen, `lang` defaults to its language. The keys of jk's step are
+one. Once a template is chosen, `lang` defaults to its language. The keys of JumpKick's step are
 reserved, so no template may ask for one. There is no other way to make a project: no template is
 the default template.
 
 | Surface | How it gets the form | Where it renders |
 |---|---|---|
 | CLI with no terminal | the same requests | `NewForm.settle` checks flags and defaults; what is left is `NewForm.Unsettled`, one `jk new: <key> …: <flag>` line per field |
-| CLI on a terminal | `new-project-form-request` (no template: jk's step and the catalogue; a template: both steps and the resolved id) | `NewForm` walks it with `FormRenderer`, then scaffolds through `NewTemplate`; the summary names the resolved id, so it reproduces the same template whatever language was asked |
+| CLI on a terminal | `new-project-form-request` (no template: JumpKick's step and the catalogue; a template: both steps and the resolved id) | `NewForm` walks it with `FormRenderer`, then scaffolds through `NewTemplate`; the summary names the resolved id, so it reproduces the same template whatever language was asked |
 | CLI `-t <ref> --help` | the same request | `NewForm.help`, a `FieldLine` per field |
 | MCP `new` | `NewProjectOps.templateForm` in process | `McpNewForm` settles the answers: arguments and `params`, then defaults, then form elicitation for what is still required, then URL elicitation into the web wizard pre-filled with what the call gave, else an error of `FieldLine`s |
 | Web wizard (`#new`) | `GET /api/forms/new-project` (the form, the resolved id, the derived defaults' values) | `wizard-model.js` reads the form as `Form` does (conditions, defaults, `check`, the `FormCommand` spelling) and `wizard.js` renders a widget per kind; `POST /api/projects` settles the posted answers with `NewProjectPost` ([HTTP](http.md#new-project)) |

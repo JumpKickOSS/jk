@@ -21,10 +21,10 @@ on, the cone includes test/dev workspace deps so a dirty harness is rebuilt firs
 are considered.
 
 Quarkus native is owned by the Quarkus plugin: JumpKick runs Quarkus’s own native-image
-command with jk’s GraalVM toolchain; `[native] args` still apply. See
+command with JumpKick’s GraalVM toolchain; `[native] args` still apply. See
 [Frameworks](frameworks.md#quarkus).
 
-Micronaut native goes through jk’s own `jk native`: the Micronaut plugin contributes the
+Micronaut native goes through JumpKick’s own `jk native`: the Micronaut plugin contributes the
 framework’s native-image arguments when `[native]` is declared (Netty’s packages at run time, the
 generated service-discovery interceptors and the AOT reactive-types holder at build time, plus
 logback/slf4j), and Micronaut AOT runs with `aot-runtime = "native"` for the same project unless
@@ -40,7 +40,7 @@ Reflection, JNI, resources, and friends: [Dynamic surface](dynamic-surface.md).
 ### The GraalVM metadata repository
 
 Most third-party libraries publish their native-image config to the shared **GraalVM
-reachability-metadata repository** rather than shipping it in their jars. jk matches every
+reachability-metadata repository** rather than shipping it in their jars. JumpKick matches every
 locked runtime dependency against that repository and passes the hits to `native-image`
 as `-H:ConfigurationFileDirectories`.
 

@@ -173,7 +173,7 @@ nested lambdas can hold a thread far longer than a 60 KB class does.
 | Threshold | Default | What happens |
 |-----------|---------|--------------|
 | **Named** | 500 ms | The file is printed as `slow`, with its elapsed time, *while it is still being formatted*. Repeats on a doubling interval, so a long stall is named a handful of times rather than hundreds. |
-| **Timed out** | 3 s on a quiet host, stretched by the host's load per processor up to 30 s | jk gives up on that file. It is reported as an `error` naming the path, the rest of the run keeps going, and `jk format` exits non-zero. |
+| **Timed out** | 3 s on a quiet host, stretched by the host's load per processor up to 30 s | JumpKick gives up on that file. It is reported as an `error` naming the path, the rest of the run keeps going, and `jk format` exits non-zero. |
 
 Three seconds is a wide margin, not a tight one: across a 3,000-file Java and Kotlin tree the
 slowest single file is around 120 ms, and the 60 KB classes are nearer 110 ms. A file that has been
@@ -205,7 +205,7 @@ the source explains the stall, the error says so:
          locals or methods
 ```
 
-For those files the timeout is paid **once**: jk remembers them by content, so later runs report
+For those files the timeout is paid **once**: JumpKick remembers them by content, so later runs report
 them straight away instead of spending the limit again.
 
 ```
@@ -227,7 +227,7 @@ For scale: a 4.7 MB, 200,000-line flat Java source takes about 9.5 s to format. 
 sources that big are the main reason to raise the limit.
 
 Editing a remembered file — any change at all — or raising the limit makes the next run attempt it
-for real. So does a change to the formatting configuration, which re-keys every cache jk keeps.
+for real. So does a change to the formatting configuration, which re-keys every cache JumpKick keeps.
 
 A thread that a timed-out file keeps busy is replaced, so the rest of the run keeps its
 parallelism — up to one replacement per thread the run started with. Past that, the files not yet
@@ -243,7 +243,7 @@ remembered, since they were never attempted.
 
 Both thresholds are formatter-worker JVM properties, in milliseconds; `0` turns either off. Raise
 the timeout if a genuinely slow host starts reporting files you know are fine — the error names
-the path, so you can tell that case from a real one. Note that `[jvm] args` reaches every worker jk
+the path, so you can tell that case from a real one. Note that `[jvm] args` reaches every worker JumpKick
 forks, not only the formatter.
 
 ```toml

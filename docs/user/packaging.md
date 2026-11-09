@@ -331,7 +331,7 @@ Each key is a Java release (9 or newer) and each value the source roots compiled
 `compile-versions` step compiles every entry after the main classes and against them, at
 `--release N` — or at the module's `java` level when that is higher, since javac cannot read the
 main classes below it and a JDK that loads the jar is already at that level. The output lands in
-`target/versions/META-INF/versions/<N>/`, and every jar jk writes from the classes — the thin jar
+`target/versions/META-INF/versions/<N>/`, and every jar JumpKick writes from the classes — the thin jar
 and the fat jar — carries it under `META-INF/versions/<N>/` with `Multi-Release: true` in its
 manifest. An entry may replace a main class (same name, newer API) or add classes the main
 sources only reach reflectively.
@@ -341,7 +341,7 @@ patch the module it names (`--patch-module`), as Maven's compiler plugin compile
 at `META-INF/versions/<N>/module-info.class`.
 
 The module's own tests run on a directory classpath, which has no `META-INF/versions` lookup, so
-jk orders it the way the JDK reads the jar: every entry whose release the test JDK reaches comes
+JumpKick orders it the way the JDK reads the jar: every entry whose release the test JDK reaches comes
 ahead of the main classes, highest release first, and an entry for a newer release than that JDK
 stays off the classpath. The suite sees the classes the packaged jar would give it. A workspace
 sibling runs against the jar itself. An edit to an entry's sources recompiles that entry,
@@ -435,33 +435,33 @@ naming the construct, and the classes it named are bundled under their own names
 The bench (`JarSizeBenchTest`, tier `bench`; fixtures in [`bench/jar-size/`](../../bench/jar-size/README.md))
 packages four fixture apps with the installed `jk`, with Shadow and with Shade over the same pinned
 dependencies and attributes every byte of difference. Banked sizes live in
-[`jar-size-baseline.toml`](../../jar-size-baseline.toml); a jk jar more than 0.5 % above its line,
+[`jar-size-baseline.toml`](../../jar-size-baseline.toml); a JumpKick jar more than 0.5 % above its line,
 or more than 1 % above Shadow's, fails the bench.
 
 <!-- jar-size-table:start -->
-Measured 2026-09-11 with jk 0.13.2, Gradle 9.7.0 + Shadow 9.6.1, Maven 3.9.16 + Shade 3.6.2,
+Measured 2026-09-11 with JumpKick 0.13.2, Gradle 9.7.0 + Shadow 9.6.1, Maven 3.9.16 + Shade 3.6.2,
 Spring Boot 4.1.1, Kotlin 2.4.20, Micronaut platform 5.1.5, on Temurin JDK 25.0.4.1. Every jar is
 DEFLATE-only except the Boot layout, whose nested jars are STORED by design.
 
-| Fixture | Tool | jar bytes | entries (files + dirs) | classes | compressed payload | extra-field bytes | only in jk / only in tool | jk − tool |
+| Fixture | Tool | jar bytes | entries (files + dirs) | classes | compressed payload | extra-field bytes | only in JumpKick / only in tool | JumpKick − tool |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| plain-cli | jk assembly | 6,932,980 | 4,216 (4,053 + 163) | 4,011 | 6,064,104 | 8 | | |
+| plain-cli | JumpKick assembly | 6,932,980 | 4,216 (4,053 + 163) | 4,011 | 6,064,104 | 8 | | |
 | | Gradle Shadow | 6,931,707 | 4,214 (4,052 + 162) | 4,011 | 6,063,119 | 0 | 2 / 0 | +1,273 (+0.018 %) |
 | | Maven Shade | 6,933,436 | 4,220 (4,055 + 165) | 4,012 | 6,063,856 | 8 | 2 / 6 | −456 (−0.007 %) |
-| kotlin-cli | jk assembly | 7,737,235 | 4,663 (4,496 + 167) | 4,449 | 6,714,805 | 8 | | |
+| kotlin-cli | JumpKick assembly | 7,737,235 | 4,663 (4,496 + 167) | 4,449 | 6,714,805 | 8 | | |
 | | Gradle Shadow | 7,734,515 | 4,657 (4,491 + 166) | 4,446 | 6,713,077 | 0 | 7 / 1 | +2,720 (+0.035 %) |
 | | Maven Shade | 7,725,279 | 4,642 (4,471 + 171) | 4,422 | 6,706,953 | 8 | 31 / 10 | +11,956 (+0.155 %) |
-| micronaut-http | jk assembly | 14,470,688 | 9,169 (8,589 + 580) | 8,133 | 12,540,570 | 8 | | |
+| micronaut-http | JumpKick assembly | 14,470,688 | 9,169 (8,589 + 580) | 8,133 | 12,540,570 | 8 | | |
 | | Gradle Shadow | 14,469,639 | 9,169 (8,590 + 579) | 8,135 | 12,539,407 | 0 | 2 / 2 | +1,049 (+0.007 %) |
 | | Maven Shade | 14,472,299 | 9,175 (8,594 + 581) | 8,137 | 12,541,009 | 8 | 2 / 8 | −1,611 (−0.011 %) |
-| spring-boot-web | jk assembly | 19,542,089 | 11,768 (11,016 + 752) | 10,746 | 16,981,283 | 8 | | |
+| spring-boot-web | JumpKick assembly | 19,542,089 | 11,768 (11,016 + 752) | 10,746 | 16,981,283 | 8 | | |
 | | Gradle Shadow | 19,540,024 | 11,766 (11,015 + 751) | 10,746 | 16,979,506 | 0 | 2 / 0 | +2,065 (+0.011 %) |
 | | Maven Shade | 19,546,121 | 11,771 (11,018 + 753) | 10,747 | 16,984,707 | 8 | 2 / 5 | −4,032 (−0.021 %) |
-| spring-boot-web (Boot layout) | jk Boot jar | 19,935,456 | 169 (146 + 23) | 101 | 19,902,130 | 8 | | |
+| spring-boot-web (Boot layout) | JumpKick Boot jar | 19,935,456 | 169 (146 + 23) | 101 | 19,902,130 | 8 | | |
 | | Gradle `bootJar` | 19,902,721 | 163 (140 + 23) | 101 | 19,870,495 | 0 | 10 / 4 | +32,735 (+0.164 %) |
 | | Maven `repackage` | 19,904,803 | 168 (142 + 26) | 101 | 19,871,429 | 368 | 10 / 9 | +30,653 (+0.154 %) |
 
-jk's flat jar is within 0.04 % of Shadow's on every fixture and smaller than Shade's on three of four;
+JumpKick's flat jar is within 0.04 % of Shadow's on every fixture and smaller than Shade's on three of four;
 the Kotlin exception is Maven's nearest-wins keeping `org.jetbrains:annotations` at 13.0.
 <!-- jar-size-table:end -->
 
@@ -469,17 +469,17 @@ the Kotlin exception is Maven's nearest-wins keeping `org.jetbrains:annotations`
 are equal across all three tools, so there is no compression gap left. What differs:
 
 - **The SBOM** (`META-INF/sbom/application.cdx.json`, 0.6–2.9 KB plus its directory entry) is jk-only
-  content, and is the whole of jk's lead over Shadow once the rest nets out.
+  content, and is the whole of JumpKick's lead over Shadow once the rest nets out.
 - **The manifest** carries two extra `Sbom-*` attributes (about 40 bytes).
 - **Merged `META-INF` files** (`services/*`, Spring's `spring.factories`, `spring.handlers`,
   `spring.schemas`, `AutoConfiguration.imports`) differ by a few bytes of separator and order.
-- **Project classes** are smaller under jk: javac's default debug attributes (`-g:source,lines`)
+- **Project classes** are smaller under JumpKick: javac's default debug attributes (`-g:source,lines`)
   against the `-g` Gradle and Maven pass; a compiler setting, not packaging.
 - **First-wins picks** (`META-INF/LICENSE`, `NOTICE`, `io.netty.versions.properties`) come from a
   different jar depending on each tool's traversal order, a few hundred bytes either way.
 - **Resolution divergence** shows up where the tools disagree about a transitive version:
-  under the Micronaut platform jk keeps `jackson-annotations 2.21` from the declaring POM where the
-  BOM manages `2.22`, and on the Kotlin fixture jk resolves `org.jetbrains:annotations 26.1.0` where
+  under the Micronaut platform JumpKick keeps `jackson-annotations 2.21` from the declaring POM where the
+  BOM manages `2.22`, and on the Kotlin fixture JumpKick resolves `org.jetbrains:annotations 26.1.0` where
   Gradle takes 23.0.0 and Maven 13.0. Neither is a packaging cost; both are reported as their own
   line so they cannot hide inside "overhead".
 - **The Boot jar** nests what `bootJar` nests: a dependency whose manifest `Spring-Boot-Jar-Type` is
@@ -490,18 +490,18 @@ are equal across all three tools, so there is no compression gap left. What diff
   which the `nested:` filesystem behind `-Djarmode=tools extract` needs. What remains above `bootJar`
   is the 3 KB SBOM relocated under `BOOT-INF/classes`.
 - **Headers.** Every tool writes the same local header, central record and 16-byte data descriptor
-  per entry. jk's only extra field is the 8-byte JAR-magic marker on the first entry, which Shade
+  per entry. JumpKick's only extra field is the 8-byte JAR-magic marker on the first entry, which Shade
   also writes and Shadow does not. Entries are all DEFLATE; there is no STORED waste.
 
-**Deflate level.** jk, Shadow and Shade all deflate at zlib's default level 6 (`Deflater.DEFAULT_COMPRESSION`
-in jk's `DeterministicZip`, in Ant's `ZipOutputStream` that Shadow writes through, and in Shade's
+**Deflate level.** JumpKick, Shadow and Shade all deflate at zlib's default level 6 (`Deflater.DEFAULT_COMPRESSION`
+in JumpKick's `DeterministicZip`, in Ant's `ZipOutputStream` that Shadow writes through, and in Shade's
 `JarOutputStream`). Re-deflating the fixture jars at level 9 saves 0.18–0.24 % of the jar (16 KB of 6.9 MB,
 34 KB of 14.5 MB, 44 KB of 19.5 MB) for 17–58 % more deflate CPU on the packaging step of every
-build. jk stays at level 6: byte parity with both tools on identical entries is worth more than a
+build. JumpKick stays at level 6: byte parity with both tools on identical entries is worth more than a
 quarter of a percent, and anyone who needs a smaller jar has `minified = true`.
 
 **Metadata and licences.** Shadow and Shade carry every dependency's `META-INF/maven/**`
-(`pom.xml` and `pom.properties`) into the fat jar; jk drops it. It describes how one library was
+(`pom.xml` and `pom.properties`) into the fat jar; JumpKick drops it. It describes how one library was
 built, names a coordinate the assembly is not, is read by nothing at runtime, and it is up to half
 a percent of the jar (24–63 entries, 41–81 KB across the fixtures). `META-INF/LICENSE*`,
 `META-INF/NOTICE*` and `META-INF/licenses/**` stay: they are a redistribution obligation for most
@@ -560,13 +560,13 @@ minified/fat jar under `~/.jk/lib/<name>/` plus a `java -jar` script, else a thi
 over the repo jars. The settle line names the coordinate and where it went.
 
 `[install] destination = "jk"` (or `jk install --destination jk`, or the same key in `~/.jk/config.toml`)
-puts the jar and POM in jk's private `repos/jk-local` instead. Plugin workers (`jk-plugin.toml`)
+puts the jar and POM in JumpKick's private `repos/jk-local` instead. Plugin workers (`jk-plugin.toml`)
 are always installed there: the engine rebuilds their runtime classpath from the installed POM.
 Outside a project, pass a coordinate (`jkx` mode).
 
 ### Installing the same version twice
 
-A release version is installed once, at either destination. For `~/.m2` jk keeps a record under
+A release version is installed once, at either destination. For `~/.m2` JumpKick keeps a record under
 `~/.jk` of the slots it wrote; `repos/jk-local` records each file's bytes in a memo beside it. Each
 install is decided against that record:
 
@@ -574,19 +574,19 @@ install is decided against that record:
 |---|---|---|
 | Nothing | installed | installed |
 | These bytes | nothing to do | nothing to do |
-| Other bytes jk wrote | refused: raise the version in `jk.toml` | replaced |
-| Other bytes jk did not write | refused | refused; delete the directory to let jk write it |
+| Other bytes JumpKick wrote | refused: raise the version in `jk.toml` | replaced |
+| Other bytes JumpKick did not write | refused | refused; delete the directory to let JumpKick write it |
 
 The comparison happens at the install step, after the build: a rebuild that reproduces the bytes (a new
 engine over unchanged sources) is a no-op, and only other bytes are refused.
-The record lives in the jk store, never in `~/.m2`: wiping the store makes jk's earlier slots
+The record lives in JumpKick's store, never in `~/.m2`: wiping the store makes JumpKick's earlier slots
 foreign, and deleting the slot's directory is the way back.
 
 ## `jk snapshot`
 
 `jk snapshot` is the inner-loop install, for libraries and applications alike. It runs the same phases and tests (`-S` skips
 them) and installs to the same place, but every module goes in at its declared version plus
-`-SNAPSHOT`: a project at `1.0.0` installs as `1.0.0-SNAPSHOT`, and a snapshot jk wrote is replaced
+`-SNAPSHOT`: a project at `1.0.0` installs as `1.0.0-SNAPSHOT`, and a snapshot JumpKick wrote is replaced
 each time. `jk.toml` and the lock keep the release version, so there is nothing to edit to move
 between the two, and a snapshot slot sits beside the release one.
 

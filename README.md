@@ -53,7 +53,7 @@ tools. Find callers. Follow relationships. Rename a method and every caller in o
 informed changes.
 
 <!-- agents-claims:begin -->
-We asked coding agents from 6 vendors questions like "who calls this method?" With jk's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](docs/user/why.md#asking-about-the-code).)
+We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](docs/user/why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 ### Know what's happening. Know what's next.
@@ -118,8 +118,8 @@ The full story, with the numbers behind every claim: **[Why JumpKick](docs/user/
 
 ## Status
 
-**Alpha (pre-1.0).** Core resolve, build and test are real and dogfooded: jk builds, tests,
-guards, installs and releases jk. APIs and the lock schema may change until 1.0. What 1.0 means:
+**Alpha (pre-1.0).** Core resolve, build and test are real and dogfooded: JumpKick builds, tests,
+guards, installs and releases itself. APIs and the lock schema may change until 1.0. What 1.0 means:
 **[the 1.0 plan](docs/contributors/plan-1.0.md)**.
 
 Running `jk` needs JDK 25+, and `jk` installs one if the machine has none. Projects target any

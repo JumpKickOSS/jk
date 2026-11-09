@@ -87,7 +87,7 @@ come from each member's `jk.toml` `name`, not the workspace path:
 
 `module` vs `modules` follows the count. The whole line is dark-gray. JSON output omits it.
 
-Under `--no-ansi` the caption and every other jk chrome line is prefixed with `jk: ` so tool output (when `-v` is on) is distinguishable:
+Under `--no-ansi` the caption and every other JumpKick chrome line is prefixed with `jk: ` so tool output (when `-v` is on) is distinguishable:
 
 ```
 jk: * Build > starting...
@@ -135,7 +135,7 @@ Helpers (wedge *formatting*, not envelope enforcement):
 - Pre-rendered wedge line: `CommandWedge.printLine(line)` / `printErrLine(line)`  
 - Multi-line chrome: `envelopeStart()` / `envelopeStartErr()` then body lines  
 - Live plans: `JkManager` opens the leading blank if prep has not already  
-- **Exec handoff** — every `inheritIO` exec (`jk run`, `jk mvn`, `jk gradle`, `jk jshell`, `jk shell`, script files): call `CliOutput.skipTrailingBlank()` immediately before it, because the child owns stdout from there and `jk run > app.out` must not collect jk's closing blank  
+- **Exec handoff** — every `inheritIO` exec (`jk run`, `jk mvn`, `jk gradle`, `jk jshell`, `jk shell`, script files): call `CliOutput.skipTrailingBlank()` immediately before it, because the child owns stdout from there and `jk run > app.out` must not collect the client's closing blank  
 
 Optional blank lines **between** chrome and follow-up tips (e.g. after `jk add`) are fine — that is content spacing, not the closing envelope.
 
@@ -145,7 +145,7 @@ Do **not** write human chrome with raw `System.out.println` — that bypasses `C
 
 ### Startup pulse
 
-`jk` never sits silent for more than 250 ms. `Jk.main` arms `StartupPulse` before any config or manifest read; if nothing has printed after 250 ms, it paints the phase jk is waiting on (` ● Initializing…` with the breathing dot, or ` * Initializing...` under `--no-ansi`). The first real output replaces it: any write to `System.out`/`System.err`, a `LiveRegion` opening, a terminal mode or `/dev/tty` write, a child handoff, or the process ending. ANSI release wipes the row and steps back onto the blank above it, so the command's own leading blank lands where it always does; plain release ends the line with ` Done.`.
+`jk` never sits silent for more than 250 ms. `Jk.main` arms `StartupPulse` before any config or manifest read; if nothing has printed after 250 ms, it paints the phase the client is waiting on (` ● Initializing…` with the breathing dot, or ` * Initializing...` under `--no-ansi`). The first real output replaces it: any write to `System.out`/`System.err`, a `LiveRegion` opening, a terminal mode or `/dev/tty` write, a child handoff, or the process ending. ANSI release wipes the row and steps back onto the blank above it, so the command's own leading blank lands where it always does; plain release ends the line with ` Done.`.
 
 Code names a phase with `StartupPulse.phase("Starting engine")` at a few coarse checkpoints only (dispatch, engine connect, engine spawn). A phase is shown only once it has itself been current for 250 ms, so fast phases never appear and the row cannot flicker; plain mode appends slow phases to the same line rather than adding lines. The pulse is off unless both stdout and stderr are a terminal, and for `-q`, `--no-progress`, `-O`, help, `CI`, `TERM=dumb`, and script-mode commands.
 
@@ -236,7 +236,7 @@ Rendered rows go out through `CliOutput`, so the envelope opens on the first one
 
 ### The two PUA axes
 
-jk emits exactly four PUA codepoints, and they are **not** equally available, so nerd capability is
+JumpKick emits exactly four PUA codepoints, and they are **not** equally available, so nerd capability is
 a pair of flags (`NerdFontCaps`), not one boolean:
 
 | Axis | Codepoints | `Glyphs` constant | Rendered by |
@@ -280,7 +280,7 @@ Each result carries a `Confidence` (`CONFIRMED`, `KNOWN`, `INFERRED`, `UNKNOWN`)
 (`path:mtime:size`) and the installed-font directories' stamp. A launch recomputes these with
 environment reads and a few `stat` calls. If any differ, the confirmation is ignored, detection falls
 back to the heuristics, and `NerdFontHint` prints one line per change naming what moved. Entries are
-keyed per terminal (and per client address over SSH). A font changed inside a terminal whose font jk
+keyed per terminal (and per client address over SSH). A font changed inside a terminal whose font JumpKick
 cannot read (Terminal.app, a remote client) is invisible; re-run `jk self setup-terminal` there.
 
 `setup-terminal` itself may ask the terminal questions (`GlyphProbe`: `OSC 50` font query, glyph

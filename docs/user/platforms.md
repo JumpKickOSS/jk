@@ -67,7 +67,7 @@ When two `[platform-dependencies]` BOMs manage the same module at different vers
 version wins, whichever BOM is declared first — the rule every other disagreement in the graph
 follows. The lock row's `pinned-by` names the winning BOM, and `jk lock` prints one line per pair
 of winning and overridden BOM, counting the modules they disagree on and naming the first three.
-Maven takes the first-declared import instead; jk does not, and `jk import` keeps the POM's BOM
+Maven takes the first-declared import instead; JumpKick does not, and `jk import` keeps the POM's BOM
 order only so the file reads like the POM. Your own exact
 pin on the module beats every BOM, and so does a
 [`[managed-dependencies]`](dependencies.md#managed-versions) entry — the POM's own
@@ -82,17 +82,17 @@ BOM's version differs from the workspace's ([Workspaces](workspaces.md#members-t
 member's `[managed-dependencies]` entries fold by the same rule: an entry every member declares
 alike constrains the workspace's rows, one only some members hold constrains the holders' graphs.
 
-jk does not adopt Maven's mediation between transitives by depth and declaration order either: an
+JumpKick does not adopt Maven's mediation between transitives by depth and declaration order either: an
 unmanaged module that two POMs ask for at different versions resolves to the highest declared
 version. A workspace member's pin is that member's version, as under Maven
 ([Workspaces](workspaces.md#members-that-disagree)). On the
 Maven top-20 corpus in jk-examples, the 16 repositories
 that lock were compared module by module against Maven's own resolution, their manifests imported
-and their locks written by the jk under test: 225 of 493 modules differ on at least one version,
+and their locks written by the JumpKick under test: 225 of 493 modules differ on at least one version,
 713 (module, coordinate) pairs over 154 coordinates in all. 367 pairs over 98 coordinates are depth
-mediation proper, where Maven's nearer declaration is older than the highest one jk picks; 137
+mediation proper, where Maven's nearer declaration is older than the highest one JumpKick picks; 137
 pairs over 9 coordinates are two BOMs that manage one module, where the BOM Maven's module imports
-and the platform jk's row reads disagree; 102 sit under a parent whose own version already
+and the platform JumpKick's row reads disagree; 102 sit under a parent whose own version already
 differs; and 30 pairs over 5 coordinates are inline
 `<dependencyManagement>` entries that reached no `[managed-dependencies]` table.
 

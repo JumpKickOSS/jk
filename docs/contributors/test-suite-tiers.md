@@ -34,7 +34,7 @@ suite (`E2eSuiteEngineTest`) beside every `src/test` integration class, and the 
 holds `[profiles.integration] all-suites = true`, since dropping it would leave `src/e2e` to `-s e2e`
 and `--all`, which no CI step runs. The fast tier is `src/test` alone, so a test in another suite
 carries a tier's tag. Members carry no `[test] exclude-tags` of their own: the root's table is the
-only routing, and a member's list would shadow it wherever jk falls back to a module's own tags
+only routing, and a member's list would shadow it wherever JumpKick falls back to a module's own tags
 (BSP, an MCP run that names none, the `--class` tier hints).
 
 Tag new heavy tests at class level:
@@ -90,7 +90,7 @@ test — sitting in the nightly profile — that would have caught it.
 
 `scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
 checkout root and runs one `jk test -p integration -m <module> -S …` per module the
-registry names, as the last step of the self-host job on every pull request. jk fails a run in
+registry names, as the last step of the self-host job on every pull request. JumpKick fails a run in
 which no class matched, so a renamed or deleted entry fails the lane instead of shrinking it.
 
 **Curated membership is a duplicate execution policy, not a tag.** Every listed class is
@@ -196,7 +196,7 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 ## CI
 
 - **PR / push (`ci.yml`):** the self-host job (`jk install`, which builds, then `jk guard`, `jk test`: the
-  fast tier and every house-rule lane, run by the checkout's own jk; then the curated integration
+  fast tier and every house-rule lane, run by the checkout's own `jk`; then the curated integration
   lane and `jk audit -s HIGH` over the lock), the shell fixtures, the workflow lint and the
   commit-authorship scan. No coverage, no benches.
 - **Release (`ci.yml` on the release tag):** after the curated lane, the self-host job runs
@@ -253,7 +253,7 @@ scoreboard ([docs/perf](../perf/README.md)), not this assert.
 ## One heavy run per machine
 
 Many integration tests start a nested engine that runs a whole build, and each engine keeps its own
-compiler pool, so jk's full integration tier holds far more forked JVMs than any user build: on a
+compiler pool, so JumpKick's full integration tier holds far more forked JVMs than any user build: on a
 15 GiB host it peaked at 13.8 GiB, 6.6 GiB of it in 18 compiler workers and 4 GiB in 26 test JVMs.
 Two such runs at once, or one beside another heavy job, can exhaust the host. Run one heavy job
 per machine: `jk test -p integration`, an uncached full `jk build`, or a benchmark
@@ -307,7 +307,7 @@ That content is safe to share because it is verified and published whole:
 So engines in several sandboxes can fill the pool at once. Everything else stays per sandbox: the
 `jk-local` shelf a suite installs onto, version lists, the store CAS and the tool closure indexes
 into it, Node and the other tools, JDKs, state, locks and ledgers. The pool sits beside
-`test-homes`, outside every sandbox home, and jk's deletes never follow a link. So `jk self nuke`,
+`test-homes`, outside every sandbox home, and JumpKick's deletes never follow a link. So `jk self nuke`,
 `jk storage nuke`, `jk clean` and the slot reaper remove a sandbox's links and leave the pool alone,
 and the reaper's size walk does not count the pool against a slot.
 
@@ -322,7 +322,7 @@ What keeps the pool from becoming an archive is the week rule below, not the cap
   `repos/<id>`, a tool version under `tools/<slug>`, an Android SDK component (the accepted
   licenses stay). A unit unused for a week goes whatever the pool weighs. Over the cap, the least
   recently used units go first, until the pool fits.
-- **Last use.** Reads leave no trace jk can rely on, since access times are off on many
+- **Last use.** Reads leave no trace JumpKick can rely on, since access times are off on many
   filesystems. So a pooled tree carries a `.jk-pool` marker, and in a marked tree the repository
   store, the tool registry and the SDK installer set a unit's directory mtime to now when a build
   uses the unit (`PoolUse`), at most once an hour per unit per process. Trees without the marker,

@@ -40,12 +40,12 @@ target/jk-results.md
 Both copies are UTF-8 **with a byte-order mark**, as are `target/jk-tests-affected.md` and the
 `jk import` report. The mark is there for Windows: PowerShell 5.1 decodes a file that has none
 in the host's ANSI codepage, so a `—` reads back as `â€”` and a `·` as `Â·`. Readers that do not
-need it ignore it. `details.jsonl`, `jk-lock.toml` and every other file jk parses again are
+need it ignore it. `details.jsonl`, `jk-lock.toml` and every other file JumpKick parses again are
 written without one, because their parsers would read the mark as content.
 
 The header's second line names who asked: `trigger: cli`, or `trigger: mcp · session:
 claude-code 3f9a` for an agent's connection (`bsp · IntelliJ-BSP 7b2c` for an IDE), then
-`commit:` and the jk version. The same `trigger`/`session` fields sit on the journal record
+`commit:` and the JumpKick version. The same `trigger`/`session` fields sit on the journal record
 (`jk history`, `GET /api/history`, `history`) and on the `session-start` line of
 `details.jsonl` — one vocabulary, every surface. [Web](web.md#who-asked). The journal record
 also names the session `episode` the run belongs to ([sessions and episodes](web.md#sessions-and-episodes)). The line after it is
@@ -162,7 +162,7 @@ export JK_OUTPUT=jsonl     # the same for every command
 ```
 
 - One JSON object per line, flushed promptly.
-- Every object: `schema` (int, **always 1** until jk 1.0), `ts` (epoch ms), `type` (string).
+- Every object: `schema` (int, **always 1** until JumpKick 1.0), `ts` (epoch ms), `type` (string).
 - Most lines also carry **`progress`**: aggregate percent **0–100** or `null`, computed
   **in the engine**. Do not re-sum per-task `numerator`/`denominator` for the job bar.
 - For whole-job % without task spam, subscribe to **`type=workspace-progress`**.
@@ -180,11 +180,11 @@ different kind of job, so a parser written against one works against all of them
 - a **`module-start`** / **`module-finish`** pair for every module entered (a module the
   failure stopped finishes with `"success":false,"stopped":true`),
 - exactly one terminal **`workspace-finish`** — on *every* outcome, including failure,
-  cancellation and a wire error. A stream that ends without it means jk died, not that the build
+  cancellation and a wire error. A stream that ends without it means JumpKick died, not that the build
   is still running.
 
 **`jk run` is the one exception, and only at its tail.** It streams the workspace pre-build in
-full and terminates it with `workspace-finish` *before* it execs your program. jk writes nothing
+full and terminates it with `workspace-finish` *before* it execs your program. JumpKick writes nothing
 more to stdout after that line: from there the stream is the program's. Treat `workspace-finish`
 as end-of-stream for `jk run`.
 

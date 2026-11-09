@@ -26,7 +26,7 @@ Every engine-hosted operation gets a **jid** at admission.
 | **Ctrl-C** | Cancels the engine job(s) for this project, then exits (bounded teardown; `JK_CANCEL_GRACE_MS`) |
 | **`jk cancel`** | All live jobs for the current project directory |
 | **`jk cancel <jid>`** | That job (unknown/finished jid → clear error) |
-| **Ctrl-Z** / **`fg`** | Suspend the build jk started from this terminal, then resume it: a suspended job starts no new step, its forked workers are stopped (POSIX), and it keeps its memory; `jk engine status` shows it suspended and `jk cancel` still ends it |
+| **Ctrl-Z** / **`fg`** | Suspend the build JumpKick started from this terminal, then resume it: a suspended job starts no new step, its forked workers are stopped (POSIX), and it keeps its memory; `jk engine status` shows it suspended and `jk cancel` still ends it |
 | **Web / MCP** | `POST /api/cancel` with `{"jid":N}` · MCP `cancel` |
 
 A second same-kind build in the same checkout is rejected: **Build #N already running**.
@@ -39,7 +39,7 @@ the running build and refuses with its number.
 `jk engine status` prints the engine's version and, when the engine was installed by
 `jk install` from a checkout, a `Source` row naming that checkout — the one whose workers this
 engine forks (`installSource` in `-O jsonl` and `GET /api/status`; see
-[install](install.md#on-disk-layout)). Its `Updates` row says what jk's own update does next —
+[install](install.md#on-disk-layout)). Its `Updates` row says what JumpKick's own update does next —
 the mode and why, the last check, a download waiting to install, or a hold (`selfUpdate` in `-O
 jsonl`; see [install](install.md#updates)). It lists every job the engine holds under its `Live Jobs`
 and `Queued` rows — jid, kind, project directory, when it was admitted or arrived, its live worker
@@ -245,14 +245,14 @@ The engine runs under its `max-heap-mb` cap with `-XX:+ExitOnOutOfMemoryError` a
 the process; the next `jk` command starts a fresh engine and prints one line naming the dump.
 `jk engine status` and `jk doctor` show the newest dump while one exists; the engine deletes
 dumps older than seven days between builds. The engine sizes its work to its heap, so an exit on
-`OutOfMemoryError` is a jk bug: run `jk cache clean`, and report the heap dump. Open the `.hprof`
+`OutOfMemoryError` is a JumpKick bug: run `jk cache clean`, and report the heap dump. Open the `.hprof`
 with any Java heap analyser.
 
 ### Worker containment
 
 On Linux every worker the engine forks — the Java compiler, Kotlin and Groovy compiles, test
 JVMs, plugin workers, and the tool processes those steps run — is given `oom_score_adj` 800
-as soon as it starts. Under memory pressure the kernel then prefers a jk worker over the
+as soon as it starts. Under memory pressure the kernel then prefers a JumpKick worker over the
 engine and over an ordinary session process. The engine's own score is never changed. A
 refusal to write the score is a debug log line, not a failed build.
 
@@ -344,14 +344,14 @@ that is not a JVM leases 64 MiB. A JVM that names no heap leases what it likely 
 learned peak, else a quarter of the budget up to 2 GiB, never more than its `-XX:MaxRAMPercentage`
 (25% by default) of memory; it keeps its own ceiling, and the ledger charges its measured resident
 set when that is larger. `native-image` with no `-J-Xmx` gets a builder heap
-jk passes as `-J-Xmx` and leases with its overhead. A module's first native build gets the
+JumpKick passes as `-J-Xmx` and leases with its overhead. A module's first native build gets the
 generous heap, 85% of the per-worker cap (what GraalVM's driver would take on its own). Later
 builds get twice the largest peak the module's earlier builds reached, at least 2 GiB, scaled up
-with classpath growth. jk goes back to the generous heap when a dependency is added, removed or
+with classpath growth. JumpKick goes back to the generous heap when a dependency is added, removed or
 moved to another version, when reachability metadata changes, or when the classpath grew more
 than 25%. If a learned heap runs out, the build is rerun once at the generous heap. The step's
 output names the heap and why it was chosen. A `-J-Xmx` in `[native] args` is yours and is left
-alone. A lease bigger than the whole budget is not refused. A heap jk chose is lowered
+alone. A lease bigger than the whole budget is not refused. A heap JumpKick chose is lowered
 so the worker still fits, and the engine log says so. A heap you pinned — `[jvm] args`,
 `[test] jvm-args`, a module `-J` flag, `--ram-percent`, or any other `-Xmx` /
 `-XX:MaxRAM*` you passed — is left as you wrote it. That worker leases the whole budget
@@ -371,7 +371,7 @@ test framework keeps per application restart, thread stacks, direct buffers. Suc
 is named once in the engine log, once on the step that forked it as a run warning
 (`run-tests: test JVM using 12.2 GiB, leased 6.7 GiB`, code `memory-over-lease`), and on the
 Over lease line while it lasts. While any worker is far over its lease, nothing is
-overbooked. jk does not kill it; the per-worker cgroup cap above is what bounds it.
+overbooked. JumpKick does not kill it; the per-worker cgroup cap above is what bounds it.
 
 A lease that does not fit waits, first in line first. The first in line waits only on
 forks that are working: when it would fit once the build-script host let go of its lease,
@@ -422,7 +422,7 @@ several jobs cannot start one JVM per core each and thrash. The cap counts every
 running JVMs, so a draining engine and its successor share it, and like the budget it is the
 one the engine that was there first recorded. A process's
 `-XX:ActiveProcessorCount` is its own share of the machine and does not lower this cap.
-jk's compiler and plugin workers run ParallelGC with `-XX:ActiveProcessorCount` set to their
+JumpKick's compiler and plugin workers run ParallelGC with `-XX:ActiveProcessorCount` set to their
 share of the cores; a worker whose collector is left to the JVM (`[jvm] gc = "default"`) gets
 no share, because HotSpot picks SerialGC for one CPU. Test JVMs get neither: they run the JVM's
 default collector on every core ([Testing](test.md#the-test-jvms-flags-test-jvm-args-test-system-properties)).
@@ -528,7 +528,7 @@ workers — write a GC log, and all but the test JVMs start with `-XX:+ExitOnOut
 A test may provoke an `OutOfMemoryError` and catch it, as under Surefire and Gradle; one for
 the heap that escapes a test fails that test, and its class is what the retry ladder below
 re-runs. When the process
-exits, jk remembers the larger of the log's biggest heap occupancy and the process high-water
+exits, JumpKick remembers the larger of the log's biggest heap occupancy and the process high-water
 RSS minus a non-heap allowance (a spike between collections is still counted). The key is the
 module coordinate, the task (`java-compile`, `java-test-compile`, `kotlin-compile`,
 `groovy-compile`, `test`, `format`, or `plugin`), and the JDK major the worker ran on; `jk
@@ -537,7 +537,7 @@ one file per project, `<state>/worker-heaps/<project-id>` (the same project id a
 history under `~/.jk/state`). It is not in the source tree. Delete that file to forget every
 peak and go back to the first heap.
 
-A compile, test or format worker jk has not seen before starts at a quarter of the worker budget, at
+A compile, test or format worker JumpKick has not seen before starts at a quarter of the worker budget, at
 most 2 GiB, and never below the compiler estimate or the memory plan's share. `-Xmx` is what
 the ledger admits against, not what the worker occupies: planned JVMs give unused heap back,
 so a generous first heap costs parallelism on the first run, not RAM. The build-script host
@@ -599,7 +599,7 @@ Every line is leveled: `HH:mm:ss.SSS LEVEL message key=value …`, with `LEVEL` 
 `INFO`, `WARN`, `ERROR`. `log-level` (or `JK_LOG_LEVEL`) sets the threshold, default `info`; it
 is read at engine start, so `jk engine stop` first, then `JK_LOG_LEVEL=debug jk build` starts an
 engine that also writes the perf probes (`perf <label> ms=<n>`) and the cause of every
-fail-open path it took. Secrets a `.env` file declares, and repository credentials jk resolved,
+fail-open path it took. Secrets a `.env` file declares, and repository credentials JumpKick resolved,
 are masked as `***` at every level.
 
 ### Idle connections
@@ -646,10 +646,10 @@ inherited once would be every later terminal's truth. Workers are narrowed again
 
 Every request carries the whole environment of the shell running `jk`, and the engine decides the
 request from that rather than from its own: `CI`, repository and cloud credentials, the CI
-profile, colour. A variable you leave unset reads as unset. git, which jk runs for git
+profile, colour. A variable you leave unset reads as unset. git, which JumpKick runs for git
 dependencies, gets your `GIT_*` settings (`GIT_SSH_COMMAND`, `GIT_ASKPASS`, `GIT_SSL_CAINFO`,
 tracing) and your SSH agent, but never the variables that name a repository (`GIT_DIR`,
-`GIT_INDEX_FILE`, …), so `jk` run from a git hook cannot point jk's checkouts at yours. MCP and HTTP
+`GIT_INDEX_FILE`, …), so `jk` run from a git hook cannot point JumpKick's checkouts at yours. MCP and HTTP
 requests have no shell, and those decisions fall back to the engine's environment.
 
 <!-- engine-process:start -->

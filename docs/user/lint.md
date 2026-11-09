@@ -29,7 +29,7 @@ detekt     = true                                               # detekt over th
 | `checkstyle-properties` | Properties the rule set reads as `${name}`, the way Maven's `<propertyExpansion>` hands them over: `{ "checkstyle.build.directory" = "target" }`; `checkstyle.suppressions.file` and `checkstyle.header.file` come from their own keys | `{}` |
 | `checkstyle-classpath` | Coordinates whose jars join Checkstyle's classpath with their closures — the jars a build ships its rule set, header, suppressions or check classes in, as a Maven plugin's `<dependencies>` do (`["org.springframework.cloud:spring-cloud-build-tools:5.0.3", "io.spring.javaformat:spring-javaformat-checkstyle:0.0.47"]`) | `[]` |
 | `checkstyle-version` | The Checkstyle release; a bare version is exact | `"14.3.0"` |
-| `pmd` | Enable PMD with these rulesets: a built-in `category/java/…` or `rulesets/java/…`, `rulesets/java/maven-pmd-plugin-default.xml` (Maven's default, which jk carries), or a module-relative ruleset file | off |
+| `pmd` | Enable PMD with these rulesets: a built-in `category/java/…` or `rulesets/java/…`, `rulesets/java/maven-pmd-plugin-default.xml` (Maven's default, which JumpKick carries), or a module-relative ruleset file | off |
 | `pmd-exclude` | A module-relative file in `maven-pmd-plugin`'s `excludeFromFailureFile` shape — `package.Class=Rule,Rule` per line — whose findings are left out of the report | none |
 | `pmd-version` | The PMD release; `jk import` writes the one the POM's plugin runs — the `pmd-java` it pins, else the release its `maven-pmd-plugin` bundles, read from that plugin's POM — since a newer PMD reports what an older one let through | `"7.28.0"` |
 | `spotbugs` | Enable SpotBugs over the module's classes, against its compile classpath | `false` |
@@ -101,7 +101,7 @@ a rule set it could not carry, `sun_checks.xml` — is a warning naming it, labe
 
 ## Configuration files
 
-The files are yours and live in the module: jk ships no house rule set. A Checkstyle rule set
+The files are yours and live in the module: JumpKick ships no house rule set. A Checkstyle rule set
 may instead be the one a build shares from a URL (`checkstyle = "https://raw.githubusercontent.com/…/checkstyle.xml"`,
 the shape `jk import` keeps from a POM's `<configLocation>`): the engine fetches it once into
 the store — `--offline` with no copy yet fails naming the URL — and its content is part of the
@@ -120,7 +120,7 @@ configuration and lint nothing. A rule set whose
 Checkstyle's own `-p` properties file. A PMD ruleset is either
 one of PMD's built-in categories (`category/java/bestpractices.xml`, `rulesets/java/quickstart.xml`),
 `rulesets/java/maven-pmd-plugin-default.xml` — the ruleset `maven-pmd-plugin` runs when a POM names
-none, which PMD itself does not ship and jk carries so an imported build lints as Maven did — or a
+none, which PMD itself does not ship and JumpKick carries so an imported build lints as Maven did — or a
 file; `pmd-exclude` leaves a class's listed rules out, as Maven's `excludeFromFailureFile` does;
 SpotBugs's `spotbugs-exclude` files are its filter-file format; detekt's `detekt-config` is
 laid over detekt's default configuration (`--build-upon-default-config`). Suppressions stay in the

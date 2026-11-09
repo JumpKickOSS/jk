@@ -68,7 +68,7 @@ none. Bench sessions (`agent-loop-harness`, `scoreboard`) are rows of their own;
 ## Traps
 
 - **Setup is most of a cell.** Copying the repository, its baseline build and tests, and the graph
-  build are cached per repository, corpus commit, baseline command and installed jk build
+  build are cached per repository, corpus commit, baseline command and installed JumpKick build
   (`$AGENT_LOOP_HOME/prepared/`); an install starts a new entry.
 - **Disk.** A finished run's sandbox is deleted once its row is written (its diff kept as
   `diff.patch`); only red and claimed runs keep theirs for `--reverify`. A matrix of kept sandboxes

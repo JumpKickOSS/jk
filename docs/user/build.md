@@ -126,7 +126,7 @@ incremental compiles; a full compile puts the resource back before the processor
 it by ABI alone. `compile-main`, `compile-test`, fixtures and the guard suite all apply the rule.
 A Kotlin module whose processor path holds a KSP processor (Room, Hilt, Moshi's codegen) runs it
 in a KSP2 round before the Kotlin compile. The KSP2 tool is a pinned release, never the newest the
-network offers: jk's own pin by default (2.3.12 today, moved by jk releases), or the module's
+network offers: JumpKick's own pin by default (2.3.12 today, moved by JumpKick releases), or the module's
 `[build] ksp-version = "2.3.10"`, an exact version that `jk update` moves on its major like any other
 tool pin. The release is a round input, so changing it re-runs the round on an unchanged tree, and
 the step's label names the release that ran (`KSP 2.3.12: 2 processor jar(s)`).
@@ -216,7 +216,7 @@ annotations.
 ```
 
 That is the whole setup. The table brings `org.jspecify:jspecify` onto the compile classpath and
-Error Prone and NullAway onto the processor path, at versions jk tests together, and `jk lock`
+Error Prone and NullAway onto the processor path, at versions JumpKick tests together, and `jk lock`
 pins them like any other dependency. A jar the module declares itself (JSpecify in any scope,
 either tool in `[processor-dependencies]`) keeps its declared version. The table folds NullAway's
 plugin options and Error Prone's two companion flags into the module's `[javac]`.
@@ -302,7 +302,7 @@ args    = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW"]
 |-----|---------|
 | `plugins.<Name>` | The plugin's registered javac name, case-sensitive (`ErrorProne`, not `errorprone`); passed as `-Xplugin:<Name>` |
 | `plugins.<Name>.options` | Handed to the plugin after its name |
-| `args` | Verbatim javac arguments, appended after every plugin. A `-J<flag>` entry is the javac launcher's spelling of a flag for the JVM running the compiler — `-J--add-opens=…`, `-J-Xss4m` — and starts the compiler worker with it instead of reaching javac, which would refuse it; a flag jk already passes, such as the `jdk.compiler` exports Error Prone documents, is not passed twice. `jk import` keeps a POM's `<compilerArgs>` `-J` lines as they are, except the `jdk.compiler` exports jk grants anyway, which it leaves out with one row in the import report |
+| `args` | Verbatim javac arguments, appended after every plugin. A `-J<flag>` entry is the javac launcher's spelling of a flag for the JVM running the compiler — `-J--add-opens=…`, `-J-Xss4m` — and starts the compiler worker with it instead of reaching javac, which would refuse it; a flag JumpKick already passes, such as the `jdk.compiler` exports Error Prone documents, is not passed twice. `jk import` keeps a POM's `<compilerArgs>` `-J` lines as they are, except the `jdk.compiler` exports JumpKick grants anyway, which it leaves out with one row in the import report |
 
 The table is named `javac`, not `java`: `java = 25` is the release, and a TOML key cannot be
 both a value and a table.
@@ -359,7 +359,7 @@ recompiles the module.
 
 | Key | Meaning | Default |
 |---|---|---|
-| `coordinate` | The plugin jar, `group:artifact[:version]`. Without a version it is the module's Kotlin compiler version, which every `org.jetbrains.kotlin` plugin is released at. Name the `-embeddable` artifact: jk compiles with the embeddable compiler | required |
+| `coordinate` | The plugin jar, `group:artifact[:version]`. Without a version it is the module's Kotlin compiler version, which every `org.jetbrains.kotlin` plugin is released at. Name the `-embeddable` artifact: JumpKick compiles with the embeddable compiler | required |
 | `id` | The plugin's registered id, the `<id>` in kotlinc's `-P plugin:<id>:<key>=<value>` (`org.jetbrains.kotlin.allopen`). Options reach the plugin only under its own id, so set it whenever `options` is set | the artifact name |
 | `options` | The plugin's options, each `"key=value"`, as kotlinc's `-P plugin:<id>:key=value` takes them | `[]` |
 
@@ -400,7 +400,7 @@ debug = "lines"                # drop LocalVariableTable; keep line numbers
 
 ## Worker environment (`[env]`)
 
-Every worker jk forks for a module — the compiler, each test JVM, a plugin step — starts from
+Every worker JumpKick forks for a module — the compiler, each test JVM, a plugin step — starts from
 an allow-list, not from a shell. A token exported in the shell that started the engine does
 not reach a compiler worker or your test code by accident. Workers inherit only:
 
@@ -452,7 +452,7 @@ secrets included, less what a shell changes per command (`PWD`, `_`, `SHLVL`, th
 session); its suite reruns when any of the rest changes. Write the reason beside it. `[env]` is per module and is not inherited from a workspace root.
 The engine's own environment is the shell that started it, not the one running `jk` — apart
 from the proxy and display variables above, a variable set for one command reaches a worker only
-through `vars` or `[test] env`. What jk itself decides reads the shell running `jk`, every
+through `vars` or `[test] env`. What JumpKick itself decides reads the shell running `jk`, every
 variable of it: `CI`, repository credentials, the git agent, the CI profile, colour. So
 `CI=true jk guard` checks rather than writes, whichever shell started the engine. A request from
 MCP or the HTTP API has no shell of its own, and those decisions read the engine's.
@@ -514,7 +514,7 @@ worker per JDK, one compile per worker thread, and the worker has one thread per
 (cgroup quota included), like Maven's in-process javac under `-T`. Compiles past that wait in the
 engine for a thread to come free, and every compiler worker of the engine together runs at most one
 compile per core. The worker stays up 10 minutes after the project was last worked on — its last
-compile, any jk request about the project, or an edit to its sources — (`JK_WORKER_LINGER_MIN`; 30 on
+compile, any JumpKick request about the project, or an edit to its sources — (`JK_WORKER_LINGER_MIN`; 30 on
 CI), so the next build compiles on a warm JIT. A module whose worker JVM must
 differ — its own `-J` flags, `[env] inherit`, another JDK — gets a worker of its own. Two settings
 read from the engine's environment are for measurement, not tuning:

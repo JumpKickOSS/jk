@@ -226,7 +226,7 @@ def comparison(by: dict, kind: str) -> list[dict]:
 
 
 def comparison_table(rows: list[dict], unit: str) -> str:
-    lines = [f"| Agent ({unit}) | Correct, jk / without the graph | Turns | Tokens | Wall |",
+    lines = [f"| Agent ({unit}) | Correct, JumpKick / without the graph | Turns | Tokens | Wall |",
              "|---|---|---|---|---|"]
     for r in rows:
         a, b = r["jk"], r["off"]
@@ -234,7 +234,7 @@ def comparison_table(rows: list[dict], unit: str) -> str:
                      f"{b['runs']} | {_n(a['turns'])} / {_n(b['turns'])} | {_k(a['tokens'])} / {_k(b['tokens'])} | "
                      f"{a['wall']:,.0f} / {b['wall']:,.0f} s |")
     sets = sorted({s for r in rows for s in r["results"]})
-    lines += ["", "jk is each agent as `jk agents` sets it up (Vendor C and D with jk's rules file), one run per task "
+    lines += ["", "JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file), one run per task "
               "on the current build; without the graph, three to five runs per task, the graph hidden from MCP and "
               "the shell alike. "
               "Medians per task, summed over the tasks each agent ran on both arms; results: "
@@ -267,7 +267,7 @@ def curve(by: dict) -> list[dict]:
 
 def curve_table(points: list[dict]) -> str:
     drivers = [d for d in ("claude-code", "cursor") if any(d in p["drivers"] for p in points)]
-    head = "| Repository | Lines | Rename | " + " | ".join(f"{LABELS[d]}: turns · tokens, jk / without" for d in drivers) + " |"
+    head = "| Repository | Lines | Rename | " + " | ".join(f"{LABELS[d]}: turns · tokens, JumpKick / without" for d in drivers) + " |"
     lines = [head, "|---|---:|---|" + "---|" * len(drivers)]
     for p in points:
         cells = []
@@ -277,7 +277,7 @@ def curve_table(points: list[dict]) -> str:
                 continue
             a, b = p["drivers"][d]
             cells.append(f"{_n(a['turns'])} / {_n(b['turns'])} · {_k(a['tokens'])} / {_k(b['tokens'])}")
-        lines.append(f"| {p['repo']} | {p['loc']:,} | `{p['method']}` | " + " | ".join(cells) + " |")
+        lines.append(f"| {'JumpKick' if p['repo'] == 'jk' else p['repo']} | {p['loc']:,} | `{p['method']}` | " + " | ".join(cells) + " |")
     return "\n".join(lines)
 
 
@@ -297,7 +297,7 @@ def claims(questions: list[dict], renames: list[dict], points: list[dict], link:
     if questions:
         t, k = cut(questions, "turns"), cut(questions, "tokens")
         sentences.append(f"We asked coding agents from {len(questions)} vendors questions like \"who calls this method?\" "
-                         f"With jk's code graph, they answered in {span(t, 'fewer back-and-forth turns')} and used "
+                         f"With JumpKick's code graph, they answered in {span(t, 'fewer back-and-forth turns')} and used "
                          f"{span(k, 'fewer tokens')} than without it.")
     if renames:
         t, k = cut(renames, "turns"), cut(renames, "tokens")

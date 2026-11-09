@@ -26,7 +26,7 @@ installs `SIG_DFL`, parks a helper thread in `FileInputStream.read()`, rewrites 
 `toAnsi()`, emits color-first SGR, and pulls `capabilities.txt` / `*.caps` / `jline-native`
 into the Graal image.
 
-This document specifies the jk module **`:cli-terminal`** (`clients/cli-terminal/`,
+This document specifies the JumpKick module **`:cli-terminal`** (`clients/cli-terminal/`,
 package `cc.jumpkick.terminal`) that is the library we wished `jline-terminal` had been for us:
 one controlling TTY independent of stdio redirection, named input modes, `poll` /
 `WaitForSingleObject` timed reads, first-class Windows console, our own Style/width/keys, and
@@ -98,7 +98,7 @@ These live in `:cli` today and must become first-class library behavior, not cal
     `getSize()` is unused. SIGWINCH via JLine `Signals` is the only remaining JLine piece.
 12. **`Theme.colorize`** bypasses `AttributedString.toAnsi()` — that path rewrites box-drawing
     without a Terminal (`Theme.java` ~L377).
-13. **SGR reorder** — `attributeLeading` because JLine emits color-first; jk's canonical order is
+13. **SGR reorder** — `attributeLeading` because JLine emits color-first; JumpKick's canonical order is
     attribute-leading (`1;38;2;…` not `38;2;…;1`).
 14. **`gradientHeaderAnsi`** — `toAnsi` stamps bold only on the first char and relies on SGR
     persistence (`JkDarkTheme.gradientHeaderAnsi`).
@@ -156,7 +156,7 @@ anti-goals forbid.
 
 - LineReader, completion, history, alt-screen, full-screen TUI, terminfo databases.
 - Sharing this library with the engine, plugins, or workers. Engine never owns a TTY.
-- A public Maven artifact / third-party terminal library. This is jk's client leaf.
+- A public Maven artifact / third-party terminal library. This is JumpKick's client leaf.
 - Cygwin/MSYS pty helper DLLs. Git-Bash/mintty degrades (see Windows policy).
 - Emulating JLine's `Attributes` / `AttributedStyle` bit layouts.
 - Changing the client↔engine wire, lockfile, or schema versions.
@@ -171,7 +171,7 @@ anti-goals forbid.
 | `stdoutIsTty()` prefers `isatty(1)` / console-mode on `STD_OUTPUT_HANDLE`, with `System.console()` as fallback **only** when FFM is unavailable | `System.console()` is null when **stdin** is redirected even if stdout is a TTY, so `jk build < /dev/null` currently will not animate | **Yes, improvement:** stdin-redirected interactive runs may now animate. Piped/redirected **stdout** still does not. Flush policy (Windows UTF-8 stream buffer size / autoflush) follows `stdoutIsTty()`, **not** `System.console()` — otherwise live regions would “animate” into an 8 KiB buffer and look stuck. |
 | Wizard Ctrl-C is a **byte** (`PROMPT` has ISIG off), not `Terminal.handle(INT)` | Eliminates JLine signal round-trip; `GlobalCancel` stays installed and simply does not fire from the TTY during a wizard | Same: wizard cancels; no `halt(2)` from GlobalCancel inside a wizard |
 | `PROMPT` / `PLAN_KEYS` clear `IXON` (and `IXOFF`/`ICRNL`/`INLCR`) | JLine `enterRawMode()` already does this for Wizard; `JkManager.outputKeyListenerAttributes` currently does **not**, so Ctrl-S can XOFF a live plan | **Yes, fix:** Ctrl-S during `jk build` is a consumed byte, not a freeze. |
-| COOKED / inheritIO restore the **open-time snapshot**, not `Wizard.restoreCooked`'s force-ECHO+ICANON | Snapshot is parent-shell state captured at `/dev/tty` open | Same in the normal case (parent had echo/canon on). If someone launched jk with echo already off, we put it back that way instead of forcing on. |
+| COOKED / inheritIO restore the **open-time snapshot**, not `Wizard.restoreCooked`'s force-ECHO+ICANON | Snapshot is parent-shell state captured at `/dev/tty` open | Same in the normal case (parent had echo/canon on). If someone launched `jk` with echo already off, we put it back that way instead of forcing on. |
 | `halt(2)` restores Windows code pages if still 65001 | Today CP restore is a shutdown hook that `halt` skips; `prepareProcessExit` only restores termios | **Yes, improvement** on Windows Ctrl-C: the tab's OEM page comes back. VTP stays enabled. |
 | No JLine `toAnsi` box-drawing rewrite, ever | We already bypass it | None (we already fought this) |
 | Git-Bash/mintty (Win32 `jk.exe`, pipe stdio, no console) → `canPrompt=false` | We will not ship a Cygwin PTY helper | Wizards/Ctrl-O unavailable there; Windows Terminal / conhost / ConPTY remain first-class |
@@ -184,7 +184,7 @@ the probe — we do **not** collapse `canPrompt` and `stdoutIsTty`.
 
 ## Key Decisions
 
-1. **New module, new package, JDK-only leaf.** Path `clients/cli-terminal/`, jk name
+1. **New module, new package, JDK-only leaf.** Path `clients/cli-terminal/`, JumpKick name
    `jk-cli-terminal`, package `cc.jumpkick.terminal`. Zero
    dependency on `:cli`, `:wire`, `:jk-api`, `:toolchain-jdk`, theme, or commands.
    **`HostPlatform` is forbidden** in the leaf (`WindowsUtf8` today imports it — replace with
@@ -235,7 +235,7 @@ the probe — we do **not** collapse `canPrompt` and `stdoutIsTty`.
 
 5. **No terminfo, no DA/DECRQM, no grapheme probes.** Size is ioctl / `GetConsoleScreenBufferInfo`
    + `$COLUMNS`/`$LINES` + SIGWINCH invalidation (today's `TerminalSize`). Emission is the known
-   VT set in `Ansi`. *Rationale:* jk already does this; JLine's probes are pure cost and flicker.
+   VT set in `Ansi`. *Rationale:* JumpKick already does this; JLine's probes are pure cost and flicker.
 
 6. **Style is ours, attribute-leading SGR only, never rewrite glyphs.** `Style` / `Styled` /
    `StyledBuilder` / `Width` replace `AttributedStyle` / `AttributedString` /
@@ -273,7 +273,7 @@ the probe — we do **not** collapse `canPrompt` and `stdoutIsTty`.
     Key tests never require a real TTY. Integration tests may use a pty where available.
 
 11. **User template `cli-native.g8` keeps teaching JLine LineReader.** That template is a
-    *user* REPL scaffold (completion, history) unrelated to jk internals. Catalog aliases
+    *user* REPL scaffold (completion, history) unrelated to JumpKick internals. Catalog aliases
     `jline` / `jline-terminal-ffm` stay in `libraries.toml` for adopters. They are not a
     dependency of `:cli`. *Rationale:* do not silently keep JLine on our client
     because of a template; do not rip LineReader out of a template that actually needs it.
@@ -1244,7 +1244,7 @@ all import `Width` on day one — then flip imports. JLine `AttributedString.col
 away.
 
 **wcwidth tables:** implement Markus Kuhn / East-Asian-Width, matching JLine's `WCWidth` for the
-glyphs jk actually paints (box drawing, powerline `U+E0B0`/`U+E0B4`/`U+E0B6`, braille `U+28xx`,
+glyphs JumpKick actually paints (box drawing, powerline `U+E0B0`/`U+E0B4`/`U+E0B6`, braille `U+28xx`,
 CJK in diagnostics, emoji+VS16). Golden test: a fixture of those code points with expected
 columns, so truncation in `JkManagerColor.truncateTo` cannot silently drift. Do not take a
 dependency. Do not call `Character.getType` as a full substitute (it does not implement wcwidth).

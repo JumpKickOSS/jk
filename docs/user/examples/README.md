@@ -3,7 +3,7 @@
 Runnable samples of every kind live in [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples),
 organised from a first project (`01-start/`) to a production application (`06-production/`).
 
-This directory keeps one sample that has to sit beside jk's sources:
+This directory keeps one sample that has to sit beside JumpKick's sources:
 
 | Sample | Shows |
 |--------|--------|

@@ -107,9 +107,9 @@ exclude-classes` still removes a class from every suite, pattern suites included
 
 `src/guard/java` holds **guard tests** — `@Guard` methods in a `@GuardSuite` class that read the
 same facts, model and text the declarative rules in `jk-guards.toml` read (see
-`jk guard explain --schema guard-test`). jk compiles it as `compile-guard`, against main classes,
+`jk guard explain --schema guard-test`). JumpKick compiles it as `compile-guard`, against main classes,
 the test compile classpath (so ArchUnit or Konsist come from `[test-dependencies]`; there is no
-`[guard-dependencies]`) and `cc.jumpkick:jk-guards-junit` at the installed jk's version, which jk
+`[guard-dependencies]`) and `cc.jumpkick:jk-guards-junit` at the installed JumpKick's version, which it
 provisions from its local store and pins in `jk-lock.toml` — nothing to declare. Discovery never
 returns `guard`: `jk test`, `--all` and `--guard` do not collect it, `-s guard` is an error
 that says so, and the guard lanes run it. `jk ide` exports the directory as a test root so a guard
@@ -192,7 +192,7 @@ proves a module against everything it builds on. It needs a selection, either `-
 directory as the working directory; without one it is a usage error. It composes with `--class`,
 `--suite`, tag filters and `--guard`.
 
-`-X` is jk's flag here, not the JVM's: `jk test -Xmx2g` is refused with a hint to pass JVM flags
+`-X` is JumpKick's flag here, not the JVM's: `jk test -Xmx2g` is refused with a hint to pass JVM flags
 as `--jvm-arg=-Xmx2g`.
 
 ## Leave classes, sources and dependencies out (`[test] exclude-classes`, `exclude-src`, `exclude-dependencies`)
@@ -329,7 +329,7 @@ JVM at a time — in a workspace each module's suite takes the address in turn, 
 included, so pass `--class` with `-m <module>` to make the module you are debugging the only
 suite that runs. A debug run always runs the suite, even when the cache would have skipped it.
 
-jk settles the address before the launch: an explicit port is used as given, and `0` is a
+JumpKick settles the address before the launch: an explicit port is used as given, and `0` is a
 free port bound and released by the client so the JVM can take it. Nothing reads the JVM's
 own "Listening for transport" line — `jk run` hands the terminal to the program, and both the
 CLI and a BSP client need the address *before* a suspended JVM exists. If another process
@@ -352,7 +352,7 @@ Both flags print the ranking as a table (Score · Class · Reason) and write
 `target/jk-results.md`. `-m` intersects the ranked list exactly as it intersects the
 build cone (`jk test -f -m api`). Ranking refuse exits **2**. When the guess
 would be dishonest (`jk.toml` change, stale class files, too many types or modules, a
-dirty test outside the current suite), jk prints `cannot rank affected tests` and tells
+dirty test outside the current suite), JumpKick prints `cannot rank affected tests` and tells
 you to run `jk test`.
 
 ## Tag filters
@@ -411,7 +411,7 @@ its own value (`""` lifts the wall), and any process honours the variable as a c
 host list.
 
 `--exclude-tags ""` is the CLI form of a clear. A profile's `jvm-args` (`[profiles.<name>]
-jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after jk's own tuning and after
+jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after JumpKick's own tuning and after
 [`[test] jvm-args`](#the-test-jvms-flags-test-jvm-args-test-system-properties), and the step
 prints every flag the JVM started with as `test JVM flags: …`; its `javac` list reaches the compiler the same way
 ([Projects](projects.md#features-profiles-variants)). Suites, tags and the test JVM's flags are
@@ -479,7 +479,7 @@ Discover test classes, then fork N runners that **pull** classes until empty.
 | `N` | Cap at N runners (still ≤ class count; heap-clamped) |
 
 Auto forks another JVM only when the recorded class walls say it can finish the suite sooner.
-The share is still the cap, because jk takes its parallelism from modules first and the two
+The share is still the cap, because JumpKick takes its parallelism from modules first and the two
 layers spend one budget. `-j N` therefore caps the whole build: at most N modules at once and
 at most N test JVMs in total. `jk explain` prices each suite with the same rule:
 
@@ -491,7 +491,7 @@ at most N test JVMs in total. `jk explain` prices each suite with the same rule:
 | one module, `-j 4` | at most 4; a long tail may use fewer |
 
 Sharding *every* module of a wide build as if it were alone costs more in JVM starts than it
-wins in overlap: on jk's own 30-module tree it moved the rebuild from 73 s to 103 s, and the
+wins in overlap: on JumpKick's own 30-module tree it moved the rebuild from 73 s to 103 s, and the
 whole-build wall is monotone in `-w` (73 s at `-w1`, 77 s at `-w2`, 81 s at `-w4`). The share
 keeps that wide build at one runner per module. A long-tailed module — petclinic's Spring
 suite, one class near 18 s and the rest done in a few seconds — stays at two runners even when
@@ -600,7 +600,7 @@ Jupiter 5.x.y runs on Platform 1.x.y and Jupiter 6 shares the Platform's number,
 Jupiter 5.12.2 (`helidon-webserver-testing-junit5` 27.0.1) locks `1.12.2` with no pin of yours. A
 graph with no Jupiter follows the `junit-platform-engine` a Vintage or TestNG engine carries, and
 `latest` otherwise. Gradle infers none of this — you declare the engine and the launcher there — and
-jk departs from Surefire in one place: Vintage joins only for a `junit:junit` you declare, never one
+JumpKick departs from Surefire in one place: Vintage joins only for a `junit:junit` you declare, never one
 a test library such as Testcontainers 1.x brings in. Your `jk.toml` is not touched; the lock records
 the result. A launcher you declare yourself always wins, so a Platform 6 launcher beside a Jupiter
 5 engine — which would drop the engine without a word and report success with no tests — can only
@@ -608,7 +608,7 @@ be your own pin, and `jk lock` refuses it with the pin that aligns them. In a wo
 is judged on the rows it reads: a member whose tests reach no Jupiter gets no Jupiter engine, and
 the refusal names the member.
 
-`jk why` names what jk added and why, then the path from it as usual:
+`jk why` names what JumpKick added and why, then the path from it as usual:
 
 ```text
 org.junit.jupiter:junit-jupiter-engine:5.12.2 is pulled in by:
@@ -744,7 +744,7 @@ the rule reads the same `jacoco.xml`. [Guards](guards.md#baseline-and-ratchets).
 
 ## Assertions in the test JVM (`[test] assertions`)
 
-Every test JVM jk forks runs with `-ea`, as Surefire's and Gradle's do: a Java `assert` or a Kotlin
+Every test JVM JumpKick forks runs with `-ea`, as Surefire's and Gradle's do: a Java `assert` or a Kotlin
 `assert()` in a test, or in the code it exercises, is a check that fails the test. Turn it off per
 module when a suite relies on assertions being inert:
 
@@ -765,30 +765,30 @@ jvm-args          = ["-Xmx1g", "--add-opens", "java.base/java.lang=ALL-UNNAMED"]
 system-properties = { "spring.profiles.active" = "test", "java.awt.headless" = true }
 ```
 
-`jvm-args` is appended verbatim to every forked test JVM after jk's own tuning, so an `-Xmx`, an
+`jvm-args` is appended verbatim to every forked test JVM after JumpKick's own tuning, so an `-Xmx`, an
 `-Xss` or an agent here wins over the default; `system-properties` forks as one `-Dkey=value` per
 entry, a number or boolean rendered as its string. A profile's `jvm-args` follow both, so the
 profile wins where they disagree. Both keys are run-tests inputs: changing either re-runs the
 suite.
 
-jk's own tuning of a test JVM is its heap and nothing else. A test JVM runs the JVM's default
-garbage collector — G1 on a host with two or more CPUs — and sees every CPU of the host: jk adds
+JumpKick's own tuning of a test JVM is its heap and nothing else. A test JVM runs the JVM's default
+garbage collector — G1 on a host with two or more CPUs — and sees every CPU of the host: JumpKick adds
 no `-XX:ActiveProcessorCount` and no `-XX:+Use…GC`, and `[jvm] gc` does not reach it. Only flags
 you write (`jvm-args`, `[jvm] args`, `--jvm-arg`) choose a collector or a CPU count. When
-`jvm-args` sets a heap (`-Xmx`, `-Xms`, `-XX:MaxHeapSize`, `-XX:MaxRAMPercentage`), jk adds no
+`jvm-args` sets a heap (`-Xmx`, `-Xms`, `-XX:MaxHeapSize`, `-XX:MaxRAMPercentage`), JumpKick adds no
 heap flag of its own, so the JVM runs on exactly the heap you wrote. Each test JVM's step prints
 the flags it started with, after the worker budget and the GC log have been applied, as one
 `test JVM flags: …` line per distinct set (pull workers that differ only in their temp
 directories share one line); the line is in `details.jsonl` with the step's other output. `[jvm] args` is the other knob and
 reaches every worker JVM the module forks, compilers included; a value only the tests read belongs
 here. `[jvm] args`, `--jvm-arg` and `JK_JVM_ARGS` are run-tests inputs too: a suite that passed
-without `--jvm-arg=-Dprobe=2` runs again with it, on `jk build` as on `jk test`. The heap jk picks
+without `--jvm-arg=-Dprobe=2` runs again with it, on `jk build` as on `jk test`. The heap JumpKick picks
 for the host is not. `jk import` writes Surefire's `<argLine>` (minus the `${argLine}` placeholder and the JaCoCo
 agent) and its system properties into these keys.
 
 A framework plugin can add arguments of its own: a TEST-window plugin step declares an output
 file (`contributesTestJvmArgs`) and every non-blank line of it is one argument of the fork. They
-come after jk's tuning and before `[test] jvm-args`, so the module's flags win over the plugin's.
+come after JumpKick's tuning and before `[test] jvm-args`, so the module's flags win over the plugin's.
 The Quarkus plugin hands `@QuarkusTest` the path of the application model it wrote this way
 ([Frameworks](frameworks.md#quarkus)); the step prints it with the rest of the list.
 
@@ -803,7 +803,7 @@ Surefire, and one for the heap that escapes a test fails it and re-runs its clas
 heap ([Engine](engine.md#learned-heaps)). A heap error that escapes JUnit itself ends the test
 JVM; that JVM ran out of its heap all the same, so its classes re-run up the same ladder and the
 heap that passed is learned. With a heap you pinned in `jvm-args` nothing is re-run, and the
-failure names the pin. jk caps no test
+failure names the pin. JumpKick caps no test
 JVM's metaspace: the limit is the JVM's own, as under Surefire and Gradle, unless `[test] jvm-args`
 or the profile's `jvm-args` sets `-XX:MaxMetaspaceSize=…`, and that flag binds the discovery JVM as
 well. A discovery JVM that dies of it says so, naming the frames that filled it and the flag to
@@ -818,7 +818,7 @@ A JavaFX or Swing suite therefore behaves as it does under Surefire and Gradle, 
 whole shell: it draws on the terminal's display, and on a host without one it fails the way it
 fails there (JavaFX: `Unable to open DISPLAY`). The remedy is the same too: `xvfb-run jk test`.
 
-jk sets no `java.awt.headless`; Surefire does not either, and JavaFX does not read it. A Swing or
+JumpKick sets no `java.awt.headless`; Surefire does not either, and JavaFX does not read it. A Swing or
 AWT suite that can run without a display says so itself:
 
 ```toml
@@ -828,8 +828,8 @@ system-properties = { "java.awt.headless" = true }
 
 ## The test JVM's thread stack
 
-Every test JVM jk forks runs on the JVM's default thread stack, as Surefire's and Gradle's do, so a
-recursive test that passes under Maven passes under jk. jk's own compiler and plugin workers run
+Every test JVM JumpKick forks runs on the JVM's default thread stack, as Surefire's and Gradle's do, so a
+recursive test that passes under Maven passes under JumpKick. JumpKick's own compiler and plugin workers run
 with a smaller reserve (`-Xss512k`); the suite never inherits it. A suite that needs a deeper stack
 puts `-Xss` in `[test] jvm-args`.
 
@@ -888,7 +888,7 @@ Failure lines include **module** (and **worker** when `W > 1`).
 A suite is replayed from its green marker only while everything it can see is unchanged. Most of
 that is keyed up front: its sources, classes, resources, runtime classpath, JDK, JVM flags, the
 values of its `[test] env` and `[env] vars`, the locale and terminal variables it inherits (`LANG`,
-`LANGUAGE`, `LC_*`, `TERM`), with `[env] inherit` the whole environment, and jk's test runner.
+`LANGUAGE`, `LC_*`, `TERM`), with `[env] inherit` the whole environment, and JumpKick's test runner.
 
 The rest is found by watching the suite run. Every JVM that runs tests records, through Java
 Flight Recorder, each file it reads, each process it starts and its socket traffic. A file outside
@@ -906,9 +906,9 @@ of `target/`.
 
 ## JUnit in-process parallel vs `-w`
 
-JUnit Platform `junit.jupiter.execution.parallel.enabled` is **separate** from jk `-w`
+JUnit Platform `junit.jupiter.execution.parallel.enabled` is **separate** from JumpKick's `-w`
 process workers. JumpKick does not turn Jupiter parallel on. Prefer **one** layer:
-multi-worker `-w` **or** Jupiter parallel with **`-w1`**. When both are active, jk emits a
+multi-worker `-w` **or** Jupiter parallel with **`-w1`**. When both are active, JumpKick emits a
 **warn** (`jupiter-parallel`).
 
 ## Recipes

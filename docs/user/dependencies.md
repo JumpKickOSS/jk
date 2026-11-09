@@ -67,7 +67,7 @@ postgres = { group = "org.postgresql", name = "postgresql", version = "42.7.4", 
 | `name = "group:artifact:1.2.3"` | Any Maven coordinate; `group:artifact` alone is platform-managed |
 | `name = { group, name, version, … }` | Extra fields: `optional`, `features`, `classifier`, `kind`, `git`, `path`, `sha256` |
 
-An inline table takes exactly the keys jk knows — `group`, `name`, `version`, `git`, `path`,
+An inline table takes exactly the keys JumpKick knows — `group`, `name`, `version`, `git`, `path`,
 `sha256`, `workspace`, `optional`, `kind`, `classifier`, `fixtures`, `exclude`, `features`,
 `default-features` and the git ref keys `tag`, `branch`, `rev`, `submodules`, `verify-signed` — and
 refuses any other by name (`dependencies.guava unknown key \`excludes\``), so a typo cannot parse
@@ -187,7 +187,7 @@ first. The order is a compile input, so moving a declaration recompiles the modu
 
 ### How a version is chosen
 
-**jk builds the lowest version that satisfies every dependency edge**, which is the highest version
+**JumpKick builds the lowest version that satisfies every dependency edge**, which is the highest version
 any edge declares. A version a POM writes is a floor ("this or later"), and the highest floor wins.
 Go's minimal version selection and NuGet give the same answer. A release nobody asked for is never
 picked, so a version published yesterday cannot enter the graph on its own. Newer versions come in
@@ -196,7 +196,7 @@ opt-in selectors (`^`, `~`, `latest`, ranges) float on purpose.
 
 | Tool | Two dependencies ask for `1.2` and `1.5`; `1.9` is the newest release |
 |---|---|
-| **jk**, Go, NuGet, Gradle | `1.5`: the highest version anyone declared |
+| **JumpKick**, Go, NuGet, Gradle | `1.5`: the highest version anyone declared |
 | Maven | whichever declaration is nearest the root, `1.2` or `1.5`: it can pick below what a dependency needs |
 | npm, Cargo (caret ranges) | `1.9`: the newest release the ranges allow |
 
@@ -289,7 +289,7 @@ edge needs.
 **A dependency on another module's test fixtures** is followed although its POM cannot say so.
 Gradle publishes a module's `testFixtures` as the `test-fixtures` classifier and records the edge
 only in the `.module` file, as a `requestedCapabilities` entry `<module>-test-fixtures`; the POM
-names the plain module. jk reads the runtime variant's request and adds the classifier jar, so
+names the plain module. JumpKick reads the runtime variant's request and adds the classifier jar, so
 `grails-testing-support-web` brings `grails-web-common-<version>-test-fixtures.jar` as it does
 under Gradle (a Maven build has to declare it by hand).
 
@@ -308,7 +308,7 @@ number, so `2.17.0` of a module with two hundred releases resolves when the proj
 ### Repositories a dependency's POM declares
 
 A published POM may carry `<repositories>` of its own — apicurio's parent names JitPack for
-`com.github.everit-org.json-schema:org.everit.json.schema`. jk reads them the way Maven does,
+`com.github.everit-org.json-schema:org.everit.json.schema`. JumpKick reads them the way Maven does,
 with one rule:
 
 - A repository a dependency POM declares (at the top level, in a parent, or in a profile Maven
@@ -391,7 +391,7 @@ package such a row's jar would have carried names the row under `locked without 
 Some POMs spell a platform artifact's classifier with a property a Maven build values from the
 machine: OpenJFX's `${javafx.platform}` (an OS-activated profile in its parent) and
 os-maven-plugin's `${os.detected.classifier}`, `${os.detected.name}` and `${os.detected.arch}`.
-jk values those from the running host — `linux`, `linux-aarch64`, `mac`, `mac-aarch64`, `win`
+JumpKick values those from the running host — `linux`, `linux-aarch64`, `mac`, `mac-aarch64`, `win`
 for OpenJFX; `linux-x86_64`, `osx-aarch_64`, `windows-x86_64`, … for os-maven-plugin — in the
 effective model of every POM it reads and in the model `jk import` reads, so `javafx-graphics`
 resolves to this machine's `javafx-graphics-25.0.3-linux.jar`. A POM that defines the property
@@ -477,7 +477,7 @@ jk why com.foo:bar       # why a pin is on the graph, and what each step declare
 jk why -n com.foo:bar
 ```
 
-Both read the closure jk builds with: an optional dependency a `[features]` entry names is drawn,
+Both read the closure JumpKick builds with: an optional dependency a `[features]` entry names is drawn,
 and walked from, only while that feature is active — the defaults with no flag, `--features a,b`
 names beyond them, none of the defaults under `--no-default-features` — the same selection
 `jk lock` takes. An optional dependency no feature names is the module's own root and is always

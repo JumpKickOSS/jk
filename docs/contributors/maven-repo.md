@@ -8,7 +8,7 @@ fetch workers (test-runner, kotlin-compiler, …) without a prior `jk install`.
 
 | Role | URL |
 |------|-----|
-| **Product (baked into jk)** | `https://jumpkick.build/repo/` |
+| **Product (baked into JumpKick)** | `https://jumpkick.build/repo/` |
 | **Current origin** (Hosting 302) | `https://storage.googleapis.com/jumpkick/repo/` |
 | **GCS** | `gs://jumpkick/repo/` |
 
@@ -31,7 +31,7 @@ repo/
 Same bucket as **releases** (`releases/<ver>/jk`, `jk-engine-…jar`); only the prefix differs
 (`repo/` vs `releases/`).
 
-## Resolution rules (jk client)
+## Resolution rules (`jk` client)
 
 1. Built-in remotes (when you declare none, or as fill-ins): **jumpkick → central → google**.
 2. JumpKick is an **exclusive specialist** for `cc.jumpkick`, `cc.jumpkick.*`, `build.jumpkick`,
@@ -95,7 +95,7 @@ metadata. `scripts/test-publish-maven-repo.sh` runs the merge against a fixture,
 `jk-guards-junit` (the guard-test library a project's `src/guard` suite compiles against) rides the
 same path as the worker jars: `jk install` shelves `cc/jumpkick/jk-guards-junit/<ver>/` (jar + POM)
 into `store/repos/jk-local`, the first `compile-guard` copies it from `~/.m2` when the store lacks
-it, and the lock pins it under `[[plugin]]` at jk's version.
+it, and the lock pins it under `[[plugin]]` at JumpKick's version.
 
 ## Why not only `releases/`?
 

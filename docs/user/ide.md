@@ -14,12 +14,12 @@ in the IDE process**). Requires `jk` on PATH (or `JK_BIN`). Coding agents get th
 files from the MCP tool `ide` (`preview=true` lists them without writing) — see
 [MCP](mcp.md). The file's `languages` are the ones the workspace compiles — `scala` among them
 when a module does — so Metals imports a mixed Java/Scala module: its build target carries the
-Scala compiler version and jars, and `buildTarget/scalacOptions` answers with the arguments jk's
+Scala compiler version and jars, and `buildTarget/scalacOptions` answers with the arguments JumpKick's
 Zinc session passes, the compile classpath and the class directory.
 
 A workspace sibling is a module edge — the IDE compiles it itself — except one whose fat jar
 relocates packages ([Shaded siblings](workspaces.md#shaded-siblings)): its consumers get a
-library entry on its `<name>-<version>-all.jar`, the jar jk compiles them against, so the IDE
+library entry on its `<name>-<version>-all.jar`, the jar JumpKick compiles them against, so the IDE
 resolves the shaded names rather than the unshaded sources. The entry names the jar `jk build`
 writes; a module that has not packaged yet resolves once it has.
 
@@ -37,8 +37,8 @@ one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries. Tre
 **all suites** as the nightly / release configuration, not the inner loop.
 
 IntelliJ and JDT compile into the IDE-owned `target/jdt/classes/{main,test}` of each module,
-never into jk's `target/classes`: a gutter run leaves nothing where the action cache stamps
-jk's own compile, so the next `jk build` is still a cache hit.
+never into JumpKick's `target/classes`: a gutter run leaves nothing where the action cache stamps
+JumpKick's own compile, so the next `jk build` is still a cache hit.
 
 ## Library sources
 
@@ -108,7 +108,7 @@ Add `debug` to the same `data` object on `buildTarget/test` or `buildTarget/run`
 ```
 
 `debug` is `true` (the defaults: `localhost:5005`, suspended), an object with optional
-`host`, `port` (`0` = a free port jk picks) and `suspend`, or a `--debug-jvm` spec string.
+`host`, `port` (`0` = a free port JumpKick picks) and `suspend`, or a `--debug-jvm` spec string.
 The JVM starts with `-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=…`.
 Because a suspended JVM waits for the attach, the address cannot come back in the result —
 it is announced first:
@@ -126,12 +126,12 @@ Attach recipe — the same for the CLI's `--debug-jvm` ([Test](test.md#debug-a-t
 [Run](run.md#debug-the-app-jvm)):
 
 - **IntelliJ IDEA**: *Run → Edit Configurations → + → Remote JVM Debug*, host `localhost`,
-  port as announced (5005 is IDEA's default, and jk's). Set breakpoints, then *Debug*; the
+  port as announced (5005 is IDEA's default, and JumpKick's). Set breakpoints, then *Debug*; the
   suspended JVM resumes on attach.
 - **VS Code** (Java extension): a `launch.json` entry
   `{"type": "java", "request": "attach", "name": "jk", "hostName": "localhost", "port": 5005}`.
 
-This is not a Debug Adapter Protocol server: jk starts a debuggable JVM and tells you where;
+This is not a Debug Adapter Protocol server: JumpKick starts a debuggable JVM and tells you where;
 the editor's own JDWP client does the rest.
 
 Wire-level BSP notes: [Architecture](../contributors/architecture.md).
@@ -150,7 +150,7 @@ Wire-level BSP notes: [Architecture](../contributors/architecture.md).
   for a class, `--class <fqcn>#<method>` for one test method (or `jk run <module>`) from the
   workspace root, its output in the Run tool window. **Debug**
   passes `--debug-jvm=localhost:<port>` with a port the plugin picks and attaches the Java
-  debugger to it once jk has built the module and started the JVM; a breakpoint stops as usual,
+  debugger to it once JumpKick has built the module and started the JVM; a breakpoint stops as usual,
   with no Remote JVM Debug configuration of your own. `jk ide -i` is the export for an IDE
   without the plugin.
 - **VS Code** — `clients/vscode/` in the JumpKick repo; package with

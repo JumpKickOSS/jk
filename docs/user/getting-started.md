@@ -76,7 +76,7 @@ See [Run](run.md).
 |------|------|
 | `jk.toml` | What you declared |
 | `jk-lock.toml` | Exact versions + checksums — law for `jk build` |
-| `AGENTS.md` | Tells coding agents to run `jk skill`; jk keeps [its section](agents.md#jks-section-of-agentsmd) current |
+| `AGENTS.md` | Tells coding agents to run `jk skill`; JumpKick keeps [its section](agents.md#jks-section-of-agentsmd) current |
 | `target/` | Classes, jars, reports |
 | `target/jk-results.md` | High-level report of the last run (`jk results` prints it) |
 
@@ -88,7 +88,7 @@ jk build      # provisions Node.js, installs and bundles web/, packages it into 
 jk dev        # the JVM with reload and Vite's dev server, behind one ready line
 ```
 
-`web/jk.toml` is `node = 24`: jk pins the exact release in `jk-lock.toml`, runs the frozen install
+`web/jk.toml` is `node = 24`: JumpKick pins the exact release in `jk-lock.toml`, runs the frozen install
 and the build script as cached steps, and `app` serves the bundle from `classpath:static`. No Node.js
 of your own is needed. `--frontend angular` (or any Vite template) swaps the front end;
 [Node.js](node.md) has the rest.

@@ -18,42 +18,42 @@ jk export bom                  # freeze lock as a Maven BOM — see Platforms
 Everything after `jk mvn` / `jk gradle` belongs to the tool, `-Dkey=value` properties included —
 `jk mvn -Drevision=1.2.3 -Dtest=FooTest verify` reaches Maven with both, `jk mvn -v` prints Maven's
 version, `jk gradle -q build` keeps Gradle quiet, `jk mvn -C install` is Maven's strict-checksums
-flag followed by a goal. jk's global flags go before the command name (`jk -q mvn package`,
+flag followed by a goal. JumpKick's global flags go before the command name (`jk -q mvn package`,
 `jk -C app gradle build`).
 
-The one exception is the command's own four options, which say how jk provisions the tool and
+The one exception is the command's own four options, which say how JumpKick provisions the tool and
 so are matched wherever they appear after the name, spelled out in full: `--tools-dir <dir>`
-(where jk installs Maven or Gradle), `--jdks-dir <dir>` (where it finds the JDK it runs them on),
+(where JumpKick installs Maven or Gradle), `--jdks-dir <dir>` (where it finds the JDK it runs them on),
 `--no-discover` (skip the look for an installed one) and `--accept-unverified-tool` (below).
 Neither Maven nor Gradle has a flag of those names, and only the exact spelling is taken —
 `--tools` is Maven's — so nothing of the tool's is lost. `jk mvn --tools-dir /opt/jk-tools clean`
 therefore provisions Maven under `/opt/jk-tools` and runs `mvn clean`; `jk --help mvn` lists the
 four.
 
-With no wrapper in the checkout, `jk mvn` provisions the newest Maven 3.9.x jk knows — or, when the
+With no wrapper in the checkout, `jk mvn` provisions the newest Maven 3.9.x JumpKick knows — or, when the
 root POM's `maven-enforcer-plugin` states a `requireMavenVersion` floor above that (`3.9.11`,
 `[3.9.11,)`, or a `${property}` the POM's own `<properties>` resolve), the floor itself — so a repo
 that requires a newer Maven is never run on an older one. A wrapper's `distributionUrl` always wins.
 
-A distribution jk downloads is verified before it is unpacked, against the first of these that
+A distribution JumpKick downloads is verified before it is unpacked, against the first of these that
 exists: the wrapper's own `distributionSha256Sum`; a digest accepted for that version earlier;
 the checksum its publisher puts beside the archive — Apache Maven's `.sha512` (3.7 and later),
 else its `.sha1` (the 3.6 line publishes only that), Gradle's `.sha256`. The `Maven 3.6.3
 downloaded · verified against the published .sha1` line says which one held. A wrapper pinned to
-a distribution with none of the three is refused, naming each checksum jk looked for; pin its
+a distribution with none of the three is refused, naming each checksum JumpKick looked for; pin its
 SHA-256 in `maven-wrapper.properties`, or accept that one download with
-`jk mvn --accept-unverified-tool …` (or `JK_ACCEPT_UNVERIFIED_TOOL=1` in a CI step): jk installs
+`jk mvn --accept-unverified-tool …` (or `JK_ACCEPT_UNVERIFIED_TOOL=1` in a CI step): JumpKick installs
 the archive, records its SHA-256 as `tools/maven/<version>.accepted.sha256` in the store, and
 verifies every later download of that version against it, so the next run is silent. `jk tool
 install maven:3.6.3 --accept-unverified-tool` takes the same consent ahead of time. The flag
 never bypasses a checksum that is published.
 
-`jk mvn` also writes jk's run report for the Maven run: `target/jk-results.md` and the history
+`jk mvn` also writes JumpKick's run report for the Maven run: `target/jk-results.md` and the history
 row behind `jk results`, MCP `run` and `diagnostics` (header `trigger: cli · tool: mvn`).
 The run counts as a build: it takes the project's next build number (`#N` in the header), appears
 in `jk history` and on the dashboard's console and run page labelled `tool: mvn`, so a supervisor sees
-what an agent ran through Maven beside what it ran through jk. The row's duration is Maven's wall
-clock, from the launch to Maven's exit, and its `Saved` column stays empty: jk ran none of the
+what an agent ran through Maven beside what it ran through JumpKick. The row's duration is Maven's wall
+clock, from the launch to Maven's exit, and its `Saved` column stays empty: JumpKick ran none of the
 steps and cached none of them, so there is no cache saving to price. Provisioning Maven writes no
 report of its own — a `jk mvn -v` leaves no `target/jk-results.md` and no `target/jk-profile.json`
 behind. A POM that cannot name its project — no `<version>` of its own or its parent's — has no
@@ -62,7 +62,7 @@ project to journal under: `jk mvn` prints `run not journaled: <pom> has no <vers
 A small Maven core extension, `jk-maven-spy-<version>.jar`, rides Maven's `-Dmaven.ext.class.path`
 and records the reactor's events; after Maven exits the engine folds those events, each module's
 `target/surefire-reports` / `target/failsafe-reports` XML and the compiler plugin's
-`file:[line,col]` failures into the same Tests, Modules and Diagnostics blocks a jk build gets.
+`file:[line,col]` failures into the same Tests, Modules and Diagnostics blocks a JumpKick build gets.
 Each mojo is a step with the time Maven spent in it — the spy clocks every execution from its
 start to its end, since Maven's own summary times only whole modules — so the Failed steps table
 says how long the failing `surefire:test` ran, not just that it failed.
@@ -80,7 +80,7 @@ writes no report. A project with only a `pom.xml` binds for MCP by its POM coord
 
 **POM import** is the primary path, and it reads the POM the way Maven does: the effective
 model, built by Maven's own model builder. Parents are flattened (a sibling `pom.xml` in the
-reactor answers first, then any `<repository>` the POM declares, then the repositories jk knows;
+reactor answers first, then any `<repository>` the POM declares, then the repositories JumpKick knows;
 a plaintext `http://` `<repository>` is written `blocked = true`, as Maven 3.9 blocks it, and is a
 Tier-2 row — the lock never asks it and names it when an artifact resolves nowhere else; every
 other `<repository>` is written `optional = true`, so one nothing answers at — a developer's
@@ -106,7 +106,7 @@ the same source tree hands down; a published parent's (`Parent pom for Helidon S
 describes the framework, not the project, so the manifest gets none from it. The fidelity report names what each parent contributed —
 "versions for X, Y managed by parent g:a:v" — and a parent no repository has is a Tier-3 row, not
 a failed import. The compiler level is written as `java = N`, never as a `jdk` pin: a level below
-17 is raised to jk's floor with a row saying so — a module whose sources or a dependency's class
+17 is raised to JumpKick's floor with a row saying so — a module whose sources or a dependency's class
 hierarchy still need an API a later JDK removed (Keycloak's `jboss-adapter-core` extends a
 PicketBox class built on `java.security.acl.Group`) keeps the declared level written back by hand,
 and the compile that misses the API names it and the level to write — and `jdk =` appears only when
@@ -114,8 +114,8 @@ the POM pins a toolchain (`maven-toolchains-plugin` or `<jdkToolchain>`). Inacti
 (the table below). A `<classifier>` is carried: the entry is `{ group, name, version, classifier }`
 with the handle suffixed by the classifier, so a jar and its `natives-linux` twin are two entries,
 and a classifier a POM spells with `${os.detected.classifier}` or `${javafx.platform}` is written
-as this host's word. A `<type>` maps where jk has a spelling — `pom` to `[platform-dependencies]`,
-`test-jar` to `kind = "tests"`, `ejb-client` to the `client` classifier — and a type jk cannot
+as this host's word. A `<type>` maps where JumpKick has a spelling — `pom` to `[platform-dependencies]`,
+`test-jar` to `kind = "tests"`, `ejb-client` to the `client` classifier — and a type JumpKick cannot
 spell (`aar`, `war`, `zip`) is a Tier-3 row with the dependency left out rather than written as a
 jar that does not exist. `<exclusions>` are carried: each one is an entry in the dependency's
 `exclude` list (`group:artifact`, `group:*` for a `*` artifactId, `*:artifact` or `*:*` for a
@@ -146,7 +146,7 @@ advancing for that long fails naming the coordinate it was reading and the URL i
 [Dependencies](dependencies.md#optional-dependencies).
 
 **A direct version below a dependency's floor is raised.** Import writes every `<dependency>`
-version as an exact pin, and the imported project resolves as every jk project does: the highest
+version as an exact pin, and the imported project resolves as every JumpKick project does: the highest
 version any edge declares wins ([how](dependencies.md#how-a-version-is-chosen)) — not Maven's nearest-wins, under which the POM's own version beats whatever a
 dependency asks for. Where a pin sits below what its dependencies need, the import raises it: once
 the manifests are written it resolves the project with each pin read as a floor, rewrites every pin
@@ -168,13 +168,13 @@ transitives from the root's `[managed-dependencies]`. A sibling that does not de
 dependency reads the version its own graph asks for, as it would under Maven
 ([Workspaces](workspaces.md#members-that-disagree)). When the raise cannot run — no network, a
 repository that does not answer — the report says so and `jk lock` names any pin a dependency needs
-higher. `jk mvn` runs Maven itself and resolves as Maven does. Making an existing Maven project work under jk — plugin-aware
-mapping, structured results from `jk mvn`, and a jk loop over an unmodified `pom.xml` — is the
+higher. `jk mvn` runs Maven itself and resolves as Maven does. Making an existing Maven project work under JumpKick — plugin-aware
+mapping, structured results from `jk mvn`, and a JumpKick loop over an unmodified `pom.xml` — is the
 first epic of [the 1.0 plan](../contributors/plan-1.0.md).
 
 **A reactor imports as one workspace.** The walk follows `<modules>` the way Maven does: through
 every aggregator (a `pom`-packaged module with `<modules>` of its own is a parent and a list, not
-a module jk builds) and into the modules a profile active on this machine adds, so a reactor of
+a module JumpKick builds) and into the modules a profile active on this machine adds, so a reactor of
 181 POMs becomes one `[workspace]` of root-relative paths (`community/kernel`, `websocket/spi`).
 The modules of one aggregator have their effective models built side by side — the parent and
 BOM POMs they read from a repository several at a time, Maven's model building on several cores —
@@ -236,7 +236,7 @@ jk test                   # runs the JUnit suite; target/jk-results.md
 jk explain                # the same steps a jk.toml module gets
 ```
 
-Resolution reads the POM as jk reads every manifest: a bare version is an exact pin, a BOM import is
+Resolution reads the POM as JumpKick reads every manifest: a bare version is an exact pin, a BOM import is
 an enforced platform, and the highest version any edge declares wins
 ([how](dependencies.md#how-a-version-is-chosen)). A POM's direct version below what one of its dependencies
 needs is raised to the version the graph resolves, as `jk import` raises it, and the build after the
@@ -254,7 +254,7 @@ graph; in a leaf it builds that module and what it depends on, exactly as in a `
 workspace. Nested aggregators belong to the outermost root; a module listed only by a profile
 Maven does not activate on this machine is not built.
 
-What the import report would grade Tier 3 (a `<build><extensions>` entry jk has no role for, a Tycho or OSGi-bundle packaging, a
+What the import report would grade Tier 3 (a `<build><extensions>` entry JumpKick has no role for, a Tycho or OSGi-bundle packaging, a
 `system`-scoped dependency, a parent no repository serves) is not an error here: the build after
 a POM change reports each row once, under Warnings, with the remedy — `jk import pom.xml` writes
 a `jk.toml` you can edit.
@@ -279,11 +279,11 @@ once per mirrored repository, and `jk doctor` lists the mirrors the engine appli
 
 The [Maven top-20 corpus](https://github.com/JumpKickOSS/jk-examples/tree/main/bench/maven-top20)
 in jk-examples clones the twenty most-starred GitHub repositories that build with Maven on Java 17
-or newer and drives Maven and jk through one protocol: import, lock, build, test, and the same
+or newer and drives Maven and JumpKick through one protocol: import, lock, build, test, and the same
 cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that
 lowers a count is a regression.
 
-| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 | run 9 | run 10 | run 11 | run 12 | run 13 | run 14 | run 15 | run 16 |
+| Count (of 20) | JumpKick 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 | run 9 | run 10 | run 11 | run 12 | run 13 | run 14 | run 15 | run 16 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 | 11 | 12 | 12 | 11 | 11 | 11 | 11 | 11 |
 | `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 | 14 | 16 | 16 | 16 | 15 | 18 | 19 | 18 |
@@ -298,7 +298,7 @@ row instead of importing it as a jar that Maven would never have built that way.
 that falls because a silent mismatch became a named one is the ratchet working; a count that falls
 because a repository stopped importing is not. Run 4 (main f56e964e8, all of 2026-09-16) is the
 first with a repository green end to end: TheAlgorithms/Java runs and passes its 9,745 tests under
-jk, in 13 s against 37 s under Maven, once the test JVM kept the platform default thread stack.
+JumpKick, in 13 s against 37 s under Maven, once the test JVM kept the platform default thread stack.
 Its lock and build counts fell for a reason the table cannot show: run 3 imported dataease as one
 module of fifteen and neo4j as three of 181, and locked those fragments; run 4 imports the whole
 reactor of each (nested aggregators, CI-friendly versions, sibling edges) and the full graph hits
@@ -321,7 +321,7 @@ locks fourteen and compiles eight: mall, nacos and zipkin lock once the solver's
 keeps older exact pins, dataease and jenkins lock once repositories carry their release and
 snapshot policy, and the walls move into the compile and test steps (a sibling package the import
 drops in nacos and jenkins, a `javax.jms` transitive in zipkin, a JavaFX suite with no display to
-open in cryptomator, a test that refuses jk's class directory in apollo), each a ticket. Its wall
+open in cryptomator, a test that refuses JumpKick's class directory in apollo), each a ticket. Its wall
 columns are not comparable: six gates shared the host during that run. The other walls are named
 in the corpus's `tier3-reasons.md`, each with its ticket.
 Run 8 (main a94970848) holds fourteen locks; its import count fell because neo4j's shaded sibling
@@ -346,14 +346,14 @@ repository URL).
 Run 11 (main f529e67d0) compiles eleven: nacos and jenkins build through to their tests for the
 first time (a plain jar where a bare Boot plugin packaged nothing, the `[antlr]` and `[taglib]`
 presets for jenkins core) and thingsboard builds until the harness's cap. Both new test walls are
-the same gap: a `provided` row Maven's test classpath carries and jk's does not (log4j-core for
+the same gap: a `provided` row Maven's test classpath carries and JumpKick's does not (log4j-core for
 nacos's adapter, jsr305 for jenkins-war), one ticket.
 Run 12 (main 889f77e25) holds the counts while the set behind them moves: quarkus and hadoop lock in
 the harness for the first time (389 s and 132 s), thingsboard compiles all 51 modules in 122 s and
 reaches its tests where Maven fails to compile it, and floci builds through the Quarkus augment.
 Against that, hadoop's build took the 256 MB engine down with a heap dump 13 s in, jenkins's
 localizer plugin resolve and dataease's import both stalled in one twenty-minute window, and
-floci's Quarkus tests wait on a dev service under jk exactly as they do under surefire. Each is a
+floci's Quarkus tests wait on a dev service under JumpKick exactly as they do under surefire. Each is a
 ticket; the engine's heap on a hundred-module reactor is the first.
 Run 13 (main ad1024c08) is the regression the ratchet exists to catch: the `[lint]` tables the
 import now writes met three real-tool faults (a SpotBugs launch flag, a Checkstyle config path
@@ -377,20 +377,20 @@ first time, 1,350 modules, and its lock refuses a POM-declared plaintext http re
 Maven merely blocks, and jenkins's build stops on the SpotBugs threshold its plugin configuration
 now imports. Both are import-fidelity tickets; the build count is the ratchet's new bar.
 
-Two of run 7's test walls are the repository's contract with Maven rather than something jk
+Two of run 7's test walls are the repository's contract with Maven rather than something JumpKick
 translates. cryptomator's `SecurePasswordFieldTest` starts the JavaFX platform in `@BeforeAll`;
 on a host with no display Maven fails it with the same `UnsupportedOperationException: Unable to
 open DISPLAY` (Surefire sets no `java.awt.headless`, and JavaFX would not read it), and the
-repository's own CI wraps Maven in `xvfb-run`. Under jk the test JVM gets the display of the shell
+repository's own CI wraps Maven in `xvfb-run`. Under JumpKick the test JVM gets the display of the shell
 running `jk test`, so `xvfb-run jk test` is the same remedy ([Test](test.md#a-suite-that-needs-a-display)).
 apollo's `ApolloSqlConverterUtil.getRepositoryDir()` reads the class directory off
 `ApolloSqlConverter`'s code source and accepts only a path ending in
 `/apollo-build-sql-converter/target/classes`, stripping that suffix to find the repository root;
-jk compiles the module to `apollo-build-sql-converter/target/classes`, so the check throws
+JumpKick compiles the module to `apollo-build-sql-converter/target/classes`, so the check throws
 `illegal class path`. No classpath scanner is involved and no `[test]` key spells a class
 directory: the test hard-codes Maven's layout, and the portable spelling is the working directory
-(`user.dir`), which both Surefire and jk set to the module directory. Until the test says that,
-the module's suite fails under jk and the corpus row names it.
+(`user.dir`), which both Surefire and JumpKick set to the module directory. Until the test says that,
+the module's suite fails under JumpKick and the corpus row names it.
 
 ### Where Gradle import stands on real repositories
 
@@ -407,21 +407,21 @@ neither runs on 25) and read from a fork whose whole evaluation stayed inside th
 | mapstruct/mapstruct-examples `mapstruct-on-gradle/` | Gradle 8.3 on JDK 17, Groovy DSL, `ext {}` | 9 s (21 s when no JDK under 21 is installed: Temurin 17 is provisioned first) | `mapstruct = "1.7.0.Beta1"`, both comma-listed TestNG/FEST test dependencies, `java = 8` from `sourceCompatibility` |
 | junit-team/junit-examples `junit-jupiter-extensions/` | Gradle 9.7.1 | 6 s | `[platform-dependencies] junit-bom`, `junit-jupiter-api` under `[dependencies]` through its `because` closure, both `testRuntimeOnly` entries |
 | jillesvangurp/kotlin4example | Gradle 9.0.0 on JDK 21, refreshVersions | 40 s, 1 row | every `_` version is written as the pin `versions.properties` holds: `kotlin-logging = "…:3.0.5"` and the slf4j entries from their exact `version.<group>..<artifact>` keys, `kotlinx-coroutines-core = "1.10.2"`, `junit-jupiter-api = "5.13.4"` and `kotest-assertions-core = "…:5.9.1"` from the short keys `kotlinx.coroutines`, `junit.jupiter` and `kotest`; the one row names the refreshVersions plugin |
-| spring-guides/tut-spring-boot-kotlin | Gradle 9.2.1, Kotlin 2.2.21, Boot 4 | 3 rows; `jk build` green | `kotlin = "2.4.10"`: the build's Kotlin is below jk's floor, the oldest its compile path drives, so the floor is written and a row names the declared version and what to check — the same rule a hand-written `kotlin = "2.2.21"` meets at lock and build time, where the lock pins the floor and notes it and the build warns once per module; two rows name the allopen plugins |
+| spring-guides/tut-spring-boot-kotlin | Gradle 9.2.1, Kotlin 2.2.21, Boot 4 | 3 rows; `jk build` green | `kotlin = "2.4.10"`: the build's Kotlin is below JumpKick's floor, the oldest its compile path drives, so the floor is written and a row names the declared version and what to check — the same rule a hand-written `kotlin = "2.2.21"` meets at lock and build time, where the lock pins the floor and notes it and the build warns once per module; two rows name the allopen plugins |
 
 Gradle Shadow (`com.gradleup.shadow`, its `com.github.johnrengelman.shadow` predecessor) imports
 the same way Shade does, from the script or the model: the fat jar is `[application] assembly =
 true` when the build names a main and `[library] assembly = true` when it does not, and every
 `relocate("from", "to")` — with an `include` / `exclude` block or without — becomes a `relocate`
-rule where it agrees with jk's whole-package rule, else a row naming the construct.
+rule where it agrees with JumpKick's whole-package rule, else a row naming the construct.
 
 ### Teaching import a private Gradle plugin
 
-A company's own Gradle plugin is unknown to jk, so a module that applies one gets a row naming it,
+A company's own Gradle plugin is unknown to JumpKick, so a module that applies one gets a row naming it,
 and a row naming the task that writes any schema or source directory under `build/`. To import
 it, write a rule in the build's `.jk/import.toml` (kept with the build) or in `~/.jk/import.toml`
 (every build on the machine), in the grammar plugin manifests use
-([Plugins](../contributors/plugins.md#templates-and-import)), naming the jk table it writes:
+([Plugins](../contributors/plugins.md#templates-and-import)), naming the JumpKick table it writes:
 
 ```toml
 [[import.gradle-plugin]]
@@ -446,17 +446,17 @@ Counted across 66 public repositories cloned for the Maven corpus and the agent-
 plugin). The fidelity report cites this table per plugin; a grade says how the imported build
 relates to the Maven one.
 
-| Plugin | Repos | Lands in jk as | Grade |
+| Plugin | Repos | Lands in JumpKick as | Grade |
 |---|---:|---|---|
 | spring-boot-maven-plugin | 36 | `[spring-boot] version` at the Boot version the chain resolves (Boot jar, platform BOM) when the plugin packages the module — a `repackage` execution (the starter parent binds one) or a `<mainClass>`; a bare declaration on a library with neither, or `<skip>true</skip>`, writes no table and the module packages a plain jar (a row says so); `<mainClass>` → `[application] main`; the `build-info` goal → `[build-info]`; `<excludes>` and buildpack `<image>` → rows | approximate |
-| maven-surefire-plugin | 35 | read from `<pluginManagement>` too, since the jar lifecycle binds the plugin whether or not `<plugins>` lists it; `<groups>` / `<excludedGroups>` → `[test] include-tags` / `exclude-tags`; `<argLine>` (minus `${argLine}` and the JaCoCo agent) → `[test] jvm-args`; `<systemPropertyVariables>` / `<systemProperties>` → `[test] system-properties` (a value that interpolates to a path under the module, `${project.build.outputDirectory}/logging.properties`, is written from the module, `target/classes/logging.properties`, since jk forks the test JVM in the module directory as Surefire does and `system-properties` has no variables; any other absolute path is written as is, with a row); `<environmentVariables>` → `[test] env` values, paths read the same way, a value that is the importing JDK's `java.home` (`<JAVA_HOME>${java.home}</JAVA_HOME>`) left out with a row; `<excludes>` → `[test] exclude-classes` (`**/*PerformanceTest.java` → `*PerformanceTest`; a `%regex[…]` or `?` pattern and `<excludesFile>` → row); `<classpathDependencyExcludes>` → `[test] exclude-dependencies` (a value that is not `group:artifact` → row); `<includes>` and `skipTests` → rows (`--class`, `--skip-tests`); `<testFailureIgnore>true</testFailureIgnore>` or the `maven.test.failure.ignore` property → `[test] failures = "report"` | exact |
+| maven-surefire-plugin | 35 | read from `<pluginManagement>` too, since the jar lifecycle binds the plugin whether or not `<plugins>` lists it; `<groups>` / `<excludedGroups>` → `[test] include-tags` / `exclude-tags`; `<argLine>` (minus `${argLine}` and the JaCoCo agent) → `[test] jvm-args`; `<systemPropertyVariables>` / `<systemProperties>` → `[test] system-properties` (a value that interpolates to a path under the module, `${project.build.outputDirectory}/logging.properties`, is written from the module, `target/classes/logging.properties`, since JumpKick forks the test JVM in the module directory as Surefire does and `system-properties` has no variables; any other absolute path is written as is, with a row); `<environmentVariables>` → `[test] env` values, paths read the same way, a value that is the importing JDK's `java.home` (`<JAVA_HOME>${java.home}</JAVA_HOME>`) left out with a row; `<excludes>` → `[test] exclude-classes` (`**/*PerformanceTest.java` → `*PerformanceTest`; a `%regex[…]` or `?` pattern and `<excludesFile>` → row); `<classpathDependencyExcludes>` → `[test] exclude-dependencies` (a value that is not `group:artifact` → row); `<includes>` and `skipTests` → rows (`--class`, `--skip-tests`); `<testFailureIgnore>true</testFailureIgnore>` or the `maven.test.failure.ignore` property → `[test] failures = "report"` | exact |
 | maven-compiler-plugin | 35 | `java =` (floor 17) from `maven.compiler.*`, else the plugin's `<release>` / `<target>` / `<source>` — read from `<pluginManagement>` too, since the jar lifecycle binds the plugin whether or not `<plugins>` lists it; `<compilerArgs>` and the `<parameters>`, `<enablePreview>`, `<failOnWarning>` switches → `[javac] args`; the plugin's own `<configuration>` reaches both compiles, an execution bound to the `compile` goal alone reaches `[javac] args` for compile-main and one bound to `testCompile` alone reaches `[javac.test] args`, so Error Prone on the compile goal does not check the suite; `annotationProcessorPaths` → `[processor-dependencies]` as compile-main's path (each execution's configuration merged over the plugin's, `default-compile` reading the plugin's unless the POM reconfigures it, other executions reaching compile-main adding theirs), and compile-test's path, worked out the same way, → `[test-processor-dependencies]`: its extras when it is compile-main's plus more, else the whole path with `inherit = false` (empty when `testCompile` has none, so it discovers as Maven's does), and a row says so — a `default-compile` that adds Helidon's API-stability enforcer leaves the enforcer off the tests; without that element, Lombok, MapStruct, AutoValue, Dagger, Immutables, Micronaut inject-java and Hibernate jpamodelgen declared as plain dependencies → `[processor-dependencies]` too; `<testExcludes>` → `[test] exclude-src` (from the plugin configuration and any execution reaching compile-test); `<testIncludes>`, `<includes>` and `<excludes>` → rows; an execution with `<multiReleaseOutput>true</multiReleaseOutput>` → a `[multi-release]` entry, its `<compileSourceRoots>` at its `<release>` (one without its own roots or a release is a row) | exact |
 | maven-jar-plugin | 24 | `[manifest]` entries, `Main-Class` → `[application]`; read from `<pluginManagement>` too, since the jar lifecycle binds the plugin whether or not `<plugins>` lists it; `addClasspath` + `classpathPrefix` → the `[application] lib-dir` jar's `Class-Path` (a prefix other than the copy's directory → row) | exact |
-| frontend-maven-plugin | — | a node build ([Node.js](node.md#importing-frontend-maven-plugin)): `nodeVersion` → `node = "=<v>"`; the install and the `build` / `test` scripts → jk's own steps, every other command → `[[node.steps]]` by its phase; `corepack yarn …` → `yarn …`; `skip.*` → `[node] skip`; `testFailureIgnore` → `[test] failures = "report"`; `environmentVariables` → `[env] vars`. A front end in a JVM module is a side-by-side build; one in a `pom` module, or writing into another module, moves into a generated node module. Mirrors, registries, `serverId` and proxy switches → rows with the `~/.jk/config.toml` lines; bower, grunt, gulp, jspm, karma, webpack and ember goals → rows; Yarn 1 → `[node] skip = true` and a row with the migration | approximate |
+| frontend-maven-plugin | — | a node build ([Node.js](node.md#importing-frontend-maven-plugin)): `nodeVersion` → `node = "=<v>"`; the install and the `build` / `test` scripts → JumpKick's own steps, every other command → `[[node.steps]]` by its phase; `corepack yarn …` → `yarn …`; `skip.*` → `[node] skip`; `testFailureIgnore` → `[test] failures = "report"`; `environmentVariables` → `[env] vars`. A front end in a JVM module is a side-by-side build; one in a `pom` module, or writing into another module, moves into a generated node module. Mirrors, registries, `serverId` and proxy switches → rows with the `~/.jk/config.toml` lines; bower, grunt, gulp, jspm, karma, webpack and ember goals → rows; Yarn 1 → `[node] skip = true` and a row with the migration | approximate |
 | dokka-maven-plugin | 1 | `[dokka] version` at the plugin's version; a plugin bound only to its `dokka` goal → `format = "html"`; the javadoc jar of a Kotlin module is Dokka output on every `jk build` | exact |
 | git-commit-id-maven-plugin / git-commit-id-plugin | 4 | `[build-info]` — `git.properties` with the commit, branch, times and dirty flag in the jar; a `<generateGitPropertiesFilename>` under the output directory → `file`; `<format>json`, another `<dateFormat>` or a file written outside the output directory → row | exact |
-| helidon-services-plugin | — | the `services` goal on a module with `src/main/java/module-info.java` → `[build] module-services = true`: the same `META-INF/services` files, from the descriptor's `provides`, in the classes tree and the jar; a module without a descriptor, or one that only manages the plugin in `<pluginManagement>`, gets nothing and no row; `<mode>fail</mode>`, the one Helidon builds with, is jk's behaviour, any other mode → row | exact |
-| maven-javadoc-plugin | 22 | an execution that binds a docs goal (`jar`, `javadoc`, `aggregate`, …) outside a profile → `javadoc = true`, or `javadoc = "strict"` with `<failOnError>true` or a `<doclint>` other than `none`; a plugin that is only configured, or bound in a release profile, writes nothing: jk's default already documents a library on `jk publish` and `jk javadoc` | exact |
+| helidon-services-plugin | — | the `services` goal on a module with `src/main/java/module-info.java` → `[build] module-services = true`: the same `META-INF/services` files, from the descriptor's `provides`, in the classes tree and the jar; a module without a descriptor, or one that only manages the plugin in `<pluginManagement>`, gets nothing and no row; `<mode>fail</mode>`, the one Helidon builds with, is JumpKick's behaviour, any other mode → row | exact |
+| maven-javadoc-plugin | 22 | an execution that binds a docs goal (`jar`, `javadoc`, `aggregate`, …) outside a profile → `javadoc = true`, or `javadoc = "strict"` with `<failOnError>true` or a `<doclint>` other than `none`; a plugin that is only configured, or bound in a release profile, writes nothing: JumpKick's default already documents a library on `jk publish` and `jk javadoc` | exact |
 | maven-source-plugin | 19 | `sources = "always"` — the sources jar on every `jk build` | exact |
 | maven-resources-plugin | 19 | `<resources>` / `<testResources>` → `[resources]`: a directory outside the layout → `dirs`, a filtering one → `filtered`, and every name its files reference → `[resources.properties]` with the effective POM's value; names only Maven's runtime knows (environment, settings), `<includes>`/`<excludes>` and `<targetPath>` → row | approximate |
 | jacoco-maven-plugin | 17 | `jk test -T` is a run flag, not a manifest key → row | manual |
@@ -472,20 +472,20 @@ relates to the Maven one.
 | maven-install-plugin | 13 | `jk install` to `~/.m2` | exact |
 | maven-failsafe-plugin | 13 | `<includes>`, or Failsafe's defaults `**/IT*.java`, `**/*IT.java`, `**/*ITCase.java` → `[test.suites.integration] classes` (`IT*`, `*IT`, `*ITCase`): plain `jk test` leaves those classes out as `mvn test` does, `-s integration` and `--guard` run them from the same compile; `<excludes>` → that suite's `exclude-classes` (run in no suite, as under `mvn verify`); an unspellable pattern and `<groups>` → rows; `argLine` and system properties → the same `[test]` keys when Surefire set none, else a row; `<testFailureIgnore>` → `[test] failures = "report"` (every suite of the module, with a row saying so). With no Failsafe in the default build (one only in a profile, or none), test classes named `IT*` / `*IT` / `*ITCase` still become the `integration` suite, since Surefire's defaults leave them out of `mvn test` | exact |
 | maven-shade-plugin | 12 | `[application] assembly = true`, `Main-Class` from the manifest transformer; a whole-package `<relocation>` → `[application] relocate` (see [Packaging § Package relocation](packaging.md#package-relocation)); a shaded member with no main — neo4j's `lucene9-shaded`, nacos's `client` — → `[library] assembly = true` with the same `relocate`, and the members that import its shaded packages keep their workspace edge and compile against its `-all.jar` ([Workspaces § Shaded siblings](workspaces.md#shaded-siblings)); a relocation narrowed by `<includes>`/`<excludes>`, spelled as a path or doubled as a `<rawString>` twin → rules where they agree with the whole-package rule on every class (nacos's `io.grpc` exclude-and-relocate pair), else rows naming the construct; filters, other transformers and `minimizeJar` → rows | approximate |
-| kotlin-maven-plugin | 12 | `kotlin =` on the module at the plugin's version, or at jk's floor (2.4.10) with a row when the plugin's version is below it; when the main source directory also carries `.java` files (Kotlin tests beside a Java main tree, a `test-compile`-only plugin, or both languages in main) the module is mixed and `java =` is written beside it, so javac compiles the Java tree against kotlinc's output and the Kotlin test tree sees both — a row says so | exact |
+| kotlin-maven-plugin | 12 | `kotlin =` on the module at the plugin's version, or at JumpKick's floor (2.4.10) with a row when the plugin's version is below it; when the main source directory also carries `.java` files (Kotlin tests beside a Java main tree, a `test-compile`-only plugin, or both languages in main) the module is mixed and `java =` is written beside it, so javac compiles the Java tree against kotlinc's output and the Kotlin test tree sees both — a row says so | exact |
 | maven-release-plugin | 11 | nothing (release flow) | manual |
 | central-publishing-maven-plugin | 11 | `jk publish -c` | exact |
 | spotbugs-maven-plugin | 10 | `[lint] spotbugs = true`, `<excludeFilterFile>` and `<excludeFilterFiles>` → the `spotbugs-exclude` list, `<effort>` → `spotbugs-effort`, `<threshold>` → `spotbugs-threshold` (`High` → `high`, `Low` / `Exp` → `low`; `Default` is the step's own `medium`), `<maxRank>` → `spotbugs-max-rank`, `<omitVisitors>` / `<visitors>` → `spotbugs-omit-visitors` / `spotbugs-visitors`, `<plugins>` (fb-contrib, find-sec-bugs) → `spotbugs-plugins`, `<includeTests>` → `sources` + `src/test/java` — each parameter read from the `<configuration>` or from the `spotbugs.<name>` user property the POM sets, as the plugin reads it — the plugin version minus its last digit → `spotbugs-version`, SpotBugs's threshold `warning` — `spotbugs:check` fails on any bug at the confidence threshold — or `never` under `<failOnError>false` (written as `fail-on` when the module's tools agree, else `spotbugs-fail-on`) | approximate |
 | spotless-maven-plugin | 10 | `jk format` | approximate |
 | maven-antrun-plugin | 10 | build logic script → row | manual |
-| maven-pmd-plugin | 8 | `[lint] pmd` ← `<rulesets>` (a `/category/…` or `/rulesets/…` path as PMD's built-in, the Maven plugin's own default ruleset — also what a POM naming none runs — as `rulesets/java/maven-pmd-plugin-default.xml`, which jk carries, a `file://` URL as a module file, one spelled through a property nothing defines → `rulesets/java/quickstart.xml` and a row), `<excludeFromFailureFile>` → `pmd-exclude`, `<includeTests>` → `sources` + `src/test/java`, PMD's threshold from its own (`<failOnViolation>false` → `never`, `<failurePriority>` 1 or 2 → `error`, else — Maven's default 5 fails on every finding — `warning`; written as `fail-on` when the module's tools agree, else `pmd-fail-on`), `pmd-version` ← the `pmd-java` the plugin's own `<dependencies>` pin, else the PMD the plugin release bundles, read at import time from the release's own POM in the repositories — its `pmdVersion` property — so every release is covered (a PMD 6 → a row: the step runs PMD 7; a POM no repository serves → a row, and the step's default stands); `<excludeRoots>` / `<excludes>` → row. A lint plugin a module only inherits, with no `<execution>` bound, runs under Maven by hand alone (`mvn pmd:check`): no table on the module, one row at the declaring POM | approximate |
+| maven-pmd-plugin | 8 | `[lint] pmd` ← `<rulesets>` (a `/category/…` or `/rulesets/…` path as PMD's built-in, the Maven plugin's own default ruleset — also what a POM naming none runs — as `rulesets/java/maven-pmd-plugin-default.xml`, which JumpKick carries, a `file://` URL as a module file, one spelled through a property nothing defines → `rulesets/java/quickstart.xml` and a row), `<excludeFromFailureFile>` → `pmd-exclude`, `<includeTests>` → `sources` + `src/test/java`, PMD's threshold from its own (`<failOnViolation>false` → `never`, `<failurePriority>` 1 or 2 → `error`, else — Maven's default 5 fails on every finding — `warning`; written as `fail-on` when the module's tools agree, else `pmd-fail-on`), `pmd-version` ← the `pmd-java` the plugin's own `<dependencies>` pin, else the PMD the plugin release bundles, read at import time from the release's own POM in the repositories — its `pmdVersion` property — so every release is covered (a PMD 6 → a row: the step runs PMD 7; a POM no repository serves → a row, and the step's default stands); `<excludeRoots>` / `<excludes>` → row. A lint plugin a module only inherits, with no `<execution>` bound, runs under Maven by hand alone (`mvn pmd:check`): no table on the module, one row at the declaring POM | approximate |
 | license-maven-plugin | 8 | nothing → row | manual |
 | scs-multiapi-maven-plugin | — | `asyncapi-generation` → `[asyncapi]`: each `<specFiles><specFile><filePath>` → `src`, the first `<modelPackage>` of `<consumer>` / `<supplier>` / `<streamBridge>` → `package`; the consumer, supplier and stream-bridge code, and a spec read from an artifact (`fromArtifactId`), → row; `openapi-generation` is not this table | approximate |
 | zenwave-sdk-maven-plugin | — | `generate` → `[asyncapi]`: `<inputSpec>` → `src`, `<configOptions><modelPackage>` → `package`; a `<generatorName>` other than `jsonschema2pojo` (Spring Cloud Stream code) → row | approximate |
 | jsonschema2pojo-maven-plugin | — | `[json-schema]`: `<sourceDirectory>` (the plugin's `src/main/resources/schema` when unset) or the first `<sourcePaths>` → `src`, `<targetPackage>` → `package`, `<annotationStyle>`, `<sourceType>`, `<generateBuilders>`, `<includeConstructors>`, `<includeJsr303Annotations>`, `<useJakartaValidation>`, `<serializable>`, `<useOptionalForGetters>`, `<useLongIntegers>`, `<useBigDecimals>`, `<useTitleAsClassname>`, `<includeAdditionalProperties>`, `<dateTimeType>` / `<dateType>` / `<timeType>`, `<outputEncoding>` → their keys where they differ from the preset's defaults, the plugin version → `version`; the `<outputDirectory>` is the preset's contribution, so a build-helper root inside it is not written | exact |
 | kafka-schema-registry-maven-plugin | — | `download` → `[schema-registry]`: the first `<schemaRegistryUrls>` → `url`, each `<subjectPatterns>` entry that names one subject → a subject at the matching `<versions>` entry (`latest` past its end); a `<userInfoConfig>` of `${env.…}` references, or of values the shell's variables hold, → a `~/.jk/config.toml` table naming the variables and `repository = "schema-registry"`; an `<outputDirectory>` that is the Avro plugin's source directory is left out of `[avro] src`; a regex pattern and the `register` / `test-compatibility` goals → row | exact |
 | avro-maven-plugin | 9 | `[avro]`: `<sourceDirectory>` → `src`, `<stringType>` → `string-type` (Maven's own default, `CharSequence`, written when the POM leaves it unset), `<fieldVisibility>` / `<createSetters>` / `<createOptionalGetters>` / `<enableDecimalLogicalType>` → their keys, the plugin version → `version`; the `<outputDirectory>` is the preset's contribution, so a build-helper root inside it is not written; `<imports>` needs no key (the preset orders schemas by definition); `<includes>` / `<excludes>` / `<testSourceDirectory>` → row; the module keeps its `org.apache.avro:avro` dependency at the compiler's version | exact |
-| replacer (maven-replacer-plugin) | 1 | beside `protobuf-maven-plugin`, an execution whose `<basedir>` is the plugin's output (`target/generated-sources`) → `[protobuf] replace`, each `<replacement>`'s `<token>` → `<value>` (a `<regex>false</regex>` token quoted); an execution over any other directory — the module's own sources, the generated test sources — → row, since jk rewrites nothing in place; `<skip>true</skip>` executions are left out; `<excludes>`, `<tokenValueMap>`, `<file>`, `<xpath>` → row | approximate |
+| replacer (maven-replacer-plugin) | 1 | beside `protobuf-maven-plugin`, an execution whose `<basedir>` is the plugin's output (`target/generated-sources`) → `[protobuf] replace`, each `<replacement>`'s `<token>` → `<value>` (a `<regex>false</regex>` token quoted); an execution over any other directory — the module's own sources, the generated test sources — → row, since JumpKick rewrites nothing in place; `<skip>true</skip>` executions are left out; `<excludes>`, `<tokenValueMap>`, `<file>`, `<xpath>` → row | approximate |
 | protobuf-maven-plugin | 8 | xolstice's or ascopes': `[protobuf]` on a module with `.proto` files under `<protoSourceRoot>` or the `<sourceDirectories>` (default `src/main/proto`): the `<protocArtifact>` version or `<protocVersion>` → `version` (the protobuf-java dependency's when none), the root → `src`, the `<excludes>` of the plugin and its `compile` / `generate` executions → `exclude`; the output under `target/generated-sources/protobuf` is the preset's contribution, so a build-helper root inside it is not written; a module the plugin reaches by inheritance without protos gets no table; `compile-custom`'s `<pluginId>` + `<pluginArtifact>` → `[protobuf.<pluginId>] plugin` (`<pluginParameter>` → `options`), a row when either is unresolvable; each `<binaryMavenPlugin>` → `[protobuf.<artifact less protoc-gen->] plugin` (`io.grpc:protoc-gen-grpc-java` → `[protobuf.grpc-java]`, `<options>` → `options`), one with `<skip>true</skip>` left out | approximate |
 | versions-maven-plugin | 7 | `jk outdated` / `jk update` | exact |
 | docker-maven-plugin / jib-maven-plugin | 7 | `[image]`: `<from>` → `base`, `<to>` (or `<imageName>` / `<name>`) → `registry`, `name`, `tag`; a row points at docs/user/images.md for the ports, env, labels and entry point the plugin's other settings become | approximate |
@@ -509,8 +509,8 @@ relates to the Maven one.
 | localizer-maven-plugin | 1 | `[localizer]`: `<fileMask>` → `mask`, the POM's `<resources>` directories → `resources`, `<outputEncoding>` → `encoding`, `<accessModifierAnnotations>` / `<strictTypes>` / `<keyPattern>` → their keys, the plugin version → `version`; the `<outputDirectory>` is the preset's contribution, so a build-helper root inside it is not written; the module keeps its `org.jvnet.localizer:localizer` dependency for the generated classes' runtime | exact |
 | graphqlcodegen-maven-plugin (DGS codegen), graphql-codegen-maven-plugin (graphql-java-codegen) | 1 | row: DGS codegen is a `[generate.<name>]` recipe over `graphql-dgs-codegen-core`'s command line ([Generate](generate.md#graphql--a-recipe-not-a-table)); graphql-java-codegen has no command line, so its step stays under `jk mvn` | manual |
 | openapi-generator-maven-plugin | 4 | `[openapi]`: `<inputSpec>` → `spec` (an HTTP URL is fetched once into `api/<file>` beside the manifest, a row says so), `<generatorName>` → `generator`, the `<modelPackage>` root (else the api or invoker package) → `package` with `<apiPackage>` / `<modelPackage>` / `<invokerPackage>` the root does not derive → `api-package` / `model-package` / `invoker-package`, `<configOptions>` / `<additionalProperties>` → `options`, `<library>` → `library`, `<modelNamePrefix>` / `<modelNameSuffix>` → `model-name-prefix` / `model-name-suffix`, `<importMappings>` / `<typeMappings>` → `import-mappings` / `type-mappings`, the plugin version → `version`; `<packageName>`, a second `generate` execution and any other option → row | approximate |
-| `<build><extensions>` entries and lifecycle plugins whose effect is on how Maven runs — build-reporter-maven-extension, gitflow-incremental-builder, the wagon deploy transports (ssh, ssh-external, WebDAV, ftp), maven-build-cache-extension, takari-smart-builder, jgitver-maven-plugin | 4 | Tier-2 row naming the coordinate, what it does under Maven and what jk has in its place (`jk publish`, the action cache, its own scheduler, `version` in jk.toml); nothing is written | exact |
-| `<build><extensions>` entries and lifecycle plugins that are a packaging jk does not build — archetype-packaging, tycho-maven-plugin, maven-bundle-plugin, nar-maven-plugin | 5 | Tier-3 row naming the coordinate and the packaging; keep that step under `jk mvn` | none |
+| `<build><extensions>` entries and lifecycle plugins whose effect is on how Maven runs — build-reporter-maven-extension, gitflow-incremental-builder, the wagon deploy transports (ssh, ssh-external, WebDAV, ftp), maven-build-cache-extension, takari-smart-builder, jgitver-maven-plugin | 4 | Tier-2 row naming the coordinate, what it does under Maven and what JumpKick has in its place (`jk publish`, the action cache, its own scheduler, `version` in jk.toml); nothing is written | exact |
+| `<build><extensions>` entries and lifecycle plugins that are a packaging JumpKick does not build — archetype-packaging, tycho-maven-plugin, maven-bundle-plugin, nar-maven-plugin | 5 | Tier-3 row naming the coordinate and the packaging; keep that step under `jk mvn` | none |
 | any other `<build><extensions>` entry | — | Tier-3 row naming the coordinate | none |
 
 In a workspace, a row a parent's `<build>` puts on every module — an extension, a plugin with
@@ -527,29 +527,29 @@ plugin and where its job belongs. *none*: the module needs `jk mvn`.
 
 ### Where Maven profiles land
 
-Maven uses one `<profile>` for five different jobs; jk keeps them apart, so import maps by
+Maven uses one `<profile>` for five different jobs; JumpKick keeps them apart, so import maps by
 payload and activation rather than one-to-one:
 
-| Maven profile shape | Lands in jk as | Why |
+| Maven profile shape | Lands in JumpKick as | Why |
 |---|---|---|
 | Active on this machine (`activeByDefault`, JDK range, OS, property or file that matches) | Folded into the effective model; the report says which profile was applied | That is what Maven itself would build here |
-| Not active; `<dependencies>` (versions from the profile's own `<dependencyManagement>` when it has one) | `[features.<id>]` with those deps marked `optional = true`, mapped as the POM's own are (exclusions kept, a `pom` type in `[platform-dependencies]`, `system` scope and a type jk cannot spell refused with a row); not in `default` | A feature is exactly "what optional deps you have" |
-| Not active; `maven.compiler.*` or `<compilerArgs>`, an `argLine` property | `[profiles.<id>]` `javac` (`--release N`, the args) / `jvm-args` | A jk profile is "how you compile" |
-| Not active; `<repositories>` | Merged into the top-level repositories with a Tier-2 row | A repository is never conditional in jk |
+| Not active; `<dependencies>` (versions from the profile's own `<dependencyManagement>` when it has one) | `[features.<id>]` with those deps marked `optional = true`, mapped as the POM's own are (exclusions kept, a `pom` type in `[platform-dependencies]`, `system` scope and a type JumpKick cannot spell refused with a row); not in `default` | A feature is exactly "what optional deps you have" |
+| Not active; `maven.compiler.*` or `<compilerArgs>`, an `argLine` property | `[profiles.<id>]` `javac` (`--release N`, the args) / `jvm-args` | A JumpKick profile is "how you compile" |
+| Not active; `<repositories>` | Merged into the top-level repositories with a Tier-2 row | A repository is never conditional in JumpKick |
 | Not active; `<build><plugins>` | Hand-port checklist row naming the plugins | Plugin mapping is its own table; a profile does not change where a plugin lands |
 | Not active; `<build>` executions for a plugin the POM declares bare (`native-maven-plugin`, shade, assembly, Jib, Docker) | The plugin writes nothing — no `[native]`, no fat jar, no `[image]` table — and a Tier-2 row names the profile | Under Maven that plugin runs only with `-P`, so a default build does not build the image or the fat jar |
 | JDK- or OS-activated with per-platform deps (native classifiers, `os-maven-plugin`) | Tier-2 row proposing a `[variants]` dimension | Which product you build, not what you compile with |
 | `<properties>` that only other POM fields read | Interpolated away; nothing written | The effective model already substituted them |
 
 Activation kinds that never map: a property set on the Maven command line (`-Pfoo` /
-`-Dfoo=true`) has no jk equivalent, so the import names the profile and its payload's landing
+`-Dfoo=true`) has no JumpKick equivalent, so the import names the profile and its payload's landing
 place; `<file>` existence stays a checklist row. A profile with more than one payload kind gets
 one row per kind, each naming the same `<id>`; a `<dependencyManagement>` with no dependency of
 its own is a row and nothing is written.
 
 **Gradle import** reads the build through Gradle itself. A directory with a
 `settings.gradle(.kts)` — name the settings file, a build script beside it, or let auto-detection
-find either — is evaluated by the Gradle the wrapper pins (else jk's default), provisioned the
+find either — is evaluated by the Gradle the wrapper pins (else JumpKick's default), provisioned the
 way `jk gradle` provisions it: a healthy install on this machine, or a download verified against
 the wrapper's `distributionSha256Sum` or Gradle's published `.sha256`. Gradle runs in a fork, on
 the engine's JDK when the distribution accepts it and otherwise on the newest installed JDK it
@@ -576,7 +576,7 @@ member's manifest carries its own coordinates, `project(":sibling")` is a worksp
 sibling (two projects sharing a name are each named by their path, with a row), and every
 repository other than Central is hoisted onto the root under its Gradle `name` (`repoN` for
 Gradle's generated `maven`, `maven2`, …), in the build's order (when the build asks Central first,
-`central` is written first, since jk otherwise asks it after every declared repository), the groups its `content { includeGroup … }` filter
+`central` is written first, since JumpKick otherwise asks it after every declared repository), the groups its `content { includeGroup … }` filter
 includes as its `groups` (`includeGroupAndSubgroups` adds `g.*`; a filter narrower than a group is
 a row), and `mavenContent { releasesOnly() }` / `snapshotsOnly()` as `snapshots = false` /
 `releases = false`. A repository credential the build reads from an environment variable
@@ -594,10 +594,10 @@ row lists the repositories CI must send credentials for through `JK_REPO_<ID>_*`
 means the same thing: `implementation` and `api` in `[dependencies]`, `compileOnly` and
 `compileOnlyApi` in `[provided-dependencies]`, `runtimeOnly` in `[runtime-dependencies]`,
 `testImplementation` and `testRuntimeOnly` in `[test-dependencies]` — `testCompileOnly` too, with
-a row saying jk has no test-provided table — `annotationProcessor`, `kapt` and `ksp` in
+a row saying JumpKick has no test-provided table — `annotationProcessor`, `kapt` and `ksp` in
 `[processor-dependencies]`, their test forms in `[test-processor-dependencies]`,
 `platform(…)` / `enforcedPlatform(…)` in `[platform-dependencies]`, `constraints { }` in
-`[managed-dependencies]`, `developmentOnly` in `[dev-dependencies]`. A configuration jk has no
+`[managed-dependencies]`, `developmentOnly` in `[dev-dependencies]`. A configuration JumpKick has no
 table for (`intTestImplementation`, a japicmp `baseline`) is a row naming it and its
 dependencies; the tool configurations Gradle's own plugins declare (`kotlinCompilerClasspath`,
 `dokkaPlugin`, …) are not. `exclude` rules ride the edge (`isTransitive = false` is `*:*`); a
@@ -614,7 +614,7 @@ own; Boot's own BOM is written only without the Boot plugin, whose `[spring-boot
 { dependencies { } }` entry) is an exact pin with a row, and a BOM whose version reads a property
 nothing defines is a row. A task the build script registers (`tasks.register("release")`, an ad-hoc `Copy`) is a Tier-2 row
 naming the task, never an error; a source set other than `main`, `test` and `testFixtures`, or a
-source root outside jk's layout, is a row; a plugin nothing maps is a row naming its id or class.
+source root outside JumpKick's layout, is a row; a plugin nothing maps is a row naming its id or class.
 
 The Avro plugin (`com.github.davidmc24.gradle.plugin.avro`) imports as `[avro]`: the directory
 `generateAvroJava` reads becomes `src` (left out when it is `src/main/avro`), its `stringType`,
@@ -639,7 +639,7 @@ imports as `[schema-registry]`: its `url` and each `download { subject(…) }` a
 (`latest` when it names none). A `clientConfig` `basic.auth.user.info` (or 1.x `credentials`) the
 build reads from the environment becomes a `~/.jk/config.toml` table naming the variables, under
 `repository = "schema-registry"`. A directory the plugin downloads into is left out of `[avro] src`.
-A `subjectPattern` is a row, and so is a `register` or `compatibility` block: jk only downloads.
+A `subjectPattern` is a row, and so is a `register` or `compatibility` block: JumpKick only downloads.
 
 `java-test-fixtures` imports as [fixtures](workspaces.md): the producer's `[test] fixtures` names
 its `testFixtures` Java root where it is (`fixtures = "src/testFixtures/java"`), its
@@ -648,7 +648,7 @@ its `testFixtures` Java root where it is (`fixtures = "src/testFixtures/java"`),
 `testImplementation(testFixtures(project(":x")))` is `x = { workspace = true, fixtures = true }`
 with the producer's `testFixturesApi` libraries beside it, since a fixtures edge does not carry the
 producer's test dependencies. A project's edge on itself is dropped: its own tests read its main
-and fixtures already. Fixture resources have no jk home, and a row says so.
+and fixtures already. Fixture resources have no JumpKick home, and a row says so.
 
 Each pin is the version Gradle resolved for it: a declared version Gradle's conflict resolution
 lifted is written as the lifted one, with a row. Gradle has already resolved the graph by its own
@@ -659,23 +659,23 @@ Each project also reports the versions its classpaths resolve to, read after its
 dependencies so a plugin's lazily added ones (Kotlin's stdlib) are not written. A declared version
 below the one Gradle resolves — a dependency of the graph asks for more — is written at the
 resolved version with a row; a declared version below the one its `dependencyManagement` BOM
-manages (a plugin's own default, say) is written `managed`, since a jk pin below the platform's
+manages (a plugin's own default, say) is written `managed`, since a JumpKick pin below the platform's
 version does not resolve with the rest of it. The language level is `--release`, else Kotlin's
 `jvmTarget`, else source/target compatibility, else the toolchain's; a `java.toolchain` is a `jdk`
-pin only when the host JDK cannot compile to it (a newer major) or it names a vendor, since jk
+pin only when the host JDK cannot compile to it (a newer major) or it names a vendor, since JumpKick
 compiles any older level with `--release`. A member does not repeat the `java` or `jdk` the root
 declares, which it inherits. A module is named by the artifact it publishes: its one
 `MavenPublication`'s `artifactId`, else `base.archivesName` (sibling edges follow), with the POM's
 `name` and `url` as `[publish]` and its `description` as the module's. What `compileJava` hands
 javac — its `compilerArgs` and what plugins add to them — is `[javac] args`, and
 `compileTestJava`'s is `[javac.test] args` where it differs; `--release`, `-encoding` and the
-path flags are jk's to pass. The `net.ltgt.errorprone` plugin running NullAway alone becomes
+path flags are JumpKick's to pass. The `net.ltgt.errorprone` plugin running NullAway alone becomes
 `[nullness]`, as a POM's does (`OnlyNullMarked` is `include = []`, NullAway on `compileJava`
 alone leaves `tests` off); Error Prone running other checks keeps its `-Xplugin:ErrorProne` argument
 and its `errorprone` jars under `[processor-dependencies]`. The `test` task's `jvmArgs` and
 system properties are `[test] jvm-args` and `system-properties`. A Kotlin or Groovy module with Java sources gets
 `java = N` so its Java compiles, as Gradle's does. The `groovy` plugin writes `groovy =` at the
-Groovy the classpath resolves — beside Kotlin it is a row instead, since a jk module compiles one
+Groovy the classpath resolves — beside Kotlin it is a row instead, since a JumpKick module compiles one
 of the two. The xjc plugin (`com.github.bjornvester.xjc`) is `[jaxb]`: `xsdDir` is `src`,
 `defaultPackage` is `package`, `bindingFiles` are `bindings`, `options` are `arguments`.
 
@@ -685,7 +685,7 @@ alone and says so in a Tier-3 row; a `settings.gradle` with no build script besi
 refused with Gradle's reason. Importing one project's `build.gradle` from inside a larger build
 scans that file alone and points at the root's settings file. The scanner reads the declarative
 idioms of a single script: the `plugins { }` block (a Kotlin plugin version is `project.kotlin`;
-the ids an installed jk plugin claims map to its table), `group`/`version`/`description`,
+the ids an installed JumpKick plugin claims map to its table), `group`/`version`/`description`,
 `java { }` — source and target compatibility and `options.release` are the `java` level, a
 `toolchain { languageVersion }` or `jvmToolchain(N)` line the `jdk` pin, as the model import
 writes them — `application { mainClass }`, `jar { manifest { attributes } }`,
@@ -713,7 +713,7 @@ without a version takes the file's `plugin.<id>` entry — `version.kotlin` for 
 `[dokka]` pin. The `org.hibernate.orm` plugin's `hibernate { enhancement { … } }` block is
 `[hibernate] enhance = true`, its `enable*` switches the table's keys; applied without that block
 it enhances nothing and writes no table. The `org.openjfx.javafxplugin` plugin is `[javafx]`, and its
-`javafx { version; modules }` block becomes one `org.openjfx:javafx-<module>` dependency per module. Versions stay on deps and BOMs — they are not written into jk library
+`javafx { version; modules }` block becomes one `org.openjfx:javafx-<module>` dependency per module. Versions stay on deps and BOMs — they are not written into JumpKick library
 catalog layers. Keep `jk gradle` for modules that still need full Gradle.
 
 **Export** writes what the manifest says: `jk export maven` writes each dependency's `exclude`

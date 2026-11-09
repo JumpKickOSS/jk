@@ -232,7 +232,7 @@ Tariff = ["price", "rate card"]          # a question saying "price" also starts
 ```
 
 An alias maps a name in the code to the words people use for it. A question holding one of the words
-also starts from the name. jk's graph has no LLM pass: documents are read for their structure, links
+also starts from the name. JumpKick's graph has no LLM pass: documents are read for their structure, links
 and code mentions only.
 
 ## Callers
@@ -291,7 +291,7 @@ answer against the call and type facts read from the compiled classes. Each cell
 answer size in tokens and the share of the compiler's answer it named.
 
 <!-- graph-table:begin -->
-| Repo | Lines | jk tokens · found | grep tokens · found | graphify tokens · found | RepoQL tokens · found |
+| Repo | Lines | JumpKick tokens · found | grep tokens · found | graphify tokens · found | RepoQL tokens · found |
 |---|---:|---:|---:|---:|---:|
 | gs-multi-module | 83 | 32 · 100% | 171 · 100% | 158 · 100% | 5 · 0% |
 | gs-uploading-files | 416 | 32 · 100% | 551 · 100% | 218 · 100% | 12 · 30% |
@@ -301,20 +301,20 @@ answer size in tokens and the share of the compiler's answer it named.
 | commons-io | 105,209 | 118 · 100% | 26,037 · 98% | 142 · 60% | 388 · 45% |
 | commons-collections | 129,244 | 190 · 99% | 29,064 · 95% | 184 · 71% | 225 · 16% |
 | commons-lang | 188,332 | 185 · 98% | 22,696 · 96% | 150 · 61% | 197 · 38% |
-| jk | 679,533 | 168 · 100% | 32,527 · 97% | 87 · 48% | 166 · 39% |
+| JumpKick | 679,533 | 168 · 100% | 32,527 · 97% | 87 · 48% | 166 · 39% |
 <!-- graph-table:end -->
 
 <!-- graph-claims:begin -->
-On jk (679,533 lines), asked who calls a method, what implements or overrides it and where it is defined, jk's graph tools answered in a median 168 tokens and named 100% of the compiler's answer; grep and reading the files it matched took 32,527 tokens for 97%. Per correct answer that is 52 tokens against 17,482. On the same questions: graphify's 87 tokens for 48%; RepoQL's 166 tokens for 39%. Indexing it from nothing: jk 8.9 s (2.1 s after a one-line edit), graphify 59.2 s, RepoQL 88.2 s. jk's call edges match the compiled classes' at 96% precision and 98% recall. ([The bench](../../bench/graph-retrieval/README.md), results of 2026-11-01.)
+On JumpKick (679,533 lines), asked who calls a method, what implements or overrides it and where it is defined, JumpKick's graph tools answered in a median 168 tokens and named 100% of the compiler's answer; grep and reading the files it matched took 32,527 tokens for 97%. Per correct answer that is 52 tokens against 17,482. On the same questions: graphify's 87 tokens for 48%; RepoQL's 166 tokens for 39%. Indexing it from nothing: JumpKick 8.9 s (2.1 s after a one-line edit), graphify 59.2 s, RepoQL 88.2 s. JumpKick's call edges match the compiled classes' at 96% precision and 98% recall. ([The bench](../../bench/graph-retrieval/README.md), results of 2026-11-01.)
 <!-- graph-claims:end -->
 
 ## MCP
 
-jk's MCP server lists one graph tool by default, `callers`: every card an agent's host shows is paid
+JumpKick's MCP server lists one graph tool by default, `callers`: every card an agent's host shows is paid
 on every turn, and in measured agent runs `callers` and `rename` are the ones that repay it.
 
 <!-- agents-claims:begin -->
-We asked coding agents from 6 vendors questions like "who calls this method?" With jk's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](why.md#asking-about-the-code).)
+We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 `query`, `read` and `find` answer as their

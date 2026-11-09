@@ -51,7 +51,7 @@ signing: [HTTP](../contributors/http.md), [Releases](../contributors/releases.md
 ## Decisions
 
 A [decision](mcp.md#decisions) is a courtesy, not a security gate. Your agent runs as you: it can
-edit `jk.toml`, read `~/.jk/state/engine/<key>.http-token`, drive a browser or a terminal, so jk
+edit `jk.toml`, read `~/.jk/state/engine/<key>.http-token`, drive a browser or a terminal, so JumpKick
 cannot stop it from approving its own change and does not try. Any surface accepts or declines any
 decision: the host's elicitation, the dashboard (the bearer token is enough) and `jk decide`. The
 bearer token gates `/api/*` against other users and other machines. Deep links carry the token as

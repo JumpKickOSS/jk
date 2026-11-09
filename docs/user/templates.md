@@ -20,7 +20,7 @@ jk init -t hello
 Every project comes from a template. With no `-t` it is **`app`**, the blank application in the
 chosen language (`library` is the blank library); the template search preselects it.
 
-**On a terminal**, `jk new` asks what its flags left open. It walks jk's own step first (language,
+**On a terminal**, `jk new` asks what its flags left open. It walks JumpKick's own step first (language,
 template, name, group, directory), then the chosen template's: the layout when the template renders
 more than one, then the template's [questions](#template-questions-jk-templatetoml). A flag answers
 its field up front (`--lang`, `-t`, the name or `--name`, `--group`, `--dir`, `-L`, and
@@ -78,16 +78,16 @@ comma-separated ids), `true|false` a bool and `text` a text, with its pattern be
 `(required)` marks a question with no default, `when …` the condition that shows it and
 `(advanced)` one the form does not ask.
 
-A standalone template scaffold gets what a plain `jk new` gets: [jk's section of
+A standalone template scaffold gets what a plain `jk new` gets: [JumpKick's section of
 **`AGENTS.md`**](agents.md#jks-section-of-agentsmd) (into the template's own `AGENTS.md` when it
-shipped one), the files of each [agent in use](agents.md) and a first code graph, and jk's
+shipped one), the files of each [agent in use](agents.md) and a first code graph, and JumpKick's
 `.gitignore` unless the template ships its own. Workspace modules get none of these — the root
 owns them. A template scaffolded inside a project is listed in the root's `[workspace].modules`,
 as a plain `jk new` module is, so the next `jk build` builds it.
 
 "Inside a project" means the nearest `jk.toml` at or above the new project's parent directory,
 looking no higher than the top of its git repository (a `.git` directory, or the `.git` file of a
-worktree), `$HOME`, or a [search ceiling](workspaces.md#where-jk-looks-for-the-workspace). `-N`
+worktree), `$HOME`, or a [search ceiling](workspaces.md#where-jumpkick-looks-for-the-workspace). `-N`
 (`--no-module`) makes a standalone project wherever it lands.
 
 Every library and framework version a scaffold writes is today's **current stable, as an exact
@@ -139,9 +139,9 @@ means the catalogue's `app` beside an `app/` that is not a template.
 Official catalog: [JumpKickOSS/jk-templates](https://github.com/JumpKickOSS/jk-templates)
 (overridable). Plugin jars may overlay the same `(language, framework, name)`.
 
-jk ships `app` and `library` (framework `none`, every language that has them) in its own
+JumpKick ships `app` and `library` (framework `none`, every language that has them) in its own
 distribution, so `jk new` works on a fresh home with no catalogue clone and no network. A
-catalogue copy of the same id wins; jk's copy serves only an id the catalogue lacks, and the
+catalogue copy of the same id wins; JumpKick's copy serves only an id the catalogue lacks, and the
 template list names it with source `shipped`.
 
 ```toml
@@ -171,12 +171,12 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 | `cli-native` | none | java | Interactive Java CLI with JLine | house rules |
 | `app` | none | java, kotlin, groovy, scala | Blank application: a main and its test; asks for common libraries, a fat jar and a native binary | `library` |
 | `library` | none | java, kotlin, scala | Published library: sources and javadoc jars (Dokka's for Kotlin, scaladoc's for Scala), `[build-info]`, unit test; the Java one a `@NullMarked` API; asks for common libraries | `library` |
-| `plugin` | none | java | Build plugin (`jk new -P`): the `jk-plugin.toml` manifest, its service file, a `@NullMarked` `Plugin` class and its test, compiled against the SDK of the jk that scaffolds it | `library` |
+| `plugin` | none | java | Build plugin (`jk new -P`): the `jk-plugin.toml` manifest, its service file, a `@NullMarked` `Plugin` class and its test, compiled against the SDK of the JumpKick that scaffolds it | `library` |
 | `ktor-3` | none | kotlin | Ktor + Koin + Exposed | house rules |
 | `hello` | spring-boot | java, kotlin | Plugin hello app | `spring` |
 | `webmvc` | spring-boot | java, kotlin | Clean-architecture WebMVC workspace | `spring`, `monorepo` |
 | `webmvc-security-actuator-jpa-h2` | spring-boot | java, kotlin | WebMVC + JPA/H2 + Actuator | `spring` |
-| `webapp` | spring-boot | java, kotlin | Boot API + Vite/React SPA; `web` is a node module jk builds and packages as a resource jar; `jk dev` runs Vite beside the app, inferred from the dependency | `spring`, `monorepo` |
+| `webapp` | spring-boot | java, kotlin | Boot API + Vite/React SPA; `web` is a node module JumpKick builds and packages as a resource jar; `jk dev` runs Vite beside the app, inferred from the dependency | `spring`, `monorepo` |
 | `mcp` | spring-boot | java | Boot MCP server | `spring` |
 | `hello` | quarkus | java, kotlin | Plugin REST app | `quarkus` |
 | `hello` | micronaut | java, kotlin | Plugin HTTP service | — |
@@ -275,7 +275,7 @@ jk template lint .                      # every template under the working direc
 jk template lint java/none/app.g8       # one template
 ```
 
-Reserved properties are jk's own: the keys of jk's step (`lang`, `template`, `name`, `group`,
+Reserved properties are JumpKick's own: the keys of its step (`lang`, `template`, `name`, `group`,
 `layout`) and what the apply sets (`organization`, `package`, `java`, `jk_languages`, `jk_layout`,
 `jk_version`, `name_normalized`, `simple` and `verbatim`).
 
@@ -286,10 +286,10 @@ jk new -l node -t vite-react web     # web/ with jk.toml (node = the newest LTS)
 jk new -t webapp -f angular shop # the webapp template with an Angular web/
 ```
 
-jk writes only `jk.toml` and `.gitignore`. The tree is the framework's own starter, made by its
-generator under the Node.js jk provisions, so it is always the framework's newest. The generator
-installs nothing: jk resolves `package-lock.json` after it (`npm install --package-lock-only`), and
-the first `jk build` installs `node_modules` once, from jk's npm cache. Generators
+JumpKick writes only `jk.toml` and `.gitignore`. The tree is the framework's own starter, made by its
+generator under the Node.js JumpKick provisions, so it is always the framework's newest. The generator
+installs nothing: JumpKick resolves `package-lock.json` after it (`npm install --package-lock-only`), and
+the first `jk build` installs `node_modules` once, from JumpKick's npm cache. Generators
 come from the npm registry: there is no offline form. `--param` passes a flag through (`k=v` as
 `--k=v`).
 
@@ -326,7 +326,7 @@ holds a Java class. The Spring Boot and `library`
 templates carry a [`[build-info]`](packaging.md#build-info-gitproperties-and-boots-build-infoproperties)
 table, so the jar records the commit it was built from (`git.properties`, and Boot's
 `META-INF/build-info.properties` for `/actuator/info`). None ships an `AGENTS.md`: `jk new`
-writes jk's current section into every project it scaffolds.
+writes JumpKick's current section into every project it scaffolds.
 
 MCP `new` asks the same questions — [MCP](mcp.md#new). The web dashboard asks them in its
 new-project wizard — [Web](web.md#new-project).

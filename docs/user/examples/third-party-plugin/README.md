@@ -1,9 +1,9 @@
 # third-party-plugin
 
-A jk build plugin authored **outside** the jk tree, compiled against the published SDK
-coordinate `cc.jumpkick:jk-plugin-sdk:<version>` — the shape every plugin not shipped inside jk
+A JumpKick build plugin authored **outside** the JumpKick tree, compiled against the published SDK
+coordinate `cc.jumpkick:jk-plugin-sdk:<version>` — the shape every plugin not shipped inside JumpKick
 takes. It owns the `[hello]` table, contributes a javac flag declaratively, and carries a code
-layer jk forks as a worker, which adds a `jk hello` command.
+layer JumpKick forks as a worker, which adds a `jk hello` command.
 
 ```text
 jk.toml                                   # depends on cc.jumpkick:jk-plugin-sdk:<version>
@@ -27,12 +27,12 @@ greeting = "hi"
 bytes under their pin and adds the plugin's SDK floor (`jk-plugin-sdk`, `jk-host` at the version
 the manifest's `sdk` names) to the lock as `plugin`-scoped rows resolved from the consumer's
 `[repositories]`; the worker forks with the jar plus those rows. A manifest without `sdk` is
-pinned at the running jk's version, and the lock says so in a note. The javac flag applies to the consumer's compile
+pinned at the running JumpKick's version, and the lock says so in a note. The javac flag applies to the consumer's compile
 and is part of its compile key. The code layer forks only after `jk trust plugin sha256:<hex>` — a path pin is trusted
-by its bytes, the sha256 its `[plugins]` row carries, and jk refuses untrusted third-party code with that exact
+by its bytes, the sha256 its `[plugins]` row carries, and JumpKick refuses untrusted third-party code with that exact
 remedy.
 
-Once trusted, the plugin's command runs in the consumer like any jk command, forked with the same
+Once trusted, the plugin's command runs in the consumer like any `jk` command, forked with the same
 SDK floor as its build steps:
 
 ```console
@@ -46,7 +46,7 @@ command with the last lines of its stderr.
 ## Where the SDK comes from
 
 The SDK resolves like any first-party coordinate, from `https://jumpkick.build/repo/`, and the
-sample's committed `jk-lock.toml` pins it there: jk never asks Maven Central for `cc.jumpkick`, so
+sample's committed `jk-lock.toml` pins it there: JumpKick never asks Maven Central for `cc.jumpkick`, so
 a look-alike there cannot stand in for it. Each release also puts the SDK on Maven Central, at the
 same version, for a plugin built with Maven or Gradle. The integration test that drives this sample end
 to end (`ThirdPartyPluginExampleTest`) publishes the SDK a checkout built — `jk publish -l
@@ -55,5 +55,5 @@ that repository, so the bytes under test are the checkout's own.
 
 Two versions in `jk-plugin.toml` describe the SDK: `sdk` is the exact `jk-plugin-sdk` release the
 code compiled against — the same number as the `[dependencies]` pin in `jk.toml`, and what a
-consumer's lock pins the worker's floor at — and `jk-compat` is the oldest jk that may load the
-plugin; jk refuses an older one with an upgrade error instead of failing inside the worker.
+consumer's lock pins the worker's floor at — and `jk-compat` is the oldest JumpKick release that may load the
+plugin; JumpKick refuses an older one with an upgrade error instead of failing inside the worker.

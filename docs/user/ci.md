@@ -79,7 +79,7 @@ for its lifetime and the second engine is refused with the running build's numbe
 is pinned by the engine's `SharedCacheAcrossCheckoutsE2eTest`, which builds one workspace from two
 checkouts through one cache.
 
-## Installing jk on a runner
+## Installing JumpKick on a runner
 
 Pin the release, and keep the pin in one file so a new release is one edit:
 
@@ -96,7 +96,7 @@ moves under your builds. `JK_HOME` puts the whole installation somewhere other t
 `${{ github.workspace }}/.jk-home` keeps it inside the checkout and out of any restored cache. The
 installer verifies the release signature and checksum before it writes anything, and the `CI`
 variable every hosted runner sets keeps it non-interactive. To move to a new release, change the
-one line in `.jk/ci/ci-bootstrap-version` and let the pipeline prove it. jk's own repository works
+one line in `.jk/ci/ci-bootstrap-version` and let the pipeline prove it. JumpKick's own repository works
 this way, with a guard that refuses a version spelled in a workflow
 ([self-host](../contributors/self-host.md#the-bootstrap-pin)).
 
@@ -159,7 +159,7 @@ results with the baseline's reason, so the code-scanning view shows what the tea
 Pin every action to a full commit SHA with its release tag in a trailing comment
 (`uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0`) and open every
 workflow with `permissions: contents: read`, elevating one scope at a time under the job that
-writes; jk's own repository holds its workflows to both with the `workflow-pins-permissions`
+writes; JumpKick's own repository holds its workflows to both with the `workflow-pins-permissions`
 guard under `jk guard` and with `scripts/check-workflows.sh` in CI's workflow-lint job, judged
 over one fixture, and lets Dependabot move the pins.
 

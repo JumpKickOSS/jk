@@ -1,7 +1,7 @@
 # Compatibility policy
 
 What a release may change in the formats a project depends on, and how a breaking change is
-announced. Every repo that adopts jk commits a `jk.toml` and a `jk-lock.toml` and points agents
+announced. Every repo that adopts JumpKick commits a `jk.toml` and a `jk-lock.toml` and points agents
 at `target/jk-results.md` and the MCP tools; those are the surfaces this page governs. The
 pre-1.0 rule that version numbers stay at 1 is stated in
 [Architecture](architecture.md#schema-freeze-until-10).

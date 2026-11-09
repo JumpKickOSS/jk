@@ -5,7 +5,7 @@ visual CLI; **agents should not scrape it.**
 
 **First:** run `jk skill` (or MCP `skill` / resource `jk://skill`). That is the
 system prompt for JumpKick — models have not been trained on this tool. A project's
-`AGENTS.md` says the same thing in [jk's section](#jks-section-of-agentsmd).
+`AGENTS.md` says the same thing in [JumpKick's section](#jks-section-of-agentsmd).
 
 Product stance and event names: [Machine output](machine-output.md). MCP tool reference:
 [MCP](mcp.md). The “fix my failing build” recipe: [Troubleshooting](troubleshooting.md).
@@ -13,20 +13,20 @@ Product stance and event names: [Machine output](machine-output.md). MCP tool re
 ## Wiring a project for agents
 
 `jk agents` wires a project for the coding agents that work in it, and `jk agents --remove` takes
-jk's entries back out. It is idempotent, so it is also the command to run after upgrading jk.
+JumpKick's entries back out. It is idempotent, so it is also the command to run after upgrading JumpKick.
 
-jk owns one section of `AGENTS.md`, between `<!-- BEGIN:jumpkick -->` and `<!-- END:jumpkick -->`,
-and its own entries in the agent files below. Everything else in those files is the project's; jk
-never edits it. A file jk cannot parse as strict JSON is left as it was, with a note.
+JumpKick owns one section of `AGENTS.md`, between `<!-- BEGIN:jumpkick -->` and `<!-- END:jumpkick -->`,
+and its own entries in the agent files below. Everything else in those files is the project's; JumpKick
+never edits it. A file JumpKick cannot parse as strict JSON is left as it was, with a note.
 
 | When | What happens |
 |------|--------------|
-| `jk new`, `jk init`, `jk import` | `AGENTS.md` with jk's section, the files of each agent in use, and a first code graph (under `target/`, not committed). |
+| `jk new`, `jk init`, `jk import` | `AGENTS.md` with JumpKick's section, the files of each agent in use, and a first code graph (under `target/`, not committed). |
 | The dashboard's new-project wizard, MCP `new` | The same files, for the engine's agents setting, and for MCP `new` also the calling client's agent, including when MCP `new` hands the human a wizard link; the wizard shows them and the notes (the last names the agents wired, including one whose folder the template ships) on the new project's page, and MCP `new` returns them. The code graph comes with the first build. |
 | `jk agents [dir]` | The same, on demand, at the workspace root (or `dir`). Prints what it did. |
 | `jk agents --all` | Every supported agent, not only those in use here. |
-| `jk agents --remove` | jk's entries out of all of the above; a file left empty is deleted. |
-| Any build verb (`jk build`, `jk test`, …) | A section that differs from this jk's guide is rewritten. A file without the section is left alone. |
+| `jk agents --remove` | JumpKick's entries out of all of the above; a file left empty is deleted. |
+| Any build verb (`jk build`, `jk test`, …) | A section that differs from the installed JumpKick's guide is rewritten. A file without the section is left alone. |
 
 `JK_AGENTS=none` makes `jk agents`, `new`, `init` and `import` write `AGENTS.md` only; `JK_AGENTS=all` wires every
 agent. The wizard and MCP `new` have no shell of their own, so they read `JK_AGENTS` and detect agents in
@@ -43,7 +43,7 @@ when the calling shell belongs to it, or when its CLI is on `PATH` (`claude`, `c
 |-----------|---------|
 | A project that existed before this | `jk agents` |
 | Wire every supported agent, not only the ones here | `jk agents --all` |
-| Codex, or any agent jk does not write files for | `codex mcp add jk -- jk mcp`, or `jk mcp` in the client's MCP settings |
+| Codex, or any agent JumpKick does not write files for | `codex mcp add jk -- jk mcp`, or `jk mcp` in the client's MCP settings |
 | Commit the generated files | `git add AGENTS.md CLAUDE.md .mcp.json .claude .cursor .vscode .gemini opencode.json` (only the ones that exist) |
 | Undo it | `jk agents --remove` |
 
@@ -52,30 +52,30 @@ Any other agent reads `AGENTS.md` and needs the one MCP command above.
 
 ### Claude Code
 
-| File | jk's entry |
+| File | JumpKick's entry |
 |------|-----------|
 | `CLAUDE.md` | `@AGENTS.md`, so Claude Code reads the same guide as every other agent |
 | `.mcp.json` | the `jk` server (`jk mcp`) |
 | `.claude/settings.json` | `mcp__jk` and `Bash(jk *)` allowed, the `jk` server pre-approved, and one `PreToolUse` hook on `Bash` and `Grep` |
 
-The hook is `jk agent-hook`, so its behaviour changes with jk, not with the file. It denies `mvn` and
-`gradle` (with the jk command to use instead) and answers a grep for a symbol, such as `OrderService`
+The hook is `jk agent-hook`, so its behaviour changes with JumpKick, not with the file. It denies `mvn` and
+`gradle` (with the `jk` command to use instead) and answers a grep for a symbol, such as `OrderService`
 or `Order.total`, with a pointer to `jk graph callers` / `read` / `rename`. It never blocks a grep.
 Text searches pass untouched.
 
 ### Cursor, VS Code, Gemini CLI, opencode
 
-| Agent (in use when) | File | jk's entry |
+| Agent (in use when) | File | JumpKick's entry |
 |---|---|---|
-| Cursor (`cursor-agent` on `PATH`, or `.cursor/` exists) | `.cursor/mcp.json`, `.cursor/rules/jk.mdc` | `mcpServers.jk`, the `jk mcp` server; an always-on rule, owned by jk: call `rename` first, never grep after it |
+| Cursor (`cursor-agent` on `PATH`, or `.cursor/` exists) | `.cursor/mcp.json`, `.cursor/rules/jk.mdc` | `mcpServers.jk`, the `jk mcp` server; an always-on rule, owned by JumpKick: call `rename` first, never grep after it |
 | VS Code (`.vscode/` exists) | `.vscode/mcp.json` | `servers.jk`, a `stdio` server running `jk mcp` |
 | Gemini CLI (`.gemini/` or `GEMINI.md` exists) | `.gemini/settings.json` | `mcpServers.jk` with `trust` set, and `AGENTS.md` added to `context.fileName` so Gemini reads the guide |
 | opencode (`opencode.json`, `opencode.jsonc` or `.opencode/` exists) | `opencode.json` | `mcp.jk`, a local server running `jk mcp` |
 
-| agy (`agy` on `PATH`, or `.agents/rules/` exists) | `.agents/rules/jk.md` | an always-on rule, owned by jk: take `callers` and `rename` answers as final instead of re-opening the files they name |
+| agy (`agy` on `PATH`, or `.agents/rules/` exists) | `.agents/rules/jk.md` | an always-on rule, owned by JumpKick: take `callers` and `rename` answers as final instead of re-opening the files they name |
 
 Most agents read `AGENTS.md` and a project's MCP files (`.mcp.json` and the rest) only in a folder
-you have trusted, which jk cannot do on your behalf. `jk agents`, `jk new` and `jk import` list that
+you have trusted, which JumpKick cannot do on your behalf. `jk agents`, `jk new` and `jk import` list that
 step, and any other step left to you (Codex's `codex mcp add`), as numbered notes after the files
 they wrote.
 
@@ -159,7 +159,7 @@ jk test -O jsonl
 export JK_OUTPUT=jsonl          # same for any BuildPlan command
 ```
 
-Every JSONL object includes at least `schema` (always `1` until jk 1.0), `ts`, and `type`.
+Every JSONL object includes at least `schema` (always `1` until JumpKick 1.0), `ts`, and `type`.
 Most lines also carry aggregate `progress` (0–100 or `null`).
 
 ## MCP in one paragraph

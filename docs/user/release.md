@@ -18,7 +18,7 @@ CI run on the tag starts the build and the upload, and that stage re-runs none o
 to a branch or a pull request starts no run.
 
 A repository can also cut the release from its Actions tab: a workflow that runs
-`jk release --patch --skip-tests --push` (jk's own is `cut-release.yml`) tags the version, commits
+`jk release --patch --skip-tests --push` (JumpKick's own is `cut-release.yml`) tags the version, commits
 the next one and pushes both; the tests are CI's. A push made with the job's `GITHUB_TOKEN` starts no workflow, so the job
 ends by starting the tag's workflow itself (`gh workflow run ci.yml --ref "$tag"`).
 
@@ -95,6 +95,6 @@ Secrets never go in `jk.toml`; `[publish]` refuses a `password`, `token` or `pas
 
 ## Untested here
 
-The GitHub Actions snippet is not run by jk's own tests; the verbs it calls are
+The GitHub Actions snippet is not run by JumpKick's own tests; the verbs it calls are
 (`jk publish --tag` and `jk release --publish --push` against a local repository and a bare git
 remote).

@@ -60,23 +60,23 @@ has nothing to say. This section is the one home for release highlights; there i
 - **A broken `config.toml` is named, not ignored.** A file that does not parse fails every command
   that resolves, fetches or authenticates, naming the file, line and column; `jk doctor` keeps
   running and points at the spot.
-- **Release jars are the same bytes from every builder.** The embedded SBOM names jk without its
+- **Release jars are the same bytes from every builder.** The embedded SBOM names JumpKick without its
   version, and Guava is managed at 33.8.0-jre, past the CompactHashMap deserialization advisory.
 
 ### 0.50.2
 
 - **`jk agents` wires a project for its coding agents.** `jk agents` (and `jk new`, `init`,
-  `import`) writes jk's `AGENTS.md` section and each agent's own files: for Claude Code a
-  `CLAUDE.md` import, the jk MCP server and its permissions, and a hook that turns `mvn`, `gradle`
-  and symbol greps toward jk; rules for Cursor, VS Code, Gemini CLI, opencode, agy, grok and muse;
-  Codex reads `AGENTS.md` itself. `jk agents --remove` takes jk's entries back out.
+  `import`) writes JumpKick's `AGENTS.md` section and each agent's own files: for Claude Code a
+  `CLAUDE.md` import, the JumpKick MCP server and its permissions, and a hook that turns `mvn`, `gradle`
+  and symbol greps toward JumpKick; rules for Cursor, VS Code, Gemini CLI, opencode, agy, grok and muse;
+  Codex reads `AGENTS.md` itself. `jk agents --remove` takes JumpKick's entries back out.
 - **A cold first build downloads half as long.** The sync stages every worker and toolchain a build
   forks, in parallel, so nothing downloads after it; a lock asks for each POM and checksum once.
   `jk sync` is the build's own lock and sync phase, and every download, from a JDK to a plugin
   worker's own, shows on the run's board in the terminal, the web UI and MCP.
 - **Central's mirror, vouched for by Central.** Release POMs and jars come from Google's Central
   mirror first, checked against the `.sha1` Central publishes; bytes Central disowns are fetched
-  again from Central. A plugin step's resolver goes through the proxy jk chose for each repository.
+  again from Central. A plugin step's resolver goes through the proxy JumpKick chose for each repository.
 - **MCP `rename` and `callers` are sharper.** A rename also edits the comment and doc mentions that
   can only mean the method, names the test classes it touched, and runs the check its answer names.
 - **`-O jsonl` is the wire record.** Each event carries its envelope (`schema`, `type`, `jid`), the
@@ -86,16 +86,16 @@ has nothing to say. This section is the one home for release highlights; there i
 
 ### 0.50.1
 
-- **Build scripts move to `.jk/scripts/`.** `.jk/` is now a project's checked-in jk state, one
+- **Build scripts move to `.jk/scripts/`.** `.jk/` is now a project's checked-in JumpKick state, one
   directory per concern: `.jk/scripts/` (the build scripts, the only build input), `.jk/graph/`
   (the code graph). `jk/` is no longer read, and a script left at the top of `.jk/` does not run —
   the build names it once. To move, put the scripts from `.jk/` (or `jk/`) in `.jk/scripts/`.
   `selective-plan.json` is written under `target/`.
 - **MCP `rename`** (on the default list; `jk graph rename T.m newName`) renames a method with every
   override, call, method reference and doc link the compiled classes record, in one call. Claude Code
-  renamed across commons-lang, petclinic and jk in 2 to 9 turns, against 7 to 43 without the graph.
+  renamed across commons-lang, petclinic and JumpKick's own tree in 2 to 9 turns, against 7 to 43 without the graph.
   The answer ends with the tests to run: the modules it edited, not the whole workspace.
-- **A reference index, written by jk's own javac.** Every Java compile now records where each name
+- **A reference index, written by JumpKick's own javac.** Every Java compile now records where each name
   that resolves to a type, method, constructor, field, enum constant or record component is written —
   declarations, calls, imports, annotations, Javadoc links — by the symbol the class files name, with
   its exact span, under `target/incremental/`. No new dependency and no second parse: about a tenth
@@ -121,16 +121,16 @@ has nothing to say. This section is the one home for release highlights; there i
 
 ### 0.50.0
 
-- **jk updates itself.** The engine checks for a new release, downloads it and installs it between
+- **JumpKick updates itself.** The engine checks for a new release, downloads it and installs it between
   builds; `self-update = "auto" | "ask" | "never"` in `~/.jk/config.toml` (or `JK_SELF_UPDATE`)
   decides (unset, it asks at a terminal and updates everywhere else), and a release older than the
-  installed jk is held rather than installed. `jk self update` checks, downloads and installs as separate steps.
+  installed JumpKick is held rather than installed. `jk self update` checks, downloads and installs as separate steps.
 - **`jk graph callers`** (MCP `callers`, on the default list) answers who calls a method, complete,
   from the compiled classes: overload by overload, through the supertype methods it overrides, and
   with `-t` everything that can end up running it. Asked those questions, agents answered every one
   and took a fifth to two fifths of the turns they took without the graph
   ([Asking about the code](../user/why.md#asking-about-the-code)).
-- **The code graph is jk's own**: answers name each symbol `Owner.member()` at `file:line`, `find`
+- **The code graph is JumpKick's own**: answers name each symbol `Owner.member()` at `file:line`, `find`
   lists every override in one call, and an edited source drops only its own compiled facts. The
   graphify format, mirror and commands are gone.
 - **`[format] enforce = true`** makes formatting a step of `jk guard`: it formats what changed, and
@@ -173,7 +173,7 @@ has nothing to say. This section is the one home for release highlights; there i
 - **Central is stored once, in `~/.m2`.** Central and the repositories `settings.xml` declares keep their
   jars in the Maven local repository and the store keeps only memos; a garbage collector ages tool
   installs, compiler closures, repository trees and test sandboxes by size and use, tighter as the
-  disk fills. `jk cache clean --m2` and `[m2] auto-clean` remove only files jk fetched;
+  disk fills. `jk cache clean --m2` and `[m2] auto-clean` remove only files JumpKick fetched;
   `jk storage` reports tool installs, scratch space and the test pool.
 - **Windows builds at full speed.** The engine and everything it forks opt out of power throttling,
   so a hybrid CPU no longer runs the build on its efficiency cores; a suite's class walls are recorded
@@ -208,7 +208,7 @@ has nothing to say. This section is the one home for release highlights; there i
 - **Every byte a build runs is in the lock.** Plugin tools (protoc, aapt2, r8, the IntelliJ
   distribution), tool closures, URL-fetched tools, packager tools and Kotlin compiler plugins are
   pinned by sha256 — per platform where the tool is — and fetched fail-closed; `jk sync` pre-fetches
-  them. An older jk refuses a lock with `[[tool]]` rows: update jk before you relock.
+  them. An older JumpKick refuses a lock with `[[tool]]` rows: update it before you relock.
 - **Warm workers.** The Java, Kotlin and Groovy compilers, the formatter and the code-graph worker
   stay up between builds with JEP 514 startup caches, share by heap, and idle out after
   `JK_WORKER_LINGER_MIN` (30) minutes — at once when the host is short of memory. On CI the latest
@@ -216,7 +216,7 @@ has nothing to say. This section is the one home for release highlights; there i
 - **`jk outdated` and `jk update` cover everything they report:** framework versions
   (`[spring-boot]`, `[micronaut]`), the Kotlin/Groovy/Scala toolchains, tool pins, guard packs and
   variant pins; a relocated artifact is named with its new coordinate.
-- **`.env` reaches what jk starts** — the app under `jk run` and `jk dev`, dev servers, `jk tool
+- **`.env` reaches what JumpKick starts** — the app under `jk run` and `jk dev`, dev servers, `jk tool
   run` and installed tool launchers — beneath the real environment.
 - **Front ends.** `jk test` works in a workspace whose JVM module depends on a node module; `jk dev`
   infers the front end's dev server (the webapp template no longer declares a sidecar); SIGTERM and
@@ -262,7 +262,7 @@ Also in this release (from 0.15.3):
 - **IntelliJ:** a first-party `[intellij]` battery builds IntelliJ Platform plugins; the
   ide-model's SDK is the JDK the build compiles the module with, so a `java = 17` module on a
   JDK 25 host gets a usable SDK at level 17.
-- **Smaller:** an older jk relocks a newer jk's lock when nothing would be dropped.
+- **Smaller:** an older JumpKick relocks a newer one's lock when nothing would be dropped.
 
 ### 0.15.1
 
@@ -341,7 +341,7 @@ Also in this release (from 0.15.3):
   build-logic script bytes and a root anchor's checkout scope, so "nothing to do" means it.
 - **AOT is the user's to ask for.** The engine-side Leyden substrate is gone. `jk build
   --aot-cache`, `[image]` and `[train]` stay exactly as they were, and each worker keeps one
-  startup cache keyed to the JDK jk itself runs on.
+  startup cache keyed to the JDK JumpKick itself runs on.
 - **Windows.** An action-cache store no longer loses its record to a concurrent reader, and a
   lookup no longer fails the build when a store is replacing the name it is reading. A tool
   version, a URL cache name and a generated launcher's main class are each confined to what they
@@ -402,7 +402,7 @@ Also in this release (from 0.15.3):
 
 ### 0.13.6
 
-- **Every JDK or GraalVM jk installs for you shows the `jk jdk install` experience.** The installer's
+- **Every JDK or GraalVM JumpKick installs for you shows the `jk jdk install` experience.** The installer's
   engine warm-up, a build that pins a JDK not yet in the store, and a native build's GraalVM all
   render the same download bar, install phase and "installed at" line, then continue; plain mode
   prints the phases, `-O jsonl` emits a `toolchain` plan ahead of the build's.
@@ -412,8 +412,8 @@ Also in this release (from 0.15.3):
   the JVM client on a JDK 25+ and says so.
 - **Gradle is back as the bootstrap for hosts without a hosted native client** (macOS, Windows, Linux
   aarch64):
-  `./gradlew dist installLocal` builds the first jk; jk remains the gate and the release builder.
-- Smaller: every jk script writes under `target/`; CI bootstraps from the published 0.13.5.
+  `./gradlew dist installLocal` builds the first JumpKick; JumpKick remains the gate and the release builder.
+- Smaller: every JumpKick build script writes under `target/`; CI bootstraps from the published 0.13.5.
 
 ### 0.13.5
 
@@ -427,7 +427,7 @@ Also in this release (from 0.15.3):
   it on every host with no native client — macOS on Intel, Windows on ARM (`JK_CLIENT=jvm`),
   Linux on ARM, FreeBSD, Solaris, anything a JDK 25 runs on — as `bin/jk` (`bin/jk.bat`) over the
   JDK you provide. `jk self update` moves that install too.
-- **One build system.** jk builds, tests, guards and releases itself with jk alone; the Gradle
+- **One build system.** JumpKick builds, tests, guards and releases itself with JumpKick alone; the Gradle
   build of the product tree is gone, and CI has one gate.
 - **Compile keys are ABI tokens.** Java, Kotlin and Groovy compiles key their classpath on each
   entry's ABI, so a body-only change in a dependency is a cache hit downstream, and `jk explain`
@@ -436,8 +436,8 @@ Also in this release (from 0.15.3):
   `jk build`, then the install lines above one wedge. Installing the product tree twice reaches a
   fixed point, the shelf records which engine packaged each worker, and `jk doctor` compares it
   with the home's engine.
-- **`jk publish -S`** writes CycloneDX 1.6 and SPDX documents; every SBOM jk writes comes from
-  one writer, and a release ships the SBOM jk wrote of itself with provenance attestations.
+- **`jk publish -S`** writes CycloneDX 1.6 and SPDX documents; every SBOM JumpKick writes comes from
+  one writer, and a release ships the SBOM JumpKick wrote of itself with provenance attestations.
 - **CI and workflows are held by guards**: every action pinned to a commit, every token
   read-only unless a job names the scope it writes, the lock audited at HIGH on every pull request.
 - Smaller: `-m a -m b` accumulates; `jk test -S` names a class its tag filter dropped and the
@@ -455,8 +455,8 @@ Also in this release (from 0.15.3):
 - The engine logs through one leveled facade to a capped log that rolls itself; `jk engine status`
   reports the log's size and a connection that never speaks is closed and counted.
 - Workers start from an environment allow-list; `[env] inherit` opts a module back in.
-- Every jk-built Java module compiles under NullAway with JSpecify null-marking, in jk's own build.
-- The release workflow ships what jk builds of itself, bootstrapped from the hosted release
+- Every Java module JumpKick builds of itself compiles under NullAway with JSpecify null-marking.
+- The release workflow ships what JumpKick builds of itself, bootstrapped from the hosted release
   `.jk/ci/ci-bootstrap-version` pins.
 
 ## Benchmarks each release
@@ -540,7 +540,7 @@ same signed sums, the first time `jk mvn` runs and finds none under `~/.jk/lib/`
 copies it there). All three jars are platform-neutral, built by every platform job, and
 `scripts/flatten-release.sh` takes linux-x86_64's copy after checking the others are
 byte-identical. That identity assumes one bootstrap: the embedded SBOM
-(`META-INF/sbom/application.cdx.json`) names the jk that packaged the jar as its tool, and nothing
+(`META-INF/sbom/application.cdx.json`) names the JumpKick that packaged the jar as its tool, and nothing
 else in an assembly varies between builds of one commit, so every lane packaging with the pinned
 `.jk/ci/ci-bootstrap-version` writes the same bytes, while a dogfood tree whose install re-shelved
 under the newly built engine writes a jar that differs by that one field. A release directory is
@@ -615,7 +615,7 @@ no pull request.
 
 The `jk release` that Cut release runs is the pinned bootstrap release
 ([self-host](self-host.md#the-bootstrap-pin)), so a `jk release` feature, and a `jk.toml` key that
-only a newer jk reads, takes effect for CI one release after it ships.
+only a newer JumpKick reads, takes effect for CI one release after it ships.
 
 ## CI and CD (started by the release tag)
 
@@ -656,8 +656,8 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 
 1. CI is green on the tag `v0.14.0` (`jk release --push`). The version must equal what `jk.toml` declares;
    `scripts/release-version.sh` refuses any other tag before anything is built.
-2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
-   under `target/dist`). The jk that builds is the hosted release `.jk/ci/ci-bootstrap-version` pins,
+2. Matrix builds native client + engine jar per OS/arch — with JumpKick itself (`jk build`, the layout
+   under `target/dist`). The JumpKick that builds is the hosted release `.jk/ci/ci-bootstrap-version` pins,
    installed as a user installs it: the native client on every row. The linux-x86_64
    lane also runs `jk install`, so the first-party plugins it stages for `repo/` are the commit's
    own.
@@ -701,7 +701,7 @@ jumpkick.build serves native clients for **linux-x86_64**, **linux-aarch64**, **
 **windows-x86_64**, beside the engine jar and the JVM client. Each has a row in the release
 matrix, and `JK_RELEASE_PLATFORMS` requires all four. macOS on Intel has no native
 client and never will. The installers put the JVM client on such a host, and a contributor there builds the tree with it and
-lets the checkout's own jk take over ([self-host](self-host.md#bootstrap)).
+lets the checkout's own JumpKick take over ([self-host](self-host.md#bootstrap)).
 
 Users on those hosts — and on every host no native client will ever be built for — install the
 **JVM client** instead: `jk-<version>.jar` is the CLI module's assembly (`[application] assembly =
@@ -713,7 +713,7 @@ jar of its own version from the same release directory, so the pairing gap the c
 `repo/` has does not apply to it.
 
 The first client for a platform is produced by the owner on a machine of that architecture: a
-JDK 25 with GraalVM, this checkout, and a jk to build it — the client module is a plain JVM
+JDK 25 with GraalVM, this checkout, and a JumpKick to build it — the client module is a plain JVM
 program (`cc.jumpkick.cli.Jk`, published as `cc.jumpkick:jk-cli:<version>` with its POM on
 `jumpkick.build/repo/` by `jk install` + `scripts/publish-maven-repo.sh`), so on a machine with no
 native client it runs from that closure on a JVM, and `jk install` on this checkout writes it as
@@ -820,7 +820,7 @@ scripts/publish-github-release.sh 0.13.6 RELEASE_NOTES.md target/release/0.13.6/
 
 The plugin SDK is a public coordinate: `cc.jumpkick:jk-plugin-sdk` and its one dependency
 `cc.jumpkick:jk-host` go to Maven Central through the Central Portal at the release version, from
-the same tree the release was built from. jk itself resolves `cc.jumpkick` from `jumpkick.build`
+the same tree the release was built from. JumpKick itself resolves `cc.jumpkick` from `jumpkick.build`
 alone; Central serves plugin authors who build with Maven or Gradle.
 
 `release.yml` does it in three steps of `scripts/publish-central.sh`:

@@ -8,7 +8,7 @@ jk web -n       # print only
 The resident engine serves a small dashboard (thin renderer; the engine owns all build
 logic). `jk engine status` also prints the authenticated URL.
 
-The dashboard is the **supervisor's view**. When an agent drives jk, the human watching has no
+The dashboard is the **supervisor's view**. When an agent drives JumpKick, the human watching has no
 terminal of their own to read. The landing page answers three questions for every live session:
 what is each agent trying to do, what did it change, and does it need you. Every number comes from
 the same facts as `target/jk-results.md`, the journal and MCP, and colour means state: blue
@@ -28,17 +28,17 @@ working, green done, red failed, amber needs you, cyan identity.
   `jk test` sits beside the agent's. Click a card to select it; the route carries the choice
   (`#console/<session-id>`). With none chosen the console holds the first card.
 - **The selected session's current episode**: its outcome, title and title source; episode *n* of
-  *m*, the project, its wall (to now while it works), the time jk spent on its actions and runs,
+  *m*, the project, its wall (to now while it works), the time JumpKick spent on its actions and runs,
   and the files its runs saw change; an **attempts arc**, one segment per run, red, green or blue;
   and its **timeline**, one line per action in the order it happened: code-graph questions with
   the first line of their answer, renames, dependency changes, runs, and `edited N files` just
-  before the run that saw the edits (jk sees edits at the next run, through its file delta). A run
+  before the run that saw the edits (JumpKick sees edits at the next run, through its file delta). A run
   line shows its kind, its number and outcome chip (`#1066 · 2 failed`), the one-chip summary of
   what changed since the run before, and the first failing test or error. Clicking the chip opens
   the run page. **Earlier episodes** of the session fold below it; open one for its timeline.
 - **This session changed**: the files its runs changed, migrations (`V7 new`), dependency
   changes, the newest guard run's outcome, and the tests its runs fixed and broke.
-- **How jk served the agent**: tool calls (every action and run), runs, jk's wall time across
+- **How JumpKick served the agent**: tool calls (every action and run), runs, JumpKick's wall time across
   them, and the share of tasks the cache or an up-to-date check skipped.
 - **Engine**: host CPU and RAM, the action cache's size and the builds running, with a link to
   Admin.
@@ -205,7 +205,7 @@ every page shows the builds running and whether the page is live.
 ## New project
 
 **New project** (on the Projects page) opens the wizard at `#new`. It asks the same form `jk new`
-asks on a terminal and MCP `new` asks through elicitation, served by the engine: jk's step
+asks on a terminal and MCP `new` asks through elicitation, served by the engine: JumpKick's step
 (language, template, name, group, directory, and the layout when the template renders more than
 one), then the chosen template's own questions ([Templates](templates.md)), with its advanced
 ones folded, then a review. Picking another template or language brings that template's

@@ -66,7 +66,7 @@ harness that knows where Maven puts things finds them there:
 | Test classes, test resources copied in | `target/test-classes/` |
 | Annotation-processor sources | `target/generated-sources/annotations/`, `target/generated-test-sources/test-annotations/` |
 | Jar, sources jar, javadoc jar | `target/<name>-<version>.jar`, `-sources.jar`, `-javadoc.jar` |
-| Fat jar, minified jar (jk's own) | `target/<name>-<version>-all.jar`, `-min.jar` |
+| Fat jar, minified jar (JumpKick's own) | `target/<name>-<version>-all.jar`, `-min.jar` |
 | War, exploded war (`[war]`) | `target/<name>-<version>.war`, `target/<name>-<version>/` |
 | Runtime image (`[jlink]`) | `target/<name>-jri/`; its training runs' scratch in `target/jlink-train/` |
 | Native binary | `target/<name>` |
@@ -74,7 +74,7 @@ harness that knows where Maven puts things finds them there:
 | JaCoCo | `target/jacoco.exec`, report in `target/site/jacoco/` |
 | Javadoc HTML | `target/site/apidocs/` |
 
-jk's own working state sits beside them (`kotlin/`, `groovy/`, `incremental/`, `plugin/`, …),
+JumpKick's own working state sits beside them (`kotlin/`, `groovy/`, `incremental/`, `plugin/`, …),
 and its reports (`jk-results.md`, `jk-guards.*`) in the `target/` of the directory a build ran
 from.
 
@@ -104,7 +104,7 @@ filtered = ["src/filter/resources"]     # ${name} and @name@ become the value of
 ```
 
 A filtered file's `${name}` and `@name@` take their value from `[resources.properties]`, then
-from `project.groupId`, `project.artifactId` and `project.version`, which jk sets itself.
+from `project.groupId`, `project.artifactId` and `project.version`, which JumpKick sets itself.
 `\${name}` stays `${name}`. A `${name}` with no value is copied as written and warned. Images and
 files that are not UTF-8 are copied as they are. A layout root may be listed as filtered.
 `jk import` writes the table from a POM's `<resources>`.

@@ -1,6 +1,6 @@
 # Node.js
 
-jk builds a JavaScript or TypeScript front end the way it builds a JVM module: one Node.js pinned in
+JumpKick builds a JavaScript or TypeScript front end the way it builds a JVM module: one Node.js pinned in
 the lock and provisioned on demand, a frozen install, the project's own build and test scripts as
 cached steps, and the output packaged where the JVM side reads it.
 
@@ -31,8 +31,8 @@ version = 24
 ```
 
 A `package.json` at a JVM module's root is a project's tooling (linters, formatters) and is left
-alone, unless the module writes a `[node]` table without `dir`, which jk refuses. A module with a
-`package.json` and no JVM sources must declare `node` (jk proposes the version `.nvmrc`,
+alone, unless the module writes a `[node]` table without `dir`, which JumpKick refuses. A module with a
+`package.json` and no JVM sources must declare `node` (JumpKick proposes the version `.nvmrc`,
 `.node-version` or `package.json` names); a `[node]` table on a module with no `package.json` is
 refused.
 
@@ -92,27 +92,27 @@ release by name.
 
 | Command | Does |
 |---|---|
-| `jk node list` | Installed versions: jk's own and those nvm, fnm, volta, mise, asdf, Homebrew or the `PATH` put there; `*` marks the project's |
+| `jk node list` | Installed versions: JumpKick's own and those nvm, fnm, volta, mise, asdf, Homebrew or the `PATH` put there; `*` marks the project's |
 | `jk node list-remote` | Releases you can install, the newest of each major; `--lts`, `--major 24`, `--all` (also `ls-remote`) |
-| `jk node install [spec]` | Install `24`, `24.21.0`, `lts` (the default) or `latest` into jk's store; `--no-discover` downloads even when another manager has it. `jk tool install node:24` is the same install |
-| `jk node uninstall <version>` | Remove one of jk's installs; another manager's is never touched |
+| `jk node install [spec]` | Install `24`, `24.21.0`, `lts` (the default) or `latest` into JumpKick's store; `--no-discover` downloads even when another manager has it. `jk tool install node:24` is the same install |
+| `jk node uninstall <version>` | Remove one of JumpKick's installs; another manager's is never touched |
 | `jk node which` | Print the `node` the project uses: the lock's version, else the newest install that satisfies `node =` (also `home`) |
 | `jk node exec -- <cmd…>` | Run a command with the project's Node.js and package manager first on `PATH`, installing them if missing; `--node <spec>` uses another once |
 | `jk node run <script>` | Run a `package.json` script with the project's package manager |
-| `jk npx <args…>` | `jk node exec -- npx <args…>`: every argument is npx's, so `jk npx create-foo my-app` or `jk npx -y cowsay hi` needs no `--`; jk's own globals go before `npx` |
+| `jk npx <args…>` | `jk node exec -- npx <args…>`: every argument is npx's, so `jk npx create-foo my-app` or `jk npx -y cowsay hi` needs no `--`; JumpKick's own globals go before `npx` |
 | `jk npm <args…>` | `jk node exec -- npm <args…>` the same way (`jk npm install -D vitest`, `jk npm outdated`); npm whatever package manager the project uses |
 | `jk node pin [spec]` | Write `node =` (or `[node] version` when the module has a `[node]` table) into the nearest `jk.toml` and relock. With no spec: what `.nvmrc`, `.node-version` or `package.json` names, else the newest LTS. `-m <module>` pins a member; `--file` also writes `.node-version` for editors; `--no-lock` skips the relock |
-| `jk node verify` | Check each of jk's installs still runs and reports its version |
+| `jk node verify` | Check each of JumpKick's installs still runs and reports its version |
 | `jk node update` | Refresh the release index and report the project's pin against the newest of its major (`jk update` moves the lock) |
 
-`jk node exec`, `jk node run`, `jk npx` and `jk npm` use jk's package-manager caches, the ones `jk new` and the build
+`jk node exec`, `jk node run`, `jk npx` and `jk npm` use JumpKick's package-manager caches, the ones `jk new` and the build
 use, so a package `jk npx …` fetches is fetched once ([Supply chain](#supply-chain)).
 A cache you set yourself wins: one in the environment (`npm_config_cache` in any case, pnpm's
 `pnpm_config_store_dir` / `npm_config_store_dir`, `YARN_GLOBAL_FOLDER`, `BUN_INSTALL_CACHE_DIR`), or
 in the manager's config file in the directory, a parent of it or your home: `.npmrc` `cache=` (or
 pnpm's `store-dir=`; `npm_config_userconfig` names another user file), `pnpm-workspace.yaml`
 `storeDir`, `.yarnrc.yml` `globalFolder`, `bunfig.toml` / `~/.bunfig.toml` `[install.cache] dir`.
-npm's global `npmrc` is not read. The build always uses jk's caches.
+npm's global `npmrc` is not read. The build always uses JumpKick's caches.
 
 Every command takes `-O jsonl` ([machine output](machine-output.md#jk-node)). With the shell
 hook installed (`jk activate`), entering a project puts its locked Node.js and its package
@@ -137,7 +137,7 @@ the step sets `allow-unlocked = true`.
 
 Installs are frozen: the lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`) is
 required and never rewritten, and a missing one is an error with the command to create it. Each
-manager's cache is jk's (`~/.jk/cache/npm`, `~/.jk/cache/bun`, Yarn's global folder
+manager's cache is JumpKick's (`~/.jk/cache/npm`, `~/.jk/cache/bun`, Yarn's global folder
 `~/.jk/cache/yarn`, pnpm's store `~/.jk/store/pnpm-store`), so `jk cache` and `jk storage` see them;
 `jk new` and the `jk node` commands share them. Lifecycle scripts run as the project's `.npmrc` says; set `ignore-scripts`
 there to turn them off.
@@ -168,15 +168,15 @@ without it. Layers, defaults and inheritance: [Images § Node modules](images.md
 
 **From a hand-run build.** A README that says "run `npm install && npm run build` first" becomes
 `node = 24` in the front end's `jk.toml`: `jk build` installs and bundles it as cached steps, and the
-`vite.config` hack that pointed `build.outDir` into a resource directory goes, since jk places the
+`vite.config` hack that pointed `build.outDir` into a resource directory goes, since JumpKick places the
 output.
 
 `jk new -l node -t <framework> <name>` runs the framework's own generator under the newest LTS
 Node.js and writes the `jk.toml` that pins it ([Templates](templates.md#node-front-ends---lang-node)).
 `jk new -t webapp -f <framework>` swaps the webapp template's front end.
 
-A standalone project gets [jk's section of `AGENTS.md`](agents.md#jks-section-of-agentsmd). When the
-generator wrote an `AGENTS.md` of its own, jk's section goes below its title and the generator's text
+A standalone project gets [JumpKick's section of `AGENTS.md`](agents.md#jks-section-of-agentsmd). When the
+generator wrote an `AGENTS.md` of its own, JumpKick's section goes below its title and the generator's text
 stays below that; Next.js's managed block keeps its markers, so `next dev` finds it and leaves the
 file alone (`agentRules: false` in `next.config` stops Next writing it).
 
@@ -193,10 +193,10 @@ build served from `META-INF/resources`).
 ## Importing frontend-maven-plugin
 
 `jk import pom.xml` turns the plugin's executions into a node build. The version an install goal
-pins is `node = "=<version>"`; a frozen install (`npm ci`, `yarn install`) is jk's own
-`node-install`; the `build` and `test` scripts are jk's build and test; every other command is a
+pins is `node = "=<version>"`; a frozen install (`npm ci`, `yarn install`) is JumpKick's own
+`node-install`; the `build` and `test` scripts are `jk build` and `jk test`; every other command is a
 `[[node.steps]]` entry placed by the phase it ran in (`npx` and `yarn exec` as `npx` steps).
-`corepack yarn …` imports as `yarn …`, run by the Yarn jk provisions from `packageManager`.
+`corepack yarn …` imports as `yarn …`, run by the Yarn JumpKick provisions from `packageManager`.
 
 Where the build lands depends on where its bundler (webpack's `output.path`, Vite's
 `build.outDir`) wrote:
@@ -209,7 +209,7 @@ Where the build lands depends on where its bundler (webpack's `output.path`, Vit
   directories the bundler config names into it, and the consuming module depends on it with the
   old output path as its `webapp-root` or `classpath-root`.
 
-Either way the bundler config is rewritten to write `dist/`, and jk places the output; nothing is
+Either way the bundler config is rewritten to write `dist/`, and JumpKick places the output; nothing is
 built into `src/`. `jk import -U` prints every move and rewrite and changes nothing. Bower and
 the task-runner goals (grunt, gulp, karma, webpack, ember, jspm) are not imported: run them from an
 npm script or an `npx` step. Yarn 1 is not supported: a project on it imports with `[node] skip =

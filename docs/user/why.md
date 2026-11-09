@@ -33,7 +33,7 @@ Every claim links what backs it. Where JumpKick loses, the linked page says so.
 |---|---|---|
 | `target/jk-results.md` | One token-cheap report per invocation: what ran, each failure at its `file:line` with a fix hint, what was skipped, what to run next | [Machine output](machine-output.md) |
 | MCP in the engine | `run` returns a verdict; `diagnostics`, `deps`, `callers` and `skill` complete the default list of five, because every card costs the agent context on every turn. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
-| `jk skill` | The system prompt for a tool models were not trained on; jk keeps its section of `AGENTS.md` current on every build | [Skill](skill.md) · [Agents](agents.md) |
+| `jk skill` | The system prompt for a tool models were not trained on; JumpKick keeps its section of `AGENTS.md` current on every build | [Skill](skill.md) · [Agents](agents.md) |
 | `jk graph` | A code graph built in: code, config and docs, with nothing to install; indexed in seconds, with calls and overrides from the compiled classes. Answers name each symbol `Owner.member()` at `file:line` | [Code graph](graph.md) |
 | Named test rungs | The cheap unit suite by default, `--guard` before sharing, `--all` nightly; the report discloses what did not run | [Test rungs](#test-rungs) |
 | Guards and hooks | House rules as data: each violation names the rule, the sanctioned alternative and why, so the fix is mechanical; git hooks refuse banned commit trailers and hand-edited guard files | [Guards](guards.md) · [Agents](agents.md#hooks-and-protected-files) |
@@ -42,7 +42,7 @@ The measure is turns, tokens and wall time to green on broken builds, against Ma
 given the same agent tooling: [Agents reach green](#agents-reach-green).
 
 <!-- agents-claims:begin -->
-We asked coding agents from 6 vendors questions like "who calls this method?" With jk's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](#asking-about-the-code).)
+We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 ### 2. Never type `clean` again
@@ -66,17 +66,17 @@ runs nothing — or it is a bug.
 ### 3. Fast and frugal
 
 <!-- wall-claims:begin -->
-On [spring-petclinic](performance.md), jk is faster than Gradle on every row: clean build (0.37 s against 2.69 s), warm rebuild (0.09 s against 0.57 s), no-op (0.05 s against 0.53 s), one-file edit (0.13 s against 0.61 s) and test run (8.54 s against 9.97 s). It is faster than Maven on every row: clean build (0.37 s against 3.16 s), warm rebuild (0.09 s against 3.16 s), no-op (0.05 s against 2.37 s), one-file edit (0.13 s against 3.14 s) and test run (8.54 s against 10.10 s).
+On [spring-petclinic](performance.md), JumpKick is faster than Gradle on every row: clean build (0.37 s against 2.69 s), warm rebuild (0.09 s against 0.57 s), no-op (0.05 s against 0.53 s), one-file edit (0.13 s against 0.61 s) and test run (8.54 s against 9.97 s). It is faster than Maven on every row: clean build (0.37 s against 3.16 s), warm rebuild (0.09 s against 3.16 s), no-op (0.05 s against 2.37 s), one-file edit (0.13 s against 3.14 s) and test run (8.54 s against 10.10 s).
 
-Between builds jk keeps 863 MiB resident: 171 MiB for the engine, whose heap is capped at 256 MiB and trimmed back after every job, and the rest for warm compilers that exit after 30 idle minutes or as soon as the host runs short of memory. One engine serves every project on the machine. Gradle keeps 1,734 MiB, 2.0× as much: its daemon, which idles for three hours by default, and its workers. Maven keeps nothing resident and starts a fresh JVM for every build instead (2.37 s for a no-op). Peak whole-tree RSS during a run is lower than Gradle's on clean build, warm rebuild, no-op and one-file edit and higher on test run; it is higher than Maven's on every row.
+Between builds JumpKick keeps 863 MiB resident: 171 MiB for the engine, whose heap is capped at 256 MiB and trimmed back after every job, and the rest for warm compilers that exit after 30 idle minutes or as soon as the host runs short of memory. One engine serves every project on the machine. Gradle keeps 1,734 MiB, 2.0× as much: its daemon, which idles for three hours by default, and its workers. Maven keeps nothing resident and starts a fresh JVM for every build instead (2.37 s for a no-op). Peak whole-tree RSS during a run is lower than Gradle's on clean build, warm rebuild, no-op and one-file edit and higher on test run; it is higher than Maven's on every row.
 <!-- wall-claims:end -->
 
-The table behind those sentences — jk, Gradle and Maven on
+The table behind those sentences — JumpKick, Gradle and Maven on
 [spring-petclinic](https://github.com/spring-projects/spring-petclinic) doing the same work —
 with how it was measured and what "warm" means per tool, is in [Performance](performance.md):
 
 <!-- wall-table:begin -->
-| Scenario | jk median / p90 | Gradle median / p90 | Maven median / p90 |
+| Scenario | JumpKick median / p90 | Gradle median / p90 | Maven median / p90 |
 |---|---:|---:|---:|
 | Clean build | 0.37 s / 3.37 s | 2.69 s / 10.02 s | 3.16 s / 3.23 s |
 | Warm rebuild | 0.09 s / 0.12 s | 0.57 s / 0.60 s | 3.16 s / 3.20 s |
@@ -84,7 +84,7 @@ with how it was measured and what "warm" means per tool, is in [Performance](per
 | One-file edit | 0.13 s / 0.21 s | 0.61 s / 0.65 s | 3.14 s / 3.23 s |
 | Test run | 8.54 s / 8.84 s | 9.97 s / 18.27 s | 10.10 s / 11.42 s |
 
-| Scenario | jk peak RSS | Gradle peak RSS | Maven peak RSS |
+| Scenario | JumpKick peak RSS | Gradle peak RSS | Maven peak RSS |
 |---|---:|---:|---:|
 | Clean build | 593 MiB | 1,464 MiB | 546 MiB |
 | Warm rebuild | 544 MiB | 1,521 MiB | 540 MiB |
@@ -93,7 +93,7 @@ with how it was measured and what "warm" means per tool, is in [Performance](per
 | Test run | 1,993 MiB | 1,847 MiB | 1,189 MiB |
 | Idle, a minute after the test run | 863 MiB | 1,734 MiB | 0 MiB |
 
-Measured on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `c9ab742f7b18`); project spring-projects/spring-petclinic; Gradle 9.8.2; Maven 3.10.0; jk 0.41.1; 5 timed runs per cell. Banked 2026-10-26 at jk tree 1880fb554. Conditions: jk loadavg 1.4 at start, engine live jobs ?; Gradle loadavg 1.4 at start, engine live jobs ?; Maven loadavg 1.4 at start, engine live jobs ?.
+Measured on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `c9ab742f7b18`); project spring-projects/spring-petclinic; Gradle 9.8.2; JumpKick 0.41.1; Maven 3.10.0; 5 timed runs per cell. Banked 2026-10-26 at JumpKick tree 1880fb554. Conditions: JumpKick loadavg 1.4 at start, engine live jobs ?; Gradle loadavg 1.4 at start, engine live jobs ?; Maven loadavg 1.4 at start, engine live jobs ?.
 <!-- wall-table:end -->
 
 Agents in several worktrees share that engine and its action cache ([Engine](engine.md)).
@@ -141,7 +141,7 @@ SHA-pinned in the lock; a workspace has one root lockfile ([Workspaces](workspac
 `jk mvn` runs the real Maven build and writes the same `jk-results.md`; `jk build` and
 `jk test` work in a directory with a `pom.xml` and no `jk.toml`. `jk import` reads the effective
 POM — parents, profiles, plugin mapping — and writes a fidelity report; `jk export` goes back.
-`jk gradle` and Gradle import cover the other side ([Migration](migration.md)). jk shares
+`jk gradle` and Gradle import cover the other side ([Migration](migration.md)). JumpKick shares
 `~/.m2`, installs JDKs where IntelliJ already looks, and honours `settings.xml`
 ([Comparison](comparison.md#sharing-the-machine)).
 
@@ -304,16 +304,16 @@ aims at all four.
 The metric the agent-first pillar answers to: for a fixed set of "an agent broke the build"
 scenarios, the median turns, tokens and wall time to green on JumpKick, Maven and Gradle.
 
-Measured 2026-09-28/29 with jk at `3f03d9180` (0.14.0 plus the agent report and the five-tool
+Measured 2026-09-28/29 with JumpKick at `3f03d9180` (0.14.0 plus the agent report and the five-tool
 MCP surface), Maven 3.9.16 and Gradle 9.8.0: 165 scenarios over 19 Spring guides and the JUnit
 5 starter, each agent driving all three tools with the same prompt and a 16-turn budget, on one
 host. Maven and Gradle run through the wrappers in `bench/agent-loop` — the same results file
-and MCP tools jk offers, built deliberately well — so the comparison is the output and the
+and MCP tools JumpKick offers, built deliberately well — so the comparison is the output and the
 hints, not the presence of an agent surface. Five agents from three vendors, each at one model
 and reasoning effort ([results](../../bench/agent-loop/results/); the fast agent's subset and the
-second table below were measured later the same day with jk at `f8dab1711`):
+second table below were measured later the same day with JumpKick at `f8dab1711`):
 
-| Median per scenario, jk / Maven / Gradle | Fixed | Turns | Input + cache tokens | Output tokens | Wall to green |
+| Median per scenario, JumpKick / Maven / Gradle | Fixed | Turns | Input + cache tokens | Output tokens | Wall to green |
 |---|---|---|---|---|---|
 | Vendor A, frontier | 100 / 100 / 100% | 5 / 5 / 6 | 23k / 25k / 31k | 0.6k / 0.5k / 0.5k | 11 / 14 / 15 s |
 | Vendor A, mid-tier | 100 / 97 / 100% | 5 / 6 / 6 | 34k / 44k / 43k | 0.7k / 0.7k / 0.6k | 12 / 15 / 14 s |
@@ -321,18 +321,18 @@ second table below were measured later the same day with jk at `f8dab1711`):
 | Vendor B, budget | 100 / 100 / 100% | 6 / 7 / 7 | 39k / 46k / 52k | 0.9k / 1.2k / 1.2k | 14 / 22 / 22 s |
 | Vendor C, fast (24-run subset) | 88 / 75 / 62% | 11 / 11.5 / 11 | 115k / 125k / 115k | 3.6k / 3.0k / 2.3k | 38 / 39 / 36 s |
 
-jk has the shortest wall on four of the five agents and the fewest input tokens on four, and
+JumpKick has the shortest wall on four of the five agents and the fewest input tokens on four, and
 ties or beats the incumbents on turns. Output tokens are not a win yet: Vendor A's and Vendor
-C's agents write more on jk than on the wrappers. The fast agent runs out of its turn budget on
+C's agents write more on JumpKick than on the wrappers. The fast agent runs out of its turn budget on
 every tool, so its row measures the agent more than the build.
 
-Beyond the Gradle guides: eight more repos, Maven-first (jk imports the `pom.xml`: the JUnit Maven
+Beyond the Gradle guides: eight more repos, Maven-first (JumpKick imports the `pom.xml`: the JUnit Maven
 starter, commons-cli, spring-petclinic, and gs-multi-module with two modules) and Kotlin (the JUnit
 Maven and Gradle Kotlin starters, spring-petclinic-kotlin, tut-spring-boot-kotlin), 27 scenarios.
-Each repo builds with Maven or Gradle, not both, so jk is compared with each on the scenarios they
+Each repo builds with Maven or Gradle, not both, so JumpKick is compared with each on the scenarios they
 share (15 each), same date, commit and budget:
 
-| Median, jk / other on the same scenarios | vs | Fixed | Turns | Input + cache | Output | Wall |
+| Median, JumpKick / other on the same scenarios | vs | Fixed | Turns | Input + cache | Output | Wall |
 |---|---|---|---|---|---|---|
 | Vendor A, frontier | Maven | 15 / 15 | 5 / 6 | 24k / 26k | 0.6k / 0.6k | 14 / 19 s |
 | Vendor A, frontier | Gradle | 15 / 15 | 7 / 6 | 36k / 31k | 1.0k / 0.6k | 15 / 19 s |
@@ -343,27 +343,27 @@ share (15 each), same date, commit and budget:
 | Vendor B, budget | Maven | 15 / 12 | 6 / 7.5 | 42k / 56k | 1.1k / 1.3k | 18 / 43 s |
 | Vendor B, budget | Gradle | 13 / 14 | 7 / 7 | 56k / 63k | 2.1k / 1.4k | 28 / 34 s |
 
-Against Maven jk wins or ties every column on every agent. Against Gradle on the Kotlin repos jk
+Against Maven JumpKick wins or ties every column on every agent. Against Gradle on the Kotlin repos JumpKick
 is faster ([the second table](#agents-reach-green)) but not yet cheaper: Vendor A's
 agents take a turn or two more and more tokens, most of it in one scenario where the agent
-guessed a dependency's group from its Kotlin package and jk's replies did not steer it to the
+guessed a dependency's group from its Kotlin package and JumpKick's replies did not steer it to the
 real coordinate.
 
-On jk 0.14.0, before the agent report, the same matrix fixed 65% within 8 turns at 85k input
+On JumpKick 0.14.0, before the agent report, the same matrix fixed 65% within 8 turns at 85k input
 tokens. The table is re-run each release ([Releases](../contributors/releases.md#benchmarks-each-release)).
 
 ### Asking about the code
 
 Before an agent changes a method it asks who calls it and what can end up running it. Seven such
-questions, on commons-lang and on jk itself, two of them through dynamic dispatch, are graded
-against the compiler's answer: correct means an F1 of at least 0.9. Each agent ran jk as installed,
-whose default MCP list carries `callers`, and the same jk with every graph tool removed
+questions, on commons-lang and on JumpKick itself, two of them through dynamic dispatch, are graded
+against the compiler's answer: correct means an F1 of at least 0.9. Each agent ran JumpKick as installed,
+whose default MCP list carries `callers`, and the same JumpKick with every graph tool removed
 ([change tasks](../../bench/agent-loop/README.md#change-tasks), 3 or more runs per question and
 arm). Turns, tokens (input, output, cache read and write) and wall are the per-question medians
 summed over the questions each agent ran both ways:
 
 <!-- agents-questions:begin -->
-| Agent (questions) | Correct, jk / without the graph | Turns | Tokens | Wall |
+| Agent (questions) | Correct, JumpKick / without the graph | Turns | Tokens | Wall |
 |---|---|---|---|---|
 | Vendor A, mid-tier (8) | 8 of 8 / 39 of 40 | 27 / 133.5 | 341k / 2.3M | 98 / 377 s |
 | Vendor B, frontier (8) | 8 of 8 / 35 of 40 | 35 / 279.5 | 398k / 16.4M | 239 / 2,795 s |
@@ -372,7 +372,7 @@ summed over the questions each agent ran both ways:
 | Vendor E (8) | 8 of 8 / 22 of 24 | 29 / 284 | 787k / 24.2M | 366 / 2,264 s |
 | Vendor F (8) | 8 of 8 / 19 of 24 | 25 / 74 | 783k / 2.7M | 194 / 301 s |
 
-jk is each agent as `jk agents` sets it up (Vendor C and D with jk's rules file), one run per task on the current build; without the graph, three to five runs per task, the graph hidden from MCP and the shell alike. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-01-change-tasks`, `2026-11-02-change-tasks`, `2026-11-04-change-tasks`.
+JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file), one run per task on the current build; without the graph, three to five runs per task, the graph hidden from MCP and the shell alike. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-01-change-tasks`, `2026-11-02-change-tasks`, `2026-11-04-change-tasks`.
 <!-- agents-questions:end -->
 
 The answer is `callers` (`transitive=true` for everything that reaches the method): complete from
@@ -390,7 +390,7 @@ classes and says which modules to test; without it the agent greps, reads and ed
 and rebuilds until the compiler stops naming a site. Hidden acceptance tests check the result:
 
 <!-- agents-renames:begin -->
-| Agent (renames) | Correct, jk / without the graph | Turns | Tokens | Wall |
+| Agent (renames) | Correct, JumpKick / without the graph | Turns | Tokens | Wall |
 |---|---|---|---|---|
 | Vendor A, mid-tier (7) | 7 of 7 / 35 of 35 | 14 / 100 | 103k / 552k | 97 / 276 s |
 | Vendor B, frontier (7) | 7 of 7 / 35 of 35 | 28 / 136 | 256k / 3.4M | 180 / 742 s |
@@ -399,17 +399,17 @@ and rebuilds until the compiler stops naming a site. Hidden acceptance tests che
 | Vendor E (7) | 7 of 7 / 21 of 21 | 23 / 186 | 527k / 11.8M | 359 / 720 s |
 | Vendor F (7) | 7 of 7 / 21 of 21 | 14 / 56 | 334k / 1.5M | 154 / 661 s |
 
-jk is each agent as `jk agents` sets it up (Vendor C and D with jk's rules file), one run per task on the current build; without the graph, three to five runs per task, the graph hidden from MCP and the shell alike. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-01-change-tasks`, `2026-11-02-change-tasks`, `2026-11-04-change-tasks`.
+JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file), one run per task on the current build; without the graph, three to five runs per task, the graph hidden from MCP and the shell alike. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-01-change-tasks`, `2026-11-02-change-tasks`, `2026-11-04-change-tasks`.
 <!-- agents-renames:end -->
 
 ### How small a repository
 
 On a small repository grep is cheap and an agent reads every file anyway, so the graph's per-turn
 cost could outweigh what it saves. The same rename on repositories from a two-module Spring guide
-to jk itself, each with and without the graph (medians, 3 or more runs each):
+to JumpKick itself, each with and without the graph (medians, 3 or more runs each):
 
 <!-- agents-curve:begin -->
-| Repository | Lines | Rename | Vendor A, mid-tier: turns · tokens, jk / without | Vendor D: turns · tokens, jk / without |
+| Repository | Lines | Rename | Vendor A, mid-tier: turns · tokens, JumpKick / without | Vendor D: turns · tokens, JumpKick / without |
 |---|---:|---|---|---|
 | gs-multi-module | 83 | `MyService.message` | 2 / 7 · 12k / 20k | 2 / 7 · 35k / 109k |
 | gs-uploading-files | 416 | `StorageService.loadAsResource` | 2 / 8 · 12k / 29k | 2 / 5.5 · 35k / 89k |
@@ -417,7 +417,7 @@ to jk itself, each with and without the graph (medians, 3 or more runs each):
 | commons-cli | 17,862 | `Util.stripLeadingHyphens` | 2 / 12 · 12k / 43k | 2 / 7.5 · 35k / 113k |
 | commons-lang | 188,332 | `CharSequenceUtils.indexOf` | 2 / 19 · 12k / 51k | 2 / 14 · 36k / 339k |
 | commons-lang | 188,332 | `Range.contains` | 2 / 40 · 13k / 285k | 2 / 18 · 36k / 862k |
-| jk | 679,533 | `CodeGraph.between` | 2 / 8 · 29k / 103k | 2 / 9.5 · 51k / 288k |
+| JumpKick | 679,533 | `CodeGraph.between` | 2 / 8 · 29k / 103k | 2 / 9.5 · 51k / 288k |
 <!-- agents-curve:end -->
 
 ### Every model
@@ -454,9 +454,9 @@ profiles and plugin mapping, `jk mvn` writing `target/jk-results.md`, a build ov
 `pom.xml`, and the IntelliJ external-system model. What is not, in
 [the 1.0 plan](../contributors/plan-1.0.md):
 
-- **Turns-to-green is one host.** On Kotlin repos built with Gradle, jk's agents spend more
+- **Turns-to-green is one host.** On Kotlin repos built with Gradle, JumpKick's agents spend more
   turns and tokens than Gradle's ([the second table](#agents-reach-green)).
-- **The cache claim has no comparison yet.** The oracle proves jk against a fresh build; the
+- **The cache claim has no comparison yet.** The oracle proves JumpKick against a fresh build; the
   same edit classes against Gradle and Maven, and the hit rate across checkouts, are not
   measured.
 - **IntelliJ and VS Code are not on their marketplaces.** The IntelliJ plugin is an external

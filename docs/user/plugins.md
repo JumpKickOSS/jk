@@ -10,11 +10,11 @@ Enable them by using their table and/or a [template](templates.md).
 
 ## Batteries and their tiers
 
-Batteries come in two tiers. **Core** batteries ship with every release, are exercised by jk's
+Batteries come in two tiers. **Core** batteries ship with every release, are exercised by JumpKick's
 own self-host build, and a regression in one blocks a release. **Contrib** batteries are
 best-effort: they ship in the same binary, their tests run, but a framework release that breaks
-one does not hold jk back, and their docs say so. Nothing moves tier silently; this table is the
-register. **Since** is the first jk release that shipped the battery.
+one does not hold JumpKick back, and their docs say so. Nothing moves tier silently; this table is the
+register. **Since** is the first JumpKick release that shipped the battery.
 
 | Battery | Owns | Tier | Since | Why that tier |
 |---|---|---|---|---|
@@ -39,8 +39,8 @@ register. **Since** is the first jk release that shipped the battery.
 | schema-registry | `[schema-registry]`: subjects from a Confluent-compatible registry, pinned in the lock by digest and generated from offline: Avro, Protobuf and JSON Schema | core | 0.50.4 | Kafka services keep their schemas in a registry, not the tree |
 | jooq | `[jooq]`: jOOQ codegen over the module's DDL scripts through DDLDatabase, no database for the build; a live schema opt-in | core | 0.13.8 | most jOOQ services carry their Flyway migrations; code-free sugar over the generator worker |
 | jaxb | `[jaxb]`: xjc over a module's XML schemas and bindings, timestamp-free output | core | 0.13.8 | the SOAP and XML services' generator; code-free sugar over the generator worker |
-| lint | `[lint]`: Checkstyle, PMD, SpotBugs and detekt as cached steps after compile, each finding a diagnostic with file, line and rule id in `jk-results.md` and the MCP diagnostics; `fail-on` picks the severity that fails | core | 0.13.8 | a finding an agent does not see is a finding that stays; the census ranks Checkstyle first among the Maven plugins with no jk home |
-| intellij | `[intellij]`: an IntelliJ Platform plugin compiled against a provisioned distribution, its tests in a headless IDE, the installable plugin zip | core | 0.15.2 | jk's own IntelliJ plugin builds with it |
+| lint | `[lint]`: Checkstyle, PMD, SpotBugs and detekt as cached steps after compile, each finding a diagnostic with file, line and rule id in `jk-results.md` and the MCP diagnostics; `fail-on` picks the severity that fails | core | 0.13.8 | a finding an agent does not see is a finding that stays; the census ranks Checkstyle first among the Maven plugins with no JumpKick home |
+| intellij | `[intellij]`: an IntelliJ Platform plugin compiled against a provisioned distribution, its tests in a headless IDE, the installable plugin zip | core | 0.15.2 | JumpKick's own IntelliJ plugin builds with it |
 | build-info | `[build-info]`: `git.properties` and Boot's `build-info.properties` as cached resources in the jar | core | 0.13.8 | Boot's `/info` endpoint on every imported service; the git-commit-id plugins' consumers |
 | android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | 0.10.1 | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |
 | grails | `[grails]`: Grails 8 on the Groovy lane | **contrib** | 0.11.0 | Grails 8 (Apache) only |
@@ -82,10 +82,10 @@ name is refused the same way.
 
 The plugin SDK, `cc.jumpkick:jk-plugin-sdk` (with `jk-host`, its one dependency), ships to
 `https://jumpkick.build/repo/` and Maven Central with each release, at the release's version.
-jk resolves `cc.jumpkick` from jumpkick.build alone; a plugin built with Maven or Gradle finds the
+JumpKick resolves `cc.jumpkick` from jumpkick.build alone; a plugin built with Maven or Gradle finds the
 SDK on Central. A
-plugin authored outside the jk tree depends on that coordinate and declares the jk it needs with a
-`jk-compat` floor — `jk new -P <name>` scaffolds one against the running jk's SDK (the
+plugin authored outside the JumpKick tree depends on that coordinate and declares the JumpKick release it needs with a
+`jk-compat` floor — `jk new -P <name>` scaffolds one against the running JumpKick's SDK (the
 [`plugin` template](templates.md#first-party-templates)),
 [examples/third-party-plugin](examples/third-party-plugin/) is the complete shape with a consumer,
 and the [contributor plugin guide](../contributors/plugins.md) the reference. Pre-1.0 the
@@ -99,17 +99,17 @@ marketplace: a consumer pins a plugin jar by content (path or Maven coordinate +
 # my-plugin = { path = "tools/my-plugin.jar", sha256 = "…" }
 ```
 
-A private jar keeps its `sha256` pin across jk upgrades: the lock's `[[plugin]]` row is the
+A private jar keeps its `sha256` pin across JumpKick upgrades: the lock's `[[plugin]]` row is the
 declaration's digest, and a jar that disagrees with it is refused. Its worker forks only once
 those bytes are trusted on the machine — `jk trust plugin sha256:<hex>`, the digest the row
 carries; the alias `path:<name>` is not a trust key, so replacing the jar behind it asks again
 (a Maven-pinned plugin is trusted by its `group:artifact`). Its worker forks with the SDK
 it compiled against: `jk lock` adds `jk-plugin-sdk` and `jk-host` at the version the plugin's
 manifest names (`[plugin] sdk`) to the lock as `plugin`-scoped rows, resolved from your
-`[repositories]`; a manifest that names none is pinned at the running jk's version, and the lock
+`[repositories]`; a manifest that names none is pinned at the running JumpKick's version, and the lock
 says so in a note. That scope is the lock's own — a `[plugin-dependencies]` table in `jk.toml`
 is refused. The first-party plugins that
-ship inside jk are pinned the other way round — their rows follow the running jk
+ship inside JumpKick are pinned the other way round — their rows follow the running JumpKick
 ([Lockfile](lockfile.md#what-else-the-lock-pins)).
 
 The engine never classloads plugin code. Declarative `jk-plugin.toml` is applied in-process;

@@ -80,7 +80,7 @@ The tool tables move under the same rule and flags: an exact `[dokka] version`, 
 `spotbugs-version`, `detekt-version`) are rewritten to the newest stable on their major; `jk update
 dokka`, `jk update grpc-java` or the tool's `group:artifact` selects one, and the rewrite line names
 the key (`grpc-java  1.70.0 → 1.81.0 (protobuf.grpc-java.plugin)`). Only a key the manifest writes
-is a pin: a tool version the table leaves to its default moves when jk does. A floating selector
+is a pin: a tool version the table leaves to its default moves when JumpKick does. A floating selector
 in a tool table keeps its text as a dependency's does. Any plugin's tool pins move the same way: a
 step dependency whose coordinate takes its version from the plugin's table, or from an entry's key,
 is a pin on the module the coordinate names — its group and artifact filled from the table the way
@@ -160,7 +160,7 @@ floating language or tool selector is left to the relock and gets no row.
 
 A dependency whose coordinate moved names where it went, and Latest is then the new coordinate's
 release. Two sources say so: a `<relocation>` in the POM of the old coordinate's newest release,
-the Maven way to rename an artifact; and, for publishers that renamed without one, a list jk
+the Maven way to rename an artifact; and, for publishers that renamed without one, a list JumpKick
 ships — Testcontainers 2.0 (`org.testcontainers:postgresql` → `testcontainers-postgresql`, every
 module alike) — taken only when the old coordinate published nothing at or past the rename and the
 new one did. The table prints a `Moved:` line per such coordinate, JSON carries it as
@@ -233,7 +233,7 @@ with a different vendor or patch does not rewrite what built the lock, and neith
 update` while the JDK that resolved is on the suggestion's major: two machines on 25.0.2 and
 25.0.4 leave `suggested-version` as they found it. `jk update` refreshes it only when the major
 that resolved differs (a project moved from 25 to 26). An exception: a previous suggestion
-that names a vendor jk cannot install is dropped and rewritten from the toolchain that resolved.
+that names a vendor JumpKick cannot install is dropped and rewritten from the toolchain that resolved.
 Copying `nosuchvendor-99` forward would make the next `jk build` try to install a catalog-missing
 spec after the agent already removed the pin.
 
@@ -254,10 +254,10 @@ Among installs that satisfy the pin, the hook prefers exact vendor+version, then
 then the newest. A `required-*` nothing satisfies means install, never settle: the shell hook
 exports nothing rather than hand over a JDK the build itself will refuse.
 
-A `suggested-*` nothing installed satisfies is different — it is only a floor, so jk falls
+A `suggested-*` nothing installed satisfies is different — it is only a floor, so JumpKick falls
 through to whatever else is available (`JAVA_HOME`, `GRAALVM_HOME`, `PATH`) as long as that
 still clears the major. Nothing below the floor is accepted from any of them, and if nothing
-anywhere clears it, jk installs.
+anywhere clears it, JumpKick installs.
 
 Locks written before this shape (a bare `vendor` / `version` pair under `[jdk]`) are rejected
 rather than guessed at — re-run `jk lock`. The lockfile's `version` stays `1` until JumpKick 1.0;
@@ -526,10 +526,10 @@ rows in the scopes the closure reads (another member's dependencies are not amon
 lock's tool rows (the tools the plugin resolves with). A relock keeps a module's row while its
 inputs and its plugin are unchanged, without asking the plugin again, and asks again when they
 moved — a dependency added, the platform version moved. A lock with no row for a module, or a row
-another build of the plugin answered (a jk upgrade, a plugin rebuilt under the same version), is
+another build of the plugin answered (a JumpKick upgrade, a plugin rebuilt under the same version), is
 stale, and the next build relocks first; any other change to what a closure is resolved from
 changes a manifest, which the lock's manifest digest already covers. Asking runs the plugin's own
-resolver once, over what jk already holds, and the files it downloads are taken into the store as
+resolver once, over what JumpKick already holds, and the files it downloads are taken into the store as
 they are pinned, so neither a relock nor the sync after it downloads them a second time. The
 plugin's table is not an input: the lock is the same for every variant, and what the table changes
 about a resolution is already in the rows. Only a module whose active plugins declare a closure is
@@ -539,7 +539,7 @@ offline one there refuses it). Two modules that resolve alike each carry their r
 repositories on disk are one.
 
 Each step that reads a closure receives it as a repository of exactly those files, built from the
-store (or the Maven local repository, where jk keeps Central's artifacts) and verified against
+store (or the Maven local repository, where JumpKick keeps Central's artifacts) and verified against
 their digests; bytes that disagree with a row fail the step naming the closure. A step whose
 result is cached keys on the repository's name, a hash of every file and digest, without building
 it. The repository is kept under `tools/plugin-tools/` and reclaimed a month after its last use
@@ -553,7 +553,7 @@ nothing; bytes that disagree with a row fail the sync naming it.
 
 A `[[plugin]]` row normally pins the plugin jar by `checksum`: a jar that is fetched later and
 disagrees with it is refused. A plugin the workspace builds itself — a module whose
-coordinate is the plugin's, such as jk's own tree building `cc.jumpkick:jk-guards-junit` for
+coordinate is the plugin's, such as JumpKick's own tree building `cc.jumpkick:jk-guards-junit` for
 its guard suites — is pinned by `path` to that module instead, with no digest. Its identity is
 its source (the module's manifest is already inside `manifests-sha256`), and it is verified by
 being built from the workspace, so the row is the same whichever jar happens to be installed or
@@ -567,14 +567,14 @@ names none), and so does one an installed plugin contributes to a module that co
 bytes; a plugin with no row fails the compile naming it, and a lock without the row is stale. See
 [Build](build.md#kotlin-compiler-plugins-kotlin-plugins).
 
-A first-party plugin that ships inside jk (`cc.jumpkick:jk-minified`, `jk-spring-boot`,
-`jk-micronaut`, …) is the running jk's own copy, and its row **follows the running jk**. The row
-records which jk the project built with — `coordinate` and `version` alone while that version is
+A first-party plugin that ships inside JumpKick (`cc.jumpkick:jk-minified`, `jk-spring-boot`,
+`jk-micronaut`, …) is the running JumpKick's own copy, and its row **follows the running JumpKick**. The row
+records which JumpKick the project built with — `coordinate` and `version` alone while that version is
 a pre-release (a `0.x` or any qualifier/snapshot, republished with every rebuild), plus the
 `checksum` of the shipped jar at a stable release — and it never chooses the bytes: the plugin
-that runs is the one inside the jk that is building. A build under a newer jk rewrites those rows
+that runs is the one inside the JumpKick that is building. A build under a newer JumpKick rewrites those rows
 in place and says so once (`jk-lock.toml: jk-micronaut 0.13.2 → 0.13.7 (first-party plugins follow
-the running jk)`); no library row moves, so a jk upgrade is never a relock. A first-party plugin a
+the running jk)`); no library row moves, so a JumpKick upgrade is never a relock. A first-party plugin a
 `[plugins]` table declares explicitly is pinned by that declaration like any vendored jar.
 
 A first-party rule pack (`cc.jumpkick.guards:spring`, `:quarkus`, `:library`, … named by
@@ -764,7 +764,7 @@ judge it. The depend guard's `licenses = { forbid = [...] }` and `[deny.licenses
 
 ## How the lock is read
 
-The lock is TOML, and any TOML reader can read it. jk reads it through the row grammar its
+The lock is TOML, and any TOML reader can read it. JumpKick reads it through the row grammar its
 writer emits — bare keys, quoted strings, integers, booleans, string arrays, `[table]` and
 `[[row]]` headers — in one pass, so a workspace lock of a thousand modules and a megabyte of rows
 is parsed in a few milliseconds and a few megabytes of heap, and a `jk lock` that produces one
@@ -775,11 +775,11 @@ file, so history and dashboard routes for a project resolve without reading its 
 
 ## Who wrote the lock
 
-`generated-by` names the jk version that wrote the lock. Beside it, `generated-by-build` and
-`generated-by-build-time` name the build — the twelve-hex identity of the jk code archive that
+`generated-by` names the JumpKick version that wrote the lock. Beside it, `generated-by-build` and
+`generated-by-build-time` name the build — the twelve-hex identity of the JumpKick code archive that
 wrote it and the commit time its packaging stamped into that archive's manifest (`Build-Time`) —
 so two builds of one version can be told apart and ordered by the source they were built from,
-and a reinstall of the same jar moves neither; a jk running from a classes directory writes
+and a reinstall of the same jar moves neither; a JumpKick running from a classes directory writes
 neither. The stamps are provenance, not pins: they choose no artifact and never make a lock stale.
 
 `Build-Time` belongs to the archive's content, not to the checkout that happened to package it.
@@ -790,9 +790,9 @@ and all. Two commits with identical code are one build, with one identity and on
 time names the commit whose source last changed the bytes; a fresher stamp on identical bytes
 would give one build identity two times.
 
-A jk **older than the writer relocks only what it can restate whole**. When the manifests move
-and the build, `jk sync` or `jk lock` would rewrite a lock a newer jk wrote — a newer version, or a
-later build of the same version — the older jk first restates the lock with its own writer. If
+A JumpKick **older than the writer relocks only what it can restate whole**. When the manifests move
+and the build, `jk sync` or `jk lock` would rewrite a lock a newer JumpKick wrote — a newer version, or a
+later build of the same version — the older JumpKick first restates the lock with its own writer. If
 every key the lock carries survives, the relock goes ahead: the format has not moved between the
 two. If a key would be dropped, the command fails naming both builds and the keys:
 
@@ -801,11 +801,11 @@ jk-lock.toml was written by jk 0.13.7 (build 1a2b3c4d5e6f of 2026-09-17T15:57:16
 a relock would drop artifact[].mirror; install that jk and run jk engine stop, or use jk lock -F
 ```
 
-Install the jk that wrote the lock (`jk self update`, or `jk install -S` from its
+Install the JumpKick that wrote the lock (`jk self update`, or `jk install -S` from its
 checkout) and run `jk engine stop` so the next command starts it; `jk lock -F` rewrites the
-lock with the running jk anyway. A newer jk always may relock, and a lock the same build wrote is
+lock with the running JumpKick anyway. A newer JumpKick always may relock, and a lock the same build wrote is
 never in question. A key whose *meaning* changed is not this check's to catch: the lock's `jk-min`
-floor refuses a jk too old to read it right.
+floor refuses a JumpKick too old to read it right.
 
 ## Related
 

@@ -13,7 +13,7 @@ jk skill install <dir>      # <dir>/jk/SKILL.md and the topic files
 jk agents                   # wire this project for agents (see agents.md)
 ```
 
-`jk agents` wires a project for the coding agents that work in it: [jk's section of `AGENTS.md`](agents.md#wiring-a-project-for-agents)
+`jk agents` wires a project for the coding agents that work in it: [JumpKick's section of `AGENTS.md`](agents.md#wiring-a-project-for-agents)
 and each agent's MCP, permission and hook files.
 
 The same bytes are the MCP tool **`skill`** (`topic` optional) and the resource **`jk://skill`**

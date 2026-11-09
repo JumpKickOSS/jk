@@ -7,7 +7,7 @@ directory**, not in TOML scripts.
 top-level stem scripts on build (action-cached). Prefer plugins for heavy/reusable tools; use
 `.jk/scripts/` for small project-local codegen.
 
-**`.jk/` is a project's checked-in jk state, one subdirectory per concern:** `.jk/scripts/`
+**`.jk/` is a project's checked-in JumpKick state, one subdirectory per concern:** `.jk/scripts/`
 holds the build scripts. Nothing in `.jk/` is generated output (the [code graph](graph.md) lives
 under `target/` and in the action cache), and only `.jk/scripts/` is a build input: a file anywhere else under `.jk/`
 changes no cache key. A script left at the top of `.jk/` does not run; the build names it
@@ -130,7 +130,7 @@ Supported `@file:` annotations are Kotlin's own: `@file:DependsOn`, `@file:Repos
 the *same* unit — one cached jar — which is how a large script splits across files without
 paying to compile several.
 
-> `@file:Import` needs Kotlin **2.4.10 or newer**, which is jk's floor. On 2.4.0 the K2
+> `@file:Import` needs Kotlin **2.4.10 or newer**, which is JumpKick's floor. On 2.4.0 the K2
 > frontend fails to compile any script that uses it.
 
 ## Workspace build logic

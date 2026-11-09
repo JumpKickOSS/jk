@@ -130,7 +130,7 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 ### Guards-off invariant (measured)
 
-A project without `jk-guards.toml` pays nothing for jk's own house-rule guards. The scoreboard's
+A project without `jk-guards.toml` pays nothing for JumpKick's own house-rule guards. The scoreboard's
 `dogfood` dimension carries the raw `dogfood.<row>` and the guards-on `dogfood.<row>.guards` rows as
 separate series in `scoreboard.toml`, and fails a night run when either regresses past its band —
 see [docs/perf/README.md](../perf/README.md).

@@ -81,7 +81,7 @@ succeeds without a restart.
 fails every command that would load a user plugin (`jk build`, `jk test`, `jk run` and every
 other command that reads a `jk.toml`) rather than running the shipped plugin in place of the one
 you pinned. Commands that load no user plugin (`jk --version`, `jk help`, `jk doctor`, `jk engine`)
-are unaffected, and the engine still starts. A plugin command that jk cannot look up because the
+are unaffected, and the engine still starts. A plugin command that JumpKick cannot look up because the
 file does not parse names the file, line and column instead of showing the help.
 
 A `path` pin under `[plugins]` follows the file while the engine runs: add, edit or remove one —
@@ -115,7 +115,7 @@ least the wedge, which it draws itself), Konsole, GNOME Terminal and other VTE t
 Warp, Tabby, and Hyper, an installed Nerd Font is enough, because those terminals fall back to any
 installed font for a missing glyph. An unidentified terminal gets the powerline triangles when a Nerd
 Font is installed. Nothing over SSH, under `CI`, or on macOS Terminal.app, which draws no powerline
-glyph of its own and stores its font where jk cannot read it.
+glyph of its own and stores its font where JumpKick cannot read it.
 
 When `auto` is not enough, confirm what you see:
 
@@ -126,7 +126,7 @@ jk self setup-terminal -f     # forget the remembered answer
 ```
 
 The answer is saved in `~/.jk/terminal-caps.toml` for that terminal (and, over SSH, that client).
-jk notices when the terminal's version, font, config file, or the installed fonts change, ignores
+JumpKick notices when the terminal's version, font, config file, or the installed fonts change, ignores
 the answer, and prints one line telling you to run the command again. Over SSH, run it on the
 server to confirm what your client shows, or forward a pin with `SendEnv`/`SetEnv JK_NERD_FONT`.
 
@@ -137,7 +137,7 @@ Contributor TUI rules: [TUI](../contributors/tui.md).
 ## Self-update
 
 Root-level `self-update = "auto" | "ask" | "never"` in `~/.jk/config.toml` (env
-`JK_SELF_UPDATE`) decides whether jk installs new releases on its own, offers them at a terminal,
+`JK_SELF_UPDATE`) decides whether JumpKick installs new releases on its own, offers them at a terminal,
 or leaves itself alone. Unset asks at a terminal and updates everywhere else; before 1.0 updates
 are compulsory. Details: [Install](install.md#updates).
 
@@ -172,7 +172,7 @@ applies with `[http] enabled = false` or `[mcp] enabled = false` too. Details: [
 # ask = "notify"           # notify | open | quiet
 ```
 
-`ask` (`JK_UI_ASK`) is what jk does when a [decision](mcp.md#decisions) waits for you and the
+`ask` (`JK_UI_ASK`) is what JumpKick does when a [decision](mcp.md#decisions) waits for you and the
 agent's host can ask neither by form nor by link: `notify` (default) sends a desktop notification
 with the question and the decision's dashboard link, `open` opens the browser on it (`$BROWSER`
 when set), and `quiet` leaves the link in the agent's result alone. On Windows the notification is
@@ -206,12 +206,12 @@ when both are set, and both `no-proxy` lists apply. A proxy URL is
 `http://[user:password@]host[:port]` (a bare `host:port` is http); https targets tunnel through it
 with `CONNECT`, and a `user:password@` is sent to the proxy as Basic (only to the proxy — a
 redirect to a host that goes direct never carries it). Whichever source wrote it — `[network]`,
-a `settings.xml` `<proxy>` (expanded or decrypted) or the shell — the password is masked in jk's
+a `settings.xml` `<proxy>` (expanded or decrypted) or the shell — the password is masked in JumpKick's
 output, `-o jsonl` and the build history, like a repository credential. A `no-proxy` entry is
 `*`, a host, a `.suffix` (a bare suffix covers its subdomains too), or `host:port` for one port.
 Loopback targets always go direct.
 
-Every download jk makes — Maven Central and your repositories, JDK and tool distributions, the
+Every download JumpKick makes — Maven Central and your repositories, JDK and tool distributions, the
 engine jar, release checks — goes through `Http`, so one `[network]` table or one set of shell
 variables covers them all, and so does a settings.xml proxy. The decision is
 made per request: `[network]` is read once per `jk` command and re-read when the file changes
@@ -222,11 +222,11 @@ none. Every worker a build forks — compilers, plugin workers, test JVMs — is
 variables, the request's values over the engine's, so a test that downloads goes the same way the
 engine does ([Build § Worker environment](build.md#worker-environment-env)). A plugin step whose
 own Maven resolver fetches outside the lock (Quarkus's build-time closure) is handed each
-repository with the proxy jk chose for its URL, `[network]` and the shell included, so it does not
+repository with the proxy JumpKick chose for its URL, `[network]` and the shell included, so it does not
 fall back to reading `settings.xml` alone. The `git` that clones the template catalogs
 (`[templates] official` and `[templates.sources]`) and fetches git dependencies (`{ git = … }`),
-over http or https, runs with the proxy jk chose for the remote's URL as its `http.proxy`, and
-with git's proxy off for a host jk sends direct; with no proxy configured for jk, git's own configuration decides. The value reaches git
+over http or https, runs with the proxy JumpKick chose for the remote's URL as its `http.proxy`, and
+with git's proxy off for a host JumpKick sends direct; with no proxy configured for JumpKick, git's own configuration decides. The value reaches git
 through its environment, never its command line. JGit, used when no `git` is installed, takes the
 same route and answers a proxy's Basic challenge with the URL's `user:password@`. git needs to be 2.31
 or later to be handed a proxy; an older git is refused by name rather than sent direct, for the
@@ -234,7 +234,7 @@ template catalogs and git dependencies alike (a git dependency can use the built
 `JK_GIT_BACKEND=jgit`). A credential in a
 proxy URL is never printed; an unusable value is reported
 by the name that set it (`ignoring https_proxy: …`) and the request goes direct. For a proxy that
-wants Basic on an https `CONNECT`, jk clears the JDK's `jdk.http.auth.tunneling.disabledSchemes`
+wants Basic on an https `CONNECT`, JumpKick clears the JDK's `jdk.http.auth.tunneling.disabledSchemes`
 in its own processes unless you set that property yourself. `--offline` still refuses every
 request before any proxy is consulted.
 
@@ -249,13 +249,13 @@ Where `jk install` puts a project's thin jar and POM when neither `--destination
 destination = "jk"      # default "m2": the Maven local repository, ~/.m2/repository
 ```
 
-`"jk"` is jk's private `repos/jk-local`, for a machine that keeps `~/.m2` clean. The first to
+`"jk"` is JumpKick's private `repos/jk-local`, for a machine that keeps `~/.m2` clean. The first to
 answer: `--destination`, the project's `jk.toml`, `JK_INSTALL_DESTINATION`, this file, then `m2`. An unknown
 word is skipped. See [Install](packaging.md#jk-install-project).
 
 ## Tool mirrors
 
-The distributions jk provisions for itself come from their public origins unless `[mirrors]` points
+The distributions JumpKick provisions for itself come from their public origins unless `[mirrors]` points
 a tool elsewhere. `[mirrors]` covers tool downloads only; a Maven repository mirror (Artifactory
 or Nexus answering for Central and the rest) is a `[repositories.<id>]` table with `mirror-of` —
 see [Repositories § Mirror or source](repositories.md#a-corporate-repository-mirror-or-source).
@@ -301,22 +301,22 @@ published, so every archive is verified against the catalog's sha256 whichever h
 The library registry is the file behind `jk.toml`'s short library names (`jk library update`
 reads it, and `jk lock` and the engine refresh it every 12 hours). Its public copy is
 `https://raw.githubusercontent.com/JumpKickOSS/jk-libraries/refs/heads/main/libraries.toml`;
-a `libraries` mirror (`JK_LIBRARIES_DIST_MIRROR`) is the directory that holds a copy, so jk
+a `libraries` mirror (`JK_LIBRARIES_DIST_MIRROR`) is the directory that holds a copy, so JumpKick
 reads `<mirror>libraries.toml`.
 
-## Hosts jk contacts
+## Hosts JumpKick contacts
 
-Every host jk dials on its own, and how to point it somewhere else. A host marked optional is
-asked quietly: when it does not answer, jk carries on with what it has and says nothing, so a
+Every host JumpKick dials on its own, and how to point it somewhere else. A host marked optional is
+asked quietly: when it does not answer, JumpKick carries on with what it has and says nothing, so a
 firewall that allows only your mirrors costs you that feature's freshness, not a failure.
 
 | Host | What for | Where else it can come from | When it does not answer |
 |---|---|---|---|
 | `repo.maven.apache.org`, `maven-central.storage-download.googleapis.com` | Maven Central (the second host when Central rate-limits) | a [`mirror-of`](repositories.md#a-corporate-repository-mirror-or-source) table, or a `settings.xml` `<mirror>` | the resolve fails, naming the repository or its mirror |
 | `dl.google.com` | Google's Maven repository | the same | the same |
-| `jumpkick.build` (`/repo/…`) | jk's own repository: plugins, and the engine's worker jars when the store lacks them | the same (it is the `jumpkick` repository) | the same |
+| `jumpkick.build` (`/repo/…`) | JumpKick's own repository: plugins, and the engine's worker jars when the store lacks them | the same (it is the `jumpkick` repository) | the same |
 | `jumpkick.build` (`/releases/…`) | `jk self update` and the engine jar of an install that has none | `JK_RELEASES_URL`; `self-update = "never"` stops the checks | the update or install fails |
-| `raw.githubusercontent.com` | the library registry | `[mirrors] libraries` | optional: the copy on disk, else the one built into jk; asked again 10 minutes later at the earliest, and the engine log says so once |
+| `raw.githubusercontent.com` | the library registry | `[mirrors] libraries` | optional: the copy on disk, else the one built into JumpKick; asked again 10 minutes later at the earliest, and the engine log says so once |
 | `download.jetbrains.com` | the JDK catalog | `[mirrors] jdk` | optional: the catalog on disk; `jk new` lists the JDKs you have installed, and provisioning a JDK needs a catalog |
 | the JDK vendors' hosts (`github.com`, `cdn.azul.com`, …) | JDK archives the catalog names | `[mirrors] jdk` | provisioning that JDK fails |
 | `github.com` (git) | the official template catalog | `[templates] official` | optional: the catalog on disk |
@@ -350,7 +350,7 @@ never stands in for npm.
 `<server>` of that id. An origin taken from a settings.xml `<mirror>` uses the mirror's `<id>`, so
 the `<server>` beside it authenticates it, as under Maven.
 
-**The package managers** get all of it for each step jk runs. jk writes a user config for the
+**The package managers** get all of it for each step JumpKick runs. It writes a user config for the
 one run (`target/node/jk-npmrc-*`, owner-only, deleted after the step) holding your own
 `~/.npmrc`, then the registry, the scopes and each origin's token. bun reads no npm user config, so
 it gets the same registry, scopes and credentials as a global `.bunfig.toml` in a jk-owned global
@@ -361,9 +361,9 @@ bunfig is not read during that step, and the project's `bunfig.toml` still is. Y
 registry's host in `YARN_UNSAFE_HTTP_WHITELIST`. Berry reads a scope map only from a `.yarnrc.yml`,
 merging the project's with the one in its home folder, so with scopes set the step runs Berry with a
 jk-owned home (`target/node/jk-yarn-*`, deleted after): its `.yarnrc.yml` is your own
-`~/.yarnrc.yml` with jk's `npmScopes` added (a scope yours already names is left to it), and every
+`~/.yarnrc.yml` with JumpKick's `npmScopes` added (a scope yours already names is left to it), and every
 other entry links to your real home, so git, ssh and lifecycle scripts find what they would. The
-proxy jk itself
+proxy JumpKick itself
 uses ([Network](#network)) is handed over as `npm_config_proxy` / `npm_config_https_proxy` /
 `npm_config_noproxy`, `YARN_HTTP_PROXY` / `YARN_HTTPS_PROXY`, and `HTTP_PROXY` / `HTTPS_PROXY` /
 `NO_PROXY`. The project's own `.npmrc`, `bunfig.toml` and `.yarnrc.yml` are never edited and still apply. The
@@ -381,7 +381,7 @@ server, in a container, or with no keychain on the machine, the file without a w
 
 ## Other env
 
-Every boolean jk reads — from a `JK_*` variable, from `CI`, or from a quoted value in
+Every boolean JumpKick reads — from a `JK_*` variable, from `CI`, or from a quoted value in
 `jk.toml` — accepts the same set, trimmed and case-insensitive:
 
 | true | false |
@@ -392,8 +392,8 @@ Anything else means "unset", so the next layer down decides; a malformed value i
 hard failure. There is one reader behind all of it, so `CI=yes` and `CI=1` mean exactly what
 `CI=true` means everywhere.
 
-`JK_CEILING_DIRECTORIES` keeps jk's search for a project and its workspace below the directories it
-lists: [Workspaces § Where jk looks for the workspace](workspaces.md#where-jk-looks-for-the-workspace).
+`JK_CEILING_DIRECTORIES` keeps JumpKick's search for a project and its workspace below the directories it
+lists: [Workspaces § Where JumpKick looks for the workspace](workspaces.md#where-jumpkick-looks-for-the-workspace).
 
 Install / dirs: [Install](install.md). Format: [Format](format.md). Cache budgets:
 [Cache](cache.md). `.env` layering: `jk env` on the install page.

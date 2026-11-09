@@ -1,13 +1,13 @@
 # Performance records and the scoreboard
 
 Decision records and benches live in KanArtist (`projects/jk/docs/perf/`). This directory keeps the
-two records that describe jk's own behaviour ([engine-heap-monorepo.md](engine-heap-monorepo.md),
+two records that describe JumpKick's own behaviour ([engine-heap-monorepo.md](engine-heap-monorepo.md),
 [junit-parallel-vs-jk-workers.md](junit-parallel-vs-jk-workers.md)) and the contract the progress bar
 and ETA follow ([../contributors/progress-contract.md](../contributors/progress-contract.md)).
 
 ## The scoreboard
 
-`bench/scoreboard` is the one ratchet over jk's loop. Every row lives in
+`bench/scoreboard` is the one ratchet over JumpKick's loop. Every row lives in
 [`scoreboard.toml`](../../scoreboard.toml): one `[[row]]` per dimension, subject, project, tool and
 kind, with its banked `value`, `band`, `target`, where it came from (`runs`, `date`, `commit`,
 `host-id`) and the conditions it was taken under. Only rows of the measuring host are compared.
@@ -28,16 +28,16 @@ Three kinds of row:
 | kind | what it holds | when it runs |
 |---|---|---|
 | `count` | work counters load does not move: tasks run, bytes and files written, files under `target/` touched, output size | any time |
-| `paired-wall` | the candidate jk against a baseline jk, interleaved A B A B; the median of the pair ratios with a bootstrap 95 % CI | any time |
-| `absolute-wall` | published seconds and peak RSS: jk, Gradle and Maven on petclinic (`wall`), jk on its own tree (`dogfood`) | night, quiet host only |
+| `paired-wall` | the candidate JumpKick against a baseline JumpKick, interleaved A B A B; the median of the pair ratios with a bootstrap 95 % CI | any time |
+| `absolute-wall` | published seconds and peak RSS: JumpKick, Gradle and Maven on petclinic (`wall`), JumpKick on its own tree (`dogfood`) | night, quiet host only |
 
-A jk `count` or `absolute-wall` row above its banked value by more than its band (exact for task
+A JumpKick `count` or `absolute-wall` row above its banked value by more than its band (exact for task
 and file counts, 2–5 % plus a small absolute slack for bytes, 15 % for seconds) fails the run and
 prints the commit range since it was banked; a row that improves is rewritten, and a row the file
 has never seen is seeded. A `paired-wall` row fails when its CI's lower bound is above 1 + band
 (10 %): the candidate is slower beyond doubt. Its value is today's ratio, rewritten every run.
 Gradle and Maven rows record what those tools do today and never fail. Commit the rewritten file;
-the ratchet never raises a jk row by itself, so raise one by hand after an intentional change and
+the ratchet never raises a JumpKick row by itself, so raise one by hand after an intentional change and
 say why in the commit.
 
 ### Counts
@@ -66,15 +66,15 @@ need the engine to count them, and are not rows yet.
 ### Paired walls
 
 The `paired` dimension times a no-op and a one-file edit with the candidate (`$JK_BIN`, else the
-installed jk) and a baseline (`--baseline`, `$SCOREBOARD_BASELINE`, else the installed jk, which
+installed `jk`) and a baseline (`--baseline`, `$SCOREBOARD_BASELINE`, else the installed `jk`, which
 makes an unpaired run an A/A check). Each side has its own private engine and working copy; each
 of the 20 pairs runs the two sides back to back in a random order, after three warm-up rounds.
 Load slows both sides of a pair alike, so the median pair ratio holds on a busy host where an
 absolute wall would not. Each row also carries both medians and minimums in milliseconds and the
 ratio of the medians.
 
-To judge a branch, build it and point `JK_BIN` at its client against the installed jk; to judge
-the installed jk against a release, install that release into a home of its own and pass its
+To judge a branch, build it and point `JK_BIN` at its client against the installed `jk`; to judge
+the installed `jk` against a release, install that release into a home of its own and pass its
 client as the baseline. A side installed in its own home runs from that home, sharing the user's
 store and cache:
 
@@ -102,7 +102,7 @@ another (an integration tier, a corpus re-run), never beside the measurements. T
 renders the `wall` rows into three kinds of generated block — the tables (`wall-table`, in
 `docs/user/performance.md` and `why.md`), the comparison sentences (`wall-claims`, in the README,
 `why.md`, `comparison.md` and `performance.md`) and the website's proof strip (`wall-strip`, in
-`hosting/public/index.html`) — each from every tool's latest measurement, never jk's ratcheted best;
+`hosting/public/index.html`) — each from every tool's latest measurement, never JumpKick's ratcheted best;
 every number names its commit and conditions. In the reference pages, speed and memory comparisons
 appear nowhere else (guard `speed-claims-are-generated`); the README and the website pitch in
 their own words, and every number they show comes from these blocks. It then writes the morning report
@@ -149,9 +149,9 @@ covers the arithmetic.
 [`bench/jar-size/`](../../bench/jar-size/README.md) with the installed `jk`, with Gradle Shadow (the
 fixtures' own wrappers) and with Maven Shade over the same pinned dependencies, prints the per-tool
 table and attributes every
-byte of the jk-minus-tool delta to a named cause. Unlike the microbenches it asserts: a jk jar more
+byte of the JumpKick-minus-tool delta to a named cause. Unlike the microbenches it asserts: a JumpKick jar more
 than 0.5 % above its line in [`jar-size-baseline.toml`](../../jar-size-baseline.toml), or more than
-1 % above Shadow's, fails. Sizes are a pure function of the pinned inputs, so the band is for a jk
+1 % above Shadow's, fails. Sizes are a pure function of the pinned inputs, so the band is for a JumpKick
 version string changing length inside the SBOM, not for noise. The current table and the deflate
 decision are in [docs/user/packaging.md](../user/packaging.md#fat-jar-size-against-shadow-and-shade).
 

@@ -17,7 +17,7 @@ outrank anything here.
 
 | Area | Now |
 |---|---|
-| Agent loop | Measured: 165 scenarios, one LLM driver, every tool green; jk leads or ties Maven on every column, and Gradle on turns, input tokens and wall on the Gradle guides; output tokens and Gradle-built Kotlin repos are not yet a win ([why.md](../user/why.md#agents-reach-green)). A second driver and more project kinds are open. |
+| Agent loop | Measured: 165 scenarios, one LLM driver, every tool green; JumpKick leads or ties Maven on every column, and Gradle on turns, input tokens and wall on the Gradle guides; output tokens and Gradle-built Kotlin repos are not yet a win ([why.md](../user/why.md#agents-reach-green)). A second driver and more project kinds are open. |
 | Maven projects | Effective-POM import, profiles, plugin mapping, `jk mvn` results, and coexistence have landed. Of the top-20 corpus, 13 build and 2 pass their tests (run 16). |
 | IDE | The IntelliJ external system (live model, gutter, debug) and Scala over BSP have landed. Marketplace listings have not. |
 | Batteries | Coverage beyond XML, the generators, lint, TestNG, the database-migration recipe, and a publishable SDK have landed. The SDK is not on Maven Central. |
@@ -26,7 +26,7 @@ outrank anything here.
 
 ## The six epics, in priority order
 
-### 1. Existing Maven projects work under jk (P0)
+### 1. Existing Maven projects work under JumpKick (P0)
 
 The uv lesson: get into existing repos first, convert the manifest later.
 
@@ -57,7 +57,7 @@ The uv lesson: get into existing repos first, convert the manifest later.
 - **The fidelity corpus** is the twenty most-starred Maven-built Java repositories with a root
   POM and Java 17 or newer
   ([jk-examples `bench/maven-top20`](https://github.com/JumpKickOSS/jk-examples/tree/main/bench/maven-top20)).
-  Run 16 (main `30c21270b`, 2026-09-18, jk 0.13.7): import-clean 11/20, lock 18/20, build 13/20,
+  Run 16 (main `30c21270b`, 2026-09-18, JumpKick 0.13.7): import-clean 11/20, lock 18/20, build 13/20,
   tests pass 2/20. The same counts are in
   [Migration](../user/migration.md#where-import-stands-on-real-repositories). Raising them is
   the open work.
@@ -67,7 +67,7 @@ The uv lesson: get into existing repos first, convert the manifest later.
 The metric in [Why JumpKick](../user/why.md) is median agent turns, tokens and wall time to
 green on a fixed set of broken-build scenarios. The comparator is **wrapped** Maven and Gradle: a
 results file and MCP tools over their existing output, built deliberately well, because that is
-what an incumbent would ship. If jk does not beat the wrapper by a wide margin, the wrapper is the
+what an incumbent would ship. If JumpKick does not beat the wrapper by a wide margin, the wrapper is the
 product and epic 1 absorbs it.
 
 **Landed**
@@ -91,8 +91,8 @@ product and epic 1 absorbs it.
 
 **Open**
 
-- Output tokens: two vendors' agents write more on jk than on the wrappers.
-- Kotlin repos built with Gradle: jk is faster, but agents spend more turns and tokens than on
+- Output tokens: two vendors' agents write more on JumpKick than on the wrappers.
+- Kotlin repos built with Gradle: JumpKick is faster, but agents spend more turns and tokens than on
   Gradle.
 
 ### 3. IntelliJ just works (P0)
@@ -161,7 +161,7 @@ dependency treadmill on a network surface that is on by default. The same-facts 
 
 **Landed**
 
-- The wall harness runs Gradle (configuration cache and build cache on) and Maven beside jk on
+- The wall harness runs Gradle (configuration cache and build cache on) and Maven beside JumpKick on
   spring-petclinic for clean, warm rebuild, no-op, one-file edit, and a test run, and banks
   wall-clock and peak RSS of the whole process tree. The table is in
   [Performance](../user/performance.md) and [Why JumpKick](../user/why.md). README and why.md
@@ -183,7 +183,7 @@ dependency treadmill on a network surface that is on by default. The same-facts 
 
 ## What "done" means for 1.0
 
-- The turns-to-green table names a commit and three tools, and jk wins. The harness drivers are
+- The turns-to-green table names a commit and three tools, and JumpKick wins. The harness drivers are
   `scripted`, `claude-code` and `api`; the published comparison is the two LLM drivers.
 - The top-20 Maven corpus (a root POM, Java 17 or newer) has its pass rate published in
   Migration, and every Tier-3 reason is fixed or written down as a non-goal.

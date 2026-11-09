@@ -1294,7 +1294,7 @@ final class ParityRules {
             why =
                     "the registry table in code-as-art.md is the one record of every guard letter and of what enforces it; a letter with no row, or a row naming a rule that is gone, is the registry lagging the code",
             instead =
-                    "add or fix the row — id, rule, form, jk side — so every letter from G0 up has one, every jk side names a rule, guard test or engine validation that exists with that kind, and every rule and guard test is claimed by exactly one letter; a retired letter keeps its row and says why")
+                    "add or fix the row — id, rule, form, JumpKick side — so every letter from G0 up has one, every JumpKick side names a rule, guard test or engine validation that exists with that kind, and every rule and guard test is claimed by exactly one letter; a retired letter keeps its row and says why")
     void guardLettersRegistry(Text text, Violations v) {
         List<String> charter = text.lines(CHARTER);
         String block = block(charter, "guards");
@@ -1379,7 +1379,7 @@ final class ParityRules {
                 v.add(
                         site(r),
                         "G" + r.letter()
-                                + " has an empty jk side; name what enforces it, or say why the letter is retired");
+                                + " has an empty JumpKick side; name what enforces it, or say why the letter is retired");
             }
         }
         unclaimed(v, ruleKinds.keySet(), claimedRules, "[guards.%s] in " + RULES);

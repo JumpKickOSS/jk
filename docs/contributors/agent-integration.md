@@ -1,6 +1,6 @@
 # Agent integration
 
-How jk talks to coding agents (Claude Code, Cursor, Codex, grok, agy, muse), and the rules any change to
+How JumpKick talks to coding agents (Claude Code, Cursor, Codex, grok, agy, muse), and the rules any change to
 that surface must keep. The surface is everything an agent reads: the `AGENTS.md` section
 (`AgentsGuide`), the MCP tools' descriptions and answers (`server/engine/.../http/mcp/`), the files
 `jk agents` writes (`AgentSetup`), and the graph's answers (`plugins/graph`, `shared/code-graph`).
@@ -10,7 +10,7 @@ Change it only with a measurement before and after: [agent-bench.md](agent-bench
 ## Who it is tuned for, in order
 
 1. **Claude Code.** Never trade its results for another agent's.
-2. **Cursor.** It must win as well: it is how teams adopt jk.
+2. **Cursor.** It must win as well: it is how teams adopt JumpKick.
 3. **Codex, grok, agy, muse**, in that order.
 
 One generic baseline serves every agent; an agent gets its own file only where a measurement shows it

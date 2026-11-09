@@ -88,7 +88,7 @@ jobs:
       - run: jk publish --tag "$GITHUB_REF_NAME"
 ```
 
-The flag is explicit: jk does not read CI variables to guess a tag.
+The flag is explicit: JumpKick does not read CI variables to guess a tag.
 
 ### Publishing again
 
@@ -130,7 +130,7 @@ is the loop; `jk release` is the end of it.
 
 `jk publish -c` publishes through the Sonatype Central Portal: one signed bundle — jar,
 POM, sources jar, javadoc jar, a detached GPG `.asc` on each, `.md5` and `.sha1` beside each — is
-uploaded to the Portal's API, and jk polls the deployment until the Portal rules.
+uploaded to the Portal's API, and JumpKick polls the deployment until the Portal rules.
 
 ```bash
 # once: the Portal user token (central.sonatype.com → account → Generate User Token)
@@ -149,13 +149,13 @@ jk publish -c -I -f ~/.gnupg/release.asc   # builds the four artefacts; JK_GPG_P
 | `--repo-url <url>` | another Portal (a mirror, a stub) instead of `https://central.sonatype.com/` |
 | `--dry-run` | write the bundle to `target/publish/central-bundle.zip`, list its entries, upload nothing |
 
-Before anything is signed, jk refuses with the exact fix when the sources or javadoc jar is not
+Before anything is signed, JumpKick refuses with the exact fix when the sources or javadoc jar is not
 on disk, when `[publish]` lacks a key Central requires, or when `--sign` is absent. The poll walks
 `PENDING → VALIDATING → VALIDATED` (`→ PUBLISHING → PUBLISHED` with `automatic`); a `FAILED`
 deployment fails the run and prints every validation error the Portal listed.
 
 The credential is the `central` entry: `jk repo login central -U https://central.sonatype.com`
-with the token's name as `--username` and its password on stdin (jk sends the Portal the base64
+with the token's name as `--username` and its password on stdin (JumpKick sends the Portal the base64
 `name:password` it documents), or a token already encoded, on stdin without `--username`. From
 CI, `JK_REPO_CENTRAL_USERNAME` + `JK_REPO_CENTRAL_PASSWORD` (or `JK_REPO_CENTRAL_TOKEN`) with
 `JK_REPO_CENTRAL_HOST=central.sonatype.com` beside them — the same name-to-origin binding every
@@ -235,7 +235,7 @@ The run's verdict says the same: with a blocking finding the audit fails, one er
 (severity, package and version, advisory, summary, the fix when OSV names one), so an agent's
 verdict and a CI log read what the exit status means. A CI gate is `jk audit -s HIGH` and a
 non-zero exit.
-jk's own repository runs exactly that in its self-host job, after the lock-drift check: the
+JumpKick's own repository runs exactly that in its self-host job, after the lock-drift check: the
 `-O jsonl` lines are kept as an artifact and each finding becomes one annotation
 (`scripts/ci-audit-annotate.sh`, one `::error` per blocking advisory), and the nightly run reports
 at `LOW` without gating ([CI](ci.md)).

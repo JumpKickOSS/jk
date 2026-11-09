@@ -71,7 +71,7 @@ jk new -t quarkus/hello my-api
   lines, so a routing or closure problem is readable from `target/jk-results.md`.
 - **Build-time closure:** each extension's `-deployment` artifact and what it depends on — the
   closure the augment and the test model load — is pinned by `jk lock`, which asks Quarkus's
-  own resolver for it, so jk never second-guesses Quarkus's rules (extension descriptors,
+  own resolver for it, so JumpKick never second-guesses Quarkus's rules (extension descriptors,
   conditional dependencies, capabilities). It is two rows in `jk-lock.toml`, `quarkus/deployment`
   for the augment and `quarkus/test-deployment` for the test model
   ([Lockfile](lockfile.md#closures-a-plugin-resolves)). `jk sync` puts every file in the
@@ -91,17 +91,17 @@ jk new -t quarkus/hello my-api
   Such a row lists why under `added-by`
   ([Lockfile](lockfile.md#rows-a-conditional-dependency-adds)), and `jk why` names the extension
   and the condition. An extension's `conditional-dev-dependencies` are not followed: they are
-  for Quarkus's dev mode (`quarkus:dev`), which jk does not run. `jk run` starts the augmented
+  for Quarkus's dev mode (`quarkus:dev`), which JumpKick does not run. `jk run` starts the augmented
   production application (`quarkus-run.jar`) and `jk dev` re-runs it on change, so a dev-mode
   dependency would sit on no classpath the application reads.
 - **Native:** `[native] enabled = "always"` (or a bare `[native]` / `enabled = true` for
   `jk native` only) builds through **Quarkus’s own** native-image command. JumpKick
-  supplies the GraalVM toolchain. Nothing jk composes is added on top; `[native] args`
+  supplies the GraalVM toolchain. Nothing JumpKick composes is added on top; `[native] args`
   still applies.
 - Use a plain `main` + `Quarkus.run` (as scaffolded).
 - Keep `quarkus-junit5` / RestAssured on **`[test-dependencies]`** only so MAIN does not
   pull Maven embedder.
-- **Tests:** `@QuarkusTest` boots from an application model jk writes before the module's tests
+- **Tests:** `@QuarkusTest` boots from an application model JumpKick writes before the module's tests
   run (the `quarkus-test-model` step): the locked test closure resolved through Quarkus's own
   bootstrap, with `target/classes` as the application's one root. The forked test JVM gets
   its path as `-Dquarkus-internal-test.serialized-app-model.path=…`, the seam Quarkus's Gradle
@@ -112,7 +112,7 @@ jk new -t quarkus/hello my-api
   application's ports, so parallel suite JVMs of one module would race — `[test] workers = N`
   overrides that pin ([Testing](test.md#per-module-serial-opt-out)). The discovery JVM that lists
   the classes first runs no Quarkus launcher listener and boots nothing ([Testing](test.md#the-test-jvms-flags-test-jvm-args-test-system-properties)). A test
-  JVM's metaspace is the JVM's own — jk caps it only where `[test] jvm-args` says so, as Surefire
+  JVM's metaspace is the JVM's own — JumpKick caps it only where `[test] jvm-args` says so, as Surefire
   does. The
   `[quarkus]` table is what turns this on — `jk import` writes it from `quarkus-maven-plugin` at
   the platform version.
@@ -165,7 +165,7 @@ limits — [Packaging](packaging.md#minified-jar-r8). Native images: declare `[n
 native runtime — [Native](native.md).
 
 Micronaut Test Resources (the Gradle/Maven plugin that starts Testcontainers-backed databases
-and brokers for tests and dev mode) is not part of the jk plugin before 1.0. Dev mode itself is
+and brokers for tests and dev mode) is not part of the JumpKick plugin before 1.0. Dev mode itself is
 covered by `jk watch run` (`jk dev`), which is framework-neutral; a test that needs a real
 service declares it the ordinary way — Testcontainers in the test, or a `[test] env` pointing at
 what CI provides. The gap versus `mn:run` / `./gradlew run` with test-resources is exactly that
@@ -226,7 +226,7 @@ no MicroProfile (Helidon 27 is SE only), Jakarta not `javax`, and Helidon's test
 libraries in `[test-dependencies]` only. Helidon's `custom` application type has no template: it is the quickstart's questions, with
 `jk add` for the rest.
 
-jk's own tests diff these questions against the inputs of Helidon's archetypes
+JumpKick's own tests diff these questions against the inputs of Helidon's archetypes
 (`archetypes/archetypes/src/main/archetype` at the pinned release), so an input a Helidon release
 adds is either asked by a template or recorded with the reason it is not.
 
@@ -325,7 +325,7 @@ the runtime classpath and the table.
 The step replaces the module's classes, and a build allows one such step: a module that also turns
 on `[hibernate] enhance` sets `binding = false`.
 
-Tests run under `junit-jupiter`, or `junit-jupiter-api` alone (jk adds the engine as Surefire
+Tests run under `junit-jupiter`, or `junit-jupiter-api` alone (JumpKick adds the engine as Surefire
 does), with no launcher pin. `jk dev` restarts the application on every change, as `helidon dev`
 does.
 
@@ -413,7 +413,7 @@ groups = ["org.jetbrains.intellij.deps.fastutil"]
   closure is about a tenth the size of the distribution and compile-only: `jk build` fetches it
   and never unpacks the distribution.
 - **The distribution.** Only a run of the tests needs it.
-  `com.jetbrains.intellij.idea:<product>:<version>` is fetched from JetBrains' repository and unpacked once into scratch space (`state/tmp/unpacked/`, which jk
+  `com.jetbrains.intellij.idea:<product>:<version>` is fetched from JetBrains' repository and unpacked once into scratch space (`state/tmp/unpacked/`, which JumpKick
   deletes a week after its last use) — and only in part: `lib/`, `modules/`, and the bundled
   plugins `plugins` and `requires` name, about a tenth of the plugin tree. A plugin the IDE needs
   that is in neither fails the test setup naming the directory to add to `requires`. Its `lib/`
@@ -425,7 +425,7 @@ groups = ["org.jetbrains.intellij.deps.fastutil"]
   under `target/intellij-sandbox/<version>/`, the module's `plugin.xml` read from the classpath,
   and the jars of every bundled plugin the named ones require. All of a module's tests run in one
   JVM, as one IDE. The platform's test bases (`BasePlatformTestCase`, `HeavyPlatformTestCase`) are
-  JUnit 3 `TestCase` classes: declare `junit = "junit:junit:4.13.2"` in `[test-dependencies]` and jk
+  JUnit 3 `TestCase` classes: declare `junit = "junit:junit:4.13.2"` in `[test-dependencies]` and JumpKick
   adds the JUnit Vintage engine, which runs them as written. Without it the run fails, naming the
   missing engine, rather than reporting no tests. The test JVM is the module's JDK, so pick a platform build that runs on it:
   2026.2 requires 25, and older platforms' debuggers do not start on 25.

@@ -25,7 +25,7 @@ jvm-args = ["--enable-native-access=ALL-UNNAMED", "-Xmx512m"]
 
 `java-opts` is a second spelling of the same key, here and in `[test]` and `[profiles.<name>]`; when a table sets both, `jvm-args` wins.
 
-They are separate from `[jvm] args` (jk's worker JVMs) and `[test] jvm-args` (forked test JVMs).
+They are separate from `[jvm] args` (JumpKick's worker JVMs) and `[test] jvm-args` (forked test JVMs).
 
 ### Environment
 
@@ -54,11 +54,11 @@ jk run --debug                          # the same flag by its unique prefix
 ```
 
 The app JVM starts with `-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=…`
-as its first option; nothing else jk forks for the build sees the flag. The address is printed
+as its first option; nothing else JumpKick forks for the build sees the flag. The address is printed
 on stderr right before the program starts; attach a stock remote debugger (IDEA *Remote JVM
 Debug*, VS Code `java` `attach`) — recipe in [IDE and BSP](ide.md#debugging-through-bsp).
 A native image is passed over under `--debug-jvm` (JDWP needs a JVM), and a device artifact
-(an APK) cannot be debugged this way. The flag applies to jk project runs, not to tools,
+(an APK) cannot be debugged this way. The flag applies to JumpKick project runs, not to tools,
 scripts or coordinates.
 
 ## Live loops (`jk watch` / `jk dev`)
@@ -103,7 +103,7 @@ claims the role. An entry of the same name in `[dev.sidecars]` is laid over the 
 key — `web = { ready-timeout = "2m" }` keeps the command and changes the timeout — and only such an
 entry may leave out `command`.
 
-Anything else — a docs server, a database, a dev server jk does not build — is an entry:
+Anything else — a docs server, a database, a dev server JumpKick does not build — is an entry:
 
 ```toml
 # app/jk.toml
@@ -126,7 +126,7 @@ docs = { command = ["mkdocs", "serve"], env = { PORT = "8001" }, ready-pattern =
 
 The table is also in [`jk.toml.schema.json`](jk.toml.schema.json), and
 [jk-examples `03-fullstack/vite-sidecar`](https://github.com/JumpKickOSS/jk-examples/tree/main/03-fullstack/vite-sidecar) shows the inferred form running: a JVM API on 8080,
-Vite on 5173 proxying `/api` as the dev server jk infers from `[node] dir`, one `jk dev`.
+Vite on 5173 proxying `/api` as the dev server JumpKick infers from `[node] dir`, one `jk dev`.
 
 Every sidecar starts before the app, but the app waits only for the `run-before` ones:
 
@@ -147,7 +147,7 @@ address instead of typing the port twice. The proxy itself stays the framework's
 ### A node module alone
 
 `jk dev` in a node module runs its `dev` script under the locked Node.js in the app's place — no
-JVM, nothing for jk to restart; the framework reloads itself.
+JVM, nothing for JumpKick to restart; the framework reloads itself.
 
 ### The whole workspace
 
@@ -204,7 +204,7 @@ ready-timeout = "90s"
 | Key | Meaning | Default |
 |---|---|---|
 | `ready` | An HTTP(S) URL polled every 250 ms until it answers 2xx/3xx, both loopbacks for `localhost`, exactly as for a sidecar. When no sidecar is the front door, this is the address the `ready ·` line and `dev-ready` carry | none |
-| `ready-pattern` | A regex over the app's stdout and stderr — the other probe; one or the other. On a terminal this pipes the app's output through jk (the app no longer owns the terminal), since a probe cannot read a terminal it does not hold | none |
+| `ready-pattern` | A regex over the app's stdout and stderr — the other probe; one or the other. On a terminal this pipes the app's output through JumpKick (the app no longer owns the terminal), since a probe cannot read a terminal it does not hold | none |
 | `ready-timeout` | The same spellings as a sidecar's. A probe that times out, or a JVM that exits first, **fails the session** with the sidecar's wording: `app was not ready after 90 s: …` | `"60s"` |
 
 With no `[dev]` probe nothing changes: `dev-ready` means every sidecar is ready and the JVM was

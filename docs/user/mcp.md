@@ -11,9 +11,9 @@ Fix a failing build: [Troubleshooting](troubleshooting.md).
 
 **Claude Code, Cursor, VS Code, Gemini CLI and opencode need nothing by hand:** `jk new`, `jk init`,
 `jk import` and `jk agents` write the registration for the ones in use
-([Agents](agents.md#wiring-a-project-for-agents)). Any other client registers jk once, below.
+([Agents](agents.md#wiring-a-project-for-agents)). Any other client registers JumpKick once, below.
 
-**Per project (preferred): `jk mcp`.** Register jk as a stdio server whose command is `jk mcp`.
+**Per project (preferred): `jk mcp`.** Register JumpKick as a stdio server whose command is `jk mcp`.
 MCP clients start a stdio server in the project they are working on; `jk mcp` finds the project
 root from its working directory (the workspace root for a member), starts the engine if needed,
 and forwards to it. The connection is pinned to that project, so the tools take no `dir`, the
@@ -95,16 +95,16 @@ asked; the human report is `target/jk-results.md` and [Web](web.md). `details` a
 
 ## Protocol revisions
 
-`initialize` answers the `protocolVersion` the client asked for when jk speaks it, and
+`initialize` answers the `protocolVersion` the client asked for when JumpKick speaks it, and
 `2025-11-25` otherwise. The session keeps the revision it negotiated:
 
 | Revision | What changes for the session |
 |---|---|
-| `2024-11-05`, `2025-03-26` | JSON-RPC batches are accepted. jk never asks the client anything |
+| `2024-11-05`, `2025-03-26` | JSON-RPC batches are accepted. JumpKick never asks the client anything |
 | `2025-06-18` | No batches (a batch is a `-32600` error). Form-mode elicitation when the client declares `elicitation` |
 | `2025-11-25` | As `2025-06-18`, plus URL-mode elicitation when the client declares `elicitation.url`. `"elicitation": {}` means form mode alone |
 
-Over HTTP, `MCP-Protocol-Version` names the session's revision; a value jk does not speak is a
+Over HTTP, `MCP-Protocol-Version` names the session's revision; a value JumpKick does not speak is a
 `400`. A request with neither the header nor a session is taken as `2025-03-26`. The handshake and
 the default `tools/list` are the same under every revision.
 
@@ -226,7 +226,7 @@ The whole registry:
 | **`config`** | Machine config get/set, or `apply_preset=ci` |
 | **`disk`** | Cache/store usage; `clean`/`nuke`/`m2-clean` require `confirm=true`, and a host that can ask the user [asks](#decisions) |
 | **`jdk`** | List / install / uninstall (`confirm=true` for uninstall, and a host that can ask [asks](#decisions)) |
-| **`node`** | Node.js: `list` (installs, jk's and other managers'), `list-remote` (`lts`, `major`), `install` (`spec`), `uninstall` (`spec` = exact version, `confirm=true`, and a host that can ask [asks](#decisions)), `which` (`dir`: the project's Node.js), `pin` (`dir`, optional `spec`: writes `jk.toml` and relocks) |
+| **`node`** | Node.js: `list` (installs, JumpKick's and other managers'), `list-remote` (`lts`, `major`), `install` (`spec`), `uninstall` (`spec` = exact version, `confirm=true`, and a host that can ask [asks](#decisions)), `which` (`dir`: the project's Node.js), `pin` (`dir`, optional `spec`: writes `jk.toml` and relocks) |
 | **`doctor`** | Host health snapshot |
 | **`new`** | Scaffold from a template, as `jk new` does (default `app`): `action=templates` lists templates, `action=form` one template's fields, `params` answers its questions, `preview=true` does not write ([below](#new)) |
 | **`publish`** | Validate the publish bundle (dry-run). `upload=true` uploads it to the repository `[publish] repository` names, with the credential `jk repo login` / `JK_REPO_<ID>_*` holds and signing from `[publish]` (`JK_GPG_PASSPHRASE`). An agent never names a URL; a project with no `[publish] repository`, or with `central`, is refused with the fix — Central uploads stay on `jk publish` |
@@ -249,7 +249,7 @@ outside the default list is called by name once `tools/list` with `extended: tru
 
 `run`, `deps`, `rename` and `update` take `goal`: the task the call serves, under eight words,
 repeated word for word until the task changes (`"goal": "Rename Ledger.post to record"`). It is
-required in their schemas so an agent passes it, but jk never refuses a call without it. It titles
+required in their schemas so an agent passes it, but JumpKick never refuses a call without it. It titles
 the session's [episode](web.md#sessions-and-episodes) on the dashboard: a call whose goal differs
 from the last one starts a new episode, and the same goal keeps the current one. A call with no
 goal joins the episode it would have anyway; when it starts one (another project, or after ten
@@ -268,7 +268,7 @@ as `jk new`.
   else: the questions would be paid for on every listing.
 - `action=form, template=<id>` lists that template's form, one line per field, as
   [`jk new --help`](templates.md) prints them: `database: none|postgres|mysql = postgres  # Database`.
-  jk's own step comes first, from the same field list `jk new` renders (`lang`, `template`,
+  JumpKick's own step comes first, from the same field list `jk new` renders (`lang`, `template`,
   `name`, `group`, `parentDir`, and `layout` when the template renders more than one), then the
   template's questions. With no `template` it is the `app` template's form.
 - `new(template, name, params={…})` scaffolds; no `template` is `app`. `params` answers the
@@ -283,7 +283,7 @@ as `jk new`.
 - The new project is wired for coding agents as `jk new` wires one ([Agents](agents.md#wiring-a-project-for-agents)):
   for the agent the client named itself in `initialize` (`clientInfo.name`: `claude-code`, `Cursor`,
   `gemini-cli-…`, `opencode`, `antigravity…`, `codex-…`), plus what the engine's `JK_AGENTS` and
-  detected agents add. A client jk does not recognise gets the engine's setting alone, and
+  detected agents add. A client JumpKick does not recognise gets the engine's setting alone, and
   `JK_AGENTS=none` in the engine's environment wires none, whoever asks. The result's `agents`
   lists the files written and the notes, the last of which names the agents wired.
 
@@ -304,7 +304,7 @@ Token, loopback bind, and how to report a hole in that gate: [Security](security
 
 ## Decisions
 
-Your agent asks you; jk's page is where the details live. A few operations wait for a person
+Your agent asks you; JumpKick's page is where the details live. A few operations wait for a person
 instead of proceeding on the agent's word. Each is a **decision** in the engine's one queue, which
 the agent's host, the [dashboard](web.md#decisions) and `jk decide` all answer. Any of them may
 accept or decline any decision; the first answer wins and every other surface closes.
@@ -317,13 +317,13 @@ Dependency work never asks: `update` applies and `deps` either applies or fails.
 ask neither by form nor by link runs the operation on `confirm=true`. Decisions are a courtesy, not
 a gate: they surface what a person wants to know first, in more detail than the host's own prompt.
 
-jk asks by the first rung the session supports ([revisions](#protocol-revisions)), and stops there:
+JumpKick asks by the first rung the session supports ([revisions](#protocol-revisions)), and stops there:
 
 1. **Form elicitation.** The host renders the question (`answer`: yes / no) and the call resumes
    with the answer. A host that also takes links gets a third choice, *Show me the details*, which
    moves the question to rung 2.
 2. **URL elicitation.** The host asks the user to open the decision's dashboard page,
-   `#decision/<id>`; the call resumes when the decision is settled and jk sends
+   `#decision/<id>`; the call resumes when the decision is settled and JumpKick sends
    `notifications/elicitation/complete`. A client that declared URL mode but has no way back on
    this request gets the `-32042` error carrying the link instead, and calls again once the user
    opened it.
@@ -340,7 +340,7 @@ jk asks by the first rung the session supports ([revisions](#protocol-revisions)
    notification carrying the link (a click opens it on Windows and Linux), `open` opens the
    browser on it, `quiet` leaves the link in the result.
 
-When another surface answers while the host's question is still open, jk withdraws it: a form
+When another surface answers while the host's question is still open, JumpKick withdraws it: a form
 question gets `notifications/cancelled`, a link gets `notifications/cancelled` and
 `notifications/elicitation/complete`, the desktop notification is closed, and the dashboard's
 Needs-you banner drops the decision.

@@ -318,7 +318,7 @@ or a guard the launcher counted that left no line is what fails the run.
 ## Fixtures
 
 A ban proves it bites. `fixture = "<dir>"` on a rule (or `@Fixture` on a guard test) names a
-workspace-relative directory — `guard-fixtures/<id>` by convention; jk's own sit beside the rule
+workspace-relative directory — `guard-fixtures/<id>` by convention; JumpKick's own sit beside the rule
 engine under `server/guard/fixtures/` — holding `Bad*.java`, which must produce a violation, and
 `Ok*.java`, which must not; the engine compiles them once per owning module and judges them as that
 module's lane would. Stub types a fixture needs (a framework class by its real name) sit
@@ -332,7 +332,7 @@ compiled.
 A guard test that reads several files at once — a workflow, a manifest, a pin — holds `Bad*` and
 `Ok*` *directories* instead: each is a tree the guard runs over as if it were the checkout root,
 one case per check the guard makes, and the files beside the case directories are the tree every
-case starts from (a case's own files are laid over them). jk's `ci-cadence` fixture under
+case starts from (a case's own files are laid over them). JumpKick's `ci-cadence` fixture under
 `server/guard/fixtures/ci-cadence/` is the shape: three workflows and a build script shared, a
 manifest and a bootstrap pin per case. A guard that shells out over the tree runs inside the case
 too, and one that skips on a machine without its tool skips its fixture the same way — a notice,
@@ -349,7 +349,7 @@ extends = ["cc.jumpkick.guards:spring:0.13.0"]
 ```
 
 `jk lock` pins the exact coordinate as a `[[plugin]]` row — by digest, or by version alone for a
-first-party pack at a pre-release jk version ([Lockfile](lockfile.md#what-else-the-lock-pins)) — and
+first-party pack at a pre-release JumpKick version ([Lockfile](lockfile.md#what-else-the-lock-pins)) — and
 unpacks the fragment under `target/jk-guards/guard-packs/`. A digest-pinned pack is unpacked only
 from a jar whose bytes are the lock's: a store jar of the same version with other bytes is refused
 with the fix named (`jk lock` to pin the jar you have, or put the pinned jar back), never read as

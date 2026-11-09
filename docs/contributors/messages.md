@@ -10,7 +10,7 @@ developers, not by agents. Write them the way a good CLI talks: short, plain, an
    second line is truly needed, make it a short hint, not a continuation of the sentence.
 2. **Subject first:** `<what>: <what's wrong>`, then `; <what to do>` when there is a fix.
    `repositories.gitlab.credential-only: only in ~/.jk/config.toml`
-3. **Plain words.** Say "dependency", "module", "version", "repository". Not jk's internal terms:
+3. **Plain words.** Say "dependency", "module", "version", "repository". Not JumpKick's internal terms:
    floor, edge, leg, lane, unit, frontier, partition, closure, probe, cascade, wedge.
 4. **What happened and what to do, not why the design is so.** The reasoning goes in `docs/user/`.
 5. **No essay grammar:** no stacked "which/whose/so that" clauses, no em-dash or semicolon chains,

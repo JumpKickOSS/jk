@@ -20,7 +20,7 @@ contributes = "sources"                                      # sources | resourc
 | Key | Meaning |
 |---|---|
 | `tool` | The generator's coordinate. A bare version is an exact pin; `^`/`~` float within the line; `latest` is the newest stable. The tool's runtime closure is fetched with it, so a tool that is not a fat jar still runs. |
-| `main` | The class to run. Omitted, jk reads `Main-Class` from the tool's own jar. |
+| `main` | The class to run. Omitted, JumpKick reads `Main-Class` from the tool's own jar. |
 | `inputs` | What the tool reads: module-relative paths or globs (`src/main/avro/**/*.avsc`; `**` names zero or more directories). Patterns matching nothing skip the tool: the output stays empty and one warning in the results says so. An entry with an `unpack` may leave them out. |
 | `unpack` | A jar coordinate whose contents the tool reads — a schema published as an artifact (`io.zipkin.proto3:zipkin-proto3:1.0.0`). The jar is fetched like the tool, extracted before the run, and `${unpacked}` names the directory. |
 | `args` | The tool's arguments. `${in}` is the first input, `${inputs}` all of them (alone, one argument per input; embedded, joined with the path separator), `${unpacked}` the extracted jar, `${out}` the output directory, `${module.dir}` the module root — every one an absolute path. Other `${…}` pass through to the tool. |
@@ -34,7 +34,7 @@ hash, the build JDK and the worker itself — so a changed spec, argument, tool 
 re-runs the generator, and nothing else does. An unchanged entry is restored from the cache.
 
 The tool runs in a **forked JVM** on the build's JDK, never in the engine, with `${out}` as its
-working directory: what it writes by relative path lands in the output; what it reads, jk hands it
+working directory: what it writes by relative path lands in the output; what it reads, JumpKick hands it
 by absolute path. Its output is captured; lines of the form `path:line[:col]: message` become the
 step's diagnostics with a location, an error when the tool failed or said `error`, a warning
 otherwise. A non-zero exit fails the step with the tool's last lines.
@@ -96,7 +96,7 @@ implementing the generated interface. `jk import` writes this table from a POM's
 
 The [localizer](https://github.com/jenkinsci/localizer) library generates a `Messages` class per
 `Messages.properties` bundle, a typed method per key. Its generator ships only as a Maven mojo and
-an Ant task, so jk carries the `main` itself: the preset runs it over the module's resource
+an Ant task, so JumpKick carries the `main` itself: the preset runs it over the module's resource
 directories, a bundle's directory becoming its class's package.
 
 ```toml
@@ -261,7 +261,7 @@ jackson-databind = "2.23.0"
 The step is `generate-asyncapi`. An Avro payload (`schemaFormat: application/vnd.apache.avro…`)
 compiles with Avro's own compiler when `avro` names a release, and a Protobuf payload
 (`application/vnd.google.protobuf…`) with protoc when `protobuf` does, its well-known types read
-from protobuf-java; either is skipped with a warning when its release is not named, and channel, operation and listener code is not generated: jk makes the payload
+from protobuf-java; either is skipped with a warning when its release is not named, and channel, operation and listener code is not generated: JumpKick makes the payload
 classes your own code sends and receives. `jk import` writes the table from sngular's
 scs-multiapi plugin (Maven and Gradle) and ZenWave's Maven plugin
 ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
@@ -299,7 +299,7 @@ declared subject and a reference to it name different versions, `jk lock` refuse
 
 The credential comes from the repository chain under the `repository` id: `JK_REPO_<ID>_USERNAME`
 and `JK_REPO_<ID>_PASSWORD` (a Confluent Cloud API key and secret), or a table in
-`~/.jk/config.toml` ([Repositories](repositories.md)). Only a download is supported: jk does not
+`~/.jk/config.toml` ([Repositories](repositories.md)). Only a download is supported: JumpKick does not
 register schemas or check compatibility. `jk import` writes the table from Confluent's Maven plugin and the imflog Gradle
 plugin, and from a private Gradle plugin that downloads subjects once a rule teaches it the plugin
 ([Migration](migration.md#teaching-import-a-private-gradle-plugin)).
