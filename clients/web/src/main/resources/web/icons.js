@@ -50,6 +50,8 @@ const ICON_PATHS = {
 const ICON_SOLID = {
   play: 'M8 5v14l11-7z',
   dot: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+  // Material Design's download glyph (arrow into a tray): the Install JumpKick button.
+  download: 'M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z',
 };
 export const JkIcon = {
   props: { name: { type: String, required: true } },

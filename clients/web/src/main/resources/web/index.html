@@ -13,8 +13,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
-  <!-- Iconography is inline SVG via <jk-icon> (icons.js). Brand: jumpkick-logo.webp in chrome;
-       jk-logo.svg monogram as favicon. -->
+  <!-- Iconography is inline SVG via <jk-icon> (icons.js). Brand: jumpkick-logo.webp in the header;
+       the jk-logo.svg mark as favicon and in the About dialog. -->
   <!-- Version-pinned + SRI: a CDN compromise must not be able to script a page that can trigger
        builds. Update the integrity hash whenever the pin moves (docs/contributors/webclient.md). -->
   <script src="https://unpkg.com/vue@3.5.39/dist/vue.global.prod.js"
@@ -837,7 +837,7 @@
     <div v-if="help" class="modal-bg" @click.self="help = false">
       <div class="modal about">
         <div class="modal-head">
-          <img class="about-logo" src="/jumpkick-logo.webp" alt="" width="179" height="120">
+          <img class="about-logo" src="/jk-logo.svg" alt="" width="40" height="40">
           <div>
             <div class="about-title">JumpKick Build Engine</div>
             <div class="about-sub">{{ versionPill() }}</div>
@@ -858,7 +858,7 @@
         <!-- Offered once the browser says the dashboard may install; gone once it is (pwa.js). -->
         <div v-if="installable" class="about-install">
           <span class="dim small">Run the dashboard in its own window, with notifications under the JumpKick name.</span>
-          <button type="button" class="action-cyan" @click="installApp()">Install JumpKick</button>
+          <button type="button" class="action-cyan" @click="installApp()"><jk-icon name="download"></jk-icon>Install JumpKick</button>
         </div>
         <div class="modal-foot">
           <span class="dim small">Sessions, episodes and builds stream over SSE. Run <code>jk build</code> in any workspace, or let an agent call JumpKick, to see it on the console.</span>

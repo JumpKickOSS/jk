@@ -1956,11 +1956,10 @@ label.check:hover .check-box {
 }
 .new-project-form .error { color: var(--err); margin: 0; font: 500 12.5px var(--mono); }
 .about-logo {
-  width: 45px;
-  height: auto;
-  object-fit: contain;
+  width: 40px;
+  height: 40px;
   flex: none;
-  filter: drop-shadow(0 0 10px rgba(var(--cn-rgb), 0.28));
+  border-radius: 8px;
 }
 .about-title { font: 700 15px var(--mono); color: var(--bright); }
 .about-sub { font: 600 11px var(--mono); color: var(--cn); }
@@ -1981,7 +1980,8 @@ label.check:hover .check-box {
   padding: 12px 16px;
   border-top: 1px solid var(--bd2);
 }
-.about-install .action-cyan { flex: none; padding: 5px 10px; font-size: 12px; border-color: rgba(var(--cn-rgb), 0.35); color: var(--cn); }
+.about-install .action-cyan { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; font-size: 12px; border-color: rgba(var(--cn-rgb), 0.35); color: var(--cn); }
+.about-install .action-cyan .ico { width: 15px; height: 15px; }
 
 /* ---- #project/<id>/files viewer (layout only; syntax colours come from Monaco's vs-dark) ---- */
 main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: column; min-height: 0; }
