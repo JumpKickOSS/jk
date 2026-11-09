@@ -60,7 +60,15 @@ class HttpEventStreamTest extends HttpEngineServerHarness {
         assertThat(postPresence(stream, "{\"visible\":true,\"permission\":\"granted\"}")
                         .statusCode())
                 .isEqualTo(200);
-        assertThat(server.dashboards().channel()).isEqualTo(new Dashboards.Channel.InApp());
+        assertThat(server.dashboards().channel())
+                .as("visible but neither focused nor used")
+                .isEqualTo(new Dashboards.Channel.Browser(stream));
+        assertThat(postPresence(
+                                stream,
+                                "{\"visible\":true,\"focused\":true,\"lastInputAgoMs\":1200,\"permission\":\"granted\"}")
+                        .statusCode())
+                .isEqualTo(200);
+        assertThat(server.dashboards().channel()).isEqualTo(new Dashboards.Channel.InApp(stream));
         assertThat(postPresence("no-such-stream", "{\"visible\":true}").statusCode())
                 .isEqualTo(404);
         assertThat(postPresence(stream, "[]").statusCode()).isEqualTo(400);

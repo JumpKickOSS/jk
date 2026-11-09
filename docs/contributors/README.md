@@ -37,8 +37,8 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 ## Planning and internal design
 
 Tickets, PRDs, benches, and decision records are **not** in this repo. They live in
-[KanArtist](https://github.com/JumpKickOSS/kanartist) project `jk`
-(`projects/jk/tickets/`, `projects/jk/docs/`). The one planning page that does live here is
+the KanArtist store `jk` ([KanArtist/jk](https://github.com/KanArtist/jk)), project `jk`
+(`projects/jk/tickets/`, `projects/jk/docs/`), read and written with `ka`. The one planning page that does live here is
 [the 1.0 plan](plan-1.0.md): the priority order, without ticket ids, so a reader of this tree
 knows what is being built next. Its tickets carry the label `inner-loop-1.0` on the board.
 

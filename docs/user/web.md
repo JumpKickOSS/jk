@@ -260,13 +260,22 @@ the bell entry and the Needs-you row close.
 Under `[ui] ask = notify` ([Config](config.md#decisions)) JumpKick tells you about a decision once,
 by the first of these that applies:
 
-1. **A dashboard tab is visible.** Nothing pops up. The bell rings and its count rises; the dialog
-   waits for you to open it, so a decision never lands over what you are typing.
-2. **A hidden dashboard tab may notify.** One browser notification, **JumpKick needs you**, with the
+1. **You are using a dashboard tab.** Nothing pops up outside the page. The bell wiggles once (it
+   lights up instead when your system asks for reduced motion) and a one-line card under it says
+   who needs you and on what, with a **View** link, for about four seconds; hovering the card keeps
+   it. The card never takes the keyboard, and the dialog waits for you to open it, so a decision
+   never lands over what you are typing.
+2. **A dashboard tab may notify.** One browser notification, **JumpKick needs you**, with the
    question. A click brings the dashboard forward with the dialog open: the window you used last,
    the installed app's when you [installed it](#install-as-an-app), or a new one when none is open.
    It closes when the decision is answered anywhere. The desktop notification is skipped.
 3. **Otherwise** the desktop notification, as [Config](config.md#decisions) describes.
+
+"Using" means the tab is visible, its window has focus, and you moved the mouse or typed in it in
+the last two minutes. A dashboard showing on a second monitor while you work in your editor, or
+left open on a laptop nobody is at, is visible but not in use, so the browser or desktop
+notification still reaches you. The page notes its own last input, so nothing asks for the
+browser's idle-detection permission.
 
 To let the dashboard notify, open the bell and click **Turn on notifications**; the browser asks
 once. The bell never asks on its own, and the button is gone once you have answered either way
@@ -294,7 +303,7 @@ Dock**. Firefox does not install it; the dashboard works in a tab as before.
 The app opens the dashboard root, and keeps no copy of the dashboard or of any engine data: it
 loads everything from the engine each time, so after an engine upgrade it shows the new dashboard,
 and with the engine stopped it shows the browser's error page. Notifications in the app follow the
-same rule as in a tab: the app's window counts as a tab, visible or hidden.
+same rule as in a tab: the app's window counts as a tab, in use or not.
 
 An installed app belongs to its origin, the scheme, host and port together, like the notification
 permission. Each engine port is its own app: `http://127.0.0.1:8910` and `http://localhost:8910`

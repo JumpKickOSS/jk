@@ -410,13 +410,15 @@ engine socket (`decisions-request`).
 
 `Decisions.alert` carries out `[ui] ask` once a decision reaches `NEEDS-YOU`. Under `notify` it asks
 `Dashboards.channel()`, which picks from what each dashboard tab last reported over its event
-stream ([below](#dashboard-presence)): **in-app** when any fresh tab is visible (nothing notifies;
-the page rings its bell and never opens the dialog by itself, so a stray keypress cannot answer a
-dialog that appeared under it), **browser** when a fresh hidden tab reports `granted` (the freshest
-such tab gets a `notify` frame; the desktop notification is skipped), else **native**
-(`DecisionAlerts`, below). A report counts while it is at most `Dashboards.STALE_AFTER` (45 s,
-three pings) old; a frozen tab or a slept machine stops answering and so falls back to native. A
-closed stream leaves at once.
+stream ([below](#dashboard-presence)): **in-app** when a fresh tab is *active* (visible, focused,
+and used within `Dashboards.IDLE_AFTER`, 2 min; nothing notifies: the page wiggles its bell and
+shows a short preview card, and never opens the dialog by itself, so a stray keypress cannot answer
+a dialog that appeared under it), **browser** when a fresh tab that is not active reports `granted`
+(the freshest such tab gets a `notify` frame, visible or not; the desktop notification is skipped),
+else **native** (`DecisionAlerts`, below). A report counts while it is at most
+`Dashboards.STALE_AFTER` (45 s, three pings) old; a frozen tab or a slept machine stops answering
+and so falls back to native. The idle limit counts from the input the report names plus the
+report's age, so a tab that stops reporting turns idle on time. A closed stream leaves at once.
 
 The page shows the notification titled **JumpKick needs you**, tagged with the decision id (a
 repeat replaces it), and a click brings a dashboard window forward and opens `#decision/<id>`. Every
@@ -651,9 +653,11 @@ The decision queue's `decision` frame is dashboard-only as well: the decision as
 #### Dashboard presence
 
 Each dashboard stream is delivered, to it alone, a `presence` frame `{ stream, every }` on connect
-and every `Dashboards.PING_EVERY` (15 s). The tab answers each, and every visibility or permission
-change, with `POST /api/events/<stream>` and `{ visible, permission }` (`permission` is
-`Notification.permission`, or `unsupported`): **200**, **404** once that stream has ended, **400**
+and every `Dashboards.PING_EVERY` (15 s). The tab answers each, and every visibility, focus or permission
+change and every turn to idle or active, with `POST /api/events/<stream>` and `{ visible, focused,
+lastInputAgoMs, permission }` (`focused` is `document.hasFocus()`, `lastInputAgoMs` the time since
+the tab's last mouse, key, wheel or touch input or -1 for none, `permission` is
+`Notification.permission`, or `unsupported`; a body without `focused` reads as a tab not in use): **200**, **404** once that stream has ended, **400**
 for a body that is not an object. EventSource cannot write upstream, so the post is the stream's
 return half; it names no tab the stream does not hold. The page handles `presence` and `notify`
 as they arrive rather than through its drain queue, whose timers a hidden tab runs late, and the

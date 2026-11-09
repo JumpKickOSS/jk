@@ -16,9 +16,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * One channel per decision: in the page when a dashboard is visible, a browser notification from a
- * hidden dashboard that may show one, the native notification otherwise, and a tab whose report
- * went stale counts for nothing.
+ * One channel per decision: in the page when a dashboard is in use, a browser notification from a
+ * dashboard that may show one, the native notification otherwise. A tab that is visible but
+ * unfocused, or focused but idle, is not in use, and a tab whose report went stale counts for
+ * nothing.
  */
 class DashboardsTest {
 
@@ -38,6 +39,14 @@ class DashboardsTest {
 
     private void open(String stream) {
         dashboards.open(stream, d -> notified.add(stream + ":" + d.id()));
+    }
+
+    private void active(String stream, Dashboards.Permission permission) {
+        dashboards.report(stream, Dashboards.Presence.active(permission));
+    }
+
+    private void idle(String stream, boolean visible, Dashboards.Permission permission) {
+        dashboards.report(stream, Dashboards.Presence.idle(visible, permission));
     }
 
     private void advance(Duration by) {
@@ -87,58 +96,94 @@ class DashboardsTest {
     }
 
     @Test
-    void a_visible_dashboard_keeps_it_in_the_page_whatever_else_is_open() {
+    void an_active_dashboard_keeps_it_in_the_page_whatever_else_is_open() {
         open("hidden");
-        open("shown");
-        dashboards.report("hidden", false, Dashboards.Permission.GRANTED);
-        dashboards.report("shown", true, Dashboards.Permission.DEFAULT);
-        assertThat(dashboards.channel()).isEqualTo(new Dashboards.Channel.InApp());
+        open("used");
+        idle("hidden", false, Dashboards.Permission.GRANTED);
+        active("used", Dashboards.Permission.DEFAULT);
+        assertThat(dashboards.channel()).isEqualTo(new Dashboards.Channel.InApp("used"));
     }
 
     @Test
-    void a_hidden_dashboard_with_permission_notifies_and_the_freshest_one_does() {
+    void a_visible_but_unfocused_dashboard_does_not_hold_back_the_os_notification() {
+        open("second-monitor");
+        dashboards.report("second-monitor", new Dashboards.Presence(true, false, 0, Dashboards.Permission.DEFAULT));
+        assertThat(dashboards.channel()).isEqualTo(new Dashboards.Channel.Native());
+        dashboards.report("second-monitor", new Dashboards.Presence(true, false, 0, Dashboards.Permission.GRANTED));
+        assertThat(dashboards.channel())
+                .as("it may still show a browser notification")
+                .isEqualTo(new Dashboards.Channel.Browser("second-monitor"));
+    }
+
+    @Test
+    void a_focused_dashboard_idle_past_the_limit_is_not_in_use() {
+        open("a");
+        long limit = Dashboards.IDLE_AFTER.toMillis();
+        dashboards.report("a", new Dashboards.Presence(true, true, limit, Dashboards.Permission.DEFAULT));
+        assertThat(dashboards.channel()).as("exactly at the limit").isEqualTo(new Dashboards.Channel.InApp("a"));
+        dashboards.report("a", new Dashboards.Presence(true, true, limit + 1, Dashboards.Permission.DEFAULT));
+        assertThat(dashboards.channel()).as("past it").isEqualTo(new Dashboards.Channel.Native());
+        dashboards.report("a", new Dashboards.Presence(true, true, -1, Dashboards.Permission.DEFAULT));
+        assertThat(dashboards.channel()).as("never used").isEqualTo(new Dashboards.Channel.Native());
+    }
+
+    @Test
+    void a_report_ages_into_idle_without_another_report() {
+        open("a");
+        dashboards.report(
+                "a",
+                new Dashboards.Presence(
+                        true, true, Dashboards.IDLE_AFTER.minusSeconds(10).toMillis(), Dashboards.Permission.DEFAULT));
+        assertThat(dashboards.channel()).isEqualTo(new Dashboards.Channel.InApp("a"));
+        advance(Duration.ofSeconds(11));
+        assertThat(dashboards.channel())
+                .as("the input it reported is now older than the limit")
+                .isEqualTo(new Dashboards.Channel.Native());
+    }
+
+    @Test
+    void a_dashboard_with_permission_notifies_and_the_freshest_one_does() {
         open("old");
         open("new");
         open("asking");
-        dashboards.report("old", false, Dashboards.Permission.GRANTED);
+        idle("old", false, Dashboards.Permission.GRANTED);
         advance(Duration.ofSeconds(5));
-        dashboards.report("new", false, Dashboards.Permission.GRANTED);
-        dashboards.report("asking", false, Dashboards.Permission.DEFAULT);
+        idle("new", true, Dashboards.Permission.GRANTED);
+        idle("asking", false, Dashboards.Permission.DEFAULT);
         assertThat(dashboards.channel()).isEqualTo(new Dashboards.Channel.Browser("new"));
     }
 
     @Test
-    void hidden_dashboards_without_permission_leave_it_to_the_native_notification() {
+    void dashboards_without_permission_leave_it_to_the_native_notification() {
         open("a");
         open("b");
-        dashboards.report("a", false, Dashboards.Permission.DEFAULT);
-        dashboards.report("b", false, Dashboards.Permission.DENIED);
+        idle("a", true, Dashboards.Permission.DEFAULT);
+        idle("b", false, Dashboards.Permission.DENIED);
         assertThat(dashboards.channel()).isEqualTo(new Dashboards.Channel.Native());
     }
 
     @Test
     void a_stale_report_falls_back_to_the_native_notification() {
         open("a");
-        dashboards.report("a", true, Dashboards.Permission.GRANTED);
+        dashboards.report("a", new Dashboards.Presence(true, true, -1, Dashboards.Permission.GRANTED));
         advance(Dashboards.STALE_AFTER);
-        assertThat(dashboards.channel()).as("exactly at the limit").isEqualTo(new Dashboards.Channel.InApp());
+        assertThat(dashboards.channel()).as("exactly at the limit").isEqualTo(new Dashboards.Channel.Browser("a"));
         advance(Duration.ofMillis(1));
         assertThat(dashboards.channel()).as("past it").isEqualTo(new Dashboards.Channel.Native());
 
-        dashboards.report("a", false, Dashboards.Permission.GRANTED);
-        assertThat(dashboards.channel())
-                .as("a fresh report counts again")
-                .isEqualTo(new Dashboards.Channel.Browser("a"));
+        active("a", Dashboards.Permission.GRANTED);
+        assertThat(dashboards.channel()).as("a fresh report counts again").isEqualTo(new Dashboards.Channel.InApp("a"));
         assertThat(Dashboards.STALE_AFTER).isGreaterThanOrEqualTo(Dashboards.PING_EVERY.multipliedBy(3));
     }
 
     @Test
     void a_closed_stream_leaves_at_once_and_takes_no_more_reports() {
         open("a");
-        dashboards.report("a", true, Dashboards.Permission.GRANTED);
+        active("a", Dashboards.Permission.GRANTED);
         dashboards.close("a");
         assertThat(dashboards.channel()).isEqualTo(new Dashboards.Channel.Native());
-        assertThat(dashboards.report("a", true, Dashboards.Permission.GRANTED)).isFalse();
+        assertThat(dashboards.report("a", Dashboards.Presence.active(Dashboards.Permission.GRANTED)))
+                .isFalse();
         assertThat(dashboards.notify("a", decision())).isFalse();
     }
 
@@ -152,19 +197,19 @@ class DashboardsTest {
     }
 
     @Test
-    void a_visible_dashboard_skips_every_notification() {
+    void an_active_dashboard_skips_every_notification() {
         open("a");
-        dashboards.report("a", true, Dashboards.Permission.GRANTED);
+        active("a", Dashboards.Permission.GRANTED);
         assertThat(decisions(UiAsk.NOTIFY).alert(decision(), LINK))
-                .isEqualTo("a dashboard is showing: its bell has it");
+                .isEqualTo("a dashboard is in use: it shows it in the page");
         assertThat(notified).isEmpty();
         assertThat(launched).as("no native toast").isEmpty();
     }
 
     @Test
-    void a_hidden_dashboard_with_permission_notifies_and_the_native_toast_is_skipped() {
+    void a_dashboard_with_permission_notifies_and_the_native_toast_is_skipped() {
         open("a");
-        dashboards.report("a", false, Dashboards.Permission.GRANTED);
+        idle("a", false, Dashboards.Permission.GRANTED);
         assertThat(decisions(UiAsk.NOTIFY).alert(decision(), LINK)).isEqualTo("sent a browser notification");
         assertThat(notified).containsExactly("a:abc");
         assertThat(launched).as("no native toast").isEmpty();
@@ -178,9 +223,20 @@ class DashboardsTest {
     }
 
     @Test
+    void an_idle_visible_dashboard_lets_the_native_toast_fire() {
+        open("a");
+        dashboards.report(
+                "a",
+                new Dashboards.Presence(
+                        true, true, Dashboards.IDLE_AFTER.plusSeconds(1).toMillis(), Dashboards.Permission.DEFAULT));
+        assertThat(decisions(UiAsk.NOTIFY).alert(decision(), LINK)).isEqualTo("sent a desktop notification");
+        assertThat(launched).hasSize(1);
+    }
+
+    @Test
     void a_stale_heartbeat_falls_back_to_the_native_toast() {
         open("a");
-        dashboards.report("a", false, Dashboards.Permission.GRANTED);
+        active("a", Dashboards.Permission.GRANTED);
         advance(Dashboards.STALE_AFTER.plusSeconds(1));
         assertThat(decisions(UiAsk.NOTIFY).alert(decision(), LINK)).isEqualTo("sent a desktop notification");
         assertThat(notified).isEmpty();
@@ -190,7 +246,7 @@ class DashboardsTest {
     @Test
     void the_other_ask_modes_ignore_the_dashboards() {
         open("a");
-        dashboards.report("a", false, Dashboards.Permission.GRANTED);
+        idle("a", false, Dashboards.Permission.GRANTED);
         assertThat(decisions(UiAsk.QUIET).alert(decision(), LINK)).isEqualTo("quiet: the link is above");
         assertThat(notified).isEmpty();
         assertThat(launched).isEmpty();

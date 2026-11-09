@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-// Telling the person once: the tab reports its visibility and permission over its stream, a
-// notification the engine routes here shows only from a hidden tab that may notify, a visible tab
-// rings the bell instead, a settled decision's notification closes by its tag, and the bell asks for
-// permission on a click only.
+// Telling the person once: the tab reports its visibility, focus, last input and permission over
+// its stream, a notification the engine routes here shows only from a tab that is not in use and may
+// notify, a tab in use wiggles the bell and previews it instead, a settled decision's notification
+// closes by its tag, and the bell asks for permission on a click only.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -19,7 +19,16 @@ const storage = () => {
 globalThis.sessionStorage = storage();
 globalThis.localStorage = storage();
 globalThis.location = { hash: '', hostname: '127.0.0.1', pathname: '/', search: '' };
-globalThis.document = { visibilityState: 'hidden', hidden: true, addEventListener() {}, removeEventListener() {} };
+globalThis.document = {
+  visibilityState: 'hidden',
+  hidden: true,
+  focused: false,
+  hasFocus() {
+    return this.focused;
+  },
+  addEventListener() {},
+  removeEventListener() {},
+};
 
 /** Every request the page sends, and what a GET of a path answers (`{}` when unset). */
 const posts = [];
@@ -56,9 +65,14 @@ globalThis.Notification = FakeNotification;
 
 const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
 const {
+  IDLE_MS,
+  INPUT_EVENTS,
   NOTIFY_TITLE,
+  PREVIEW_MS,
   WORKER_MESSAGE,
   askLine,
+  decisionPreview,
+  isActive,
   maxActions,
   notificationFor,
   notificationsFor,
@@ -80,10 +94,17 @@ function root() {
   return vm;
 }
 
-function show(visible, permission = 'granted') {
+function show(visible, permission = 'granted', focused = false) {
   document.visibilityState = visible ? 'visible' : 'hidden';
   document.hidden = !visible;
+  document.focused = focused;
   FakeNotification.permission = permission;
+}
+
+/** A tab someone is using: visible, focused, and touched just now. */
+function use(vm, permission = 'granted') {
+  show(true, permission, true);
+  vm._lastInputAt = Date.now();
 }
 
 beforeEach(() => {
@@ -94,14 +115,40 @@ beforeEach(() => {
   show(false);
 });
 
-test('the tab reports whether it is visible and what the browser lets it do', () => {
-  assert.deepEqual(tabState({ visibilityState: 'visible' }, { permission: 'granted' }), { visible: true, permission: 'granted' });
-  assert.deepEqual(tabState({ visibilityState: 'hidden' }, { permission: 'default' }), { visible: false, permission: 'default' });
-  assert.deepEqual(tabState({ visibilityState: 'hidden' }, null), { visible: false, permission: 'unsupported' });
+test('the tab reports whether it is visible, focused and used, and what the browser lets it do', () => {
+  const focused = { visibilityState: 'visible', hasFocus: () => true };
+  assert.deepEqual(tabState(focused, { permission: 'granted' }, 1000, 4000), {
+    visible: true,
+    focused: true,
+    lastInputAgoMs: 3000,
+    permission: 'granted',
+  });
+  assert.deepEqual(tabState({ visibilityState: 'hidden' }, { permission: 'default' }), {
+    visible: false,
+    focused: false,
+    lastInputAgoMs: -1,
+    permission: 'default',
+  });
+  assert.deepEqual(tabState(null, null), { visible: false, focused: false, lastInputAgoMs: -1, permission: 'unsupported' });
 });
 
-test('a notification shows only from a hidden tab that may notify; a visible one keeps it in the page', () => {
-  assert.equal(pageChannel({ visible: true, permission: 'granted' }), 'in-app');
+test('active is visible, focused and used within two minutes; nothing less', () => {
+  const state = (over) => ({ visible: true, focused: true, lastInputAgoMs: 0, permission: 'default', ...over });
+  assert.equal(IDLE_MS, 120_000, "the engine's IDLE_AFTER");
+  assert.equal(isActive(state()), true);
+  assert.equal(isActive(state({ lastInputAgoMs: IDLE_MS })), true, 'exactly at the limit');
+  assert.equal(isActive(state({ lastInputAgoMs: IDLE_MS + 1 })), false, 'idle past it');
+  assert.equal(isActive(state({ lastInputAgoMs: -1 })), false, 'never used');
+  assert.equal(isActive(state({ focused: false })), false, 'visible on a second monitor, focus elsewhere');
+  assert.equal(isActive(state({ visible: false })), false, 'hidden');
+  assert.equal(isActive(null), false);
+});
+
+test('a notification shows only from a tab not in use that may notify; a tab in use keeps it in the page', () => {
+  const active = { visible: true, focused: true, lastInputAgoMs: 10 };
+  assert.equal(pageChannel({ ...active, permission: 'granted' }), 'in-app');
+  assert.equal(pageChannel({ ...active, focused: false, permission: 'granted' }), 'browser', 'visible but unfocused');
+  assert.equal(pageChannel({ ...active, lastInputAgoMs: IDLE_MS + 1, permission: 'granted' }), 'browser', 'focused but idle');
   assert.equal(pageChannel({ visible: false, permission: 'granted' }), 'browser');
   assert.equal(pageChannel({ visible: false, permission: 'default' }), 'none');
   assert.equal(pageChannel({ visible: false, permission: 'denied' }), 'none');
@@ -121,11 +168,17 @@ test('the presence ping names the stream and is answered with the tab state on i
   const vm = root();
   assert.equal(vm.notifyEvent({ type: SSE.presence, data: { stream: 's-1', every: 15000 } }), true);
   await new Promise((r) => setTimeout(r, 0));
-  assert.deepEqual(posts, [{ url: '/api/events/s-1', method: 'POST', body: { visible: false, permission: 'granted' } }]);
+  assert.deepEqual(posts, [
+    { url: '/api/events/s-1', method: 'POST', body: { visible: false, focused: false, lastInputAgoMs: -1, permission: 'granted' } },
+  ]);
 
-  show(true, 'denied');
+  show(true, 'denied', true);
+  vm._lastInputAt = Date.now() - 500;
   await vm.reportPresence();
-  assert.deepEqual(posts[1].body, { visible: true, permission: 'denied' });
+  assert.equal(posts[1].body.visible, true);
+  assert.equal(posts[1].body.focused, true);
+  assert.ok(posts[1].body.lastInputAgoMs >= 500 && posts[1].body.lastInputAgoMs < 5000);
+  assert.equal(posts[1].body.permission, 'denied');
   assert.equal(vm.notifyPermission, 'denied');
 });
 
@@ -143,12 +196,23 @@ test('a hidden tab with permission shows one notification per decision, and a re
   assert.equal(vm.bellPulse, false);
 });
 
-test('a tab that turned visible since its last report rings the bell instead of notifying', () => {
+test('a tab someone started using since its last report wiggles the bell and previews instead of notifying', () => {
   const vm = root();
-  show(true);
+  use(vm);
   vm.notifyEvent({ type: SSE.notify, data: decision() });
   assert.equal(FakeNotification.shown.length, 0);
   assert.equal(vm.bellPulse, true);
+  assert.equal(vm.preview.id, 'd1');
+  vm.dismissPreview();
+});
+
+test('a visible tab nobody is using still shows the browser notification', () => {
+  const vm = root();
+  show(true, 'granted', false);
+  vm._lastInputAt = Date.now();
+  vm.notifyEvent({ type: SSE.notify, data: decision() });
+  assert.equal(FakeNotification.shown.length, 1, 'focus is elsewhere');
+  assert.equal(vm.preview, null);
 });
 
 test('a tab that lost its permission shows nothing', () => {
@@ -166,12 +230,25 @@ test('a decision settled anywhere closes its notification by tag, and the frame 
   assert.equal(n.closed, true);
 });
 
-test('a new decision rings the bell of a visible tab, never opens the dialog, and leaves a hidden one quiet', () => {
+test('a new decision wiggles the bell of a tab in use and previews it, and leaves other tabs quiet', () => {
   const vm = root();
-  show(true);
+  use(vm);
   vm.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision() } });
   assert.equal(vm.bellPulse, true);
-  assert.deepEqual(vm.opened, [], 'no dialog over the work');
+  assert.deepEqual(vm.preview, { id: 'd1', text: "claude-code 3f9a needs you: Clean jk's cache?", href: '#decision/d1', action: 'View' });
+  vm.dismissPreview();
+
+  const unfocused = root();
+  show(true, 'granted', false);
+  unfocused._lastInputAt = Date.now();
+  unfocused.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision() } });
+  assert.equal(unfocused.bellPulse, false, 'visible on another monitor: the OS notification has it');
+
+  const idle = root();
+  show(true, 'granted', true);
+  idle._lastInputAt = Date.now() - IDLE_MS - 1000;
+  idle.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision() } });
+  assert.equal(idle.bellPulse, false, 'focused but idle');
 
   const hidden = root();
   show(false);
@@ -180,9 +257,68 @@ test('a new decision rings the bell of a visible tab, never opens the dialog, an
 
   const known = root();
   known.decisions = [decision()];
-  show(true);
+  use(known);
   known.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision() } });
   assert.equal(known.bellPulse, false, 'a decision already in the bell does not ring again');
+});
+
+test('the preview reads who waits on what, stays while hovered and goes once the decision settles', async (t) => {
+  assert.deepEqual(decisionPreview({ id: 's', kind: 'setup', question: 'Apply the recommended changes?' }), {
+    id: 's',
+    text: 'JumpKick needs you: Apply the recommended changes?',
+    href: '#decision/s',
+    action: 'View',
+  });
+  assert.equal(decisionPreview({ id: 'x', question: 'Go?' }).text, 'An agent needs you: Go?');
+  assert.equal(PREVIEW_MS, 4000);
+
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const vm = root();
+  vm.deliverInApp(decisionPreview(decision()));
+  vm.holdPreview();
+  t.mock.timers.tick(PREVIEW_MS * 3);
+  assert.equal(vm.preview.id, 'd1', 'hovering keeps it');
+  vm.releasePreview();
+  t.mock.timers.tick(PREVIEW_MS + 1);
+  assert.equal(vm.preview, null, 'gone a moment after the pointer leaves');
+
+  vm.deliverInApp(decisionPreview(decision()));
+  vm.notifyEvent({ type: SSE.decision, data: { change: 'resolved', decision: decision({ state: 'accepted' }) } });
+  assert.equal(vm.preview, null, 'answered elsewhere');
+  t.mock.timers.reset();
+});
+
+test('input marks the tab used and reports once when it turns active, then again when it goes idle', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  const vm = root();
+  vm._stream = 's-3';
+  show(true, 'default', true);
+  vm.noteInput(false, Date.now());
+  assert.equal(posts.length, 1, 'turning active reports at once');
+  assert.equal(posts[0].body.lastInputAgoMs, 0);
+  await Promise.resolve();
+  vm._reportedActive = true;
+  vm.noteInput(false, Date.now());
+  vm.noteInput(true, Date.now());
+  assert.equal(posts.length, 1, 'more input while active says nothing new');
+  assert.equal(vm._lastKeyAt, Date.now());
+
+  t.mock.timers.tick(IDLE_MS + 100);
+  assert.equal(posts.length, 2, 'idle reports');
+  assert.ok(posts[1].body.lastInputAgoMs > IDLE_MS);
+  t.mock.timers.reset();
+});
+
+test('presence follows input, focus and blur', () => {
+  const listeners = { doc: [], win: [] };
+  const vm = root();
+  vm.watchPresence(
+    { addEventListener: (type) => listeners.win.push(type) },
+    { addEventListener: (type, fn, opts) => listeners.doc.push([type, opts.passive, opts.capture]) },
+  );
+  assert.deepEqual(listeners.win, ['focus', 'blur']);
+  assert.deepEqual(listeners.doc.map((l) => l[0]), [...INPUT_EVENTS]);
+  assert.ok(listeners.doc.every((l) => l[1] && l[2]), 'passive and capturing, so a page handler cannot hide input');
 });
 
 test('a click focuses this tab, closes the notification and opens the decision', () => {
@@ -213,7 +349,11 @@ test('the bell asks on a click only, says why in one line, and steps aside once 
   assert.equal(FakeNotification.asked, 1);
   assert.equal(vm.notifyPermission, 'granted');
   assert.equal(askLine(vm.notifyPermission), '');
-  assert.deepEqual(posts.at(-1), { url: '/api/events/s-2', method: 'POST', body: { visible: false, permission: 'granted' } });
+  assert.deepEqual(posts.at(-1), {
+    url: '/api/events/s-2',
+    method: 'POST',
+    body: { visible: false, focused: false, lastInputAgoMs: -1, permission: 'granted' },
+  });
 });
 
 /** A confirmation, answered by one choice: the shape the engine's forms give it. */
@@ -313,4 +453,13 @@ test('a message that is not the worker\'s two is ignored', () => {
   vm.workerMessage({ type: WORKER_MESSAGE.answer, id: 'd1' });
   assert.deepEqual(vm.opened, []);
   assert.equal(posts.length, 0);
+});
+
+test('reduced motion swaps the wiggle for a highlight, and the wiggle runs once', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const css = await readFile(path.join(process.env.JK_APP_DIR, 'style.css'), 'utf8');
+  assert.match(css, /\.bell-btn\.pulse \.ico \{ animation: bellRing [^;]* 1;/);
+  const reduced = css.match(/@media \(prefers-reduced-motion: reduce\) \{\s*\.bell-btn\.pulse \.ico \{ animation: none; \}\s*([^}]*\})/);
+  assert.ok(reduced, 'a reduced-motion rule for the bell');
+  assert.match(reduced[1], /\.bell-btn\.pulse \{[^}]*background/);
 });

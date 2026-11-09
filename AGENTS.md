@@ -6,7 +6,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 **JumpKick** (CLI / shorthand: **`jk`**) is the JVM build system built for coding agents, for **Java, Kotlin, and Groovy**: a slim native CLI, a memory-capped resident JVM engine, PubGrub dependency resolution, a content-addressed action cache, and Maven Central–compatible coordinates. Think Cargo/uv ergonomics on the JVM without inventing a new package ecosystem.
 
-Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in [kanartist](https://github.com/JumpKickOSS/kanartist) `projects/jk/docs/`, not here.
+Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in the KanArtist `jk` store ([KanArtist/jk](https://github.com/KanArtist/jk)) under `projects/jk/docs/`, not here.
 
 **Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `jk build` and `jk test -p integration` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
@@ -87,7 +87,7 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
   decide "skip tests" in a verb. Every build-like goal runs the same phases through PACKAGE and
   differs only in its tail and test policy — [docs/contributors/lifecycle.md](docs/contributors/lifecycle.md).
 - Do not write per-module lockfiles — one `jk-lock.toml` at the workspace root (or standalone project root).
-- Product docs are part of the product: [docs/user/](docs/user/README.md) for people and agents *using* `jk`, [docs/contributors/](docs/contributors/README.md) for this codebase. Do not dump PRDs, benches, or decision essays into this repo — those belong in KanArtist (`projects/jk/docs/`).
+- Product docs are part of the product: [docs/user/](docs/user/README.md) for people and agents *using* `jk`, [docs/contributors/](docs/contributors/README.md) for this codebase. Do not dump PRDs, benches, or decision essays into this repo — those belong in the KanArtist `jk` store (`projects/jk/docs/`).
 - Do not expand infinite ecosystem long tail (full KMP multiplatform, AGP parity, plugin marketplace, RBE) without an explicit ticket that says so.
 - Do not leave historical essays, ticket ids, or decision records in code comments — see [Comments and Javadoc](#comments-and-javadoc).
 - **Do not bump schema/protocol versions before 1.0** — stay on version **1** for `jk-lock.toml`, wire
@@ -157,29 +157,33 @@ Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIB
 
 ## Planning / tickets (KanArtist — not this repo)
 
-**Live board:** org planning repo **[kanartist](https://github.com/JumpKickOSS/kanartist)** (`JumpKickOSS/kanartist`), project key **`jk`**, ticket ids **`JK-NNNN`**.
+Tickets live in the KanArtist store `jk` ([KanArtist/jk](https://github.com/KanArtist/jk)), project
+key **`jk`**, ticket ids like **`JK-3B0SH`**. The `ka` CLI ([KanArtist/ka](https://github.com/KanArtist/ka))
+and its MCP tools read, write, commit and push them; never edit ticket files by hand and never
+`git pull` or `git push` a store yourself. `ka skill` prints the full guide; `ka <command> -h`
+explains any command. Tickets imported from the old board keep their old id in the field
+`legacy_id` (`ka ls field.legacy_id:JK-4661 --all`).
 
-- Protocol: that repo’s [`AGENTS.md`](https://github.com/JumpKickOSS/kanartist/blob/main/AGENTS.md).
-- Tickets: `projects/jk/tickets/JK-NNNN-*.md` (status lives on the ticket file; board views are generated).
-- Sibling checkout assumed: `../kanartist` next to this repo (or set `KANARTIST_WORKSPACE_ROOT`).
-- **Priority lives on the board, not here.** `ka next` returns ready, unblocked tickets in
-  priority order, and a P0 there outranks everything. Read a ticket's `status` and `priority`
-  from its file before trusting any claim that it blocks other work. Do not restate board
+- **Priority lives on the board, not here.** `ka next` returns the best ready, unblocked ticket
+  and claims it; a P0 there outranks everything. Read a ticket's status and priority with
+  `ka show <ID>` before trusting any claim that it blocks other work. Do not restate board
   priorities or preemptions in this file; they go stale the day the ticket closes.
 
 ### Claim and ship a ticket
 
 ```bash
-# in KanArtist
-git pull --rebase
-ka next --project jk          # or: ka ls --status ready --project jk
-ka claim JK-1044              # commits + pushes; push is the lock
+ka next --project jk                    # finds and claims the best ready ticket (or: ka claim <ID>)
+ka show JK-3B0SH                        # description, acceptance items, decisions, recent progress
 # work in this repo on a branch (prefer worktree)
+ka comment JK-3B0SH --type progress -m "…"   # at milestones; --type decision for choices others must respect
+ka check-item JK-3B0SH 0                # tick an acceptance item as it passes
 # … implement, meet Done criteria below …
-ka set-status JK-1044 done    # only after product acceptance + Done criteria
+ka move JK-3B0SH done -m "what changed and where"   # only after product acceptance + Done criteria
 ```
 
-Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-… blocked` and note why on the ticket.
+Prefer a small WIP limit (a few claimed tickets). Blocked on a person: `ka ask <ID> -m "…"`, then
+work on something else and read answers with `ka inbox`. Stopping without finishing: `ka release
+<ID>`. Use the ticket's id in commit subjects, never in code or comments.
 
 ### Done criteria
 
@@ -206,7 +210,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 
 **Docs-only / non-Java** tickets (markdown, comments-only, pure config with no runtime impact): ticket acceptance met is enough — no reinstall required. Still run any tests that would catch doc-linked fixtures if you touched them.
 
-**Any ticket that changes Java (or other runtime) code** must **not** merge into local `main` or move to `done` in kanartist until all of the following pass:
+**Any ticket that changes Java (or other runtime) code** must **not** merge into local `main` or move to `done` on the board until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
    - **Merge gate:** a clean `jk guard` (it formats what changed, then every house-rule lane, the tree lane included) and a green `jk snapshot` (every module's fast tier, then the reinstall).
@@ -216,7 +220,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 
-Record failures on the kanartist ticket (`status: blocked` or body notes); do not mark done on green unit tests alone if dist/install/dogfood is broken.
+Record failures on the ticket (`ka comment <ID> --type progress`, or `ka move <ID> blocked`); do not mark done on green unit tests alone if dist/install/dogfood is broken.
 
 **Before pushing `main` to `origin`** (the push gate): green `jk snapshot -p integration` on the exact
 local `main` being pushed, plus `jk test -p slow` when any merged change touches a framework or
@@ -335,7 +339,7 @@ CI it fails naming each file that is not formatted. There is no separate `jk for
 
 - **Trivial** fixes (typos, one-liner comment, obvious bug with no ticket): commit on `main` is fine.
 - **Everything else:** work on a **dedicated branch** (prefer a **git worktree** so `main` stays clean and other agents can coordinate). Name branches after the ticket when possible, e.g. `JK-1044-build-logic-spi` (legacy `ticket-NNNN-…` names are fine for older branches).
-- While the repo is private: **no pull requests**. Merge into local `main` when the work passes the merge gate (see **Done criteria** above; ticket acceptance met) and update the kanartist ticket status. Batch merges from several worktrees, then run the push gate once and **push `main`** so the code stays the shared truth. Push often enough that `origin` does not lag local `main` by more than a working session.
+- While the repo is private: **no pull requests**. Merge into local `main` when the work passes the merge gate (see **Done criteria** above; ticket acceptance met) and move the ticket on the board (`ka move`). Batch merges from several worktrees, then run the push gate once and **push `main`** so the code stays the shared truth. Push often enough that `origin` does not lag local `main` by more than a working session.
 - Do not leave half-finished tickets on `main`. Do not rewrite published history on `main` without an explicit human request.
 - Every commit compiles and passes on its own: a file rename lands in the same commit as the class rename it carries, and a signature change lands with its callers. `git bisect` must never stop on a tree that cannot build.
 - Author commits as a normal human contributor. No tool or model co-author trailers, no “generated by …” attribution, and no third-party AI product or model brand names in commits, comments, Javadoc, or user-facing docs. Local guard: `jk guard hooks install` writes the `commit-msg` hook that refuses such a trailer (the `no-agent-trailers` rule) and the `pre-commit` hook that protects the guard baseline.

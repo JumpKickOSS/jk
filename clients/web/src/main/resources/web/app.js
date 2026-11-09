@@ -131,6 +131,8 @@ export const appOptions = {
     this.watchInstall(window);
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', (e) => this.applyRoute(e));
+    // Whether someone uses this tab: input, focus and idleness, reported to the engine (notify.js).
+    this.watchPresence(window, document);
     // The bell's menu folds on a click outside it or on Esc.
     document.addEventListener('pointerdown', (e) => this.foldBell(e));
     document.addEventListener('keydown', (e) => this.foldBell(e));
@@ -139,7 +141,7 @@ export const appOptions = {
     window.addEventListener('pageshow', (event) => this.resumeEvents(event));
     // pause offline REST polling while the tab is hidden; keep SSE open (orphan engine).
     document.addEventListener('visibilitychange', () => {
-      this.reportPresence(); // the engine notifies through the browser only while no tab is visible
+      this.reportPresence(); // a hidden tab is not in use, so the engine notifies outside the page
       if (document.hidden) this.clearOfflineStatusFallback();
       else if (this.connection !== 'live' && this.connection !== 'unauthorized') {
         this.scheduleOfflineStatusFallback();

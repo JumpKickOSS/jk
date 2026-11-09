@@ -55,14 +55,14 @@ public final class Decisions {
     /**
      * Tells the person about fresh decision {@code d}, whose dashboard link is {@code link}, as
      * {@code [ui] ask} says; answers what happened. Under {@code notify}: nothing when a dashboard is
-     * visible (its bell has it), a browser notification from a hidden dashboard that may show one,
-     * else the native notification.
+     * in use (it shows the decision in the page), a browser notification from a dashboard that may
+     * show one, else the native notification.
      */
     public String alert(Decision d, String link) {
         UiAsk mode = ask();
         if (mode != UiAsk.NOTIFY) return alerts.raise(mode, d, link);
         return switch (dashboards.channel()) {
-            case Dashboards.Channel.InApp i -> "a dashboard is showing: its bell has it";
+            case Dashboards.Channel.InApp i -> "a dashboard is in use: it shows it in the page";
             case Dashboards.Channel.Browser b ->
                 dashboards.notify(b.stream(), d) ? "sent a browser notification" : alerts.raise(mode, d, link);
             case Dashboards.Channel.Native n -> alerts.raise(mode, d, link);

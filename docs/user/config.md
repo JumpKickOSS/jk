@@ -175,7 +175,7 @@ applies with `[http] enabled = false` or `[mcp] enabled = false` too. Details: [
 `ask` (`JK_UI_ASK`) is what JumpKick does when a [decision](mcp.md#decisions) waits for you and the
 agent's host can ask neither by form nor by link: `notify` (default) tells you once, `open` opens
 the browser on the decision's dashboard link (`$BROWSER` when set), and `quiet` leaves the link in
-the agent's result alone. Under `notify` a visible dashboard tab only rings its bell, a hidden one
+the agent's result alone. Under `notify` a dashboard tab you are using shows it in the page, one
 you let notify shows a browser notification ([Web](web.md#notifications)), and otherwise a desktop
 notification carries the question and the link. On Windows the desktop notification is
 a toast and a click opens the link; on Linux `notify-send` 0.7.10 or later opens it on a click too,

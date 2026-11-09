@@ -25,9 +25,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A dashboard stream is also how the engine knows the tab: it opens with a {@code presence}
  * frame naming the stream, repeats it every {@link Dashboards#PING_EVERY}, and the tab answers each
- * with {@code POST /api/events/<stream>} saying whether it is visible and may notify. EventSource
- * cannot write upstream, so that post is the stream's return half, not a second channel: it names
- * no tab the stream does not hold, and the tab leaves {@link Dashboards} when its stream ends.
+ * with {@code POST /api/events/<stream>} saying whether it is visible, focused and in use, and
+ * whether it may notify. EventSource cannot write upstream, so that post is the stream's return
+ * half, not a second channel: it names no tab the stream does not hold, and the tab leaves {@link
+ * Dashboards} when its stream ends.
  */
 final class SseEndpoint {
 
@@ -89,8 +90,10 @@ final class SseEndpoint {
     }
 
     /**
-     * {@code POST /api/events/<stream>} with {@code {"visible": bool, "permission": "default" |
-     * "granted" | "denied" | "unsupported"}}: the tab on that stream says how it stands. {@code 200},
+     * {@code POST /api/events/<stream>} with {@code {"visible": bool, "focused": bool,
+     * "lastInputAgoMs": number, "permission": "default" | "granted" | "denied" | "unsupported"}}:
+     * the tab on that stream says how it stands. A missing {@code focused} or {@code lastInputAgoMs}
+     * reads as a tab nobody is using. {@code 200},
      * {@code 404} once the stream has ended (the tab's next connect names a new one), {@code 400} for
      * a body that is not an object.
      */
@@ -105,8 +108,10 @@ final class SseEndpoint {
             return;
         }
         boolean visible = Boolean.TRUE.equals(body.get("visible"));
+        boolean focused = Boolean.TRUE.equals(body.get("focused"));
+        long lastInputAgoMs = body.get("lastInputAgoMs") instanceof Number n ? n.longValue() : -1;
         Dashboards.Permission permission = Dashboards.Permission.parse(MiniJson.str(body, "permission"));
-        if (!dashboards.report(stream, visible, permission)) {
+        if (!dashboards.report(stream, new Dashboards.Presence(visible, focused, lastInputAgoMs, permission))) {
             HttpResponses.sendJson(
                     exchange,
                     404,

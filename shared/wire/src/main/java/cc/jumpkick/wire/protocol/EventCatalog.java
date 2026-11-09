@@ -357,7 +357,7 @@ public final class EventCatalog {
                     SSE_NOTIFY,
                     new Omitted("a browser notification; the CLI's are the engine's native ones"),
                     new Omitted("a browser notification"),
-                    Carried.as(SSE_NOTIFY, "dashboard only, to the one hidden tab chosen to notify (Dashboards)")),
+                    Carried.as(SSE_NOTIFY, "dashboard only, to the one tab chosen to notify (Dashboards)")),
             new Row(
                     EngineProtocol.GUARD_EVENT,
                     new Omitted("written by the CLI from the guard's result"),

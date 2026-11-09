@@ -336,8 +336,8 @@ JumpKick asks by the first rung the session supports ([revisions](#protocol-revi
    run(decision=3f9a0c1e…)
    ```
 
-   Then `[ui] ask` ([Config](config.md#decisions)) applies once: `notify` (default) rings the bell
-   of a visible dashboard, or shows a browser notification from a hidden one that may notify, or
+   Then `[ui] ask` ([Config](config.md#decisions)) applies once: `notify` (default) shows it in a
+   dashboard you are using, or shows a browser notification from a dashboard that may notify, or
    else sends a desktop notification carrying the link (a click opens it on Windows and Linux)
    ([Web](web.md#notifications)); `open` opens the browser on it, `quiet` leaves the link in the
    result.

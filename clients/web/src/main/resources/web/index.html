@@ -80,6 +80,12 @@
               <button type="button" class="action-cyan" @click="askNotifications()">Turn on notifications</button>
             </div>
           </div>
+          <!-- In-app delivery: one line under the bell for a moment; it never takes focus (notify.js). -->
+          <div v-if="preview && !bellOpen" class="bell-preview" role="status" aria-live="polite"
+               :data-preview="preview.id" @mouseenter="holdPreview()" @mouseleave="releasePreview()">
+            <span class="bell-preview-text">{{ preview.text }}</span>
+            <a class="bell-preview-link" :href="preview.href" @click="dismissPreview()">{{ preview.action }}</a>
+          </div>
         </div>
         <button class="icon-btn" @click="help = true" aria-label="Help" data-tip="About &amp; help"><jk-icon name="help"></jk-icon></button>
         <button class="icon-btn" @click="setView('status')" aria-label="Settings" data-tip="Engine settings &amp; vitals"><jk-icon name="settings"></jk-icon></button>

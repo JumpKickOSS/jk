@@ -2723,14 +2723,48 @@ details.earlier .tl { margin-top: 6px; }
 .bell-row:hover { background: rgba(var(--warn-rgb), 0.07); }
 .bell-row .dot-warn { margin-top: 6px; }
 .bell-row .needs-body { display: grid; gap: 2px; }
-/* A decision that arrives while the tab is in front of someone rings the bell; nothing pops up. */
+/* Something that arrives while someone uses the tab wiggles the bell once. */
 @keyframes bellRing {
   0%, 100% { transform: rotate(0); }
   10%, 30%, 50% { transform: rotate(14deg); }
   20%, 40%, 60% { transform: rotate(-14deg); }
   70% { transform: rotate(0); }
 }
-.bell-btn.pulse .ico { animation: bellRing 1.2s var(--ease) 2; transform-origin: 50% 10%; }
+.bell-btn.pulse .ico { animation: bellRing 1.2s var(--ease) 1; transform-origin: 50% 10%; }
+/* Reduced motion: no wiggle, the bell lights up for the same moment instead. */
+@media (prefers-reduced-motion: reduce) {
+  .bell-btn.pulse .ico { animation: none; }
+  .hdr-actions .bell-btn.pulse { color: var(--warn); background: rgba(var(--warn-rgb), 0.16); }
+}
+/* The preview card: what just arrived, one line and a link, for a few seconds under the bell. */
+.bell-preview {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-lg);
+  box-shadow: var(--modal-shadow);
+  z-index: 49;
+  animation: fadeSlideIn var(--dur) var(--ease) backwards;
+}
+.bell-preview-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--tx);
+  font-size: 12.5px;
+}
+.bell-preview-link { flex: none; color: var(--cn); font-size: 12px; font-weight: 600; text-decoration: none; }
+.bell-preview-link:hover { text-decoration: underline; }
 .bell-ask {
   display: grid;
   gap: 8px;

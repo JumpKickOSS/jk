@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Telling the person about a decision once. The engine picks one channel per decision from what
-// each dashboard tab reports over its event stream: in the page when a tab is visible, a browser
-// notification from a hidden tab that may show one, the engine's native notification otherwise.
+// each dashboard tab reports over its event stream: in the page when a tab is active, a browser
+// notification from a tab that may show one, the engine's native notification otherwise.
+//
+// Active means visible, focused, and used (a mouse or key input) within the last two minutes, the
+// engine's IDLE_AFTER; the page keeps its own last-input time, so no browser permission is asked.
+// A dashboard showing on a second monitor while the person types in their editor is visible but not
+// active, and the operating system's notification still reaches them.
 //
 // The stream opens with a `presence` frame naming it and repeats it as a ping; the tab answers each
-// with `POST /api/events/<stream>` and its visibility and `Notification.permission`, and answers
-// again whenever either changes. The engine sends the chosen tab a `notify` frame; every tab closes
-// a settled decision's notification by its tag.
+// with `POST /api/events/<stream>` and its state, and answers again whenever its visibility, focus
+// or permission changes and when it turns idle or active. The engine sends the chosen tab a
+// `notify` frame; every tab closes a settled decision's notification by its tag.
+//
+// In the page, a notification wiggles the bell once (a highlight under reduced motion) and shows a
+// short preview card under it with one line and a link; the card never takes focus, and hovering it
+// keeps it open.
 //
 // Showing and closing go through a `notifications` adapter ({ show, close }). While the dashboard's
 // service worker (sw.js) controls the page, it shows them, and they may carry the decision's
@@ -21,8 +30,17 @@ import { SSE } from './wire.js';
 /** The notification's title, as the engine's native notification reads. */
 export const NOTIFY_TITLE = 'JumpKick needs you';
 
-/** How long the bell pulses when a decision arrives while a tab is visible. */
-export const PULSE_MS = 2400;
+/** How long the bell's wiggle (or its reduced-motion highlight) lasts. */
+export const PULSE_MS = 1600;
+
+/** How long a tab stays active after the person's last input; the engine's IDLE_AFTER. */
+export const IDLE_MS = 120_000;
+
+/** How long the preview card under the bell stays, unless hovered. */
+export const PREVIEW_MS = 4000;
+
+/** The input events that count as the person using the tab. */
+export const INPUT_EVENTS = Object.freeze(['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']);
 
 /** The browser's `Notification`, or null where there is none. */
 function notificationApi() {
@@ -39,22 +57,38 @@ export function permissionOf(api) {
   return api && typeof api.permission === 'string' ? api.permission : 'unsupported';
 }
 
-/** What a tab reports: whether it is visible, and whether it may notify. */
-export function tabState(doc, api) {
+/**
+ * What a tab reports: whether it is visible, whether its window has focus, how long ago (ms) the
+ * person last used it (-1 when never, `lastInputAt` 0), and whether it may notify.
+ */
+export function tabState(doc, api, lastInputAt = 0, now = Date.now()) {
   return {
     visible: !!doc && doc.visibilityState === 'visible',
+    focused: !!doc && typeof doc.hasFocus === 'function' && !!doc.hasFocus(),
+    lastInputAgoMs: lastInputAt > 0 ? Math.max(0, now - lastInputAt) : -1,
     permission: permissionOf(api),
   };
 }
 
+/** True when a person is using the tab: visible, focused, and used within IDLE_MS. */
+export function isActive(state) {
+  return !!state && state.visible && state.focused && state.lastInputAgoMs >= 0 && state.lastInputAgoMs <= IDLE_MS;
+}
+
 /**
- * What this tab does with a decision the engine asked it to notify: `in-app` when it is visible
- * after all (the bell has it), `browser` when it may notify, else `none`. The engine chose from the
- * last report; this keeps a tab that changed since from notifying wrongly.
+ * What this tab does with a decision the engine asked it to notify: `in-app` when it is active
+ * after all (the page shows it), `browser` when it may notify, else `none`. The engine chose from
+ * the last report; this keeps a tab that changed since from notifying wrongly.
  */
 export function pageChannel(state) {
-  if (state.visible) return 'in-app';
+  if (isActive(state)) return 'in-app';
   return state.permission === 'granted' ? 'browser' : 'none';
+}
+
+/** The preview card's line for a decision that arrived: who waits, and on what. */
+export function decisionPreview(d) {
+  const who = d.label || (d.kind === 'setup' ? 'JumpKick' : 'An agent');
+  return { id: d.id, text: who + ' needs you: ' + (d.question || 'a decision waits'), href: decisionHash(d.id), action: 'View' };
 }
 
 /** The messages the service worker posts to a page; sw.js names the same two. */
@@ -164,7 +198,11 @@ export function notifyData() {
   return {
     notifyPermission: permissionOf(notificationApi()), // what the bell's ask shows
     bellPulse: false,
+    preview: null, // the card under the bell: { id, text, href, action }
     _stream: null, // the event stream's id, from its `presence` frame
+    _lastInputAt: 0, // when the person last used this tab (ms), 0 for never
+    _lastKeyAt: 0, // when they last pressed a key here (ms)
+    _reportedActive: false, // whether the last report said active, so a change reports again
   };
 }
 
@@ -225,19 +263,81 @@ export const notifyMethods = {
       if (channel === 'browser') {
         const n = notificationFor(d, maxActions(notificationApi()));
         this.notifications().show(n.title, n.options);
-      } else if (channel === 'in-app') this.pulseBell();
+      } else if (channel === 'in-app') this.decisionArrived(d);
       return true;
     }
     if (type === SSE.decision) {
       const d = frameDecision(data);
       if (!d) return false;
-      if (data.change === 'resolved' || !isOpen(d)) this.notifications().close(d.id);
-      else if (!this.decisions.some((x) => x.id === d.id) && this.tabState().visible) this.pulseBell();
+      if (data.change === 'resolved' || !isOpen(d)) {
+        this.notifications().close(d.id);
+        if (this.preview && this.preview.id === d.id) this.dismissPreview();
+      } else if (!this.decisions.some((x) => x.id === d.id) && isActive(this.tabState())) this.decisionArrived(d);
     }
     return false;
   },
+  /** A decision arrived while someone uses this tab: the bell wiggles and the card previews it. */
+  decisionArrived(d) {
+    this.deliverInApp(decisionPreview(d));
+  },
+  /** In-app delivery: the bell wiggles once and the preview card shows `card` for a moment. */
+  deliverInApp(card) {
+    this.pulseBell();
+    this.showPreview(card);
+  },
+  /** The card under the bell, for PREVIEW_MS unless hovered; it never takes focus. */
+  showPreview(card) {
+    clearTimeout(this._previewTimer);
+    this.preview = card;
+    this._previewTimer = setTimeout(() => this.dismissPreview(), PREVIEW_MS);
+  },
+  /** Hovering the card keeps it. */
+  holdPreview() {
+    clearTimeout(this._previewTimer);
+  },
+  /** Leaving it lets it go after the usual moment. */
+  releasePreview() {
+    if (!this.preview) return;
+    clearTimeout(this._previewTimer);
+    this._previewTimer = setTimeout(() => this.dismissPreview(), PREVIEW_MS);
+  },
+  dismissPreview() {
+    clearTimeout(this._previewTimer);
+    this.preview = null;
+  },
   tabState() {
-    return tabState(typeof document === 'undefined' ? null : document, notificationApi());
+    return tabState(typeof document === 'undefined' ? null : document, notificationApi(), this._lastInputAt);
+  },
+  /**
+   * Follows the person's use of this tab: input marks it used, focus and blur report, and the tab
+   * reports again when it turns idle, so the engine never thinks an abandoned tab is in use.
+   */
+  watchPresence(win, doc) {
+    const input = (e) => this.noteInput(e && e.type === 'keydown');
+    for (const type of INPUT_EVENTS) doc.addEventListener(type, input, { capture: true, passive: true });
+    win.addEventListener('focus', () => this.presenceChanged());
+    win.addEventListener('blur', () => this.presenceChanged());
+  },
+  /** An input: the tab is in use now; a tab that was idle says so at once. */
+  noteInput(key = false, now = Date.now()) {
+    this._lastInputAt = now;
+    if (key) this._lastKeyAt = now;
+    if (!this._reportedActive && isActive(this.tabState())) this.reportPresence();
+    this.armIdle();
+  },
+  /** One timer, re-armed for the remainder, so a stream of mouse moves costs nothing. */
+  armIdle() {
+    if (this._idleTimer) return;
+    const wait = Math.max(0, IDLE_MS - (Date.now() - this._lastInputAt)) + 50;
+    this._idleTimer = setTimeout(() => {
+      this._idleTimer = null;
+      if (Date.now() - this._lastInputAt <= IDLE_MS) this.armIdle();
+      else this.presenceChanged();
+    }, wait);
+  },
+  /** Focus, visibility or idleness changed: report when it changes what the engine should do. */
+  presenceChanged() {
+    this.reportPresence();
   },
   /** Tells the engine how this tab stands; quiet when the stream has gone (the next one reports). */
   async reportPresence() {
@@ -245,6 +345,7 @@ export const notifyMethods = {
     if (!stream) return;
     const state = this.tabState();
     this.notifyPermission = state.permission;
+    this._reportedActive = isActive(state);
     try {
       await post('/api/events/' + encodeURIComponent(stream), state);
     } catch {
@@ -262,7 +363,7 @@ export const notifyMethods = {
     }
     this.reportPresence();
   },
-  /** The bell rings for a moment: a decision arrived while this tab is in front of someone. */
+  /** The bell wiggles once: something arrived while someone uses this tab. */
   pulseBell() {
     clearTimeout(this._pulseTimer);
     this.bellPulse = false;

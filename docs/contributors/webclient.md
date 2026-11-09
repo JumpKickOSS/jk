@@ -140,9 +140,12 @@ The wire tokens live in `wire.js`: `LOG` (`session`, `episode`, `action`, held t
 for every one. The decision dialog (`#decision/<id>`, over whatever page is showing) and answering are the decision queue's.
 
 `notify.js` is the tab's half of telling the person once ([HTTP](http.md#one-channel-per-decision)):
-it answers the stream's `presence` ping with the tab's visibility and `Notification.permission`,
-shows the `notify` frame's notification only from a hidden tab that may (a visible one rings the
-bell, `bellPulse`), closes a settled decision's notification by tag, and puts the one permission
+it answers the stream's `presence` ping with the tab's visibility, focus, last input
+(`watchPresence`, `noteInput`; one idle timer re-armed for the remainder, so mouse moves cost
+nothing) and `Notification.permission`, reporting again when the tab turns active or idle; shows
+the `notify` frame's notification only from a tab that is not active and may (an active one
+delivers in the page: `deliverInApp` wiggles the bell, `bellPulse`, and shows the `preview` card
+for `PREVIEW_MS` unless hovered), closes a settled decision's notification by tag, and puts the one permission
 ask, behind a click, at the foot of the bell's menu while the permission is `default`. The tests are
 `notify.test.mjs`.
 
