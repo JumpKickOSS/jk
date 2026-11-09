@@ -11,6 +11,7 @@ import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
+import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -22,6 +23,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
@@ -117,24 +120,11 @@ public final class WorkspaceLoader {
         LOADS.increment();
         Map<Path, JkBuild> modules = new LinkedHashMap<>();
         List<String> bad = new ArrayList<>();
-        for (String module : WorkspaceModules.expand(workspaceRoot, root.workspaceModules())) {
-            Path moduleDir = workspaceRoot.resolve(module).normalize();
-            Path moduleJkToml = ManifestPaths.manifestIn(moduleDir);
-            if (!Files.exists(moduleJkToml)) {
-                bad.add(module);
-                continue;
-            }
-            // parseLocal: avoid WorkspaceResolve recursion (loadModules is called from applyWorkspace).
-            JkBuild moduleBuild = JkBuildParser.parseLocal(moduleJkToml);
-            // Nested workspaces are forbidden (ambiguous shared target/).
-            if (moduleBuild.isWorkspaceRoot()) {
-                throw new JkBuildParseException(
-                        "nested workspace: module `" + module + "` has its own [workspace]; remove it");
-            }
-            JkBuild member = inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root, moduleDir);
-            NodeShape.check(member, moduleDir);
-            PluginJavaFloor.check(member, moduleDir);
-            modules.put(moduleDir, member);
+        List<String> names = WorkspaceModules.expand(workspaceRoot, root.workspaceModules());
+        // In module order, so the first failure raised and the missing list read as a serial load's.
+        for (Member member : members(workspaceRoot, root, names)) {
+            if (member.build() == null) bad.add(member.module());
+            else modules.put(member.dir(), member.build());
         }
         if (!bad.isEmpty()) {
             throw new JkBuildParseException("workspace modules missing jk.toml: " + bad);
@@ -145,6 +135,69 @@ public final class WorkspaceLoader {
         Collection<JkBuild> members = List.copyOf(modules.values());
         modules.replaceAll((dir, member) -> WorkspaceMerge.resolveSharedDependencies(root, member, members));
         return modules;
+    }
+
+    /** One member as loaded: its manifest with the root applied, or null when it has no jk.toml. */
+    private record Member(String module, Path dir, @Nullable JkBuild build) {}
+
+    /** Below this many members a parse on the caller is cheaper than a hop to the pool. */
+    private static final int PARALLEL_FROM = 16;
+
+    /**
+     * Every member of {@code names}, in order. Each parse is independent of the others, and a
+     * fresh engine's first request parses all of them — 223 manifests one after another were 0.8 s
+     * of a Helidon build's first second — so a wide workspace parses them on the CPU pool. The first
+     * failure in module order is the one raised, as the loop it replaces raised it.
+     */
+    private static List<Member> members(Path workspaceRoot, JkBuild root, List<String> names) throws IOException {
+        if (names.size() < PARALLEL_FROM) {
+            List<Member> out = new ArrayList<>(names.size());
+            for (String module : names) out.add(member(workspaceRoot, root, module));
+            return out;
+        }
+        List<CompletableFuture<Member>> pending = new ArrayList<>(names.size());
+        for (String module : names) {
+            pending.add(CompletableFuture.supplyAsync(
+                    () -> {
+                        try {
+                            return member(workspaceRoot, root, module);
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    },
+                    JkThreads.cpu()));
+        }
+        List<Member> out = new ArrayList<>(names.size());
+        for (CompletableFuture<Member> f : pending) {
+            try {
+                out.add(f.join());
+            } catch (CompletionException e) {
+                for (CompletableFuture<Member> rest : pending) rest.cancel(false);
+                Throwable cause = e.getCause() == null ? e : e.getCause();
+                if (cause instanceof UncheckedIOException io) throw io.getCause();
+                if (cause instanceof RuntimeException runtime) throw runtime;
+                if (cause instanceof Error error) throw error;
+                throw new IllegalStateException(cause);
+            }
+        }
+        return out;
+    }
+
+    private static Member member(Path workspaceRoot, JkBuild root, String module) throws IOException {
+        Path moduleDir = workspaceRoot.resolve(module).normalize();
+        Path moduleJkToml = ManifestPaths.manifestIn(moduleDir);
+        if (!Files.exists(moduleJkToml)) return new Member(module, moduleDir, null);
+        // parseLocal: avoid WorkspaceResolve recursion (loadModules is called from applyWorkspace).
+        JkBuild moduleBuild = JkBuildParser.parseLocal(moduleJkToml);
+        // Nested workspaces are forbidden (ambiguous shared target/).
+        if (moduleBuild.isWorkspaceRoot()) {
+            throw new JkBuildParseException(
+                    "nested workspace: module `" + module + "` has its own [workspace]; remove it");
+        }
+        JkBuild member = inheritImage(inheritPublish(inheritFromRoot(moduleBuild, root), root), root, moduleDir);
+        NodeShape.check(member, moduleDir);
+        PluginJavaFloor.check(member, moduleDir);
+        return new Member(module, moduleDir, member);
     }
 
     /**

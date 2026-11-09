@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
@@ -375,7 +376,28 @@ public final class LibraryCatalog {
         }
     }
 
+    /**
+     * The bundled layer, parsed once per process: it is a classpath resource and never changes.
+     * Every manifest parse resolves short names through the catalog, so a fresh engine's first
+     * request reparsed it once per workspace member — the larger part of 0.6 s on Helidon.
+     */
+    private static volatile @Nullable Layer bundledLayer;
+
     private static Layer loadBundledLayer() {
+        Layer known = bundledLayer;
+        if (known != null) return known;
+        Layer parsed = parseBundledLayer();
+        bundledLayer = parsed;
+        return parsed;
+    }
+
+    /** A file layer as parsed for a file stamp; an absent file is a stamp of null and no layer. */
+    private record FileLayer(@Nullable FileStamp stamp, Optional<Layer> layer) {}
+
+    /** File layers by path and layer name, kept while the file's stamp holds. */
+    private static final ConcurrentHashMap<String, FileLayer> FILE_LAYERS = new ConcurrentHashMap<>();
+
+    private static Layer parseBundledLayer() {
         try (InputStream in = LibraryCatalog.class.getResourceAsStream(BUNDLED_RESOURCE)) {
             if (in == null) {
                 throw new IOException("missing classpath resource: " + BUNDLED_RESOURCE);
@@ -387,7 +409,21 @@ public final class LibraryCatalog {
         }
     }
 
+    /**
+     * {@code file}'s layer, parsed once per change of the file. A layer that fails to parse is not
+     * kept, so its warning reaches every caller rather than only the first.
+     */
     private static Optional<Layer> loadFileLayer(Path file, String layerName, Consumer<String> warn) {
+        String key = file.toAbsolutePath().normalize() + "|" + layerName;
+        FileStamp stamp = FileStamp.of(file);
+        FileLayer known = FILE_LAYERS.get(key);
+        if (known != null && Objects.equals(known.stamp(), stamp)) return known.layer();
+        Optional<Layer> parsed = parseFileLayer(file, layerName, warn);
+        if (parsed.isPresent() || stamp == null) FILE_LAYERS.put(key, new FileLayer(stamp, parsed));
+        return parsed;
+    }
+
+    private static Optional<Layer> parseFileLayer(Path file, String layerName, Consumer<String> warn) {
         if (!Files.isRegularFile(file)) return Optional.empty();
         try {
             String text = Files.readString(file, StandardCharsets.UTF_8);

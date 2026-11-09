@@ -6,6 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -274,5 +277,41 @@ class LibraryCatalogLayeringTest {
 
         Files.writeString(root.resolve("jk-libs.toml"), "[libraries]\nx = \"com.acme:x-longer\"\n");
         assertThat(LibraryCatalog.stamp(mod)).as("a rewrite moves the stamp").isNotEqualTo(present);
+    }
+
+    /**
+     * The project layer is parsed once per change of its file: an edit is read on the next call,
+     * and a malformed file warns every caller, not only the first.
+     */
+    @Test
+    void an_edited_catalog_is_read_again_and_a_malformed_one_warns_every_time(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("solo"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.example"
+                name = "solo"
+                version = "1.0.0"
+                """);
+        Path libs = root.resolve("jk-libs.toml");
+        Files.writeString(libs, "[libraries]\ninternal = \"com.acme:internal\"\n");
+        assertThat(LibraryCatalog.forProject(root).lookup("internal"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("com.acme:internal");
+
+        Files.writeString(libs, "[libraries]\ninternal = \"com.acme:internal-two\"\n");
+        Files.setLastModifiedTime(
+                libs, FileTime.fromMillis(Files.getLastModifiedTime(libs).toMillis() + 5_000));
+        assertThat(LibraryCatalog.forProject(root).lookup("internal"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("com.acme:internal-two");
+
+        Files.writeString(libs, "[libraries\nnot toml");
+        Files.setLastModifiedTime(
+                libs, FileTime.fromMillis(Files.getLastModifiedTime(libs).toMillis() + 10_000));
+        List<String> warnings = new ArrayList<>();
+        LibraryCatalog.forProject(root, warnings::add);
+        LibraryCatalog.forProject(root, warnings::add);
+        assertThat(warnings).hasSize(2).allMatch(w -> w.contains("ignoring library catalog layer"));
     }
 }
