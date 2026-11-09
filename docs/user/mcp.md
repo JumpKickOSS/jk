@@ -227,7 +227,7 @@ The whole registry:
 | **`disk`** | Cache/store usage; `clean`/`nuke`/`m2-clean` require `confirm=true`, and a host that can ask the user [asks](#decisions) |
 | **`jdk`** | List / install / uninstall (`confirm=true` for uninstall, and a host that can ask [asks](#decisions)) |
 | **`node`** | Node.js: `list` (installs, JumpKick's and other managers'), `list-remote` (`lts`, `major`), `install` (`spec`), `uninstall` (`spec` = exact version, `confirm=true`, and a host that can ask [asks](#decisions)), `which` (`dir`: the project's Node.js), `pin` (`dir`, optional `spec`: writes `jk.toml` and relocks) |
-| **`doctor`** | Host health snapshot |
+| **`doctor`** | Host health snapshot; on Windows the host rows and their fixes ([Install](install.md#windows-host-checks)) |
 | **`new`** | Scaffold from a template, as `jk new` does (default `app`): `action=templates` lists templates, `action=form` one template's fields, `params` answers its questions, `preview=true` does not write ([below](#new)) |
 | **`publish`** | Validate the publish bundle (dry-run). `upload=true` uploads it to the repository `[publish] repository` names, with the credential `jk repo login` / `JK_REPO_<ID>_*` holds and signing from `[publish]` (`JK_GPG_PASSPHRASE`). An agent never names a URL; a project with no `[publish] repository`, or with `central`, is refused with the fix — Central uploads stay on `jk publish` |
 | **`snapshot`** | The inner-loop install, used as a Maven `-SNAPSHOT` is: the project goes into the local Maven repo as `<version>-SNAPSHOT` and is replaced on each run; a sibling project that must see your edits depends on `g:a:<version>-SNAPSHOT` |

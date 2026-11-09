@@ -287,6 +287,23 @@ PowerShell 7: `activate pwsh`; Windows PowerShell 5.1: `activate powershell`.)
 profiles have no installer block. It does not look at unused rc files, and it never writes
 them — run `jk activate` to hook a newly installed shell.
 
+## Windows host checks
+
+On Windows, `jk doctor` adds one row per host condition that slows or blocks JumpKick. Every row
+is read as a standard user, with no UAC prompt, and the section answers within a second. Each
+warning names its fix; `jk doctor -O jsonl` and the MCP `doctor` tool carry the same rows as a
+`windows` array of `{id, label, status, detail, fix}`.
+
+| Row | Warns when |
+|---|---|
+| `smart app control` | Smart App Control is on or in evaluation: it blocks binaries you build (native images, `jpackage` apps, test fixtures, JNI DLLs). Turn it off in Windows Security; it can be turned back on |
+| `powershell` | A new Windows PowerShell or `pwsh` would refuse the JumpKick profile block (`Restricted`, `AllSigned`), naming Group Policy when that is who set it |
+| `defender` | Defender scans `JK_HOME` or this project: a check found it not excluded, or you declined the exclusion. A standard user cannot read Defender's exclusions, so before any check the row only says they are unchecked |
+| `folders` | `JK_HOME` or the project is under OneDrive, or under a folder Controlled Folder Access guards |
+| `long paths` | Windows' `LongPathsEnabled` or git's `core.longpaths` is off |
+| `volumes` | The project and `JK_HOME` are on different volumes, so the cache copies files instead of linking them; the row also names the filesystem (NTFS, ReFS) |
+| `arch` | An x64 `jk` or JDK runs under ARM64 emulation |
+
 ## Official URLs
 
 | URL | Role |

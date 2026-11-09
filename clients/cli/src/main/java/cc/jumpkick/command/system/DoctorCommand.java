@@ -36,6 +36,7 @@ import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.M2Integrity;
 import cc.jumpkick.terminal.posix.PosixPasswd;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.winhost.HostRow;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
@@ -56,7 +57,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
- * (engine, dirs, state, jdk, lock, shell, mvn, tools, workers) and a summary. The worker and repository
+ * (engine, dirs, state, jdk, lock, shell, mvn, tools, workers, and on Windows the host conditions
+ * {@link cc.jumpkick.winhost.WindowsHostCheck} reads) and a summary. The worker and repository
  * rows are answered by a running engine only — a health check never starts one unless
  * {@code --engine} asks it to, and {@code --no-engine} skips those rows. {@code -O jsonl}
  * emits machine output.
@@ -109,6 +111,7 @@ public final class DoctorCommand implements CliCommand {
         Check mvn = checkMavenSpy(MavenSpyJar.current());
         Check m2 = checkM2();
         StoredLogins.Rows logins = StoredLogins.collect();
+        List<HostRow> windows = WindowsSection.collect();
         List<ToolRow> toolRows;
         String toolsError = null;
         try {
@@ -162,7 +165,8 @@ public final class DoctorCommand implements CliCommand {
                     workers,
                     repos,
                     settings,
-                    logins));
+                    logins,
+                    windows));
             return hasFail ? 1 : 0;
         }
 
@@ -180,6 +184,7 @@ public final class DoctorCommand implements CliCommand {
         printCheck(mvn, t);
         printCheck(m2, t);
         for (String line : StoredLogins.render(logins, t)) CliOutput.out(line);
+        for (String line : WindowsSection.render(windows, t)) CliOutput.out(line);
 
         printTools(toolRows, toolsError, t);
 
@@ -895,7 +900,7 @@ public final class DoctorCommand implements CliCommand {
     /**
      * The `-O jsonl` report: the checks, the tool tallies and the scan error, then the
      * installed workers with their launch classpaths, the repository stores, Maven's settings and
-     * the stored logins with where each keeps its secret.
+     * the stored logins with where each keeps its secret, and on Windows the host rows.
      */
     public static String reportJson(
             Check config,
@@ -917,7 +922,8 @@ public final class DoctorCommand implements CliCommand {
             Workers workers,
             RepoStores.Stores repos,
             MavenSettingsRows.Rows settings,
-            StoredLogins.Rows logins) {
+            StoredLogins.Rows logins,
+            List<HostRow> windows) {
         return JsonFields.object()
                 .token("config", checkJson(config))
                 .token("engine", checkJson(engine))
@@ -943,6 +949,7 @@ public final class DoctorCommand implements CliCommand {
                 .token("repos", RepoStores.json(repos))
                 .token("settings", MavenSettingsRows.json(settings))
                 .token("logins", StoredLogins.json(logins))
+                .token("windows", WindowsSection.json(windows))
                 .finish();
     }
 

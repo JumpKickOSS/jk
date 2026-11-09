@@ -13,6 +13,7 @@ import cc.jumpkick.command.system.MavenSettingsRows;
 import cc.jumpkick.command.system.RepoStores;
 import cc.jumpkick.command.system.StoredLogins;
 import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.winhost.HostRow;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -168,7 +169,8 @@ class CommandJsonFrozenBytesTest {
                         noWorkers,
                         noRepos,
                         noSettings,
-                        noLogins))
+                        noLogins,
+                        List.of()))
                 .isEqualTo("{\"config\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
                         + "\"engine\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"cache\":{\"status\":\"warn\",\"detail\":\"large\"},"
@@ -179,30 +181,7 @@ class CommandJsonFrozenBytesTest {
                         + "\"mvn\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"m2\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
                         + "\"tools\":{\"healthy\":3,\"pruned\":1,\"verified\":0,\"drifted\":0,\"firstSeen\":2,\"empty\":0,\"error\":null},"
-                        + "\"workers\":[],\"repos\":[]," + emptySettings + "," + emptyLogins + "}");
-        assertThat(DoctorCommand.reportJson(
-                        ok,
-                        ok,
-                        ok,
-                        ok,
-                        ok,
-                        ok,
-                        ok,
-                        ok,
-                        ok,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        "scan failed",
-                        noWorkers,
-                        noRepos,
-                        noSettings,
-                        noLogins))
-                .endsWith("\"empty\":0,\"error\":\"scan failed\"},\"workers\":[],\"repos\":[]," + emptySettings + ","
-                        + emptyLogins + "}");
+                        + "\"workers\":[],\"repos\":[]," + emptySettings + "," + emptyLogins + ",\"windows\":[]}");
         var one = new DoctorCommand.Workers(
                 List.of(new DoctorCommand.Worker(
                         "jk-image-builder",
@@ -239,7 +218,8 @@ class CommandJsonFrozenBytesTest {
                 "secret-service",
                 null);
         assertThat(DoctorCommand.reportJson(
-                        ok, ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings, logins))
+                        ok, ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings, logins,
+                        List.of()))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
                                 + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null,\"refused\":null,\"packagedBy\":\"ab12cd34ef56"
@@ -254,6 +234,77 @@ class CommandJsonFrozenBytesTest {
                                 + "\"repositories\":[{\"id\":\"acme-releases\",\"url\":\"https://nexus.acme/releases/\"}]},"
                                 + "\"logins\":{\"destination\":\"secret-service\",\"error\":null,\"rows\":["
                                 + "{\"kind\":\"repo\",\"name\":\"nexus\",\"origin\":\"https://nexus.acme\",\"store\":\"secret-service\"},"
-                                + "{\"kind\":\"forge\",\"name\":\"github.com\",\"origin\":null,\"store\":\"file\"}]}}");
+                                + "{\"kind\":\"forge\",\"name\":\"github.com\",\"origin\":null,\"store\":\"file\"}]},"
+                                + "\"windows\":[]}");
+    }
+
+    @Test
+    void doctor_report_scan_error() {
+        var ok = new DoctorCommand.Check(DoctorCommand.Status.OK, "Engine", "running");
+        var noWorkers = new DoctorCommand.Workers(List.of(), null);
+        var noRepos = new RepoStores.Stores(List.of(), null);
+        var noSettings = new MavenSettingsRows.Rows(List.of(), List.of(), List.of(), List.of(), null);
+        String emptySettings = "\"settings\":{\"files\":[],\"mirrors\":[],\"proxies\":[],\"repositories\":[]}";
+        var noLogins = new StoredLogins.Rows(List.of(), "file", null);
+        String emptyLogins = "\"logins\":{\"destination\":\"file\",\"error\":null,\"rows\":[]}";
+        assertThat(DoctorCommand.reportJson(
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        ok,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        "scan failed",
+                        noWorkers,
+                        noRepos,
+                        noSettings,
+                        noLogins,
+                        List.of()))
+                .endsWith("\"empty\":0,\"error\":\"scan failed\"},\"workers\":[],\"repos\":[]," + emptySettings + ","
+                        + emptyLogins + ",\"windows\":[]}");
+    }
+
+    @Test
+    void doctor_windows_rows() {
+        var ok = new DoctorCommand.Check(DoctorCommand.Status.OK, "Engine", "running");
+        var rows = List.of(
+                new HostRow("smart-app-control", "smart app control", HostRow.Status.WARN, "on", "turn it off"),
+                new HostRow("arch", "arch", HostRow.Status.OK, "AMD64, nothing emulated", null));
+        String json = DoctorCommand.reportJson(
+                ok,
+                ok,
+                ok,
+                ok,
+                ok,
+                ok,
+                ok,
+                ok,
+                ok,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                null,
+                new DoctorCommand.Workers(List.of(), null),
+                new RepoStores.Stores(List.of(), null),
+                new MavenSettingsRows.Rows(List.of(), List.of(), List.of(), List.of(), null),
+                new StoredLogins.Rows(List.of(), "file", null),
+                rows);
+        assertThat(json)
+                .endsWith("\"windows\":[{\"id\":\"smart-app-control\",\"label\":\"smart app control\","
+                        + "\"status\":\"warn\",\"detail\":\"on\",\"fix\":\"turn it off\"},"
+                        + "{\"id\":\"arch\",\"label\":\"arch\",\"status\":\"ok\","
+                        + "\"detail\":\"AMD64, nothing emulated\",\"fix\":null}]}");
     }
 }
