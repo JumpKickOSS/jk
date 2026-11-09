@@ -96,7 +96,7 @@ timed.
 | noop | nothing changed | the repeated cycle |
 | edit | one line appended to `system/WelcomeController.java`, a class nothing else imports; restored after each run | the inner loop. jk keys its cache on content, so a `touch` would measure a no-op |
 | test | nothing changed; the run is forced (`jk test -r`, `gradle test --rerun`, Maven always runs) | the whole suite: 74 tests, Testcontainers MySQL included when Docker or podman answers |
-| idle | one untimed test run, then 60 s with no command running | what the tool keeps resident between builds: jk's engine and warm workers, Gradle's daemon and its workers, nothing for Maven |
+| idle | one untimed test run, then 10 minutes with no command running | what the tool keeps resident between builds: jk's engine and warm workers, Gradle's daemon and its workers, nothing for Maven |
 
 Each cell is `--runs` timed runs (default five) after one untimed priming run where the row needs
 a built tree; the table shows the median and the p90 (nearest rank).
@@ -111,9 +111,9 @@ Each row also records the resident RSS at the start (`resident_rss_mb` in `rows.
 that is the engine before the command, which on a developer machine carries whatever it built
 earlier.
 
-The idle row samples no command: 60 s after a test run (past the engine's thirty-second idle trim,
-inside Gradle's three-hour daemon timeout) it sums the residents' RSS once a second for `--runs`
-samples and keeps the median (`idle_rss_mb`). Maven's is zero by construction: it starts a JVM per
+The idle row samples no command: 10 minutes after a test run (past the engine's idle trim and jk's
+10-minute warm-compiler linger, inside Gradle's three-hour daemon timeout) it sums the residents'
+RSS once a second for `--runs` samples and keeps the median (`idle_rss_mb`). Maven's is zero by construction: it starts a JVM per
 build and pays for that on every row above.
 
 ## Reading the numbers honestly

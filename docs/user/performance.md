@@ -39,8 +39,9 @@ Walls are wall-clock seconds, median and p90 over the timed runs. Peak RSS is th
 resident memory across the tool's whole process tree during the run, sampled every 200 ms: for jk
 the client, the resident engine and every compiler and test worker; for Gradle the wrapper client,
 the daemon and its workers; for Maven the launcher JVM and its forks. The idle row runs no
-command: a minute after the test run it sums the same residents' RSS once a second and keeps the
-median, so it is what each tool leaves on the machine between builds.
+command: ten minutes after the test run it sums the same residents' RSS once a second and keeps the
+median, so it is what each tool leaves on the machine between builds once the project is left
+alone, after jk's warm compilers have gone.
 
 ## What each row is
 
@@ -51,7 +52,7 @@ median, so it is what each tool leaves on the machine between builds.
 | No-op | `jk build -S` | `classes jar` | `package` |
 | One-file edit | one line appended to a leaf controller | the same edit | the same edit |
 | Test run | `jk test -r` | `test --rerun` | `test` |
-| Idle | the engine and its warm workers, a minute after the test run | the daemon and its workers, likewise | nothing: Maven keeps no process between builds |
+| Idle | the engine and any warm workers still resident, 10 minutes after the test run | the daemon and its workers, likewise | nothing: Maven keeps no process between builds |
 
 The wipe before a run is never timed. Every Gradle command carries `--configuration-cache
 --build-cache`; every Maven command carries the properties that switch off checkstyle, Spring

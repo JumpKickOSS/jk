@@ -93,8 +93,9 @@ PROJECT = {
 TOOLS = ("jk", "gradle", "maven")
 SCENARIOS = ("clean", "rebuild", "noop", "edit", "test", "idle")
 INTERVAL_S = 0.2
-# Past the engine's thirty-second idle trim, well inside Gradle's three-hour daemon idle timeout.
-IDLE_SETTLE_S = 60
+# Ten minutes: past jk's warm-worker linger (a compiler leaves 10 idle minutes after its project's
+# last request) and the engine's idle trim, well inside Gradle's three-hour daemon idle timeout.
+IDLE_SETTLE_S = 600
 EDIT_MARK = "// wall harness edit"
 WALL_MARK = "# The three-tool table behind docs/user/performance.md, banked by bench/wall/measure --bank:"
 

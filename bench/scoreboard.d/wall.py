@@ -6,7 +6,7 @@ banked. Subjects, per scenario of the harness (clean, rebuild, noop, edit, test,
 
   wall.<scenario>            median seconds of the timed runs (p90 beside it)
   wall.<scenario>.peak-rss   peak summed RSS of the tool's process tree
-  wall.idle-rss              the tool's residents a minute after a test run, nothing running
+  wall.idle-rss              the tool's residents ten minutes after a test run, nothing running
 
 jk rows ratchet (15% above fails, 5% below is banked); Gradle and Maven rows record what those
 tools do today. `render` publishes each tool's latest measurement, never jk's banked best, into
@@ -155,7 +155,7 @@ def table(rows: list[dict]) -> str:
         shown = [f"{mib(c):,} MiB" if (c := cell.get((t, f"wall.{s}.peak-rss"))) else "—" for t in TOOLS]
         lines.append(f"| {LABELS[s]} | " + " | ".join(shown) + " |")
     shown = [f"{mib(c):,} MiB" if (c := cell.get((t, "wall.idle-rss"))) else "—" for t in TOOLS]
-    lines.append("| Idle, a minute after the test run | " + " | ".join(shown) + " |")
+    lines.append("| Idle, 10 minutes after the test run | " + " | ".join(shown) + " |")
     lines += ["", footer(rows)]
     return "\n".join(lines)
 
@@ -220,8 +220,10 @@ def claims(rows: list[dict], link: str) -> str:
         engine = int(pub(j, "root-rss") or 0) >> 20
         resident = (f"Between builds jk keeps {idle['jk']:,} MiB resident"
                     + (f": {engine:,} MiB for the engine, whose heap is capped at {default_heap_mb()} MiB and "
-                       f"trimmed back after every job, and the rest for warm compilers that exit after 30 idle "
-                       f"minutes or as soon as the host runs short of memory" if engine else "")
+                       f"trimmed back after every job"
+                       + (f", and {idle['jk'] - engine:,} MiB for warm workers" if idle["jk"] - engine >= 16 else "")
+                       + ". A warm compiler leaves 10 minutes after its project's last request or edit, or as "
+                         "soon as the host runs short of memory" if engine else "")
                     + ". One engine serves every project on the machine.")
         if "gradle" in idle:
             ratio = idle["gradle"] / idle["jk"] if idle["jk"] else 0
