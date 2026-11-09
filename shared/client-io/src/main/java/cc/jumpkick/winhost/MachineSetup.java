@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.winhost;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -160,7 +162,26 @@ public record MachineSetup(
                 beforeMs,
                 afterMs);
         memo.write(memoFile);
+        noteApplied(lines);
         return new Applied(lines, memo, false);
+    }
+
+    /** Journal the host changes that took: each result, ticked or crossed, as the entry's detail. */
+    private static void noteApplied(List<Result> lines) {
+        long ok = lines.stream()
+                .filter(r -> r.ok() && !r.change().isEmpty())
+                .map(Result::change)
+                .distinct()
+                .count();
+        if (ok == 0) return;
+        StringBuilder detail = new StringBuilder();
+        for (Result r : lines)
+            detail.append(r.ok() ? "+ " : "- ").append(r.line()).append('\n');
+        ChangeJournal.note(
+                "Windows host",
+                Change.APPLY,
+                "applied machine setup: " + ok + " change" + (ok == 1 ? "" : "s"),
+                detail.toString());
     }
 
     /** Records that the person declined {@code plan}: nothing is applied and its roots are left out. */

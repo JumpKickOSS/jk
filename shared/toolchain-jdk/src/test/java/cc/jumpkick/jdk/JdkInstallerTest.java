@@ -4,6 +4,9 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeActor;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
@@ -98,10 +101,19 @@ class JdkInstallerTest {
                 Hashing.sha256Hex(archive),
                 archive.length);
 
-        InstalledJdk installed = installer.install(pkg);
+        Path journal = tempDir.resolve("changes");
+        InstalledJdk installed = ChangeJournal.into(
+                journal,
+                () -> ChangeActor.as(ChangeActor.shell(List.of("jdk", "install", "21")), () -> installer.install(pkg)));
         assertThat(installed.identifier()).isEqualTo("21.0.5-tem-x64-linux");
         assertThat(installed.home().resolve("bin/java")).exists();
         assertThat(installed.home().resolve("release")).exists();
+
+        Change entry = new ChangeJournal(journal).page(null, 10).entries().getFirst();
+        assertThat(entry.action()).isEqualTo(Change.INSTALL);
+        assertThat(entry.what()).startsWith("JDK ");
+        assertThat(entry.summary()).contains(jdksRoot.toString());
+        assertThat(entry.actor().label()).isEqualTo("jk jdk install 21");
     }
 
     @Test

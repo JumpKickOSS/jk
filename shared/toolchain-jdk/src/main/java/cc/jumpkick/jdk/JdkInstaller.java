@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.host.GraalLauncher;
@@ -272,7 +274,13 @@ public final class JdkInstaller {
         return installed;
     }
 
+    /** Record a finished install: in the registry, the inventory and the change journal. */
     private void recordInventory(InstalledJdk installed) {
+        ChangeJournal.note(
+                "JDK " + installed.identifier(),
+                Change.INSTALL,
+                "installed " + installed.identifier() + " into " + registry.jdksRoot(),
+                "home " + installed.home());
         // The new install invalidates the registry's memoized probe scan.
         registry.refresh();
         try {

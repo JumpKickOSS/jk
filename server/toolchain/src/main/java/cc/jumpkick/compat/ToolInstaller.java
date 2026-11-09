@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
@@ -158,6 +160,11 @@ public final class ToolInstaller {
             Files.deleteIfExists(archive);
             IN_FLIGHT.remove(archive);
         }
+        ChangeJournal.note(
+                dist.tool().displayName() + " " + dist.version(),
+                Change.INSTALL,
+                "installed " + dist.tool().displayName() + " " + dist.version() + " into " + target,
+                "from " + dist.downloadUri() + ", checked against " + expected.source());
         return new Installed(new InstalledTool(dist.tool(), dist.version(), target), expected.source());
     }
 

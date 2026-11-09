@@ -140,6 +140,7 @@ to decode: if you want to know where a file is, it is under `~/.jk`.
   config.toml   your settings
   bin/          PATH launchers: jk, jkx, and `jk tool install` shims
   cache/        action cache + cache CAS (rebuildable; costs local CPU)
+  changes/      what JumpKick changed outside your projects, and who asked
   config/       per-app config, <bin>/config.toml
   creds/        forge tokens (creds/forge) and per-repo credentials (creds/repo)
   lib/          live engine jar, the Maven spy jar (`jk mvn`), installed app jars
@@ -159,7 +160,8 @@ rm -rf ~/.jk/store     # re-download everything, slow
 ```
 
 `creds/`, `bin/` and `lib/` are separate roots on purpose: they are the deletion units, so
-`jk self nuke -S` cannot log you out or remove the engine you are running.
+`jk self nuke -S` cannot log you out or remove the engine you are running. `changes/` is one too,
+so the record of a nuke survives it ([what JumpKick changed](config.md#what-jumpkick-changed)).
 
 The live engine jar is `~/.jk/lib/jk-engine/jk-engine-<version>.jar` (or
 `jk-engine-<version>.<epoch>.jar` when that name is already occupied), with the live pointer

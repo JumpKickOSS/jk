@@ -3,6 +3,8 @@ package cc.jumpkick.command.toolchain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
@@ -63,11 +65,18 @@ class ToolCommandTest {
         Path launcher = bin.resolve("widget");
         Files.writeString(launcher, jkLauncher());
 
-        int exit = Jk.execute(
-                "tool", "uninstall", "widget", "--state-dir", tempDir.toString(), "--bin-dir", bin.toString());
+        Path journal = tempDir.resolve("changes");
+        int exit = ChangeJournal.into(
+                journal,
+                () -> Jk.execute(
+                        "tool", "uninstall", "widget", "--state-dir", tempDir.toString(), "--bin-dir", bin.toString()));
         assertThat(exit).isEqualTo(0);
         assertThat(launcher).doesNotExist();
         assertThat(tempDir.resolve("tools/envs/widget")).doesNotExist();
+        Change entry = new ChangeJournal(journal).page(null, 10).entries().getFirst();
+        assertThat(entry.what()).isEqualTo("tool widget");
+        assertThat(entry.action()).isEqualTo(Change.UNINSTALL);
+        assertThat(entry.actor().label()).isEqualTo("jk tool uninstall widget --state-dir --bin-dir");
     }
 
     /** A leaf name under jk's private bin directory is owned regardless of launcher contents. */

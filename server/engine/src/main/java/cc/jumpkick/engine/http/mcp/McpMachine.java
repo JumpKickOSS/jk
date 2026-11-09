@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.cache.DiskUsage;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.EffectiveUserConfig;
 import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
@@ -122,7 +123,9 @@ public final class McpMachine {
                 int mb = Integer.parseInt(value.trim());
                 Path file = JkDirs.userConfigFile();
                 String text = Files.isRegularFile(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
-                AtomicWrites.replace(file, upsertHeap(text, mb));
+                String after = upsertHeap(text, mb);
+                AtomicWrites.replace(file, after);
+                ChangeJournal.noteEdit(file, "set engine.max-heap-mb = " + mb, text, after);
                 m.put("written", file.toString());
                 m.put("key", key);
                 m.put("value", mb);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
@@ -90,6 +91,8 @@ public final class Jk {
         }
         GlobalCancel.install();
         GlobalSuspend.install();
+        // Threads this command starts journal their changes as its doing too.
+        ChangeActor.setProcessDefault(shellActor(args));
         int code;
         try {
             code = execute(args);
@@ -131,12 +134,20 @@ public final class Jk {
      */
     public static int execute(String... args) {
         try {
-            return SessionContext.invocation(() -> executeInvocation(args));
+            // What this invocation changes outside a project is journaled as this command line's doing.
+            return ChangeActor.as(shellActor(args), () -> SessionContext.invocation(() -> executeInvocation(args)));
         } catch (RuntimeException | Error e) {
             throw e;
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** The command line as the change journal's actor: from the command on, global flags before it left out. */
+    static ChangeActor shellActor(String[] args) {
+        List<String> all = List.of(args);
+        int at = CommandDispatch.commandIndex(all);
+        return ChangeActor.shell(at >= 0 ? all.subList(at, all.size()) : all);
     }
 
     /** The command {@code args} name, before alias rewriting; null for bare {@code jk}, help and the version. */

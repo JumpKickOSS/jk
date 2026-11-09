@@ -4,6 +4,9 @@ package cc.jumpkick.winhost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeActor;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.host.time.Clock;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -112,6 +115,32 @@ class MachineSetupTest {
         assertThat(memo.checkedAt()).isEqualTo(1_000L);
         assertThat(memo.beforeMs()).isEqualTo(1_900L);
         assertThat(memo.afterMs()).isEqualTo(900L);
+    }
+
+    @Test
+    void anAppliedSetupIsJournaledWithEachResultAndADeclineIsNot() throws Exception {
+        Path journal = state.resolve("changes");
+        ChangeActor agent = ChangeActor.agent("s1", "Cursor", "speed up builds", "doctor");
+        ChangeJournal.into(
+                journal,
+                () -> ChangeActor.as(agent, () -> setup(writing(
+                                "verified\tC:\\Users\\ada\\.jk",
+                                "missing\tC:\\Users\\ada\\IdeaProjects\tDefender still scans it"))
+                        .apply(
+                                plan,
+                                Set.of(
+                                        SetupChange.excludeId("C:\\Users\\ada\\.jk"),
+                                        SetupChange.excludeId("C:\\Users\\ada\\IdeaProjects")))));
+        ChangeJournal.into(journal, () -> setup((s, t) -> new Elevator.Outcome.Declined())
+                .apply(plan, Set.of(SetupChange.excludeId("D:\\src"))));
+
+        List<Change> entries = new ChangeJournal(journal).page(null, 10).entries();
+        assertThat(entries).hasSize(1);
+        Change entry = entries.getFirst();
+        assertThat(entry.action()).isEqualTo(Change.APPLY);
+        assertThat(entry.summary()).isEqualTo("applied machine setup: 1 change");
+        assertThat(entry.diff()).contains("+ ").contains("- ").contains("IdeaProjects");
+        assertThat(entry.actor().details()).containsEntry("client", "Cursor").containsEntry("goal", "speed up builds");
     }
 
     @Test

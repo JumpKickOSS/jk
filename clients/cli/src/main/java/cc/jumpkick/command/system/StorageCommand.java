@@ -2,6 +2,8 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
@@ -32,6 +34,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.LongSupplier;
+import java.util.stream.Collectors;
 
 /**
  * {@code jk storage} — manage the <strong>artifact store</strong> under {@code $JK_STORE_DIR}:
@@ -155,6 +158,16 @@ public final class StorageCommand extends GroupCommand {
                 failures.add(orphan.name() + " (" + e.getMessage() + ")");
             }
         }
+        ChangeJournal.note(
+                "artifact store",
+                Change.DELETE,
+                "nuked the artifact store: " + CacheCommand.fmtCount(wiped[0]) + " files, "
+                        + CacheCommand.fmtBytes(wiped[1]) + " freed"
+                        + (removed.isEmpty() ? "" : ", and " + removed.size() + " orphaned tools"),
+                "deleted " + storeRoot
+                        + removed.stream()
+                                .map(o -> "\nremoved the tool " + o.name())
+                                .collect(Collectors.joining()));
         CommandWedge.printOk(
                 "Storage",
                 "Nuked " + CacheCommand.fmtCount(wiped[0]) + " files, " + CacheCommand.fmtBytes(wiped[1]) + " freed"

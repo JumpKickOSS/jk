@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeActor;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.secret.FakeKeychain;
 import cc.jumpkick.secret.SecretBackendException;
@@ -199,5 +202,28 @@ class RepoCredentialStoreTest {
                                 URI.create("https://nexus.corp:8443"),
                                 new SecretVault.Pointer("fake", "repo/a")),
                         new RepoCredentialStore.Login("b", "basic", URI.create("https://nexus.corp:8443"), null));
+    }
+
+    @Test
+    void a_stored_and_a_cleared_login_are_journaled_without_the_secret(@TempDir Path dir) {
+        Path journal = dir.resolve("changes");
+        var store = new RepoCredentialStore(dir.resolve("creds"));
+        ChangeActor shell = ChangeActor.shell(List.of("repo", "login", "corp-nexus", "--password", "p@ss-literal"));
+
+        ChangeJournal.into(
+                journal,
+                () -> ChangeActor.as(shell, () -> {
+                    store.write("corp-nexus", new RepoCredential.Basic("deployer", "p@ss-literal"), NEXUS);
+                    store.clear("corp-nexus");
+                    return null;
+                }));
+
+        List<Change> entries = new ChangeJournal(journal).page(null, 10).entries();
+        assertThat(entries).extracting(Change::action).containsExactly(Change.CLEAR, Change.STORE);
+        Change stored = entries.getLast();
+        assertThat(stored.what()).isEqualTo("credential for repository corp-nexus");
+        assertThat(stored.diff()).contains("user deployer, password ***").contains("kept in");
+        assertThat(stored.actor().label()).isEqualTo("jk repo login corp-nexus --password");
+        assertThat(entries).allSatisfy(e -> assertThat(e.toMap().toString()).doesNotContain("p@ss-literal"));
     }
 }

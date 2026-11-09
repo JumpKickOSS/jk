@@ -198,6 +198,27 @@ Both entries open the dashboard (`jk web`). `jk self desktop` writes them again,
 desktop --remove` (or `jk self nuke`, whose `--desktop` target is the same step) deletes them and the
 icons, the step to run before deleting `~/.jk` to uninstall.
 
+## What JumpKick changed
+
+JumpKick never asks before it changes something on your machine outside a project, but it keeps a
+record of each change in `~/.jk/changes/changes.jsonl`: what changed, a diff or a line saying what
+went where, who asked for it and when. Recorded: edits to `config.toml` (including the credential
+tables an import adds), logins stored or removed (`jk repo login`, `jk auth login`), JDK, Node.js,
+build-tool and `jk tool install` installs and their removal, `jk cache clean` and `nuke`, `jk
+storage nuke` and the MCP `disk` tool, `jk self nuke`, an applied machine setup ([`jk doctor
+--fix`](install.md#jk-doctor---fix-set-up-the-machine-once)), and the shell-profile lines `jk activate` adds.
+
+Who asked is the command line for a command you ran (option values left out, since one could be
+a password), the agent's host, session, goal and tool for an MCP call, the build an import came
+from, or JumpKick itself (a JDK a build provisioned). A password or token in a
+`[repositories.*]` table shows as `***` in the diff whatever it held, a `${VAR}` reference
+included, and a stored login records only where it went, never the secret.
+
+The record keeps the last few thousand changes: past 2 MiB the file becomes `changes.1.jsonl`,
+replacing the one before. `jk self nuke` deletes neither file, and records itself before it
+deletes anything. The engine serves the record newest first, a page at a time, at `GET
+/api/changes` ([HTTP API](../contributors/http.md#get-apichanges)).
+
 ## Network
 
 Corporate networks that only reach the internet through a proxy configure it once:

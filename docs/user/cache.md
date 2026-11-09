@@ -95,8 +95,8 @@ One target per root, no aliases:
 
 Always kept, whichever targets you name: `~/.jk/bin` (PATH launchers), `~/.jk/lib` (the live
 engine and installed app jars; only `--desktop` takes its `desktop/` icons), `~/.jk/creds` (forge and per-repo credentials — `jk repo
-logout` removes those) and the managed JDKs. Those are roots of their own, so no target's
-delete reaches them.
+logout` removes those), `~/.jk/changes` (the change journal, which records the nuke before it
+starts) and the managed JDKs. Those are roots of their own, so no target's delete reaches them.
 
 ### Plugin workers
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.forge;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.secret.SecretBackendException;
 import cc.jumpkick.secret.SecretItems;
 import cc.jumpkick.secret.SecretVault;
@@ -100,6 +102,14 @@ public final class TokenStore {
         } catch (IOException e) {
             throw new UncheckedIOException("failed to store credential for " + host, e);
         }
+        ChangeJournal.note(
+                "token for " + host,
+                Change.STORE,
+                (existing == null ? "stored" : "replaced") + " the forge token for " + host,
+                "token ***, kept in "
+                        + (pointer == null
+                                ? "the file " + file.getFileName()
+                                : SecretVault.displayName(pointer.backend())));
         if (previous != null && !previous.equals(pointer)) {
             try {
                 vault.remove(previous);
@@ -129,7 +139,8 @@ public final class TokenStore {
             if (pointer.isPresent()) vault.remove(pointer.get());
         }
         try {
-            Files.deleteIfExists(file);
+            if (Files.deleteIfExists(file))
+                ChangeJournal.note("token for " + host, Change.CLEAR, "removed the forge token for " + host);
         } catch (IOException ignored) {
             // best-effort
         }

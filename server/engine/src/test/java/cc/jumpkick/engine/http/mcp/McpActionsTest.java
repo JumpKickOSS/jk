@@ -4,6 +4,9 @@ package cc.jumpkick.engine.http.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeActor;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.StatusSnapshot;
@@ -121,6 +124,30 @@ class McpActionsTest {
                         .containsEntry("outcome", "error")
                         .containsEntry("headline", "failed")
                         .containsEntry("summary", "query \"\""));
+    }
+
+    @Test
+    void what_a_tool_changes_outside_a_project_is_journaled_as_the_agent_s_doing() {
+        McpContext ctx = context();
+        McpConnection connection = ctx.connections().open("Cursor", null, McpRevision.LATEST, McpElicitModes.NONE);
+        Path journal = project.resolve("changes");
+        McpTools tools = new McpTools(List.of(tool("disk", in -> {
+            ChangeJournal.note("cache tier", Change.CLEAN, "cleaned the cache tier");
+            return in.text("ok\n");
+        })));
+
+        ChangeJournal.into(
+                journal,
+                () -> tools.call(
+                        ctx, call("disk", Map.of("action", "clean", "goal", "free disk space")), connection, null));
+
+        Change entry = new ChangeJournal(journal).page(null, 10).entries().getFirst();
+        assertThat(entry.actor().kind()).isEqualTo(ChangeActor.AGENT);
+        assertThat(entry.actor().details())
+                .containsEntry("session", connection.id())
+                .containsEntry("client", "Cursor")
+                .containsEntry("goal", "free disk space")
+                .containsEntry("tool", "disk");
     }
 
     private McpContext context() {

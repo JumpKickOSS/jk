@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.toolchain;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -89,6 +91,7 @@ public final class ToolUninstallCommand implements CliCommand {
         for (Path p : ours) {
             Files.deleteIfExists(p);
         }
+        ChangeJournal.note("tool " + name, Change.UNINSTALL, "removed the tool " + name, null);
         CommandWedge.printOk("Uninstall", "Removed " + name);
         return 0;
     }
@@ -119,6 +122,11 @@ public final class ToolUninstallCommand implements CliCommand {
             return 0;
         }
         PathUtil.deleteRecursively(installed.get().home());
+        ChangeJournal.note(
+                tool.get().displayName() + " " + version,
+                Change.UNINSTALL,
+                "removed " + tool.get().displayName() + " " + version,
+                "deleted " + installed.get().home());
         CommandWedge.printOk("Uninstall", "Removed " + target);
         return 0;
     }

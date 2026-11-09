@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp.tools;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpContext;
@@ -9,6 +11,7 @@ import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpMachine;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -59,6 +62,7 @@ public final class DiskTool implements McpTool {
                     in.count("olderThanDays", 0, 0, 36_500),
                     dir == null ? null : Path.of(dir),
                     ctx.cacheGate());
+            noteDone(action, m2);
             return in.ok(McpEnvelope.of("disk", m2), MachineActions.summary(m2, action));
         }
         Map<String, Object> data = McpMachine.diskAction(action, confirm, ctx.cacheGate());
@@ -66,6 +70,37 @@ public final class DiskTool implements McpTool {
         if (confirm && snapshot instanceof CacheSnapshot.Memoizing memo) {
             memo.invalidate(); // clean/nuke moved bytes; the next read must re-walk
         }
+        noteDone(action, data);
         return in.ok(McpEnvelope.of("disk", data), MachineActions.summary(data, action));
+    }
+
+    /** Journal an action that ran: a preview, an error or a clean that removed nothing changed nothing. */
+    static void noteDone(String action, Map<String, Object> data) {
+        if (data.containsKey("error") || Boolean.TRUE.equals(data.get("preview"))) return;
+        long files = data.get("files") instanceof Number n ? n.longValue() : -1;
+        long bytes = data.get("bytes") instanceof Number n ? n.longValue() : -1;
+        String counted =
+                files < 0 ? "" : ": " + files + " files, " + WorkerLeases.format(Math.max(0, bytes)) + " freed";
+        switch (action) {
+            case "nuke" -> {
+                if (Boolean.TRUE.equals(data.get("nuked"))) {
+                    ChangeJournal.note("cache tier", Change.DELETE, "nuked the cache tier", null);
+                }
+            }
+            case "clean" -> {
+                if (files != 0)
+                    ChangeJournal.note("cache tier", Change.CLEAN, "cleaned the cache tier" + counted, null);
+            }
+            case "m2-clean" -> {
+                if (files != 0) {
+                    ChangeJournal.note(
+                            "Maven local repository",
+                            Change.CLEAN,
+                            "cleaned JumpKick's unused downloads from ~/.m2" + counted,
+                            null);
+                }
+            }
+            default -> {}
+        }
     }
 }

@@ -4,6 +4,8 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.testing.FakeJdk;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -125,8 +127,17 @@ class JdkToolUninstallerTest {
         Files.writeString(jabba, "#!/bin/sh\nrm -rf '" + install + "'\n");
         Files.setPosixFilePermissions(jabba, PosixFilePermissions.fromString("rwxr-xr-x"));
 
-        assertThat(JdkToolUninstaller.uninstall(hit(install, "jabba"), new JdkRegistry(tmp.resolve("jdks"))))
+        Path journal = tmp.resolve("changes");
+        assertThat(ChangeJournal.into(
+                        journal,
+                        () -> JdkToolUninstaller.uninstall(
+                                hit(install, "jabba"), new JdkRegistry(tmp.resolve("jdks")))))
                 .isEqualTo(JdkToolUninstaller.Outcome.HANDLED_BY_TOOL);
+
+        Change entry = new ChangeJournal(journal).page(null, 10).entries().getFirst();
+        assertThat(entry.action()).isEqualTo(Change.UNINSTALL);
+        assertThat(entry.summary()).contains("21.0.5").contains("jabba");
+        assertThat(entry.diff()).startsWith("through ").contains("jabba");
     }
 
     // --- helpers ----------------------------------------------------------

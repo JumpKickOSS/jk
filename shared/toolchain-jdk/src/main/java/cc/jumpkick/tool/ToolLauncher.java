@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
@@ -80,6 +82,7 @@ public final class ToolLauncher {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING);
         markExecutable(launcher);
+        noteInstall(env, launcher);
         return launcher;
     }
 
@@ -126,7 +129,16 @@ public final class ToolLauncher {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING);
         markExecutable(launcher);
+        noteInstall(env, launcher);
         return launcher;
+    }
+
+    private static void noteInstall(ToolEnv env, Path launcher) {
+        ChangeJournal.note(
+                "tool " + env.binName(),
+                Change.INSTALL,
+                "installed the tool " + env.binName() + " (" + env.primary() + ")",
+                "launcher " + launcher);
     }
 
     /**

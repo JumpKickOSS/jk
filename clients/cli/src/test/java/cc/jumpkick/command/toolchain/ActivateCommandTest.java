@@ -3,6 +3,8 @@ package cc.jumpkick.command.toolchain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.Jk;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -104,6 +106,14 @@ class ActivateCommandTest {
         assertThat(printed).contains("configured");
         String zshrc = Files.readString(home.resolve(".zshrc"));
         assertThat(zshrc).contains(ShellInstallerBlock.BEGIN).contains("scratch-jk/bin/jk\" activate zsh");
+        Change entry = new ChangeJournal(home.resolve("scratch-jk/changes"))
+                .page(null, 10).entries().stream()
+                        .filter(c -> c.what().endsWith(".zshrc"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(entry.action()).isEqualTo(Change.EDIT);
+        assertThat(entry.diff()).contains(" # preexisting zsh").contains("+" + ShellInstallerBlock.BEGIN);
+        assertThat(entry.actor().label()).isEqualTo("jk activate --yes --rc");
     }
 
     /** Runs {@code jk} with {@code user.home} and {@code JK_HOME} bound to the fixture; returns stdout+stderr. */

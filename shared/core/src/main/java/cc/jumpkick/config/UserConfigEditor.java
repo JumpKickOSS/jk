@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.changes.ChangeJournal;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -49,7 +50,9 @@ public final class UserConfigEditor {
         if (declaresRepository(text, table.name())) return false;
         Path parent = configFile.getParent();
         if (parent != null) Files.createDirectories(parent);
-        Files.writeString(configFile, appendCredential(text, table), StandardCharsets.UTF_8);
+        String after = appendCredential(text, table);
+        Files.writeString(configFile, after, StandardCharsets.UTF_8);
+        ChangeJournal.noteEdit(configFile, "added the credential for repository " + table.name(), text, after);
         return true;
     }
 
@@ -121,7 +124,9 @@ public final class UserConfigEditor {
         Path parent = configFile.getParent();
         if (parent != null) Files.createDirectories(parent);
         String text = Files.isRegularFile(configFile) ? Files.readString(configFile, StandardCharsets.UTF_8) : "";
-        Files.writeString(configFile, upsertRoot(text, key, value), StandardCharsets.UTF_8);
+        String after = upsertRoot(text, key, value);
+        Files.writeString(configFile, after, StandardCharsets.UTF_8);
+        ChangeJournal.noteEdit(configFile, "set " + key + " = " + value, text, after);
         return configFile;
     }
 

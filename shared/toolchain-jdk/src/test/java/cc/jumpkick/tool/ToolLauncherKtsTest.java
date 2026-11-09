@@ -3,6 +3,9 @@ package cc.jumpkick.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeActor;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.model.Coordinate;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,5 +58,23 @@ class ToolLauncherKtsTest {
         Path launcher = ToolLauncher.installKotlinScript(
                 tmp.resolve("envs"), tmp.resolve("bin"), tmp.resolve("jdk"), tmp.resolve("kotlinc"), script, env, null);
         assertThat(Files.readString(launcher)).doesNotContain("-classpath");
+    }
+
+    @Test
+    void an_installed_tool_is_journaled_with_its_launcher(@TempDir Path tmp) throws Exception {
+        Path journal = tmp.resolve("changes");
+        ToolEnv env = new ToolEnv("hello", Coordinate.of("com.example", "hello", "1.0"), "com.example.Main", List.of());
+
+        Path launcher = ChangeJournal.into(
+                journal,
+                () -> ChangeActor.as(
+                        ChangeActor.shell(List.of("tool", "install", "com.example:hello:1.0")),
+                        () -> ToolLauncher.install(tmp.resolve("envs"), tmp.resolve("bin"), tmp.resolve("jdk"), env)));
+
+        Change entry = new ChangeJournal(journal).page(null, 10).entries().getFirst();
+        assertThat(entry.what()).isEqualTo("tool hello");
+        assertThat(entry.action()).isEqualTo(Change.INSTALL);
+        assertThat(entry.diff()).isEqualTo("launcher " + launcher);
+        assertThat(entry.actor().label()).isEqualTo("jk tool install com.example:hello:1.0");
     }
 }

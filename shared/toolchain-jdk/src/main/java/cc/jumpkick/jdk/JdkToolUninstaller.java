@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -36,11 +38,24 @@ public final class JdkToolUninstaller {
      * remains. Throws when the directory remains outside the managed root; nothing is deleted then.
      */
     public static Outcome uninstall(JdkHit hit, JdkRegistry registry) throws IOException {
-        List<String> command = commandFor(hit, JdkRegistry.identifierFor(hit.home()));
+        String identifier = JdkRegistry.identifierFor(hit.home());
+        List<String> command = commandFor(hit, identifier);
         // Some tools exit 0 without deleting, so the directory is the verdict.
-        if (command != null && runQuietly(command) && !Files.exists(hit.home())) return Outcome.HANDLED_BY_TOOL;
+        if (command != null && runQuietly(command) && !Files.exists(hit.home())) {
+            noteUninstall(hit, identifier, "through " + String.join(" ", command));
+            return Outcome.HANDLED_BY_TOOL;
+        }
         registry.purge(hit);
+        noteUninstall(hit, identifier, "deleted " + hit.home());
         return Outcome.PURGED;
+    }
+
+    private static void noteUninstall(JdkHit hit, String identifier, String how) {
+        ChangeJournal.note(
+                "JDK " + identifier,
+                Change.UNINSTALL,
+                "removed " + hit.vendor().displayName() + " " + hit.version() + " (" + hit.source() + ")",
+                how);
     }
 
     /** Whether {@code hit}'s source has an owning-tool uninstall for this home. */

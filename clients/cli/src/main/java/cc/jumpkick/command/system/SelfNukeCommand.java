@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
@@ -28,8 +30,10 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -229,6 +233,11 @@ public final class SelfNukeCommand implements CliCommand {
             CommandWedge.printFail("Self", "Nuke aborted.");
             return 1;
         }
+
+        // Journaled before anything goes, into the changes root no target deletes, so the record of
+        // the nuke outlives it.
+        if (!dryRun)
+            noteNuke(selected, existing, cacheExists ? dirs.cacheDir() : null, storeExists ? dirs.storeDir() : null);
 
         boolean enginesStopped = !dryRun && (selected.contains(Target.STATE) || wantStoreTarget);
         if (enginesStopped) stopFleet();
@@ -619,6 +628,23 @@ public final class SelfNukeCommand implements CliCommand {
     /** Home-relative display form, painted with the theme path color. */
     static @Nullable String pathStyled(Path path) {
         return PathDisplay.styledRaw(displayPath(path));
+    }
+
+    /** The change journal's entry for this nuke: what each approved row deletes. */
+    private static void noteNuke(
+            Set<Target> selected, List<PurgeRow> rows, @Nullable Path cache, @Nullable Path store) {
+        StringBuilder paths = new StringBuilder();
+        if (store != null) paths.append("delete ").append(store).append(" (artifact store)\n");
+        if (cache != null) paths.append("delete ").append(cache).append(" (cache tier)\n");
+        for (PurgeRow r : rows)
+            paths.append("delete ")
+                    .append(r.path())
+                    .append(" (")
+                    .append(r.what())
+                    .append(")\n");
+        String targets =
+                selected.stream().map(t -> t.what.toLowerCase(Locale.ROOT)).collect(Collectors.joining(", "));
+        ChangeJournal.note("JumpKick home", Change.DELETE, "jk self nuke: " + targets, paths.toString());
     }
 
     /** Prefer {@code ~/…} when under the user home directory. */

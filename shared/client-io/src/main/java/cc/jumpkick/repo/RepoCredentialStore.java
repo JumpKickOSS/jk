@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.secret.SecretBackendException;
 import cc.jumpkick.secret.SecretItems;
@@ -130,6 +132,7 @@ public final class RepoCredentialStore {
         Path file = fileFor(repoId);
         SecretVault.@Nullable Pointer previous =
                 parse(file).map(Record::pointer).orElse(null);
+        boolean replacing = Files.exists(file);
         String secret;
         String head;
         switch (cred) {
@@ -154,6 +157,15 @@ public final class RepoCredentialStore {
         } catch (IOException e) {
             throw new UncheckedIOException("failed to store credential for " + repoId, e);
         }
+        String user = cred instanceof RepoCredential.Basic b ? "user " + b.username() + ", password ***" : "token ***";
+        ChangeJournal.note(
+                "credential for repository " + repoId,
+                Change.STORE,
+                (replacing ? "replaced" : "stored") + " the credential for repository " + repoId + " at " + origin,
+                user + ", kept in "
+                        + (pointer == null
+                                ? "the file " + file.getFileName()
+                                : SecretVault.displayName(pointer.backend())));
         if (previous != null && !previous.equals(pointer)) {
             try {
                 vault.remove(previous);
@@ -187,7 +199,12 @@ public final class RepoCredentialStore {
         Optional<SecretVault.Pointer> pointer = parse(file).map(Record::pointer);
         if (pointer.isPresent()) vault.remove(pointer.get());
         try {
-            Files.deleteIfExists(file);
+            if (Files.deleteIfExists(file)) {
+                ChangeJournal.note(
+                        "credential for repository " + repoId,
+                        Change.CLEAR,
+                        "removed the credential for repository " + repoId);
+            }
         } catch (IOException ignored) {
             // best-effort
         }

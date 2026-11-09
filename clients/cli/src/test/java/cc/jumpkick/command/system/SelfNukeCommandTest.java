@@ -4,6 +4,8 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.GlobalOptions;
@@ -229,6 +231,9 @@ class SelfNukeCommandTest {
             "productLib",
             "credsDir",
             "creds",
+            // The change journal records what a nuke deleted, so it outlives the nuke it records.
+            "changesDir",
+            "changes",
             // The umbrella itself is never a row: --all empties the roots inside it and leaves
             // bin, lib and creds standing, so scheduling the home would delete all three.
             "homeDir",
@@ -524,6 +529,34 @@ class SelfNukeCommandTest {
         assertThat(Files.exists(state.resolve("aot/marker"))).isFalse();
         assertThat(Files.exists(jkBin)).isTrue();
         assertThat(Files.exists(foreign)).isTrue();
+    }
+
+    @Test
+    void a_nuke_records_itself_before_it_deletes_and_the_record_survives_it() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path cache = dirs.cacheDir();
+        Path state = dirs.stateDir();
+        Files.createDirectories(cache.resolve("actions"));
+        Files.writeString(cache.resolve("actions/marker"), "x");
+        Files.createDirectories(state.resolve("aot"));
+        Files.writeString(state.resolve("aot/marker"), "y");
+
+        int exit = capture(() -> Jk.execute("-y", "self", "nuke", "--cache", "--state"));
+
+        assertThat(exit).isZero();
+        List<Change> entries =
+                new ChangeJournal(dirs.changesDir()).page(null, 10).entries();
+        Change nuke = entries.stream()
+                .filter(c -> c.what().equals("JumpKick home"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(nuke.action()).isEqualTo(Change.DELETE);
+        assertThat(nuke.summary()).startsWith("jk self nuke: ").contains("cache tier");
+        assertThat(nuke.diff()).contains("delete " + state.toAbsolutePath().normalize());
+        assertThat(nuke.actor().label()).isEqualTo("jk self nuke --cache --state");
+        // The cache leg journals its own delete, after the nuke's entry.
+        assertThat(entries).extracting(Change::what).contains("cache tier");
+        assertThat(entries.getLast()).isEqualTo(nuke);
     }
 
     /**

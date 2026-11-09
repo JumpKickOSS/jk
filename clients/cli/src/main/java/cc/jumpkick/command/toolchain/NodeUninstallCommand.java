@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.toolchain;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -57,6 +59,11 @@ public final class NodeUninstallCommand implements CliCommand {
             return 0;
         }
         PathUtil.deleteRecursively(installed.get().home());
+        ChangeJournal.note(
+                "Node.js " + version,
+                Change.UNINSTALL,
+                "removed Node.js " + version,
+                "deleted " + installed.get().home());
         if (GlobalOptions.outputIsJson(in)) {
             NodeCli.row(EngineProtocol.NODE_UNINSTALLED, f -> f.string("version", version)
                     .string("home", installed.get().home().toString()));

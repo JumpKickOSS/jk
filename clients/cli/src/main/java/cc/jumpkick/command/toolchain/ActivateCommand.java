@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.toolchain;
 
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Answers;
@@ -175,7 +176,9 @@ public final class ActivateCommand implements CliCommand {
         if (rcFile.getParent() != null) {
             Files.createDirectories(rcFile.getParent());
         }
-        Files.writeString(rcFile, next.endsWith("\n") ? next : next + "\n", StandardCharsets.UTF_8);
+        String written = next.endsWith("\n") ? next : next + "\n";
+        Files.writeString(rcFile, written, StandardCharsets.UTF_8);
+        ChangeJournal.noteEdit(rcFile, "added JumpKick's shell integration", previous, written);
         return true;
     }
 

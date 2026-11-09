@@ -190,6 +190,11 @@ public final class JkDirs {
         return current().binDirectory();
     }
 
+    /** The record of what JumpKick changed outside projects: {@link #changesDir()}. */
+    public static Path changes() {
+        return current().changesDir();
+    }
+
     public static Path toolEnvs() {
         return current().toolEnvsDir();
     }
@@ -288,6 +293,16 @@ public final class JkDirs {
      */
     public Path credsDir() {
         return homeDir().resolve("creds");
+    }
+
+    /**
+     * The change journal: one line per change JumpKick made to state outside a project ({@code
+     * config.toml}, credentials, installs, cleans and nukes, machine setup). A root of its own for
+     * the reason {@link #credsDir()} is: no nuke target deletes it, so the entry {@code jk self nuke}
+     * writes before it deletes is still there afterwards.
+     */
+    public Path changesDir() {
+        return homeDir().resolve("changes");
     }
 
     /** Rebuildable action-cache tier. Override with {@code JK_CACHE_DIR}. */

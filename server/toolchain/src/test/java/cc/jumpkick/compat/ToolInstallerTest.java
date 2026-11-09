@@ -4,6 +4,8 @@ package cc.jumpkick.compat;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -46,8 +48,13 @@ class ToolInstallerTest {
         ToolDistribution dist = new ToolDistribution(
                 BuildTool.MAVEN, "3.9.9", http.base().resolve("/maven.zip"), "zip", Hashing.sha256Hex(zip));
 
-        InstalledTool installed = installer.install(dist);
+        Path journal = tempDir.resolve("changes");
+        InstalledTool installed = ChangeJournal.into(journal, () -> installer.install(dist));
         assertThat(installed.home()).isEqualTo(tempDir.resolve("tools/maven/3.9.9"));
+        Change entry = new ChangeJournal(journal).page(null, 10).entries().getFirst();
+        assertThat(entry.action()).isEqualTo(Change.INSTALL);
+        assertThat(entry.what()).isEqualTo(BuildTool.MAVEN.displayName() + " 3.9.9");
+        assertThat(entry.diff()).startsWith("from ").contains("checked against");
         assertThat(installed.home().resolve("bin/mvn")).exists();
         assertThat(installed.home().resolve("conf/settings.xml")).exists();
         Path expectedBin = installed.home().resolve("bin").resolve(Os.isWindows() ? "mvn.cmd" : "mvn");
@@ -284,8 +291,13 @@ class ToolInstallerTest {
         ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
         ToolDistribution dist = new ToolDistribution(BuildTool.MAVEN, "3.9.9", archive.toUri(), "zip", null);
 
-        InstalledTool installed = installer.install(dist);
+        Path journal = tempDir.resolve("changes");
+        InstalledTool installed = ChangeJournal.into(journal, () -> installer.install(dist));
         assertThat(installed.home()).isEqualTo(tempDir.resolve("tools/maven/3.9.9"));
+        Change entry = new ChangeJournal(journal).page(null, 10).entries().getFirst();
+        assertThat(entry.action()).isEqualTo(Change.INSTALL);
+        assertThat(entry.what()).isEqualTo(BuildTool.MAVEN.displayName() + " 3.9.9");
+        assertThat(entry.diff()).startsWith("from ").contains("checked against");
         assertThat(installed.home().resolve("bin/mvn")).hasContent("#!/bin/sh\n");
         assertThat(http.requestsFor("/"))
                 .as("nothing is fetched over the network")

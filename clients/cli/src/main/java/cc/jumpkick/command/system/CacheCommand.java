@@ -2,6 +2,8 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cache.DiskUsage;
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
@@ -348,6 +350,7 @@ public final class CacheCommand extends GroupCommand {
             // An empty skeleton is still the directory the nuke promised to remove, and there is
             // nothing left in it worth a confirm or an idle boundary.
             removeCacheRoot(root);
+            noteNuke(root, stats);
             CommandWedge.printOk("Cache", "Nuked an empty cache directory");
             return 0;
         }
@@ -379,6 +382,7 @@ public final class CacheCommand extends GroupCommand {
                     // The engine emptied the tier at its idle boundary; the root and the
                     // .prune.lock it held there are ours to take now that the pass has finished.
                     removeCacheRoot(root);
+                    noteNuke(root, stats);
                     return 0;
                 }
                 CommandWedge.printFail("Cache", "the engine's purge failed; nothing removed");
@@ -388,6 +392,7 @@ public final class CacheCommand extends GroupCommand {
             }
         }
         removeCacheRoot(root);
+        noteNuke(root, stats);
         CommandWedge.printOk(
                 "Cache", "Nuked " + fmtCount(stats.files()) + " files, " + fmtBytes(stats.bytes()) + " freed.");
         return 0;
@@ -415,6 +420,15 @@ public final class CacheCommand extends GroupCommand {
      */
     static void removeCacheRoot(Path root) throws IOException {
         PathUtil.deleteRecursivelyOrThrow(root);
+    }
+
+    /** Journal a finished nuke of the cache tier at {@code root}. */
+    static void noteNuke(Path root, Stats stats) {
+        ChangeJournal.note(
+                "cache tier",
+                Change.DELETE,
+                "nuked the cache tier: " + fmtCount(stats.files()) + " files, " + fmtBytes(stats.bytes()) + " freed",
+                "deleted " + root);
     }
 
     // --- subcommands defined here to access private helpers ----------------------
@@ -607,6 +621,16 @@ public final class CacheCommand extends GroupCommand {
             } catch (IOException e) {
                 CommandWedge.printFail("Cache", e.getMessage());
                 return Exit.SOFTWARE;
+            }
+            long files = summary[0] != null ? summary[0].files() : 0L;
+            if (result.success() && !dryRun && files > 0) {
+                boolean m2 = "m2".equals(op);
+                ChangeJournal.note(
+                        m2 ? "Maven local repository" : "cache tier",
+                        Change.CLEAN,
+                        "cleaned " + (m2 ? "JumpKick's unused downloads from ~/.m2" : "the cache tier") + ": "
+                                + fmtCount(files) + " files, " + fmtBytes(summary[0].bytes()) + " freed",
+                        null);
             }
             return result.success() ? 0 : 1;
         }

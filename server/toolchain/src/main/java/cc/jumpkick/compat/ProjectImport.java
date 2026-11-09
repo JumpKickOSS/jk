@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
+import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.gradle.GradleBuildImport;
 import cc.jumpkick.host.Log;
@@ -220,7 +221,7 @@ public final class ProjectImport {
                 wrote.add(e.getKey());
                 progress.advance(1);
             }
-            report = machineCredentials(report, c.machineCredentials(), JkDirs.userConfigFile(), wrote);
+            report = machineCredentials(report, c.machineCredentials(), JkDirs.userConfigFile(), wrote, source);
             return Staged.of(new Written(c, wrote, report));
         } catch (IOException e) {
             return Staged.stopped(Outcome.failed(1, e.getMessage()));
@@ -324,14 +325,21 @@ public final class ProjectImport {
      * {@code report} after appending each of {@code tables} to {@code configFile}, with a row for a
      * table left out because the file already declares a repository of that name.
      */
-    private static ImportReport machineCredentials(
-            ImportReport report, List<UserConfigEditor.CredentialTable> tables, Path configFile, List<Path> wrote)
+    static ImportReport machineCredentials(
+            ImportReport report,
+            List<UserConfigEditor.CredentialTable> tables,
+            Path configFile,
+            List<Path> wrote,
+            Path source)
             throws IOException {
         if (tables.isEmpty()) return report;
         ImportReport.Builder out = rebuilt(report);
         boolean written = false;
+        // The machine's config changes on the import's behalf: its entry names the build it came from.
+        ChangeActor importer =
+                ChangeActor.importOf(source.toAbsolutePath().normalize().toString());
         for (UserConfigEditor.CredentialTable table : tables) {
-            if (UserConfigEditor.addCredential(configFile, table)) {
+            if (ChangeActor.as(importer, () -> UserConfigEditor.addCredential(configFile, table))) {
                 written = true;
             } else if (!UserConfigEditor.declaresRepositoryAt(configFile, table)) {
                 out.warning(table.name() + ": ~/.jk/config.toml has another table by that name; left it");

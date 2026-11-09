@@ -3,9 +3,13 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeActor;
+import cc.jumpkick.changes.ChangeJournal;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -163,5 +167,46 @@ class UserConfigEditorTest {
         assertThat(UserConfigEditor.declaresRepositoryAt(config, GITLAB)).isTrue();
         Files.writeString(config, "[repositories]\ngitlab = \"https://elsewhere.example/\"\n");
         assertThat(UserConfigEditor.declaresRepositoryAt(config, GITLAB)).isFalse();
+    }
+
+    @Test
+    void setting_a_key_is_journaled_with_its_diff_and_who_ran_it(@TempDir Path dir) throws Exception {
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, "other = 1\n");
+        Path journal = dir.resolve("changes");
+        ChangeActor shell = ChangeActor.shell(List.of("self", "setup-terminal", "--mode", "pill"));
+
+        ChangeJournal.into(
+                journal,
+                () -> ChangeActor.as(
+                        shell,
+                        () -> UserConfigEditor.setNerdFont(
+                                config, NerdFontMode.parse("pill").orElseThrow())));
+
+        Change entry = new ChangeJournal(journal).page(null, 10).entries().getFirst();
+        assertThat(entry.action()).isEqualTo(Change.EDIT);
+        assertThat(entry.what()).endsWith("config.toml");
+        assertThat(entry.diff()).contains("+nerd-font = \"pill\"").contains(" other = 1");
+        assertThat(entry.actor().label()).isEqualTo("jk self setup-terminal --mode");
+    }
+
+    @Test
+    void an_added_credential_is_journaled_with_its_secret_masked(@TempDir Path dir) throws Exception {
+        Path config = dir.resolve("config.toml");
+        Path journal = dir.resolve("changes");
+        var table = new UserConfigEditor.CredentialTable(
+                "nexus",
+                URI.create("https://nexus.example/repo"),
+                Map.of("username", "deploy", "password", "pa55-literal"));
+
+        ChangeJournal.into(journal, () -> UserConfigEditor.addCredential(config, table));
+
+        Change entry = new ChangeJournal(journal).page(null, 10).entries().getFirst();
+        assertThat(entry.summary()).contains("nexus");
+        assertThat(entry.diff())
+                .contains("+[repositories.nexus]")
+                .contains("+password = \"***\"")
+                .doesNotContain("pa55-literal");
+        assertThat(Files.readString(config)).contains("pa55-literal");
     }
 }

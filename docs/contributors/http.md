@@ -337,6 +337,35 @@ A row's `record.json` carries a capped `diagnostics` list and names the rest in
 `diagnosticsSpill`, a file beside it; this list, `?id=` and the MCP history and diagnostics tools
 merge that file back, so every row carries its whole `diagnostics` and no `diagnosticsSpill`.
 
+### `GET /api/changes`
+
+The change journal: what JumpKick changed outside a project, newest first.
+`GET /api/changes[?before=<id>&limit=N]` (default 50, at most 500): `{ entries: [...], next }`,
+where `next` is the `before` that reads the page older than this one and `null` on the last page.
+An entry is `{ kind: "change", id, at, what, action, summary, diff?, actor }`: `id` is a time stamp
+(milliseconds and an in-process sequence), a dash and a random suffix, so ids sort by time and are
+the cursor; `what` the file
+or resource (`~/.jk/config.toml`, `JDK temurin-25.0.3`, `cache tier`); `action` one of `edit`,
+`install`, `uninstall`, `clean`, `delete`, `store`, `clear`, `apply`; `diff` a unified diff for a
+file edit, or a few lines saying what went where; and `actor` `{ kind, label, ... }`, with `kind`
+`shell` (`command`: the command line with option values left out), `agent` (`session`, `client`,
+`goal`, `tool`), `import` (`source`, plus the details of whoever ran it and `by`), `engine` or
+`dashboard`. A credential never reaches an entry: a `password` or `token` in a `[repositories.*]`
+table is `***` in the diff whatever it held, a `${VAR}` reference included, and a stored login
+says only where it went.
+
+The journal is `<home>/changes/changes.jsonl`, appended under a file lock by whichever process
+made the change (the `jk` client or the engine), `ChangeJournal` in `shared/core`. Past 2 MiB it
+becomes `changes.1.jsonl`, replacing the one before. `changes` is a root of its own, like
+`creds`: no `jk self nuke` target deletes it, so the entry the nuke writes before it deletes
+anything survives it. Writers: `UserConfigEditor` and the MCP `config` tool (`config.toml`), an
+import's credential tables, `RepoCredentialStore` and `TokenStore` (logins), `JdkInstaller`,
+`JdkToolUninstaller`, `ToolInstaller` (Node.js and build-tool distributions), `ToolLauncher` and
+`jk tool uninstall`, `jk node uninstall`, `jk cache clean|nuke`, `jk storage nuke`, the MCP
+`disk` tool, `jk self nuke`, `MachineSetup.apply` and `jk activate`'s shell profile edits. The
+actor is a scoped value: `jk` sets the command line for each invocation, `McpTools` the session,
+client, goal and tool for each call, and an import wraps its own writes.
+
 ### `GET /api/sessions`
 
 `GET /api/sessions[?limit=N]` (default 50, at most 200): `{ sessions: [...] }`, live and recent

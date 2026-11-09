@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.engine.http.ProgressTokenRegistry;
 import cc.jumpkick.engine.http.mcp.tools.AffectedTestsTool;
@@ -305,11 +306,18 @@ public final class McpTools {
         // An agent's every call about a checkout is that project being worked on.
         ProjectActivity.touch(call.dir());
         noteGoal(name, call);
-        if (ctx.sessions() == null || !McpActions.LOGGED.contains(name)) return tool.call(call);
+        // Whatever the tool changes outside a project is journaled as this agent's doing.
+        ChangeActor actor = ChangeActor.agent(
+                connection == null ? null : connection.id(),
+                connection == null ? null : connection.client(),
+                call.str(McpSchemas.GOAL),
+                name);
+        if (ctx.sessions() == null || !McpActions.LOGGED.contains(name))
+            return ChangeActor.as(actor, () -> tool.call(call));
         long at = Clock.SYSTEM.millis();
         Map<String, Object> result = null;
         try {
-            result = tool.call(call);
+            result = ChangeActor.as(actor, () -> tool.call(call));
             return result;
         } finally {
             logAction(name, call, result, at);

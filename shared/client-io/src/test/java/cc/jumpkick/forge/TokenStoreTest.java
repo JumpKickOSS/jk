@@ -4,6 +4,8 @@ package cc.jumpkick.forge;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.secret.FakeKeychain;
 import cc.jumpkick.secret.SecretVault;
 import java.nio.file.Files;
@@ -74,5 +76,29 @@ class TokenStoreTest {
         store.clear("github.com");
         assertThat(keychain.items).isEmpty();
         assertThat(dir.resolve("github.com")).doesNotExist();
+    }
+
+    @Test
+    void a_stored_and_a_cleared_token_are_journaled_without_the_token(@TempDir Path dir) {
+        Path journal = dir.resolve("changes");
+        var store = new TokenStore(dir.resolve("creds"));
+
+        ChangeJournal.into(journal, () -> {
+            store.write("github.com", "gh-secret-token");
+            store.write("github.com", "gh-newer-token");
+            store.clear("github.com");
+            return null;
+        });
+
+        List<Change> entries = new ChangeJournal(journal).page(null, 10).entries();
+        assertThat(entries)
+                .extracting(Change::summary)
+                .containsExactly(
+                        "removed the forge token for github.com",
+                        "replaced the forge token for github.com",
+                        "stored the forge token for github.com");
+        assertThat(entries).allSatisfy(e -> assertThat(e.toMap().toString())
+                .doesNotContain("gh-secret")
+                .doesNotContain("gh-newer"));
     }
 }

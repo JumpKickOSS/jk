@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.IsolatedStore;
@@ -357,10 +359,17 @@ class CacheCommandTest {
         Files.createDirectories(CacheTree.ACTIONS.under(cache).resolve("keys"));
         Files.createDirectories(CacheTree.CACHE_CAS.under(cache));
 
-        String stdout = Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
+        Path journal = tempDir.resolve("changes");
+        String stdout = ChangeJournal.into(
+                journal, () -> Capture.stdout(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes")));
 
         assertThat(TestAnsi.strip(stdout)).contains("empty cache directory");
         assertThat(cache).doesNotExist();
+        Change entry = new ChangeJournal(journal).page(null, 10).entries().getFirst();
+        assertThat(entry.what()).isEqualTo("cache tier");
+        assertThat(entry.action()).isEqualTo(Change.DELETE);
+        assertThat(entry.diff()).isEqualTo("deleted " + cache);
+        assertThat(entry.actor().label()).isEqualTo("jk cache nuke --cache-dir --yes");
     }
 
     @Test

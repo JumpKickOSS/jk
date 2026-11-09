@@ -3,6 +3,8 @@ package cc.jumpkick.command.system;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.changes.Change;
+import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.command.toolchain.ToolListCommand;
@@ -119,6 +121,14 @@ class StorageCommandTest {
         assertThat(widget).exists();
         assertThat(dirs.toolEnvsDir().resolve("widget/env.json")).exists();
         assertThat(out).doesNotContain("orphaned tool");
+        Change entry = new ChangeJournal(dirs.changesDir())
+                .page(null, 50).entries().stream()
+                        .filter(c -> c.what().equals("artifact store"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(entry.action()).isEqualTo(Change.DELETE);
+        assertThat(entry.summary()).startsWith("nuked the artifact store: 1 files");
+        assertThat(entry.diff()).isEqualTo("deleted " + store);
     }
 
     /** The engine-side wipe as a local delete: counts under dry run, removes the root otherwise. */
