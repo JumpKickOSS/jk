@@ -207,6 +207,7 @@ export function decisionData(route) {
     decisionId: route.decisionId || null, // the decision the dialog shows, from #decision/<id>
     decisionEvent: null, // the newest SSE decision, which the open dialog follows
     bellOpen: false,
+    bellSeenFrom: 0, // the marker as it stood when the bell opened: what it highlights as new
     _underHash: '', // the route under the dialog, put back when it closes
   };
 }
@@ -225,6 +226,7 @@ export const decisionMethods = {
       const scrubbed = adoptFragmentToken(location.hash);
       if (scrubbed != null) history.replaceState(null, '', location.pathname + location.search + scrubbed);
       this.decisionId = route.decisionId;
+      this.markSeen(); // a dialog shown, from a click or a notification, is seen
       return true;
     }
     this.decisionId = null;
@@ -235,8 +237,14 @@ export const decisionMethods = {
     this.decisionId = null;
     history.replaceState(null, '', this._underHash || location.pathname + location.search);
   },
+  /** Opening the bell clears its count, in every tab. */
   toggleBell() {
     this.bellOpen = !this.bellOpen;
+    if (this.bellOpen) {
+      this.bellSeenFrom = this.seenUpTo;
+      this.markSeen();
+      if (this.dismissPreview) this.dismissPreview();
+    }
   },
   /** A click outside the bell, or Esc, folds its menu. */
   foldBell(event) {

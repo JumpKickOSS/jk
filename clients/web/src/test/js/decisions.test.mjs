@@ -247,13 +247,16 @@ test('#decision/<id> opens the dialog over the page under it, and closing puts t
   assert.equal(decisionHash('abc 1'), '#decision/abc%201');
   assert.equal(routeFromHash('#decision/').decisionId, undefined);
 
-  const root = Object.assign(Object.create(decisionMethods), decisionData({}), { view: 'projects' });
+  let seen = 0;
+  const root = Object.assign(Object.create(decisionMethods), decisionData({}), { view: 'projects', markSeen: () => seen++ });
   assert.equal(root.routeDecision(routeFromHash('#projects')), false);
+  assert.equal(seen, 0);
   root.bellOpen = true;
   const change = { oldURL: 'http://127.0.0.1:8910/#projects', newURL: 'http://127.0.0.1:8910/#decision/abc123' };
   assert.equal(root.routeDecision(routeFromHash('#decision/abc123'), change), true, 'the page is left as it is');
   assert.equal(root.decisionId, 'abc123');
   assert.equal(root.bellOpen, false, 'a bell entry folds the menu as it opens');
+  assert.equal(seen, 1, 'a dialog shown is seen: the bell count clears');
   root.closeDecision();
   assert.equal(root.decisionId, null);
   assert.equal(replaced.at(-1), '#projects');
@@ -264,6 +267,17 @@ test('#decision/<id> opens the dialog over the page under it, and closing puts t
   assert.equal(replaced.at(-1), '/#decision/abc123');
   assert.equal(globalThis.sessionStorage.getItem('jk-http-token'), 'tok_1');
   globalThis.location.hash = '';
+});
+
+test('opening the bell clears its count and keeps what was new highlighted while it is open', () => {
+  let seen = 0;
+  const root = Object.assign(Object.create(decisionMethods), decisionData({}), { seenUpTo: 5, markSeen: () => seen++ });
+  root.toggleBell();
+  assert.equal(root.bellOpen, true);
+  assert.equal(seen, 1);
+  assert.equal(root.bellSeenFrom, 5, 'the marker as it stood before the bell opened');
+  root.toggleBell();
+  assert.equal(seen, 1, 'folding it moves nothing');
 });
 
 test('closing the dialog is not an answer: nothing is sent and the decision stays open', async () => {

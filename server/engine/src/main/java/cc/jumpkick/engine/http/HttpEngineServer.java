@@ -11,6 +11,7 @@ import cc.jumpkick.engine.http.mcp.McpConnections;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.http.mcp.NewProjectWizard;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -153,6 +154,17 @@ public final class HttpEngineServer implements AutoCloseable {
             this.decisions = decisions;
             mcp.decisions(decisions);
         }
+    }
+
+    /**
+     * Engine hook: serve {@code notices} on {@code /api/notices} and publish each change as the
+     * SSE {@code notice} event, so every tab's bell agrees. Before {@link #start}.
+     */
+    public void setNotices(Notices notices) {
+        HttpNoticesApi noticesApi = new HttpNoticesApi(notices);
+        api.register("GET", "/api/notices", noticesApi::handleList);
+        api.register("POST", HttpNoticesApi.SEEN, noticesApi::handleSeen);
+        notices.onChange(c -> events.publishDashboard(EventCatalog.SSE_NOTICE, JsonOut.rawObject(c.toMap())));
     }
 
     public void setOnSseAdmitted(Runnable onSseAdmitted) {

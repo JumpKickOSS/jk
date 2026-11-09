@@ -55,25 +55,37 @@
       <span class="hdiv"></span>
 
       <div class="hdr-actions">
-        <!-- The bell: open decisions on every page; an entry opens its dialog (#decision/<id>). -->
+        <!-- The bell: what you haven't seen, and the decisions waiting on you (notices.js, decisions.js). -->
         <div class="bell">
-          <button class="icon-btn bell-btn" :class="{ waiting: needsYou.length, pulse: bellPulse }" @click="toggleBell()"
-                  aria-haspopup="true" :aria-expanded="bellOpen"
-                  :aria-label="needsYou.length ? needsYou.length + ' decisions need you' : 'Decisions'"
-                  :data-tip="bellOpen ? null : 'Decisions waiting on you'">
+          <button class="icon-btn bell-btn" :class="{ waiting: bell.amber, pulse: bellPulse }" @click="toggleBell()"
+                  aria-haspopup="true" :aria-expanded="bellOpen" :aria-label="bell.label"
+                  :data-tip="bellOpen ? null : 'Notifications'">
             <jk-icon name="bell"></jk-icon>
-            <span v-if="needsYou.length" class="bell-count">{{ needsYou.length }}</span>
+            <span v-if="bell.count" class="bell-count">{{ bell.count }}</span>
           </button>
-          <div v-if="bellOpen" class="bell-menu" role="menu" aria-label="Decisions">
-            <div class="bell-head"><span class="lbl">needs you</span><span class="spacer"></span><span class="dim small">{{ needsYou.length || '' }}</span></div>
-            <p v-if="!needsYou.length" class="bell-empty">Nothing waits on you.</p>
-            <a v-for="d in needsYou" :key="d.id" class="bell-row" role="menuitem" :href="d.href" @click="bellOpen = false">
-              <span class="dot-warn" aria-hidden="true"></span>
-              <span class="needs-body">
-                <span class="needs-q">{{ d.question }}</span>
-                <span class="needs-meta">{{ d.askedBy }}<template v-if="d.openedAt"> · asked {{ ago(d.openedAt) }}</template></span>
-              </span>
-            </a>
+          <div v-if="bellOpen" class="bell-menu" role="menu" aria-label="Notifications">
+            <p v-if="!needsYou.length && !bellJustNow.length" class="bell-empty">Nothing new, and nothing waits on you.</p>
+            <template v-if="needsYou.length">
+              <div class="bell-head"><span class="lbl">waiting on you</span><span class="spacer"></span><span class="dim small">{{ needsYou.length }}</span></div>
+              <a v-for="d in needsYou" :key="d.id" class="bell-row" role="menuitem" :href="d.href" @click="bellOpen = false">
+                <span class="dot-warn" aria-hidden="true"></span>
+                <span class="needs-body">
+                  <span class="needs-q">{{ d.question }}</span>
+                  <span class="needs-meta">{{ d.askedBy }}<template v-if="d.openedAt"> · asked {{ ago(d.openedAt) }}</template></span>
+                </span>
+              </a>
+            </template>
+            <template v-if="bellJustNow.length">
+              <div class="bell-head"><span class="lbl">just now</span></div>
+              <a v-for="n in bellJustNow" :key="n.id" class="bell-row bell-notice" role="menuitem" :href="n.href"
+                 :class="{ unseen: n.at > bellSeenFrom }" @click="bellOpen = false">
+                <span class="dot-notice" aria-hidden="true"></span>
+                <span class="needs-body">
+                  <span class="needs-q">{{ n.text }}</span>
+                  <span class="needs-meta">{{ ago(n.at) }}</span>
+                </span>
+              </a>
+            </template>
             <!-- The one ask for notification permission: on a click, never on load, gone once answered. -->
             <div v-if="notifyAsk" class="bell-ask">
               <p>{{ notifyAsk }}</p>

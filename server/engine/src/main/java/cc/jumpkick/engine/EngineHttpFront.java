@@ -12,6 +12,7 @@ import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
@@ -61,6 +62,7 @@ public final class EngineHttpFront {
     private final @Nullable ReentrantReadWriteLock cacheGate;
     private final SessionLog sessions;
     private final DecisionQueue decisions;
+    private final Notices notices;
 
     private volatile @Nullable HttpEngineServer server;
     private volatile @Nullable String error;
@@ -110,6 +112,7 @@ public final class EngineHttpFront {
         if (cacheGate != null) candidate.setCacheGate(cacheGate);
         candidate.setSessions(sessions);
         candidate.setDecisions(decisions);
+        candidate.setNotices(notices);
         try {
             candidate.start(1);
             serve(candidate);

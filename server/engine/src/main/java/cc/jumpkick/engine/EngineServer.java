@@ -26,6 +26,7 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.journal.NoopRecords;
 import cc.jumpkick.engine.journal.SessionJournal;
+import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
@@ -41,6 +42,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -140,6 +142,9 @@ public final class EngineServer implements AutoCloseable {
 
     /** Questions operations put to a person: answered by MCP hosts, the dashboard and jk decide. */
     private final DecisionQueue decisions = new DecisionQueue();
+
+    /** The bell's notices and the machine's one seen marker, kept in the state directory. */
+    private final Notices notices;
 
     private final EngineListeners listeners;
     private final EngineHttpFront http;
@@ -374,6 +379,8 @@ public final class EngineServer implements AutoCloseable {
         this.sessionLog = newSessionLog();
         decisions.store(new JournaledDecisions(sessionLog));
         MachineSetupDecisions.watch(decisions);
+        this.notices = new Notices(JkDirs.state().resolve(Notices.FILE), Clock.SYSTEM);
+        notices.follow(decisions);
         journalWriter.onFinished(sessionLog::runFinished);
         drain.predecessorRuns(this::foldPredecessorRun);
         this.sse = new SsePublisher(
@@ -556,7 +563,8 @@ public final class EngineServer implements AutoCloseable {
                 jobs::cancelJobsForDir,
                 cacheGate,
                 sessionLog,
-                decisions);
+                decisions,
+                notices);
     }
 
     private EngineVitals newVitals() {

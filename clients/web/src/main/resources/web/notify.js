@@ -305,6 +305,10 @@ export const notifyMethods = {
     clearTimeout(this._previewTimer);
     this.preview = null;
   },
+  /** True while someone uses this tab. */
+  isActiveTab() {
+    return isActive(this.tabState());
+  },
   tabState() {
     return tabState(typeof document === 'undefined' ? null : document, notificationApi(), this._lastInputAt);
   },

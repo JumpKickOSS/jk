@@ -406,6 +406,19 @@ answer and the first wins. The queue is `DecisionQueue`; the MCP rungs are `McpD
 settles the decision (`DecisionQueue.whenSettled`); `jk decide` reaches the same queue over the
 engine socket (`decisions-request`).
 
+### Notices and the seen marker
+
+`GET /api/notices`: `{ seenUpTo, unseen, notices: [...] }`, newest first. A notice is `{ id, at,
+kind, text, href, decision? }`: `at` is epoch milliseconds, strictly increasing across the
+machine's notices so the marker is one number, `kind` is `decision` (one per decision that opens)
+or another producer's, and `href` is where its **View** goes. `unseen` counts the notices newer than
+`seenUpTo`. `POST /api/notices/seen` with `{ upTo }` moves the marker there, never back and never
+past the newest notice, and answers `{ seenUpTo, unseen }` (**400** without a number). Every
+addition and every move is the dashboard-only SSE `notice` frame `{ change: "added" | "seen",
+notice?, seenUpTo, unseen }`, so clearing the count in one tab clears it in every tab. `Notices`
+keeps the newest 50 and the marker per machine in `<state>/notices.json`, rewritten whole on each
+change; seen is not resolved, so the open decisions stay in the bell from `GET /api/decisions`.
+
 ### One channel per decision
 
 `Decisions.alert` carries out `[ui] ask` once a decision reaches `NEEDS-YOU`. Under `notify` it asks

@@ -186,7 +186,8 @@ public final class HttpEvents {
             "error",
             EventCatalog.SSE_DECISION,
             EventCatalog.SSE_PRESENCE,
-            EventCatalog.SSE_NOTIFY);
+            EventCatalog.SSE_NOTIFY,
+            EventCatalog.SSE_NOTICE);
 
     /**
      * Critical for live dashboard UX — never shed these for an {@code output} flood. Everything

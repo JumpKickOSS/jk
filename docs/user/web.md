@@ -240,7 +240,7 @@ agent, and the new project's page says the agent was not told.
 
 Your agent asks you; the dashboard is where the details live. An operation that waits for a person
 (a destructive clean, an uninstall) is a decision ([MCP](mcp.md#decisions)). The bell in the header
-counts the open decisions on every page and lists them. A bell entry, a Needs-you row, the link a
+lists the open decisions on every page ([below](#the-bell)). A bell entry, a Needs-you row, the link a
 desktop notification carries under `[ui] ask = notify`, the agent host's URL elicitation and the
 link a `NEEDS-YOU` result names all open `#decision/<id>`: a dialog over whatever page is showing,
 with the question, who asked and where, the lines that explain it, and its answers.
@@ -254,6 +254,18 @@ outside it) answers nothing: the decision stays open in the bell.
 The first answer wins, wherever it came from. When another surface answers first, an open dialog
 says how and where it was settled and closes, and the host's question, the desktop notification,
 the bell entry and the Needs-you row close.
+
+### The bell
+
+The bell's number counts what you haven't seen: each decision that opens, and anything else
+JumpKick tells you. Opening the bell, opening a decision's dialog, or clicking a notification (which
+opens the dialog) clears it, in every dashboard tab and the installed app at once: the engine keeps
+one "seen up to" marker for the machine, and it survives an engine restart.
+
+Seen is not answered. A decision you have seen but not answered no longer counts, but the bell
+stays amber, with no number, while any decision waits on you. Its menu has two parts: **Waiting on
+you**, the open decisions, and **Just now**, the recent notices, with the ones you hadn't seen
+marked. Older history is not kept in the bell.
 
 ### Notifications
 

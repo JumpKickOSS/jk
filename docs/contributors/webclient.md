@@ -35,7 +35,8 @@ stopped providing.
 | `delta.js` | `<run-delta>`: the iteration strip — a record's `delta` as chips with the rows behind them |
 | `sessions.js` | Who asked: origin labels, the followed-or-pinned run, the pin route |
 | `wizard.js` | New Project and the directory browser its path fields open |
-| `notify.js` | Telling the person once: presence reports, the `notify` frame, the notification adapters, the service worker's messages |
+| `notify.js` | Telling the person once: presence reports, the `notify` frame, in-app delivery (the bell's wiggle and preview card), the notification adapters, the service worker's messages |
+| `notices.js` | The bell's number: the engine's notices and seen marker (`/api/notices`, the `notice` frame), "Just now", and moving the marker |
 | `pwa.js` | The installed app: the service worker's registration and the **Install JumpKick** entry |
 | `sw.js` | The service worker, a classic script the page registers by URL, never imported |
 | `manifest.webmanifest`, `icon-*.png` | The web app manifest and its icons |

@@ -103,10 +103,19 @@ public final class EventCatalog {
     public static final String SSE_DECISION = "decision";
     public static final String SSE_PRESENCE = "presence";
     public static final String SSE_NOTIFY = "notify";
+    public static final String SSE_NOTICE = "notice";
 
     /** SSE frames published to dashboard subscribers alone ({@code publishDashboard}): not sent to MCP. */
-    public static final Set<String> DASHBOARD_ONLY =
-            Set.of(SSE_STATUS, SSE_CACHE, SSE_SESSION, SSE_EPISODE, SSE_ACTION, SSE_DECISION, SSE_PRESENCE, SSE_NOTIFY);
+    public static final Set<String> DASHBOARD_ONLY = Set.of(
+            SSE_STATUS,
+            SSE_CACHE,
+            SSE_SESSION,
+            SSE_EPISODE,
+            SSE_ACTION,
+            SSE_DECISION,
+            SSE_PRESENCE,
+            SSE_NOTIFY,
+            SSE_NOTICE);
 
     // Console JSONL record names that are not wire types.
     public static final String JSONL_WORKSPACE_START = "workspace-start";
@@ -358,6 +367,11 @@ public final class EventCatalog {
                     new Omitted("a browser notification; the CLI's are the engine's native ones"),
                     new Omitted("a browser notification"),
                     Carried.as(SSE_NOTIFY, "dashboard only, to the one tab chosen to notify (Dashboards)")),
+            new Row(
+                    SSE_NOTICE,
+                    new Omitted("the bell's notices and its seen marker; the CLI has no bell"),
+                    new Omitted("the bell's notices"),
+                    Carried.as(SSE_NOTICE, "dashboard only: a notice added or the seen marker moved (Notices)")),
             new Row(
                     EngineProtocol.GUARD_EVENT,
                     new Omitted("written by the CLI from the guard's result"),

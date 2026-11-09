@@ -22,6 +22,7 @@ import { CodeView } from './code.js';
 import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
 import { DecisionDialog, decisionData, decisionMethods } from './decisions.js';
 import { askLine, notifyData, notifyMethods } from './notify.js';
+import { bellLook, justNow, noticeData, noticeMethods } from './notices.js';
 import { foldEvent, seedFromHistory } from './fold.js';
 import {
   ago as agoOf,
@@ -58,6 +59,7 @@ export const appOptions = {
     ...consoleData(routeFromHash()),
     ...decisionData(routeFromHash()),
     ...notifyData(),
+    ...noticeData(),
     ...installData(),
     view: routeFromHash().view, // 'console' | 'projects' | 'project' | 'status' | 'new'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
@@ -118,6 +120,7 @@ export const appOptions = {
       // The bell counts open decisions on every page; the console adds its sessions.
       if (this.view === 'console') this.loadConsole();
       else this.loadDecisions();
+      this.loadNotices(); // the bell's unseen count and "Just now"
       this.connectEvents();
       this.refresh();
       this.loadHistory(); // backfill past builds so a reload/restart doesn't start from an empty feed
@@ -156,6 +159,14 @@ export const appOptions = {
     notifyAsk() {
       return askLine(this.notifyPermission);
     },
+    /** The bell's number (what you haven't seen), its amber (a decision waits) and its label. */
+    bell() {
+      return bellLook(this.unseen, this.needsYou.length);
+    },
+    /** The bell menu's "Just now": recent notices that are not still waiting on you. */
+    bellJustNow() {
+      return justNow(this.notices, this.decisions);
+    },
     ...wizardComputed,
     ...projectComputed,
     ...consoleComputed,
@@ -175,6 +186,7 @@ export const appOptions = {
     ...consoleMethods,
     ...decisionMethods,
     ...notifyMethods,
+    ...noticeMethods,
     ...installMethods,
     ...cardMethods,
     ...statusMethods,
@@ -202,6 +214,8 @@ export const appOptions = {
       this.sessions = [];
       this.sessionDetail = null;
       this.decisions = [];
+      this.notices = [];
+      this.unseen = 0;
       this.runEpisodePage = null;
       this.projectSessions = null;
       this.browser = null;
@@ -296,6 +310,8 @@ export const appOptions = {
           if (this.authModal || this.connection === 'unauthorized') return;
           // The stream's presence ping and the notifications the engine routes through this tab.
           if (this.notifyEvent(event)) return;
+          // The bell's notices and the machine's seen marker.
+          if (this.noticeEvent(event)) return;
           // The session log and the decision queue feed the console.
           if (this.applyConsoleEvent(event)) return;
           // Live vitals: change-gated on the server; apply without folding cards.
@@ -349,6 +365,7 @@ export const appOptions = {
             this.loadProjectHistory();
             if (wasOffline && this.view === 'console') this.loadConsole();
             else if (wasOffline) this.loadDecisions();
+            if (wasOffline) this.loadNotices();
           } else if (state === 'offline') {
             // EventSource's own retry cadence (~3s on refused connections) is shorter than the
             // poll delay — re-arming on every onerror would perpetually reset the pending timer

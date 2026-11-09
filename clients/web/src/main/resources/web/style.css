@@ -2722,6 +2722,12 @@ details.earlier .tl { margin-top: 6px; }
 .bell-row:last-child { border-bottom: none; }
 .bell-row:hover { background: rgba(var(--warn-rgb), 0.07); }
 .bell-row .dot-warn { margin-top: 6px; }
+.bell-head + .bell-row { border-top: none; }
+.bell-row + .bell-head { border-top: 1px solid var(--bd2); }
+/* "Just now": recent notices; one you hadn't seen when the bell opened keeps a cyan dot. */
+.dot-notice { width: 6px; height: 6px; margin: 7px 1px 0; border-radius: 50%; background: var(--bd); flex: none; }
+.bell-notice:hover { background: rgba(var(--cn-rgb), 0.06); }
+.bell-notice.unseen .dot-notice { background: var(--cn); box-shadow: 0 0 6px var(--cn); }
 .bell-row .needs-body { display: grid; gap: 2px; }
 /* Something that arrives while someone uses the tab wiggles the bell once. */
 @keyframes bellRing {
