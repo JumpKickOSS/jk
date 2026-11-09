@@ -2655,6 +2655,7 @@ details.earlier .tl { margin-top: 6px; }
 .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .kv dd.warn { color: var(--warn); }
 .kv dd.crit { color: var(--err); }
+.kv dd.nowrap { white-space: nowrap; }
 .kv .ok { color: var(--ok); }
 .kv .err { color: var(--err); }
 .meter.warn .meter-fill.used { background: var(--warn); }

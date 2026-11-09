@@ -282,7 +282,7 @@
               <dt>migrations</dt><dd><template v-if="sessionChanges.migrations.length"><span v-for="m in sessionChanges.migrations" :key="m.path" :class="{ ok: m.change === 'new' }" :data-tip="m.path">{{ m.name }} {{ m.change }} </span></template><span v-else class="dim">none</span></dd>
               <dt>dependencies</dt><dd :data-tip="sessionChanges.deps.join('\n') || undefined"><template v-if="sessionChanges.deps.length">{{ sessionChanges.deps.length }} change{{ sessionChanges.deps.length === 1 ? '' : 's' }}</template><span v-else class="dim">none</span></dd>
               <dt>guards</dt><dd><span v-if="sessionChanges.guard" class="chip" :class="sessionChanges.guard === 'clean' ? 'chip-ok' : 'chip-err'">{{ sessionChanges.guard }}</span><span v-else class="dim">not run</span></dd>
-              <dt>tests</dt><dd><span v-if="sessionChanges.tests.fixed" class="ok">{{ sessionChanges.tests.fixed }} fixed</span><template v-if="sessionChanges.tests.fixed && sessionChanges.tests.broke"> · </template><span v-if="sessionChanges.tests.broke" class="err">{{ sessionChanges.tests.broke }} broken</span><span v-if="!sessionChanges.tests.fixed && !sessionChanges.tests.broke" class="dim">none flipped</span></dd>
+              <dt>tests</dt><dd class="nowrap"><span v-if="sessionChanges.tests.fixed" class="ok">{{ sessionChanges.tests.fixed }} fixed</span><template v-if="sessionChanges.tests.fixed && sessionChanges.tests.broke"> · </template><span v-if="sessionChanges.tests.broke" class="err">{{ sessionChanges.tests.broke }} broken</span><span v-if="!sessionChanges.tests.fixed && !sessionChanges.tests.broke" class="dim">none flipped</span></dd>
             </dl>
           </section>
           <section v-if="sessionService" class="panel">
