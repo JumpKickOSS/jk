@@ -424,9 +424,9 @@ change; seen is not resolved, so the open decisions stay in the bell from `GET /
 `Decisions.alert` carries out `[ui] ask` once a decision reaches `NEEDS-YOU`. Under `notify` it asks
 `Dashboards.channel()`, which picks from what each dashboard tab last reported over its event
 stream ([below](#dashboard-presence)): **in-app** when a fresh tab is *active* (visible, focused,
-and used within `Dashboards.IDLE_AFTER`, 2 min; nothing notifies: the page wiggles its bell and
-shows a short preview card, and never opens the dialog by itself, so a stray keypress cannot answer
-a dialog that appeared under it), **browser** when a fresh tab that is not active reports `granted`
+and used within `Dashboards.IDLE_AFTER`, 2 min; nothing notifies: that tab opens the decision's
+dialog by itself, guarded so a stray keypress cannot answer it, and anything else wiggles its bell
+with a short preview card; [web client](webclient.md#decisions-and-notifications)), **browser** when a fresh tab that is not active reports `granted`
 (the freshest such tab gets a `notify` frame, visible or not; the desktop notification is skipped),
 else **native** (`DecisionAlerts`, below). A report counts while it is at most
 `Dashboards.STALE_AFTER` (45 s, three pings) old; a frozen tab or a slept machine stops answering

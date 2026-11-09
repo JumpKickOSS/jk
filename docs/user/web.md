@@ -259,7 +259,8 @@ the bell entry and the Needs-you row close.
 
 The bell's number counts what you haven't seen: each decision that opens, and anything else
 JumpKick tells you. Opening the bell, opening a decision's dialog, or clicking a notification (which
-opens the dialog) clears it, in every dashboard tab and the installed app at once: the engine keeps
+opens the dialog) clears it, in every dashboard tab and the installed app at once; a dialog that
+opens by itself in the tab you are using is seen as it opens, so the number never jumps up and back: the engine keeps
 one "seen up to" marker for the machine, and it survives an engine restart.
 
 Seen is not answered. A decision you have seen but not answered no longer counts, but the bell
@@ -272,11 +273,22 @@ marked. Older history is not kept in the bell.
 Under `[ui] ask = notify` ([Config](config.md#decisions)) JumpKick tells you about a decision once,
 by the first of these that applies:
 
-1. **You are using a dashboard tab.** Nothing pops up outside the page. The bell wiggles once (it
-   lights up instead when your system asks for reduced motion) and a one-line card under it says
-   who needs you and on what, with a **View** link, for about four seconds; hovering the card keeps
-   it. The card never takes the keyboard, and the dialog waits for you to open it, so a decision
-   never lands over what you are typing.
+1. **You are using a dashboard tab.** Nothing pops up outside the page. A decision opens its dialog
+   in that tab by itself, since an agent is waiting on it, with guards so a key or click meant for
+   the page never answers it:
+   - **Not while you type.** While a text field, a list or the code editor has focus, or you
+     pressed a key in the last second, a card under the bell says **An agent needs you** with an
+     **Open** link instead, and the dialog opens by itself once you stop.
+   - **A moment's pause.** For about half a second after it opens, its buttons fill up and take no
+     clicks or keys.
+   - **One at a time.** A second decision waits and opens when the first dialog closes.
+   - **Your keyboard stays put.** The dialog does not take focus: Tab or a click moves into it, and
+     Esc closes it with the decision still open in the bell.
+
+   Anything else JumpKick tells you wiggles the bell once (it lights up instead when your system
+   asks for reduced motion) and shows a one-line card under it with a **View** link for about four
+   seconds; hovering the card keeps it, and it never takes the keyboard. Only the tab you are using
+   does this: your other tabs only update their bell.
 2. **A dashboard tab may notify.** One browser notification, **JumpKick needs you**, with the
    question. A click brings the dashboard forward with the dialog open: the window you used last,
    the installed app's when you [installed it](#install-as-an-app), or a new one when none is open.

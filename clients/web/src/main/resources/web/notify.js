@@ -17,6 +17,14 @@
 // short preview card under it with one line and a link; the card never takes focus, and hovering it
 // keeps it open.
 //
+// A decision is the one notification worth interrupting for: an agent is waiting on it. In the tab
+// someone is using it opens its dialog by itself, with guards so a keystroke or click meant for the
+// page can never answer it: not while they type (a text field, select, contenteditable or the code
+// editor has focus, or a key went down in the last second), when it shows the preview instead and
+// opens once typing stops; one dialog at a time, the next queued until the first closes; and the
+// dialog's buttons ignore input for a moment after it opens (decisions.js's GUARD_MS). It never
+// moves keyboard focus, and Esc closes it with the decision still open.
+//
 // Showing and closing go through a `notifications` adapter ({ show, close }). While the dashboard's
 // service worker (sw.js) controls the page, it shows them, and they may carry the decision's
 // choices as buttons; the page's own `Notification` is the fallback. A click lands in
@@ -38,6 +46,31 @@ export const IDLE_MS = 120_000;
 
 /** How long the preview card under the bell stays, unless hovered. */
 export const PREVIEW_MS = 4000;
+
+/** How long after a keystroke the person still counts as typing. */
+export const TYPING_QUIET_MS = 1000;
+
+/** How often a queued decision checks whether it may open now. */
+export const AUTO_RETRY_MS = 400;
+
+/** Input types that take no typing: focus on one of these is not typing. */
+const NOT_TEXT = new Set(['button', 'checkbox', 'radio', 'submit', 'reset', 'range', 'color', 'file', 'image']);
+
+/** True when keys pressed on `el` would type: a text field, select, contenteditable or the code editor. */
+export function isTextTarget(el) {
+  if (!el || typeof el.tagName !== 'string') return false;
+  const tag = el.tagName.toLowerCase();
+  if (tag === 'textarea' || tag === 'select') return true;
+  if (tag === 'input') return !NOT_TEXT.has(String(el.type || 'text').toLowerCase());
+  if (el.isContentEditable) return true;
+  return typeof el.closest === 'function' && !!el.closest('.monaco-editor');
+}
+
+/** True while the person types: focus in a text target, or a key pressed within TYPING_QUIET_MS. */
+export function isTyping(doc, lastKeyAt, now = Date.now()) {
+  if (lastKeyAt > 0 && now - lastKeyAt < TYPING_QUIET_MS) return true;
+  return isTextTarget(doc && doc.activeElement);
+}
 
 /** The input events that count as the person using the tab. */
 export const INPUT_EVENTS = Object.freeze(['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']);
@@ -83,6 +116,11 @@ export function isActive(state) {
 export function pageChannel(state) {
   if (isActive(state)) return 'in-app';
   return state.permission === 'granted' ? 'browser' : 'none';
+}
+
+/** The card for a decision that waits to open by itself: it opens on a click too. */
+export function pendingPreview(d) {
+  return { id: d.id, text: 'An agent needs you', href: decisionHash(d.id), action: 'Open' };
 }
 
 /** The preview card's line for a decision that arrived: who waits, and on what. */
@@ -203,6 +241,7 @@ export function notifyData() {
     _lastInputAt: 0, // when the person last used this tab (ms), 0 for never
     _lastKeyAt: 0, // when they last pressed a key here (ms)
     _reportedActive: false, // whether the last report said active, so a change reports again
+    _autoQueue: [], // decisions waiting to open by themselves, oldest first
   };
 }
 
@@ -272,13 +311,50 @@ export const notifyMethods = {
       if (data.change === 'resolved' || !isOpen(d)) {
         this.notifications().close(d.id);
         if (this.preview && this.preview.id === d.id) this.dismissPreview();
+        this._autoQueue = this._autoQueue.filter((id) => id !== d.id);
       } else if (!this.decisions.some((x) => x.id === d.id) && isActive(this.tabState())) this.decisionArrived(d);
     }
     return false;
   },
-  /** A decision arrived while someone uses this tab: the bell wiggles and the card previews it. */
+  /**
+   * A decision arrived while someone uses this tab: it opens by itself when it safely can, and
+   * waits in the queue otherwise.
+   */
   decisionArrived(d) {
-    this.deliverInApp(decisionPreview(d));
+    if (!this._autoQueue.includes(d.id)) this._autoQueue = [...this._autoQueue, d.id];
+    if (this.decisionId) this.pulseBell(); // a dialog is showing: this one opens after it
+    else if (this.typingNow()) this.deliverInApp(pendingPreview(d)); // opens once typing stops
+    this.pumpAutoOpen();
+  },
+  /** True while the person types in this tab. */
+  typingNow() {
+    return isTyping(typeof document === 'undefined' ? null : document, this._lastKeyAt);
+  },
+  /** True when a decision arriving now would open by itself: someone uses the tab, not typing, no dialog. */
+  willAutoOpen() {
+    return this.isActiveTab() && !this.decisionId && !this.typingNow();
+  },
+  /**
+   * Opens the oldest queued decision when nothing stands in the way, and checks again shortly while
+   * any is left: a dialog closing, typing stopping or the person coming back lets the next one open.
+   */
+  pumpAutoOpen() {
+    clearTimeout(this._autoTimer);
+    this._autoTimer = null;
+    if (!this._autoQueue.length) return;
+    if (this.willAutoOpen()) {
+      const [id, ...rest] = this._autoQueue;
+      this._autoQueue = rest;
+      this.autoOpen(id);
+      return;
+    }
+    this._autoTimer = setTimeout(() => this.pumpAutoOpen(), AUTO_RETRY_MS);
+  },
+  /** Opens decision `id`'s dialog by itself: guarded, and without moving focus. */
+  autoOpen(id) {
+    if (this.preview && this.preview.id === id) this.dismissPreview();
+    this.decisionAuto = id;
+    this.openDecision(id);
   },
   /** In-app delivery: the bell wiggles once and the preview card shows `card` for a moment. */
   deliverInApp(card) {

@@ -95,12 +95,24 @@ export const noticeMethods = {
       if (this.handleHttpError) this.handleHttpError(e);
     }
   },
-  /** The `notice` frame, handled here (true); an added notice previews in a tab someone uses. */
+  /**
+   * The `notice` frame, handled here (true); an added notice previews in a tab someone uses. A
+   * decision this tab opens by itself, or is showing already, is seen as it arrives: the count
+   * never rises only to fall again a moment later.
+   */
   noticeEvent(event) {
     if (event.type !== SSE.notice) return false;
     const frame = event.data;
+    const before = this.unseen;
     Object.assign(this, foldNotice(this, frame));
-    if (frame && frame.change === 'added' && frame.notice) this.noticeArrived(frame.notice);
+    if (frame && frame.change === 'added' && frame.notice) {
+      const id = frame.notice.decision;
+      const shownHere = id && (id === this.decisionId || (this.willAutoOpen && this.willAutoOpen()));
+      if (shownHere) {
+        this.unseen = before;
+        this.markSeen();
+      } else this.noticeArrived(frame.notice);
+    }
     return true;
   },
   /**
@@ -120,7 +132,7 @@ export const noticeMethods = {
   async markSeen() {
     const upTo = newestAt(this.notices);
     if (!upTo || upTo <= this.seenUpTo) {
-      this.unseen = 0;
+      this.unseen = unseenOf(this.notices, this.seenUpTo);
       return;
     }
     this.seenUpTo = upTo;

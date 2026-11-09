@@ -67,12 +67,17 @@ const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, nam
 const {
   IDLE_MS,
   INPUT_EVENTS,
+  AUTO_RETRY_MS,
   NOTIFY_TITLE,
   PREVIEW_MS,
+  TYPING_QUIET_MS,
   WORKER_MESSAGE,
   askLine,
   decisionPreview,
   isActive,
+  isTextTarget,
+  isTyping,
+  pendingPreview,
   maxActions,
   notificationFor,
   notificationsFor,
@@ -196,14 +201,13 @@ test('a hidden tab with permission shows one notification per decision, and a re
   assert.equal(vm.bellPulse, false);
 });
 
-test('a tab someone started using since its last report wiggles the bell and previews instead of notifying', () => {
+test('a tab someone started using since its last report opens the decision instead of notifying', () => {
   const vm = root();
   use(vm);
   vm.notifyEvent({ type: SSE.notify, data: decision() });
   assert.equal(FakeNotification.shown.length, 0);
-  assert.equal(vm.bellPulse, true);
-  assert.equal(vm.preview.id, 'd1');
-  vm.dismissPreview();
+  assert.deepEqual(vm.opened, ['d1']);
+  assert.equal(vm.decisionAuto, 'd1', 'opened by itself: guarded');
 });
 
 test('a visible tab nobody is using still shows the browser notification', () => {
@@ -230,19 +234,20 @@ test('a decision settled anywhere closes its notification by tag, and the frame 
   assert.equal(n.closed, true);
 });
 
-test('a new decision wiggles the bell of a tab in use and previews it, and leaves other tabs quiet', () => {
+test('a new decision opens by itself in a tab in use, and leaves other tabs quiet', () => {
   const vm = root();
   use(vm);
   vm.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision() } });
-  assert.equal(vm.bellPulse, true);
-  assert.deepEqual(vm.preview, { id: 'd1', text: "claude-code 3f9a needs you: Clean jk's cache?", href: '#decision/d1', action: 'View' });
-  vm.dismissPreview();
+  assert.deepEqual(vm.opened, ['d1'], 'not typing, no dialog showing: it opens');
+  assert.equal(vm.decisionAuto, 'd1');
+  assert.equal(vm.preview, null);
 
   const unfocused = root();
   show(true, 'granted', false);
   unfocused._lastInputAt = Date.now();
   unfocused.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision() } });
   assert.equal(unfocused.bellPulse, false, 'visible on another monitor: the OS notification has it');
+  assert.deepEqual(unfocused.opened, [], 'only the tab in use opens it');
 
   const idle = root();
   show(true, 'granted', true);
@@ -260,6 +265,94 @@ test('a new decision wiggles the bell of a tab in use and previews it, and leave
   use(known);
   known.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision() } });
   assert.equal(known.bellPulse, false, 'a decision already in the bell does not ring again');
+  assert.deepEqual(known.opened, []);
+});
+
+test('typing is a text field, select, contenteditable or the code editor in focus, or a key just pressed', () => {
+  const el = (tagName, over = {}) => ({ tagName, ...over });
+  assert.equal(isTextTarget(el('INPUT')), true);
+  assert.equal(isTextTarget(el('INPUT', { type: 'search' })), true);
+  assert.equal(isTextTarget(el('INPUT', { type: 'checkbox' })), false);
+  assert.equal(isTextTarget(el('BUTTON')), false);
+  assert.equal(isTextTarget(el('TEXTAREA')), true);
+  assert.equal(isTextTarget(el('SELECT')), true);
+  assert.equal(isTextTarget(el('DIV', { isContentEditable: true })), true);
+  assert.equal(isTextTarget(el('DIV', { closest: (sel) => (sel === '.monaco-editor' ? {} : null) })), true, 'the code editor');
+  assert.equal(isTextTarget(null), false);
+
+  assert.equal(isTyping({ activeElement: el('BODY') }, 0, 10_000), false);
+  assert.equal(isTyping({ activeElement: el('BODY') }, 10_000 - TYPING_QUIET_MS + 1, 10_000), true, 'a key under a second ago');
+  assert.equal(isTyping({ activeElement: el('BODY') }, 10_000 - TYPING_QUIET_MS, 10_000), false);
+  assert.equal(isTyping({ activeElement: el('TEXTAREA') }, 0, 10_000), true);
+});
+
+test('while typing it previews instead, and opens by itself once typing stops', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 5_000_000 });
+  const vm = root();
+  use(vm);
+  vm._lastKeyAt = Date.now();
+  vm.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision() } });
+  assert.deepEqual(vm.opened, [], 'a key went down just now');
+  assert.deepEqual(vm.preview, pendingPreview(decision()));
+  assert.deepEqual(vm.preview, { id: 'd1', text: 'An agent needs you', href: '#decision/d1', action: 'Open' });
+
+  vm._lastInputAt = Date.now();
+  t.mock.timers.tick(AUTO_RETRY_MS);
+  assert.deepEqual(vm.opened, [], 'still within the quiet second');
+  t.mock.timers.tick(TYPING_QUIET_MS);
+  assert.deepEqual(vm.opened, ['d1'], 'typing stopped');
+  assert.equal(vm.preview, null, 'the card goes as the dialog opens');
+  t.mock.timers.reset();
+});
+
+test('two decisions open one after the other, never stacked', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const vm = root();
+  use(vm);
+  vm.openDecision = (id) => {
+    vm.opened.push(id);
+    vm.decisionId = id;
+  };
+  vm.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision({ id: 'a' }) } });
+  vm.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision({ id: 'b' }) } });
+  assert.deepEqual(vm.opened, ['a'], 'b waits while a shows');
+  assert.equal(vm.bellPulse, true, 'the bell says another arrived');
+  t.mock.timers.tick(AUTO_RETRY_MS * 5);
+  assert.deepEqual(vm.opened, ['a']);
+
+  vm.decisionId = null; // a's dialog closed
+  vm.pumpAutoOpen();
+  assert.deepEqual(vm.opened, ['a', 'b']);
+  t.mock.timers.reset();
+});
+
+test('a queued decision answered elsewhere never opens', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const vm = root();
+  use(vm);
+  vm.decisionId = 'other';
+  vm.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision() } });
+  vm.notifyEvent({ type: SSE.decision, data: { change: 'resolved', decision: decision({ state: 'accepted' }) } });
+  vm.decisionId = null;
+  vm.pumpAutoOpen();
+  assert.deepEqual(vm.opened, []);
+  t.mock.timers.reset();
+});
+
+test('a queued decision waits while the person is away and opens when they come back', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const vm = root();
+  use(vm);
+  vm.decisionId = 'other';
+  vm.notifyEvent({ type: SSE.decision, data: { change: 'opened', decision: decision() } });
+  show(true, 'granted', false); // focus went to another window
+  vm.decisionId = null;
+  vm.pumpAutoOpen();
+  assert.deepEqual(vm.opened, []);
+  use(vm);
+  t.mock.timers.tick(AUTO_RETRY_MS);
+  assert.deepEqual(vm.opened, ['d1']);
+  t.mock.timers.reset();
 });
 
 test('the preview reads who waits on what, stays while hovered and goes once the decision settles', async (t) => {

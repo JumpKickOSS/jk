@@ -48,6 +48,7 @@ const {
   decisionData,
   decisionHash,
   decisionMethods,
+  GUARD_MS,
   decisionView,
   leftLabel,
   settledLine,
@@ -278,6 +279,35 @@ test('opening the bell clears its count and keeps what was new highlighted while
   assert.equal(root.bellSeenFrom, 5, 'the marker as it stood before the bell opened');
   root.toggleBell();
   assert.equal(seen, 1, 'folding it moves nothing');
+});
+
+test('a dialog that opened by itself ignores its answers for a moment, then takes them', async () => {
+  requests.length = 0;
+  reply = (method) => ({ status: 200, body: method === 'POST' ? decision({ state: 'accepted' }) : decision() });
+  const v = Object.assign(Object.create(DecisionDialog.methods), DecisionDialog.data.call({ guarded: true }), { id: 'd1', emitted: [] });
+  v.$emit = (name) => v.emitted.push(name);
+  Object.defineProperty(v, 'view', { get: () => DecisionDialog.computed.view.call(v) });
+  assert.equal(v.armed, false, 'guarded from the start');
+  await v.load();
+  const timers = await withTimers(() => v.arm());
+  assert.deepEqual(timers.map((t) => t.ms), [GUARD_MS]);
+  assert.equal(GUARD_MS, 600);
+  await v.answer(v.view.choices[0]);
+  await v.decline();
+  assert.deepEqual(requests.map((r) => r.method), ['GET'], 'a stray click or key during the guard answers nothing');
+  timers[0].cb();
+  assert.equal(v.armed, true);
+  await v.answer(v.view.choices[0]);
+  assert.equal(requests.at(-1).method, 'POST');
+  assert.equal(DecisionDialog.data.call({ guarded: false }).armed, true, 'a dialog someone opened takes input at once');
+});
+
+test('closing a dialog clears the auto-open mark and lets the next queued decision open', () => {
+  let pumped = 0;
+  const root = Object.assign(Object.create(decisionMethods), decisionData({ decisionId: 'a' }), { decisionAuto: 'a', pumpAutoOpen: () => pumped++ });
+  root.closeDecision();
+  assert.equal(root.decisionAuto, null);
+  assert.equal(pumped, 1);
 });
 
 test('closing the dialog is not an answer: nothing is sent and the decision stays open', async () => {

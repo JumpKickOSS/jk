@@ -2782,6 +2782,19 @@ details.earlier .tl { margin-top: 6px; }
 .bell-ask p { margin: 0; color: var(--mu); font-size: 12px; line-height: 1.45; }
 .bell-ask .action-cyan { padding: 5px 10px; font-size: 12px; border-color: rgba(var(--cn-rgb), 0.35); color: var(--cn); }
 
+/* A dialog that opened by itself: its answers fill over GUARD_MS and take no input until full. */
+@keyframes guardFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.decision-choices button.arming { position: relative; overflow: hidden; cursor: progress; }
+.decision-choices button.arming::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0.14;
+  transform-origin: left center;
+  animation: guardFill 600ms linear forwards;
+  pointer-events: none;
+}
 .decision-modal-bg { z-index: 75; }
 .modal.decision-modal {
   width: 600px;

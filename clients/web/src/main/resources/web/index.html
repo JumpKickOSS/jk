@@ -849,8 +849,8 @@
     </div>
 
     <!-- One decision over the page: a bell entry, a Needs-you row or a notification's link (decisions.js). -->
-    <decision-dialog v-if="decisionId && !authModal" :id="decisionId" :event="decisionEvent" :now="now"
-                     @close="closeDecision()"></decision-dialog>
+    <decision-dialog v-if="decisionId && !authModal" :id="decisionId" :key="decisionId" :event="decisionEvent" :now="now"
+                     :guarded="decisionAuto === decisionId" @close="closeDecision()"></decision-dialog>
 
     <!-- Help / About (header ? button) -->
     <div v-if="help" class="modal-bg" @click.self="help = false">

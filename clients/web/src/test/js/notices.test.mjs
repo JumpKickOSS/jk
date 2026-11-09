@@ -125,3 +125,22 @@ test('the notice frame is handled here, and a non-decision notice previews only 
   used.noticeEvent({ type: SSE.notice, data: { change: 'added', notice: notice(4), seenUpTo: 0, unseen: 2 } });
   assert.equal(used.previews.length, 1, "a decision previews from its own frame, not twice");
 });
+
+test('a decision this tab opens by itself, or already shows, never raises the count', async () => {
+  answer = () => ({ status: 200, body: { seenUpTo: 9, unseen: 0 } });
+  const auto = root({ seenUpTo: 1, unseen: 0, notices: [notice(1)] });
+  auto.willAutoOpen = () => true;
+  auto.noticeEvent({ type: SSE.notice, data: { change: 'added', notice: notice(9), seenUpTo: 1, unseen: 1 } });
+  assert.equal(auto.unseen, 0, 'unchanged by the auto-open');
+  assert.deepEqual(posts.at(-1), { url: '/api/notices/seen', method: 'POST', body: { upTo: 9 } });
+
+  const showing = root({ decisionId: 'd9' });
+  showing.willAutoOpen = () => false;
+  showing.noticeEvent({ type: SSE.notice, data: { change: 'added', notice: notice(9), seenUpTo: 0, unseen: 1 } });
+  assert.equal(showing.unseen, 0, 'its dialog is already showing');
+
+  const typing = root();
+  typing.willAutoOpen = () => false;
+  typing.noticeEvent({ type: SSE.notice, data: { change: 'added', notice: notice(9), seenUpTo: 0, unseen: 1 } });
+  assert.equal(typing.unseen, 1, 'waiting to open: it counts until shown');
+});

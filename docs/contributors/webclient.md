@@ -140,15 +140,31 @@ The wire tokens live in `wire.js`: `LOG` (`session`, `episode`, `action`, held t
 `EventCatalog.DASHBOARD_ONLY` by `WireTokenParityTest`) and `QUEUE` (`decision`); `api.js` listens
 for every one. The decision dialog (`#decision/<id>`, over whatever page is showing) and answering are the decision queue's.
 
+### Decisions and notifications
+
 `notify.js` is the tab's half of telling the person once ([HTTP](http.md#one-channel-per-decision)):
 it answers the stream's `presence` ping with the tab's visibility, focus, last input
 (`watchPresence`, `noteInput`; one idle timer re-armed for the remainder, so mouse moves cost
 nothing) and `Notification.permission`, reporting again when the tab turns active or idle; shows
-the `notify` frame's notification only from a tab that is not active and may (an active one
-delivers in the page: `deliverInApp` wiggles the bell, `bellPulse`, and shows the `preview` card
-for `PREVIEW_MS` unless hovered), closes a settled decision's notification by tag, and puts the one permission
-ask, behind a click, at the foot of the bell's menu while the permission is `default`. The tests are
-`notify.test.mjs`.
+the `notify` frame's notification only from a tab that is not active and may; closes a settled
+decision's notification by tag; and puts the one permission ask, behind a click, at the foot of
+the bell's menu while the permission is `default`.
+
+In the active tab a decision opens its dialog by itself (`decisionArrived`, `pumpAutoOpen`): it
+joins `_autoQueue`, and the queue opens its oldest entry once the tab is active, nobody is typing
+(`isTyping`: a text field, select, contenteditable or `.monaco-editor` in focus, or a key within
+`TYPING_QUIET_MS`) and no dialog shows, checking again every `AUTO_RETRY_MS` while anything waits; a
+settled decision leaves the queue. While typing holds it back, the `preview` card says **An agent
+needs you · Open**. The dialog it opens is `guarded` (`decisionAuto`): it leaves focus where it
+was, and its answers ignore input for `GUARD_MS` behind a CSS fill. Anything else is delivered by
+`deliverInApp`: the bell wiggles once (`bellPulse`) and the `preview` card shows for `PREVIEW_MS`
+unless hovered.
+
+`notices.js` keeps the bell's number: the engine's notices and seen marker, folded from the
+`notice` frame. Opening the bell (`toggleBell`) or showing a dialog (`routeDecision`) calls
+`markSeen`, which posts the newest notice's time; a decision notice that arrives for a dialog this
+tab shows, or is about to open by itself, is marked seen at once rather than counted. The tests
+are `notify.test.mjs`, `notices.test.mjs` and `decisions.test.mjs`.
 
 ## The installed app
 

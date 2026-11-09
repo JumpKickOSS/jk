@@ -11,6 +11,12 @@ import { adoptFragmentToken, get, post } from './api.js';
 /** How long a dialog shows "settled by …" before it closes itself. */
 export const SETTLED_CLOSE_MS = 2500;
 
+/**
+ * How long the answers of a dialog that opened by itself ignore clicks and keys, so input meant for
+ * the page under it cannot answer it.
+ */
+export const GUARD_MS = 600;
+
 /** The route that opens decision `id`. */
 export function decisionHash(id) {
   return '#decision/' + encodeURIComponent(id);
@@ -205,6 +211,7 @@ export function frameDecision(frame) {
 export function decisionData(route) {
   return {
     decisionId: route.decisionId || null, // the decision the dialog shows, from #decision/<id>
+    decisionAuto: null, // the decision whose dialog opened by itself (guarded, focus left alone)
     decisionEvent: null, // the newest SSE decision, which the open dialog follows
     bellOpen: false,
     bellSeenFrom: 0, // the marker as it stood when the bell opened: what it highlights as new
@@ -229,13 +236,21 @@ export const decisionMethods = {
       this.markSeen(); // a dialog shown, from a click or a notification, is seen
       return true;
     }
+    const wasOpen = !!this.decisionId;
     this.decisionId = null;
+    this.decisionAuto = null;
+    if (wasOpen && this.pumpAutoOpen) this.pumpAutoOpen();
     return false;
   },
-  /** Dismiss the dialog: the decision stays open, in the bell, and the page's route comes back. */
+  /**
+   * Dismiss the dialog: the decision stays open, in the bell, and the page's route comes back; a
+   * decision queued to open by itself is next.
+   */
   closeDecision() {
     this.decisionId = null;
+    this.decisionAuto = null;
     history.replaceState(null, '', this._underHash || location.pathname + location.search);
+    if (this.pumpAutoOpen) this.pumpAutoOpen();
   },
   /** Opening the bell clears its count, in every tab. */
   toggleBell() {
@@ -258,16 +273,20 @@ export const decisionMethods = {
 /**
  * `<decision-dialog>`: one decision over the page, a fixed size, its detail scrolling inside.
  * Emits `close` when dismissed (Esc, the close button, the backdrop), once answered here, and a
- * moment after another surface settles it.
+ * moment after another surface settles it. A `guarded` dialog opened by itself: it leaves keyboard
+ * focus where it was, and its answers ignore input for GUARD_MS, a fill on them showing the wait.
  */
 export const DecisionDialog = {
   props: {
     id: { type: String, required: true },
     event: { type: Object, default: null },
     now: { type: Number, default: 0 },
+    guarded: { type: Boolean, default: false },
   },
   emits: ['close'],
-  data: () => ({ decision: null, error: '', busy: false, values: {}, closing: null }),
+  data() {
+    return { decision: null, error: '', busy: false, values: {}, closing: null, armed: !(this && this.guarded) };
+  },
   computed: {
     view() {
       return decisionView(this.decision);
@@ -293,13 +312,21 @@ export const DecisionDialog = {
     };
     window.addEventListener('keydown', this._onKey);
     this.load();
-    this.$nextTick(() => this.$refs.dialog && this.$refs.dialog.focus());
+    if (this.guarded) this.arm();
+    else this.$nextTick(() => this.$refs.dialog && this.$refs.dialog.focus());
   },
   unmounted() {
     window.removeEventListener('keydown', this._onKey);
     clearTimeout(this.closing);
+    clearTimeout(this._arming);
   },
   methods: {
+    /** The answers ignore input for GUARD_MS, then take it. */
+    arm() {
+      this.armed = false;
+      clearTimeout(this._arming);
+      this._arming = setTimeout(() => (this.armed = true), GUARD_MS);
+    },
     async load() {
       clearTimeout(this.closing);
       this.closing = null;
@@ -324,6 +351,7 @@ export const DecisionDialog = {
       this.$emit('close');
     },
     async send(body) {
+      if (!this.armed) return; // opened by itself a moment ago: input meant for the page
       this.busy = true;
       this.error = '';
       try {
@@ -409,12 +437,12 @@ export const DecisionDialog = {
           <p v-if="error" class="error">{{ error }}</p>
           <p v-if="view && !view.open" class="decision-settled">{{ view.settled }}</p>
           <div v-if="view && view.open && (view.mode === 'choices' || view.mode === 'batch')" class="decision-choices" :class="view.layout">
-            <button v-for="c in view.choices" :key="c.id" type="button" :class="c.declines ? 'declines' : 'accepts'"
-                    :disabled="busy" :data-choice="c.id" @click="answer(c)">{{ c.label }}</button>
+            <button v-for="c in view.choices" :key="c.id" type="button" :class="[c.declines ? 'declines' : 'accepts', { arming: !armed }]"
+                    :disabled="busy" :aria-disabled="!armed" :data-choice="c.id" @click="answer(c)">{{ c.label }}</button>
           </div>
           <div v-if="view && view.open && view.mode === 'form'" class="decision-choices row">
-            <button type="button" class="declines" :disabled="busy" @click="decline()">Decline</button>
-            <button type="button" class="accepts" :disabled="busy" @click="submit()">Submit</button>
+            <button type="button" class="declines" :class="{ arming: !armed }" :disabled="busy" :aria-disabled="!armed" @click="decline()">Decline</button>
+            <button type="button" class="accepts" :class="{ arming: !armed }" :disabled="busy" :aria-disabled="!armed" @click="submit()">Submit</button>
           </div>
         </div>
       </div>
