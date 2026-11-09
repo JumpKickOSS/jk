@@ -246,7 +246,8 @@ public final class PluginLoader {
             Path javaHome, String classpath, List<String> jvmFlags, String mainClass, List<String> args) {
         var cmd = new ArrayList<String>();
         cmd.add(JdkFingerprint.java(javaHome).toString());
-        cmd.addAll(jvmFlags);
+        // Chosen on the engine's JDK; the worker's may be older (a `jdk = 21` pin).
+        cmd.addAll(WorkerJvmFlags.forJdk(javaHome, jvmFlags));
         cmd.add("-cp");
         cmd.add(classpath);
         cmd.add(mainClass);
