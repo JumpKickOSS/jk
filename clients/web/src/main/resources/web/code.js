@@ -763,7 +763,7 @@ export const CodeView = {
               <jk-icon name="save"></jk-icon>
               <span id="save-confirm-title" class="lbl">Save file</span>
             </div>
-            <p id="save-confirm-desc" class="confirm-body">
+            <p id="save-confirm-desc" class="confirm-body modal-scroll">
               Are you sure you want to save
               <span class="confirm-file" :data-tip="path || undefined">{{ fileName(path) }}</span>?
             </p>

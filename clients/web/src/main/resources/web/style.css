@@ -1303,6 +1303,12 @@ a.fail-path:hover { color: var(--bright, var(--path)); }
   position: relative;
   width: 560px;
   max-width: 92vw;
+  /* The content decides the height: never shorter than a sensible floor, never taller than the
+   * viewport allows; only the .modal-scroll region scrolls, and only once that ceiling is hit. */
+  min-height: var(--modal-min-h);
+  max-height: min(calc(100vh - 110px), var(--modal-max-h));
+  display: flex;
+  flex-direction: column;
   background: var(--s1);
   border: 1px solid var(--bd);
   border-radius: var(--r-xl);
@@ -1310,6 +1316,11 @@ a.fail-path:hover { color: var(--bright, var(--path)); }
   overflow: hidden;
   animation: fadeSlideIn var(--dur) var(--ease) backwards;
 }
+.modal > * { flex: none; }
+.modal > .modal-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+:root { --modal-min-h: 180px; --modal-max-h: 760px; }
+/* While a dialog is open the page behind it does not scroll; modal.js routes the wheel to the dialog. */
+html:has(.modal-bg) { overflow: hidden; }
 
 /* A thin accent line across the top edge — the "framed console" cue from the wsl-ui modals. */
 .modal::before {
@@ -1333,7 +1344,7 @@ a.fail-path:hover { color: var(--bright, var(--path)); }
   overflow-wrap: anywhere;
 }
 
-.modal-list { max-height: 320px; overflow-y: auto; }
+/* .modal-list is the picker's .modal-scroll region: it grows with the folder up to the dialog's ceiling. */
 
 .fs-entry {
   padding: 8px 16px;
@@ -2734,15 +2745,11 @@ details.earlier .tl { margin-top: 6px; }
 .decision-modal-bg { z-index: 75; }
 .modal.decision-modal {
   width: 600px;
-  height: 440px;
-  max-height: calc(100vh - 110px);
-  display: flex;
-  flex-direction: column;
+  --modal-min-h: 260px;
 }
 .decision-modal:focus,
 .decision-modal:focus-visible { outline: none; box-shadow: var(--modal-shadow); }
-.decision-modal .modal-head { flex: none; }
-.decision-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 22px 16px; }
+.decision-body { padding: 20px 22px 16px; }
 .decision-q { margin: 0 0 6px; font: 700 15px/1.4 var(--mono); color: var(--bright); overflow-wrap: anywhere; }
 .decision-who { margin: 0 0 16px; color: var(--mu); font-size: 12px; overflow-wrap: anywhere; }
 .decision-who code { color: var(--path); }

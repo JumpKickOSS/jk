@@ -36,7 +36,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * <p>Staging: the SPA's shipped assets are copied once into a {@code type:module} temp dir (a bare
  * {@code .js} import is CommonJS, and every suite's top-level {@code import} would throw).
  * {@code JK_APP_DIR} names that directory, and a suite reaches any module or {@code index.html}
- * through it. Adding a module or a suite needs no change here.
+ * (or the manifest and stylesheet) through it. Adding a module or a suite needs no change here.
  *
  * <p>Paths resolve against the checkout root, never {@code user.dir}: a workspace build runs
  * tests with CWD at the engine state dir. See {@link RepoRoot}.
@@ -50,6 +50,9 @@ class WebClientJsTest {
 
     /** The web app manifest, which pwa.test.mjs reads. */
     private static final String MANIFEST = "manifest.webmanifest";
+
+    /** The stylesheet, which modal.test.mjs reads for the dialog sizing and page-lock rules. */
+    private static final String STYLES = "style.css";
 
     private static final Path JS_SUITES = Path.of("src/test/js");
 
@@ -89,6 +92,7 @@ class WebClientJsTest {
         // reaches every file the dashboard ships, and calls nothing the root component dropped.
         Files.copy(assets.resolve(SHELL), stage.resolve(SHELL));
         Files.copy(assets.resolve(MANIFEST), stage.resolve(MANIFEST));
+        Files.copy(assets.resolve(STYLES), stage.resolve(STYLES));
         Files.writeString(stage.resolve("package.json"), "{\"type\":\"module\"}\n");
         nodeEnv = Map.of("JK_APP_DIR", stage.toString());
     }

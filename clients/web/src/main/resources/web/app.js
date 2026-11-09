@@ -44,6 +44,7 @@ import { FailReport } from './report.js';
 import { buildProjectHash, routeFromHash } from './route.js';
 import { sessionMethods } from './sessions.js';
 import { statusMethods } from './status.js';
+import { installModalScroll } from './modal.js';
 import { installTips } from './tip.js';
 import { EVENT, SSE } from './wire.js';
 import { emptyWizard, wizardComputed, wizardMethods } from './wizard.js';
@@ -693,4 +694,5 @@ if (typeof Vue !== 'undefined' && typeof document !== 'undefined') {
 
   // Themed tooltips for data-tip / title (native title= is unstyleable OS chrome).
   installTips(document);
+  installModalScroll(document);
 }

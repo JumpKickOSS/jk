@@ -307,7 +307,7 @@ export const DecisionDialog = {
           <button type="button" class="icon-btn" @click="dismiss()" aria-label="Close" data-tip="Close; the decision stays open">
             <jk-icon name="x"></jk-icon></button>
         </div>
-        <div class="decision-body">
+        <div class="decision-body modal-scroll">
           <p v-if="!view && !error" class="empty">Loading the decision…</p>
           <template v-if="view">
             <h3 id="decision-q" class="decision-q">{{ view.question }}</h3>
