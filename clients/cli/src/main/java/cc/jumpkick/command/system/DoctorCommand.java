@@ -88,12 +88,14 @@ public final class DoctorCommand implements CliCommand {
                 // flag itself, so this string has 58 to spend.
                 Opt.flag("Fingerprint each linked install and report drift", "-l", "--verify-linked"),
                 Opt.flag("Start the engine if needed for worker/repo rows", "-e", "--engine"),
-                Opt.flag("Skip the engine-answered worker/repo rows", "-n", "--no-engine"));
+                Opt.flag("Skip the engine-answered worker/repo rows", "-n", "--no-engine"),
+                Opt.flag("Apply the recommended Windows changes (-y: all)", "-f", "--fix"));
     }
 
     @Override
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
+        if (in.isSet("fix")) return DoctorFix.run(global);
         Path toolsDir = in.value("tools-dir").map(CliPaths::abs).orElse(null);
         boolean verifyLinked = in.isSet("verify-linked");
         Path root = toolsDir != null ? toolsDir : JkDirs.tools();

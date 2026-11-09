@@ -67,7 +67,7 @@ public final class DecideCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
         EnginePaths.Paths paths = EnginePaths.current();
-        DecisionsAck listed = EngineClient.decisions(paths, new DecisionsRequest(DecisionsRequest.LIST, null, null));
+        DecisionsAck listed = EngineClient.decisions(paths, DecisionsRequest.list());
         if (listed.error() != null) {
             CommandWedge.printFail("Decide", listed.error());
             return Exit.SOFTWARE;
@@ -118,7 +118,7 @@ public final class DecideCommand implements CliCommand {
                 CliOutput.out("Left unanswered; it is still open.");
                 return Exit.SUCCESS;
             }
-            req = new DecisionsRequest(DecisionsRequest.ACCEPT, id, MiniJson.write(values.get()));
+            req = new DecisionsRequest(DecisionsRequest.ACCEPT, id, MiniJson.write(values.get()), null);
         }
         DecisionsAck ack = EngineClient.decisions(paths, req);
         if (ack.error() != null) {
@@ -135,8 +135,8 @@ public final class DecideCommand implements CliCommand {
      * no question asked; null when neither was given and the form is asked.
      */
     static @Nullable DecisionsRequest flagged(String id, boolean decline, boolean yes) {
-        if (decline) return new DecisionsRequest(DecisionsRequest.DECLINE, id, null);
-        if (yes) return new DecisionsRequest(DecisionsRequest.ACCEPT, id, MiniJson.write(Map.of(ANSWER, YES)));
+        if (decline) return new DecisionsRequest(DecisionsRequest.DECLINE, id, null, null);
+        if (yes) return new DecisionsRequest(DecisionsRequest.ACCEPT, id, MiniJson.write(Map.of(ANSWER, YES)), null);
         return null;
     }
 

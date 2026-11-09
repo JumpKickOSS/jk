@@ -61,10 +61,24 @@ public final class McpDecisions {
      * @param question one line
      * @param detail the lines that explain it (the paths, the versions)
      * @param yes what accepting does, one line
+     * @param items a batch's changes, each its own checkbox; empty for a plain confirmation
+     * @param always ask through the queue even when the host cannot ask, rather than proceed on the
+     *     call's own word: the dashboard, a notification and {@code jk decide} answer it
      */
-    public record Ask(String kind, String question, List<String> detail, String yes) {
+    public record Ask(
+            String kind,
+            String question,
+            List<String> detail,
+            String yes,
+            List<DecisionForms.Item> items,
+            boolean always) {
         public Ask {
             detail = List.copyOf(detail);
+            items = List.copyOf(items);
+        }
+
+        public Ask(String kind, String question, List<String> detail, String yes) {
+            this(kind, question, detail, yes, List.of(), false);
         }
     }
 
@@ -98,7 +112,7 @@ public final class McpDecisions {
             }
             return answered(in, decisions, d, false);
         }
-        if (!canAsk(in)) return new Outcome.Proceed(null);
+        if (!canAsk(in) && !ask.always()) return new Outcome.Proceed(null);
         McpConnection c = in.connection();
         String label = c == null ? null : c.label();
         String project = in.dir();
@@ -165,7 +179,7 @@ public final class McpDecisions {
         String question = EventRedaction.redactText(project, ask.question());
         List<String> detail = new ArrayList<>();
         for (String line : ask.detail()) detail.add(EventRedaction.redactText(project, line));
-        Form form = DecisionForms.confirm(ask.kind(), question, ask.yes());
+        Form form = DecisionForms.batch(ask.kind(), question, ask.items(), ask.yes());
         return new DecisionQueue.Ask(ask.kind(), question, detail, form, session, label, episode, project);
     }
 

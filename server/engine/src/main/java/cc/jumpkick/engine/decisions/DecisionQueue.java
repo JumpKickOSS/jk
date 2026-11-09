@@ -21,6 +21,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
@@ -49,6 +50,8 @@ public final class DecisionQueue {
     private final Clock clock;
     private final Map<String, Entry> entries = new LinkedHashMap<>();
     private final List<Consumer<Decision>> listeners = new CopyOnWriteArrayList<>();
+    private final List<Consumer<Decision>> alerters = new CopyOnWriteArrayList<>();
+    private volatile Function<String, @Nullable String> links = id -> null;
     private final Consumer<Decision> changed = d -> listeners.forEach(l -> l.accept(d));
     private volatile Store store = Store.MEMORY;
 
@@ -167,6 +170,29 @@ public final class DecisionQueue {
         listeners.add(Objects.requireNonNull(listener));
     }
 
+    /** Also run {@code alerter} with every decision whose asker wants a person told: {@link #alert}. */
+    public void onAlert(Consumer<Decision> alerter) {
+        alerters.add(Objects.requireNonNull(alerter));
+    }
+
+    /**
+     * Tell a person about {@code d} the way {@code [ui] ask} says, for an asker with no agent's host
+     * to ask through: the dashboard's alerters notify or open the browser.
+     */
+    public void alert(Decision d) {
+        alerters.forEach(a -> a.accept(d));
+    }
+
+    /** Resolve dashboard links to decisions with {@code links}; set once the dashboard serves. */
+    public void links(Function<String, @Nullable String> links) {
+        this.links = Objects.requireNonNull(links);
+    }
+
+    /** The dashboard link to {@code id}; null while the dashboard is not serving. */
+    public @Nullable String link(String id) {
+        return links.apply(id);
+    }
+
     /** Keep decisions in {@code store} and adopt what it holds. Before the queue is first used. */
     public void store(Store store) {
         this.store = Objects.requireNonNull(store);
@@ -259,6 +285,27 @@ public final class DecisionQueue {
     public Optional<Decision> openFor(String kind, @Nullable String label, @Nullable String project) {
         adopt();
         return openAmong(kind, label, project);
+    }
+
+    /**
+     * The decision of {@code kind} about {@code project}, with no session, that still waits to be used:
+     * open, or accepted and not yet spent, so asking again after a late answer proceeds with it.
+     */
+    public Optional<Decision> unspentFor(String kind, @Nullable String project) {
+        adopt();
+        synchronized (this) {
+            for (Entry e : entries.values()) {
+                Decision d = e.decision;
+                if ((d.open() || d.accepted())
+                        && !e.spent
+                        && d.kind().equals(kind)
+                        && d.label() == null
+                        && Objects.equals(d.project(), project)) {
+                    return Optional.of(d);
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     private synchronized Optional<Decision> openAmong(String kind, @Nullable String label, @Nullable String project) {

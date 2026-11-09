@@ -12,6 +12,7 @@ import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.decisions.JournaledDecisions;
+import cc.jumpkick.engine.decisions.MachineSetupDecisions;
 import cc.jumpkick.engine.graph.GraphCompiles;
 import cc.jumpkick.engine.graph.GraphRunner;
 import cc.jumpkick.engine.http.HttpEngineServer;
@@ -372,6 +373,7 @@ public final class EngineServer implements AutoCloseable {
                 sessions, journal, historyConfig, () -> metricsFile, clockMillis, this.version, this.log);
         this.sessionLog = newSessionLog();
         decisions.store(new JournaledDecisions(sessionLog));
+        MachineSetupDecisions.watch(decisions);
         journalWriter.onFinished(sessionLog::runFinished);
         drain.predecessorRuns(this::foldPredecessorRun);
         this.sse = new SsePublisher(

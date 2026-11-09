@@ -65,7 +65,8 @@ final class DecideView {
         String label = MiniJson.str(d, "label");
         String project = MiniJson.str(d, "project");
         if (label != null || project != null) {
-            lines.add("  asked by " + (label == null ? "an agent" : label) + (project == null ? "" : " in " + project));
+            String who = label != null ? label : "setup".equals(MiniJson.str(d, "kind")) ? "JumpKick" : "an agent";
+            lines.add("  asked by " + who + (project == null ? "" : " in " + project));
         }
         for (Object line : MiniJson.list(d, "detail")) lines.add("  " + line);
         return lines;

@@ -201,6 +201,26 @@ class McpFlatteningTest {
                 .hasMessageContaining("2025-03-26");
     }
 
+    @Test
+    void a_required_field_with_a_default_is_asked_with_the_default_filled_in() {
+        Field ticked = Field.of("features", "Features", FieldKind.MULTI)
+                .option("web", "Web", null)
+                .option("cli", null, "A command line")
+                .defaultValue(List.of("web", "cli"))
+                .required(true)
+                .build();
+
+        assertThat(schema(McpRevision.V2025_11_25, ticked)).contains("\"default\":[\"web\",\"cli\"]");
+        assertThat(schema(McpRevision.V2025_06_18, ticked))
+                .contains("\"features.web\":{\"type\":\"boolean\",\"title\":\"Web\",\"description\":\"Features\","
+                        + "\"default\":true}");
+        Field optional = Field.of("features", "Features", FieldKind.MULTI)
+                .option("web")
+                .defaultValue(List.of("web"))
+                .build();
+        assertThat(flatten(McpRevision.V2025_11_25, optional)).isInstanceOf(Complete.class);
+    }
+
     private static Field features() {
         return Field.of("features", "Features", FieldKind.MULTI)
                 .option("web", "Web", null)

@@ -33,6 +33,11 @@ public final class Decisions {
         queue.onChange(d -> {
             if (!d.open()) this.alerts.withdraw(d.id());
         });
+        queue.links(links::link);
+        queue.onAlert(d -> {
+            String link = links.link(d.id());
+            if (d.open() && link != null) this.alerts.raise(ask(), d, link);
+        });
     }
 
     public DecisionQueue queue() {

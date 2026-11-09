@@ -304,6 +304,26 @@ warning names its fix; `jk doctor -O jsonl` and the MCP `doctor` tool carry the 
 | `volumes` | The project and `JK_HOME` are on different volumes, so the cache copies files instead of linking them; the row also names the filesystem (NTFS, ReFS) |
 | `arch` | An x64 `jk` or JDK runs under ARM64 emulation |
 
+### `jk doctor --fix`
+
+`jk doctor --fix` puts the recommended changes to you as one decision: Defender exclusions for
+the folders where you keep code, Windows and git long paths, and the PowerShell policy the
+profile block needs. Each change has its own checkbox, ticked to start. Approve once, and Windows
+shows one UAC prompt for the changes that need an administrator. `-y` takes every change without
+asking.
+
+JumpKick finds the folders itself: `JK_HOME`, the projects it has built, IntelliJ's and VS Code's
+recent projects, and the usual container folders (`IdeaProjects`, `source\repos`, `src`, `dev`,
+`git`, `<drive>:\src`, …) that hold projects within two levels. It proposes the container, not
+each project. It never proposes a drive root, your profile, Documents or Desktop themselves,
+Downloads, AppData (except `JK_HOME`), Windows or the program folders. The elevated script
+enforces the same rules again, adds each folder as a literal path, and then asks Defender which
+folders it actually excludes. The answer goes to `~/.jk/state/windows-host.toml`, so later
+`jk doctor` runs report the exclusions as checked.
+
+The decision is in the engine's queue, so the dashboard's bell, a desktop notification and
+`jk decide` show it too. An agent can raise it through the MCP `doctor` tool with `fix=true`.
+
 ## Official URLs
 
 | URL | Role |

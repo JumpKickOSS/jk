@@ -22,8 +22,9 @@ import java.util.Set;
  * <li>{@code path} escalates.
  * </ul>
  *
- * Only what is missing is asked: a field already answered, hidden, advanced, or with a default is
- * left out, and so is an optional one. A field whose {@code when} names a field asked in the same
+ * Only what is missing is asked: a field already answered, hidden, advanced, or optional (which a
+ * field with a default is unless it says it is required) is left out. A required field with a
+ * default is asked with the default filled in. A field whose {@code when} names a field asked in the same
  * request is deferred, so the caller flattens again once those answers are in.
  */
 public final class McpFlattening {
@@ -122,8 +123,7 @@ public final class McpFlattening {
                 pending.add(f.key());
                 continue;
             }
-            if (!Form.visible(f, values) || f.advanced() || Form.defaultOf(f, derived) != null || !f.required())
-                continue;
+            if (!Form.visible(f, values) || f.advanced() || !f.required()) continue;
             asked.add(f);
             pending.add(f.key());
         }
@@ -144,9 +144,11 @@ public final class McpFlattening {
                     required.add(f.key());
                 }
                 case MULTI -> {
+                    List<?> ticked = Form.defaultOf(f, derived) instanceof List<?> l ? l : List.of();
                     if (revision.arrayEnums()) {
                         Map<String, Object> p = described(f, "array");
                         p.put("items", choices(entries(f.options()), revision, "anyOf"));
+                        if (!ticked.isEmpty()) p.put("default", ticked);
                         properties.put(f.key(), p);
                         required.add(f.key());
                     } else {
@@ -155,7 +157,7 @@ public final class McpFlattening {
                             p.put("type", "boolean");
                             p.put("title", o.display());
                             p.put("description", o.help() == null ? f.label() : f.label() + ": " + o.help());
-                            p.put("default", false);
+                            p.put("default", ticked.contains(o.id()));
                             properties.put(f.key() + "." + o.id(), p);
                         }
                     }

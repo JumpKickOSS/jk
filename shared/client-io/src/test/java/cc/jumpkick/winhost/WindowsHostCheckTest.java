@@ -156,7 +156,7 @@ class WindowsHostCheckTest {
         HostRow row = check().longPaths();
         assertThat(row.status()).isEqualTo(HostRow.Status.WARN);
         assertThat(row.detail()).contains("260 characters").contains("core.longpaths is off");
-        assertThat(row.fix()).contains("LongPathsEnabled").contains("git config --global core.longpaths true");
+        assertThat(row.fix()).contains("jk doctor --fix").contains("git config --global core.longpaths true");
 
         host.git = null;
         host.dword(Hive.LOCAL_MACHINE, WindowsHostCheck.FS_KEY, "LongPathsEnabled", 1);

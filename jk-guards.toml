@@ -494,6 +494,14 @@ in     = "shared/core/src/test/java/cc/jumpkick/desktop/DesktopIdentityTest.java
 reason = "fixtures for where the desktop looks for the Start-menu shortcut and the desktop entry"
 
 [[guards.single-home-root.allow]]
+in     = "shared/client-io/src/main/java/cc/jumpkick/winhost/RootDiscovery.java"
+reason = "reads IntelliJ's and VS Code's recent-project lists from their own config location (APPDATA)"
+
+[[guards.single-home-root.allow]]
+in     = "shared/client-io/src/main/java/cc/jumpkick/winhost/WindowsSetup.java"
+reason = "hands RootDiscovery the APPDATA folder where the IDEs keep their recent-project lists"
+
+[[guards.single-home-root.allow]]
 in     = "shared/core/src/test/java/cc/jumpkick/util/JkDirsTest.java"
 reason = "asserts that the retired XDG / AppData variables are ignored"
 

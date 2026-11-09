@@ -106,7 +106,8 @@ public final class Asker {
             while (true) {
                 Optional<Key> key = tty.readKey(POLL);
                 if (key.isEmpty()) {
-                    if (tty.isLive()) continue;
+                    // An interrupted asker backs out: another surface answered the question.
+                    if (tty.isLive() && !Thread.currentThread().isInterrupted()) continue;
                     return settle(painter, q, new Question.Cancelled<>());
                 }
                 Question.Reply<T> reply =

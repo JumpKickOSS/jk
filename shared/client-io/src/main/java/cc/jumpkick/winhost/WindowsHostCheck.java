@@ -51,11 +51,11 @@ public record WindowsHostCheck(
     static final String PS_POLICY_KEY = "SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell";
     static final String PWSH_POLICY_KEY = "SOFTWARE\\Policies\\Microsoft\\PowerShellCore";
 
-    /** The admin command that sets Windows' long-path support. */
+    /** The command that applies the recommended changes. */
+    public static final String FIX = "jk doctor --fix";
+
     /** The command that turns on git's long-path support for this user. */
     static final String GIT_LONG_PATHS_FIX = "git config --global core.longpaths true";
-
-    static final String LONG_PATHS_FIX = "as admin: Set-ItemProperty HKLM:\\" + FS_KEY + " LongPathsEnabled 1";
 
     /** Every row, in the order doctor prints them. */
     public List<HostRow> rows() {
@@ -123,8 +123,8 @@ public record WindowsHostCheck(
     // ---- PowerShell ----
 
     /** An execution policy and who set it. */
-    record Policy(String name, boolean byGroupPolicy) {
-        boolean loadsProfile() {
+    public record Policy(String name, boolean byGroupPolicy) {
+        public boolean loadsProfile() {
             String p = name.toLowerCase(Locale.ROOT);
             return p.equals("remotesigned") || p.equals("unrestricted") || p.equals("bypass");
         }
@@ -154,7 +154,8 @@ public record WindowsHostCheck(
                 "Set-ExecutionPolicy -Scope CurrentUser RemoteSigned");
     }
 
-    Policy desktopPolicy() {
+    /** The policy a new Windows PowerShell gets. */
+    public Policy desktopPolicy() {
         Registry r = facts.registry();
         Policy gp = groupPolicy(r, PS_POLICY_KEY);
         if (gp != null) return gp;
@@ -210,7 +211,7 @@ public record WindowsHostCheck(
     // ---- Defender ----
 
     /** Defender's real-time protection as a standard user can read it. */
-    enum Defender {
+    public enum Defender {
         ON,
         REAL_TIME_OFF,
         PASSIVE,
@@ -218,7 +219,8 @@ public record WindowsHostCheck(
         UNKNOWN
     }
 
-    Defender defenderState() {
+    /** Defender's real-time state as a standard user can read it. */
+    public Defender defenderState() {
         Registry r = facts.registry();
         Integer running = r.dword(Hive.LOCAL_MACHINE, DEFENDER_KEY, "IsServiceRunning");
         Integer disabled = r.dword(Hive.LOCAL_MACHINE, DEFENDER_KEY, "DisableAntiVirus");
@@ -260,17 +262,16 @@ public record WindowsHostCheck(
             if (e != SetupMemo.Exclusion.VERIFIED) allVerified = false;
         }
         if (!scanned.isEmpty()) {
-            return HostRow.warn(
-                    id,
-                    label,
-                    "slower: Defender scans " + String.join(" and ", scanned),
-                    "as admin: Add-MpPreference -ExclusionPath '" + String.join("','", scanned) + "'");
+            return HostRow.warn(id, label, "slower: Defender scans " + String.join(" and ", scanned), FIX);
         }
         if (allVerified) {
             return HostRow.ok(
                     id, label, "real-time on; " + names() + " excluded (checked " + day(memo.checkedAt()) + ")");
         }
-        return HostRow.ok(id, label, "real-time on; its exclusions need admin to read, so they are unchecked");
+        return HostRow.ok(
+                id,
+                label,
+                "real-time on; its exclusions need admin to read, so they are unchecked; " + FIX + " checks them");
     }
 
     /** The folders whose exclusion the Defender row reports: {@code JK_HOME} and the project. */
@@ -365,11 +366,16 @@ public record WindowsHostCheck(
 
     // ---- long paths ----
 
+    /** Whether Windows' {@code LongPathsEnabled} is set. */
+    public boolean longPathsEnabled() {
+        Integer windows = facts.registry().dword(Hive.LOCAL_MACHINE, FS_KEY, "LongPathsEnabled");
+        return windows != null && windows == 1;
+    }
+
     HostRow longPaths() {
         String id = "long-paths", label = "long paths";
-        Integer windows = facts.registry().dword(Hive.LOCAL_MACHINE, FS_KEY, "LongPathsEnabled");
         Boolean git = facts.gitLongPaths();
-        boolean windowsOn = windows != null && windows == 1;
+        boolean windowsOn = longPathsEnabled();
         boolean gitOff = Boolean.FALSE.equals(git);
         List<String> off = new ArrayList<>();
         if (!windowsOn) off.add("Windows limits paths to 260 characters");
@@ -377,7 +383,7 @@ public record WindowsHostCheck(
         if (off.isEmpty())
             return HostRow.ok(id, label, git == null ? "enabled in Windows" : "enabled in Windows and git");
         List<String> fixes = new ArrayList<>();
-        if (!windowsOn) fixes.add(LONG_PATHS_FIX);
+        if (!windowsOn) fixes.add(FIX);
         if (gitOff) fixes.add(GIT_LONG_PATHS_FIX);
         return HostRow.warn(id, label, String.join("; ", off), String.join("; ", fixes));
     }
