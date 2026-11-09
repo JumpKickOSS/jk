@@ -122,9 +122,6 @@ public final class WarmWorkers {
 
     private static volatile boolean hookRegistered;
 
-    /** The most recently idled worker of each launch name; under CI a kept one outlives the linger. */
-    private static final Map<String, Worker> LATEST = new ConcurrentHashMap<>();
-
     /**
      * Run {@code spec} on an idle worker of {@code launch}, or a new one. Returns when the plugin
      * answers or the worker dies. {@code cancelled} is watched while the run is in flight; when it
@@ -219,11 +216,7 @@ public final class WarmWorkers {
      * one the ledger asked for, and every worker when the linger is zero.
      */
     private static void release(Worker w, boolean keep) {
-        boolean idle = keep
-                && w.process.isAlive()
-                && !w.retire
-                && !w.yielding
-                && (WarmLinger.millis() > 0 || WarmLinger.keepsLatest(w.name));
+        boolean idle = keep && w.process.isAlive() && !w.retire && !w.yielding && WarmLinger.millis() > 0;
         if (!idle) {
             w.exit();
             return;
@@ -245,9 +238,6 @@ public final class WarmWorkers {
         // A bigger idle sibling serves whatever these would: they exit rather than hold a lease.
         for (Worker s : covered) s.exit();
         if (covered.contains(w)) return;
-        Worker displaced = LATEST.put(w.name, w);
-        // A worker CI kept as the latest is now held by the linger: its reaper looks again now.
-        if (displaced != null && displaced != w) displaced.wake();
         w.armReaper();
     }
 
@@ -469,9 +459,7 @@ public final class WarmWorkers {
                 synchronized (IDLE) {
                     wait = linger - (CLOCK.nanos() - lastUsedNanos);
                 }
-                if (wait <= 0 && kept()) {
-                    wait = Math.max(linger, TimeUnit.MINUTES.toNanos(1));
-                } else if (wait <= 0) {
+                if (wait <= 0) {
                     if (unlistIdle(this)) exit();
                     return;
                 }
@@ -486,11 +474,6 @@ public final class WarmWorkers {
             if (t != null) LockSupport.unpark(t);
         }
 
-        /** Under CI, the most recently used worker of a kept tool, which the linger does not end. */
-        private boolean kept() {
-            return WarmLinger.keepsLatest(name) && LATEST.get(name) == this;
-        }
-
         /** The ledger needs the memory: an idle worker exits now, a running one after its run. */
         void yieldLease() {
             yielding = true;
@@ -500,7 +483,6 @@ public final class WarmWorkers {
         /** Ask the worker to exit and wait briefly; one that does not go is killed. */
         void exit() {
             LIVE.remove(this);
-            LATEST.remove(name, this);
             Thread t = reaper;
             if (t != null && t != Thread.currentThread()) t.interrupt();
             if (!commands.connected()) {
@@ -520,7 +502,6 @@ public final class WarmWorkers {
 
         void kill() {
             LIVE.remove(this);
-            LATEST.remove(name, this);
             process.destroyForcibly();
             commands.close();
             try {

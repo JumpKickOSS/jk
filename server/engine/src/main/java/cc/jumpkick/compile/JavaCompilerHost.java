@@ -5,6 +5,7 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.KeepWarm;
 import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
@@ -18,7 +19,6 @@ import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.List;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -37,9 +37,6 @@ import org.jspecify.annotations.Nullable;
 public final class JavaCompilerHost {
 
     private static final AtomicLong EPHEMERAL = new AtomicLong(-1L);
-
-    /** How long a resident compiler worker stays up after its last compile, unless {@link WarmLinger#ENV} says otherwise. */
-    static final Duration LINGER = Duration.ofMinutes(29);
 
     private JavaCompilerHost() {}
 
@@ -100,13 +97,13 @@ public final class JavaCompilerHost {
 
     /** How long a resident worker waits after its last compile before it exits; {@code JK_WORKER_LINGER_MIN} overrides. */
     static long lingerMillis() {
-        return WarmLinger.millis(LINGER);
+        return WarmLinger.millis();
     }
 
     /** Whether {@code req} goes on a resident pool rather than one of its job's. */
     static boolean resident(ForkedJavac.Request req) {
         String scala = req.scalaVersion();
-        return (lingerMillis() > 0 || WarmLinger.keepsLatest(WarmLinger.JAVA_COMPILER))
+        return lingerMillis() > 0
                 && (scala == null || scala.isBlank())
                 && req.compilerClasspath().isEmpty();
     }
@@ -117,7 +114,7 @@ public final class JavaCompilerHost {
         String key = resident ? residentKey(req) : jobKey(job, req);
         Path home = ForkedJavac.workerJavaHome(req);
         Long owner = resident ? null : job;
-        return CompilerPool.forKey(
+        CompilerPool pool = CompilerPool.forKey(
                 key,
                 owner,
                 () -> {
@@ -133,6 +130,11 @@ public final class JavaCompilerHost {
                             ForkedJavac::writeSpec);
                 },
                 item);
+        if (resident) {
+            Path classes = req.classOutput().toAbsolutePath().normalize();
+            pool.served(KeepWarm.sourceRoot(req.sources(), List.of(classes.getParent(), req.sourceOutput())));
+        }
+        return pool;
     }
 
     /**

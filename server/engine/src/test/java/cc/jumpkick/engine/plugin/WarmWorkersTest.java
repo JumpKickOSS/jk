@@ -205,40 +205,6 @@ class WarmWorkersTest {
         }
     }
 
-    @Test
-    void on_ci_the_latest_kotlinc_worker_outlives_the_linger_and_the_others_do_not() throws Exception {
-        WarmLinger.ciForTests(true);
-        WarmLinger.forTests(100);
-        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
-        long older = run(launch(WarmLinger.KOTLIN_COMPILER, "a", null), "ok", out).pid;
-        // Past the linger while the first is still the latest: its reaper has already kept it.
-        Thread.sleep(300);
-        long latest = run(launch(WarmLinger.KOTLIN_COMPILER, "b", null), "ok", out).pid;
-        long other = run(launch("formatter", "c", null), "ok", out).pid;
-
-        for (int i = 0; i < 200 && (alive(older) || alive(other)); i++) Thread.sleep(25);
-
-        assertThat(alive(older)).as("an older kotlinc worker idles out").isFalse();
-        assertThat(alive(other)).as("another tool keeps the linger").isFalse();
-        assertThat(alive(latest)).as("the latest kotlinc worker stays").isTrue();
-        assertThat(run(launch(WarmLinger.KOTLIN_COMPILER, "b", null), "ok", out).pid)
-                .isEqualTo(latest);
-    }
-
-    @Test
-    void on_ci_a_linger_of_zero_still_keeps_the_latest_kotlinc_worker() throws Exception {
-        WarmLinger.ciForTests(true);
-        WarmLinger.forTests(0);
-        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
-        long kept = run(launch(WarmLinger.KOTLIN_COMPILER, "a", null), "ok", out).pid;
-        long gone = run(launch("formatter", "c", null), "ok", out).pid;
-
-        assertThat(run(launch(WarmLinger.KOTLIN_COMPILER, "a", null), "ok", out).pid)
-                .isEqualTo(kept);
-        for (int i = 0; i < 200 && alive(gone); i++) Thread.sleep(25);
-        assertThat(alive(gone)).isFalse();
-    }
-
     private static boolean alive(long pid) {
         return ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
     }

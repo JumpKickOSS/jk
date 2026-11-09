@@ -7,14 +7,19 @@ import java.time.Duration;
 import org.jspecify.annotations.Nullable;
 
 /**
- * How long a warm worker stays up after its last request: the Java compiler's workers, the
- * build-script host and every {@link WarmWorkers served plugin}. {@link #DEFAULT}, or {@value #ENV}
- * in whole minutes, where {@code 0} keeps none up. A warm worker still exits at once when a fork is
- * waiting for its memory, whatever the linger.
+ * How long a warm worker stays up after its last use: the Java compiler's workers, the build-script
+ * host and every {@link WarmWorkers served plugin}. {@link #DEFAULT}, or {@value #ENV} in whole
+ * minutes, where {@code 0} keeps none up. A warm worker still exits at once when a fork is waiting
+ * for its memory, or when the host is short of memory, whatever the linger.
  *
- * <p>On CI ({@code CI} set to a true value) the most recently used worker of the Java compiler
- * and of kotlinc ignores the linger: one of each stays up for the life of the engine, which on CI
- * is the job or the agent. Every other warm worker keeps the linger.
+ * <p>The window slides: for the Java compiler, any request about a project a worker compiled for —
+ * a build that compiled nothing, a test run, an MCP call — and any edit to its sources moves the
+ * deadline ({@link ProjectActivity}). So the window can be short: a project being worked on keeps its
+ * worker, an abandoned one gives the memory back after ten minutes.
+ *
+ * <p>On CI ({@code CI} set to a true value) the window is {@link #CI_FACTOR} times as long: an agent
+ * runs job after job, but a JDK it builds once a month should not keep its worker for the agent's
+ * life. A pinned {@value #ENV} is taken as given, CI or not.
  */
 public final class WarmLinger {
 
@@ -22,13 +27,10 @@ public final class WarmLinger {
 
     public static final String ENV = "JK_WORKER_LINGER_MIN";
 
-    public static final Duration DEFAULT = Duration.ofMinutes(30);
+    public static final Duration DEFAULT = Duration.ofMinutes(10);
 
-    /** The Java compiler's resident workers, as {@link #keepsLatest} names them. */
-    public static final String JAVA_COMPILER = "java compiler";
-
-    /** kotlinc's served workers, as {@link #keepsLatest} names them. */
-    public static final String KOTLIN_COMPILER = "kotlinc";
+    /** How many default windows a warm worker lingers on CI. */
+    public static final int CI_FACTOR = 3;
 
     private static volatile long forTests = -1L;
 
@@ -36,11 +38,6 @@ public final class WarmLinger {
 
     /** The linger in milliseconds; {@code 0} means a worker exits after its request. */
     public static long millis() {
-        return millis(DEFAULT);
-    }
-
-    /** As {@link #millis()} for a worker whose own linger, when nothing pins one, is {@code fallback}. */
-    public static long millis(Duration fallback) {
         long pinned = forTests;
         if (pinned >= 0) return pinned;
         String v = ProcessEnv.get(ENV);
@@ -52,12 +49,7 @@ public final class WarmLinger {
                 // an unreadable pin is no pin
             }
         }
-        return fallback.toMillis();
-    }
-
-    /** Whether the most recently used warm worker of {@code tool} ignores the linger. */
-    public static boolean keepsLatest(String tool) {
-        return ci() && (JAVA_COMPILER.equals(tool) || KOTLIN_COMPILER.equals(tool));
+        return DEFAULT.toMillis() * (ci() ? CI_FACTOR : 1);
     }
 
     private static boolean ci() {

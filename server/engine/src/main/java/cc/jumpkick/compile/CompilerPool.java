@@ -3,7 +3,8 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.HostPressure;
 import cc.jumpkick.engine.plugin.JobWorkers;
-import cc.jumpkick.engine.plugin.WarmLinger;
+import cc.jumpkick.engine.plugin.KeepWarm;
+import cc.jumpkick.engine.plugin.ProjectActivity;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
@@ -40,8 +41,10 @@ import org.jspecify.annotations.Nullable;
  * <p><strong>Lifetime.</strong> A pool outlives the jobs that use it, for the {@link
  * JavaCompilerHost#lingerMillis linger} after its last item: the next build compiles on a JVM
  * whose JIT, jar indexes and processor loaders are warm. A linger of {@code 0}, and every mixed
- * Scala compile, makes the pool its job's, retired when the job ends. On CI the most recently used
- * pool outlives the linger ({@link WarmLinger#keepsLatest}).
+ * Scala compile, makes the pool its job's, retired when the job ends. The linger slides: a request
+ * about a project the pool compiled for, or an edit to that project's sources, starts it again
+ * ({@link KeepWarm}), so a project being worked on keeps its worker even through builds that compile
+ * nothing.
  *
  * <p><strong>Death.</strong> When a worker dies, every item it was running goes back on the queue,
  * ahead of what was waiting, and a fresh worker takes them one at a time until each of them has
@@ -83,9 +86,6 @@ final class CompilerPool {
 
     private static volatile boolean hookRegistered;
 
-    /** The resident pool most recently given an item; under CI it outlives the linger. */
-    private static volatile @Nullable CompilerPool latest;
-
     /** Starts a worker for a pool. Production forks the worker JVM for the pool's key. */
     @FunctionalInterface
     interface Starter {
@@ -122,6 +122,18 @@ final class CompilerPool {
 
     private boolean closed;
     private volatile long lastUsedNanos = CLOCK.nanos();
+
+    /** The source directories this pool compiled, and the projects they belong to: what keeps it warm. */
+    private final Set<Path> sourceRoots = ConcurrentHashMap.newKeySet();
+
+    private final Set<Path> projects = ConcurrentHashMap.newKeySet();
+
+    /** When a deadline's edit check last found an edit; it restarts the window as a compile would. */
+    private volatile long editSeenNanos = Long.MIN_VALUE;
+
+    /** Source directories a pool remembers at most; past this it keeps what it has. */
+    private static final int MAX_SOURCE_ROOTS = 4_096;
+
     private @Nullable Thread reaper;
 
     CompilerPool(String key, @Nullable Long job, Starter starter, SpecFile specs) {
@@ -153,10 +165,7 @@ final class CompilerPool {
         });
         CompilerPool pool = held[0];
         item.compile.whenComplete((r, e) -> pool.settled());
-        if (pool.job == null) {
-            latest = pool;
-            pool.armReaper();
-        }
+        if (pool.job == null) pool.armReaper();
         registerHooks();
         return pool;
     }
@@ -654,6 +663,13 @@ final class CompilerPool {
         }
     }
 
+    /** This pool compiled the sources under {@code sourceRoot}: their project's activity keeps it. */
+    void served(@Nullable Path sourceRoot) {
+        if (sourceRoot == null || sourceRoots.size() >= MAX_SOURCE_ROOTS || !sourceRoots.add(sourceRoot)) return;
+        Path project = ProjectActivity.projectOf(sourceRoot);
+        if (project != null) projects.add(project);
+    }
+
     /** One of this pool's items was answered. */
     private void settled() {
         synchronized (this) {
@@ -690,11 +706,17 @@ final class CompilerPool {
     private void reap() {
         while (true) {
             long linger = TimeUnit.MILLISECONDS.toNanos(Math.max(1L, JavaCompilerHost.lingerMillis()));
-            long wait = linger - (CLOCK.nanos() - lastUsedNanos);
-            if (wait <= 0 && latest == this && WarmLinger.keepsLatest(WarmLinger.JAVA_COMPILER)) {
-                wait = Math.max(linger, TimeUnit.MINUTES.toNanos(1));
-            } else if (wait <= 0) {
-                if (retireNow() || POOLS.get(key) != this) return;
+            long now = CLOCK.nanos();
+            long active = Math.max(lastUsedNanos, Math.max(editSeenNanos, ProjectActivity.lastNanos(projects)));
+            long wait = KeepWarm.untilDeadline(now, active, linger);
+            if (wait <= 0) {
+                long sinceMillis = CLOCK.millis() - TimeUnit.NANOSECONDS.toMillis(now - active);
+                if (KeepWarm.editedSince(sourceRoots, sinceMillis, KeepWarm.EDIT_CHECK_BUDGET_NANOS)) {
+                    // Someone is editing the project without asking jk anything yet: keep the worker.
+                    editSeenNanos = now;
+                } else if (retireNow() || POOLS.get(key) != this) {
+                    return;
+                }
                 wait = linger;
             }
             try {

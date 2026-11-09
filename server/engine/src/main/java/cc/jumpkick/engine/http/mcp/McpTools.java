@@ -33,6 +33,7 @@ import cc.jumpkick.engine.http.mcp.tools.TriggerTool;
 import cc.jumpkick.engine.http.mcp.tools.UpdateTool;
 import cc.jumpkick.engine.http.mcp.tools.WhyTool;
 import cc.jumpkick.engine.http.mcp.tools.WorkspaceTool;
+import cc.jumpkick.engine.plugin.ProjectActivity;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import java.util.ArrayList;
@@ -301,6 +302,8 @@ public final class McpTools {
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
         if (!BIND.equals(name)) implicitBind(connection, args.get("dir"));
         McpCall call = new McpCall(ctx, args, progressTokenOf(params), connection, outbound);
+        // An agent's every call about a checkout is that project being worked on.
+        ProjectActivity.touch(call.dir());
         noteGoal(name, call);
         if (ctx.sessions() == null || !McpActions.LOGGED.contains(name)) return tool.call(call);
         long at = Clock.SYSTEM.millis();

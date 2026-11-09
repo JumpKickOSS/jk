@@ -9,6 +9,7 @@ import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobTransport;
+import cc.jumpkick.engine.plugin.ProjectActivity;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
@@ -197,7 +198,11 @@ final class EngineConnection {
             }
         }
         HostedVerb verb = ctx.verbs().find(type);
-        if (verb != null) return dispatchVerb(verb, line, reader, writer, ch);
+        if (verb != null) {
+            // Any verb about a project is that project being worked on, compile or not.
+            ProjectActivity.touch(Jsonl.str(line, "dir"));
+            return dispatchVerb(verb, line, reader, writer, ch);
+        }
         switch (type) {
             case EngineProtocol.HELLO -> {
                 int clientProto = Jsonl.intValue(line, "proto", EngineProtocol.PROTOCOL);

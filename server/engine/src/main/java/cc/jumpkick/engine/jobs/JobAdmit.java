@@ -6,6 +6,7 @@ import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.engine.plugin.ProjectActivity;
 import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.runtime.base.BuildNumberAllocator;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
@@ -39,6 +40,8 @@ public final class JobAdmit {
             String trigger,
             @Nullable String session) {
         ConnectFaults.forgetLoopback();
+        // A job from any client — the CLI, the web UI, an agent — is its project being worked on.
+        ProjectActivity.touch(dir);
         boolean exclusive = BuildJobFingerprint.isExclusiveKind(kind);
         String fp = exclusive && fingerprint != null ? fingerprint : "";
         // Reject before allocating a build number so collisions do not burn sequence values.

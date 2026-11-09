@@ -513,8 +513,9 @@ Free RAM may still reduce live worker JVMs.
 worker per JDK, one compile per worker thread, and the worker has one thread per core it sees
 (cgroup quota included), like Maven's in-process javac under `-T`. Compiles past that wait in the
 engine for a thread to come free, and every compiler worker of the engine together runs at most one
-compile per core. The worker stays up 29 minutes after its last compile
-(`JK_WORKER_LINGER_MIN`), so the next build compiles on a warm JIT. A module whose worker JVM must
+compile per core. The worker stays up 10 minutes after the project was last worked on — its last
+compile, any jk request about the project, or an edit to its sources — (`JK_WORKER_LINGER_MIN`; 30 on
+CI), so the next build compiles on a warm JIT. A module whose worker JVM must
 differ — its own `-J` flags, `[env] inherit`, another JDK — gets a worker of its own. Two settings
 read from the engine's environment are for measurement, not tuning:
 
