@@ -97,6 +97,9 @@ public record Signature(
     public boolean methodMatches(String name, String desc) {
         if ((kind != Kind.METHOD && kind != Kind.MEMBER) || member == null || !member.equals(name)) return false;
         if (params == null) return true;
+        // A field access of the same name carries a field descriptor, which has no argument list;
+        // read as one it threw, and an empty-list signature such as `JkThreads#io()` crashed.
+        if (desc == null || !desc.startsWith("(")) return false;
         Type[] args = Type.getArgumentTypes(desc);
         if (args.length != params.size()) return false;
         for (int i = 0; i < args.length; i++) {
