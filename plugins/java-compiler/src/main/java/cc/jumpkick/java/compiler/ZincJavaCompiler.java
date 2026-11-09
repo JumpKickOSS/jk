@@ -97,9 +97,20 @@ public final class ZincJavaCompiler {
     /**
      * One stamper for every compile in this worker. Zinc caches a jar's or class file's hash
      * against its mtime in concurrent maps, so a module's unchanged dependencies are not re-hashed
-     * per compile and lanes may share it.
+     * per compile and lanes may share it. The maps keep every path they ever stamped, and a resident
+     * worker serves project after project for as long as they are worked on, so an idle worker
+     * starts a fresh one ({@link #forgetStamps}); the next build re-stamps what it reads.
      */
-    private static final ReadStamps STAMPER = Stamps.timeWrapBinaryStamps(PlainVirtualFileConverter.converter());
+    private static volatile ReadStamps sharedStamper = newStamper();
+
+    private static ReadStamps newStamper() {
+        return Stamps.timeWrapBinaryStamps(PlainVirtualFileConverter.converter());
+    }
+
+    /** Drop every cached stamp: called by an idle worker's trim, with no compile in flight. */
+    static void forgetStamps() {
+        sharedStamper = newStamper();
+    }
 
     private ZincJavaCompiler() {}
 
@@ -376,7 +387,7 @@ public final class ZincJavaCompiler {
             AnalysisStore store = zinced.store();
             // One stamper for the compile and for the classpath hash: both must see the same
             // (mtime-cached) hash of a jar or the two could disagree mid-compile.
-            ReadStamps stamper = STAMPER;
+            ReadStamps stamper = sharedStamper;
             // The same stamper judges a producer's analysis against its classes on disk.
             ClasspathAnalyses producers = ClasspathAnalyses.of(job.classpathAnalyses(), stamper);
             Setup setup = Setup.of(
@@ -580,7 +591,7 @@ public final class ZincJavaCompiler {
         LinkedHashMap<Path, String> invalid = new LinkedHashMap<>();
         forecastSources(analysis, sources, converter, invalid);
         forecastLibraries(analysis, classpath, classOutput, converter, invalid);
-        forecastExternals(analysis, ClasspathAnalyses.of(job.classpathAnalyses(), STAMPER), converter, invalid);
+        forecastExternals(analysis, ClasspathAnalyses.of(job.classpathAnalyses(), sharedStamper), converter, invalid);
 
         if (invalid.isEmpty()) {
             return new Plan(false, "zinc analysis current", List.of());
@@ -599,7 +610,7 @@ public final class ZincJavaCompiler {
     private static void forecastSources(
             Analysis analysis, List<Path> sources, FileConverter converter, Map<Path, String> invalid) {
         ReadStamps previous = analysis.readStamps();
-        ReadStamps current = STAMPER;
+        ReadStamps current = sharedStamper;
         for (Path src : sources) {
             if (src == null) continue;
             VirtualFile vf = converter.toVirtualFile(src);
@@ -653,7 +664,7 @@ public final class ZincJavaCompiler {
             FileConverter converter,
             Map<Path, String> invalid) {
         ReadStamps previous = analysis.readStamps();
-        ReadStamps current = STAMPER;
+        ReadStamps current = sharedStamper;
         Relations rel = analysis.relations();
         List<Path> libraries = new ArrayList<>(classpath == null ? List.of() : classpath);
         if (classOutput != null) libraries.add(classOutput);

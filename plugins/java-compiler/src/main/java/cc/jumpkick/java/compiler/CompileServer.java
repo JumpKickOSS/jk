@@ -241,6 +241,7 @@ final class CompileServer {
         if (inflight.get() > 0) return;
         trimmer.execute(() -> {
             if (inflight.get() > 0) return;
+            ZincJavaCompiler.forgetStamps();
             System.gc();
             send.accept(JsonFields.object()
                     .string(PluginProtocol.T, PluginProtocol.TRIMMED)
