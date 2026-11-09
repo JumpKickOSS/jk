@@ -219,9 +219,11 @@ def claims(rows: list[dict], link: str) -> str:
         j = cell[("jk", "wall.idle-rss")]
         engine = int(pub(j, "root-rss") or 0) >> 20
         resident = (f"Between builds jk keeps {idle['jk']:,} MiB resident"
-                    + (f": {engine:,} MiB for the engine, whose heap is capped at {default_heap_mb()} MiB and "
-                       f"trimmed back after every job"
-                       + (f", and {idle['jk'] - engine:,} MiB for warm workers" if idle["jk"] - engine >= 16 else "")
+                    + ((f": {engine:,} MiB for the engine, whose heap is capped at {default_heap_mb()} MiB and "
+                        f"trimmed back after every job, and {idle['jk'] - engine:,} MiB for warm workers"
+                        if idle["jk"] - engine >= 16
+                        else f", all of it the engine, whose heap is capped at {default_heap_mb()} MiB and "
+                             f"trimmed back after every job")
                        + ". A warm compiler leaves 10 minutes after its project's last request or edit, or as "
                          "soon as the host runs short of memory" if engine else "")
                     + ". One engine serves every project on the machine.")

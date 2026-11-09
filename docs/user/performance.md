@@ -7,9 +7,9 @@ the same work. This is the table behind the speed and memory sentences in the
 [`scoreboard.toml`](../../scoreboard.toml) by the scoreboard's night tier.
 
 <!-- wall-claims:begin -->
-On [spring-petclinic](#the-table), jk is faster than Gradle on every row: clean build (0.37 s against 2.69 s), warm rebuild (0.09 s against 0.57 s), no-op (0.05 s against 0.53 s), one-file edit (0.13 s against 0.61 s) and test run (8.54 s against 9.97 s). It is faster than Maven on every row: clean build (0.37 s against 3.16 s), warm rebuild (0.09 s against 3.16 s), no-op (0.05 s against 2.37 s), one-file edit (0.13 s against 3.14 s) and test run (8.54 s against 10.10 s).
+On [spring-petclinic](#the-table), jk is faster than Gradle on every row: clean build (0.44 s against 2.16 s), warm rebuild (0.10 s against 0.41 s), no-op (0.07 s against 0.37 s), one-file edit (0.21 s against 0.45 s) and test run (23.04 s against 23.67 s). It is faster than Maven on every row: clean build (0.44 s against 2.37 s), warm rebuild (0.10 s against 2.36 s), no-op (0.07 s against 1.79 s), one-file edit (0.21 s against 2.38 s) and test run (23.04 s against 23.71 s).
 
-Between builds jk keeps 863 MiB resident: 171 MiB for the engine, whose heap is capped at 256 MiB and trimmed back after every job, and the rest for warm compilers that exit after 30 idle minutes or as soon as the host runs short of memory. One engine serves every project on the machine. Gradle keeps 1,734 MiB, 2.0× as much: its daemon, which idles for three hours by default, and its workers. Maven keeps nothing resident and starts a fresh JVM for every build instead (2.37 s for a no-op). Peak whole-tree RSS during a run is lower than Gradle's on clean build, warm rebuild, no-op and one-file edit and higher on test run; it is higher than Maven's on every row.
+Between builds jk keeps 186 MiB resident, all of it the engine, whose heap is capped at 256 MiB and trimmed back after every job. A warm compiler leaves 10 minutes after its project's last request or edit, or as soon as the host runs short of memory. One engine serves every project on the machine. Gradle keeps 1,712 MiB, 9.2× as much: its daemon, which idles for three hours by default, and its workers. Maven keeps nothing resident and starts a fresh JVM for every build instead (1.79 s for a no-op). Peak whole-tree RSS during a run is lower than Gradle's on warm rebuild, no-op and one-file edit and higher on clean build and test run; it is higher than Maven's on every row.
 <!-- wall-claims:end -->
 
 ## The table
@@ -17,22 +17,22 @@ Between builds jk keeps 863 MiB resident: 171 MiB for the engine, whose heap is 
 <!-- wall-table:begin -->
 | Scenario | jk median / p90 | Gradle median / p90 | Maven median / p90 |
 |---|---:|---:|---:|
-| Clean build | 0.37 s / 3.37 s | 2.69 s / 10.02 s | 3.16 s / 3.23 s |
-| Warm rebuild | 0.09 s / 0.12 s | 0.57 s / 0.60 s | 3.16 s / 3.20 s |
-| No-op | 0.05 s / 0.05 s | 0.53 s / 0.56 s | 2.37 s / 2.42 s |
-| One-file edit | 0.13 s / 0.21 s | 0.61 s / 0.65 s | 3.14 s / 3.23 s |
-| Test run | 8.54 s / 8.84 s | 9.97 s / 18.27 s | 10.10 s / 11.42 s |
+| Clean build | 0.44 s / 2.28 s | 2.16 s / 8.01 s | 2.37 s / 2.54 s |
+| Warm rebuild | 0.10 s / 0.13 s | 0.41 s / 0.43 s | 2.36 s / 2.40 s |
+| No-op | 0.07 s / 0.08 s | 0.37 s / 0.38 s | 1.79 s / 1.83 s |
+| One-file edit | 0.21 s / 0.41 s | 0.45 s / 0.49 s | 2.38 s / 2.40 s |
+| Test run | 23.04 s / 24.80 s | 23.67 s / 47.61 s | 23.71 s / 28.96 s |
 
 | Scenario | jk peak RSS | Gradle peak RSS | Maven peak RSS |
 |---|---:|---:|---:|
-| Clean build | 593 MiB | 1,464 MiB | 546 MiB |
-| Warm rebuild | 544 MiB | 1,521 MiB | 540 MiB |
-| No-op | 573 MiB | 1,526 MiB | 452 MiB |
-| One-file edit | 620 MiB | 1,611 MiB | 535 MiB |
-| Test run | 1,993 MiB | 1,847 MiB | 1,189 MiB |
-| Idle, a minute after the test run | 863 MiB | 1,734 MiB | 0 MiB |
+| Clean build | 1,349 MiB | 1,336 MiB | 543 MiB |
+| Warm rebuild | 859 MiB | 1,343 MiB | 522 MiB |
+| No-op | 900 MiB | 1,343 MiB | 440 MiB |
+| One-file edit | 976 MiB | 1,497 MiB | 538 MiB |
+| Test run | 2,211 MiB | 1,807 MiB | 1,258 MiB |
+| Idle, 10 minutes after the test run | 186 MiB | 1,712 MiB | 0 MiB |
 
-Measured on 12th Gen Intel(R) Core(TM) i9-12900KF (24 logical CPUs, 12 GiB RAM), ubuntu-26.04, kernel 6.6.87.2-microsoft-standard-WSL2, WSL (host `c9ab742f7b18`); project spring-projects/spring-petclinic; Gradle 9.8.2; Maven 3.10.0; jk 0.41.1; 5 timed runs per cell. Banked 2026-10-26 at jk tree 1880fb554. Conditions: jk loadavg 1.4 at start, engine live jobs ?; Gradle loadavg 1.4 at start, engine live jobs ?; Maven loadavg 1.4 at start, engine live jobs ?.
+Measured on AMD Ryzen 9 7900X 12-Core Processor (24 logical CPUs, 30 GiB RAM), fedora-45, kernel 7.2.15-300.fc45.x86_64 (host `d7ad360c1bc7`); project spring-projects/spring-petclinic; Gradle 9.9.0; Maven 3.10.0; jk 0.50.4-SNAPSHOT; 5 timed runs per cell. Measured 2026-11-09 at jk tree 1ac34fa27 with `bench/wall/measure`; not yet banked in `scoreboard.toml`. Conditions: jk loadavg 0.4 at start, engine live jobs ?; Gradle loadavg 0.4 at start, engine live jobs ?; Maven loadavg 0.4 at start, engine live jobs ?.
 <!-- wall-table:end -->
 
 Walls are wall-clock seconds, median and p90 over the timed runs. Peak RSS is the highest sum of
@@ -97,8 +97,10 @@ and write the plain jar, and no more. The exact commands are in the
 ## Rerun it
 
 ```bash
-bench/wall/measure --bank      # every tool and scenario, five runs each; rewrites the table above
+bench/wall/measure                                   # every tool and scenario, five runs each
 bench/wall/measure --tool jk --scenario edit --runs 3
+bench/scoreboard --tier night --dim wall             # measure and bank the rows in scoreboard.toml
+bench/scoreboard --render                            # rewrite the table and sentences above from them
 ```
 
 The first run clones the project and provisions a working copy per tool under `~/src/scratch/wall`
