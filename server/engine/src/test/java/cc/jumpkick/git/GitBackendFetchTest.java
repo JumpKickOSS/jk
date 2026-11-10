@@ -41,6 +41,27 @@ class GitBackendFetchTest {
                 .contains("v1.0.0");
     }
 
+    /** A checkout a cancel or timeout cut short has no completion mark: the next fetch rebuilds it. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("cc.jumpkick.git.GitBackendsTestSupport#backends")
+    void an_interrupted_checkout_is_rebuilt_not_served(String name, BackendFactory factory, @TempDir Path tempDir)
+            throws Exception {
+        UpstreamFixture upstream = setupUpstream(tempDir.resolve("upstream"), "v1.0.0");
+        GitBackend backend = factory.create(tempDir.resolve("jk-git"));
+        GitSource source = GitSource.of(
+                upstream.workTree().toUri().toString(),
+                upstream.workTree().toUri().toString(),
+                new GitRefSpec.Tag("v1.0.0"));
+        Path checkout = backend.fetch(source, false).checkoutPath();
+
+        // What a killed checkout leaves: the directory, part of its files, and no mark.
+        Files.delete(checkout.resolveSibling(checkout.getFileName() + ".complete"));
+        Files.delete(checkout.resolve("README.md"));
+
+        GitFetcher.Fetched again = backend.fetch(source, false);
+        assertThat(again.checkoutPath().resolve("README.md")).exists();
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("cc.jumpkick.git.GitBackendsTestSupport#backends")
     void second_fetch_uses_cache(String name, BackendFactory factory, @TempDir Path tempDir) throws Exception {

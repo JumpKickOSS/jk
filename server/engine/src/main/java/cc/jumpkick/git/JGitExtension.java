@@ -153,42 +153,43 @@ public final class JGitExtension implements GitBackend {
     private Path cloneOrFetch(GitSource source) throws IOException {
         CredentialsProvider creds = providerFor(source.canonicalUrl());
         Path bareDir = gitRoot.resolve("db").resolve(GitUrl.canonicalHash(source.canonicalUrl()));
-        if (Files.isDirectory(bareDir.resolve("HEAD")) || Files.exists(bareDir.resolve("HEAD"))) {
-            try (Git git = Git.open(bareDir.toFile())) {
-                var f = git.fetch()
-                        .setRemote("origin")
-                        .setRemoveDeletedRefs(true)
-                        .setTagOpt(TagOpt.FETCH_TAGS)
-                        .setRefSpecs(
-                                new RefSpec("+refs/heads/*:refs/heads/*"), new RefSpec("+refs/tags/*:refs/tags/*"));
-                if (creds != null) f.setCredentialsProvider(creds);
-                f.call();
-            } catch (GitAPIException e) {
-                throw new IOException("git fetch failed: " + e.getMessage(), e);
+        return GitCacheDirs.locked(bareDir, () -> {
+            if (GitCacheDirs.complete(bareDir)) {
+                try (Git git = Git.open(bareDir.toFile())) {
+                    var f = git.fetch()
+                            .setRemote("origin")
+                            .setRemoveDeletedRefs(true)
+                            .setTagOpt(TagOpt.FETCH_TAGS)
+                            .setRefSpecs(
+                                    new RefSpec("+refs/heads/*:refs/heads/*"), new RefSpec("+refs/tags/*:refs/tags/*"));
+                    if (creds != null) f.setCredentialsProvider(creds);
+                    f.call();
+                } catch (GitAPIException | RuntimeException e) {
+                    throw new IOException("git fetch failed: " + e.getMessage(), e);
+                }
+                return bareDir;
             }
-            return bareDir;
-        }
-        Files.createDirectories(bareDir.getParent());
-        try {
-            new URIish(source.canonicalUrl());
-        } catch (URISyntaxException e) {
-            throw new IOException("invalid URL", e);
-        }
-        try {
-            var clone = Git.cloneRepository()
-                    .setBare(true)
-                    .setURI(source.canonicalUrl())
-                    .setDirectory(bareDir.toFile());
-            // Explicit tag entries request a shallow clone (depth 1) to save bandwidth.
-            // URL-embedded refs and all other ref types use a full clone.
-            if (source.shallow()) clone.setDepth(1);
-            if (creds != null) clone.setCredentialsProvider(creds);
-            clone.call().close();
-        } catch (GitAPIException e) {
-            deleteRecursively(bareDir);
-            throw new IOException("git clone failed: " + e.getMessage(), e);
-        }
-        return bareDir;
+            try {
+                new URIish(source.canonicalUrl());
+            } catch (URISyntaxException e) {
+                throw new IOException("invalid URL", e);
+            }
+            return GitCacheDirs.publish(bareDir, false, staging -> {
+                try {
+                    var clone = Git.cloneRepository()
+                            .setBare(true)
+                            .setURI(source.canonicalUrl())
+                            .setDirectory(staging.toFile());
+                    // Explicit tag entries request a shallow clone (depth 1) to save bandwidth.
+                    // URL-embedded refs and all other ref types use a full clone.
+                    if (source.shallow()) clone.setDepth(1);
+                    if (creds != null) clone.setCredentialsProvider(creds);
+                    clone.call().close();
+                } catch (GitAPIException | RuntimeException e) {
+                    throw new IOException("git clone failed: " + e.getMessage(), e);
+                }
+            });
+        });
     }
 
     static String resolveRefSha(GitSource source, Path bareDir) throws IOException {
@@ -219,20 +220,19 @@ public final class JGitExtension implements GitBackend {
         Path dir = gitRoot.resolve("co")
                 .resolve(GitUrl.canonicalHash(source.canonicalUrl()))
                 .resolve(sha);
-        if (noCache && Files.isDirectory(dir)) deleteRecursively(dir);
-        if (Files.isDirectory(dir)) return dir;
-        Files.createDirectories(dir.getParent());
-        try (Git g = Git.cloneRepository()
-                .setURI(bareDir.toUri().toString())
-                .setDirectory(dir.toFile())
-                .setNoCheckout(true)
-                .call()) {
-            g.checkout().setName(sha).call();
-        } catch (GitAPIException e) {
-            deleteRecursively(dir);
-            throw new IOException("checkout failed: " + e.getMessage(), e);
-        }
-        return dir;
+        return GitCacheDirs.locked(
+                dir,
+                () -> GitCacheDirs.publish(dir, noCache, staging -> {
+                    try (Git g = Git.cloneRepository()
+                            .setURI(bareDir.toUri().toString())
+                            .setDirectory(staging.toFile())
+                            .setNoCheckout(true)
+                            .call()) {
+                        g.checkout().setName(sha).call();
+                    } catch (GitAPIException | RuntimeException e) {
+                        throw new IOException("checkout failed: " + e.getMessage(), e);
+                    }
+                }));
     }
 
     static Optional<String> describeNearestTag(Git git, ObjectId target) throws GitAPIException, IOException {

@@ -267,44 +267,44 @@ public final class GitCliExtension implements GitBackend {
     private Path ensureBareClone(GitSource source) throws IOException {
         String url = source.canonicalUrl();
         Path bareDir = gitRoot.resolve("db").resolve(GitUrl.canonicalHash(url));
-        if (Files.exists(bareDir.resolve("HEAD"))) {
-            ProcResult r = exec(
-                    bareDir,
-                    url,
-                    List.of(
-                            "fetch",
-                            "--prune",
-                            "--prune-tags",
-                            "origin",
-                            "+refs/heads/*:refs/heads/*",
-                            "+refs/tags/*:refs/tags/*"),
-                    networkTimeoutSec);
-            if (r.exit != 0) throw new IOException("git fetch failed: " + r.output.strip());
-            return bareDir;
-        }
-        Files.createDirectories(bareDir.getParent());
-        List<String> args = new ArrayList<>(List.of("clone", "--bare"));
-        // Explicit tag entries request a shallow clone (depth 1) to save bandwidth; all other ref
-        // types use a full clone. `shallow` is set iff the ref is a Tag (GitSource), so pin the
-        // clone to that tag with --branch: a bare `--depth 1` only fetches the default-branch tip,
-        // which would omit a tag that points elsewhere (JGit's clone auto-follows the tag instead).
-        if (source.shallow()) {
-            args.add("--depth");
-            args.add("1");
-            if (source.ref() instanceof GitRefSpec.Tag t) {
-                args.add("--branch");
-                args.add(t.name());
+        return GitCacheDirs.locked(bareDir, () -> {
+            if (GitCacheDirs.complete(bareDir)) {
+                ProcResult r = exec(
+                        bareDir,
+                        url,
+                        List.of(
+                                "fetch",
+                                "--prune",
+                                "--prune-tags",
+                                "origin",
+                                "+refs/heads/*:refs/heads/*",
+                                "+refs/tags/*:refs/tags/*"),
+                        networkTimeoutSec);
+                if (r.exit != 0) throw new IOException("git fetch failed: " + r.output.strip());
+                return bareDir;
             }
-        }
-        args.add("--");
-        args.add(url);
-        args.add(bareDir.toString());
-        ProcResult r = exec(null, url, args, networkTimeoutSec);
-        if (r.exit != 0) {
-            JGitExtension.deleteRecursively(bareDir);
-            throw new IOException("git clone failed: " + r.output.strip());
-        }
-        return bareDir;
+            return GitCacheDirs.publish(bareDir, false, staging -> {
+                List<String> args = new ArrayList<>(List.of("clone", "--bare"));
+                // Explicit tag entries request a shallow clone (depth 1) to save bandwidth; all other
+                // ref types use a full clone. `shallow` is set iff the ref is a Tag (GitSource), so pin
+                // the clone to that tag with --branch: a bare `--depth 1` only fetches the
+                // default-branch tip, which would omit a tag that points elsewhere (JGit's clone
+                // auto-follows the tag instead).
+                if (source.shallow()) {
+                    args.add("--depth");
+                    args.add("1");
+                    if (source.ref() instanceof GitRefSpec.Tag t) {
+                        args.add("--branch");
+                        args.add(t.name());
+                    }
+                }
+                args.add("--");
+                args.add(url);
+                args.add(staging.toString());
+                ProcResult r = exec(null, url, args, networkTimeoutSec);
+                if (r.exit != 0) throw new IOException("git clone failed: " + r.output.strip());
+            });
+        });
     }
 
     private String resolveRefSha(GitSource source, Path bareDir) throws IOException {
@@ -340,31 +340,25 @@ public final class GitCliExtension implements GitBackend {
         Path dir = gitRoot.resolve("co")
                 .resolve(GitUrl.canonicalHash(source.canonicalUrl()))
                 .resolve(sha);
-        if (noCache && Files.isDirectory(dir)) JGitExtension.deleteRecursively(dir);
-        if (Files.isDirectory(dir)) return dir;
-        Files.createDirectories(dir.getParent());
-        // Local clone from the bare mirror; pass the bare dir as a plain filesystem path (not a
-        // file:// URI) so it works on Windows.
-        ProcResult clone = exec(
-                null,
-                null,
-                List.of("clone", "--no-checkout", "--", bareDir.toString(), dir.toString()),
-                localTimeoutSec);
-        if (clone.exit != 0) {
-            JGitExtension.deleteRecursively(dir);
-            throw new IOException("checkout clone failed: " + clone.output.strip());
-        }
-        // NB: no `--end-of-options` here. Unlike rev-parse/show/describe, `git checkout --detach`
-        // rejects it — git parses the token as a pathspec and fails with "--detach does not take a
-        // path argument '--end-of-options'" (seen on git 2.43). `sha` is an already-resolved full
-        // 40-hex commit id (resolveRefSha → rev-parse --verify), so it can't be mistaken for an
-        // option or a path; the plain form is safe and works across git versions (Linux/macOS).
-        ProcResult co = exec(dir, null, List.of("checkout", "--detach", sha), localTimeoutSec);
-        if (co.exit != 0) {
-            JGitExtension.deleteRecursively(dir);
-            throw new IOException("checkout failed: " + co.output.strip());
-        }
-        return dir;
+        return GitCacheDirs.locked(
+                dir,
+                () -> GitCacheDirs.publish(dir, noCache, staging -> {
+                    // Local clone from the bare mirror; pass the bare dir as a plain filesystem path (not a
+                    // file:// URI) so it works on Windows.
+                    ProcResult clone = exec(
+                            null,
+                            null,
+                            List.of("clone", "--no-checkout", "--", bareDir.toString(), staging.toString()),
+                            localTimeoutSec);
+                    if (clone.exit != 0) throw new IOException("checkout clone failed: " + clone.output.strip());
+                    // NB: no `--end-of-options` here. Unlike rev-parse/show/describe, `git checkout --detach`
+                    // rejects it — git parses the token as a pathspec and fails with "--detach does not take
+                    // a path argument '--end-of-options'" (seen on git 2.43). `sha` is an already-resolved
+                    // full 40-hex commit id (resolveRefSha → rev-parse --verify), so it can't be mistaken for
+                    // an option or a path; the plain form is safe and works across git versions.
+                    ProcResult co = exec(staging, null, List.of("checkout", "--detach", sha), localTimeoutSec);
+                    if (co.exit != 0) throw new IOException("checkout failed: " + co.output.strip());
+                }));
     }
 
     private Optional<String> describeNearestTag(Path bareDir, String sha) throws IOException {
