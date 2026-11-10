@@ -191,7 +191,14 @@ public record BuildBlock(
          * the compiled {@code module-info} declares, so a {@code ServiceLoader} on a class path or a
          * processor path finds what the module path would. Default {@code false}.
          */
-        boolean moduleServices) {
+        boolean moduleServices,
+        /**
+         * {@code [build] cache-heavy-outputs}: whether this module's heavy outputs (a native image,
+         * a fat jar, a jlink image) may enter the cache at all, under the machine's {@code [cache]
+         * heavy-ttl}. {@code false} keeps them where they were built. A project can only turn this
+         * off; the window is the machine's. Default {@code true}.
+         */
+        boolean cacheHeavyOutputs) {
 
     /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
     public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -238,7 +245,8 @@ public record BuildBlock(
             Resources.EMPTY,
             null,
             null,
-            false);
+            false,
+            true);
 
     public BuildBlock {
         resources = resources == null ? Resources.EMPTY : resources;

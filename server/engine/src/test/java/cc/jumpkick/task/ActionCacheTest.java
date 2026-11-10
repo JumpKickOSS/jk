@@ -634,23 +634,21 @@ class ActionCacheTest {
     void a_generation_two_checkouts_share_outlives_either_ones_trim(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir.resolve("cas"));
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
-        String task = TaskNames.NATIVE_IMAGE + "@shared"; // two generations per checkout
+        String task = TaskNames.NATIVE_IMAGE + "@shared"; // one generation per checkout
         Path a = Files.createDirectories(tempDir.resolve("checkout-a/target"));
         Path b = Files.createDirectories(tempDir.resolve("checkout-b/target"));
 
         storeImage(cache, task, "key-same", a);
         storeImage(cache, task, "key-same", b);
         storeImage(cache, task, "key-a2", a);
-        storeImage(cache, task, "key-a3", a);
         assertThat(cache.lookup("key-same"))
-                .as("A trimmed it from its own generations; B still names it")
+                .as("A trimmed it from its own generation; B still names it")
                 .isPresent();
         storeImage(cache, task, "key-b2", b);
-        storeImage(cache, task, "key-b3", b);
         assertThat(cache.lookup("key-same")).as("no checkout names it any more").isEmpty();
-        assertThat(cache.lookup("key-a2")).isPresent();
+        assertThat(cache.lookup("key-a2")).as("A's one generation").isPresent();
         assertThat(cache.lookup("key-b2")).isPresent();
-        assertThat(cache.lastFor(task).orElseThrow().actionKey()).isEqualTo("key-b3");
+        assertThat(cache.lastFor(task).orElseThrow().actionKey()).isEqualTo("key-b2");
     }
 
     /** A record whose store path carries no output root keeps no generation list. */

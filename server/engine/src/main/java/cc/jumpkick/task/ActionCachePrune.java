@@ -2,6 +2,8 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.DiskGuard;
+import cc.jumpkick.config.HeavyTtl;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
@@ -85,6 +87,11 @@ public final class ActionCachePrune {
      * @param memoMaxEntries how many output-less key records survive; {@code <= 0} disables the cap
      * @param incrementalBudgetBytes byte budget for the Zinc analysis trees
      * @param incrementalWindow age after which one task's Zinc analysis goes
+     * @param heavyWindow how long after its last use an action key holding a heavy blob ({@link
+     *     DiskGuard#HEAVY_BYTES} or more: a native image, a fat jar) goes; {@code Duration.ZERO}
+     *     takes every one past the grace window, {@code null} runs no heavy pass
+     * @param heavyBudgetBytes the most the heavy keys' blobs may hold together, least recently used
+     *     going first; clamped to {@link #HEAVY_VOLUME_SHARE} of the cache volume
      */
     public record Policy(
             long actionBudgetBytes,
@@ -92,7 +99,34 @@ public final class ActionCachePrune {
             Duration memoWindow,
             int memoMaxEntries,
             long incrementalBudgetBytes,
-            Duration incrementalWindow) {
+            Duration incrementalWindow,
+            @Nullable Duration heavyWindow,
+            long heavyBudgetBytes) {
+
+        /** Heavy outputs together: 2 GiB, or {@link #HEAVY_VOLUME_SHARE} of a small volume. */
+        public static final long HEAVY_BUDGET_BYTES = 2L * 1024 * 1024 * 1024;
+
+        /** The share of the cache volume heavy outputs may hold at most. */
+        public static final double HEAVY_VOLUME_SHARE = 0.04;
+
+        /** No heavy pass: the windows and budgets of the three tiers alone. */
+        public Policy(
+                long actionBudgetBytes,
+                Duration actionWindow,
+                Duration memoWindow,
+                int memoMaxEntries,
+                long incrementalBudgetBytes,
+                Duration incrementalWindow) {
+            this(
+                    actionBudgetBytes,
+                    actionWindow,
+                    memoWindow,
+                    memoMaxEntries,
+                    incrementalBudgetBytes,
+                    incrementalWindow,
+                    null,
+                    0L);
+        }
 
         /** Action keys outlive a month of not being used. */
         public static final Duration ACTION_WINDOW = Duration.ofDays(30);
@@ -118,7 +152,9 @@ public final class ActionCachePrune {
                     MEMO_WINDOW,
                     MEMO_MAX_ENTRIES,
                     config.incrementalMaxSizeBytes(),
-                    INCREMENTAL_WINDOW);
+                    INCREMENTAL_WINDOW,
+                    HeavyTtl.resolve(),
+                    HEAVY_BUDGET_BYTES);
         }
     }
 
@@ -221,6 +257,16 @@ public final class ActionCachePrune {
         // evicting one to make room buys a rounding error and costs a whole test run.
         used -= capMemos(memos, policy.memoMaxEntries(), evictor);
 
+        // Heavy outputs on their own short window and budget: expensive to hold, rarely asked for
+        // again after a day, so they go hours after their last use whatever room is left.
+        if (policy.heavyWindow() != null) {
+            List<Entry> heavy = new ArrayList<>();
+            for (Entry entry : actions) {
+                if (!entry.deleted() && heavy(entry, blobs)) heavy.add(entry);
+            }
+            used -= expireHeavy(heavy, policy.heavyWindow(), heavyBudget(policy, cacheRoot), blobs, now, evictor);
+        }
+
         if (policy.actionBudgetBytes() > 0) {
             for (Entry entry : actions) {
                 if (used <= policy.actionBudgetBytes()) break;
@@ -256,6 +302,60 @@ public final class ActionCachePrune {
             freed += evictor.evict(entry);
         }
         return freed;
+    }
+
+    /** True when {@code entry} is a Class-C output, or names a blob of {@link DiskGuard#HEAVY_BYTES} or more. */
+    private static boolean heavy(Entry entry, Blobs blobs) {
+        if (HeavyActionPolicy.classC(entry.taskId())) return true;
+        for (int blob : entry.blobs()) {
+            if (blobs.size(blob) >= DiskGuard.HEAVY_BYTES) return true;
+        }
+        return false;
+    }
+
+    /** The heavy budget, clamped to {@link Policy#HEAVY_VOLUME_SHARE} of the volume {@code cacheRoot} is on. */
+    private static long heavyBudget(Policy policy, Path cacheRoot) {
+        long budget = policy.heavyBudgetBytes();
+        JkCacheConfig.DiskSpace space = JkCacheConfig.DiskSpace.probe(cacheRoot);
+        if (space != null && space.totalBytes() > 0) {
+            budget = Math.min(budget, (long) (space.totalBytes() * Policy.HEAVY_VOLUME_SHARE));
+        }
+        return budget;
+    }
+
+    /**
+     * Take every heavy key past {@code window} since its last use ({@code ZERO}: every one), then the
+     * least recently used until the rest hold no more than {@code budget}. Returns the bytes freed.
+     */
+    private static long expireHeavy(
+            List<Entry> heavy, Duration window, long budget, Blobs blobs, long now, Evictor evictor)
+            throws IOException {
+        long freed = 0L;
+        long cutoff = window.isNegative() ? 0L : window.toMillis();
+        for (Entry entry : heavy) {
+            if (cutoff > 0 && now - entry.mtime() < cutoff) continue;
+            freed += evictor.evict(entry);
+        }
+        if (budget <= 0) return freed;
+        long held = 0L;
+        for (Entry entry : heavy) {
+            if (!entry.deleted()) held += blobBytes(entry, blobs);
+        }
+        for (Entry entry : heavy) {
+            if (held <= budget) break;
+            if (entry.deleted()) continue;
+            long bytes = blobBytes(entry, blobs);
+            long taken = evictor.evict(entry);
+            if (entry.deleted()) held -= bytes;
+            freed += taken;
+        }
+        return freed;
+    }
+
+    private static long blobBytes(Entry entry, Blobs blobs) {
+        long total = 0L;
+        for (int blob : entry.blobs()) total += Math.max(0L, blobs.size(blob));
+        return total;
     }
 
     /** Trim the memo tier to {@code max} surviving records, least recently used first. */

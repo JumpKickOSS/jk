@@ -80,6 +80,7 @@ final class BuildFields {
     Jlink jlink;
 
     boolean moduleServices;
+    boolean cacheHeavyOutputs;
 
     private BuildFields(BuildBlock b) {
         orderAfter = b.orderAfter();
@@ -124,6 +125,7 @@ final class BuildFields {
         nullness = b.nullness();
         jlink = b.jlink();
         moduleServices = b.moduleServices();
+        cacheHeavyOutputs = b.cacheHeavyOutputs();
     }
 
     BuildBlock build() {
@@ -169,6 +171,7 @@ final class BuildFields {
                 resources,
                 nullness,
                 jlink,
-                moduleServices);
+                moduleServices,
+                cacheHeavyOutputs);
     }
 }

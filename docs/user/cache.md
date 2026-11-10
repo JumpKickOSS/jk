@@ -199,8 +199,27 @@ take a blob a restore is about to read or is reading. That restore is a cache mi
 again, and none of the record's outputs is left half laid. A blob unlinked while the copy holds
 it open is read to the end; a copy that fails or comes up short fails its digest check.
 
-Class-C outputs (native images, OCI tarballs, fat/minified jars) keep at most **2**
-generations of action keys (**1** for OCI) **per checkout**: two worktrees of one project on
+### Heavy outputs
+
+A heavy output is what a native-image, image, fat-jar or minified-jar step stores, whatever its
+size, and any other cached blob of **32 MiB** or more (a jlink image, a large node bundle). They are expensive to make and to hold alike, and rarely asked for again after a day,
+so they get a tier of their own. A heavy output stays cached **12 hours after its last use** (a
+restore renews it), then goes whatever room is left; together they hold at most **2 GiB**, or 4%
+of a small volume, least recently used going first.
+
+```toml
+# ~/.jk/config.toml
+[cache]
+heavy-ttl = "12h"   # 0 keeps heavy outputs out of the cache; never more than 24h
+```
+
+`JK_HEAVY_TTL` overrides the file. On CI (`CI` set) the default is `0`: a short-lived runner gains
+nothing from them, and a long-lived one is where a full disk does the most harm. A project can keep
+its own heavy outputs out of the cache with `[build] cache-heavy-outputs = false` in its
+`jk.toml`; it cannot lengthen the window, which is the machine's.
+
+Class-C outputs (native images, OCI tarballs, fat/minified jars) keep at most **1**
+generation of action keys **per checkout**: two worktrees of one project on
 different branches each keep their own, so neither evicts the other's image on an alternate
 build. There is no separate Class-C size share and no Class-C TTL — a generation trimmed off
 every checkout's list goes at once, and the rest take their turn by last use.

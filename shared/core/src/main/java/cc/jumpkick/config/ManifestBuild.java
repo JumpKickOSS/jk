@@ -354,7 +354,8 @@ public final class ManifestBuild {
                     BuildBlock.Resources.EMPTY,
                     null,
                     null,
-                    false);
+                    false,
+                    true);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
         JkBuildParser.TestTomlTags tags = ManifestTables.parseTestTags(root);
@@ -400,7 +401,8 @@ public final class ManifestBuild {
                 BuildBlock.Resources.EMPTY,
                 null,
                 null,
-                s.moduleServices);
+                s.moduleServices,
+                s.cacheHeavyOutputs);
     }
 
     /** The keys {@code [resolve]} may carry; the schema names exactly these. */

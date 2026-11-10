@@ -40,6 +40,7 @@ final class ManifestBuildTable {
         final List<String> testPluginJars = new ArrayList<>();
         boolean lint = true;
         boolean moduleServices = false;
+        boolean cacheHeavyOutputs = true;
         DebugInfo debug = DebugInfo.FULL;
         final List<String> kspOptions = new ArrayList<>();
 
@@ -82,6 +83,7 @@ final class ManifestBuildTable {
             "test-workers",
             "test-parallel",
             TaskNames.MODULE_SERVICES,
+            "cache-heavy-outputs",
             "logic");
 
     private static void readBuildTable(TomlTable build, Settings s) {
@@ -181,6 +183,14 @@ final class ManifestBuildTable {
                 throw new JkBuildParseException("[build].module-services must be true or false");
             }
             s.moduleServices = on;
+        }
+        // [build] cache-heavy-outputs = false — this module's heavy outputs stay where they were built.
+        Object rawHeavy = build.get("cache-heavy-outputs");
+        if (rawHeavy != null) {
+            if (!(rawHeavy instanceof Boolean on)) {
+                throw new JkBuildParseException("[build].cache-heavy-outputs must be true or false");
+            }
+            s.cacheHeavyOutputs = on;
         }
     }
 

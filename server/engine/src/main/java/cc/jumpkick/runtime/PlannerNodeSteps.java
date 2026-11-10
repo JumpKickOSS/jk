@@ -182,7 +182,7 @@ final class PlannerNodeSteps {
             return;
         }
         if (files.isEmpty()) cache.storeWithOutputs(keyed.taskId(), keyed.key(), keyed.inputs(), Map.of());
-        else if (PackagingCache.admitted(ctx, cache.root(), files))
+        else if (PackagingCache.admitted(ctx, cache.root(), files, keyed.taskId()))
             cache.storeArtifacts(keyed.taskId(), keyed.key(), keyed.inputs(), unit.nodeDir(), files);
         ctx.progress(1);
     }

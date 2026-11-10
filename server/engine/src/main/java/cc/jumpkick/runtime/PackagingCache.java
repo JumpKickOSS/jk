@@ -3,10 +3,13 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.DiskGuard;
+import cc.jumpkick.config.HeavyTtl;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.HeavyActionPolicy;
 import cc.jumpkick.task.InputGuard;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -85,7 +88,7 @@ final class PackagingCache {
             ctx.warn("inputs-moved", InputGuard.describe(taskId.split("@", 2)[0], moved));
             return;
         }
-        if (!admitted(ctx, cacheRoot, artifacts)) return;
+        if (!admitted(ctx, cacheRoot, artifacts, taskId)) return;
         storeRecord(cacheRoot, taskId, key, tokens, baseDir, artifacts, said);
     }
 
@@ -94,7 +97,14 @@ final class PackagingCache {
      * disk, so on a nearly full volume ({@link DiskGuard}) a heavy artifact stays in target/ only,
      * the step says so, and the engine is woken to reclaim space.
      */
-    static boolean admitted(TaskContext ctx, Path cacheRoot, List<Path> artifacts) {
+    static boolean admitted(TaskContext ctx, Path cacheRoot, List<Path> artifacts, @Nullable String taskId) {
+        // A heavy output enters the cache only while the machine keeps heavy outputs at all
+        // ([cache] heavy-ttl, 0 on CI) and the module has not opted out ([build] cache-heavy-outputs).
+        if (HeavyActionPolicy.classC(taskId) || largestOf(artifacts) >= DiskGuard.HEAVY_BYTES) {
+            if (!HeavyTtl.caches(HeavyTtl.resolve())) return false;
+            JkBuild project = ctx.get(BuildPlanner.PROJECT).orElse(null);
+            if (project != null && !project.build().cacheHeavyOutputs()) return false;
+        }
         if (DiskGuard.admits(cacheRoot, sizeOf(artifacts))) return true;
         ctx.warn(
                 DISK_LOW,
@@ -105,6 +115,18 @@ final class PackagingCache {
 
     /** The warning a packaging step carries when the disk guard kept its artifact out of the cache. */
     static final String DISK_LOW = "disk-low";
+
+    private static long largestOf(List<Path> artifacts) {
+        long largest = 0;
+        for (Path a : artifacts) {
+            try {
+                if (Files.isRegularFile(a)) largest = Math.max(largest, Files.size(a));
+            } catch (IOException unreadable) {
+                // a file that cannot be sized decides nothing
+            }
+        }
+        return largest;
+    }
 
     private static long sizeOf(List<Path> artifacts) {
         long total = 0;

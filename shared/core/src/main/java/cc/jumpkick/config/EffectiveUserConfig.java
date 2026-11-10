@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -163,6 +164,13 @@ public final class EffectiveUserConfig {
                 JkCacheConfig.formatGb(d.maxCacheSizeGb()),
                 JkCacheConfig.formatGb(e.maxCacheSizeGb()));
         add(out, "cache.prune-interval-days", d.pruneIntervalDays(), e.pruneIntervalDays());
+        // Off on CI by default; the CI-aware default makes "overridden" mean the user set it.
+        Duration heavyDefault = EnvValues.isCi(env) ? Duration.ZERO : HeavyTtl.DEFAULT;
+        add(
+                out,
+                "cache.heavy-ttl",
+                SessionExpiry.spell(heavyDefault),
+                SessionExpiry.spell(HeavyTtl.resolve(file, env)));
     }
 
     private static void addHistory(List<Row> out, Path file, Function<String, @Nullable String> env) {

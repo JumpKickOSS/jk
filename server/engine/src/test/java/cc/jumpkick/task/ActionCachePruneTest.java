@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.GraphCacheKeys;
+import cc.jumpkick.config.DiskGuard;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -519,6 +520,90 @@ class ActionCachePruneTest {
         var sweep = CasSweep.sweep(cas, roots, dryRun);
         var prune = ActionCachePrune.run(root, cas, windows(1_000), sweep.deletedShas(), dryRun);
         return new long[] {sweep.deleted() + prune.totalDeletedFiles(), sweep.freedBytes() + prune.totalFreedBytes()};
+    }
+
+    // ---------------------------------------------------------------- heavy outputs
+
+    private static final int HEAVY = (int) DiskGuard.HEAVY_BYTES;
+
+    /** The shipped windows, no budgets, and heavy outputs on {@code heavyWindow} and {@code heavyBudget}. */
+    private static ActionCachePrune.Policy heavy(Duration heavyWindow, long heavyBudget) {
+        return new ActionCachePrune.Policy(
+                0L,
+                ActionCachePrune.Policy.ACTION_WINDOW,
+                ActionCachePrune.Policy.MEMO_WINDOW,
+                0,
+                0L,
+                ActionCachePrune.Policy.INCREMENTAL_WINDOW,
+                heavyWindow,
+                heavyBudget);
+    }
+
+    @Test
+    void a_heavy_output_goes_twelve_hours_after_its_last_use_while_a_small_one_the_same_age_stays(@TempDir Path root)
+            throws IOException {
+        Cas cas = new Cas(root);
+        long thirteenHours = Duration.ofHours(13).toMillis();
+        String nativeImage = blob(cas, HEAVY, 'n', thirteenHours);
+        String classes = blob(cas, 1_000, 'c', thirteenHours);
+        String recentImage = blob(cas, HEAVY + 1, 'r', RECENT);
+        Path heavyKey = key(root, "key-native", "native-image@a", thirteenHours, nativeImage);
+        Path smallKey = key(root, "key-classes", "compile-main@a", thirteenHours, classes);
+        Path recentKey = key(root, "key-native-recent", "native-image@b", RECENT, recentImage);
+
+        ActionCachePrune.run(root, cas, heavy(Duration.ofHours(12), 0L), Set.of(), false);
+
+        assertThat(heavyKey).as("past its 12 hours").doesNotExist();
+        assertThat(cas.pathFor(nativeImage)).doesNotExist();
+        assertThat(smallKey).as("a small output keeps the 30-day action window").exists();
+        assertThat(recentKey).as("used two hours ago").exists();
+    }
+
+    @Test
+    void a_fat_jar_is_heavy_whatever_its_size(@TempDir Path root) throws IOException {
+        Cas cas = new Cas(root);
+        long thirteenHours = Duration.ofHours(13).toMillis();
+        String fatJar = blob(cas, 19_000_000 / 1000, 'f', thirteenHours);
+        Path fatKey = key(root, "key-fat", "package-assembly@a", thirteenHours, fatJar);
+
+        ActionCachePrune.run(root, cas, heavy(Duration.ofHours(12), 0L), Set.of(), false);
+
+        assertThat(fatKey).as("a Class-C task's output takes the heavy window").doesNotExist();
+    }
+
+    @Test
+    void a_zero_heavy_window_takes_every_heavy_output_past_the_grace_window(@TempDir Path root) throws IOException {
+        Cas cas = new Cas(root);
+        String old = blob(cas, HEAVY, 'o', RECENT);
+        String justStored = blob(cas, HEAVY, 'j', FRESH);
+        Path oldKey = key(root, "key-old", "package-assembly@a", RECENT, old);
+        Path freshKey = key(root, "key-fresh", "package-assembly@b", FRESH, justStored);
+
+        ActionCachePrune.run(root, cas, heavy(Duration.ZERO, 0L), Set.of(), false);
+
+        assertThat(oldKey).doesNotExist();
+        assertThat(freshKey)
+                .as("inside the grace window a writer may still be recording it")
+                .exists();
+    }
+
+    @Test
+    void heavy_outputs_over_their_budget_go_least_recently_used_first(@TempDir Path root) throws IOException {
+        Cas cas = new Cas(root);
+        String a = blob(cas, HEAVY, 'a', Duration.ofHours(5).toMillis());
+        String b = blob(cas, HEAVY, 'b', Duration.ofHours(4).toMillis());
+        String c = blob(cas, HEAVY, 'c', Duration.ofHours(3).toMillis());
+        Path keyA = key(root, "key-a", "native-image@a", Duration.ofHours(5).toMillis(), a);
+        Path keyB = key(root, "key-b", "native-image@b", Duration.ofHours(4).toMillis(), b);
+        Path keyC = key(root, "key-c", "native-image@c", Duration.ofHours(3).toMillis(), c);
+
+        ActionCachePrune.run(root, cas, heavy(Duration.ofHours(12), 2L * HEAVY), Set.of(), false);
+
+        assertThat(keyA)
+                .as("least recently used, and the three are over a two-image budget")
+                .doesNotExist();
+        assertThat(keyB).exists();
+        assertThat(keyC).exists();
     }
 
     // ---------------------------------------------------------------- fixtures
