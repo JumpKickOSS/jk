@@ -60,6 +60,13 @@ final class ReusedJavacFileManager {
     private @Nullable StandardJavaFileManager fm;
     private @Nullable Charset encoding;
 
+    /**
+     * The release options the held manager's compiles ran under. javac opens each archive with the
+     * multi-release view of the target at first open and keeps it until the manager closes, so a
+     * compile at another release must not inherit that view.
+     */
+    private String release = "";
+
     /** Every option-set location a compile has declared on the held manager since it was built. */
     private final Set<StandardLocation> carried = EnumSet.noneOf(StandardLocation.class);
 
@@ -83,12 +90,13 @@ final class ReusedJavacFileManager {
             Charset encoding,
             DiagnosticListener<JavaFileObject> diags,
             Set<StandardLocation> declared) {
-        return acquire(javac, encoding, diags, declared, List.of());
+        return acquire(javac, encoding, diags, declared, List.of(), "");
     }
 
     /**
-     * As above, for a compile whose path options name {@code entries}: a held manager that saw one
-     * of them as it was before a rewrite, or before it existed, is thrown away rather than handed
+     * As above, for a compile whose path options name {@code entries} and whose release options
+     * spell {@code release}: a held manager that saw one of the entries as it was before a rewrite,
+     * or before it existed, or that compiled at another release, is thrown away rather than handed
      * over.
      */
     static StandardJavaFileManager acquire(
@@ -96,8 +104,9 @@ final class ReusedJavacFileManager {
             Charset encoding,
             DiagnosticListener<JavaFileObject> diags,
             Set<StandardLocation> declared,
-            List<Path> entries) {
-        return PER_THREAD.get().get(javac, encoding, diags, declared, entries);
+            List<Path> entries,
+            String release) {
+        return PER_THREAD.get().get(javac, encoding, diags, declared, entries, release);
     }
 
     /**
@@ -121,12 +130,17 @@ final class ReusedJavacFileManager {
             Charset wanted,
             DiagnosticListener<JavaFileObject> diags,
             Set<StandardLocation> declared,
-            List<Path> named) {
+            List<Path> named,
+            String wantedRelease) {
         relay.to = diags;
         Map<Path, EntryStamp> now = new HashMap<>();
         for (Path entry : named) now.put(entry, EntryStamp.of(entry));
         StandardJavaFileManager current = fm;
-        if (current != null && wanted.equals(encoding) && !staleLocation(current, declared) && !rewritten(now)) {
+        if (current != null
+                && wanted.equals(encoding)
+                && wantedRelease.equals(release)
+                && !staleLocation(current, declared)
+                && !rewritten(now)) {
             carried.addAll(declared);
             entries.putAll(now);
             return current;
@@ -135,6 +149,7 @@ final class ReusedJavacFileManager {
         StandardJavaFileManager fresh = javac.getStandardFileManager(relay, Locale.ROOT, wanted);
         fm = fresh;
         encoding = wanted;
+        release = wantedRelease;
         carried.clear();
         carried.addAll(declared);
         entries.clear();

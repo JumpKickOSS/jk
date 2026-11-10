@@ -219,20 +219,62 @@ class ReusedJavacFileManagerTest {
         String[] options = {"-classpath", dep.toString()};
 
         StandardJavaFileManager before = ReusedJavacFileManager.acquire(
-                JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(), ProvenanceJavac.pathEntriesNamed(options));
+                JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(), ProvenanceJavac.pathEntriesNamed(options), "");
         assertThat(compileAgainst(before, dir, out, dep, "v")).isFalse();
 
         Files.createDirectories(dep);
         buildDep(dir, dep, "public int v() { return 1; }");
         StandardJavaFileManager after = ReusedJavacFileManager.acquire(
-                JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(), ProvenanceJavac.pathEntriesNamed(options));
+                JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(), ProvenanceJavac.pathEntriesNamed(options), "");
 
         assertThat(after).isNotSameAs(before);
         assertThat(compileAgainst(after, dir, out, dep, "v")).isTrue();
         assertThat(ReusedJavacFileManager.acquire(
-                        JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(), ProvenanceJavac.pathEntriesNamed(options)))
+                        JAVAC,
+                        StandardCharsets.UTF_8,
+                        d -> {},
+                        Set.of(),
+                        ProvenanceJavac.pathEntriesNamed(options),
+                        ""))
                 .as("a class written into a directory that exists keeps the manager")
                 .isSameAs(after);
+    }
+
+    /**
+     * javac opens a multi-release jar with the view of the release of the compile that first opened
+     * it and keeps that view: a compile at another release gets a manager of its own.
+     */
+    @Test
+    void a_compile_at_another_release_gets_a_fresh_manager() {
+        String at11 = ProvenanceJavac.releaseOf(new String[] {"--release", "11"});
+        StandardJavaFileManager first =
+                ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(), List.of(), at11);
+        assertThat(ReusedJavacFileManager.acquire(
+                        JAVAC,
+                        StandardCharsets.UTF_8,
+                        d -> {},
+                        Set.of(),
+                        List.of(),
+                        ProvenanceJavac.releaseOf(new String[] {"--release=11"})))
+                .as("the same release in its other spelling keeps the manager")
+                .isSameAs(first);
+        assertThat(ReusedJavacFileManager.acquire(
+                        JAVAC,
+                        StandardCharsets.UTF_8,
+                        d -> {},
+                        Set.of(),
+                        List.of(),
+                        ProvenanceJavac.releaseOf(new String[] {"--release", "21"})))
+                .isNotSameAs(first);
+    }
+
+    @Test
+    void release_options_are_read_in_every_spelling() {
+        assertThat(ProvenanceJavac.releaseOf(new String[] {"-d", "out", "--release", "17", "-g"}))
+                .isEqualTo("--release=17 ");
+        assertThat(ProvenanceJavac.releaseOf(new String[] {"-source", "11", "-target=11"}))
+                .isEqualTo("-source=11 -target=11 ");
+        assertThat(ProvenanceJavac.releaseOf(new String[] {"-d", "out"})).isEmpty();
     }
 
     /** Compiles {@code pkg.Dep} into {@code dep} with its own manager, so nothing here is cached. */

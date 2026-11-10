@@ -93,7 +93,7 @@ final class ProvenanceJavac implements JavaCompiler {
         // decides: it outranks -encoding, which BaseFileManager.getDecoder only falls back to.
         // Same constant as the flag, so the two spellings of the charset cannot drift apart.
         StandardJavaFileManager fm = ReusedJavacFileManager.acquire(
-                javac, encoding, diags, declaredLocations(options), pathEntriesNamed(options));
+                javac, encoding, diags, declaredLocations(options), pathEntriesNamed(options), releaseOf(options));
         try {
             Files.createDirectories(classOut);
             fm.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(classOut));
@@ -231,6 +231,28 @@ final class ProvenanceJavac implements JavaCompiler {
      * The entries the path options of {@code options} name, jars and directories alike: what a held
      * file manager may have opened, or found missing, during an earlier compile.
      */
+    /**
+     * The options that pick the target release ({@code --release}, {@code -source}, {@code -target}
+     * in every spelling) with their values, in order: what decides the multi-release view of every
+     * archive javac opens.
+     */
+    static String releaseOf(String[] options) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < options.length; i++) {
+            String opt = options[i];
+            int eq = opt.indexOf('=');
+            String name = eq < 0 ? opt : opt.substring(0, eq);
+            if (!RELEASE_OPTIONS.contains(name)) continue;
+            out.append(opt);
+            if (eq < 0 && i + 1 < options.length) out.append('=').append(options[++i]);
+            out.append(' ');
+        }
+        return out.toString();
+    }
+
+    private static final Set<String> RELEASE_OPTIONS =
+            Set.of("--release", "-source", "--source", "-target", "--target");
+
     static List<Path> pathEntriesNamed(String[] options) {
         List<Path> out = new ArrayList<>();
         for (int i = 0; i < options.length; i++) {
