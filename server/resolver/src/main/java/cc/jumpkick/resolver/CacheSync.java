@@ -15,6 +15,8 @@ import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoCredentialResolver;
+import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.task.TransferBoard;
 import java.io.IOException;
@@ -72,6 +74,18 @@ public final class CacheSync {
     /** Visible for tests — inject a credential resolver. */
     public CacheSync(Cas cas, Http http, RepoCredentialResolver creds) {
         this(cas, http, creds, true);
+    }
+
+    /** The project's configured repositories, which a lock row's source is matched against first. */
+    private List<MavenRepo> configured = List.of();
+
+    /**
+     * Fetch each row through the project's own repository of the same name and URL when it has one,
+     * so its mirror, credential, object-store settings and policy apply as they do to the resolve.
+     */
+    public CacheSync withRepositories(RepoGroup repos) {
+        this.configured = List.copyOf(repos.repos());
+        return this;
     }
 
     /** The pool fetch tasks run on; {@link #onExecutor} swaps it for tests. */
@@ -426,8 +440,19 @@ public final class CacheSync {
             throw new IllegalArgumentException("lockfile package source must be '<name>+<url>', got: " + source);
         }
         URI url = URI.create(rs.url());
-        var cred = creds.resolve(name, url, Optional.empty());
-        MavenRepo repo = new MavenRepo(name, url, http, cas, cred, m2integration);
+        MavenRepo repo = null;
+        for (MavenRepo candidate : configured) {
+            if (candidate.name().equals(name) && candidate.baseUrl().equals(url)) {
+                repo = candidate;
+                break;
+            }
+        }
+        if (repo == null) {
+            // A repository a POM declared, or one the manifest no longer lists: still behind the
+            // mirror this machine routes it through, never asked at its own URL in the mirror's place.
+            var cred = creds.resolve(name, url, Optional.empty());
+            repo = RepoMirrors.apply(new MavenRepo(name, url, http, cas, cred, m2integration));
+        }
         cache.put(source, repo);
         return repo;
     }

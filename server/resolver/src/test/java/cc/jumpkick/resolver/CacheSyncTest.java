@@ -4,12 +4,15 @@ package cc.jumpkick.resolver;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.repo.DownloadSlots;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.SysProps;
@@ -17,6 +20,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -411,6 +415,31 @@ class CacheSyncTest {
                 pkg("com.foo:leaf", "1.0", "sha256:aa").withSourcesChecksum("sha256:" + Hashing.sha256Hex(sources)));
         assertThat(newSync(tempDir.resolve("second")).syncSources(right, CacheSync.ProgressObserver.NOOP))
                 .isEqualTo(1);
+    }
+
+    @Test
+    void a_row_is_fetched_through_the_projects_repository_of_that_name_behind_its_mirror(@TempDir Path tempDir)
+            throws Exception {
+        byte[] jar = "via-the-mirror".getBytes(StandardCharsets.UTF_8);
+        String hex = Hashing.sha256Hex(jar);
+        registerJar("com.foo", "leaf", "1.0", jar);
+        URI corp = URI.create("https://repo.invalid/maven2/");
+        Cas cas = new Cas(tempDir.resolve("cache"));
+        // The project's repository `corp`, which a mirror-of table routes to the loopback stub.
+        MavenRepo configured = new MavenRepo("corp", corp, new Http(), cas, RepoCredential.ANONYMOUS, false)
+                .mirroredThrough(new MavenRepo.Mirror(
+                        "m", URI.create(http.base() + "/"), RepoCredential.ANONYMOUS, "the corp mirror", null));
+        Lockfile lock =
+                lockOf(new Lockfile.Artifact("com.foo:leaf", "1.0", "corp+" + corp, "sha256:" + hex, null, List.of()));
+
+        CacheSync.Report report = new CacheSync(cas, Http.failFast(), false)
+                .withRepositories(new RepoGroup(List.of(configured)))
+                .sync(lock);
+
+        assertThat(report.errors())
+                .as("the repository is never asked at its own URL")
+                .isEmpty();
+        assertThat(report.fetched()).isEqualTo(1);
     }
 
     private CacheSync newSync(Path tempDir, boolean mirrorToM2) {

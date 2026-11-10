@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compat.NodeProvisioning;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
@@ -222,7 +223,11 @@ public final class SyncPlans {
                         }
                     };
                     boolean refresh = SessionContext.current().config().forceOr(false);
-                    var report = new CacheSync(cas, http, mirrorToM2).sync(lock, observer, refresh);
+                    CacheSync sync = new CacheSync(cas, http, mirrorToM2);
+                    if (build != null) {
+                        sync.withRepositories(RepoGroupBuilder.buildFor(build, repoUrl, cas, BuildEnv.forModule(dir)));
+                    }
+                    var report = sync.sync(lock, observer, refresh);
                     ctx.put(CAS_REPORT, report);
                     if (report.hasErrors()) {
                         throw new RuntimeException("dep fetch had errors");
