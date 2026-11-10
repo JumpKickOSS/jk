@@ -3,10 +3,12 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.SecretRedactor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -44,9 +46,9 @@ class HttpHistoryApiTest {
 
     @Test
     void mcp_journal_suppliers_serve_redacted_records(@TempDir Path dir) throws Exception {
-        // history view=full and diagnostics read raw journal JSON through the suppliers the
-        // engine wires into McpHandler — those ride redactRecords, so an agent on the MCP surface
-        // sees the same masking as the REST history stream.
+        // history view=full and diagnostics read raw journal JSON through the supplier the engine
+        // wires into McpHandler (redactLazily), one redactor per dir across the list, so an agent
+        // on the MCP surface sees the same masking as the REST history stream.
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "g"
                 name = "demo"
@@ -55,7 +57,8 @@ class HttpHistoryApiTest {
         Files.writeString(dir.resolve(".env"), "TOKEN=mcp-s3cret\n");
         String raw = """
                 {"id":"x","kind":"build","dir":"%s","diagnostics":[{"severity":"error","message":"leak mcp-s3cret"}]}""".formatted(jsonDir(dir));
-        var out = HttpHistoryApi.redactRecords(List.of(raw, raw));
+        Map<String, SecretRedactor> cache = new HashMap<>();
+        var out = List.of(HttpHistoryApi.redactRecordJson(raw, cache), HttpHistoryApi.redactRecordJson(raw, cache));
         assertThat(out).hasSize(2);
         assertThat(out.get(0)).doesNotContain("mcp-s3cret").contains("***");
         assertThat(out.get(1)).doesNotContain("mcp-s3cret");

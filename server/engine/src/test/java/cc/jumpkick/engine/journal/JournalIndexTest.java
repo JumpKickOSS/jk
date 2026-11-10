@@ -95,4 +95,18 @@ class JournalIndexTest {
         assertThat(j.get(id)).isEmpty();
         assertThat(j.heads(10)).hasSize(1);
     }
+
+    @Test
+    void a_lazy_list_reads_a_record_only_when_it_is_reached() {
+        BuildJournal j = new BuildJournal(dir);
+        for (int i = 0; i < 10; i++)
+            j.append(finished("/p" + i, 1_700_000_000_000L + i * 1000), BuildJournal.Snapshot.NONE);
+        j.heads(1); // the index is built
+        long before = j.recordReads();
+        List<String> records = j.lazyRawRecords(200, raw -> raw);
+        assertThat(records).hasSize(10);
+        assertThat(records.getFirst()).contains("\"/p9\"");
+        records.getFirst();
+        assertThat(j.recordReads() - before).as("one record read, once").isEqualTo(1);
+    }
 }

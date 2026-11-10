@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -34,6 +35,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -769,6 +771,34 @@ public final class BuildJournal {
             readRaw(l.dir()).ifPresent(out::add);
         }
         return out;
+    }
+
+    /**
+     * The newest {@code limit} records as raw JSON, each read only when the list's element is first
+     * asked for and kept after: a reader that stops at its first match (the newest run of one
+     * checkout, a run by id) reads one record, not {@code limit}. An unreadable record reads as the
+     * empty string, which parses as no record. The rows are chosen off the index when the list is
+     * made.
+     */
+    public List<String> lazyRawRecords(int limit, UnaryOperator<String> each) {
+        List<RawLoaded> rows = loadNewestRaw(Math.max(limit, 0), null);
+        @Nullable String[] read = new String[rows.size()];
+        return new AbstractList<>() {
+            @Override
+            public synchronized String get(int i) {
+                String r = read[i];
+                if (r == null) {
+                    r = readRaw(rows.get(i).dir()).map(each).orElse("");
+                    read[i] = r;
+                }
+                return r;
+            }
+
+            @Override
+            public int size() {
+                return rows.size();
+            }
+        };
     }
 
     /** A record's head text with its run dir and a lexical sort key — no {@link BuildRecord} graph built. */

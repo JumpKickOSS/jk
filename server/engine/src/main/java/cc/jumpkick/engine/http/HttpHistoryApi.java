@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -91,16 +92,12 @@ final class HttpHistoryApi {
     }
 
     /**
-     * Redact a batch of raw journal records with one per-dir redactor cache. This endpoint
-     * streams record bodies verbatim, so {@code .env} secrets in message/stack are stripped here.
-     * MCP journal suppliers ride this so {@code history view=full} / {@code diagnostics}
-     * never serve those secrets.
+     * The newest {@code limit} records, each read and redacted only when a reader reaches it, one
+     * redactor per dir across the list: what every MCP history consumer reads.
      */
-    static List<String> redactRecords(List<String> raw) {
-        Map<String, SecretRedactor> cache = new HashMap<>();
-        List<String> out = new ArrayList<>(raw.size());
-        for (String r : raw) out.add(redactRecordJson(r, cache));
-        return out;
+    static List<String> redactLazily(BuildJournal journal, int limit) {
+        Map<String, SecretRedactor> cache = new ConcurrentHashMap<>();
+        return journal.lazyRawRecords(limit, raw -> redactRecordJson(raw, cache));
     }
 
     static String redactRecordJson(String raw, Map<String, SecretRedactor> cache) {

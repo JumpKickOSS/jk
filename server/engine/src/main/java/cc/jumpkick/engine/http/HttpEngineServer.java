@@ -242,7 +242,7 @@ public final class HttpEngineServer implements AutoCloseable {
                         status,
                         jobs,
                         McpFront::projectMap,
-                        () -> HttpHistoryApi.redactRecords(journal.rawRecords(200)),
+                        () -> HttpHistoryApi.redactLazily(journal, 200),
                         version,
                         progressTokens,
                         () -> this.liveRuns.get(),
