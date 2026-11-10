@@ -309,7 +309,12 @@ final class Json {
     static BuildJournal.@Nullable Head readHead(String text) {
         int cut = tailStart(text);
         if (cut < 0) return null;
-        Object root = MiniJson.parse(text.substring(0, cut) + "\n}");
+        return parseHead(text.substring(0, cut));
+    }
+
+    /** A record head already cut before its tail ({@link #tailStart}), parsed. */
+    static BuildJournal.Head parseHead(String head) {
+        Object root = MiniJson.parse(head + "\n}");
         if (!(root instanceof Map<?, ?> m)) {
             throw new IllegalArgumentException("record.json is not a JSON object");
         }

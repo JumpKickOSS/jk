@@ -29,7 +29,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -120,7 +119,11 @@ public final class BuildJournal {
         this.buildsRoot = buildsRoot.normalize();
         this.stubDelayMillis = stubDelayMillis;
         this.harvests = harvests;
+        this.runs = new JournalIndex(this.buildsRoot, this::headText);
     }
+
+    /** Every run by its record head: what the reads below consult instead of listing the root. */
+    private final JournalIndex runs;
 
     /** This process's journal: every finished build-like run requests a harvest of its root. */
     public static BuildJournal current() {
@@ -256,6 +259,7 @@ public final class BuildJournal {
                 }
                 OwnerOnlyFiles.seal(tmp);
                 move(tmp, target);
+                runs.touched(target);
                 if (harvests
                         && !record.running()
                         && !record.synthetic()
@@ -388,6 +392,7 @@ public final class BuildJournal {
             boolean spilled = Files.isRegularFile(tmp.resolve(DIAGNOSTICS_SPILL));
             moveIfPresent(tmp, target, DIAGNOSTICS_SPILL);
             AtomicWrites.moveInto(tmp.resolve(RECORD), target.resolve(RECORD));
+            runs.touched(target);
             if (!spilled) Files.deleteIfExists(target.resolve(DIAGNOSTICS_SPILL));
             Files.deleteIfExists(target.resolve(ENGINE_OWNER));
             moveIfPresent(tmp, target, ProjectBuilds.METRICS);
@@ -420,6 +425,7 @@ public final class BuildJournal {
             String c = coord == null || coord.isBlank() ? "unknown:unknown" : coord;
             Path home = ProjectBuilds.projectHome(buildsRoot, c, projectPath);
             if (Files.isDirectory(home)) PathUtil.deleteRecursively(home);
+            runs.touchedHome(home);
         } catch (RuntimeException e) {
             // best-effort
             Log.debug("purgeProject: best-effort", e);
@@ -440,22 +446,17 @@ public final class BuildJournal {
         int abandoned = 0;
         int live = 0;
         long now = Clock.SYSTEM.millis();
-        for (BuildRecord r : list()) {
-            if (r == null || !r.running()) continue;
-            // A numbered row lives under its project's runs/<n>; a lock or format row under a
-            // j-… directory only its record id finds.
-            Optional<Path> dir = r.buildNumber() > 0
-                    ? runDir(ProjectBuilds.runDirName(r.buildNumber()), r)
-                    : (r.id() == null ? Optional.empty() : locateById(r.id()));
-            if (dir.isEmpty()) continue;
-            String locator = dir.get().getFileName().toString();
-            EngineOwner owner = ownerOf(dir.get());
+        for (JournalIndex.Entry e : runs.newest()) {
+            if (!e.running()) continue;
+            String locator = e.dir().getFileName().toString();
+            EngineOwner owner = ownerOf(e.dir());
             if (owner != null && alive.test(owner)) {
                 live++;
                 continue;
             }
-            BuildRecord whole = readRecord(dir.get()).orElse(r);
-            if (complete(locator, whole.abandoned(now, jkVersion), Snapshot.NONE)) abandoned++;
+            Optional<BuildRecord> whole = readRecord(e.dir());
+            if (whole.isEmpty() || !whole.get().running()) continue;
+            if (complete(locator, whole.get().abandoned(now, jkVersion), Snapshot.NONE)) abandoned++;
         }
         return new StaleSweep(abandoned, live);
     }
@@ -593,26 +594,30 @@ public final class BuildJournal {
         }
     }
 
-    /**
-     * The newest {@code limit} non-synthetic heads, newest first. {@code entryDirs()} is
-     * newest-first by run-dir mtime (one stat per dir), so stopping after {@code limit} loads is
-     * O(limit) head reads.
-     */
+    /** The newest {@code limit} non-synthetic heads, newest first by finish (else start) time, off the index. */
     public List<Head> heads(int limit) {
         List<Head> out = new ArrayList<>();
         if (limit <= 0) return out;
-        for (Path dir : entryDirs()) {
+        for (JournalIndex.Entry e : runs.newest()) {
             if (out.size() >= limit) break;
-            Optional<Head> head = readHead(dir);
             // Defense in depth: never surface optimize/calibrate fixtures.
+            if (e.synthetic()) continue;
+            Optional<Head> head = headOf(e);
             if (head.isPresent() && !head.get().record().synthetic()) out.add(head.get());
         }
-        // Newest first by startedAt / finishedAt
-        out.sort(Comparator.comparingLong((Head h) -> h.record().finishedAt() > 0
-                        ? h.record().finishedAt()
-                        : h.record().startedAt())
-                .reversed());
         return out;
+    }
+
+    /** {@code e}'s head parsed from the index's text, or read whole when that text stopped short of the tail. */
+    private Optional<Head> headOf(JournalIndex.Entry e) {
+        if (e.headComplete()) {
+            try {
+                return Optional.of(Json.parseHead(e.head()));
+            } catch (RuntimeException unparsable) {
+                return Optional.empty();
+            }
+        }
+        return readHead(e.dir());
     }
 
     /** How many earlier runs of a project the coverage delta looks back through. */
@@ -667,37 +672,18 @@ public final class BuildJournal {
         };
     }
 
-    /**
-     * Run dirs located by {@link #rawFinishedRecordByRequestId} — a wait loop re-reads one
-     * {@code record.json} head per poll instead of re-scanning the journal. Bounded residue: cleared
-     * wholesale once full — safe for a value cache (nothing holds these entries).
-     */
-    private final ConcurrentHashMap<Long, Path> runDirsByRequestId = new ConcurrentHashMap<>();
-
     private final NoopRecords noops = new NoopRecords();
 
     /**
      * Raw JSON of the <em>finished</em> record stamped with {@code requestId}, or empty while the
-     * run is absent or still {@code running}. A no-op's comes from memory; a run dir is found with
-     * one newest-first scan of record heads and memoized, so a poll reads one head until the run
-     * finishes.
+     * run is absent or still {@code running}. A no-op's comes from memory, any other run's dir from
+     * the index.
      */
     public Optional<String> rawFinishedRecordByRequestId(long requestId) {
         if (requestId <= 0) return Optional.empty();
         Optional<String> noop = noops.get(requestId);
         if (noop.isPresent()) return noop;
-        Path dir = runDirsByRequestId.get(requestId);
-        if (dir != null) {
-            if (Files.isDirectory(dir)) return readFinished(dir, requestId);
-            runDirsByRequestId.remove(requestId, dir); // pruned since memoized — re-locate
-        }
-        for (RawLoaded l : loadNewestRaw(200, null)) {
-            if (scanLong(l.head(), "requestId") != requestId) continue;
-            if (runDirsByRequestId.size() >= 1_024) runDirsByRequestId.clear();
-            runDirsByRequestId.put(requestId, l.dir());
-            return scanTrue(l.head(), "running") ? Optional.empty() : readRaw(l.dir());
-        }
-        return Optional.empty();
+        return runs.byRequestId(requestId).flatMap(e -> readFinished(e.dir(), requestId));
     }
 
     /** The whole record when its head carries {@code requestId} and says it finished. */
@@ -787,24 +773,18 @@ public final class BuildJournal {
     private record RawLoaded(String head, Path dir, long sortKey) {}
 
     /**
-     * The raw-only twin of {@link #heads}: the synthetic filter, {@code filter} and the
-     * newest-first sort are lexical scans of each record's head ({@link #rawHead}), so a caller
-     * reads a whole record only for the rows it keeps.
+     * The raw-only twin of {@link #heads}: the synthetic filter and {@code filter} are lexical
+     * scans of each head the index holds, so a caller reads a whole record only for the rows it
+     * keeps.
      */
     private List<RawLoaded> loadNewestRaw(int limit, @Nullable Predicate<String> filter) {
         List<RawLoaded> out = new ArrayList<>();
-        for (Path dir : entryDirs()) {
+        for (JournalIndex.Entry e : runs.newest()) {
             if (out.size() >= limit) break;
-            String head = rawHead(dir);
-            if (head == null) continue;
-            index(scanString(head, "id"), dir);
-            if (BuildRecord.isSyntheticTrigger(scanString(head, "trigger"))) continue;
-            if (filter != null && !filter.test(head)) continue;
-            long sort = scanLong(head, "finishedAt");
-            if (sort <= 0) sort = scanLong(head, "startedAt");
-            out.add(new RawLoaded(head, dir, sort));
+            if (e.synthetic()) continue;
+            if (filter != null && !filter.test(e.head())) continue;
+            out.add(new RawLoaded(e.head(), e.dir(), e.sortKey()));
         }
-        out.sort(Comparator.comparingLong(RawLoaded::sortKey).reversed());
         return out;
     }
 
@@ -894,6 +874,7 @@ public final class BuildJournal {
         Path dir = findRunDir(idOrLocator).orElse(null);
         if (dir == null || !Files.isDirectory(dir)) return false;
         PathUtil.deleteRecursively(dir);
+        runs.touched(dir);
         return true;
     }
 
@@ -916,6 +897,7 @@ public final class BuildJournal {
                 if (scoped.isPresent()) {
                     if (!Files.isDirectory(scoped.get())) return false;
                     PathUtil.deleteRecursively(scoped.get());
+                    runs.touched(scoped.get());
                     return true;
                 }
                 // A per-project number that does not exist under this project is not ours to
@@ -934,16 +916,23 @@ public final class BuildJournal {
      * keep it.
      */
     public PruneResult prune(long maxAgeMillis, long maxDiskBytes, long nowMillis, Predicate<String> dropDecision) {
-        List<JournalPrune.Entry> runs = new ArrayList<>();
-        for (Path dir : entryDirs()) {
+        List<JournalPrune.Entry> candidates = new ArrayList<>();
+        for (JournalIndex.Entry e : runs.newest()) {
             // Never reap a run that has not finished: the idle gate is checked before this call,
             // so a build admitted in between would otherwise have its `running` stub deleted out
             // from under it.
-            Optional<BuildRecord> record = readHead(dir).map(Head::record);
-            if (record.map(BuildRecord::running).orElse(false)) continue;
-            runs.add(JournalPrune.Entry.dir(dir, entryMillis(dir, record, nowMillis)));
+            if (e.running()) continue;
+            long when = e.sortKey() > 0 ? e.sortKey() : idMillis(e.id(), e.dirMillis() > 0 ? e.dirMillis() : nowMillis);
+            candidates.add(JournalPrune.Entry.dir(e.dir(), when));
         }
-        return JournalPrune.prune(buildsRoot, runs, maxAgeMillis, maxDiskBytes, nowMillis, dropDecision);
+        PruneResult result =
+                JournalPrune.prune(buildsRoot, candidates, maxAgeMillis, maxDiskBytes, nowMillis, dropDecision);
+        if (result.removedEntries() > 0) {
+            for (JournalPrune.Entry c : candidates) {
+                if (!Files.isDirectory(c.path())) runs.touched(c.path());
+            }
+        }
+        return result;
     }
 
     private Optional<Path> resolveForComplete(String locator, BuildRecord finished) {
@@ -998,50 +987,13 @@ public final class BuildJournal {
         };
     }
 
-    /**
-     * Run dirs by record {@code id}, filled as records are read and listed, so a run the journal
-     * has listed resolves with one record read. Bounded like {@link #runDirsByRequestId}.
-     */
-    private final ConcurrentHashMap<String, Path> runDirsById = new ConcurrentHashMap<>();
-
-    private void index(@Nullable String id, Path dir) {
-        if (id == null || id.isBlank()) return;
-        if (runDirsById.size() >= 1_024) runDirsById.clear();
-        runDirsById.put(id, dir);
-    }
-
-    /**
-     * The indexed dir when its record still carries {@code id} (one read); otherwise one scan of
-     * the journal, which fills the index for every record it passes on the way.
-     */
+    /** The run whose record carries {@code id}, off the index. */
     private Optional<Path> locateById(String id) {
-        Path indexed = runDirsById.get(id);
-        if (indexed != null) {
-            if (carriesId(indexed, id)) return Optional.of(indexed);
-            runDirsById.remove(id, indexed); // pruned or rewritten since indexed — re-locate
-        }
-        for (Path dir : entryDirs()) {
-            if (carriesId(dir, id)) return Optional.of(dir);
-        }
-        return Optional.empty();
+        return runs.byId(id).map(JournalIndex.Entry::dir);
     }
 
-    /**
-     * As {@link #locateById}, reading the indexed record whole with {@code read} so a remembered id
-     * costs one read; {@code idOf} is the id the read record carries.
-     */
     private <T> Optional<T> readById(String id, Function<Path, Optional<T>> read, Function<T, @Nullable String> idOf) {
-        Path indexed = runDirsById.get(id);
-        if (indexed != null) {
-            Optional<T> r = read.apply(indexed).filter(found -> id.equals(idOf.apply(found)));
-            if (r.isPresent()) return r;
-            runDirsById.remove(id, indexed);
-        }
-        return locateById(id).flatMap(read);
-    }
-
-    private boolean carriesId(Path dir, String id) {
-        return readHead(dir).map(h -> id.equals(h.record().id())).orElse(false);
+        return locateById(id).flatMap(read).filter(found -> id.equals(idOf.apply(found)));
     }
 
     /**
@@ -1059,15 +1011,31 @@ public final class BuildJournal {
         return locator != null && locator.startsWith("j-") && locator.length() > 2;
     }
 
-    private List<Path> entryDirs() {
-        return ProjectBuilds.listAllRuns(buildsRoot);
-    }
-
     /** How many {@code record.json} files this journal has read; the lookup-cost seam tests measure. */
     private final AtomicLong recordReads = new AtomicLong();
 
     long recordReads() {
         return recordReads.get();
+    }
+
+    /** The index's read of a run: its record head cut before the tail, and whether the cut was found. */
+    private JournalIndex.@Nullable HeadText headText(Path dir) {
+        Path record = dir.resolve(RECORD);
+        if (!Files.isRegularFile(record)) return null;
+        recordReads.incrementAndGet();
+        try {
+            String head = ProjectBuilds.recordHead(record).strip();
+            if (head.isEmpty() || head.charAt(0) != '{') return null;
+            int cut = Json.tailStart(head);
+            return new JournalIndex.HeadText(cut < 0 ? head : head.substring(0, cut), cut >= 0);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** Head reads the index has made: with {@link #recordReads}, the lookup-cost seam tests measure. */
+    long indexHeadReads() {
+        return runs.headReads();
     }
 
     /** A whole record, the diagnostics its writer spilled to {@link #DIAGNOSTICS_SPILL} included. */
@@ -1078,7 +1046,6 @@ public final class BuildJournal {
         try {
             String json = Files.readString(record, StandardCharsets.UTF_8);
             BuildRecord parsed = Json.read(json, readSpill(dir, json));
-            index(parsed.id(), dir);
             return Optional.of(parsed);
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
@@ -1100,32 +1067,18 @@ public final class BuildJournal {
                 head = Json.readHead(whole);
                 if (head == null) head = Head.of(Json.read(whole));
             }
-            index(head.record().id(), dir);
             return Optional.of(head);
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
     }
 
-    /** When the run under {@code dir} happened, from its record {@code r} when it has one. */
-    private static long entryMillis(Path dir, Optional<BuildRecord> r, long fallback) {
-        if (r.isPresent()) {
-            long t = r.get().finishedAt() > 0 ? r.get().finishedAt() : r.get().startedAt();
-            if (t > 0) return t;
-            String id = r.get().id();
-            if (id != null) {
-                try {
-                    return LocalDateTime.parse(id, ID_TS)
-                            .toInstant(ZoneOffset.UTC)
-                            .toEpochMilli();
-                } catch (RuntimeException e) {
-                    Log.debug("entryMillis: RuntimeException ignored", e);
-                }
-            }
-        }
+    /** When a run with record {@code id} happened, read off its timestamp id; {@code fallback} when it is not one. */
+    private static long idMillis(@Nullable String id, long fallback) {
+        if (id == null) return fallback;
         try {
-            return Files.getLastModifiedTime(dir).toMillis();
-        } catch (IOException e) {
+            return LocalDateTime.parse(id, ID_TS).toInstant(ZoneOffset.UTC).toEpochMilli();
+        } catch (RuntimeException notATimestamp) {
             return fallback;
         }
     }
