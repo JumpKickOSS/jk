@@ -583,12 +583,28 @@ public final class ActionCache {
      * Put {@code blob} at {@code target} unless a byte-identical file is already there. False when
      * the copied bytes do not hash to {@code sha} (the blob is dropped so the next store re-puts it).
      * COPY, never link: compilers and packagers rewrite restored files in place, and a hard link
-     * would let that rewrite mutate the CAS blob (see {@code Cas.putFile}).
+     * would let that rewrite mutate the CAS blob (see {@code Cas.putFile}). A large blob is laid
+     * down by {@code Files.copy}, which clones where the filesystem can (see {@code Cas.putFile}): no
+     * space until one side is written, and as safe from an in-place rewrite as a copy; its bytes are
+     * verified by reading the result. A streamed copy that hashes on the way can never be a clone,
+     * so every restore of a native image or fat jar used to cost its full size again.
      */
     private boolean layDown(Blob blob, Path target, String sha) throws IOException {
         Files.createDirectories(target.getParent());
         if (identicalTo(target, blob, sha)) return true;
         Files.deleteIfExists(target);
+        if (Files.size(blob.path()) >= CLONE_MIN_BYTES) {
+            try {
+                Files.copy(blob.path(), target);
+            } catch (NoSuchFileException vanished) {
+                // Another process's prune unlinked the blob since the presence check: a miss.
+                return false;
+            }
+            if (sha.equalsIgnoreCase(Hashing.sha256Hex(target))) return true;
+            Files.deleteIfExists(target);
+            dropCorruptBlob(sha);
+            return false;
+        }
         if (copyVerified(blob.path(), target, sha)) return true;
         dropCorruptBlob(sha);
         return false;
@@ -622,6 +638,9 @@ public final class ActionCache {
         Files.deleteIfExists(target);
         return false;
     }
+
+    /** Below this a clone saves too little to be worth a second read of the bytes to verify them; such blobs stream and hash in one pass. */
+    static final long CLONE_MIN_BYTES = 1024L * 1024;
 
     /** A blob whose bytes no longer match its name is garbage — drop it so the next store re-puts. */
     private void dropCorruptBlob(String sha) {

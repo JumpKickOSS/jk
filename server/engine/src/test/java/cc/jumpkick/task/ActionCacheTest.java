@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
@@ -574,6 +575,32 @@ class ActionCacheTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("was not written");
         assertThat(cache.lookup("key-empty")).isEmpty();
+    }
+
+    @Test
+    void a_large_restored_output_rewritten_in_place_never_reaches_the_cached_blob(@TempDir Path tempDir)
+            throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path base = Files.createDirectories(tempDir.resolve("target"));
+        Path image = base.resolve("app");
+        byte[] bytes = new byte[(int) ActionCache.CLONE_MIN_BYTES * 2];
+        for (int i = 0; i < bytes.length; i++) bytes[i] = (byte) (i * 7);
+        Files.write(image, bytes);
+        cache.storeArtifacts("native-image", "key-image", Map.of(), base, List.of(image));
+        Files.delete(image);
+
+        assertThat(cache.restoreArtifacts(cache.lookup("key-image").orElseThrow(), base))
+                .isTrue();
+        assertThat(Files.readAllBytes(image)).isEqualTo(bytes);
+        // A packager that rewrites its output in place: the reason restores never hard-link.
+        try (var out = Files.newOutputStream(image, StandardOpenOption.WRITE)) {
+            out.write(new byte[] {9, 9, 9, 9});
+        }
+        assertThat(cache.restoreArtifacts(cache.lookup("key-image").orElseThrow(), base))
+                .as("the blob still holds the bytes the key names")
+                .isTrue();
+        assertThat(Files.readAllBytes(image)).isEqualTo(bytes);
     }
 
     @Test

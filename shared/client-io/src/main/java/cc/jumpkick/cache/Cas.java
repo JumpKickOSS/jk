@@ -239,8 +239,11 @@ public final class Cas {
 
     /**
      * Store {@code source}'s bytes under {@code hex} by COPY (temp + atomic move). Never hard-links:
-     * compilers rewrite class files in place and must not mutate CAS blobs. Idempotent if {@code
-     * hex} is already present.
+     * compilers rewrite class files in place and must not mutate CAS blobs. {@code Files.copy}
+     * clones where the filesystem can (FICLONE on Linux btrfs and XFS, clonefile on macOS APFS, block
+     * cloning on Windows ReFS): the blob shares the source's extents and costs no space while the
+     * source lives, and an in-place rewrite of either side diverges from the other. Idempotent if
+     * {@code hex} is already present.
      */
     public Path putFile(Path source, String hex) throws IOException {
         Path target = pathFor(hex);
