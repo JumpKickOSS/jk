@@ -731,7 +731,7 @@ population = { examined = 4 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1507, sites = 109635 }
+"server/engine" = { classes = 1695, sites = 121319 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 59, sites = 3494 }
 "server/resolver" = { classes = 123, sites = 7334 }
@@ -1001,10 +1001,6 @@ reason = "wall-clock reads on 2026-09-07; five sites moved with their classes in
 in     = "server/engine"
 at     = "cc.jumpkick.engine.api.CoalescingLockPackages#scheduleLocked()V -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; five sites moved with their classes into engine.api and engine.plugin (pure move); the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.http.CacheSnapshot$Memoizing#get()Lcc/jumpkick/engine/http/CacheSnapshot; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.engine.http.HttpEvents$Subscription#next(J)Ljava/lang/String; -> java.lang.System#nanoTime()J"

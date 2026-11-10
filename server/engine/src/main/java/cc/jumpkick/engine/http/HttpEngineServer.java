@@ -196,7 +196,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * @param metrics supplies the running build aggregates {@code GET /api/metrics} reports, fresh
      * per request (the engine's {@code BuildMetrics} store)
      * @param cache supplies the cache breakdown {@code GET /api/cache} and live SSE report
-     * (prefer {@link CacheSnapshot#memoizing(Path)} so concurrent REST/SSE do not re-walk)
+     * (prefer {@link CacheSnapshot#memoizing(Path, java.util.function.BooleanSupplier)} so concurrent REST/SSE do not re-walk)
      */
     public HttpEngineServer(
             JkHttpConfig config,

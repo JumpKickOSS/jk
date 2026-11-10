@@ -8,13 +8,17 @@ import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.task.CachePruneScheduler;
 import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -41,7 +45,7 @@ import org.jspecify.annotations.Nullable;
  * named sections is total only until the next tier lands. The store keeps its own figure in
  * {@link #artifactStorageBytes()}, which is what a "combined" reader actually wanted.
  *
- * <p>Prefer {@link #memoizing(Path)} for live engine paths: a full exclusive walk of a multi‑GiB
+ * <p>Prefer {@link #memoizing(Path, BooleanSupplier)} for live engine paths: a full exclusive walk of a multi‑GiB
  * cache allocates tens of MiB of path/inode bookkeeping. Without single-flight + TTL, a dashboard
  * reconnect storm (several SSE tabs + {@code GET /api/cache}) can run that walk concurrent times
  * and leave SerialGC holding ~90 MiB committed at idle.
@@ -85,8 +89,8 @@ public record CacheSnapshot(
      * Supplier that walks at most once per TTL and coalesces concurrent callers onto a single
      * walk. Call {@link Memoizing#invalidate()} after builds so the next get is fresh.
      */
-    public static Memoizing memoizing(Path cacheRoot) {
-        return memoizing(cacheRoot, MEMO_TTL_MILLIS);
+    public static Memoizing memoizing(Path cacheRoot, BooleanSupplier quiet) {
+        return new Memoizing(() -> capture(cacheRoot), MEMO_TTL_MILLIS, quiet);
     }
 
     public static Memoizing memoizing(Path cacheRoot, long ttlMillis) {
@@ -96,66 +100,75 @@ public record CacheSnapshot(
 
     /** Test / custom loader seam — same single-flight + TTL as the path-based factory. */
     public static Memoizing memoizing(Supplier<CacheSnapshot> loader, long ttlMillis) {
-        return new Memoizing(loader, ttlMillis);
+        return new Memoizing(loader, ttlMillis, () -> true);
     }
 
     /**
      * Single-flight, TTL-cached {@link #capture(Path)}. Safe to share across REST and LiveVitals.
+     *
+     * <p>No lock is held across the walk: {@link #invalidate()} only marks the snapshot stale, so a
+     * build's settle path that invalidates it never waits for a walk in flight, and callers that
+     * arrive during one wait on that walk's future rather than starting another.
      */
     public static final class Memoizing implements Supplier<CacheSnapshot> {
         private final Supplier<CacheSnapshot> loader;
         private final long ttlNanos;
-        private final Object lock = new Object();
-        private @Nullable CacheSnapshot cached;
-        private long deadlineNanos;
+        private final BooleanSupplier quiet;
+        private final AtomicReference<@Nullable CompletableFuture<CacheSnapshot>> inflight = new AtomicReference<>();
+        private volatile @Nullable CacheSnapshot cached;
+        private volatile long deadlineNanos;
         /**
-         * Explicit staleness flag. {@code System.nanoTime()} has an arbitrary — possibly
+         * Explicit staleness flag. A nanosecond clock has an arbitrary — possibly
          * negative — origin, so an absolute sentinel like {@code deadlineNanos = 0} is not
-         * reliably "expired": with a negative-origin clock {@code now - 0 < 0} held and
-         * {@link #invalidate()} became a permanent no-op.
+         * reliably "expired". Cleared before a walk starts, so an invalidate that lands during
+         * the walk leaves the published snapshot stale for the next caller.
          */
-        private boolean stale = true;
+        private volatile boolean stale = true;
 
-        Memoizing(Supplier<CacheSnapshot> loader, long ttlMillis) {
+        Memoizing(Supplier<CacheSnapshot> loader, long ttlMillis, BooleanSupplier quiet) {
             this.loader = Objects.requireNonNull(loader, "loader");
             if (ttlMillis < 0) throw new IllegalArgumentException("ttlMillis < 0");
             this.ttlNanos = TimeUnit.MILLISECONDS.toNanos(ttlMillis);
+            this.quiet = Objects.requireNonNull(quiet, "quiet");
         }
 
         @Override
         public CacheSnapshot get() {
-            long now = System.nanoTime();
+            CacheSnapshot c = cached;
+            if (c != null && !stale && Clock.SYSTEM.nanos() - deadlineNanos < 0) return c;
+            CompletableFuture<CacheSnapshot> mine = new CompletableFuture<>();
+            CompletableFuture<CacheSnapshot> running = inflight.compareAndExchange(null, mine);
+            if (running != null) return running.join();
             Runtime rt = Runtime.getRuntime();
+            long usedBefore = rt.totalMemory() - rt.freeMemory();
             CacheSnapshot snap;
-            long usedBefore;
-            synchronized (lock) {
-                if (cached != null && !stale && now - deadlineNanos < 0) {
-                    return cached;
-                }
-                usedBefore = rt.totalMemory() - rt.freeMemory();
+            try {
+                stale = false;
                 snap = loader.get();
                 cached = snap;
-                deadlineNanos = System.nanoTime() + ttlNanos;
-                stale = false;
+                deadlineNanos = Clock.SYSTEM.nanos() + ttlNanos;
+                mine.complete(snap);
+            } catch (RuntimeException | Error e) {
+                stale = true;
+                mine.completeExceptionally(e);
+                throw e;
+            } finally {
+                inflight.set(null);
             }
             // Exclusive walks allocate large temporary sets; SerialGC keeps "used" high until a
-            // full collection. One post-walk GC after a fat capture keeps idle status honest —
-            // OUTSIDE the memo lock, so coalesced callers return the just-published snapshot
-            // instead of blocking through a stop-the-world collection too. Under
-            // -XX:+DisableExplicitGC this is a no-op and the idle figure simply waits for a
-            // natural full collection.
+            // full collection. One post-walk GC after a fat capture keeps idle status honest, and
+            // only while no build runs: a running build's own allocation would trip the threshold
+            // and stop the world under it. Under -XX:+DisableExplicitGC this is a no-op.
             long usedAfter = rt.totalMemory() - rt.freeMemory();
-            if (usedAfter - usedBefore > 32L * 1024 * 1024) {
+            if (usedAfter - usedBefore > 32L * 1024 * 1024 && quiet.getAsBoolean()) {
                 System.gc();
             }
             return snap;
         }
 
-        /** Drop TTL so the next {@link #get()} walks again (post-build / explicit refresh). */
+        /** Drop TTL so the next {@link #get()} walks again (post-build / explicit refresh). Never blocks. */
         public void invalidate() {
-            synchronized (lock) {
-                stale = true;
-            }
+            stale = true;
         }
     }
 
@@ -191,17 +204,33 @@ public record CacheSnapshot(
      * connect path, which must not walk a multi-GiB {@code ~/.m2}.
      */
     static DiskUsage.Stats mavenLocalStats() {
+        long now = Clock.SYSTEM.nanos();
+        M2Reading last = m2Reading;
+        if (last != null && now - last.takenNanos() < M2_TTL_NANOS) return last.stats();
+        DiskUsage.Stats stats;
         try {
-            return DiskUsage.of(M2Dirs.localRepository());
+            stats = DiskUsage.of(M2Dirs.localRepository());
         } catch (Exception e) {
-            return new DiskUsage.Stats(0, 0);
+            stats = new DiskUsage.Stats(0, 0);
         }
+        m2Reading = new M2Reading(stats, now);
+        return stats;
     }
+
+    /**
+     * How long a {@code ~/.m2} size stands: it is informational, jk neither budgets nor prunes it,
+     * and walking it after every job with a dashboard open cost more than every other tier together.
+     */
+    private static final long M2_TTL_NANOS = TimeUnit.HOURS.toNanos(1);
+
+    private record M2Reading(DiskUsage.Stats stats, long takenNanos) {}
+
+    private static volatile @Nullable M2Reading m2Reading;
 
     /**
      * Walk store + cache sections and snapshot their sizes — identical dirs and hardlink-aware
      * exclusive byte accounting as {@code jk cache usage} / {@code jk storage usage}. Prefer
-     * {@link #memoizing(Path)} on live engine paths so concurrent REST/SSE callers do not walk
+     * {@link #memoizing(Path, BooleanSupplier)} on live engine paths so concurrent REST/SSE callers do not walk
      * the store in parallel.
      */
     public static CacheSnapshot capture(Path cacheRoot) {

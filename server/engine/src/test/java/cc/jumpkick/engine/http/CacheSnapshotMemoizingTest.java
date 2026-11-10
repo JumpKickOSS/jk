@@ -113,4 +113,39 @@ class CacheSnapshotMemoizingTest {
         assertThat(snap.toJson().toString()).contains("\"mavenLocalBytes\":424242", "\"mavenLocalCount\":42");
         assertThat(snap.toThinJson().toString()).contains("\"mavenLocalBytes\":424242");
     }
+
+    /** A build's settle path invalidates the snapshot: it must never wait for a walk in flight. */
+    @Test
+    void invalidate_never_waits_for_a_walk_in_flight() throws Exception {
+        CountDownLatch walking = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger walks = new AtomicInteger();
+        CacheSnapshot.Memoizing memo = CacheSnapshot.memoizing(
+                () -> {
+                    walks.incrementAndGet();
+                    walking.countDown();
+                    try {
+                        release.await(30, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return SNAP;
+                },
+                60_000);
+        Thread walker = new Thread(memo::get);
+        walker.start();
+        try {
+            assertThat(walking.await(30, TimeUnit.SECONDS)).isTrue();
+            long start = System.nanoTime();
+            memo.invalidate();
+            assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)).isLessThan(1_000);
+        } finally {
+            release.countDown();
+            walker.join();
+        }
+        memo.get();
+        assertThat(walks.get())
+                .as("an invalidate during the walk leaves its result stale")
+                .isEqualTo(2);
+    }
 }

@@ -103,7 +103,7 @@ public final class EngineHttpFront {
                 () -> BuildMetrics.load(metricsFile.get()).entries(),
                 // Single-flight + 30s TTL: dashboard SSE reconnect + GET /api/cache must not each
                 // exclusive-walk multi-GiB stores (SerialGC balloons committed heap ~90 MiB).
-                CacheSnapshot.memoizing(JkDirs.cache()),
+                CacheSnapshot.memoizing(JkDirs.cache(), () -> status.get().activeBuildPlans() == 0),
                 log);
         // Hard-refresh mid-build: history rows carry live requestId/progress/phases; SSE connect
         // delivers one compact run-snapshot per job to the new subscription only.
