@@ -129,6 +129,7 @@ class ImageCredentialsTest {
                 "com.example.Main",
                 BASE,
                 imageConfig(REGISTRY),
+                "app:1.0",
                 "",
                 workerJar);
 

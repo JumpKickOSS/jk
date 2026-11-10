@@ -47,6 +47,10 @@ class ImageActionKeyTest {
     }
 
     private List<String> tokens(Path mainJar, String base, Path workerJar) throws IOException {
+        return tokens(mainJar, base, workerJar, "app:1.0");
+    }
+
+    private List<String> tokens(Path mainJar, String base, Path workerJar, String reference) throws IOException {
         return ImagePlans.imageTokens(
                 mainJar,
                 new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
@@ -54,6 +58,7 @@ class ImageActionKeyTest {
                 "com.example.Main",
                 base,
                 config(),
+                reference,
                 "",
                 workerJar);
     }
@@ -105,5 +110,14 @@ class ImageActionKeyTest {
         String base = CONFIG_BASE + "@sha256:" + "a".repeat(64);
 
         assertThat(tokens(mainJar, base, worker)).isEqualTo(tokens(mainJar, base, worker));
+    }
+
+    @Test
+    void renaming_the_image_moves_the_key(@TempDir Path tmp) throws Exception {
+        Path mainJar = Files.writeString(tmp.resolve("app.jar"), "app");
+        Path workerJar = Files.writeString(tmp.resolve("worker.jar"), "worker");
+        assertThat(tokens(mainJar, CONFIG_BASE, workerJar, "app:1.0"))
+                .as("[image] name, tag or the module version: an image never loaded under the new name")
+                .isNotEqualTo(tokens(mainJar, CONFIG_BASE, workerJar, "renamed:1.0"));
     }
 }

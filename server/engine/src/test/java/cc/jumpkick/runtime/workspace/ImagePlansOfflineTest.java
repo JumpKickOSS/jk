@@ -185,6 +185,10 @@ class ImagePlansOfflineTest {
                 MAIN,
                 fx.config().base(),
                 fx.config(),
+                fx.config()
+                        .targetReference(
+                                fx.project().project().name(),
+                                fx.project().project().version()),
                 "",
                 fx.workerJar());
         String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);

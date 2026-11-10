@@ -599,7 +599,8 @@ public final class ImagePlans {
      * <p>{@code base} is the <em>resolved</em> base reference (see {@link BaseImageDigest}) and
      * {@code workerJar} is hashed by content: the plugin's artifact id is a compile-time constant
      * and the release version does not move between local builds, so neither identifies the worker
-     * that actually produced the tarball. {@code appTree} is {@link #appTreeToken}'s value.
+     * that actually produced the tarball. {@code reference} is the {@code name:tag} the image is loaded
+     * or tagged under, and {@code appTree} is {@link #appTreeToken}'s value.
      */
     public static List<String> imageTokens(
             Path mainJar,
@@ -608,6 +609,7 @@ public final class ImagePlans {
             @Nullable String mainClass,
             @Nullable String base,
             ImageConfig config,
+            String reference,
             String appTree,
             Path workerJar)
             throws IOException {
@@ -620,6 +622,8 @@ public final class ImagePlans {
                 "main:" + mainClass,
                 "base:" + base,
                 "cfg:" + imageConfigToken(config),
+                // The name and tag the image is loaded or tagged under: a rename is not up to date.
+                "ref:" + reference,
                 "apptree:" + appTree,
                 "worker:" + ClasspathFingerprint.entry(workerJar));
     }

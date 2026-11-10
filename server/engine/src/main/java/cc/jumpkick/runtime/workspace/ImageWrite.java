@@ -82,6 +82,8 @@ final class ImageWrite {
                         chosen,
                         base,
                         config,
+                        config.targetReference(
+                                project.project().name(), project.project().version()),
                         appTreeToken(project, layout),
                         workerJar),
                 fork);
