@@ -76,6 +76,26 @@ class MavenRepoGroupIndexTest {
                 .containsExactlyInAnyOrder("2.4.3.Final", "3.1.2");
     }
 
+    /** An SSO page served with 200 in place of the catalog is that repository's answer alone. */
+    @Test
+    void a_repository_answering_with_html_does_not_fail_the_listing(@TempDir Path tmp) throws Exception {
+        Path sso = tmp.resolve("sso");
+        write(sso, "<!DOCTYPE html><html><body><form>Sign in</form></body></html>");
+        Path central = tmp.resolve("central");
+        write(central, """
+                <metadata>
+                  <versioning><versions><version>3.1.2</version></versions></versioning>
+                </metadata>
+                """);
+        Cas cas = new Cas(tmp.resolve("cas"));
+        RepoGroup group = new RepoGroup(List.of(
+                new MavenRepo("corp", sso.toUri(), new Http(), cas),
+                new MavenRepo("central", central.toUri(), new Http(), cas)));
+
+        assertThat(group.availableVersions(Coordinate.of("org.jboss", "jandex", "0")))
+                .containsExactly("3.1.2");
+    }
+
     private static void write(Path root, String metadata) throws Exception {
         Path dir = root.resolve("org/jboss/jandex");
         Files.createDirectories(dir);

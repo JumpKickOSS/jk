@@ -167,6 +167,20 @@ public final class MavenMetadataCache {
                 .clone();
     }
 
+    /**
+     * Drops what this cache holds for {@code uri}: a body that is not a metadata document (an SSO
+     * login page, a proxy's error page served with 200) must not answer for the next day.
+     */
+    public void forget(URI uri) {
+        Path body = dir.resolve(Hashing.sha256Hex(uri.toString()));
+        try {
+            Files.deleteIfExists(body.resolveSibling(body.getFileName() + ".h"));
+            Files.deleteIfExists(body);
+        } catch (IOException ignored) {
+            // the next fetch overwrites it
+        }
+    }
+
     /** One catalog read per body file at a time, process-wide. */
     private static final SingleFlight<byte[]> FLIGHTS = new SingleFlight<>(failure -> false);
 

@@ -676,16 +676,18 @@ public final class MavenRepo {
      */
     private List<String> listedVersions(Coordinate coord) throws IOException, InterruptedException {
         refuseIfUnreachable();
+        URI uri = fetchBase.resolve(MavenLayout.metadataPath(coord));
+        byte[] xml;
         try {
-            byte[] xml = metadataCache != null
-                    ? cachedMetadata(fetchBase.resolve(MavenLayout.metadataPath(coord)))
+            xml = metadataCache != null
+                    ? cachedMetadata(uri)
                     : Files.readAllBytes(fetchMetadata(coord).cachePath());
-            return MavenMetadata.parse(xml, coord.group(), coord.artifact()).versions();
         } catch (ArtifactNotFoundException notFound) {
             return local() ? versionDirectories(coord) : List.of();
         } catch (IOException transport) {
             throw unreachableOr(transport);
         }
+        return CatalogVersions.of(xml, coord, name, uri, metadataCache);
     }
 
     /**
@@ -1130,9 +1132,8 @@ public final class MavenRepo {
     /** The store's copy of {@code relativePath} with its digest, read and hashed but not recorded. */
     private Optional<Fetched> candidate(String relativePath) {
         Optional<Path> located = repoStore.locate(relativePath);
-        if (located.isEmpty()) return Optional.empty();
-        String sha = hashQuietly(located.get());
-        if (sha.isBlank()) return Optional.empty();
+        String sha = located.map(MavenRepo::hashQuietly).orElse("");
+        if (located.isEmpty() || sha.isBlank()) return Optional.empty();
         try {
             return Optional.of(
                     new Fetched(baseUrl.resolve(relativePath), located.get(), sha, Files.size(located.get())));
