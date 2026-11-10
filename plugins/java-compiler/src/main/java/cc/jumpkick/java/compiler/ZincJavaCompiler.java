@@ -363,7 +363,9 @@ public final class ZincJavaCompiler {
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
             FileConverter converter = PlainVirtualFileConverter.converter();
             ApProvenance provenance = new ApProvenance();
-            processors = processorsFor(processorPath, processorDigest);
+            // The loader is keyed on the processor path's contents alone: this module's resources
+            // move the analysis digest above, but a loader is shared by every module on the path.
+            processors = processorsFor(processorPath, ZincWorkdir.processorDigest(processorPath));
             phases.mark("processors");
             ConstantDeps constants = new ConstantDeps();
             javac = recordingJavac(converter, processors, provenance, constants, reporter);
