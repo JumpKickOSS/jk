@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Random;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -46,5 +49,24 @@ class RunContentionTest {
         assertThat(RunContention.window(run)).as("no finish").isNull();
         Files.writeString(run.resolve(ProjectBuilds.RECORD), "{\"startedAt\": 5000, \"finishedAt\": 5000}");
         assertThat(RunContention.window(run)).as("an empty window").isNull();
+    }
+
+    @Test
+    void the_sorted_sweep_counts_what_comparing_every_pair_counts() {
+        Random random = new Random(7);
+        for (int round = 0; round < 50; round++) {
+            Map<Path, long[]> windows = new LinkedHashMap<>();
+            for (int i = 0; i < 40; i++) {
+                long start = random.nextInt(1_000);
+                windows.put(Path.of("run" + i), new long[] {start, start + 1 + random.nextInt(200)});
+            }
+            for (var a : windows.entrySet()) {
+                int expected = 0;
+                for (var b : windows.entrySet()) {
+                    if (a != b && a.getValue()[0] < b.getValue()[1] && b.getValue()[0] < a.getValue()[1]) expected++;
+                }
+                assertThat(RunContention.overlaps(windows).get(a.getKey())).isEqualTo(expected);
+            }
+        }
     }
 }

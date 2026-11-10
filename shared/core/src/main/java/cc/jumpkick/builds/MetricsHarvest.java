@@ -14,6 +14,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -77,6 +79,73 @@ public final class MetricsHarvest {
 
     private volatile int maxRuns = DEFAULT_MAX_RUNS;
     private volatile long maxAgeMillis = DEFAULT_MAX_AGE_DAYS * 86_400_000L;
+
+    /**
+     * What each run's files said when last read, by run dir, so a pass reads only what changed
+     * since the last: the window off the record's head and the run's metrics text, each keyed by
+     * its file's stamp, and the overlap count its sidecar was written for. Touched by the one
+     * worker thread; entries for runs that left the root are dropped each pass.
+     */
+    private final Map<Path, RunMemo> runs = new HashMap<>();
+
+    private RunMemo memo(Path run) {
+        return runs.computeIfAbsent(run, r -> new RunMemo());
+    }
+
+    /** One run's memoized reads. */
+    private static final class RunMemo {
+        private long recordStamp = Long.MIN_VALUE;
+        private long @Nullable [] window;
+        private long metricsStamp = Long.MIN_VALUE;
+        private long metricsSize = -1;
+        private @Nullable String metricsText;
+        private int overlapping = -1;
+
+        long @Nullable [] window(Path run) {
+            long stamp = stamp(run.resolve(ProjectBuilds.RECORD));
+            if (stamp != recordStamp) {
+                window = RunContention.window(run);
+                recordStamp = stamp;
+            }
+            return window;
+        }
+
+        @Nullable
+        String metrics(Path file) {
+            long stamp = stamp(file);
+            long size = sizeOf(file);
+            if (stamp != metricsStamp || size != metricsSize) {
+                metricsText = readQuietly(file);
+                metricsStamp = stamp;
+                metricsSize = size;
+            }
+            return metricsText;
+        }
+
+        private static long stamp(Path file) {
+            try {
+                return Files.getLastModifiedTime(file).toMillis();
+            } catch (IOException e) {
+                return -1;
+            }
+        }
+
+        private static long sizeOf(Path file) {
+            try {
+                return Files.size(file);
+            } catch (IOException e) {
+                return -1;
+            }
+        }
+
+        private static @Nullable String readQuietly(Path file) {
+            try {
+                return Files.isRegularFile(file) ? Files.readString(file, StandardCharsets.UTF_8) : null;
+            } catch (IOException e) {
+                return null;
+            }
+        }
+    }
 
     private MetricsHarvest() {}
 
@@ -171,23 +240,31 @@ public final class MetricsHarvest {
         // Every home's runs, not only the harvested ones, decide contention: a sibling checkout's
         // build shares the machine whatever ledger it writes to.
         Map<Path, long[]> windows = new LinkedHashMap<>();
+        Set<Path> seen = new HashSet<>();
         for (Path home : ProjectBuilds.listProjectHomes(buildsRoot)) {
             reapProject(home, now);
             for (Path run : ProjectBuilds.listRuns(home)) {
-                long[] window = RunContention.window(run);
+                seen.add(run);
+                long[] window = memo(run).window(run);
                 if (window != null) windows.put(run, window);
             }
         }
+        runs.keySet().retainAll(seen);
         Map<Path, Integer> overlaps = RunContention.overlaps(windows);
-        for (var e : overlaps.entrySet()) RunContention.writeSidecar(e.getKey(), e.getValue());
+        for (var e : overlaps.entrySet()) {
+            RunMemo m = memo(e.getKey());
+            if (m.overlapping == e.getValue()) continue;
+            RunContention.writeSidecar(e.getKey(), e.getValue());
+            m.overlapping = e.getValue();
+        }
         for (Path home : ProjectBuilds.listProjectHomesForMetrics(buildsRoot)) {
             Map<String, Agg> project = new LinkedHashMap<>();
             Map<String, Agg> classWalls = new LinkedHashMap<>();
             for (Path run : ProjectBuilds.listRuns(home)) {
-                Path metrics = run.resolve(ProjectBuilds.METRICS);
-                if (!Files.isRegularFile(metrics)) continue;
+                String text = memo(run).metrics(run.resolve(ProjectBuilds.METRICS));
+                if (text == null) continue;
                 boolean contended = overlaps.getOrDefault(run, 0) > 0;
-                parseRunMetrics(metrics, hostSamples, project, classWalls, contended);
+                parseRunMetrics(text, hostSamples, project, classWalls, contended);
             }
             Map<String, Double> last = new LinkedHashMap<>();
             Map<String, Long> counts = new LinkedHashMap<>();
@@ -225,13 +302,12 @@ public final class MetricsHarvest {
 
     /** One run's rows into the aggregates; {@code contended} when another run overlapped this one. */
     private static void parseRunMetrics(
-            Path metricsFile,
+            String text,
             Map<String, Agg> hostSamples,
             Map<String, Agg> project,
             Map<String, Agg> classWalls,
             boolean contended) {
         try {
-            String text = Files.readString(metricsFile, StandardCharsets.UTF_8);
             MetricsFile.scan(
                     text,
                     (section, key, v) -> {
@@ -345,7 +421,7 @@ public final class MetricsHarvest {
             if (n != null) sb.append(key).append(" = ").append(n).append('\n');
         }
         appendClassWallTables(sb, classWalls);
-        AtomicWrites.replace(file, sb.toString());
+        AtomicWrites.replaceIfChanged(file, sb.toString());
     }
 
     /** {@code module.<dir>.task.<step>.<measure>}: a row the step scheduler reads by its mean. */

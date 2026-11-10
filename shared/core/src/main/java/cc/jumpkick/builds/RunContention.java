@@ -6,8 +6,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -51,19 +51,44 @@ public final class RunContention {
         }
     }
 
-    /** For every run, how many other runs' windows overlap its own; zero for a run that ran alone. */
+    /**
+     * For every run, how many other runs' windows overlap its own; zero for a run that ran alone.
+     * Two sorted arrays and a binary search per run: of the runs that started before this one
+     * ended, those that also ended by the time it started do not overlap it, and neither does it.
+     */
     static Map<Path, Integer> overlaps(Map<Path, long[]> windows) {
+        int n = windows.size();
+        long[] starts = new long[n];
+        long[] ends = new long[n];
+        int i = 0;
+        for (long[] w : windows.values()) {
+            starts[i] = w[0];
+            ends[i] = w[1];
+            i++;
+        }
+        Arrays.sort(starts);
+        Arrays.sort(ends);
         Map<Path, Integer> out = new LinkedHashMap<>();
-        List<Map.Entry<Path, long[]>> all = List.copyOf(windows.entrySet());
-        for (var a : all) {
-            int n = 0;
-            for (var b : all) {
-                if (a == b) continue;
-                if (a.getValue()[0] < b.getValue()[1] && b.getValue()[0] < a.getValue()[1]) n++;
-            }
-            out.put(a.getKey(), n);
+        for (var e : windows.entrySet()) {
+            long start = e.getValue()[0];
+            long end = e.getValue()[1];
+            int startedBeforeEnd = countBelow(starts, end);
+            int endedByStart = countBelow(ends, start + 1);
+            out.put(e.getKey(), startedBeforeEnd - endedByStart - 1);
         }
         return out;
+    }
+
+    /** How many of {@code sorted} are strictly below {@code bound}. */
+    private static int countBelow(long[] sorted, long bound) {
+        int lo = 0;
+        int hi = sorted.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (sorted[mid] < bound) lo = mid + 1;
+            else hi = mid;
+        }
+        return lo;
     }
 
     /** Write the sidecar for a contended run; a run that ran alone carries none. */
