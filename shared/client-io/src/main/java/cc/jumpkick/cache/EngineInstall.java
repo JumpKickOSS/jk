@@ -18,11 +18,13 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -94,6 +96,34 @@ public final class EngineInstall {
     /** The shelf manifest beside the pointer; may not exist. */
     public Path shelfFile() {
         return engineHome().resolve(SHELF_NAME);
+    }
+
+    /** The shelf of the install before the current one: kept for a rollback, never swept. */
+    public Path previousShelfFile() {
+        return engineHome().resolve(ShelfManifest.PREVIOUS_FILE_NAME);
+    }
+
+    /** The pointer key naming the engine jar the install before this one ran, kept for a rollback. */
+    public static final String PREVIOUS_ENGINE_SHA = "previous-engine-sha256";
+
+    /**
+     * The engine jars the store must keep for this install: the live one the pointer names, and the
+     * one the install before it named. Lower-case hex; empty when the pointer names neither.
+     */
+    public Set<String> pinnedEngineShas() {
+        Set<String> out = new HashSet<>();
+        try {
+            Path pointer = configFile();
+            if (!Files.isRegularFile(pointer)) return out;
+            Map<String, String> cfg = AppInstallConfig.parse(Files.readString(pointer));
+            for (String key : List.of("engine-sha256", PREVIOUS_ENGINE_SHA)) {
+                String sha = cfg.get(key);
+                if (sha != null && !sha.isBlank()) out.add(sha.strip().toLowerCase(Locale.ROOT));
+            }
+        } catch (IOException | RuntimeException unreadable) {
+            // an unreadable pointer pins nothing it could be compared with
+        }
+        return out;
     }
 
     /**
@@ -385,11 +415,32 @@ public final class EngineInstall {
         Map<String, String> keys = new LinkedHashMap<>(AppInstallConfig.jkConfigProperties());
         keys.put("version", version);
         keys.put("engine-sha256", engineJarSha);
+        // The engine the pointer named until now stays the previous one, so a rollback still has its jar.
+        String previous = previousEngineSha(engineJarSha);
+        if (previous != null) keys.put(PREVIOUS_ENGINE_SHA, previous);
         keys.put("protocol", "1");
         keys.put("jar", jarFileName);
         // Durably: a pointer torn by a power loss names no jar, and every later command sees an
         // install it cannot start rather than one it can re-derive.
         AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+    }
+
+    /**
+     * The engine the install before this pointer write ran: the pointer's live engine when it differs
+     * from {@code next}, else the previous one it already names; null when there is none.
+     */
+    private @Nullable String previousEngineSha(String next) {
+        try {
+            Path pointer = configFile();
+            if (!Files.isRegularFile(pointer)) return null;
+            Map<String, String> cfg = AppInstallConfig.parse(Files.readString(pointer));
+            String live = cfg.get("engine-sha256");
+            if (live != null && !live.isBlank() && !live.equalsIgnoreCase(next)) return live;
+            String kept = cfg.get(PREVIOUS_ENGINE_SHA);
+            return kept == null || kept.isBlank() ? null : kept;
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
     }
 
     private Optional<Materialized> readLive() {

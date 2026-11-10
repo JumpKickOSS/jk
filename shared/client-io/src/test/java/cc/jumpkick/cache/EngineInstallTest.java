@@ -71,6 +71,33 @@ class EngineInstallTest {
     }
 
     @Test
+    void the_pointer_remembers_the_engine_before_it_so_the_store_keeps_both(@TempDir Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        Path first = Files.writeString(
+                Files.createDirectories(tmp.resolve("one")).resolve("jk-engine-0.12.0.jar"), "engine-one");
+        Path second = Files.writeString(
+                Files.createDirectories(tmp.resolve("two")).resolve("jk-engine-0.12.0.jar"), "engine-two");
+        Path third = Files.writeString(
+                Files.createDirectories(tmp.resolve("three")).resolve("jk-engine-0.12.0.jar"), "engine-three");
+
+        store.materializeFromFiles("0.12.0", cas, first);
+        assertThat(store.pinnedEngineShas()).containsExactly(Hashing.sha256Hex(first));
+        store.materializeFromFiles("0.12.0", cas, second);
+        assertThat(store.pinnedEngineShas())
+                .containsExactlyInAnyOrder(Hashing.sha256Hex(first), Hashing.sha256Hex(second));
+        store.materializeFromFiles("0.12.0", cas, second);
+        assertThat(store.pinnedEngineShas())
+                .as("reinstalling the same engine keeps the previous one")
+                .containsExactlyInAnyOrder(Hashing.sha256Hex(first), Hashing.sha256Hex(second));
+        store.materializeFromFiles("0.12.0", cas, third);
+        assertThat(store.pinnedEngineShas())
+                .as("the install two back is no longer kept")
+                .containsExactlyInAnyOrder(Hashing.sha256Hex(second), Hashing.sha256Hex(third));
+    }
+
+    @Test
     void survives_pointer_deletion_by_recovering_version_from_the_jar(@TempDir Path tmp) throws Exception {
         Path home = Files.createDirectories(tmp.resolve("home"));
         Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));

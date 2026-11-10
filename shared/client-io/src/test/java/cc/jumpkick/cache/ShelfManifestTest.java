@@ -77,6 +77,20 @@ class ShelfManifestTest {
         assertThat(other.jars()).containsExactlyEntriesOf(Map.of("g:a:1", SHA_1));
         assertThat(other.poms()).isEmpty();
         assertThat(ShelfManifest.read(file).orElseThrow().engineSha256()).isEqualTo(ENGINE_B);
+        Path previous = file.resolveSibling(ShelfManifest.PREVIOUS_FILE_NAME);
+        assertThat(ShelfManifest.read(previous).orElseThrow())
+                .as("the shelf it replaced is the previous one, kept for a rollback")
+                .satisfies(p -> assertThat(p.engineSha256()).isEqualTo(ENGINE_A))
+                .satisfies(p -> assertThat(p.jars()).containsEntry("g:b:1", SHA_1));
+
+        // A third engine: the second becomes the previous one, and the first is no longer kept anywhere.
+        String engineC = "c".repeat(64);
+        ShelfManifest.record(file, engineC, tmp, Map.of("g:a:1", SHA_2), Map.of(), clock);
+        assertThat(ShelfManifest.read(previous).orElseThrow().engineSha256()).isEqualTo(ENGINE_B);
+        ShelfManifest.record(file, engineC, tmp, Map.of("g:b:1", SHA_2), Map.of(), clock);
+        assertThat(ShelfManifest.read(previous).orElseThrow().engineSha256())
+                .as("a scoped install for the same engine moves nothing")
+                .isEqualTo(ENGINE_B);
     }
 
     @Test

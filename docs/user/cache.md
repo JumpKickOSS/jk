@@ -142,7 +142,7 @@ incremental-max-size-gb = 0.5
 
 `0` or negative means **unset** (use the default). On volumes with **< 10 GiB** total
 capacity, the unset default becomes **40% of free space** — half of an 80% margin, with the
-other half left for the artifact store, which has no budget and is never pruned. Explicit
+other half left for the artifact store, collected by its own windows (below). Explicit
 sizes are never disk-clamped. The incremental default shrinks with a disk-clamped cache
 budget (to an eighth of it), so a small volume does not reserve half a gigabyte for
 analysis files.
@@ -227,10 +227,17 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
   an entry used on 2, 4, 8, 16 days gets 1.5×, 2×, 2.5×, 3× its window (capped lower for natives
   and large jars), and every window shrinks as the volume fills (to a tenth under 5% or 10 GiB
   free).
-  - *Blobs* in `sha256/`: pinned by an installed engine's shelf manifest or the client on `PATH`,
-    otherwise native binaries three days (the newest two always kept), jars over 50 MB a week,
-    other jars three weeks, anything else a month. The blobs together are held to the smaller of
-    10 GiB and 8% of the volume, the least life left going first.
+  - *Blobs* in `sha256/`: an install (`install.sh`, `jk install`, `jk self update`) shelves the
+    native client, the engine jar and the first-party worker jars here. The store keeps the
+    current install and the one before it, for a rollback: a blob is pinned by the current or
+    previous shelf manifest (`jk-shelf.toml`, `jk-shelf.previous.toml`), the engine pointer's
+    `engine-sha256` and `previous-engine-sha256`, or the client on `PATH`. Every install runs this
+    pass as it lands, so the install two back goes at once rather than at the next idle pass.
+    Unpinned, an installed jar (an engine jar, or a worker jar whose classes are all
+    first-party) goes once it is an hour old; a native binary 12 hours after its last use, the
+    newest one kept; jars over 50 MB a week; other jars three weeks; anything else a month. The
+    blobs together are held to the smaller of 10 GiB and 8% of the volume, the least life left
+    going first.
   - *Tool installs* under `tools/`: Node and the package managers keep the install used most
     recently for a month and every other version for two days; Maven, Gradle, Kotlin and the
     compiler closures JumpKick keeps beside them (Scala, KSP, the Kotlin build tools, Groovy, Dokka, the

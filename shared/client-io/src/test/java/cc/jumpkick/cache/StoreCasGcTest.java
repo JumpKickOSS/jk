@@ -4,6 +4,7 @@ package cc.jumpkick.cache;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.util.AccessLedger;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,6 +12,10 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
+import java.util.jar.Attributes;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -61,28 +66,77 @@ class StoreCasGcTest {
     }
 
     @Test
-    void the_two_newest_unpinned_natives_are_kept_whatever_their_age_and_the_older_ones_go(@TempDir Path root)
+    void an_unpinned_native_goes_12_hours_after_its_last_use_and_the_newest_is_kept_for_a_rollback(@TempDir Path root)
             throws Exception {
         Cas cas = new Cas(root);
-        String fresh = put(cas, macho(1), 0.01);
-        String newest = put(cas, macho(2), 10);
-        String second = put(cas, macho(3), 20);
-        String third = put(cas, macho(4), 30);
+        double hour = 1.0 / 24;
+        String newest = put(cas, macho(1), 20 * hour);
+        String old = put(cas, macho(2), 30 * hour);
+        String older = put(cas, macho(3), 10);
 
         StoreCasGc.Report report = StoreCasGc.run(cas, Set.of(), Map.of(), StoreCasGc.Policy.defaults(1.0), NOW, false);
 
-        assertThat(cas.contains(fresh))
-                .as("the newest, and younger than the minimum age")
-                .isTrue();
         assertThat(cas.contains(newest))
-                .as("the second newest: kept whatever its age")
+                .as("past its 12 hours, but the newest unpinned native is kept for a rollback")
                 .isTrue();
-        assertThat(cas.contains(second))
-                .as("past its three days and not among the two newest")
-                .isFalse();
-        assertThat(cas.contains(third)).isFalse();
+        assertThat(cas.contains(old)).isFalse();
+        assertThat(cas.contains(older)).isFalse();
         assertThat(report.deleted()).isEqualTo(2);
-        assertThat(report.freedBytes()).isEqualTo(2 * 2048);
+
+        Cas young = new Cas(root.resolve("young"));
+        String within = put(young, macho(4), 6 * hour);
+        String keptNewest = put(young, macho(5), 2 * hour);
+        StoreCasGc.run(young, Set.of(), Map.of(), StoreCasGc.Policy.defaults(1.0), NOW, false);
+        assertThat(young.contains(within)).as("inside its 12 hours").isTrue();
+        assertThat(young.contains(keptNewest)).isTrue();
+    }
+
+    /** A jar with {@code mainClass} in its manifest and one class at each of {@code classes}. */
+    private static byte[] jar(String mainClass, String... classes) throws IOException {
+        var out = new ByteArrayOutputStream();
+        var mf = new Manifest();
+        mf.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        if (mainClass != null) mf.getMainAttributes().put(Attributes.Name.MAIN_CLASS, mainClass);
+        try (var jar = new JarOutputStream(out, mf)) {
+            for (String c : classes) {
+                jar.putNextEntry(new ZipEntry(c));
+                jar.write(new byte[] {(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE});
+                jar.closeEntry();
+            }
+        }
+        return out.toByteArray();
+    }
+
+    @Test
+    void a_retired_installs_engine_and_worker_jars_go_once_the_minimum_age_passes(@TempDir Path root) throws Exception {
+        Cas cas = new Cas(root);
+        double hour = 1.0 / 24;
+        String engine = put(cas, jar("cc.jumpkick.engine.EngineMain", "cc/jumpkick/engine/EngineMain.class"), 2 * hour);
+        String worker = put(
+                cas, jar("cc.jumpkick.plugin.process.PluginMain", "cc/jumpkick/testrunner/TestRunner.class"), 2 * hour);
+        String thirdParty = put(
+                cas,
+                jar(
+                        "cc.jumpkick.plugin.process.PluginMain",
+                        "cc/jumpkick/plugin/process/PluginMain.class",
+                        "com/acme/AcmePlugin.class"),
+                2 * hour);
+        String keptEngine = put(cas, jar("cc.jumpkick.engine.EngineMain", "cc/jumpkick/engine/A.class"), 2 * hour);
+        String justShelved = put(cas, jar("cc.jumpkick.engine.EngineMain", "cc/jumpkick/engine/B.class"), 0.2 * hour);
+
+        StoreCasGc.run(cas, Set.of(keptEngine), Map.of(), StoreCasGc.Policy.defaults(1.0), NOW, false);
+
+        assertThat(cas.contains(engine)).as("a retired install's engine jar").isFalse();
+        assertThat(cas.contains(worker))
+                .as("a retired install's first-party worker jar")
+                .isFalse();
+        assertThat(cas.contains(thirdParty))
+                .as("a third-party plugin under the same host keeps the ordinary jar window")
+                .isTrue();
+        assertThat(cas.contains(keptEngine))
+                .as("pinned by the current or previous install")
+                .isTrue();
+        assertThat(cas.contains(justShelved)).as("younger than the minimum age").isTrue();
     }
 
     @Test

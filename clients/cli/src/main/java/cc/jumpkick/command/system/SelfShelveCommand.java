@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.ShelfManifest;
+import cc.jumpkick.cache.StoreCasGc;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
@@ -100,6 +101,7 @@ public final class SelfShelveCommand implements CliCommand {
             Path dist = Objects.requireNonNull(repos.getParent(), "dist dir");
             ShelfManifest.record(EngineInstall.current().shelfFile(), packagedBy, dist, jars, poms, Clock.SYSTEM);
             shelved += "; " + jars.size() + " jars pinned to engine " + packagedBy.substring(0, 12);
+            StoreCasGc.afterInstall();
         }
         CommandWedge.printOk("Self", shelved);
         return 0;

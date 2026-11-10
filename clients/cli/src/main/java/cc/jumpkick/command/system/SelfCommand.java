@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.PreparedUpdate;
+import cc.jumpkick.cache.StoreCasGc;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.engine.EngineFleet;
@@ -375,6 +376,8 @@ public final class SelfCommand extends GroupCommand {
             EngineInstall.Materialized m =
                     install.materializeFromFiles(JkVersion.VERSION, JkStores.storeCas(), engineJar);
             install.gc();
+            // The install two back is no longer pinned: its blobs go now, not at the weekly prune.
+            StoreCasGc.afterInstall();
             try {
                 UserConfigEditor.setNerdFont(JkDirs.userConfigFile(), NerdFontMode.AUTO);
             } catch (Exception ignored) {
@@ -578,6 +581,7 @@ public final class SelfCommand extends GroupCommand {
                 }
             }
             PreparedUpdate.delete(install.engineHome());
+            StoreCasGc.afterInstall();
             return engine.engineJar().toString();
         }
 

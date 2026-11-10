@@ -9,6 +9,7 @@ import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
@@ -51,6 +52,12 @@ public record ShelfManifest(
         String engineSha256, String source, Instant installedAt, Map<String, String> jars, Map<String, String> poms) {
 
     public static final String FILE_NAME = "jk-shelf.toml";
+
+    /**
+     * The shelf of the install before: a manifest naming another engine moves here when an install
+     * records its own, so the store keeps one install back for a rollback and lets every older one go.
+     */
+    public static final String PREVIOUS_FILE_NAME = "jk-shelf.previous.toml";
 
     private static final Pattern ENTRY =
             Pattern.compile("^\\s*(\"(?:[^\"\\\\]|\\\\.)*\"|[A-Za-z0-9._-]+)\\s*=\\s*(.+?)\\s*$");
@@ -124,6 +131,15 @@ public record ShelfManifest(
             });
             mergedJars.putAll(jars);
             mergedPoms.putAll(poms);
+            // Another engine's shelf becomes the previous one; the shelf before it is no longer pinned.
+            Optional<ShelfManifest> existing = read(file);
+            if (existing.isPresent() && !existing.get().pins(engineSha256)) {
+                Files.move(
+                        file,
+                        file.resolveSibling(PREVIOUS_FILE_NAME),
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
+            }
             ShelfManifest manifest = new ShelfManifest(
                     engineSha256,
                     source.toAbsolutePath().normalize().toString(),

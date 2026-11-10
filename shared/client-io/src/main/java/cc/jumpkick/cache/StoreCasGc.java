@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.config.DiskPressure;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AccessLedger;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -17,21 +20,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Garbage collection of the artifact store's CAS, which has no other collector.
  *
- * <p>What the store CAS holds is mostly what installs leave behind: every {@code jk install} shelves
- * each first-party jar and the native client, and an engine is pinned to one install's set by its
- * {@link ShelfManifest}. The sets of the installs before are garbage the moment the next lands, and
- * the native client is 35 MB or more of it. A blob is therefore <em>pinned</em> when an installed
- * engine's manifest names it, a {@link PreparedUpdate} waits to install it, or it is the client on
- * {@code PATH}; every other blob is on a countdown
- * set by what it is and how big, shortened by disk pressure:
+ * <p>What the store CAS holds is mostly what installs leave behind: every install shelves each
+ * first-party jar, the engine jar and the native client, and an engine is pinned to one install's
+ * set by its {@link ShelfManifest}. The store keeps the current install and the one before it, for
+ * a rollback; every older install's set is garbage the moment the next lands, and each is 55 MB or
+ * more. A blob is therefore <em>pinned</em> when the current or previous install's manifest or
+ * engine pointer names it, a {@link PreparedUpdate} waits to install it, or it is the client on
+ * {@code PATH}; every other blob is on a countdown from its last use, set by what it is and how
+ * big, shortened by disk pressure:
  *
  * <ul>
- *   <li>native binaries are expensive to hold and to rebuild alike, so a few days, with the newest
- *       few kept whatever their age;
+ *   <li>an installed jar (an engine jar, a first-party worker jar) no kept install names belongs to
+ *       a retired install, so it goes as soon as {@link Policy#minAge} allows;
+ *   <li>native binaries are heavy, so 12 hours from last use, the newest one kept for a rollback;
  *   <li>large jars a week;
  *   <li>other jars and everything else weeks, since a miss costs a copy from the Maven local
  *       repository or one download.
@@ -48,6 +57,12 @@ public final class StoreCasGc {
     public enum Kind {
         /** An executable: Mach-O, ELF or PE. */
         NATIVE,
+        /**
+         * A jar an install shelved: an engine jar ({@code Main-Class} {@code EngineMain}) or a
+         * first-party worker jar ({@code PluginMain}, every class under {@code cc/jumpkick/}). A
+         * third-party plugin runs under the same host but keeps its classes in its own package.
+         */
+        INSTALLED_JAR,
         /** A zip over {@link Policy#largeBytes}. */
         LARGE_JAR,
         /** Any other zip. */
@@ -63,6 +78,7 @@ public final class StoreCasGc {
     public record Policy(
             Duration nativeTtl,
             int keepNative,
+            Duration installedJarTtl,
             Duration largeJarTtl,
             long largeBytes,
             Duration jarTtl,
@@ -73,8 +89,9 @@ public final class StoreCasGc {
 
         public static Policy defaults(double pressure) {
             return new Policy(
-                    Duration.ofDays(3),
-                    2,
+                    Duration.ofHours(12),
+                    1,
+                    Duration.ofHours(1),
                     Duration.ofDays(7),
                     50L * 1024 * 1024,
                     Duration.ofDays(21),
@@ -87,13 +104,31 @@ public final class StoreCasGc {
         /** This policy keeping the newest {@code count} unpinned natives. */
         public Policy withKeepNative(int count) {
             return new Policy(
-                    nativeTtl, count, largeJarTtl, largeBytes, jarTtl, otherTtl, minAge, pressure, budgetBytes);
+                    nativeTtl,
+                    count,
+                    installedJarTtl,
+                    largeJarTtl,
+                    largeBytes,
+                    jarTtl,
+                    otherTtl,
+                    minAge,
+                    pressure,
+                    budgetBytes);
         }
 
         /** This policy holding the store to {@code bytes}: past it, whatever has the least life left goes first. */
         public Policy withBudget(long bytes) {
             return new Policy(
-                    nativeTtl, keepNative, largeJarTtl, largeBytes, jarTtl, otherTtl, minAge, pressure, bytes);
+                    nativeTtl,
+                    keepNative,
+                    installedJarTtl,
+                    largeJarTtl,
+                    largeBytes,
+                    jarTtl,
+                    otherTtl,
+                    minAge,
+                    pressure,
+                    bytes);
         }
 
         /**
@@ -101,7 +136,7 @@ public final class StoreCasGc {
          * doubling again per doubling of days, to a cap that is lower for the kinds that are dear to hold.
          */
         double reuseBonus(Kind kind, int days) {
-            if (days <= 1) return 1.0;
+            if (days <= 1 || kind == Kind.INSTALLED_JAR) return 1.0;
             double cap = kind == Kind.NATIVE || kind == Kind.LARGE_JAR ? 2.0 : 4.0;
             return Math.min(cap, 1.0 + 0.5 * (Math.log(days) / Math.log(2)));
         }
@@ -110,6 +145,7 @@ public final class StoreCasGc {
             Duration base =
                     switch (kind) {
                         case NATIVE -> nativeTtl;
+                        case INSTALLED_JAR -> installedJarTtl;
                         case LARGE_JAR -> largeJarTtl;
                         case JAR -> jarTtl;
                         case OTHER -> otherTtl;
@@ -126,11 +162,14 @@ public final class StoreCasGc {
     public static Set<String> pinnedShas() {
         Set<String> pinned = new HashSet<>();
         EngineInstall install = EngineInstall.current();
-        ShelfManifest.read(install.shelfFile()).ifPresent(m -> {
-            pinned.add(m.engineSha256());
-            pinned.addAll(m.jars().values());
-            pinned.addAll(m.poms().values());
-        });
+        for (Path shelf : List.of(install.shelfFile(), install.previousShelfFile())) {
+            ShelfManifest.read(shelf).ifPresent(m -> {
+                pinned.add(m.engineSha256());
+                pinned.addAll(m.jars().values());
+                pinned.addAll(m.poms().values());
+            });
+        }
+        pinned.addAll(install.pinnedEngineShas());
         PreparedUpdate.read(install.engineHome()).ifPresent(p -> {
             pinned.add(p.engineSha256());
             pinned.add(p.clientSha256());
@@ -167,8 +206,42 @@ public final class StoreCasGc {
             if (macho || fat || elf) return Kind.NATIVE;
         }
         if (n >= 2 && head[0] == 'M' && head[1] == 'Z') return Kind.NATIVE;
-        if (n >= 2 && head[0] == 'P' && head[1] == 'K') return size >= largeBytes ? Kind.LARGE_JAR : Kind.JAR;
+        if (n >= 2 && head[0] == 'P' && head[1] == 'K') {
+            if (installedJar(blob)) return Kind.INSTALLED_JAR;
+            return size >= largeBytes ? Kind.LARGE_JAR : Kind.JAR;
+        }
         return Kind.OTHER;
+    }
+
+    private static final String ENGINE_MAIN = "cc.jumpkick.engine.EngineMain";
+    private static final String WORKER_MAIN = "cc.jumpkick.plugin.process.PluginMain";
+
+    /** True when {@code blob} is a jar an install shelved: see {@link Kind#INSTALLED_JAR}. */
+    static boolean installedJar(Path blob) {
+        try (ZipFile zip = new ZipFile(blob.toFile())) {
+            Manifest manifest = manifestOf(zip);
+            String main = manifest == null ? null : manifest.getMainAttributes().getValue("Main-Class");
+            if (ENGINE_MAIN.equals(main)) return true;
+            if (!WORKER_MAIN.equals(main)) return false;
+            boolean anyClass = false;
+            for (var entries = zip.entries(); entries.hasMoreElements(); ) {
+                String name = entries.nextElement().getName();
+                if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+                if (!name.startsWith("cc/jumpkick/")) return false;
+                anyClass = true;
+            }
+            return anyClass;
+        } catch (IOException | RuntimeException notAJar) {
+            return false;
+        }
+    }
+
+    private static @Nullable Manifest manifestOf(ZipFile zip) throws IOException {
+        ZipEntry entry = zip.getEntry("META-INF/MANIFEST.MF");
+        if (entry == null) return null;
+        try (InputStream in = zip.getInputStream(entry)) {
+            return new Manifest(in);
+        }
     }
 
     /**
@@ -275,6 +348,24 @@ public final class StoreCasGc {
             survivors = remaining;
         }
         return new Report(deleted, freed, survivors.size(), pinnedCount[0]);
+    }
+
+    /**
+     * The pass an install runs once it has landed: the store as the cache prune collects it, so the
+     * install it replaced two back goes now rather than at the next weekly prune. Best-effort; a
+     * failure leaves the store as it was.
+     */
+    public static Report afterInstall() {
+        try {
+            Path storeRoot = JkStores.store();
+            double pressure = DiskPressure.factor(JkCacheConfig.DiskSpace.probe(storeRoot));
+            Policy policy = Policy.defaults(pressure)
+                    .withBudget(DiskPressure.budgetBytes(JkCacheConfig.DiskSpace.probe(storeRoot)));
+            AccessLedger ledger = AccessLedger.at(storeRoot.resolve(".access"));
+            return run(JkStores.storeCas(), pinnedShas(), ledger.load(), policy, Clock.SYSTEM.millis(), false);
+        } catch (IOException | RuntimeException e) {
+            return new Report(0, 0L, 0, 0);
+        }
     }
 
     /** The ledger key of the blob with {@code sha256Hex}; the store CAS records its uses under it. */

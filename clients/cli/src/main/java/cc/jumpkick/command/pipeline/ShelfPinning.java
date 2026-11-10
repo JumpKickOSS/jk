@@ -2,6 +2,7 @@
 package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cache.ShelfManifest;
+import cc.jumpkick.cache.StoreCasGc;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.InstallDestination;
@@ -40,6 +41,7 @@ final class ShelfPinning {
         if (pins.jars().isEmpty()) return Optional.empty();
         if (engine.isEmpty()) return Optional.of(SHELF_NOT_PINNED);
         ShelfManifest.record(shelfFile, engine.get(), source, pins.jars(), pins.poms(), Clock.SYSTEM);
+        StoreCasGc.afterInstall();
         String sha = engine.get();
         int jars = pins.jars().size();
         String engineLabel = (sha.length() > 12 ? sha.substring(0, 12) : sha) + " from " + PathDisplay.of(source);
