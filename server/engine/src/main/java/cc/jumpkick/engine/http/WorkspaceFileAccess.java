@@ -5,6 +5,7 @@ import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
@@ -235,7 +236,7 @@ final class WorkspaceFileAccess {
     static Root resolveRoot(@Nullable String projectId, @Nullable String dir) {
         if (projectId == null || projectId.isBlank()) return new Root.Unknown();
         String id = projectId.trim();
-        if (!ProjectIdentity.isValidId(id)) return new Root.Unknown();
+        if (!ProjectIds.isValid(id)) return new Root.Unknown();
         List<ProjectIdentity.Checkout> checkouts = ProjectIdentity.checkoutsForId(id);
         if (checkouts.isEmpty()) return new Root.Unknown();
         if (dir != null && !dir.isBlank()) {

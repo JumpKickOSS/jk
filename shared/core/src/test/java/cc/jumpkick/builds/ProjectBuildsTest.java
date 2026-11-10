@@ -4,6 +4,7 @@ package cc.jumpkick.builds;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.testing.Symlinks;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,7 +27,7 @@ class ProjectBuildsTest {
         String a2 = ProjectBuilds.key(aDir);
         String b = ProjectBuilds.key(bDir);
         assertThat(a).isEqualTo(a2);
-        assertThat(ProjectIdentity.isValidId(a)).isTrue();
+        assertThat(ProjectIds.isValid(a)).isTrue();
         assertThat(a).isNotEqualTo(b);
     }
 

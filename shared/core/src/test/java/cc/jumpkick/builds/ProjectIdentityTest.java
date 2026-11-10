@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.testing.FakeClock;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
@@ -43,7 +44,7 @@ class ProjectIdentityTest {
             assertThat(a.id()).isEqualTo(b.id());
             assertThat(a.source()).isEqualTo(ProjectIdentity.Source.PATH);
             assertThat(a.coord()).isEqualTo("com.example:demo");
-            assertThat(ProjectIdentity.isValidId(a.id())).isTrue();
+            assertThat(ProjectIds.isValid(a.id())).isTrue();
         } finally {
             try (var walk = Files.walk(dir)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> {

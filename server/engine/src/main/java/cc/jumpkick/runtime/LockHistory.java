@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -34,7 +35,7 @@ final class LockHistory {
         String id = next.projectId();
         if (id == null || id.isBlank()) id = disk.projectId();
         if (id == null || id.isBlank()) return;
-        if (scopes(disk).equals(scopes(next))) return;
+        if (!ProjectIds.isValid(id) || scopes(disk).equals(scopes(next))) return;
         Path dest = file(id);
         try {
             AtomicWrites.replace(dest, Files.readAllBytes(LockPaths.lockFile(lockDir)));
@@ -45,7 +46,7 @@ final class LockHistory {
 
     /** The lock kept for {@code projectId}, or null when this project has not replaced one. */
     static @Nullable Lockfile read(@Nullable String projectId) {
-        if (projectId == null || projectId.isBlank()) return null;
+        if (projectId == null || !ProjectIds.isValid(projectId)) return null;
         Path dest = file(projectId);
         if (!Files.isRegularFile(dest)) return null;
         try {
@@ -56,7 +57,7 @@ final class LockHistory {
     }
 
     static Path file(String projectId) {
-        return JkDirs.state().resolve("lock-history").resolve(projectId + ".toml");
+        return JkDirs.state().resolve("lock-history").resolve(ProjectIds.normalize(projectId) + ".toml");
     }
 
     /** {@code g:a=scope,scope} rows. Versions are not part of it: a pin that keeps its scope is not a removal. */

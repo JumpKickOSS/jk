@@ -10,6 +10,7 @@ import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
 import cc.jumpkick.runtime.base.ProjectCard;
@@ -109,7 +110,7 @@ final class HttpProjectApi {
         }
         List<ProjectIdentity.Checkout> checkouts = List.of();
         if (projectId != null && !projectId.isBlank()) {
-            checkouts = ProjectIdentity.isValidId(projectId) ? ProjectIdentity.checkoutsForId(projectId) : List.of();
+            checkouts = ProjectIds.isValid(projectId) ? ProjectIdentity.checkoutsForId(projectId) : List.of();
             if (checkouts.isEmpty()) {
                 HttpResponses.sendJson(
                         exchange,

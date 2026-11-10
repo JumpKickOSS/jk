@@ -243,6 +243,9 @@ public final class LockfileReader {
         if (manifestsSha != null && manifestsSha.isBlank()) manifestsSha = null;
         String projectId = result.getString("project-id"); // optional durable identity
         if (projectId != null && projectId.isBlank()) projectId = null;
+        if (projectId != null && !ProjectIds.isValid(projectId)) {
+            throw new IllegalArgumentException("jk-lock.toml in " + origin + ": `project-id` is not a valid id");
+        }
         return new Lockfile(
                 lockVersion,
                 generatedBy,

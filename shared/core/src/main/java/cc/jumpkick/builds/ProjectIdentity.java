@@ -9,6 +9,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.MinimalToml;
@@ -73,7 +74,7 @@ public record ProjectIdentity(
         if (coord == null || coord.isBlank()) coord = "unknown:unknown";
         path = canonical(path == null ? WorkingDirectory.current() : path);
         if (source == null) source = Source.PATH;
-        id = normalizeId(id);
+        id = ProjectIds.normalize(id);
     }
 
     /**
@@ -170,32 +171,6 @@ public record ProjectIdentity(
         return Hashing.hex(bytes);
     }
 
-    /** Normalize / validate an id string; reject path-like values. */
-    public static String normalizeId(String raw) {
-        String s = raw.strip().toLowerCase(Locale.ROOT);
-        if (s.isEmpty() || s.length() > 128) {
-            throw new IllegalArgumentException("invalid project id length");
-        }
-        if (s.indexOf('/') >= 0 || s.indexOf('\\') >= 0 || s.contains("..")) {
-            throw new IllegalArgumentException("project id must not look like a path: " + raw);
-        }
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            boolean ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
-            if (!ok) throw new IllegalArgumentException("invalid project id char: " + raw);
-        }
-        return s;
-    }
-
-    public static boolean isValidId(String raw) {
-        try {
-            normalizeId(raw);
-            return true;
-        } catch (RuntimeException e) {
-            return false;
-        }
-    }
-
     /**
      * Find an existing project home whose identity matches this checkout (path or git), for
      * re-lock recovery after a wiped lockfile.
@@ -238,7 +213,7 @@ public record ProjectIdentity(
         }
         if (bestId == null) return Optional.empty();
         try {
-            return Optional.of(normalizeId(bestId));
+            return Optional.of(ProjectIds.normalize(bestId));
         } catch (RuntimeException e) {
             return Optional.empty();
         }
@@ -246,8 +221,8 @@ public record ProjectIdentity(
 
     /** Locate project home by id under the builds root. */
     public static Optional<Path> homeForId(String id) {
-        if (!isValidId(id)) return Optional.empty();
-        Path home = ProjectBuilds.projectHome(normalizeId(id));
+        if (!ProjectIds.isValid(id)) return Optional.empty();
+        Path home = ProjectBuilds.projectHome(ProjectIds.normalize(id));
         return Files.isDirectory(home) ? Optional.of(home) : Optional.empty();
     }
 
@@ -314,14 +289,14 @@ public record ProjectIdentity(
     private static Optional<String> explicitId(Path projectDir) {
         String id = TomlScan.scan(ManifestPaths.manifestIn(projectDir), "id").get("id");
         if (id == null || id.isBlank()) return Optional.empty();
-        return Optional.of(normalizeId(id));
+        return Optional.of(ProjectIds.normalize(id));
     }
 
     /** {@code raw} as a normalized id; empty when blank or not an id at all. */
     private static Optional<String> validId(@Nullable String raw) {
         if (raw == null || raw.isBlank()) return Optional.empty();
         try {
-            return Optional.of(normalizeId(raw));
+            return Optional.of(ProjectIds.normalize(raw));
         } catch (RuntimeException notAnId) {
             return Optional.empty();
         }
