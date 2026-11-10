@@ -4,7 +4,9 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.TreeContent;
+import cc.jumpkick.host.time.Clock;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -13,13 +15,13 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 
 /**
  * Background CAS ingest of an output dir while a compiler still writes it. Stable {@code (size,
@@ -40,6 +42,10 @@ public final class CasPrewriter implements AutoCloseable {
     private final ScheduledExecutorService scheduler;
     private final ConcurrentMap<Path, Snapshot> tracked = new ConcurrentHashMap<>();
     private final ConcurrentMap<Path, String> processed = new ConcurrentHashMap<>();
+    /** Files already there when the compile began: {@link #finish} answers them, usually from the memo. */
+    private final Set<Path> preexisting = ConcurrentHashMap.newKeySet();
+
+    private final long startedMillis = Clock.SYSTEM.millis();
     private volatile boolean running = true;
 
     private CasPrewriter(Cas cas, Path outputDir) {
@@ -79,30 +85,23 @@ public final class CasPrewriter implements AutoCloseable {
 
         Map<String, String> outputs = new TreeMap<>();
         if (!Files.exists(outputDir)) return outputs;
-        try (Stream<Path> stream = Files.find(outputDir, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
-            for (Path file : (Iterable<Path>) stream::iterator) {
-                String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
-                // What ActionCache.store would keep of the same tree.
-                if (!TreeContent.isContent(relPath)) continue;
-                // Authoritative pass always content-hashes, and this is deliberately NOT routed
-                // through FileHashMemo. tried that and
-                // CasPrewriterTest.finish_rehashes_when_content_changes_without_size_mtime_change
-                // rejected it: a tool can rewrite equal-length bytes and restore the previous
-                // FileTime, and a restored FileTime carries the same nanoseconds — so even the memo's
-                // nanosecond provenance rule cannot tell the two apart. Every cheaper identity for
-                // this file is forgeable; only the bytes are not. Poll-time CAS ingest is still a win
-                // when the hex matches (put is a no-op hit).
-                String hex = Hashing.sha256Hex(file);
-                if (!hex.equals(processed.get(file))) {
-                    cas.putFile(file, hex);
-                }
-                // Seed here rather than at poll time: this hash is the authoritative one, so
-                // downstream ClasspathFingerprint passes over the same tree stop re-hashing it, and
-                // nothing upstream of this line is trusted to have got it right.
-                FileHashMemo.rememberContent(file, hex);
-                outputs.put(relPath, hex);
-            }
-        }
+        Path root = outputDir.toAbsolutePath().normalize();
+        PathUtil.forEachRegularFile(root, (file, attrs) -> {
+            String relPath = root.relativize(file).toString().replace(File.separatorChar, '/');
+            // What ActionCache.store would keep of the same tree.
+            if (!TreeContent.isContent(relPath)) return;
+            // Through the memo: a file whose stat identity (size, mtime, ctime, file id) still
+            // matches what an earlier build recorded is not read again. An equal-length rewrite
+            // that restores the old mtime still moves the change time and so the identity, and a
+            // self-hash is recorded only once the file is settled, so the memo cannot hand back
+            // the bytes a file held before.
+            String hex = FileHashMemo.contentHash(file, attrs);
+            if (!hex.equals(processed.get(file))) cas.putFile(file, hex);
+            // This hash is the authoritative one: seeding it lets downstream ClasspathFingerprint
+            // passes over the same tree answer from the memo.
+            FileHashMemo.rememberContent(file, hex);
+            outputs.put(relPath, hex);
+        });
         return outputs;
     }
 
@@ -127,7 +126,7 @@ public final class CasPrewriter implements AutoCloseable {
                     // Cheapest rejections first: the walk already paid for `attrs`, and an
                     // already-ingested file must cost a map lookup rather than a syscall.
                     if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE;
-                    if (processed.containsKey(file)) return FileVisitResult.CONTINUE;
+                    if (processed.containsKey(file) || preexisting.contains(file)) return FileVisitResult.CONTINUE;
                     if (BuildStamps.isStampFile(file.getFileName().toString())) return FileVisitResult.CONTINUE;
                     handleCandidate(file, attrs);
                     return FileVisitResult.CONTINUE;
@@ -153,6 +152,12 @@ public final class CasPrewriter implements AutoCloseable {
     private void handleCandidate(Path file, BasicFileAttributes attrs) {
         long size = attrs.size();
         long mtime = attrs.lastModifiedTime().toMillis();
+        // Untouched by this compile: an incremental compile of one source leaves thousands of
+        // these, and hashing each here would read them all for a CAS that already holds them.
+        if (mtime < startedMillis - 1_000) {
+            preexisting.add(file);
+            return;
+        }
         Snapshot prev = tracked.get(file);
         if (prev == null || prev.size != size || prev.mtime != mtime) {
             tracked.put(file, new Snapshot(size, mtime));

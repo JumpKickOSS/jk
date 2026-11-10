@@ -12,6 +12,7 @@ import cc.jumpkick.testing.Await;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.Map;
@@ -180,5 +181,29 @@ class CasPrewriterTest {
             assertThat(outputs).containsEntry("Same.class", Hashing.sha256Hex("BBBBBB".getBytes()));
             assertThat(outputs.get("Same.class")).isNotEqualTo(Hashing.sha256Hex("AAAAAA".getBytes()));
         }
+    }
+
+    /** A one-file incremental compile leaves the rest of the tree untouched: finish reads none of it. */
+    @Test
+    void finish_reads_no_file_the_memo_already_vouches_for(@TempDir Path tempDir) throws Exception {
+        Path classes = Files.createDirectories(tempDir.resolve("classes"));
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        for (int i = 0; i < 50; i++) {
+            Path f = classes.resolve("C" + i + ".class");
+            Files.writeString(f, "class " + i);
+            Files.setLastModifiedTime(f, FileTime.fromMillis(System.currentTimeMillis() - 3_600_000));
+            FileHashMemo.rememberContent(f, Hashing.sha256Hex(Files.readAllBytes(f)));
+        }
+        FileHashMemo.resetStats();
+
+        Map<String, String> outputs = CasPrewriter.watching(cas, classes).finish();
+
+        assertThat(outputs).hasSize(50).containsEntry("C7.class", Hashing.sha256Hex("class 7".getBytes()));
+        assertThat(FileHashMemo.memoHits())
+                .as("every file answered from the memo")
+                .isEqualTo(50);
+        assertThat(FileHashMemo.contentReads())
+                .as("every file answered from the memo")
+                .isZero();
     }
 }
