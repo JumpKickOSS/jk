@@ -117,7 +117,7 @@
         <label>Kind
           <select :value="activityFilter.kind || ''" @change="setActivityFilter('kind', $event.target.value)">
             <option value="">All</option>
-            <option v-for="k in (activityFacets && activityFacets.kinds) || ['notification', 'decision', 'change', 'setup', 'install']" :key="k" :value="k">{{ kindLabel(k) }}</option>
+            <option v-for="k in (activityFacets && activityFacets.kinds) || ['notification', 'decision', 'change', 'setup', 'install']" :key="k" :value="k">{{ activityKindLabel(k) }}</option>
           </select>
         </label>
         <label>Project
@@ -144,7 +144,7 @@
       <ol class="activity-list">
         <li v-for="r in activityRows()" :key="r.id" class="activity-row" :class="['act-' + r.kind, { open: activityOpen === r.id }]" :data-entry="r.id">
           <button type="button" class="activity-line" :aria-expanded="activityOpen === r.id" @click="toggleActivity(r.id)">
-            <span class="chip act-kind">{{ kindLabel(r.kind) }}</span>
+            <span class="chip act-kind">{{ activityKindLabel(r.kind) }}</span>
             <span class="activity-title">{{ r.title }}</span>
             <span v-if="r.outcome" class="chip act-outcome" :class="'out-' + r.outcome">{{ r.outcome }}</span>
             <span class="spacer"></span>

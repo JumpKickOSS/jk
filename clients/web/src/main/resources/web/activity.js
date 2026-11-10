@@ -44,7 +44,7 @@ const CHANNEL_LABELS = {
 
 const OUTCOME_LABELS = { open: 'waiting', accepted: 'accepted', declined: 'declined', expired: 'expired' };
 
-export function kindLabel(kind) {
+export function activityKindLabel(kind) {
   return KIND_LABELS[kind] || kind;
 }
 

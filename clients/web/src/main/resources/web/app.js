@@ -23,7 +23,7 @@ import { FileViewer } from './fileviewer.js';
 import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
 import { DecisionDialog, decisionData, decisionMethods } from './decisions.js';
 import { askLine, notifyData, notifyMethods } from './notify.js';
-import { activityData, activityFilters, activityMethods, channelLabel, diffLines, kindLabel, surfaceLabel } from './activity.js';
+import { activityData, activityFilters, activityMethods, activityKindLabel, channelLabel, diffLines, surfaceLabel } from './activity.js';
 import { bellLook, justNow, noticeData, noticeMethods } from './notices.js';
 import { foldEvent, seedFromHistory } from './fold.js';
 import {
@@ -733,7 +733,7 @@ export const appOptions = {
     gib,
     duration: fmtDuration,
     bytes: fmtBytes,
-    kindLabel,
+    activityKindLabel,
     surfaceLabel,
     channelLabel,
     diffLines,

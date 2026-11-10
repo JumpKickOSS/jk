@@ -516,3 +516,27 @@ test('a finished build merges only the newer runs into the history already held'
   assert.deepEqual(merged.map((r) => r.id), ['c', 'b', 'a']);
   assert.equal(merged[1].note, 'rewritten');
 });
+
+test('no method of the root overrides a view mixin method of the same name', async () => {
+  // app.js spreads each view's methods and then lists its own: a later key silently wins, which once
+  // printed a run card as JSON where its kind belonged.
+  const mixins = {
+    'cards.js': 'cardMethods',
+    'consoleview.js': 'consoleMethods',
+    'decisions.js': 'decisionMethods',
+    'notify.js': 'notifyMethods',
+    'activity.js': 'activityMethods',
+    'notices.js': 'noticeMethods',
+    'pwa.js': 'installMethods',
+    'projects.js': 'projectMethods',
+    'sessions.js': 'sessionMethods',
+    'status.js': 'statusMethods',
+    'wizard.js': 'wizardMethods',
+  };
+  for (const [file, name] of Object.entries(mixins)) {
+    const methods = (await import(pathToFileURL(path.join(process.env.JK_APP_DIR, file))))[name];
+    for (const key of Object.keys(methods)) {
+      assert.equal(appOptions.methods[key], methods[key], `${file} ${name}.${key} is overridden in app.js`);
+    }
+  }
+});
