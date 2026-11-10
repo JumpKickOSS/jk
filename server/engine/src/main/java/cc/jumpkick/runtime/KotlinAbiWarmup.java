@@ -28,6 +28,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
@@ -61,18 +62,26 @@ public final class KotlinAbiWarmup {
     public static final class Warmup {
         private final Runnable publish;
         private final CompletableFuture<Void> done = new CompletableFuture<>();
+        private final AtomicBoolean started = new AtomicBoolean();
 
-        private Warmup(Runnable publish) {
+        Warmup(Runnable publish) {
             this.publish = publish;
         }
 
         /** The signal to hand the scheduler. */
         public Runnable publish() {
-            return publish;
+            return () -> {
+                started.set(true);
+                publish.run();
+            };
         }
 
-        /** Blocks until the warm-up has finished, if one was started. */
+        /**
+         * Blocks until the warm-up has finished, if one was started. A producer whose classes never
+         * finished (a failed compile, a cancel) never started one, and its module completes at once.
+         */
         public void await() {
+            if (!started.get()) return;
             try {
                 done.get(5, TimeUnit.MINUTES);
             } catch (InterruptedException e) {
