@@ -218,6 +218,35 @@ class MavenPublisherTest {
     }
 
     @Test
+    void a_rerun_after_a_publish_that_died_past_the_sha1_finishes_the_checksums_and_signatures() throws Exception {
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
+        byte[] jar = "jar".getBytes(StandardCharsets.UTF_8);
+        String at = "/repo/com/example/widget/1.0.0/widget-1.0.0.jar";
+        publisher.publish(project, List.of(new MavenPublisher.Artifact(".jar", jar)));
+        // Run 1 died after the .sha1: the later checksums never went up.
+        received.remove(at + ".sha256");
+        received.remove(at + ".sha512");
+        putLog.clear();
+
+        SigstoreSigner fake = bytes -> "{}".getBytes(StandardCharsets.UTF_8);
+        MavenPublisher.Result rerun = publisher.publish(
+                project, List.of(new MavenPublisher.Artifact(".jar", jar)), SigningOptions.of(null, fake));
+
+        assertThat(rerun.alreadyThere()).containsExactly("com/example/widget/1.0.0/widget-1.0.0.jar");
+        assertThat(putLog)
+                .contains(at + ".sha256", at + ".sha512", at + ".sigstore", at + ".sigstore.sha1")
+                .doesNotContain(at, at + ".md5", at + ".sha1");
+
+        putLog.clear();
+        SigstoreSigner other = bytes -> "{\"again\":1}".getBytes(StandardCharsets.UTF_8);
+        publisher.publish(project, List.of(new MavenPublisher.Artifact(".jar", jar)), SigningOptions.of(null, other));
+        assertThat(putLog)
+                .as("a signature already beside the body is kept, not re-signed")
+                .doesNotContain(at + ".sigstore");
+    }
+
+    @Test
     void a_repository_that_will_not_answer_a_read_is_left_to_the_upload() {
         MavenPublisher publisher = new MavenPublisher(base, null, null);
         getFailureStatus = 403;

@@ -126,21 +126,23 @@ public final class MavenPublisher {
         for (Artifact a : artifacts) {
             String relPath = prefix + stem + a.filenameSuffix();
             // A published file never changes: one the repository already holds at these bytes is left
-            // alone, which makes a re-run after a partial publish finish the rest; one it holds at
+            // alone and so is each sidecar already beside it, which makes a re-run after a partial
+            // publish (or one that adds signing) upload exactly what is missing; one it holds at
             // other bytes is a version somebody already used.
-            if (presence(relPath, a.body()) == Presence.SAME) {
+            boolean there = presence(relPath, a.body()) == Presence.SAME;
+            if (there) {
                 alreadyThere.add(relPath);
-                continue;
+                putMissingChecksums(relPath, a.body(), results, bytes);
+            } else {
+                putWithChecksums(relPath, a.body(), contentType(a.filenameSuffix()), results, bytes);
             }
-            putWithChecksums(relPath, a.body(), contentType(a.filenameSuffix()), results, bytes);
-
             if (signing.gpg() != null) {
-                byte[] asc = signing.gpg().signArmored(a.body());
-                putWithChecksums(relPath + ".asc", asc, contentType(".asc"), results, bytes);
+                GpgSigner gpg = signing.gpg();
+                putSignature(relPath + ".asc", there, () -> gpg.signArmored(a.body()), results, bytes);
             }
             if (signing.sigstore() != null) {
-                byte[] bundle = signing.sigstore().signBundle(a.body());
-                putWithChecksums(relPath + ".sigstore", bundle, contentType(".sigstore"), results, bytes);
+                SigstoreSigner sigstore = signing.sigstore();
+                putSignature(relPath + ".sigstore", there, () -> sigstore.signBundle(a.body()), results, bytes);
             }
         }
         publishMetadata(project, groupPath, results, bytes);
@@ -303,6 +305,51 @@ public final class MavenPublisher {
                     e);
         }
         putWithChecksums(relPath, existing.withVersion(project.version()).render(), "application/xml", results, bytes);
+    }
+
+    /** Signs on demand: a signature already published beside a published body is not re-signed. */
+    @FunctionalInterface
+    private interface Signer {
+        byte[] sign() throws IOException, InterruptedException;
+    }
+
+    /**
+     * The signature at {@code relPath} with its checksums. Beside a body that was already there,
+     * a signature the repository holds is kept (a fresh one would differ in its timestamp) and only
+     * its missing checksums go up.
+     */
+    private void putSignature(
+            String relPath, boolean bodyThere, Signer signer, Map<String, Integer> results, long[] bytes)
+            throws IOException, InterruptedException {
+        Optional<byte[]> held = bodyThere ? readable(relPath) : Optional.empty();
+        if (held.isPresent()) {
+            putMissingChecksums(relPath, held.get(), results, bytes);
+        } else {
+            putWithChecksums(
+                    relPath, signer.sign(), contentType(relPath.substring(relPath.lastIndexOf('.'))), results, bytes);
+        }
+    }
+
+    /** Each of {@code relPath}'s four checksum files the repository does not hold yet. */
+    private void putMissingChecksums(String relPath, byte[] body, Map<String, Integer> results, long[] bytes)
+            throws IOException, InterruptedException {
+        Checksums.Set sums = Checksums.of(body);
+        String[][] files = {
+            {".md5", sums.md5()}, {".sha1", sums.sha1()}, {".sha256", sums.sha256()}, {".sha512", sums.sha512()}
+        };
+        for (String[] f : files) {
+            if (readable(relPath + f[0]).isPresent()) continue;
+            put(relPath + f[0], f[1].getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
+        }
+    }
+
+    /** The file at {@code relPath}, or empty when it is absent or the repository will not say. */
+    private Optional<byte[]> readable(String relPath) throws InterruptedException {
+        try {
+            return transport.fetch(repoBase.resolve(relPath), credential);
+        } catch (IOException unreadable) {
+            return Optional.empty();
+        }
     }
 
     private void putWithChecksums(
