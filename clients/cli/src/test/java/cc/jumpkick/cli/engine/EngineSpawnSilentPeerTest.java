@@ -82,7 +82,7 @@ class EngineSpawnSilentPeerTest {
     void a_peer_silent_on_the_first_probe_and_live_on_the_next_is_ensured_not_displaced() throws Exception {
         EnginePaths.Paths paths = paths();
         Path socket = EnginePaths.activeSocket(paths);
-        Process holder = SleepMain.spawn(60_000);
+        Process holder = SleepMain.spawnEngine(60_000);
         try (FakeEngine engine = new FakeEngine(socket, 1)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
@@ -139,7 +139,7 @@ class EngineSpawnSilentPeerTest {
     void a_young_peer_silent_through_every_probe_is_left_alone_not_displaced() throws Exception {
         EnginePaths.Paths paths = paths();
         Path socket = EnginePaths.activeSocket(paths);
-        Process holder = SleepMain.spawn(120_000);
+        Process holder = SleepMain.spawnEngine(120_000);
         try (FakeEngine engine = new FakeEngine(socket, Integer.MAX_VALUE)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
@@ -163,7 +163,7 @@ class EngineSpawnSilentPeerTest {
     void a_peer_silent_through_every_probe_that_shows_no_life_is_displaced() throws Exception {
         EnginePaths.Paths paths = paths();
         Path socket = EnginePaths.activeSocket(paths);
-        Process idle = SleepMain.spawn(120_000);
+        Process idle = SleepMain.spawnEngine(120_000);
         try (FakeEngine ignored = new FakeEngine(socket, Integer.MAX_VALUE)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(idle.pid()));
             // Let the JVM's own start-up CPU settle, so two readings apart show no step.
@@ -186,7 +186,7 @@ class EngineSpawnSilentPeerTest {
     void displacing_a_silent_peer_hard_kills_the_jvm_named_by_the_pid_file() throws Exception {
         EnginePaths.Paths paths = paths();
         Path socket = EnginePaths.activeSocket(paths);
-        Process wedged = SleepMain.spawn(60_000);
+        Process wedged = SleepMain.spawnEngine(60_000);
         try (FakeEngine ignored = new FakeEngine(socket, Integer.MAX_VALUE)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(wedged.pid()));
 

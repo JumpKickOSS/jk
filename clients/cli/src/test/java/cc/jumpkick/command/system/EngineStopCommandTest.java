@@ -65,7 +65,7 @@ class EngineStopCommandTest {
     @Test
     void a_drain_whose_ack_misses_the_watchdog_never_hard_kills_a_busy_engine() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process engineJvm = SleepMain.spawn(60_000);
+        Process engineJvm = SleepMain.spawnEngine(60_000);
         try (ScriptedEngine engine = new ScriptedEngine(socket, (type, connection) -> switch (type) {
             case EngineProtocol.HELLO -> ScriptedEngine.helloAck(VERSION, engineJvm.pid());
             case EngineProtocol.STATUS -> ScriptedEngine.statusAck(VERSION, engineJvm.pid(), 1, false);
@@ -88,7 +88,7 @@ class EngineStopCommandTest {
     @Test
     void an_engine_silent_through_every_probe_is_refused_not_killed() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process holder = SleepMain.spawn(60_000);
+        Process holder = SleepMain.spawnEngine(60_000);
         try (ScriptedEngine ignored = ScriptedEngine.silent(socket)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
@@ -112,7 +112,7 @@ class EngineStopCommandTest {
     void now_stops_a_silent_engine_regardless() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
         // An engine by its command line: a stop kills only what its pid file names as an engine.
-        Process holder = SleepMain.spawn(60_000, "cc.jumpkick.engine.EngineMain");
+        Process holder = SleepMain.spawnEngine(60_000);
         try (ScriptedEngine ignored = ScriptedEngine.silent(socket)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
@@ -129,7 +129,7 @@ class EngineStopCommandTest {
     @Test
     void a_holder_with_no_listener_that_shows_life_is_refused_not_killed() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process holder = SleepMain.spawn(60_000);
+        Process holder = SleepMain.spawnEngine(60_000);
         try {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
@@ -147,7 +147,7 @@ class EngineStopCommandTest {
     @Test
     void a_holder_with_no_listener_and_no_life_is_killed() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process holder = SleepMain.spawn(60_000);
+        Process holder = SleepMain.spawnEngine(60_000);
         try {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
             // Let the JVM's own start-up CPU settle, so two readings apart show no step.

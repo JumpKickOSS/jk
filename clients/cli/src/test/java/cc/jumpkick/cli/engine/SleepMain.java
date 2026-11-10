@@ -21,6 +21,17 @@ public final class SleepMain {
      * command line and are ignored by {@link #main} — how a test builds a process that a
      * command-line predicate recognizes (an engine marker, say) without running an engine.
      */
+    /** The marker {@link EngineFleet#isEnginePid} reads on a command line as a resident engine. */
+    public static final String ENGINE_MAIN = "cc.jumpkick.engine.EngineMain";
+
+    /**
+     * A sleeper that reads as an engine: a stop or a displacement acts only on a pid-file process
+     * that looks like one, so a test's holder standing in for an engine must carry the marker.
+     */
+    public static Process spawnEngine(long ms) throws Exception {
+        return spawn(ms, ENGINE_MAIN);
+    }
+
     public static Process spawn(long ms, String... trailingArgs) throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", Os.isWindows() ? "java.exe" : "java")
                 .toString();

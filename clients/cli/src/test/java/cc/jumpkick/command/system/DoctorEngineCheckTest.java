@@ -51,7 +51,7 @@ class DoctorEngineCheckTest {
     @Test
     void a_silent_engine_whose_process_shows_life_is_busy_not_wedged() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process holder = SleepMain.spawn(60_000);
+        Process holder = SleepMain.spawnEngine(60_000);
         try (ScriptedEngine ignored = ScriptedEngine.silent(socket)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 

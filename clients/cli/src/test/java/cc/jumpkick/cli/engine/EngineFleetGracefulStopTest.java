@@ -42,7 +42,7 @@ class EngineFleetGracefulStopTest {
     @Test
     void a_silent_engine_is_left_alone_not_killed() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process holder = SleepMain.spawn(60_000);
+        Process holder = SleepMain.spawnEngine(60_000);
         try (ScriptedEngine engine = ScriptedEngine.silent(socket)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
@@ -60,7 +60,7 @@ class EngineFleetGracefulStopTest {
     @Test
     void a_holder_with_no_listener_that_shows_life_is_left_alone() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process holder = SleepMain.spawn(60_000);
+        Process holder = SleepMain.spawnEngine(60_000);
         try {
             EngineFleet.StopResult result = EngineFleet.stop(unresponsive(socket, holder.pid()), false, QUICK, YOUNG);
 
@@ -75,7 +75,7 @@ class EngineFleetGracefulStopTest {
     @Test
     void a_holder_with_no_listener_and_no_life_is_killed() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process holder = SleepMain.spawn(60_000);
+        Process holder = SleepMain.spawnEngine(60_000);
         try {
             // Let the JVM's own start-up CPU settle, so two readings apart show no step.
             SleepMain.awaitIdle(holder);
@@ -93,7 +93,7 @@ class EngineFleetGracefulStopTest {
     @Test
     void now_stops_a_silent_engine_regardless() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process holder = SleepMain.spawn(60_000);
+        Process holder = SleepMain.spawnEngine(60_000);
         try (ScriptedEngine ignored = ScriptedEngine.silent(socket)) {
             EngineFleet.StopResult result = EngineFleet.stop(unresponsive(socket, holder.pid()), true, SILENT, YOUNG);
 
