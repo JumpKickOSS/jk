@@ -65,7 +65,15 @@ public record Reconciliation(
         List<Entry> slice = before.entries(lane);
         for (Entry e : slice) byKey.put(e.key(), e);
         Map<String, Observation> distinct = new LinkedHashMap<>();
-        for (Observation o : observed) distinct.putIfAbsent(o.key(), o);
+        // Two units may share a key (equal-arity overloads, same-named methods in nested classes of
+        // one file): the worst of them is the one the entry is judged by, never just the first.
+        for (Observation o : observed) {
+            distinct.merge(
+                    o.key(),
+                    o,
+                    (was, now) ->
+                            was.isMetric() && now.isMetric() && tolerance.worse(value(now), value(was)) ? now : was);
+        }
         List<Observation> fresh = new ArrayList<>();
         List<Observation> baselined = new ArrayList<>();
         List<Entry> kept = new ArrayList<>();
@@ -100,6 +108,10 @@ public record Reconciliation(
         boolean tightening = shrunk == null && (entriesChanged || unrecorded);
         RuleBaseline after = before.withLane(lane, tightening ? population : before.population(lane), kept);
         return new Reconciliation(ruleId, lane, fresh, baselined, stale, after, tightening, shrunk, population, before);
+    }
+
+    private static double value(Observation o) {
+        return o.value() == null ? 0 : o.value();
     }
 
     private static @Nullable String scopeShrunk(Map<String, Long> recorded, Map<String, Long> now) {

@@ -274,4 +274,21 @@ class BaselineTest {
         assertThat(Baselines.freezeRefusal("why", true)).contains("CI");
         assertThat(Baselines.freezeRefusal("why", false)).isNull();
     }
+
+    @Test
+    void units_that_share_a_key_are_judged_by_the_worst_of_them() {
+        // Two equal-arity overloads: the key is <file>#<name>/<arity> for both.
+        RuleBaseline rb = RuleBaseline.of(Map.of(), List.of(new Entry.Metric("a/A.java#run/0", 150, "agreed")));
+        Reconciliation r = Reconciliation.of(
+                "method-size",
+                rb,
+                List.of(
+                        Observation.metric("a/A.java#run/0", 150, "a/A.java", "the baselined one"),
+                        Observation.metric("a/A.java#run/0", 1000, "a/A.java", "the one that grew")),
+                Map.of());
+        assertThat(r.fresh())
+                .as("the second overload growing past the entry is new, not dropped as a duplicate")
+                .extracting(Observation::detail)
+                .containsExactly("the one that grew");
+    }
 }
