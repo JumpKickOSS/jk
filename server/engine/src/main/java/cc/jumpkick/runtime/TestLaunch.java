@@ -124,8 +124,13 @@ final class TestLaunch {
      * the run's record and {@code jk-results.md}.
      */
     static void writeCoverageReport(
-            TaskContext ctx, BuildPlanner.Inputs in, CoverageTools.Jacoco jacoco, Path exec, String moduleLabel)
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            CoverageTools.@Nullable Jacoco jacoco,
+            @Nullable Path exec,
+            String moduleLabel)
             throws Exception {
+        if (jacoco == null || exec == null) return; // not a coverage run
         BuildLayout layout = ctx.require(LAYOUT);
         Path html = layout.jacocoReportDir();
         Path xml = html.resolve(OutputArtifacts.DEFAULT_COVERAGE);

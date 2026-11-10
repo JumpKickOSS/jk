@@ -1256,6 +1256,10 @@ in     = "server/engine/src/main/java/cc/jumpkick/engine/activity/ChangeNotices.
 reason = "engine-lifetime poll of the change journal's file, never a session"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/DiskWatch.java"
+reason = "engine-lifetime disk guard and cache collector: statfs and the cache's own files, never a session"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/WorkerAotCache.java"
 reason = "a startup-cache trainer belongs to the cache, not to the request that missed it; a cancel must not kill it"
 

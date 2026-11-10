@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.model.RepositorySpec;
 import com.google.cloud.tools.jib.api.CacheDirectoryCreationException;
 import com.google.cloud.tools.jib.api.Containerizer;
@@ -47,12 +48,6 @@ public final class RegistryAuth {
     public static final RegistryAuth NONE =
             new RegistryAuth(RepoCredential.ANONYMOUS, RepoCredential.ANONYMOUS, false, null);
 
-    /**
-     * Where Jib keeps base-image layers under jk's cache root; the engine bounds this tree as {@code
-     * CacheTree.JIB_LAYERS}, so the names must agree.
-     */
-    static final String JIB_LAYERS = "jib-layers";
-
     private final RepoCredential basePull;
     private final RepoCredential push;
     private final boolean plainHttp;
@@ -72,7 +67,8 @@ public final class RegistryAuth {
      * {@code ~/.cache/google-cloud-tools-java}, which nothing bounds. {@code null} keeps Jib's default.
      */
     public RegistryAuth withCacheRoot(@Nullable Path cacheRoot) {
-        return new RegistryAuth(basePull, push, plainHttp, cacheRoot == null ? null : cacheRoot.resolve(JIB_LAYERS));
+        return new RegistryAuth(
+                basePull, push, plainHttp, cacheRoot == null ? null : CacheTree.JIB_LAYERS.under(cacheRoot));
     }
 
     /** These credentials, with the layer cache under {@code cacheRoot} unless one is already named. */

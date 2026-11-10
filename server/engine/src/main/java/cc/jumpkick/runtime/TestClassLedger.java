@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
@@ -68,6 +69,7 @@ final class TestClassLedger {
     }
 
     private final Map<String, Entry> previous;
+    private List<String> settled = List.of();
     private final Map<String, Entry> recorded = new ConcurrentHashMap<>();
     private final TestClassTally tally;
 
@@ -90,6 +92,42 @@ final class TestClassLedger {
             }
         }
         return new TestClassLedger(previous, module, tier);
+    }
+
+    /**
+     * The ledger under {@code stampKey}, with the classes this run may leave out: none for a run
+     * that runs its {@code whole} selection (forced, debug, coverage, affected). A run that leaves
+     * some out says so with {@link #NOT_RERUN}.
+     */
+    static TestClassLedger begin(
+            TaskContext ctx, ActionCache cache, @Nullable String stampKey, String module, String tier, boolean whole) {
+        TestClassLedger ledger = load(cache, stampKey, module, tier);
+        ledger.settled = whole ? List.of() : ledger.settledClasses();
+        if (!ledger.settled.isEmpty()) ctx.warn(NOT_RERUN, notRerun(ledger.settled.size()));
+        return ledger;
+    }
+
+    /** The classes this run leaves out ({@link #begin}). */
+    List<String> settled() {
+        return settled;
+    }
+
+    /**
+     * After a run that finished: store the ledger under the settled {@code stampKey}, warn {@link
+     * #PASSED_ON_RERUN} for a class that went from red to green with nothing changed, and answer
+     * {@code ran} as the whole suite, the classes left out counted in.
+     */
+    TestSummary finish(
+            TaskContext ctx, ActionCache cache, String testTaskId, @Nullable String stampKey, TestSummary ran) {
+        store(cache, testTaskId, stampKey);
+        List<String> flaky = passedOnRerun();
+        if (!flaky.isEmpty()) {
+            ctx.warn(
+                    PASSED_ON_RERUN,
+                    "passed on a re-run with no input changed, so flaky or dependent on what ran before: "
+                            + String.join(", ", flaky));
+        }
+        return withSettled(ran, settled);
     }
 
     /** The action key the ledger of {@code stampKey} is stored under. */

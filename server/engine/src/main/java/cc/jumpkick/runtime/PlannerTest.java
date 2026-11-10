@@ -599,10 +599,10 @@ public final class PlannerTest {
         // Under the same stamp the classes that passed before still stand: a red or cut-short
         // suite runs only what has not passed yet. A forced, debug, coverage or affected run
         // runs its whole selection.
-        TestClassLedger ledger = TestClassLedger.load(actionCache, stampKey, moduleLabel, tier.name());
-        List<String> settled = rerun || affected != null ? List.of() : ledger.settledClasses();
+        TestClassLedger ledger =
+                TestClassLedger.begin(ctx, actionCache, stampKey, moduleLabel, tier.name(), rerun || affected != null);
+        List<String> settled = ledger.settled();
         TestLaunch.reweightForRealRun(ctx, in);
-        if (!settled.isEmpty()) ctx.warn(TestClassLedger.NOT_RERUN, TestClassLedger.notRerun(settled.size()));
         if (suites.describe() != null) ctx.output(suites.describe());
         List<Path> runtimeCp = TestLaunch.testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
         // Test execution is serialized across concurrently-built units unless the
@@ -617,10 +617,10 @@ public final class PlannerTest {
                 coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
                 gated,
                 PlannerTest::awaitTestGate);
-        TestSummary result;
+        // Null until the launch returns: a run stopped part way leaves it so.
+        TestSummary result = null;
         TagExcludedCapture tagExcluded;
         SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
-        boolean launched = false;
         try {
             // Module pin ([test] workers / [build] test-workers) wins over CLI for
             // hermetic opt-out. Auto hands the launcher the share; it applies the
@@ -628,10 +628,8 @@ public final class PlannerTest {
             boolean debug = in.session().debugJvm() != null;
             boolean auto = !debug && TestLaunch.autoDispatch(in, projectUnderTest.build(), pluginDecls);
             int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
-            tagExcluded = new TagExcludedCapture(
-                    ledger.recording(TestSupport.bridgeListener(
-                            ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites, tier)),
-                    affected != null || !effectiveSel.classes().isEmpty());
+            tagExcluded =
+                    listener(ctx, in, ledger, testWorkers, moduleLabel, snippets, suites, tier, affected, effectiveSel);
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
@@ -640,7 +638,6 @@ public final class PlannerTest {
                     .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
                     .withAutoShare(auto)
                     .withReadRecording(reads.flag());
-            TagExcludedCapture listener = tagExcluded;
             try {
                 result = ctx.get(SUITE_RESOURCES)
                         .orElse(SuiteResources.NONE)
@@ -653,31 +650,20 @@ public final class PlannerTest {
                                 launcher,
                                 runtimeCp,
                                 (one, cp) -> TestLaunch.launch(
-                                        ctx, in, one, cp, testWorkers, workerJars, testEnv, listener));
+                                        ctx, in, one, cp, testWorkers, workerJars, testEnv, tagExcluded));
             } catch (TestLauncherFailure e) {
                 TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
                 throw e;
             }
-            launched = true;
         } finally {
             HeapNotes.flush(ctx);
             if (gated) TEST_GATE.release();
             // A run stopped part way keeps the classes it got through, under the stamp it started with.
-            if (!launched) ledger.store(actionCache, testTaskId, stampKey);
+            if (result == null) ledger.store(actionCache, testTaskId, stampKey);
         }
-        if (jacoco != null && coverageExec != null) {
-            TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
-        }
+        TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
-        ledger.store(actionCache, testTaskId, stampKey);
-        List<String> flaky = ledger.passedOnRerun();
-        if (!flaky.isEmpty()) {
-            ctx.warn(
-                    TestClassLedger.PASSED_ON_RERUN,
-                    "passed on a re-run with no input changed, so flaky or dependent on what ran before: "
-                            + String.join(", ", flaky));
-        }
-        result = ledger.withSettled(result, settled);
+        result = ledger.finish(ctx, actionCache, testTaskId, stampKey, result);
         settle(
                 ctx,
                 in,
@@ -691,6 +677,27 @@ public final class PlannerTest {
                 stampKey,
                 !testSrcs.isEmpty(),
                 snippets);
+    }
+
+    /**
+     * The run's progress listener: the step's own bridge, each class recorded in {@code ledger} as it
+     * finishes, and the runner's {@code tag-excluded} warning kept when the run named classes.
+     */
+    private static TagExcludedCapture listener(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            TestClassLedger ledger,
+            int testWorkers,
+            String moduleLabel,
+            TestFailureSource.Cache snippets,
+            SuiteClassFilter suites,
+            TestTier tier,
+            AffectedTestRun.@Nullable Outcome affected,
+            TestSelection effectiveSel) {
+        return new TagExcludedCapture(
+                ledger.recording(TestSupport.bridgeListener(
+                        ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites, tier)),
+                affected != null || !effectiveSel.classes().isEmpty());
     }
 
     /** Settle a {@code --class} selection that names no compiled class of this module: nothing ran. */
