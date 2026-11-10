@@ -57,6 +57,28 @@ import { emptyWizard, wizardComputed, wizardMethods } from './wizard.js';
 if (typeof document !== 'undefined') bootstrapToken();
 
 // Exported for the headless harness; the browser block below mounts it.
+/** The latest finish time among {@code records}, 0 when none has finished. */
+export function newestFinish(records) {
+  let max = 0;
+  for (const r of records || []) if (!r.running && r.finishedAt > max) max = r.finishedAt;
+  return max;
+}
+
+/**
+ * {@code held} with {@code fresh} merged in: a fresh record replaces the held one of the same id,
+ * newest first by finish (else start) time, capped where the engine caps the full list.
+ */
+export function mergeHistory(held, fresh) {
+  const byId = new Map();
+  for (const r of held || []) byId.set(r.id, r);
+  for (const r of fresh || []) byId.set(r.id, r);
+  const when = (r) => r.finishedAt || r.startedAt || 0;
+  return [...byId.values()].sort((a, b) => when(b) - when(a)).slice(0, HISTORY_CAP);
+}
+
+/** The engine's cap on the full history list. */
+const HISTORY_CAP = 200;
+
 export const appOptions = {
   data: () => ({
     ...consoleData(routeFromHash()),
@@ -340,7 +362,7 @@ export const appOptions = {
           if (event.type === SSE.requestFinish) {
             clearTimeout(this._reconcileTimer);
             this._reconcileTimer = setTimeout(() => {
-              this.loadHistory();
+              this.loadHistory({ newer: true });
               this.loadProjectHistory();
               this.scheduleSessionReload(); // the finished run joins its session's timeline
               // Metrics are view-scoped; refresh them only where they paint.
@@ -615,11 +637,15 @@ export const appOptions = {
     // Backfill the feed from the persisted journal (/api/history), reconciled with live cards.
     // Always reassign `this.cards` so a bulk seed after a hard-refresh repaints (Vue tracks the
     // array identity as well as mutations).
-    async loadHistory() {
+    // With { newer: true } — after a build finishes — only the runs finished since the newest one
+    // held, and any still going, are fetched and merged into the list already here.
+    async loadHistory({ newer = false } = {}) {
       if (this.authModal) return;
-      return this.fetchOnce('history', async () => {
+      const since = newer ? newestFinish(this.projectHistory) : 0;
+      return this.fetchOnce(since > 0 ? 'history-newer' : 'history', async () => {
         try {
-          const records = await get('/api/history');
+          const fetched = await get(since > 0 ? '/api/history?since=' + since : '/api/history');
+          const records = since > 0 ? mergeHistory(this.projectHistory, fetched) : fetched;
           this.projectHistory = records; // shared with the Projects tab (loadProjectHistory)
           const next = this.cards.slice();
           seedFromHistory(next, records);

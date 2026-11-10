@@ -821,7 +821,7 @@ public final class BuildJournal {
     }
 
     /** First {@code "name": <integer>} occurrence, lexically; 0 when absent or not a number. */
-    static long scanLong(String json, String name) {
+    public static long scanLong(String json, String name) {
         int start = scanValueStart(json, name);
         if (start < 0) return 0;
         int end = start;
@@ -872,7 +872,7 @@ public final class BuildJournal {
     }
 
     /** True when {@code "name": true} occurs, lexically. */
-    static boolean scanTrue(String json, String name) {
+    public static boolean scanTrue(String json, String name) {
         int start = scanValueStart(json, name);
         return start >= 0 && json.startsWith("true", start);
     }

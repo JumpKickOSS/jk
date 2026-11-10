@@ -16,7 +16,7 @@ globalThis.sessionStorage = {
 globalThis.localStorage = globalThis.sessionStorage;
 globalThis.location = { hash: '', hostname: '127.0.0.1', pathname: '/', search: '' };
 
-const { appOptions } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'app.js')));
+const { appOptions, mergeHistory, newestFinish } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'app.js')));
 
 /** A detached component instance: data + methods, no Vue. */
 function vm(over = {}) {
@@ -500,4 +500,19 @@ test('a restored page that was unauthorized stays closed', () => {
   v.connection = 'unauthorized';
   v.resumeEvents({ persisted: true });
   assert.equal(opens, 0);
+});
+
+test('a finished build merges only the newer runs into the history already held', () => {
+  const held = [
+    { id: 'b', finishedAt: 200 },
+    { id: 'a', finishedAt: 100 },
+  ];
+  assert.equal(newestFinish(held), 200);
+  assert.equal(newestFinish([{ id: 'r', running: true, startedAt: 900 }]), 0);
+  const merged = mergeHistory(held, [
+    { id: 'c', finishedAt: 300 },
+    { id: 'b', finishedAt: 200, note: 'rewritten' },
+  ]);
+  assert.deepEqual(merged.map((r) => r.id), ['c', 'b', 'a']);
+  assert.equal(merged[1].note, 'rewritten');
 });

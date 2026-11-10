@@ -40,8 +40,8 @@ final class HttpHistoryApi {
 
     /**
      * {@code GET /api/history} — the persisted build journal (survives engine restarts). With no
-     * {@code ?id=}, a JSON array of the newest entries' full records; with {@code ?id=}, that one
-     * entry's record. Every record carries its whole diagnostics list, spill included. Finished
+     * {@code ?id=}, a JSON array of the newest entries' full records, only those newer than
+     * {@code ?since=} when given; with {@code ?id=}, that one entry's record. Every record carries its whole diagnostics list, spill included. Finished
      * records stream verbatim (a cheap {@code "running":true}
      * pre-check skips the parse); in-flight ones are MiniJson-parsed once to attach live
      * {@code requestId}/{@code progress}.
@@ -74,7 +74,9 @@ final class HttpHistoryApi {
         // finished, id-stamped record — the overwhelming majority — is written through verbatim;
         // only in-flight or unstamped rows pay MiniJson. The response is chunked straight to the
         // socket instead of join-then-copy.
-        List<String> raw = journal.rawRecords(HISTORY_LIST_LIMIT, HttpHistoryApi::isBuildLikeHistoryJson);
+        long since = sinceParam(exchange);
+        List<String> raw = journal.rawRecords(
+                HISTORY_LIST_LIMIT, head -> isBuildLikeHistoryJson(head) && (since < 0 || newerThan(head, since)));
         exchange.sendResponseHeaders(200, 0);
         Map<String, SecretRedactor> redactors = new HashMap<>();
         try (var out = exchange.getResponseBody()) {
@@ -89,6 +91,26 @@ final class HttpHistoryApi {
             }
             out.write(']');
         }
+    }
+
+    /**
+     * {@code ?since=<epoch millis>}: only runs that finished after it, and every run still going —
+     * what a client that already holds the list needs after a build finishes. {@code -1} when absent
+     * or not a number: the whole list.
+     */
+    private static long sinceParam(HttpExchange exchange) {
+        String since = HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "since");
+        if (since == null || since.isBlank()) return -1;
+        try {
+            return Long.parseLong(since.strip());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /** Whether the record head {@code head} is a run still going or one that finished after {@code since}. */
+    static boolean newerThan(String head, long since) {
+        return BuildJournal.scanTrue(head, "running") || BuildJournal.scanLong(head, "finishedAt") > since;
     }
 
     /**

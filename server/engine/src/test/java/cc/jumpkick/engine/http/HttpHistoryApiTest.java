@@ -101,4 +101,12 @@ class HttpHistoryApiTest {
         String raw = "{\"id\": \"x\", \"kind\": \"build\", \"dir\": \"" + jsonDir(dir) + "\", \"projectId\": \"abc\"}";
         assertThat(HttpHistoryApi.redactRecordJson(raw, new HashMap<>())).isEqualTo(raw);
     }
+
+    @Test
+    void since_keeps_runs_finished_after_it_and_every_run_still_going() {
+        assertThat(HttpHistoryApi.newerThan("{\"finishedAt\": 2000", 1000)).isTrue();
+        assertThat(HttpHistoryApi.newerThan("{\"finishedAt\": 1000", 1000)).isFalse();
+        assertThat(HttpHistoryApi.newerThan("{\"running\": true, \"startedAt\": 5", 1000))
+                .isTrue();
+    }
 }
