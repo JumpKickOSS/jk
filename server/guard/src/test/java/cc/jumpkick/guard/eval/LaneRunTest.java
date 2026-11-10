@@ -39,6 +39,7 @@ class LaneRunTest {
             [guards.one-owner]
             kind = "split-package"
             why  = "one module per package"
+            baseline = true
 
             [guards.no-sysout]
             kind       = "forbid"
@@ -302,5 +303,27 @@ class LaneRunTest {
                 .isZero();
         assertThat(ctx.hierarchy()).as("a later use builds afresh").isNotSameAs(built);
         ctx.closeHierarchy();
+    }
+
+    @Test
+    void a_rule_without_baseline_true_reads_its_entries_as_absent(@TempDir Path dir) throws IOException {
+        LoadResult r = load(dir);
+        Evaluators.register(
+                Kind.FORBID,
+                (rule, ctx) -> Evaluation.of(
+                        Map.of("classes", 10L), List.of(Observation.site("a.A#m()V -> out", null, 0, "System.out"))));
+        Baseline before = Baseline.EMPTY.with(
+                "no-sysout",
+                RuleBaseline.of(Map.of("classes", 10L), List.of(new Entry.Site("a.A#m()V -> out", "accepted once"))));
+        LaneRun.Result res = LaneRun.run(
+                Lane.MODULE,
+                LaneRun.rulesFor(Lane.MODULE, r.rules(), "web/app"),
+                ctx(dir, Lane.MODULE, "web/app"),
+                before);
+        RuleReport rep = res.reports().get(0);
+        assertThat(rep.fresh())
+                .as("dropping baseline = true makes the sites it tolerated red again")
+                .extracting(Observation::key)
+                .containsExactly("a.A#m()V -> out");
     }
 }

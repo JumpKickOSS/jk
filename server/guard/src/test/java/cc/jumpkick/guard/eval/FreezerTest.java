@@ -30,6 +30,7 @@ class FreezerTest {
             signatures = ["java.security.MessageDigest#getInstance(**)"]
             instead    = "Hashing"
             why        = "one algorithm table"
+            baseline   = true
             """;
 
     private static Path project(Path dir) throws IOException {
@@ -162,5 +163,15 @@ class FreezerTest {
                 GuardsPresence.baselineFile(p),
                 Baseline.EMPTY.with("still-here", RuleBaseline.of(Map.of(), List.of(new Entry.Site("x", "r")))));
         assertThat(Freezer.freeze(p, "still-here", null, true, false).error()).contains("still declared");
+    }
+
+    @Test
+    void a_rule_without_baseline_true_accepts_no_site(@TempDir Path dir) throws Exception {
+        Path p = project(dir);
+        Files.writeString(p.resolve(GuardsPresence.RULES_FILE), RULES.replace("baseline   = true\n", ""));
+        Freezer.Result r = Freezer.freeze(p, "one-digest", "PGP needs SHA-1 by spec", false, false);
+        assertThat(r.error()).contains("has no baseline = true");
+        assertThat(r.accepted()).isZero();
+        assertThat(GuardsPresence.baselineFile(p)).doesNotExist();
     }
 }

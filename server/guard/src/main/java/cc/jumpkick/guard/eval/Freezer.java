@@ -87,10 +87,22 @@ public final class Freezer {
                     0,
                     0,
                     0);
+        if (rule.locked())
+            return new Result(
+                    "`" + ruleId + "` is a locked pack rule: its sites are fixed, never accepted",
+                    0,
+                    baseline.entryCount(),
+                    0);
         if (!Evaluators.acceptsBaseline(rule))
             return new Result(
                     "`" + ruleId
                             + "` has breaking = \"forbid\": a breaking change stays red; set breaking = \"baseline\" to accept one with a reason",
+                    0,
+                    baseline.entryCount(),
+                    0);
+        if (!Evaluators.toleratesEntries(rule))
+            return new Result(
+                    "`" + ruleId + "` has no baseline = true, so it tolerates no site; add it to accept today's",
                     0,
                     baseline.entryCount(),
                     0);

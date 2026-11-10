@@ -146,7 +146,13 @@ public final class LaneRun {
             // A fixture is bite evidence the gate proves (`jk guard test`, the guard-fixtures step): a
             // rule that names one is not looking at nothing even when the tree has no site today.
             if (rule.fixture() != null && !ev.bites()) ev = ev.withBite(true);
-            RuleBaseline before = Evaluators.acceptsBaseline(rule) ? current.of(rule.id()) : RuleBaseline.EMPTY;
+            // Entries are tolerated only for a rule that says `baseline = true`: dropping the flag
+            // makes the sites it tolerated red again. The population floor is kept either way.
+            RuleBaseline before = !Evaluators.acceptsBaseline(rule)
+                    ? RuleBaseline.EMPTY
+                    : Evaluators.toleratesEntries(rule)
+                            ? current.of(rule.id())
+                            : current.of(rule.id()).withoutEntries();
             if (ev.outcome() == Outcome.CLEAN || ev.outcome() == Outcome.VIOLATIONS) {
                 String slice = sliceOf(lane, rule, ctx.module());
                 Reconciliation rec = Reconciliation.of(

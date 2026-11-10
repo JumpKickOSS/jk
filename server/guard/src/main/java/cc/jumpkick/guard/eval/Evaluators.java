@@ -103,6 +103,14 @@ public final class Evaluators {
         return rule.kind() != Kind.API || ApiEvaluator.acceptsBaseline(rule);
     }
 
+    /**
+     * Whether {@code rule} tolerates the sites its baseline entries name: {@code baseline = true},
+     * or for an API rule {@code breaking = "baseline"}. Any other rule's entries are read as absent.
+     */
+    public static boolean toleratesEntries(Rule rule) {
+        return rule.kind() == Kind.API ? ApiEvaluator.acceptsBaseline(rule) : rule.baseline();
+    }
+
     public static Lane laneOf(Rule rule) {
         return switch (rule.kind()) {
             case TEST -> "workspace".equals(rule.table().getString("lane")) ? Lane.WORKSPACE : Lane.MODULE;

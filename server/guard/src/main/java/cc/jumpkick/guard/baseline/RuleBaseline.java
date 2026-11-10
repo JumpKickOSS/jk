@@ -85,6 +85,11 @@ public record RuleBaseline(
         return new RuleBaseline(pops, all, scopeReasons);
     }
 
+    /** This baseline's populations and floors with no entries: what a rule that tolerates no site reads. */
+    public RuleBaseline withoutEntries() {
+        return entries.isEmpty() ? this : new RuleBaseline(populations, List.of(), scopeReasons);
+    }
+
     /** This baseline with lane {@code lane}'s population carrying {@code reason} for the floor it records. */
     public RuleBaseline withScopeReason(String lane, String reason) {
         Map<String, String> reasons = new TreeMap<>(scopeReasons);

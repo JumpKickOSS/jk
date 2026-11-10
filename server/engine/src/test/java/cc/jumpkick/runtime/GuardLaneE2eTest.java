@@ -187,6 +187,7 @@ class GuardLaneE2eTest {
                 signatures = ["demo.Banned"]
                 instead    = "nothing"
                 why        = "a test rule"
+                baseline   = true
                 """);
         return project;
     }
