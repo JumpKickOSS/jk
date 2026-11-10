@@ -203,6 +203,19 @@ export const statusMethods = {
     if (used == null || !max || max <= 0) return 0;
     return Math.min(100, Math.round((100 * used) / max));
   },
+  /** "82% · 410 of 500" for one tier of /api/cache hitRates: hits over hits plus stores. */
+  hitRateLabel(row) {
+    if (!row) return '—';
+    const all = (row.hits || 0) + (row.stores || 0);
+    if (all === 0) return '—';
+    return Math.round((100 * row.hits) / all) + '% · ' + this.count(row.hits) + ' of ' + this.count(all);
+  },
+  /** What a tier's hit rate counts, and since when. */
+  hitRateTip(tier) {
+    const what = { action: 'compiled classes and jars', heavy: 'native images and fat jars', memo: 'test markers' }[tier] || tier;
+    const since = this.cache && this.cache.hitRates ? this.fmtDateTime(this.cache.hitRates.since) : '';
+    return 'Restores of ' + what + ' over restores plus stores' + (since ? ', since ' + since : '');
+  },
   prunedAgo() {
     return this.cache?.lastPrunedMillis ? ago(this.cache.lastPrunedMillis, this.now) : 'never';
   },

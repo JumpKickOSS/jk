@@ -235,6 +235,15 @@ hour. Pressure tightens the cadence rather than bypassing it — bypassing would
 idle boundary, since a prune that ends under pressure ends under pressure however often it
 runs.
 
+### Hit rates
+
+`jk cache usage --stats` (and the Admin page's action-cache panel) says how often each tier paid
+for itself: **hits** where the cache saved work (a restore, a replayed green test marker),
+**stores** where it did not (every store follows work it could not save), the hit rate
+`hits / (hits + stores)`, and the bytes each moved, for the action, heavy and memo tiers. Lookups
+are not counted as misses, since `jk explain` and the forecast ask without running anything. The
+totals live in `cache-stats.toml` in the state directory and survive engine restarts.
+
 ### The disk guard
 
 JumpKick does not fill a disk. A volume is **critical** when less than **10%** of it, or less

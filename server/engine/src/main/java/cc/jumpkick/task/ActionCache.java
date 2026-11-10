@@ -427,8 +427,9 @@ public final class ActionCache {
             throws IOException {
         Files.createDirectories(keysDir());
         Files.createDirectories(tasksDir());
-        meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
+        long storedBytes = meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
         String task = Objects.requireNonNull(taskId, "taskId");
+        CacheStats.store(CacheStats.classify(task, outputs, this::blobSize), storedBytes);
         String key = Objects.requireNonNull(actionKey, "actionKey");
         if (VerifyCache.on()) VerifyCache.check(this, task, key, outputs);
         ActionRecord record = new ActionRecord(task, key, inputs, outputs, executables, said);
@@ -506,7 +507,7 @@ public final class ActionCache {
      * instead of building on a short or wrong tree.
      */
     public boolean restore(ActionRecord record, Path outputDir) throws IOException {
-        return WorkCounters.restored(restoreInto(record, outputDir));
+        return WorkCounters.restored(counted(record, restoreInto(record, outputDir)));
     }
 
     private boolean restoreInto(ActionRecord record, Path outputDir) throws IOException {
@@ -672,7 +673,7 @@ public final class ActionCache {
     }
 
     private boolean restoreArtifacts(ActionRecord record, Path baseDir, boolean pruneRoots) throws IOException {
-        return WorkCounters.restored(copyArtifacts(record, baseDir, pruneRoots));
+        return WorkCounters.restored(counted(record, copyArtifacts(record, baseDir, pruneRoots)));
     }
 
     private boolean copyArtifacts(ActionRecord record, Path baseDir, boolean pruneRoots) throws IOException {
@@ -845,8 +846,25 @@ public final class ActionCache {
      * restore. Sizes come off the CAS blobs at rest — a stat per output, nothing wrapped around the
      * copy — and land as the run's {@code local} traffic on the dashboard.
      */
-    private void meter(Map<String, String> outputs, boolean intoCache) {
-        if (outputs.isEmpty()) return;
+    /** {@code restored}, counted as a hit in {@code record}'s tier when it is true. */
+    private boolean counted(ActionRecord record, boolean restored) {
+        if (!restored) return false;
+        String task = record.taskId() == null ? "" : record.taskId();
+        long bytes = 0;
+        for (String sha : record.outputs().values()) {
+            if (isSha256Hex(sha)) bytes += blobSize(sha);
+        }
+        CacheStats.hit(CacheStats.classify(task, record.outputs(), this::blobSize), bytes);
+        return true;
+    }
+
+    /** Bytes of blob {@code sha} in either CAS, 0 when it is in neither. */
+    private long blobSize(String sha) {
+        return isSha256Hex(sha) ? IoLedger.sizeOf(resolveBlob(sha)) : 0L;
+    }
+
+    private long meter(Map<String, String> outputs, boolean intoCache) {
+        if (outputs.isEmpty()) return 0L;
         long bytes = 0;
         for (String sha : outputs.values()) {
             // Not every record's values are blob hashes: a marker record (run-tests) parks small
@@ -856,6 +874,7 @@ public final class ActionCache {
         IoLedger io = SessionContext.current().io();
         if (intoCache) io.localUp(bytes);
         else io.localDown(bytes);
+        return bytes;
     }
 
     /**

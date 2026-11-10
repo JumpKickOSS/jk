@@ -18,6 +18,7 @@ import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.task.AbiMemo;
 import cc.jumpkick.task.CachePruneScheduler;
+import cc.jumpkick.task.CacheStats;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.PruneYield;
 import cc.jumpkick.util.JkDirs;
@@ -196,6 +197,7 @@ public final class IdleHousekeeping {
                 pruneJournal();
                 pruneMetrics();
                 pruneHeapDumps();
+                CacheStats.flush(JkDirs.state().resolve(CacheStats.FILE_NAME));
             }
             try {
                 MetricsHarvest.get().awaitIdle(30_000L);

@@ -40,6 +40,7 @@ import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.runtime.base.TestFailureSource;
 import cc.jumpkick.runtime.base.TestStoreSeed;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.CacheStats;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
@@ -319,6 +320,7 @@ final class TestLaunch {
         // A run that found no test is not up-to-date tests; it is a module with none to run.
         ctx.label(TestStamp.noTests(marker.get()) ? "no tests" : TaskNames.TESTS_UP_TO_DATE);
         ctx.cached();
+        CacheStats.hit(CacheStats.Tier.MEMO, 0);
         // Replay the green run's counts (stored on the marker) so the summary
         // line reads "Passed N tests", not "No tests" — without this a
         // legitimate skip was indistinguishable from a module with no test

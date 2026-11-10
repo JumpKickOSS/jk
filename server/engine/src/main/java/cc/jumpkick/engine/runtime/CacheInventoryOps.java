@@ -35,6 +35,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildForks;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.TestStorePool;
+import cc.jumpkick.task.CacheStats;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import cc.jumpkick.util.TestHomes;
@@ -171,7 +172,17 @@ public final class CacheInventoryOps {
                 DiskUsage.exclusive(CacheTree.ACTIONS.under(cacheRoot), CacheTree.CACHE_CAS.under(cacheRoot));
         DiskUsage.Stats incremental = incrementalStats(CacheTree.ACTIONS.under(cacheRoot));
         DiskUsage.Stats derived = derivedStats(cacheRoot);
-        List<String> stats = List.of(
+        // How often each tier paid for itself, beside how much it holds.
+        CacheStats.Snapshot hits = CacheStats.snapshot(JkDirs.state().resolve(CacheStats.FILE_NAME));
+        List<String> rates = new ArrayList<>();
+        rates.add(pack("stat-since", hits.sinceMillis(), 0));
+        for (CacheStats.Row r : hits.rows()) {
+            String tier = r.tier().name().toLowerCase(Locale.ROOT);
+            rates.add(pack("stat-" + tier + "-count", r.hits(), r.stores()));
+            rates.add(pack("stat-" + tier + "-bytes", r.restoredBytes(), r.storedBytes()));
+        }
+        List<String> stats = new ArrayList<>(rates);
+        stats.addAll(List.of(
                 pack("classFiles", classFiles[0], classFiles[1]),
                 pack("testResults", testResults[0], testResults[1]),
                 pack("normalJars", normalJars[0], normalJars[1]),
@@ -181,7 +192,7 @@ public final class CacheInventoryOps {
                 pack("ociImages", ociImages[0], ociImages[1]),
                 pack("incremental", incremental.files(), incremental.bytes()),
                 pack("stamps", stamps.files(), stamps.bytes()),
-                pack("derived", derived.files(), derived.bytes()));
+                pack("derived", derived.files(), derived.bytes())));
         return CacheInventoryAck.usage(
                 "usage",
                 stats,

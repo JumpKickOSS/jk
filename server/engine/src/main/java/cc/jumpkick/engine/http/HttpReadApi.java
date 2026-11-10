@@ -13,6 +13,8 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.task.CacheStats;
+import cc.jumpkick.util.JkDirs;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -25,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 import lombok.AccessLevel;
@@ -198,7 +201,26 @@ final class HttpReadApi {
 
     /** {@code GET /api/cache} — cache-directory breakdown for the Status view. */
     void handleCache(HttpExchange exchange) throws IOException {
-        HttpResponses.sendJson(exchange, 200, cache.get().toJson().toString());
+        HttpResponses.sendJson(
+                exchange,
+                200,
+                cache.get().toJson().putObject("hitRates", hitRates()).toString());
+    }
+
+    /** Per tier: hits, stores, the hit rate and the bytes each moved, since {@code since} (epoch ms). */
+    static Map<String, Object> hitRates() {
+        CacheStats.Snapshot s = CacheStats.snapshot(JkDirs.state().resolve(CacheStats.FILE_NAME));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("since", s.sinceMillis());
+        for (CacheStats.Row r : s.rows()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("hits", r.hits());
+            row.put("stores", r.stores());
+            row.put("restoredBytes", r.restoredBytes());
+            row.put("storedBytes", r.storedBytes());
+            out.put(r.tier().name().toLowerCase(Locale.ROOT), row);
+        }
+        return out;
     }
 
     /**

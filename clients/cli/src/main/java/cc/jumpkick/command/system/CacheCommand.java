@@ -42,8 +42,10 @@ import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -544,7 +546,10 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(CommonOpts.cacheDir());
+            return List.of(
+                    CommonOpts.cacheDir(),
+                    Opt.flag(
+                            "Also show how often each tier paid for itself: hits, stores, hit rate.", "-s", "--stats"));
         }
 
         @Override
@@ -576,8 +581,55 @@ public final class CacheCommand extends GroupCommand {
             for (String line : renderCacheUsageTable(s, cfg, lastCleaned)) {
                 CliOutput.out(line);
             }
+            if (in.isSet("stats")) {
+                for (String line : renderHitRates(ack)) CliOutput.out(line);
+            }
             return 0;
         }
+    }
+
+    /**
+     * The hit-rate table: per tier, hits where the cache saved work, stores where it did not (each
+     * store follows work it could not save), {@code hits / (hits + stores)}, and the bytes each moved.
+     */
+    static List<String> renderHitRates(CacheInventoryAck ack) {
+        String[][] rows = new String[3][];
+        String[] tiers = {"action", "heavy", "memo"};
+        String[] labels = {"Action", "Heavy", "Memo"};
+        for (int i = 0; i < tiers.length; i++) {
+            Stats count = statFromAck(ack, "stat-" + tiers[i] + "-count");
+            Stats bytes = statFromAck(ack, "stat-" + tiers[i] + "-bytes");
+            long all = count.files + count.bytes;
+            String rate = all == 0 ? "—" : Math.round(100.0 * count.files / all) + "%";
+            rows[i] = new String[] {
+                labels[i],
+                fmtCount(count.files),
+                fmtCount(count.bytes),
+                rate,
+                fmtSize(bytes.files),
+                fmtSize(bytes.bytes)
+            };
+        }
+        long since = statFromAck(ack, "stat-since").files;
+        List<String> out = new ArrayList<>();
+        out.add("");
+        out.add(" ≡ Cache Hit Rate"
+                + (since > 0
+                        ? " (since " + Instant.ofEpochMilli(since).toString().substring(0, 10) + ")"
+                        : ""));
+        out.add(String.format(
+                Locale.ROOT,
+                "  %-7s %9s %9s %9s %10s %10s",
+                "Tier",
+                "Hits",
+                "Stores",
+                "Hit rate",
+                "Restored",
+                "Stored"));
+        for (String[] r : rows) {
+            out.add(String.format(Locale.ROOT, "  %-7s %9s %9s %9s %10s %10s", (Object[]) r));
+        }
+        return out;
     }
 
     /** Project-scoped clear UI for {@code jk clean -F}. */

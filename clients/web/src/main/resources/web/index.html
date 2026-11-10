@@ -803,6 +803,12 @@
                 <dt>format stamps</dt><dd :data-tip="'Count of empty stamp files vs cap (' + formatStampsMaxLabel() + ')'">{{ count(cache.formatStampsCount) }} · {{ formatStampsUsedPct() }}% used</dd>
                 <dt>derived</dt><dd data-tip="Small caches that expire on their own: hash memos, format indexes, extracted trees">{{ count(cache.derivedCount) }} · {{ mib(cache.derivedBytes, 1) }} apparent</dd>
               </dl>
+              <dl v-if="cache.hitRates" class="hit-rates">
+                <template v-for="t in ['action', 'heavy', 'memo']" :key="t">
+                  <dt :data-tip="hitRateTip(t)">{{ t }} hit rate</dt>
+                  <dd>{{ hitRateLabel(cache.hitRates[t]) }}</dd>
+                </template>
+              </dl>
             </template>
             <div v-else class="dim small">Action cache loading…</div>
           </div>
