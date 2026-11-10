@@ -98,11 +98,7 @@ public final class ModuleInputProvenance {
      * What one record says: the inputs, each tree's stamped compile keys, and each output's digest,
      * paths relative to the target dir with {@code /} separators.
      */
-    record Record(
-            String inputs,
-            @Nullable String sources,
-            Map<String, Set<String>> keysByTree,
-            Map<String, String> digests) {}
+    record Record(String inputs, Map<String, Set<String>> keysByTree, Map<String, String> digests) {}
 
     /**
      * {@code target/<module>/.jk/classes}: what the graph checks before it reads a module's class
@@ -374,8 +370,6 @@ public final class ModuleInputProvenance {
     public static void record(
             Path workspaceRoot, BuildGraph.Result graph, Map<Path, String> fingerprints, RunTrees runTrees) {
         if (graph == null || fingerprints == null || fingerprints.isEmpty()) return;
-        // The guard salt is the workspace's, not the module's: one reading of it serves every module.
-        Map<Path, String> saltByRoot = new LinkedHashMap<>();
         for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
             Path dir = unit.dir().toAbsolutePath().normalize();
             String fp = fingerprints.get(dir);
@@ -384,8 +378,6 @@ public final class ModuleInputProvenance {
                 BuildLayout layout = BuildLayout.of(workspaceRoot, dir, unit.manifest());
                 Path target = norm(layout.moduleTargetDir());
                 StringBuilder sb = new StringBuilder("inputs ").append(fp).append('\n');
-                String sources = PreflightMemo.sourceFingerprint(dir, saltByRoot);
-                if (sources != null) sb.append("sources ").append(sources).append('\n');
                 Map<String, String> digests = new TreeMap<>();
                 List<Path> compiled = trees(layout);
                 for (Path tree : trees(layout, unit.manifest(), runTrees)) {
@@ -436,14 +428,11 @@ public final class ModuleInputProvenance {
         try {
             if (!Files.isRegularFile(file)) return null;
             String inputs = null;
-            String sources = null;
             Map<String, Set<String>> keys = new LinkedHashMap<>();
             Map<String, String> digests = new LinkedHashMap<>();
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.startsWith("inputs ")) {
                     inputs = line.substring("inputs ".length()).strip();
-                } else if (line.startsWith("sources ")) {
-                    sources = line.substring("sources ".length()).strip();
                 } else if (line.startsWith("key ")) {
                     String[] p = line.substring("key ".length()).split(" ", 2);
                     if (p.length != 2) return null;
@@ -456,7 +445,7 @@ public final class ModuleInputProvenance {
                     return null;
                 }
             }
-            return inputs == null || inputs.isEmpty() ? null : new Record(inputs, sources, keys, digests);
+            return inputs == null || inputs.isEmpty() ? null : new Record(inputs, keys, digests);
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }

@@ -217,12 +217,15 @@ public final class BuildForecasting {
             Perf.note("preflight-memo skipped", "entryDir", entryDir, "buildTarget", t);
         }
         if (entryDir != null && memoReadable) {
-            var memo = PreflightMemo.tryLoadDirty(
+            // One load answers all three questions: whether the memo holds whole, which modules'
+            // inputs moved (the cone), and the fingerprints a full walk would otherwise recompute.
+            var partial = PreflightMemo.tryLoadPartial(
                     entryDir,
                     graph,
                     skipTests,
                     profile,
                     new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache)));
+            var memo = partial.filter(p -> p.changed().isEmpty());
             if (memo.isPresent()) {
                 Perf.note(
                         "preflight-memo hit",
@@ -240,11 +243,17 @@ public final class BuildForecasting {
                 return new Preflight(
                         memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of());
             }
-            Optional<Preflight> cone = coneIfPartial(graph, cache, skipTests, entryDir, t, profile, persistMemo, all);
+            Optional<Preflight> cone =
+                    coneIfPartial(graph, cache, skipTests, entryDir, t, profile, persistMemo, all, partial);
             if (cone.isPresent()) return cone.get();
-            PreflightMemo.Snapshot snapshot = PreflightMemo.snapshotFingerprints(graph, skipTests);
-            fps = snapshot.fingerprints();
-            uncertain = snapshot.uncertain();
+            if (partial.isPresent()) {
+                // Every module was fingerprinted by the load; a changed one carries its new print.
+                fps = partial.get().fingerprints();
+            } else {
+                PreflightMemo.Snapshot snapshot = PreflightMemo.snapshotFingerprints(graph, skipTests);
+                fps = snapshot.fingerprints();
+                uncertain = snapshot.uncertain();
+            }
         } else {
             fps = Map.of();
         }
@@ -312,9 +321,8 @@ public final class BuildForecasting {
             WorkspaceTarget t,
             @Nullable String profile,
             boolean persistMemo,
-            Set<Path> all) {
-        ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-        var partial = PreflightMemo.tryLoadPartial(entryDir, graph, skipTests, profile, ac);
+            Set<Path> all,
+            Optional<PreflightPartial> partial) {
         if (partial.isEmpty() || partial.get().changed().isEmpty()) return Optional.empty();
         // A root manifest a member inherits from (version, java, layout, profiles, publish) moves
         // only the root's own fingerprint: its members' verdicts cannot be taken on trust.
