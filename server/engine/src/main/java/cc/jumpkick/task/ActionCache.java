@@ -89,6 +89,11 @@ public final class ActionCache {
         return cas;
     }
 
+    /** The directory this action cache keeps its records under, on the volume its blobs share. */
+    public Path root() {
+        return root;
+    }
+
     /**
      * Resolve every blob in {@code outputs} once, with its size.
      *

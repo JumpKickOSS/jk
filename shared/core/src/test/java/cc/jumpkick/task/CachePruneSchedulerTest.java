@@ -43,6 +43,38 @@ class CachePruneSchedulerTest {
     }
 
     @Test
+    void a_critical_disk_is_pruned_now_whenever_the_last_pass_ran(@TempDir Path cacheRoot) throws IOException {
+        long now = System.currentTimeMillis();
+        Files.writeString(cacheRoot.resolve(".last-pruned"), Long.toString(now - 60_000), StandardCharsets.UTF_8);
+
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, freeGib(95), now))
+                .as("9.5% free: critical, so now")
+                .isTrue();
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, new JkCacheConfig.DiskSpace(10 * GIB, GIB), now))
+                .as("1 GiB free on a small disk: under the 2 GiB floor, so now")
+                .isTrue();
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, freeGib(110), now))
+                .as("11% free, pruned a minute ago: not critical, so not yet")
+                .isFalse();
+    }
+
+    @Test
+    void a_cache_left_near_its_budget_is_pruned_again_within_the_hour(@TempDir Path cacheRoot) throws IOException {
+        long now = System.currentTimeMillis();
+        long nearBudget = (long) (4 * GIB * 0.95);
+        Files.writeString(
+                cacheRoot.resolve(".last-pruned"), (now - 90 * 60_000) + " " + nearBudget, StandardCharsets.UTF_8);
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, ROOMY, now))
+                .as("left at 95% of its budget 90 minutes ago")
+                .isTrue();
+        Files.writeString(
+                cacheRoot.resolve(".last-pruned"), (now - 30 * 60_000) + " " + nearBudget, StandardCharsets.UTF_8);
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, ROOMY, now))
+                .as("half an hour ago: not yet")
+                .isFalse();
+    }
+
+    @Test
     void the_cadence_tightens_in_steps_as_the_disk_fills(@TempDir Path cacheRoot) throws IOException {
         prunedHoursAgo(cacheRoot, 8);
         long now = System.currentTimeMillis();

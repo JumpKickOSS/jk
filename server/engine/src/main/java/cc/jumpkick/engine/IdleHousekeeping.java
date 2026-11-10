@@ -230,6 +230,31 @@ public final class IdleHousekeeping {
         }
     }
 
+    /**
+     * The disk is nearly full: prune {@code cache} now, whatever its cadence says. Runs on the
+     * caller's thread when no build is live; otherwise the pass is queued for the build boundary, and
+     * meanwhile no heavy blob is written ({@link cc.jumpkick.config.DiskGuard}). A draining engine
+     * leaves it to its successor. True when a pass ran.
+     */
+    public boolean pruneNow(Path cache) {
+        if (shuttingDown.getAsBoolean() || draining.getAsBoolean()) return false;
+        pendingPruneCache.set(cache);
+        if (activeBuildPlans.get() != 0) return false;
+        drainPendingPrune();
+        return true;
+    }
+
+    /**
+     * The routine pass of the background GC: queue a prune of {@code cache} when its cadence calls
+     * for one, and run it on the caller's thread when no build is live. A build that arrives makes the
+     * pass yield at its next safe point.
+     */
+    public void routinePrune(Path cache) {
+        if (shuttingDown.getAsBoolean() || draining.getAsBoolean()) return;
+        maybeEnqueuePrune(cache);
+        if (activeBuildPlans.get() == 0) drainPendingPrune();
+    }
+
     /** 12-hour feed-refresh hook. Does not consult {@code .last-pruned}. */
     public void enqueueScheduledCachePrune() {
         if (shuttingDown.getAsBoolean()) return;

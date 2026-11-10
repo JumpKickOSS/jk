@@ -316,6 +316,9 @@ public final class EngineServer implements AutoCloseable {
     /** One-minute chore loop (config mtime + wall-clock 12 h maintenance). */
     private @Nullable EngineMaintenance engineMaintenance;
 
+    /** The disk guard (high priority) and the background cache collector (low priority). */
+    private @Nullable DiskWatch diskWatch;
+
     public EngineServer(
             EnginePaths.Paths paths, JkEngineConfig config, String version, @Nullable Consumer<String> log) {
         this(paths, config, null, version, BuildIdentity.buildId(), log);
@@ -650,6 +653,7 @@ public final class EngineServer implements AutoCloseable {
         storeFeedRefresh = started.feeds();
         engineMaintenance = started.maintenance();
         engineMaintenance.onTick(sessionLog::sweep);
+        diskWatch = DiskWatch.start(idle, log);
         changeNotices.start();
         // Sessions a previous engine left open carry on here; off the startup path.
         Thread.ofVirtual().name("jk-engine-sessions-adopt").start(() -> {
@@ -984,6 +988,10 @@ public final class EngineServer implements AutoCloseable {
         if (engineMaintenance != null) {
             engineMaintenance.close();
             engineMaintenance = null;
+        }
+        if (diskWatch != null) {
+            diskWatch.close();
+            diskWatch = null;
         }
         if (storeFeedRefresh != null) {
             storeFeedRefresh.close();

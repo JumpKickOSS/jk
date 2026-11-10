@@ -2,12 +2,14 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.DiskGuard;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.InputGuard;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -83,7 +85,37 @@ final class PackagingCache {
             ctx.warn("inputs-moved", InputGuard.describe(taskId.split("@", 2)[0], moved));
             return;
         }
+        if (!admitted(ctx, cacheRoot, artifacts)) return;
         storeRecord(cacheRoot, taskId, key, tokens, baseDir, artifacts, said);
+    }
+
+    /**
+     * True when {@code artifacts} may go into the cache under {@code cacheRoot}: jk never fills a
+     * disk, so on a nearly full volume ({@link DiskGuard}) a heavy artifact stays in target/ only,
+     * the step says so, and the engine is woken to reclaim space.
+     */
+    static boolean admitted(TaskContext ctx, Path cacheRoot, List<Path> artifacts) {
+        if (DiskGuard.admits(cacheRoot, sizeOf(artifacts))) return true;
+        ctx.warn(
+                DISK_LOW,
+                "not cached: the disk is nearly full (" + DiskGuard.describe(DiskGuard.space(cacheRoot))
+                        + "); the output stays where it was built and jk is reclaiming space");
+        return false;
+    }
+
+    /** The warning a packaging step carries when the disk guard kept its artifact out of the cache. */
+    static final String DISK_LOW = "disk-low";
+
+    private static long sizeOf(List<Path> artifacts) {
+        long total = 0;
+        for (Path a : artifacts) {
+            try {
+                if (Files.isRegularFile(a)) total += Files.size(a);
+            } catch (IOException unreadable) {
+                // a file that cannot be sized is stored or refused by the store itself
+            }
+        }
+        return total;
     }
 
     private static void storeRecord(

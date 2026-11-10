@@ -208,11 +208,24 @@ every checkout's list goes at once, and the rest take their turn by last use.
 ### Cadence
 
 `[cache] auto-prune` and `prune-interval-days` (default **7**) drive the engine’s
-idle-boundary pass. The interval tightens to **daily** when the previous prune finished with
-the action tier still at 90% or more of its budget: a cache that full will be over again
-long before the week is out. Pressure tightens the cadence rather than bypassing it —
-bypassing would re-fire on every idle boundary, since a prune that ends under pressure ends
-under pressure however often it runs.
+idle-boundary pass, and a low-priority background collector asks every hour whether a pass is
+due, running it when no build is live (a build that arrives makes it yield at its next safe
+point). The interval tightens to **hourly** when the previous prune finished with the action
+tier still at 90% or more of its budget, so a tier over its budget is back under it within the
+hour. Pressure tightens the cadence rather than bypassing it — bypassing would re-fire on every
+idle boundary, since a prune that ends under pressure ends under pressure however often it
+runs.
+
+### The disk guard
+
+JumpKick does not fill a disk. A volume is **critical** when less than **10%** of it, or less
+than **2 GiB**, is free. On a critical volume no heavy output (32 MiB or more: a native image, a
+fat jar, a jlink image, a large node bundle) goes into the cache: it stays where it was built and
+the step warns `disk-low`. A high-priority thread in the engine looks at the cache, store and
+state volumes every 15 seconds, and at once when a write was refused; on a critical volume it
+collects the artifact store at emergency windows on the spot (safe beside a build, since nothing
+younger than an hour is touched) and prunes the cache now, or at the build boundary when a build
+is live. It logs when the volume goes critical and when it recovers.
 
 Under budget and inside every window there is nothing to evict, so `jk cache clean`
 reclaims only leaked temps, unreferenced blobs, whatever the small derived tiers have aged

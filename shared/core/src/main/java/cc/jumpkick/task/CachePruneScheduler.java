@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.config.DiskGuard;
 import cc.jumpkick.config.DiskPressure;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.CacheTree;
@@ -34,10 +35,13 @@ public final class CachePruneScheduler {
     /** Share of the action budget above which the last prune counts as leaving pressure behind. */
     static final double PRESSURE_FRACTION = 0.9;
 
-    /** Cadence ceiling once the cache is under pressure — daily instead of the configured week. */
-    static final int PRESSURE_INTERVAL_DAYS = 1;
-
     private static final long HOUR_MILLIS = 60L * 60L * 1000L;
+
+    /**
+     * Cadence ceiling once the last prune left the action tier near its budget: hourly instead of the
+     * configured week, so a tier over its budget is back under it within the hour.
+     */
+    static final long PRESSURE_INTERVAL_MILLIS = HOUR_MILLIS;
 
     private static final long DAY_MILLIS = 24L * HOUR_MILLIS;
 
@@ -62,9 +66,11 @@ public final class CachePruneScheduler {
             throws IOException {
         Optional<Stamp> stamp = read(cacheRoot);
         if (stamp.isEmpty()) return true;
+        // A volume nearly out of room is pruned now, whenever the last pass ran.
+        if (DiskGuard.critical(disk)) return true;
         long interval = config.pruneIntervalDays() * DAY_MILLIS;
         if (underPressure(config, stamp.get())) {
-            interval = Math.min(interval, PRESSURE_INTERVAL_DAYS * DAY_MILLIS);
+            interval = Math.min(interval, PRESSURE_INTERVAL_MILLIS);
         }
         interval = Math.min(interval, diskInterval(DiskPressure.factor(disk)));
         return (now - stamp.get().millis()) > interval;
