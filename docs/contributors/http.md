@@ -747,6 +747,27 @@ completes the waiting call by request id. The wait yields the RPC admission perm
 `run` does. `jk mcp` (`McpBridge`) asks for both content types, writes each streamed request to
 stdout, and posts the host's response lines back.
 
+### The bridge contract
+
+A `jk mcp` keeps running for the life of its agent session, so after JumpKick updates itself an
+old bridge talks to a new engine. Formats are not versioned before 1.0, so what keeps that working
+is the bridge staying a relay. Everything else belongs in the engine. The bridge may read only:
+
+- the `initialize` it saw from its client (to replay on a renewal) and the reply's
+  `protocolVersion` and `serverInfo.version`;
+- `id` and `method` (to tell requests, responses and notifications apart, and to key outstanding
+  calls), and a `tools/call`'s `params._meta.progressToken` (which it adds when absent);
+- the transport: `Mcp-Session-Id`, `MCP-Protocol-Version`, `Jk-Project`, the bearer token, a **404**
+  that means the session is gone, and the event stream of a call's response.
+
+Every other method, field, result and notification passes through byte for byte, apart from line
+breaks between JSON tokens (`McpBridgeTest#an_unknown_method_and_unknown_fields_pass_through_untouched`).
+A bridge re-finds the engine through `McpCommand.endpoint`, which uses the newer engine the install
+names as it is rather than taking it over. After a renewal answers with a different
+`serverInfo.version`, it sends its client `notifications/tools/list_changed`, and the engine
+declares `tools.listChanged`. A new MCP feature that needs the bridge to understand more breaks
+every bridge already running until it restarts: put it in the engine instead.
+
 MCP `new` climbs from form mode to URL mode (`McpNewForm`): with only URL mode declared, it opens an
 id in `NewProjectWizard`, sends a `mode: "url"` request whose link is the dashboard's wizard
 (`#new?<key>=<value>&…&elicitation=<id>&t=<token>`), and after an accept waits for

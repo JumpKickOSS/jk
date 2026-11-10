@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -54,6 +55,10 @@ import org.jspecify.annotations.Nullable;
  * that answers {@code 404} no longer knows it: the bridge repeats the client's {@code initialize}
  * without a session, so the new session knows what the client declared, and sends the request
  * once more on it. The client sees only that answer.
+ *
+ * <p>A bridge outlives the engine it started on: after jk updates itself, this process (the old
+ * binary) talks to the new engine. So it stays a relay and reads nothing it does not need to, as
+ * {@code docs/contributors/http.md#the-bridge-contract} lists. Anything new belongs in the engine.
  */
 public final class McpBridge {
 
@@ -63,6 +68,10 @@ public final class McpBridge {
     }
 
     public record Endpoint(URI url, String token) {}
+
+    /** What the client is told after a renewal found a newer engine; ordered, so the line is always the same. */
+    static final String TOOLS_CHANGED =
+            MiniJson.write(new TreeMap<>(Map.of("jsonrpc", "2.0", "method", "notifications/tools/list_changed")));
 
     static final String PROJECT_HEADER = "Jk-Project";
     static final String SESSION_HEADER = "Mcp-Session-Id";
@@ -417,7 +426,7 @@ public final class McpBridge {
             // jk updated itself: the new engine may serve other tools, so the client reads them again.
             String after = engineVersion;
             if (before != null && after != null && !before.equals(after)) {
-                toClient.accept(MiniJson.write(Map.of("jsonrpc", "2.0", "method", "notifications/tools/list_changed")));
+                toClient.accept(TOOLS_CHANGED);
             }
             return true;
         }

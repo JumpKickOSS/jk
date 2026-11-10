@@ -271,8 +271,23 @@ class McpBridgeTest {
                 "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
         String[] lines = out.split("\n");
         assertThat(lines).hasSize(3);
-        assertThat(lines[1]).isEqualTo("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}");
+        assertThat(lines[1]).isEqualTo(McpBridge.TOOLS_CHANGED);
         assertThat(lines[2]).contains("\"result\"");
+    }
+
+    /**
+     * The bridge contract: what an engine newer than this bridge sends, and what a client sends
+     * that this bridge has never heard of, crosses unchanged. An old bridge in front of a new
+     * engine keeps working only while this holds.
+     */
+    @Test
+    void an_unknown_method_and_unknown_fields_pass_through_untouched() throws IOException {
+        String hello = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}}}";
+        String future = "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"jk/future\",\"params\":{\"x\":[1,{\"y\":null}],"
+                + "\"_meta\":{\"k\":\"v\"}},\"extra\":true}";
+        String note = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/jk/future\",\"params\":{\"z\":1}}";
+        serve(new McpBridge(this::live, "/ws"), hello, future, note);
+        assertThat(bodies).contains(future, note);
     }
 
     @Test
