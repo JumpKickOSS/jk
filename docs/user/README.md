@@ -41,6 +41,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 ### Project shape
 
 - [Install](install.md) — installer, on-disk layout, env
+- [What's new](whats-new.md) — each release's highlights
 - [Projects and `jk.toml`](projects.md)
 - [Workspaces](workspaces.md)
 - [Source layout](layout.md)

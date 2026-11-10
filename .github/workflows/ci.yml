@@ -98,6 +98,9 @@ jobs:
       - name: Release-flatten fixtures
         run: bash scripts/test-flatten-release.sh
 
+      - name: Release-notes fixtures
+        run: bash scripts/test-release-notes.sh
+
       - name: GitHub Release attach fixtures
         run: bash scripts/test-publish-github-release.sh
 

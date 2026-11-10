@@ -12,7 +12,7 @@ There is no compatibility contract. Schema and protocol numbers stay at **1**
 ([Architecture](architecture.md#schema-freeze-until-10)). A format changes in place: the reader
 understands the current shape, and an older shape is not kept beside it. A lock, a results
 file, or an MCP argument may change between releases. The release entry in
-[Releases](releases.md) says what did.
+[What's new](../user/whats-new.md) says what did.
 
 ## From 1.0
 
@@ -34,7 +34,7 @@ mechanical.
 
 ## Announcing
 
-A breaking change has a `### <version>` entry in [Releases](releases.md) whose first bullet starts
+A breaking change has a `## <version>` entry in [What's new](../user/whats-new.md) whose first bullet starts
 with **Breaking:** and names the migration. The first `jk` invocation after an upgrade prints the
 release's Breaking bullets once. A major release ships a `jk migrate` that applies every
 mechanical rewrite listed there.

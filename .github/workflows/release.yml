@@ -39,7 +39,7 @@
 # The GitHub Release the run creates for the tag receives the same version tree (clients, engine jar,
 # SHA256SUMS and its signature), the CycloneDX SBOM jk wrote of its engine (`jk publish --sbom
 # --dry-run`, the document the engine jar embeds), notes from scripts/release-notes.sh (the
-# version's highlights in docs/contributors/releases.md, then the commits since the previous tag)
+# version's highlights in docs/user/whats-new.md, then the commits since the previous tag)
 # and a build-provenance attestation per artifact — attached last, once the bucket, the pointer
 # and the installers are live, so the release never announces bytes an installer cannot fetch.
 #
@@ -284,8 +284,8 @@ jobs:
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
 
       # A precondition, before anything is downloaded: the version's highlights entry in
-      # docs/contributors/releases.md, then the commits since the previous tag. A version with no
-      # entry is refused here, with nothing published yet. The notes travel with the tree.
+      # docs/user/whats-new.md, then the commits since the previous tag. A version with no entry,
+      # or one that breaks the writing rules, is refused here, with nothing published yet. The notes travel with the tree.
       - name: Release notes
         shell: bash
         run: |

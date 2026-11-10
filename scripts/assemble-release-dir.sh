@@ -16,6 +16,8 @@
 # jk-engine-<version>.jar
 # jk-<version>.jar (the JVM client: every host a JDK 25 runs on and no native client is hosted for)
 # jk-maven-spy-<version>.jar (the Maven core extension `jk mvn` attaches; a client self-fetches it)
+# jk-whats-new-<version>.md (the release's highlights and the four before it, from
+#   docs/user/whats-new.md; a self-update downloads it and shows what is new since the version it replaced)
 # SHA256SUMS
 # SHA256SUMS.sig (if JK_RELEASE_RSA_SIGNING_KEY or its file variant is set)
 # The ../latest/ pointer (LATEST, the one signed object, and VERSION) is the caller's job:
@@ -126,6 +128,10 @@ if [[ ! -f "$spy_jar" ]]; then
   exit 2
 fi
 cp "$spy_jar" "$OUT/jk-maven-spy-${VERSION}.jar"
+
+# The highlights a self-update shows. Required: release-notes.sh refuses a version with no entry,
+# or one that breaks the writing rules, so a release cannot ship without them.
+bash "$ROOT/scripts/release-notes.sh" --whats-new "$VERSION" >"$OUT/jk-whats-new-${VERSION}.md"
 
 # SHA256SUMS (coreutils format: hash two spaces name). The file list is fixed before the manifest
 # exists, so the manifest never names itself.

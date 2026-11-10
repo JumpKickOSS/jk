@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Network-free fixtures for scripts/flatten-release.sh: the complete matrix flattens to one signed-ready tree; a
-# missing platform, a platform-neutral jar whose bytes differ and two trees carrying one file name are each
+# missing platform, a platform-neutral file whose bytes differ and two trees carrying one file name are each
 # refused by name.
 set -euo pipefail
 
@@ -27,6 +27,7 @@ stage() {
     printf 'engine bytes\n' >"$dir/jk-engine-$VER.jar"
     printf 'client jar bytes\n' >"$dir/jk-$VER.jar"
     printf 'spy jar bytes\n' >"$dir/jk-maven-spy-$VER.jar"
+    printf '# What is new\n' >"$dir/jk-whats-new-$VER.md"
     printf 'per-platform manifest\n' >"$dir/SHA256SUMS"
     printf 'per-platform signature\n' >"$dir/SHA256SUMS.sig"
   done
@@ -67,18 +68,19 @@ jk-macos-aarch64-$VER.xz
 jk-macos-x86_64-$VER.gz
 jk-macos-x86_64-$VER.xz
 jk-maven-spy-$VER.jar
+jk-whats-new-$VER.md
 jk-windows-x86_64-$VER.xz
 jk-windows-x86_64-$VER.zip"
 [[ "$(cd "$WORK/out" && printf '%s\n' * | LC_ALL=C sort)" == "$expected_listing" ]] || {
   (cd "$WORK/out" && printf '%s\n' *) >&2
-  echo "test-flatten-release: the flattened tree does not hold exactly the thirteen artifacts plus SHA256SUMS" >&2
+  echo "test-flatten-release: the flattened tree does not hold exactly the fourteen artifacts plus SHA256SUMS" >&2
   exit 1
 }
 [[ ! -e "$WORK/out/SHA256SUMS.sig" ]] || { echo "test-flatten-release: a per-platform signature leaked into the tree" >&2; exit 1; }
 # The manifest names every artifact once, in coreutils form, and nothing else.
-[[ "$(wc -l <"$WORK/out/SHA256SUMS" | tr -d '[:space:]')" == "13" ]] || {
+[[ "$(wc -l <"$WORK/out/SHA256SUMS" | tr -d '[:space:]')" == "14" ]] || {
   cat "$WORK/out/SHA256SUMS" >&2
-  echo "test-flatten-release: SHA256SUMS does not hold thirteen entries" >&2
+  echo "test-flatten-release: SHA256SUMS does not hold fourteen entries" >&2
   exit 1
 }
 grep -vqE '^[0-9a-f]{64}  [A-Za-z0-9][A-Za-z0-9._-]*$' "$WORK/out/SHA256SUMS" && {
@@ -147,6 +149,15 @@ stage "$WORK/staging"
 rm -f "$WORK/staging/release-$VER-linux-x86_64/jk-maven-spy-$VER.jar"
 assert_refused "$WORK/staging" "the linux-x86_64 build did not produce the Maven spy jar"
 
+# ---- what's-new highlights whose bytes differ, or that linux-x86_64 never wrote ---------------
+stage "$WORK/staging"
+printf '# Something else\n' >"$WORK/staging/release-$VER-windows-x86_64/jk-whats-new-$VER.md"
+assert_refused "$WORK/staging" "the platforms built different what's-new highlights"
+
+stage "$WORK/staging"
+rm -f "$WORK/staging/release-$VER-linux-x86_64/jk-whats-new-$VER.md"
+assert_refused "$WORK/staging" "the linux-x86_64 build did not write the what's-new highlights"
+
 # ---- two trees carrying one name ------------------------------------------------------------
 stage "$WORK/staging"
 cp "$WORK/staging/release-$VER-linux-x86_64/jk-linux-x86_64-$VER.xz" "$WORK/staging/release-$VER-linux-aarch64/"
@@ -161,9 +172,9 @@ rm -rf "$WORK/staging/release-$VER-linux-aarch64" "$WORK/staging/release-$VER-ma
 rm -rf "$WORK/out-subset"
 JK_RELEASE_PLATFORMS="linux-x86_64 macos-aarch64 windows-x86_64" run_flatten "$WORK/staging" "$WORK/out-subset" \
   || { cat "$WORK/last.log" >&2; echo "test-flatten-release: the matrix's own platform list was refused" >&2; exit 1; }
-[[ "$(wc -l <"$WORK/out-subset/SHA256SUMS" | tr -d '[:space:]')" == "9" ]] || {
+[[ "$(wc -l <"$WORK/out-subset/SHA256SUMS" | tr -d '[:space:]')" == "10" ]] || {
   cat "$WORK/out-subset/SHA256SUMS" >&2
-  echo "test-flatten-release: three platforms flatten to nine artifacts" >&2
+  echo "test-flatten-release: three platforms flatten to ten artifacts" >&2
   exit 1
 }
 rm -rf "$WORK/staging/release-$VER-windows-x86_64"
@@ -179,13 +190,13 @@ JK_RELEASE_PLATFORMS="macos-aarch64" assert_refused "$WORK/staging" "JK_RELEASE_
 LIST="linux-x86_64 linux-aarch64 macos-aarch64 windows-x86_64"
 stage "$WORK/staging"
 rm -rf "$WORK/staging/release-$VER-macos-x86_64"
-rm -f "$WORK/staging/release-$VER-linux-aarch64/"{jk-engine-$VER.jar,jk-$VER.jar,jk-maven-spy-$VER.jar,SHA256SUMS,SHA256SUMS.sig}
+rm -f "$WORK/staging/release-$VER-linux-aarch64/"{jk-engine-$VER.jar,jk-$VER.jar,jk-maven-spy-$VER.jar,jk-whats-new-$VER.md,SHA256SUMS,SHA256SUMS.sig}
 rm -rf "$WORK/out-arm"
 JK_RELEASE_PLATFORMS="$LIST" run_flatten "$WORK/staging" "$WORK/out-arm" \
   || { cat "$WORK/last.log" >&2; echo "test-flatten-release: a client-only linux-aarch64 tree was refused" >&2; exit 1; }
-[[ "$(wc -l <"$WORK/out-arm/SHA256SUMS" | tr -d '[:space:]')" == "11" ]] || {
+[[ "$(wc -l <"$WORK/out-arm/SHA256SUMS" | tr -d '[:space:]')" == "12" ]] || {
   cat "$WORK/out-arm/SHA256SUMS" >&2
-  echo "test-flatten-release: four platforms flatten to eleven artifacts" >&2
+  echo "test-flatten-release: four platforms flatten to twelve artifacts" >&2
   exit 1
 }
 rm -rf "$WORK/staging/release-$VER-linux-aarch64"

@@ -4,13 +4,13 @@
 # Usage:
 #   scripts/flatten-release.sh <staging> <out> <version>
 # <staging> holds one directory per platform, `release-<version>-<os>-<arch>/`, each written by
-# scripts/assemble-release-dir.sh. <out> receives every platform's client plus the three
-# platform-neutral jars — the engine jar, the JVM client jar and the Maven spy jar — from
-# linux-x86_64 alone: every platform builds the same jars, and one whose bytes differ is a build
-# to explain, not a copy to overwrite — and a fresh SHA256SUMS over the result. The per-platform
+# scripts/assemble-release-dir.sh. <out> receives every platform's client plus the platform-neutral
+# files — the engine jar, the JVM client jar, the Maven spy jar and the what's-new highlights a
+# self-update shows — from linux-x86_64 alone: every platform builds the same bytes, and one whose
+# bytes differ is a build to explain, not a copy to overwrite — and a fresh SHA256SUMS over the result. The per-platform
 # SHA256SUMS and .sig are dropped; the combined manifest is signed by the caller.
 #
-# Refused, each by name: a missing canonical jar, a jar whose sha differs from the canonical one,
+# Refused, each by name: a missing canonical file, a platform-neutral file whose sha differs from the canonical one,
 # two trees carrying one file name, and a tree missing any required client, the Linux/macOS
 # .gz install.sh fetches, or, when Windows is among them, the Windows zip. A partial matrix is
 # not a release.
@@ -30,6 +30,7 @@ fi
 ENGINE="jk-engine-${VER}.jar"
 CLIENT_JAR="jk-${VER}.jar"
 SPY_JAR="jk-maven-spy-${VER}.jar"
+WHATS_NEW="jk-whats-new-${VER}.md"
 
 if [[ ! -d "$STAGING" ]]; then
   echo "flatten-release: staging directory not found: $STAGING" >&2
@@ -41,6 +42,7 @@ canonical_dir="$STAGING/release-${VER}-linux-x86_64"
 canonical_engine="$canonical_dir/$ENGINE"
 canonical_client="$canonical_dir/$CLIENT_JAR"
 canonical_spy="$canonical_dir/$SPY_JAR"
+canonical_whats_new="$canonical_dir/$WHATS_NEW"
 if [[ ! -f "$canonical_engine" ]]; then
   echo "missing $canonical_engine — the linux-x86_64 build did not produce the engine jar" >&2
   exit 1
@@ -55,9 +57,14 @@ if [[ ! -f "$canonical_spy" ]]; then
 fi
 engine_sha="$(sha256sum "$canonical_engine" | awk '{print $1}')"
 client_sha="$(sha256sum "$canonical_client" | awk '{print $1}')"
+if [[ ! -f "$canonical_whats_new" ]]; then
+  echo "missing $canonical_whats_new — the linux-x86_64 build did not write the what's-new highlights" >&2
+  exit 1
+fi
 spy_sha="$(sha256sum "$canonical_spy" | awk '{print $1}')"
+whats_new_sha="$(sha256sum "$canonical_whats_new" | awk '{print $1}')"
 
-# A platform-neutral jar: its bytes must match linux-x86_64's, and only that copy is taken.
+# A platform-neutral file: its bytes must match linux-x86_64's, and only that copy is taken.
 same_as_canonical() {
   local f="$1" canonical="$2" want="$3" what="$4" sha
   sha="$(sha256sum "$f" | awk '{print $1}')"
@@ -75,6 +82,7 @@ while IFS= read -r -d '' f; do
     "$ENGINE") same_as_canonical "$f" "$canonical_engine" "$engine_sha" "engines" || continue ;;
     "$CLIENT_JAR") same_as_canonical "$f" "$canonical_client" "$client_sha" "JVM clients" || continue ;;
     "$SPY_JAR") same_as_canonical "$f" "$canonical_spy" "$spy_sha" "Maven spies" || continue ;;
+    "$WHATS_NEW") same_as_canonical "$f" "$canonical_whats_new" "$whats_new_sha" "what's-new highlights" || continue ;;
   esac
   if [[ -e "$OUT/$base" ]]; then
     echo "two platform trees carry $base — the flatten would pick one by listing order" >&2
