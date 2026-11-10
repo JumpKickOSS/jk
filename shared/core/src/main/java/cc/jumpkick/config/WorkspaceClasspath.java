@@ -13,10 +13,13 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.AbstractMap;
+import java.util.AbstractSet;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -238,7 +241,78 @@ public final class WorkspaceClasspath {
             Map<String, Path> fixturesByModule,
             Map<String, JkBuild> manifestByCoord,
             Map<String, String> coordByName,
-            Set<String> relocating) {}
+            Set<String> relocating) {
+
+        /** This index seen by the unit {@code coord} (named {@code name}): every unit but itself, no copy. */
+        Siblings without(String coord, String name) {
+            return new Siblings(
+                    Excluding.map(dirByModule, coord),
+                    Excluding.map(jarByModule, coord),
+                    Excluding.map(classesByModule, coord),
+                    Excluding.map(testClassesByModule, coord),
+                    Excluding.map(fixturesByModule, coord),
+                    Excluding.map(manifestByCoord, coord),
+                    coord.equals(coordByName.get(name)) ? Excluding.map(coordByName, name) : coordByName,
+                    Excluding.set(relocating, coord));
+        }
+    }
+
+    /** Read-only views of a map or set less one key, so a caller's view of a shared index costs nothing. */
+    private static final class Excluding {
+        private Excluding() {}
+
+        static <V> Map<String, V> map(Map<String, V> all, String gone) {
+            if (!all.containsKey(gone)) return all;
+            return new AbstractMap<>() {
+                @Override
+                public @Nullable V get(Object key) {
+                    return gone.equals(key) ? null : all.get(key);
+                }
+
+                @Override
+                public boolean containsKey(Object key) {
+                    return !gone.equals(key) && all.containsKey(key);
+                }
+
+                @Override
+                public Set<Map.Entry<String, V>> entrySet() {
+                    return new AbstractSet<>() {
+                        @Override
+                        public Iterator<Map.Entry<String, V>> iterator() {
+                            return all.entrySet().stream()
+                                    .filter(e -> !gone.equals(e.getKey()))
+                                    .iterator();
+                        }
+
+                        @Override
+                        public int size() {
+                            return all.size() - 1;
+                        }
+                    };
+                }
+            };
+        }
+
+        static Set<String> set(Set<String> all, String gone) {
+            if (!all.contains(gone)) return all;
+            return new AbstractSet<>() {
+                @Override
+                public boolean contains(Object o) {
+                    return !gone.equals(o) && all.contains(o);
+                }
+
+                @Override
+                public Iterator<String> iterator() {
+                    return all.stream().filter(e -> !gone.equals(e)).iterator();
+                }
+
+                @Override
+                public int size() {
+                    return all.size() - 1;
+                }
+            };
+        }
+    }
 
     /**
      * Every build unit in the workspace — the members AND the buildable root — is a resolvable
@@ -248,6 +322,44 @@ public final class WorkspaceClasspath {
      * excluded from its own sibling set.
      */
     private static Siblings indexSiblings(Path root, JkBuild rootManifest, Path self) throws IOException {
+        Index index = index(root, rootManifest);
+        Unit own = index.unitByDir().get(self);
+        return own == null
+                ? index.all()
+                : index.all().without(own.coord(), own.manifest().project().name());
+    }
+
+    /** Every unit indexed once, by coord, and by normalized dir so a caller can leave itself out. */
+    private record Index(Siblings all, Map<Path, Unit> unitByDir) {}
+
+    /** The members' key for {@link #index}. */
+    private record IndexKey(Object members) {}
+
+    /**
+     * The workspace's units indexed once per request: every module's resolve asks, and building
+     * seven maps over every unit per call made a wide workspace's resolves quadratic.
+     */
+    private static Index index(Path root, JkBuild rootManifest) throws IOException {
+        Object members = WorkspaceLoader.requestKey(root, rootManifest);
+        if (members == null) return computeIndex(root, rootManifest);
+        try {
+            return RequestScope.current()
+                    .get(
+                            new IndexKey(members),
+                            k -> {
+                                try {
+                                    return computeIndex(root, rootManifest);
+                                } catch (IOException e) {
+                                    throw new UncheckedIOException(e);
+                                }
+                            },
+                            ix -> 512L * ix.unitByDir().size());
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
+
+    private static Index computeIndex(Path root, JkBuild rootManifest) throws IOException {
         Map<String, Path> siblingDirByModule = new HashMap<>();
         Map<String, Path> siblingJarByModule = new HashMap<>();
         Map<String, Path> siblingClassesByModule = new HashMap<>();
@@ -256,8 +368,9 @@ public final class WorkspaceClasspath {
         Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
         Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
         Set<String> relocating = new HashSet<>();
+        Map<Path, Unit> byDir = new HashMap<>();
         for (Unit unit : units(root, rootManifest)) {
-            if (unit.normDir().equals(self)) continue; // exclude self
+            byDir.put(unit.normDir(), unit);
             String coord = unit.coord();
             siblingDirByModule.put(coord, unit.dir());
             if (unit.relocates()) relocating.add(coord);
@@ -268,15 +381,16 @@ public final class WorkspaceClasspath {
             siblingManifestByCoord.put(coord, unit.manifest());
             siblingCoordByName.put(unit.manifest().project().name(), coord);
         }
-        return new Siblings(
-                siblingDirByModule,
-                siblingJarByModule,
-                siblingClassesByModule,
-                siblingTestClassesByModule,
-                siblingFixturesByModule,
-                siblingManifestByCoord,
-                siblingCoordByName,
-                relocating);
+        Siblings all = new Siblings(
+                Map.copyOf(siblingDirByModule),
+                Map.copyOf(siblingJarByModule),
+                Map.copyOf(siblingClassesByModule),
+                Map.copyOf(siblingTestClassesByModule),
+                Map.copyOf(siblingFixturesByModule),
+                Map.copyOf(siblingManifestByCoord),
+                Map.copyOf(siblingCoordByName),
+                Set.copyOf(relocating));
+        return new Index(all, Map.copyOf(byDir));
     }
 
     /** One build unit as a sibling reads it: its coordinate and where its outputs land. */
