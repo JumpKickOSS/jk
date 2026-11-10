@@ -596,7 +596,13 @@ public final class PlannerTest {
         if (!rerun && stampKey != null && TestLaunch.replayGreenRun(ctx, actionCache, stampKey)) {
             return; // skip — nothing changed since last green run
         }
+        // Under the same stamp the classes that passed before still stand: a red or cut-short
+        // suite runs only what has not passed yet. A forced, debug, coverage or affected run
+        // runs its whole selection.
+        TestClassLedger ledger = TestClassLedger.load(actionCache, stampKey, moduleLabel, tier.name());
+        List<String> settled = rerun || affected != null ? List.of() : ledger.settledClasses();
         TestLaunch.reweightForRealRun(ctx, in);
+        if (!settled.isEmpty()) ctx.warn(TestClassLedger.NOT_RERUN, TestClassLedger.notRerun(settled.size()));
         if (suites.describe() != null) ctx.output(suites.describe());
         List<Path> runtimeCp = TestLaunch.testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
         // Test execution is serialized across concurrently-built units unless the
@@ -614,6 +620,7 @@ public final class PlannerTest {
         TestSummary result;
         TagExcludedCapture tagExcluded;
         SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
+        boolean launched = false;
         try {
             // Module pin ([test] workers / [build] test-workers) wins over CLI for
             // hermetic opt-out. Auto hands the launcher the share; it applies the
@@ -621,13 +628,15 @@ public final class PlannerTest {
             boolean debug = in.session().debugJvm() != null;
             boolean auto = !debug && TestLaunch.autoDispatch(in, projectUnderTest.build(), pluginDecls);
             int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
-            tagExcluded = new TagExcludedCapture(TestSupport.bridgeListener(
-                    ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites, tier));
+            tagExcluded = new TagExcludedCapture(
+                    ledger.recording(TestSupport.bridgeListener(
+                            ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites, tier)),
+                    affected != null || !effectiveSel.classes().isEmpty());
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(testJvmArgs);
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
             Supplier<JUnitLauncher> launcher = () -> TestLaunch.launcher(
-                            in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec)
+                            in, projectUnderTest, effectiveSel, forkJvmArgs, affected, jacoco, coverageExec, settled)
                     .withIntegrationResults(ctx.require(LAYOUT).integrationResultsDir())
                     .withAutoShare(auto)
                     .withReadRecording(reads.flag());
@@ -639,7 +648,7 @@ public final class PlannerTest {
                                 testClasses,
                                 suites,
                                 effectiveSel.classes(),
-                                projectUnderTest.build().testExcludeClasses(),
+                                TestLaunch.excludedClasses(projectUnderTest, settled),
                                 affected,
                                 launcher,
                                 runtimeCp,
@@ -649,14 +658,26 @@ public final class PlannerTest {
                 TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
                 throw e;
             }
+            launched = true;
         } finally {
             HeapNotes.flush(ctx);
             if (gated) TEST_GATE.release();
+            // A run stopped part way keeps the classes it got through, under the stamp it started with.
+            if (!launched) ledger.store(actionCache, testTaskId, stampKey);
         }
         if (jacoco != null && coverageExec != null) {
             TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         }
         stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
+        ledger.store(actionCache, testTaskId, stampKey);
+        List<String> flaky = ledger.passedOnRerun();
+        if (!flaky.isEmpty()) {
+            ctx.warn(
+                    TestClassLedger.PASSED_ON_RERUN,
+                    "passed on a re-run with no input changed, so flaky or dependent on what ran before: "
+                            + String.join(", ", flaky));
+        }
+        result = ledger.withSettled(result, settled);
         settle(
                 ctx,
                 in,

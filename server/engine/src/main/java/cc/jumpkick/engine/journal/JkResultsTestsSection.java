@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The test part of {@code jk-results.md}: the {@code Tests:} count in the headline and the
@@ -32,14 +33,17 @@ final class JkResultsTestsSection {
     /** The headline's {@code Tests:} line; {@code true} when one was written. */
     static boolean appendCount(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
         if (hasTestEntries(tests)) {
-            TestRollup roll = rollup(tests);
+            TestRollup roll = withUnrun(rollup(tests), r.tests());
             sb.append("Tests: ");
             boolean green = r.success() && roll.fail == 0 && !runTestsFailed(r);
             if (green) sb.append("**100%** pass · ");
             else if (roll.fail > 0) sb.append("**").append(roll.fail).append(" failed** · ");
             sb.append(roll.pass).append(" passed");
             if (roll.skip > 0) sb.append(", ").append(roll.skip).append(" skipped");
-            sb.append(" (").append(roll.total).append(" total)");
+            sb.append(" (").append(roll.total).append(" total");
+            if (roll.unrun > 0)
+                sb.append(", ").append(roll.unrun).append(" passed earlier under the same inputs, not re-run");
+            sb.append(')');
             if (runTestsFailed(r) && roll.fail == 0) sb.append(" · **run-tests failed**");
             if (r.success() && roll.fail > 0) sb.append(" · ").append(REPORTED);
             appendTook(sb, roll, r);
@@ -265,7 +269,24 @@ final class JkResultsTestsSection {
         return dot < 0 ? fqcn : fqcn.substring(0, dot);
     }
 
-    private record TestRollup(long fail, long skip, long pass, long total, long ms) {}
+    private record TestRollup(long fail, long skip, long pass, long total, long ms, long unrun) {
+        TestRollup(long fail, long skip, long pass, long total, long ms) {
+            this(fail, skip, pass, total, ms, 0);
+        }
+    }
+
+    /**
+     * {@code roll}, the tests that ran, counting the ones the run's record holds beyond them: a
+     * suite served from cache, or the classes a re-run under the same inputs did not run again,
+     * passed and are in the record's counts though no report of theirs was written this time.
+     */
+    private static TestRollup withUnrun(TestRollup roll, BuildRecord.@Nullable Tests t) {
+        if (t == null || t.total() <= roll.total) return roll;
+        long unrun = t.total() - roll.total;
+        long skippedUnrun = Math.max(0, t.skipped() - roll.skip);
+        return new TestRollup(
+                roll.fail, roll.skip + skippedUnrun, roll.pass + (unrun - skippedUnrun), t.total(), roll.ms, unrun);
+    }
 
     /** {@code " (integration suite)"} beside a failure outside the default suite; empty otherwise. */
     static String suiteNote(String suite) {

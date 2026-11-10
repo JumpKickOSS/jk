@@ -424,6 +424,18 @@ part of the test stamp: changing any of them re-runs tests even if sources are u
 skipped: it leaves a red marker under the same stamp, so the next run executes it again and
 `jk explain` prices it as a suite rather than as a stale stamp.
 
+Under one stamp the inputs are identical, so a class that passed still stands. Each class's outcome
+is kept under the stamp as the class finishes, and a run whose stamp matches runs only the classes
+that have not passed under it: a red suite re-runs its failed classes, and a run stopped part way
+(cancelled, or cut short when another module failed) runs only the classes it never finished. A
+class counts as passed only when it and every class nested in it passed. The run says so with a
+`tests-not-rerun` warning (`6 test classes passed earlier under these same inputs and are not run
+again`), its counts and `jk results` include the classes not re-run, and once every class has
+passed the suite's marker is green and the next run skips it whole. A class that failed and then
+passes with nothing changed is flaky or depends on what ran before it, and the run warns
+`test-passed-on-rerun` naming it. `--redo`, `--debug-jvm`, a coverage run and `--affected` run their
+whole selection. A change to any stamp input still re-runs every class.
+
 ## The tier table partitions its vocabulary
 
 `[test]` and the profiles together form a tier table, and the engine holds it to one invariant

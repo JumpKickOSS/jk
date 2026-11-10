@@ -420,7 +420,8 @@ final class TestLaunch {
 
     /**
      * The launcher for this module's suite: its label, the selection's tag and class filters less
-     * the module's {@code [test] exclude-classes}, its {@code [test] serial-tags} (those classes run
+     * the module's {@code [test] exclude-classes} and the classes already {@code settled} under this
+     * stamp ({@link TestClassLedger}), its {@code [test] serial-tags} (those classes run
      * on one trailing worker while the rest shard) and assertions, the fork's JVM args, the debug port, the coverage agent when the run
      * measures coverage, and the affected class names when the session ranked them.
      */
@@ -431,7 +432,8 @@ final class TestLaunch {
             List<String> testJvmArgs,
             AffectedTestRun.@Nullable Outcome affected,
             CoverageTools.@Nullable Jacoco jacoco,
-            @Nullable Path coverageExec) {
+            @Nullable Path coverageExec,
+            List<String> settled) {
         String moduleLabel = projectUnderTest.project().group() + ":"
                 + projectUnderTest.project().name();
         JUnitLauncher launcher = new JUnitLauncher()
@@ -441,7 +443,7 @@ final class TestLaunch {
                 .withAssertions(projectUnderTest.build().testAssertions())
                 .withJvmArgs(testJvmArgs)
                 .withClassPatterns(effectiveSel.classes())
-                .withExcludedClasses(projectUnderTest.build().testExcludeClasses())
+                .withExcludedClasses(excludedClasses(projectUnderTest, settled))
                 .withDebug(in.session().debugJvm())
                 .withKeepOutput(in.verbose());
         if (jacoco != null && coverageExec != null) {
@@ -449,6 +451,15 @@ final class TestLaunch {
         }
         if (affected != null) launcher.withClassNames(affected.classNames());
         return launcher;
+    }
+
+    /** The module's {@code [test] exclude-classes}, then the classes a re-run under the same stamp need not run. */
+    static List<String> excludedClasses(JkBuild project, List<String> settled) {
+        List<String> own = project.build().testExcludeClasses();
+        if (settled.isEmpty()) return own;
+        List<String> out = new ArrayList<>(own);
+        out.addAll(settled);
+        return out;
     }
 
     /**

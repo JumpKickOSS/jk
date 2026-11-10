@@ -115,17 +115,27 @@ class TestClassMatchTest {
     @Test
     void the_capture_keeps_the_runners_tag_excluded_warning_and_forwards_every_warning() {
         List<String> forwarded = new ArrayList<>();
-        var capture = new TagExcludedCapture(new TestProgressListener() {
+        TestProgressListener sink = new TestProgressListener() {
             @Override
             public void onWarning(String code, String message) {
                 forwarded.add(code);
             }
-        });
+        };
+        var capture = new TagExcludedCapture(sink, true);
         capture.onWarning("no-test-classes", "nothing here");
         assertThat(capture.message()).isNull();
         capture.onWarning("tag-excluded", TAG_EXCLUDED);
         assertThat(capture.message()).isEqualTo(TAG_EXCLUDED);
         assertThat(forwarded).containsExactly("no-test-classes", "tag-excluded");
+
+        // A run that only took classes away (exclude-classes, settled classes) named none for the
+        // tag filter to drop: the runner's warning about the classes it left out is not passed on.
+        forwarded.clear();
+        var unnamed = new TagExcludedCapture(sink, false);
+        unnamed.onWarning("tag-excluded", TAG_EXCLUDED);
+        unnamed.onWarning("no-test-classes", "nothing here");
+        assertThat(unnamed.message()).isNull();
+        assertThat(forwarded).containsExactly("no-test-classes");
     }
 
     @Test

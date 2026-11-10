@@ -7,7 +7,12 @@ import org.jspecify.annotations.Nullable;
 /**
  * Keeps the runner's {@code tag-excluded} warning, which names each {@code --class} match the tag
  * filter dropped and the flag that runs it, so an empty {@code --class} run can fail with that cause
- * instead of a generic no-match. Every event still reaches {@code delegate}.
+ * instead of a generic no-match. Every other event still reaches {@code delegate}.
+ *
+ * <p>The runner takes any class filter for a selection, and a run that named no class still hands
+ * it one when classes are only taken away: {@code [test] exclude-classes}, or the classes a re-run
+ * under the same stamp need not run ({@link TestClassLedger}). Such a run named nothing for the tag
+ * filter to drop, so its warning is not passed on.
  */
 final class TagExcludedCapture implements TestProgressListener {
 
@@ -15,10 +20,13 @@ final class TagExcludedCapture implements TestProgressListener {
     static final String CODE = "tag-excluded";
 
     private final TestProgressListener delegate;
+    private final boolean named;
     private volatile @Nullable String message;
 
-    TagExcludedCapture(TestProgressListener delegate) {
+    /** @param named whether the run named classes: {@code --class} patterns, or an exact class list */
+    TagExcludedCapture(TestProgressListener delegate, boolean named) {
         this.delegate = delegate;
+        this.named = named;
     }
 
     /** The warning's text, or {@code null} when the tag filter dropped no named class. */
@@ -29,7 +37,10 @@ final class TagExcludedCapture implements TestProgressListener {
 
     @Override
     public void onWarning(String code, String message) {
-        if (CODE.equals(code) && message != null && !message.isBlank()) this.message = message;
+        if (CODE.equals(code)) {
+            if (!named) return;
+            if (message != null && !message.isBlank()) this.message = message;
+        }
         delegate.onWarning(code, message);
     }
 
