@@ -173,7 +173,8 @@ public final class KmpRedirects {
      * Future-based single-flight around {@link #lookup}: joiners wait on the winner's future
      * while the network lookup runs outside any map lock. No cycle risk here (unlike the
      * EffectivePomBuilder single-flight): lookup never re-enters {@code selectionFor}.
-     * {@code lookup} is fail-soft, so the future always completes normally; the finally guard
+     * {@code lookup} is fail-soft, so the future always completes normally; an answer that is not
+     * definite is dropped from the memo before it completes, so the next ask looks again; the finally guard
      * only fires on an {@link Error}, unparking joiners without memoizing a guess.
      */
     private ModuleFacts processMemoized(String processKey, String module, String version) {
@@ -185,7 +186,10 @@ public final class KmpRedirects {
                 flight = raced;
             } else {
                 try {
-                    mine.complete(lookup(module, version));
+                    Answer answer = lookup(module, version);
+                    // Only a definite answer is kept; a failed or interrupted lookup is asked again.
+                    if (!answer.definite()) PROCESS_CACHE.remove(processKey, mine);
+                    mine.complete(answer.facts());
                 } finally {
                     if (!mine.isDone()) {
                         mine.complete(ModuleFacts.NONE);
@@ -195,10 +199,19 @@ public final class KmpRedirects {
                 flight = mine;
             }
         }
-        return flight != null ? flight.join() : lookup(module, version);
+        return flight != null ? flight.join() : lookup(module, version).facts();
     }
 
-    private ModuleFacts lookup(String module, String version) {
+    /**
+     * A lookup's facts, and whether they are the repository's answer (no marker, no module file, a
+     * parsed module) rather than a failure read as the plain-Maven view.
+     */
+    private record Answer(ModuleFacts facts, boolean definite) {
+        static final Answer NONE = new Answer(ModuleFacts.NONE, true);
+        static final Answer UNKNOWN = new Answer(ModuleFacts.NONE, false);
+    }
+
+    private Answer lookup(String module, String version) {
         try {
             PackageId id = PackageId.parse(module);
             Coordinate coord = id.withVersion(version);
@@ -207,8 +220,8 @@ public final class KmpRedirects {
             // per POM digest, so each POM head is scanned once, not once per engine.
             var pomHit = Objects.requireNonNull(repos, "NONE never reaches the POM scan")
                     .tryFetchPom(coord);
-            if (pomHit.isEmpty()) return ModuleFacts.NONE;
-            if (!GradleMarkerAnswers.marked(pomHit.get())) return ModuleFacts.NONE;
+            if (pomHit.isEmpty()) return Answer.UNKNOWN;
+            if (!GradleMarkerAnswers.marked(pomHit.get())) return Answer.NONE;
 
             // Gradle publishes the .module beside the POM, so the repository that served the POM is
             // the one asked for it — a walk over every repository would 404 on each that publishes
@@ -218,17 +231,21 @@ public final class KmpRedirects {
             try {
                 moduleFile = pomHit.get().repo().fetchArtifact(moduleCoord);
             } catch (MavenRepo.ArtifactNotFoundException absent) {
-                return ModuleFacts.NONE;
+                return Answer.NONE;
             }
 
             GradleModuleMetadata gmm = GradleModuleMetadata.parse(moduleFile.cachePath());
             Optional<Selection> redirect = gmm.runtimeRedirect(jvmEnvironment)
                     .map(target -> new Selection(target, gmm.redirectTargetModules()));
-            return new ModuleFacts(
-                    redirect, gmm.dependencyConstraints(jvmEnvironment), gmm.testFixtureDependencies(jvmEnvironment));
+            return new Answer(
+                    new ModuleFacts(
+                            redirect,
+                            gmm.dependencyConstraints(jvmEnvironment),
+                            gmm.testFixtureDependencies(jvmEnvironment)),
+                    true);
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            return ModuleFacts.NONE; // fail-soft: plain-Maven view
+            return Answer.UNKNOWN; // fail-soft: plain-Maven view this time, asked again next time
         }
     }
 

@@ -49,6 +49,8 @@ class KmpRedirectsMemoTest {
     private final Map<String, AtomicInteger> hits = new ConcurrentHashMap<>();
     /** Paths whose response is held until {@link #release} opens. */
     private volatile @Nullable String heldPathPrefix;
+    /** A path that answers 503 while set. */
+    private volatile @Nullable String failingPath;
 
     private final CountDownLatch heldArrived = new CountDownLatch(1);
     private final CountDownLatch release = new CountDownLatch(1);
@@ -75,7 +77,9 @@ class KmpRedirectsMemoTest {
                 }
             }
             byte[] body = served.get(path);
-            if (body == null) {
+            if (path.equals(failingPath)) {
+                exchange.sendResponseHeaders(503, -1);
+            } else if (body == null) {
                 exchange.sendResponseHeaders(404, -1);
             } else {
                 exchange.sendResponseHeaders(200, body.length);
@@ -176,6 +180,24 @@ class KmpRedirectsMemoTest {
             release.countDown();
             pool.shutdownNow();
         }
+    }
+
+    @Test
+    void a_failed_module_fetch_is_not_memoized_as_no_module_metadata(@TempDir Path tmp) throws Exception {
+        registerKmpRoot("com.example.flaky", "widget", "1.0.0");
+        Cas cas = new Cas(tmp.resolve("cas"));
+        RepoGroup repos =
+                RepoGroup.of(new MavenRepo("test", base, Http.failFast(), cas, RepoCredential.ANONYMOUS, false));
+        failingPath = "/com/example/flaky/widget/1.0.0/widget-1.0.0.module";
+
+        assertThat(new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.flaky:widget", "1.0.0"))
+                .as("a 503 reads as the plain-Maven view this time")
+                .isEmpty();
+
+        failingPath = null;
+        assertThat(new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.flaky:widget", "1.0.0"))
+                .as("and is asked again, not remembered as no module metadata")
+                .isPresent();
     }
 
     // --- fixtures ----------------------------------------------------------
