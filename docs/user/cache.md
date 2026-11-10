@@ -292,7 +292,12 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
 - **Container images** live once. A tarball is recorded by size, mtime and sha256 and a daemon
   image by the ID Docker or Podman reported, in a small record in the action cache — never as a
   second copy. `jk image` skips the build when the tarball is unchanged or the daemon still
-  holds the image under that ID, and builds again when either is gone.
+  holds the image under that ID, and builds again when either is gone. The base-image layers
+  `jk image` pulls live in the cache root's `jib-layers/` (not Jib's own default,
+  `~/.cache/google-cloud-tools-java`, which nothing bounds and other Jib tools may still use): they
+  go on the heavy window from when they were pulled, and the tree resets past 2 GiB. The JRE an AOT
+  image build extracts from its base image (`base-jre/`, 50–200 MB each, two at most) goes on the
+  heavy window from its last use.
 - **The Maven local repository** (`~/.m2/repository`): JumpKick never removes from it on its own
   account. `jk cache clean --m2` (MCP: `disk` `action=m2-clean`) removes files unused for
   `--older-than` days (default `[m2] clean-after-days`, 60) that JumpKick's own memo proves it

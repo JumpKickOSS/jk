@@ -64,6 +64,7 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.KOTLIN_CP_SNAPSHOTS, root -> overByteBudget(root, CacheTree.KOTLIN_CP_SNAPSHOTS));
         m.put(CacheTree.JSHELL_CP, root -> in(root, CacheTree.JSHELL_CP, "alias.jar", "x", FRESH));
         m.put(CacheTree.BASE_JRE, root -> subtree(root, CacheTree.BASE_JRE, "sha256-dead", OLD));
+        m.put(CacheTree.JIB_LAYERS, root -> in(root, CacheTree.JIB_LAYERS, "layers/sha256/abc/layer.tar", "x", OLD));
         m.put(CacheTree.PATH_ARTIFACTS, root -> subtree(root, CacheTree.PATH_ARTIFACTS, "pathhash/fp", OLD));
         m.put(CacheTree.GENERATED, root -> subtree(root, CacheTree.GENERATED, "compile-test@dead", OLD));
         m.put(CacheTree.PROJECTS, root -> subtree(root, CacheTree.PROJECTS, "dead-project", OLD));
@@ -202,7 +203,7 @@ class CacheRetentionCoverageTest {
     @Test
     void a_loose_file_in_a_tier_of_trees_is_residue(@TempDir Path root) throws IOException {
         CacheTree tier = CacheTree.BASE_JRE;
-        Path live = subtree(root, tier, "sha256-live", Duration.ofDays(2).toMillis());
+        Path live = subtree(root, tier, "sha256-live", Duration.ofHours(2).toMillis());
         Path leaked = in(root, tier, "sha256-live.tar", "half a base image", OLD);
         Path fresh = in(root, tier, "sha256-other.tar", "still being written", FRESH);
 

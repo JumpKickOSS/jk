@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.config.HeavyTtl;
 import cc.jumpkick.host.CacheTree;
 import java.time.Duration;
 
@@ -66,8 +67,13 @@ public final class CacheTier {
             // 50–200 MB each — the only tier where a count cap is a byte bound. The window reads
             // the `.extracted` marker, which `BaseJre.javaBinary` touches on use; without that a
             // digest-pinned tree, which is never re-extracted and never rewritten, would age out of
-            // a workspace that builds an image with it every day.
-            case BASE_JRE -> Bound.subtrees(Duration.ofDays(30), Bound.countCap(2));
+            // a workspace that builds an image with it every day. A heavy output, so the heavy
+            // window from its last use ([cache] heavy-ttl).
+            case BASE_JRE -> Bound.subtrees(heavyWindow(), Bound.countCap(2));
+
+            // Base-image layers Jib pulled: re-downloadable, written once and never touched on reuse,
+            // so the heavy window runs from the write and the tier resets past 2 GiB.
+            case JIB_LAYERS -> Bound.files(heavyWindow(), Bound.resetOverBytes(2L * 1024 * 1024 * 1024));
 
             // Every source edit mints one, so the cap belongs to the inner key, not the tier.
             case PATH_ARTIFACTS -> Bound.nestedSubtrees(Duration.ofDays(7), Bound.countCap(2));
@@ -97,5 +103,15 @@ public final class CacheTier {
             // keeps `jk cache nuke` off these entries.
             case LAST_PRUNED, PRUNE_LOCK, STATUS_USAGE, CENTRAL_RATE_LIMITED -> Bound.unbounded(tree.bookkeeping());
         };
+    }
+
+    /**
+     * The heavy-output window ({@code [cache] heavy-ttl}, 12 hours by default), at least an hour: a
+     * tier's window of zero means no window, and a heavy tree on CI, where heavy outputs are not
+     * kept, still goes within the hour.
+     */
+    static Duration heavyWindow() {
+        Duration ttl = HeavyTtl.resolve();
+        return ttl.compareTo(Duration.ofHours(1)) < 0 ? Duration.ofHours(1) : ttl;
     }
 }

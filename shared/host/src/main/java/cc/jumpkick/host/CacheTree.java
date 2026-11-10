@@ -62,6 +62,12 @@ public enum CacheTree {
     /** An extracted JRE per base image digest, written by the image-builder worker. */
     BASE_JRE("base-jre"),
 
+    /**
+     * Jib's base-image layer cache, which the image-builder worker points here rather than at
+     * Jib's default {@code ~/.cache/google-cloud-tools-java}, which nothing bounds.
+     */
+    JIB_LAYERS("jib-layers"),
+
     /** A materialized Maven repo per path-dependency, keyed by source path then by fingerprint. */
     PATH_ARTIFACTS("path-artifacts"),
 

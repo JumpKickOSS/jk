@@ -16,6 +16,7 @@ import com.google.cloud.tools.jib.api.RegistryImage;
 import com.google.cloud.tools.jib.frontend.CredentialRetrieverFactory;
 import com.google.cloud.tools.jib.global.JibSystemProperties;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.concurrent.ExecutionException;
 import org.jspecify.annotations.Nullable;
 
@@ -43,16 +44,40 @@ import org.jspecify.annotations.Nullable;
 public final class RegistryAuth {
 
     /** No jk-resolved credential: the Docker credential store alone, over HTTPS only. */
-    public static final RegistryAuth NONE = new RegistryAuth(RepoCredential.ANONYMOUS, RepoCredential.ANONYMOUS, false);
+    public static final RegistryAuth NONE =
+            new RegistryAuth(RepoCredential.ANONYMOUS, RepoCredential.ANONYMOUS, false, null);
+
+    /**
+     * Where Jib keeps base-image layers under jk's cache root; the engine bounds this tree as {@code
+     * CacheTree.JIB_LAYERS}, so the names must agree.
+     */
+    static final String JIB_LAYERS = "jib-layers";
 
     private final RepoCredential basePull;
     private final RepoCredential push;
     private final boolean plainHttp;
+    private final @Nullable Path baseLayersCache;
 
-    private RegistryAuth(RepoCredential basePull, RepoCredential push, boolean plainHttp) {
+    private RegistryAuth(
+            RepoCredential basePull, RepoCredential push, boolean plainHttp, @Nullable Path baseLayersCache) {
         this.basePull = basePull;
         this.push = push;
         this.plainHttp = plainHttp;
+        this.baseLayersCache = baseLayersCache;
+    }
+
+    /**
+     * These credentials with Jib's base-image layer cache under jk's cache root ({@code
+     * <cacheRoot>/jib-layers}), where the engine's retention bounds it, instead of Jib's default
+     * {@code ~/.cache/google-cloud-tools-java}, which nothing bounds. {@code null} keeps Jib's default.
+     */
+    public RegistryAuth withCacheRoot(@Nullable Path cacheRoot) {
+        return new RegistryAuth(basePull, push, plainHttp, cacheRoot == null ? null : cacheRoot.resolve(JIB_LAYERS));
+    }
+
+    /** These credentials, with the layer cache under {@code cacheRoot} unless one is already named. */
+    RegistryAuth orCacheRoot(Path cacheRoot) {
+        return baseLayersCache != null ? this : withCacheRoot(cacheRoot);
     }
 
     /**
@@ -73,7 +98,8 @@ public final class RegistryAuth {
         return new RegistryAuth(
                 basePull == null ? RepoCredential.ANONYMOUS : basePull,
                 push == null ? RepoCredential.ANONYMOUS : push,
-                loopback);
+                loopback,
+                null);
     }
 
     /** The base image to build on, authenticated for a pull. */
@@ -131,6 +157,7 @@ public final class RegistryAuth {
             throws IOException, InterruptedException, RegistryException, ExecutionException,
                     CacheDirectoryCreationException {
         containerizer.setAllowInsecureRegistries(plainHttp);
+        if (baseLayersCache != null) containerizer.setBaseImageLayersCache(baseLayersCache);
         if (!plainHttp) return builder.containerize(containerizer);
         String prior = System.getProperty(JibSystemProperties.SEND_CREDENTIALS_OVER_HTTP);
         System.setProperty(JibSystemProperties.SEND_CREDENTIALS_OVER_HTTP, "true");

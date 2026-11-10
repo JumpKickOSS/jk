@@ -174,7 +174,11 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         // needs the second one. Handing `ref` over in tarball/daemon mode would claim a registry
         // is contacted when none is.
         RegistryAuth auth = RegistryAuth.of(
-                credential(ctx, "base"), credential(ctx, "push"), ImageBuilder.baseOf(config), pushing ? ref : null);
+                        credential(ctx, "base"),
+                        credential(ctx, "push"),
+                        ImageBuilder.baseOf(config),
+                        pushing ? ref : null)
+                .withCacheRoot(c.stringOpt("jkCache").map(Path::of).orElse(null));
 
         if (tarball.isPresent()) {
             Path tarballPath = Path.of(tarball.get());
@@ -244,7 +248,11 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         boolean pushing =
                 tarball.isEmpty() && !"daemon".equals(c.stringOpt("mode").orElse(null));
         RegistryAuth auth = RegistryAuth.of(
-                credential(ctx, "base"), credential(ctx, "push"), ImageBuilder.baseOf(config), pushing ? ref : null);
+                        credential(ctx, "base"),
+                        credential(ctx, "push"),
+                        ImageBuilder.baseOf(config),
+                        pushing ? ref : null)
+                .withCacheRoot(c.stringOpt("jkCache").map(Path::of).orElse(null));
         if (tarball.isPresent()) {
             Path tarballPath = Path.of(tarball.get());
             ctx.label("building OCI tarball");

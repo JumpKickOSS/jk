@@ -344,8 +344,10 @@ public final class ImageBuilder {
         return dir;
     }
 
-    private static JibContainer run(Plan plan, Containerizer containerizer, Path cacheRoot, RegistryAuth auth)
+    private static JibContainer run(Plan plan, Containerizer containerizer, Path cacheRoot, RegistryAuth given)
             throws IOException, InterruptedException, InvalidImageReferenceException {
+        // Every pull lands under jk's cache root, never in Jib's unbounded default.
+        RegistryAuth auth = given.orCacheRoot(cacheRoot);
         ImageConfig cfg = plan.config();
         String base = baseOf(cfg);
         JibContainerBuilder builder;
