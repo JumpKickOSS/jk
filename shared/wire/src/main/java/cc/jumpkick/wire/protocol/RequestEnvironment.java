@@ -29,11 +29,25 @@ public final class RequestEnvironment {
     }
 
     /**
-     * The session that asked ({@code jk.build.session} system property, else {@code JK_BUILD_SESSION});
-     * null when the requester is a plain shell. Journaled beside the trigger so a supervisor can
-     * tell one IDE window or agent connection from another.
+     * The session that asked: {@code jk.build.session} system property, else {@code
+     * JK_BUILD_SESSION}, else who is running this process ({@link CliSessionIdentity}: the terminal
+     * tab, the agent, the script). Journaled beside the trigger so a supervisor can tell one IDE
+     * window, terminal or agent from another.
      */
-    public static @Nullable String session() {
+    public static String session() {
+        String explicit = explicitSession();
+        return explicit != null ? explicit : CliSessionIdentity.current().label();
+    }
+
+    /**
+     * The process whose exit ends this requester's session, as {@code <pid>@<start millis>}; null
+     * for an explicit session, which ends by expiry like any other, or when no leader is known.
+     */
+    public static @Nullable String sessionLeader() {
+        return explicitSession() != null ? null : CliSessionIdentity.current().leader();
+    }
+
+    private static @Nullable String explicitSession() {
         return firstNonBlank(System.getProperty(SESSION_PROPERTY), ProcessEnv.get("JK_BUILD_SESSION"));
     }
 

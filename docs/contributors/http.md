@@ -329,7 +329,7 @@ connect"). Every row carries `dir`, the checkout it ran in — several worktrees
 share a `projectId` and one build-number sequence, and `dir` is what tells their rows apart —
 plus `trigger` (`cli` / `mcp` / `web` / `bsp`, or a fixture trigger the
 list already hides) and, when the surface had one, `session` — the MCP connection's
-`<client> <id>` or the BSP client's `<displayName> <id>`; a CLI row has no `session` key. A run a
+`<client> <id>`, the BSP client's `<displayName> <id>`, or the CLI's `<client> <key>` (below). A run a
 session owns also carries `episode`, the id of the episode it was admitted into (below). The
 dashboard's console and the project page's followed run read only these
 fields, so they show exactly what `jk-results.md` prints.
@@ -394,14 +394,39 @@ or change.
 `ChangeNotices` stats `changes.jsonl` every 5 s and adds one bell notice per batch of new entries
 (kind `change`, or `setup` for an `apply`), leaving installs and uninstalls off the bell.
 
+### How a CLI process names its session
+
+A `jk` process sends `session` on every run, and `sessionLeader` beside it
+(`RequestEnvironment.session()`, `CliSessionIdentity`), most specific first:
+
+1. `JK_BUILD_SESSION` (or the `jk.build.session` property a BSP server declares), as written,
+   with no leader;
+2. an agent's own session id: `CLAUDE_CODE_SESSION_ID` is `claude-code (shell) <key>`, led by
+   `CLAUDE_PID`; `CODEX_THREAD_ID` is `codex (shell) <key>`, with no leader. Every shell an agent's
+   tool spawns is the same session;
+3. on Linux, the session id and controlling tty in `/proc/self/stat`: a terminal tab or SSH
+   connection runs its shell as the leader of a session of its own (the tabs of one terminal
+   emulator share a parent, so the parent is never the key), and a script run from the tab is
+   still the tab's. The client is `terminal`, or `script` with no tty;
+4. elsewhere (macOS, Windows), the outermost shell in the unbroken run of shells above the
+   process, likewise `terminal` or `script`.
+
+`<key>` is six hex digits of a SHA-256 over the identity (the agent's id, or the leader's pid,
+start time and tty), so no pid or tty reaches a label. `sessionLeader` is
+`<pid>@<start, epoch millis>`; the engine keeps it in the session's `session.json` beside the
+record, never in it, and the maintenance sweep ends the session once that process has exited
+(a pid alive under another start time is a different process) and none of the session's runs is
+in flight. A session with no leader ends at the session expiry. The session id is
+`cli-<key>-<started, base 36>`.
+
 ### `GET /api/sessions`
 
 `GET /api/sessions[?limit=N]` (default 50, at most 200): `{ sessions: [...] }`, live and recent
 sessions, most recently active first. A session row is `{ id, origin, client?, label?, project?,
 projectId?, startedAt, lastActiveAt, endedAt?, state, episode?, current? }`: `origin` is the
 trigger (`mcp`, `bsp`, `web`, `cli`), `client` the name the client gave itself (the host the
-dashboard shows), `label` the run records' `session` (`claude-code 3f9a`;
-absent for the shell and the dashboard), `state` `live`, `idle` (quiet for the idle gap, ten
+dashboard shows), `label` the run records' `session` (`claude-code 3f9a`, `terminal 4c1e9a`;
+absent for the dashboard), `state` `live`, `idle` (quiet for the idle gap, ten
 minutes, with none of its builds in flight on this engine) or `ended`, `episode` the current episode's id and `current` that episode. An episode is
 `{ id, session, number, project, projectId?, title, titleSource, outcome, startedAt, lastAt, runs,
 actions }`: `id` is `<session>.<number>`, `titleSource` `goal` (the agent's `goal` argument),

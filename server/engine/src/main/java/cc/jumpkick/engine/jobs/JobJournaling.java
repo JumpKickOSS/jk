@@ -34,6 +34,12 @@ public interface JobJournaling {
         return null;
     }
 
+    /**
+     * The process whose exit ends the session of {@code trigger} and {@code session}, as a CLI
+     * request names it ({@code <pid>@<start millis>}); see {@code SessionLog#leader}.
+     */
+    default void sessionLeader(String trigger, @Nullable String session, String leader) {}
+
     /** Bind the request's results sink on the calling thread; see {@code JournalWriter#openResults}. */
     void openResults(long id);
 

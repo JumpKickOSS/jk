@@ -125,7 +125,8 @@ final class EngineJobs {
                                 graalInstalls)
                         .encode(),
                 null,
-                RequestEnvironment.session());
+                RequestEnvironment.session(),
+                RequestEnvironment.sessionLeader());
     }
 
     /**

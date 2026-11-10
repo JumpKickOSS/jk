@@ -7,11 +7,12 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Which earlier run a {@link JobDelta} compares against: the run before from the same origin —
- * the same {@code trigger} and the same {@code session} (an MCP connection, an IDE window; a plain
- * {@code cli} run has none and matches the {@code cli} runs before it). Runs from other origins in
+ * the same {@code trigger} and the same {@code session} (an MCP connection, an IDE window, an agent's
+ * shell; a person's {@code cli} runs from any terminal are one trail, see {@link #lane}). Runs from other origins in
  * between are stepped over, so two agents iterating on one project each see their own trail, and
  * a human's {@code jk build} beside them sees theirs.
  */
@@ -67,11 +68,24 @@ final class JournalLineage {
      */
     static boolean precedes(BuildRecord earlier, BuildRecord current) {
         return Objects.equals(earlier.trigger(), current.trigger())
-                && Objects.equals(earlier.session(), current.session())
+                && Objects.equals(lane(earlier), lane(current))
                 && sameCheckout(earlier.dir(), current.dir())
                 && !earlier.running()
                 && BuildHistoryKinds.isBuildLike(earlier.kind())
                 && earlier.finishedAt() > 0
                 && earlier.finishedAt() <= current.startedAt();
+    }
+
+    /**
+     * The trail a run's session follows. A person's command-line runs are one trail whichever
+     * terminal ran them ({@code terminal 4c1e9a}, {@code script 07d2aa}, or none from before
+     * terminals had sessions), so a new tab's first build still compares against the last one; an
+     * agent's shell and every other session keep their own.
+     */
+    static @Nullable String lane(BuildRecord r) {
+        String session = r.session();
+        if (!"cli".equals(r.trigger())) return session;
+        if (session == null || session.startsWith("terminal ") || session.startsWith("script ")) return null;
+        return session;
     }
 }

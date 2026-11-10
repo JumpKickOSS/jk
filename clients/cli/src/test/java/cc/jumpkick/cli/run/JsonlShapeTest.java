@@ -8,6 +8,7 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
+import cc.jumpkick.wire.protocol.RequestEnvironment;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.nio.file.Files;
@@ -137,9 +138,9 @@ class JsonlShapeTest {
         assertThat(start).contains("\"type\":\"session-start\"");
         assertThat(start).contains("\"command\":\"build\"");
         assertThat(start).contains("\"argv\":[\"build\",\"--skip-tests\"]");
-        // The origin the run record will carry: a plain shell is `cli` with no session.
+        // The origin the run record will carry: `cli`, and the session naming who ran it.
         assertThat(start).contains("\"trigger\":\"cli\"");
-        assertThat(start).doesNotContain("\"session\"");
+        assertThat(start).contains("\"session\":\"" + RequestEnvironment.session() + "\"");
         String finish = JsonlShape.sessionFinish(0, 42, "ok", List.of("a:b"));
         assertThat(finish).contains("\"type\":\"session-finish\"");
         assertThat(finish).contains("\"exit\":0");

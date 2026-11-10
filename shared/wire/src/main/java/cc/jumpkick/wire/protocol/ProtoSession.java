@@ -298,9 +298,19 @@ public final class ProtoSession {
      * call-site string surgery. Null/blank values leave the line unchanged.
      */
     public static String withOrigin(String request, @Nullable String trigger, @Nullable String session) {
+        return withOrigin(request, trigger, session, null);
+    }
+
+    /**
+     * {@link #withOrigin(String, String, String)} with the {@code sessionLeader} a CLI process
+     * names ({@code <pid>@<start millis>}): the process whose exit ends its session.
+     */
+    public static String withOrigin(
+            String request, @Nullable String trigger, @Nullable String session, @Nullable String sessionLeader) {
         String body = RequestJson.fields()
                 .optionalNonBlankString("trigger", trigger)
                 .optionalNonBlankString("session", session)
+                .optionalNonBlankString("sessionLeader", sessionLeader)
                 .body();
         if (body.isEmpty()) return request;
         return Jsonl.append(request, body);
