@@ -15,6 +15,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.StatIdentity;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
@@ -37,6 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -151,14 +153,6 @@ public final class PreflightMemo {
                 .resolve(SHAPE_FILE);
     }
 
-    /**
-     * Durable dirty-memo under the product cache so {@code jk clean} (which wipes {@code target/})
-     * does not erase input fingerprints. Prefer this on load when present and valid.
-     */
-    public static Path durableMemoFile(Path entryDir) {
-        return durablePreflightDir(entryDir).resolve(DIRTY_FILE);
-    }
-
     static Path durablePreflightDir(Path entryDir) {
         String key = workspaceKey(entryDir);
         return CacheTree.PROJECTS.under(JkDirs.cache()).resolve(key).resolve("preflight");
@@ -172,14 +166,6 @@ public final class PreflightMemo {
             // keep normalized absolute path
         }
         return Hashing.sha256Hex(p.toString()).substring(0, 16);
-    }
-
-    /** Prefer durable memo (survives clean), else the in-tree target memo. */
-    static @Nullable Path resolveDirtyMemoFile(Path entryDir) {
-        Path durable = durableMemoFile(entryDir);
-        if (Files.isRegularFile(durable)) return durable;
-        Path local = memoFile(entryDir);
-        return Files.isRegularFile(local) ? local : null;
     }
 
     // Dirty set (layer C)
@@ -251,7 +237,7 @@ public final class PreflightMemo {
             @Nullable String profile,
             @Nullable ActionCache actionCache,
             boolean allowChanged) {
-        Path file = resolveDirtyMemoFile(entryDir);
+        Path file = DirtyMemoVariants.resolve(entryDir, DirtyMemoVariants.variant(entryDir, graph, skipTests, profile));
         if (file == null || !Files.isRegularFile(file)) return Optional.empty();
         try {
             List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
@@ -415,9 +401,12 @@ public final class PreflightMemo {
             }
             String body = sb.toString();
             // Dual-write: durable cache survives jk clean; in-tree copy stays for local inspection.
-            Path durable = durableMemoFile(entryDir);
+            Path durable =
+                    DirtyMemoVariants.file(entryDir, DirtyMemoVariants.variant(entryDir, graph, skipTests, profile));
             Files.createDirectories(durable.getParent());
-            AtomicWrites.replaceIfChanged(durable, body);
+            if (!AtomicWrites.replaceIfChanged(durable, body))
+                Files.setLastModifiedTime(durable, FileTime.fromMillis(Clock.SYSTEM.millis()));
+            DirtyMemoVariants.prune(entryDir);
             writeInTree(memoFile(entryDir), entryDir, body);
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
@@ -428,7 +417,7 @@ public final class PreflightMemo {
     }
 
     /** The header's spelling of a request profile: its name, or empty for the default build. */
-    private static String profileHeader(@Nullable String profile) {
+    static String profileHeader(@Nullable String profile) {
         return profile == null ? "" : profile.strip();
     }
 

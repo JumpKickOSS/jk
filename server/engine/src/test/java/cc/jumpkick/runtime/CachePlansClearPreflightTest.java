@@ -29,7 +29,7 @@ class CachePlansClearPreflightTest {
 
         SessionContext.runWhere(Session.defaults().withCacheDir(cache), () -> {
             try {
-                Path durable = PreflightMemo.durableMemoFile(project);
+                Path durable = DirtyMemoVariants.file(project, "variant");
                 Files.createDirectories(durable.getParent());
                 Files.writeString(durable, "memo");
 

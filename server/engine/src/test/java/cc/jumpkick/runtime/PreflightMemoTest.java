@@ -181,7 +181,24 @@ class PreflightMemoTest {
 
         PreflightMemo.storeDirty(tmp, graph, false, "strict", Set.of(), fps);
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, "strict")).isPresent();
-        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, null)).isEmpty();
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, null))
+                .as("each profile keeps its own memo: alternating them misses neither")
+                .isPresent();
+    }
+
+    @Test
+    void an_entry_keeps_a_bounded_number_of_request_variants(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        Map<Path, String> fps = PreflightMemo.snapshotFingerprints(graph, false).fingerprints();
+        for (int i = 0; i < DirtyMemoVariants.MAX_VARIANTS + 3; i++) {
+            PreflightMemo.storeDirty(tmp, graph, false, "p" + i, Set.of(), fps);
+        }
+        try (var files = Files.list(PreflightMemo.durablePreflightDir(tmp))) {
+            assertThat(files.filter(f -> f.getFileName().toString().startsWith("dirty-memo-")))
+                    .hasSize(DirtyMemoVariants.MAX_VARIANTS);
+        }
     }
 
     /**
@@ -550,7 +567,7 @@ class PreflightMemoTest {
 
             PreflightMemo.storeDirty(tmp, graph, false, Set.of(), snapshot.fingerprints());
             assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
-            assertThat(PreflightMemo.resolveDirtyMemoFile(tmp)).isNull();
+            assertThat(DirtyMemoVariants.newest(tmp)).isNull();
         } finally {
             Files.setPosixFilePermissions(lock, was);
         }
@@ -564,7 +581,7 @@ class PreflightMemoTest {
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
         storeDirty(tmp, graph, Set.of());
-        Path memo = PreflightMemo.resolveDirtyMemoFile(tmp);
+        Path memo = DirtyMemoVariants.newest(tmp);
         assertThat(memo).isNotNull();
         Set<PosixFilePermission> was = Files.getPosixFilePermissions(memo);
         Files.setPosixFilePermissions(memo, Set.of());
