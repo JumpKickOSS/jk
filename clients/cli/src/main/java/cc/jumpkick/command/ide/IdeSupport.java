@@ -6,8 +6,9 @@ import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.engine.ActiveJobs;
+import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.ide.IdeException;
@@ -23,6 +24,8 @@ import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
@@ -143,13 +146,31 @@ public final class IdeSupport {
         WorkspaceRequest req = new WorkspaceRequest(
                         wsRoot, cache, jdksDir, 1, null, true, global.verbose, 0, null, true, true)
                 .withSpec(WorkspaceSpec.sync(false, null));
-        // Time-box: best-effort must never hang the CLI. On timeout, force-stop the engine so the
-        // blocked protocol read unblocks via channel close.
+        String outcome = timeBoxed(
+                () -> EngineClient.buildWorkspace(paths, req, WorkspaceBuildListener.NOOP),
+                BEST_EFFORT_SYNC_MS,
+                EnginePaths.activeSocket(paths));
+        if (outcome != null) syncWarn(chrome, outcome);
+    }
+
+    /** A sync the time box can wait on. */
+    @FunctionalInterface
+    interface Sync {
+        void run() throws Exception;
+    }
+
+    /**
+     * Run {@code sync} for at most {@code millis}: null when it finished, else the warning to show.
+     * On timeout only the jobs {@code sync} started are cancelled at the engine on {@code socket}
+     * and the thread is left behind; the engine is shared with every other client and stays up.
+     */
+    static @Nullable String timeBoxed(Sync sync, long millis, Path socket) {
         AtomicReference<Exception> fail = new AtomicReference<>();
+        Set<Long> before = ActiveJobs.snapshot();
         Thread t = new Thread(
                 () -> {
                     try {
-                        EngineClient.buildWorkspace(paths, req, WorkspaceBuildListener.NOOP);
+                        sync.run();
                     } catch (Exception e) {
                         fail.set(e);
                     }
@@ -158,30 +179,18 @@ public final class IdeSupport {
         t.setDaemon(true);
         t.start();
         try {
-            t.join(BEST_EFFORT_SYNC_MS);
+            t.join(millis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
         if (t.isAlive()) {
-            try {
-                EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
-            } catch (RuntimeException ignored) {
-                // best-effort
-            }
-            try {
-                t.join(2_000L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            syncWarn(
-                    chrome,
-                    "dependency sync timed out after " + (BEST_EFFORT_SYNC_MS / 1000) + "s; missing jars are skipped");
-            return;
+            Set<Long> mine = new HashSet<>(ActiveJobs.snapshot());
+            mine.removeAll(before);
+            EngineCancel.cancelBestEffort(socket, mine);
+            return "dependency sync timed out after " + (millis / 1000) + "s; missing jars are skipped";
         }
         Exception e = fail.get();
-        if (e != null) {
-            syncWarn(chrome, "dependency sync incomplete, missing jars are skipped: " + e.getMessage());
-        }
+        return e == null ? null : "dependency sync incomplete, missing jars are skipped: " + e.getMessage();
     }
 
     /** Soft sync failure: a note under the live IDE chip, or a fail wedge when there is no chrome. */
