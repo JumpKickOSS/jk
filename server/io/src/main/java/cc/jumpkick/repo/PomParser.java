@@ -105,8 +105,8 @@ public final class PomParser {
         List<Pom.Dep> deps = parseDependencies(childElement(project, "dependencies"), ctx);
         Element management = childElement(childElement(project, "dependencyManagement"), "dependencies");
         List<Pom.Dep> managed = parseDependencies(management, ctx);
-        // What a child inherits keeps the implicit spellings for the child's own context.
-        List<Pom.Dep> inheritable = parseDependencies(management, properties);
+        // What a child inherits keeps every property as written, for the child's own context.
+        List<Pom.Dep> inheritable = parseDependencies(management, Map.of());
 
         String gav = substituteOrNull(groupId, ctx) + ":" + substitute(artifactId, ctx) + ":"
                 + substituteOrNull(version, ctx);

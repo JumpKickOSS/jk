@@ -20,12 +20,13 @@ import org.jspecify.annotations.Nullable;
  * rather than this POM or a parent declaring them. A POM importing this one treats those as
  * imports again, so a declaration anywhere in its own chain still beats them.
  *
- * <p>{@code inheritedManaged} is the managed table as a child of this POM inherits it: the same
- * entries, every property valued in this POM's context except the implicit {@code project.*} and
- * {@code parent.*} ones, which Maven values in the child's. A {@code ${project.parent.version}} a
- * pom-packaged intermediate manages is therefore the intermediate's own version for its children
- * and its parent's for its own dependencies. Empty for a jar POM, which nothing inherits from; the
- * same list as {@link #managedDependencies} when no entry spells an implicit property.
+ * <p>{@code inheritedManaged} is the managed table as a child of this POM inherits it: the entries
+ * the chain declares with their properties as written, which Maven values in the child's context
+ * (its own properties over the chain's), and the entries its BOMs supplied, already valued. A
+ * child that sets a property the parent manages a version with gets its own value, and a {@code
+ * ${project.parent.version}} a pom-packaged intermediate manages is the intermediate's own version
+ * for its children and its parent's for its own dependencies. Empty for a jar POM, which nothing
+ * inherits from; the same list as {@link #managedDependencies} when no entry spells a property.
  *
  * <p>{@code hostClassified} maps a dependency's {@code group:artifact} to the {@code ${...}}
  * expression its classifier was written as, for every dependency whose classifier a {@link
@@ -48,7 +49,13 @@ public record EffectivePom(
         List<Pom.Repository> repositories,
         List<Pom.Dep> inheritedManaged,
         /** The POM's {@code <licenses>}, else the nearest parent's: Maven inherits them whole. */
-        List<Pom.License> licenses) {
+        List<Pom.License> licenses,
+        /**
+         * The {@code import}-scoped BOMs of this POM and its parents, nearest first, as written: a
+         * child expands them again with its own properties, so its override of a BOM's version
+         * property reaches the import.
+         */
+        List<Pom.Dep> inheritedImports) {
 
     /** A POM whose managed entries are all its own, inherited as they are, and that declares no relocation. */
     public EffectivePom(
@@ -72,6 +79,7 @@ public record EffectivePom(
                 Map.of(),
                 List.of(),
                 managedDependencies,
+                List.of(),
                 List.of());
     }
 
@@ -88,5 +96,6 @@ public record EffectivePom(
         repositories = List.copyOf(repositories);
         inheritedManaged = List.copyOf(inheritedManaged);
         licenses = List.copyOf(licenses);
+        inheritedImports = List.copyOf(inheritedImports);
     }
 }

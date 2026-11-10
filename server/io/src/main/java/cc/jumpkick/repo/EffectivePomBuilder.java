@@ -306,43 +306,43 @@ public final class EffectivePomBuilder {
         // parent inherited, first wins. The imports are expanded in parallel, then spliced back in
         // that order.
         // Two views of the declared entries: the child's own, valued in its context, and the ones a
-        // child of this POM inherits, with the implicit project.* spellings kept for that child.
+        // child of this POM inherits, with their properties as written for that child to value.
         List<Pom.Dep> declaredManaged = new ArrayList<>();
         List<Pom.Dep> declaredInheritable = new ArrayList<>();
         List<Pom.Dep> importedManaged = new ArrayList<>();
         if (parent != null) {
             for (Pom.Dep m : parent.inheritedManaged()) {
-                if (parent.importedManagedKeys().contains(depKey(m))) {
-                    importedManaged.add(m);
-                } else {
-                    declaredManaged.add(m);
-                    declaredInheritable.add(m);
-                }
+                // The parent's imports are expanded again below, in this POM's context.
+                if (parent.importedManagedKeys().contains(depKey(m))) continue;
+                declaredManaged.add(m);
+                declaredInheritable.add(m);
             }
         }
+        // Every import of the chain as written, this POM's first, then the ones it inherits: each
+        // is valued with this POM's properties, so a child that bumps a BOM's version property
+        // imports the BOM it names.
+        List<Pom.Dep> imports = new ArrayList<>();
+        for (Pom.Dep dep : child.inheritableManaged()) {
+            if (isBomImport(dep)) imports.add(dep);
+        }
+        if (parent != null) imports.addAll(parent.inheritedImports());
         List<Coordinate> bomCoordsOrdered = new ArrayList<>();
-        for (Pom.Dep dep : child.managedDependencies()) {
-            if (isBomImport(dep)) bomCoordsOrdered.add(bomCoordinate(dep, props));
-        }
+        for (Pom.Dep dep : imports) bomCoordsOrdered.add(bomCoordinate(dep, props));
         Map<String, EffectivePom> bomsByGav = buildBomImportsParallel(bomCoordsOrdered, visiting, depth + 1);
-        List<Pom.Dep> childImported = new ArrayList<>();
-        for (Pom.Dep dep : child.managedDependencies()) {
-            if (isBomImport(dep)) {
-                Coordinate bomCoord = bomCoordinate(dep, props);
-                EffectivePom bom = bomsByGav.get(bomCoord.toGav());
-                if (bom == null) {
-                    // Should not happen; fall back to serial expand.
-                    bom = buildInternal(bomCoord, visiting, depth + 1);
-                }
-                childImported.addAll(bom.managedDependencies());
-            } else {
-                declaredManaged.add(dep);
+        for (Coordinate bomCoord : bomCoordsOrdered) {
+            EffectivePom bom = bomsByGav.get(bomCoord.toGav());
+            if (bom == null) {
+                // Should not happen; fall back to serial expand.
+                bom = buildInternal(bomCoord, visiting, depth + 1);
             }
+            importedManaged.addAll(bom.managedDependencies());
+        }
+        for (Pom.Dep dep : child.managedDependencies()) {
+            if (!isBomImport(dep)) declaredManaged.add(dep);
         }
         for (Pom.Dep dep : child.inheritableManaged()) {
             if (!isBomImport(dep)) declaredInheritable.add(dep);
         }
-        importedManaged.addAll(0, childImported);
         List<Pom.Dep> mergedManaged = dedupeByModule(declaredManaged);
         List<Pom.Dep> inheritedManaged = dedupeByModule(declaredInheritable);
         Set<String> declaredKeys = new HashSet<>();
@@ -355,7 +355,6 @@ public final class EffectivePomBuilder {
                 inheritedManaged.add(m);
             }
         }
-        inheritedManaged = substituteAll(inheritedManaged, withoutImplicit(props));
         mergedManaged = substituteAll(mergedManaged, props);
 
         // 4. Effective deps — parent first, child overrides by module.
@@ -434,18 +433,8 @@ public final class EffectivePomBuilder {
                 hostClassified,
                 repositories(child, parent),
                 retainedInherited,
-                !child.licenses().isEmpty() || parent == null ? child.licenses() : parent.licenses());
-    }
-
-    /**
-     * {@code props} without the implicit {@code project.*}, {@code pom.*}, {@code project.parent.*}
-     * and {@code parent.*} entries, so a managed entry spelled with one keeps the spelling for the
-     * child that inherits it to value in its own context.
-     */
-    private static Map<String, String> withoutImplicit(Map<String, String> props) {
-        Map<String, String> out = new LinkedHashMap<>(props);
-        out.keySet().removeIf(PomParser::isImplicitProperty);
-        return out;
+                !child.licenses().isEmpty() || parent == null ? child.licenses() : parent.licenses(),
+                pomPackaging ? List.copyOf(imports) : List.of());
     }
 
     /** The child's own {@code <repositories>} first, then the parent chain's, one entry per URL. */

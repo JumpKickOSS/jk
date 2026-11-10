@@ -12,9 +12,9 @@ import org.jspecify.annotations.Nullable;
  * ({@code ${project.*}} and {@code <properties>}) has already been applied; cross-POM concerns
  * (parent inheritance, BOM imports, external properties) are the resolver's job.
  *
- * <p>{@code inheritableManaged} is the same {@code <dependencyManagement>} table with the implicit
- * {@code project.*}, {@code pom.*} and {@code parent.*} properties left as written: a child that
- * inherits the table values them in its own context, as Maven does, so a parent's {@code
+ * <p>{@code inheritableManaged} is the same {@code <dependencyManagement>} table with every
+ * property left as written: a child that inherits the table values it in its own context, as
+ * Maven does, so a child's {@code <lib.version>} beats this POM's and a parent's {@code
  * ${project.parent.version}} is the child's parent's version, not this POM's parent's.
  */
 public record Pom(
