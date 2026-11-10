@@ -12,6 +12,7 @@ import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.RecordComponentVisitor;
+import org.objectweb.asm.TypeReference;
 
 class ClassAbiTest {
 
@@ -226,6 +227,120 @@ class ClassAbiTest {
         var mv = cw.visitModule("m", 0, null);
         mv.visitExport(exported, 0);
         mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    @Test
+    void a_type_use_nullable_on_a_return_or_field_is_abi() {
+        String plain = ClassAbi.of(apiClass(Opcodes.V25, false, null, null)).apiHex();
+        assertThat(ClassAbi.of(apiClass(Opcodes.V25, true, null, null)).apiHex())
+                .as("JSpecify @Nullable is TYPE_USE: it lives in RuntimeVisibleTypeAnnotations")
+                .isNotEqualTo(plain);
+        assertThat(ClassAbi.of(apiClass(Opcodes.V25, false, null, null)).apiHex())
+                .isEqualTo(plain);
+    }
+
+    @Test
+    void a_renamed_method_parameter_is_abi_when_the_class_records_parameter_names() {
+        assertThat(ClassAbi.of(apiClass(Opcodes.V25, false, "first", null)).apiHex())
+                .isNotEqualTo(ClassAbi.of(apiClass(Opcodes.V25, false, "second", null))
+                        .apiHex());
+    }
+
+    @Test
+    void a_higher_class_file_version_is_abi() {
+        assertThat(ClassAbi.of(apiClass(Opcodes.V17, false, null, null)).apiHex())
+                .isNotEqualTo(
+                        ClassAbi.of(apiClass(Opcodes.V25, false, null, null)).apiHex());
+    }
+
+    @Test
+    void reordering_an_annotation_array_value_is_abi() {
+        assertThat(ClassAbi.of(apiClass(Opcodes.V25, false, null, new String[] {"a", "b"}))
+                        .apiHex())
+                .isNotEqualTo(ClassAbi.of(apiClass(Opcodes.V25, false, null, new String[] {"b", "a"}))
+                        .apiHex());
+    }
+
+    /**
+     * {@code public class C} with {@code public String name(String p)} and {@code public String f}:
+     * optionally a type-use {@code @Nullable} on both, a recorded parameter name, and a class
+     * annotation {@code @Tags(order)}.
+     */
+    private static byte[] apiClass(int version, boolean nullable, @Nullable String param, String @Nullable [] order) {
+        String nullableDesc = "Lorg/jspecify/annotations/Nullable;";
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(version, Opcodes.ACC_PUBLIC, "C", null, "java/lang/Object", null);
+        if (order != null) {
+            AnnotationVisitor av = cw.visitAnnotation("Ldemo/Tags;", true);
+            AnnotationVisitor arr = av.visitArray("value");
+            for (String o : order) arr.visit(null, o);
+            arr.visitEnd();
+            av.visitEnd();
+        }
+        FieldVisitor fv = cw.visitField(Opcodes.ACC_PUBLIC, "f", "Ljava/lang/String;", null, null);
+        if (nullable) {
+            fv.visitTypeAnnotation(
+                            TypeReference.newTypeReference(TypeReference.FIELD).getValue(), null, nullableDesc, true)
+                    .visitEnd();
+        }
+        fv.visitEnd();
+        MethodVisitor mv =
+                cw.visitMethod(Opcodes.ACC_PUBLIC, "name", "(Ljava/lang/String;)Ljava/lang/String;", null, null);
+        if (param != null) mv.visitParameter(param, 0);
+        if (nullable) {
+            mv.visitTypeAnnotation(
+                            TypeReference.newTypeReference(TypeReference.METHOD_RETURN)
+                                    .getValue(),
+                            null,
+                            nullableDesc,
+                            true)
+                    .visitEnd();
+        }
+        mv.visitCode();
+        mv.visitVarInsn(Opcodes.ALOAD, 1);
+        mv.visitInsn(Opcodes.ARETURN);
+        mv.visitMaxs(1, 2);
+        mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    @Test
+    void an_instance_constant_value_change_is_abi() {
+        assertThat(ClassAbi.of(finalField(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, 10))
+                        .apiHex())
+                .as("public final int limit = 10 is inlined at every use, static or not")
+                .isNotEqualTo(ClassAbi.of(finalField(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, 20))
+                        .apiHex());
+    }
+
+    @Test
+    void a_nested_class_merely_referenced_is_not_abi_but_an_own_one_is() {
+        String plain = ClassAbi.of(withInner(null)).apiHex();
+        assertThat(ClassAbi.of(withInner(new String[] {
+                            "java/lang/invoke/MethodHandles$Lookup", "java/lang/invoke/MethodHandles", "Lookup"
+                        }))
+                        .apiHex())
+                .as("the first lambda adds MethodHandles$Lookup to InnerClasses")
+                .isEqualTo(plain);
+        assertThat(ClassAbi.of(withInner(new String[] {"C$Own", "C", "Own"})).apiHex())
+                .isNotEqualTo(plain);
+    }
+
+    private static byte[] finalField(int access, int value) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, "C", null, "java/lang/Object", null);
+        cw.visitField(access, "limit", "I", null, value).visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    private static byte[] withInner(String @Nullable [] inner) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, "C", null, "java/lang/Object", null);
+        if (inner != null) cw.visitInnerClass(inner[0], inner[1], inner[2], Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC);
         cw.visitEnd();
         return cw.toByteArray();
     }

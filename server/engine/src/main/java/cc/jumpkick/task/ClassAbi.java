@@ -15,16 +15,18 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.ModuleVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.RecordComponentVisitor;
+import org.objectweb.asm.TypePath;
 
 /**
  * Language-neutral ABI fingerprint of a JVM class file. Gradle {@code ApiMemberSelector} semantics
  * (not Gradle's compiler), widened to what a class of the same package sees: public, protected and
  * package-private members (javac inlines a package-private constant into, and links a
  * package-private method from, any class of its package, a same-package test compile included),
- * generic {@code Signature}, {@code throws}, {@code ConstantValue} of {@code static final} fields,
- * API annotations with values, record components, permitted subclasses, {@code module-info}.
- * Method bodies, private and synthetic package-private members, debug, and {@code kotlin.Metadata}
- * stay out. Named nested classes fold into their owner's fingerprint
+ * generic {@code Signature}, {@code throws}, {@code ConstantValue} of {@code final} fields,
+ * API annotations with values (type-use ones such as JSpecify's {@code @Nullable} included, array
+ * values in declared order), {@code MethodParameters}, the class-file version, record components,
+ * permitted subclasses, {@code module-info}. Method bodies, private and synthetic package-private
+ * members, other debug attributes, and {@code kotlin.Metadata} stay out. Named nested classes fold into their owner's fingerprint
  * ({@link #of(byte[], SortedMap)}) for affected-test ranking.
  */
 public final class ClassAbi {
@@ -35,7 +37,7 @@ public final class ClassAbi {
      * Names the shape of {@link #apiLines}. Moves with any change to what a line carries or how
      * it is rendered, so a token memoized under the earlier shape is never served again.
      */
-    static final String FORMAT = "2";
+    static final String FORMAT = "3";
 
     private ClassAbi() {}
 
@@ -63,7 +65,8 @@ public final class ClassAbi {
         try {
             ClassReader cr = new ClassReader(classBytes);
             ApiCollector api = new ApiCollector();
-            cr.accept(api, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+            // Not SKIP_DEBUG: it drops MethodParameters too, which a consumer's processor reads.
+            cr.accept(api, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
             return api.finish();
         } catch (IllegalArgumentException | IndexOutOfBoundsException malformed) {
             return List.of("RAW " + Hashing.sha256Hex(classBytes));
@@ -96,6 +99,7 @@ public final class ClassAbi {
         private final List<String> anns = new ArrayList<>();
         private final List<String> module = new ArrayList<>();
         private @Nullable String nestHost;
+        private String self = "";
 
         ApiCollector() {
             super(Opcodes.ASM9);
@@ -125,7 +129,10 @@ public final class ClassAbi {
         @Override
         public void visit(
                 int version, int access, String name, String signature, String superName, String[] interfaces) {
+            self = name;
             StringBuilder sb = new StringBuilder("C ")
+                    .append(version)
+                    .append(' ')
                     .append(access)
                     .append(' ')
                     .append(name)
@@ -151,12 +158,22 @@ public final class ClassAbi {
         @Override
         public void visitInnerClass(String name, String outerName, String innerName, int access) {
             if (outerName == null || innerName == null || isPrivate(access)) return;
+            // InnerClasses also lists every nested class this class merely references
+            // (MethodHandles$Lookup for the first lambda, Map$Entry): only its own members and
+            // its own place in an outer class are API.
+            if (!name.equals(self) && !outerName.equals(self)) return;
             inners.add("INNER " + access + " " + name + " " + outerName + " " + innerName);
         }
 
         @Override
         public @Nullable AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
             return ClassAbiAnns.line(descriptor, visible, anns);
+        }
+
+        @Override
+        public @Nullable AnnotationVisitor visitTypeAnnotation(
+                int typeRef, @Nullable TypePath typePath, String descriptor, boolean visible) {
+            return ClassAbiAnns.line(descriptor, visible, anns, ClassAbiAnns.typeTarget(typeRef, typePath));
         }
 
         @Override
@@ -170,12 +187,22 @@ public final class ClassAbi {
                     .append(' ')
                     .append(descriptor);
             if (signature != null) sb.append(" S ").append(signature);
-            if (value != null && isStaticFinal(access)) sb.append(" V ").append(ClassAbiAnns.renderValue(value));
+            // A final field with a ConstantValue is a constant variable (JLS 4.12.4), static or
+            // not: javac inlines it at every use, so its value is API.
+            if (value != null && (access & Opcodes.ACC_FINAL) != 0) {
+                sb.append(" V ").append(ClassAbiAnns.renderValue(value));
+            }
             List<String> fieldAnns = new ArrayList<>();
             return new FieldVisitor(Opcodes.ASM9) {
                 @Override
                 public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean visible) {
                     return ClassAbiAnns.line(desc, visible, fieldAnns);
+                }
+
+                @Override
+                public @Nullable AnnotationVisitor visitTypeAnnotation(
+                        int typeRef, @Nullable TypePath typePath, String desc, boolean visible) {
+                    return ClassAbiAnns.line(desc, visible, fieldAnns, ClassAbiAnns.typeTarget(typeRef, typePath));
                 }
 
                 @Override
@@ -205,10 +232,23 @@ public final class ClassAbi {
                 sb.append(" T ").append(String.join(",", ex));
             }
             List<String> methodAnns = new ArrayList<>();
+            List<String> params = new ArrayList<>();
             return new MethodVisitor(Opcodes.ASM9) {
                 @Override
                 public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean visible) {
                     return ClassAbiAnns.line(desc, visible, methodAnns);
+                }
+
+                @Override
+                public @Nullable AnnotationVisitor visitTypeAnnotation(
+                        int typeRef, @Nullable TypePath typePath, String desc, boolean visible) {
+                    return ClassAbiAnns.line(desc, visible, methodAnns, ClassAbiAnns.typeTarget(typeRef, typePath));
+                }
+
+                @Override
+                public void visitParameter(@Nullable String name, int acc) {
+                    // Kept in order after the sort below: a parameter's position is its identity.
+                    params.add(nullToEmpty(name) + ":" + acc);
                 }
 
                 @Override
@@ -226,6 +266,7 @@ public final class ClassAbi {
                 public void visitEnd() {
                     Collections.sort(methodAnns);
                     for (String a : methodAnns) sb.append(' ').append(a);
+                    if (!params.isEmpty()) sb.append(" PARAMS ").append(String.join(",", params));
                     methods.add(sb.toString());
                 }
             };
@@ -240,6 +281,12 @@ public final class ClassAbi {
                 @Override
                 public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean visible) {
                     return ClassAbiAnns.line(desc, visible, recAnns);
+                }
+
+                @Override
+                public @Nullable AnnotationVisitor visitTypeAnnotation(
+                        int typeRef, @Nullable TypePath typePath, String desc, boolean visible) {
+                    return ClassAbiAnns.line(desc, visible, recAnns, ClassAbiAnns.typeTarget(typeRef, typePath));
                 }
 
                 @Override
@@ -307,10 +354,6 @@ public final class ClassAbi {
 
     private static boolean isPrivate(int access) {
         return (access & Opcodes.ACC_PRIVATE) != 0;
-    }
-
-    private static boolean isStaticFinal(int access) {
-        return (access & Opcodes.ACC_STATIC) != 0 && (access & Opcodes.ACC_FINAL) != 0;
     }
 
     private static String nullToEmpty(@Nullable String s) {

@@ -3,13 +3,13 @@ package cc.jumpkick.task;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.TypePath;
 
 /** Canonical annotation / default-value lines for {@link ClassAbi}. */
 final class ClassAbiAnns {
@@ -46,6 +46,11 @@ final class ClassAbiAnns {
         };
     }
 
+    /** The prefix of a type-use annotation's line: where in the signature it sits. */
+    static String typeTarget(int typeRef, @Nullable TypePath typePath) {
+        return "T" + Integer.toHexString(typeRef) + (typePath == null ? "" : "/" + typePath);
+    }
+
     static String renderValue(Object value) {
         if (value == null) return "null";
         if (value instanceof Type t) return t.getDescriptor();
@@ -53,8 +58,8 @@ final class ClassAbiAnns {
         if (value.getClass().isArray()) {
             int n = Array.getLength(value);
             String[] parts = new String[n];
+            // Declared order: a processor reading @X({A, B}) may care which comes first.
             for (int i = 0; i < n; i++) parts[i] = renderValue(Array.get(value, i));
-            Arrays.sort(parts);
             return "[" + String.join(",", parts) + "]";
         }
         return String.valueOf(value);
@@ -125,7 +130,6 @@ final class ClassAbiAnns {
 
                 @Override
                 public void visitEnd() {
-                    Collections.sort(inner);
                     values.add(nameOrValue(name) + "=[" + String.join(",", inner) + "]");
                 }
             };
