@@ -49,9 +49,11 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiPredicate;
@@ -228,86 +230,61 @@ public final class CacheInventoryOps {
         Path lib = storeRoot.resolve("lib");
         Path repos = storeRoot.resolve("repos");
 
-        Set<Object> seen = new HashSet<>();
-        DiskUsage.SameFileKeys sameFile = new DiskUsage.SameFileKeys();
-        // {jarFiles, jarBytes, execFiles, execBytes, ociFiles, ociBytes} — a lambda cannot assign
-        // a local, and the alternative is six holders.
-        long[] tally = new long[6];
-
+        // One ownership scope over every tree of the home this report names: an inode counts once,
+        // and only when all of its links lie inside these trees. One linked from ~/.m2, a project's
+        // target/ or another home is shared, reported apart and never as the store's.
+        OwnedTally tally = new OwnedTally();
         // Through PathUtil: the walk already read each entry's attributes, and asking again per
         // entry is what guard G45 is about. It also yields its carrier periodically, which a walk
         // of a store this size on a virtual thread owes the rest of the process.
         PathUtil.forEachReadableFile(storeCas, (file, attrs) -> {
-            Object key = identityKey(file, attrs, sameFile);
-            long size = seen.add(key) ? attrs.size() : 0L;
-            switch (sniffArtifactKind(file)) {
-                case EXECUTABLE -> {
-                    tally[2]++;
-                    tally[3] += size;
-                }
-                case OCI -> {
-                    tally[4]++;
-                    tally[5] += size;
-                }
-                case JAR, OTHER -> {
-                    tally[0]++;
-                    tally[1] += size;
-                }
-            }
+            int bucket =
+                    switch (sniffArtifactKind(file)) {
+                        case EXECUTABLE -> OwnedTally.EXECUTABLES;
+                        case OCI -> OwnedTally.OCI;
+                        case JAR, OTHER -> OwnedTally.JARS;
+                    };
+            tally.add(file, attrs, bucket);
         });
-
-        Stat reposExtra = walkExclusiveAdding(repos, seen, sameFile);
-        long jarFiles = tally[0] + reposExtra.files;
-        long jarBytes = tally[1] + reposExtra.bytes;
-        long execFiles = tally[2];
-        long execBytes = tally[3];
-        long ociFiles = tally[4];
-        long ociBytes = tally[5];
-        // One sameFile across all three walks, or a repos link to a CAS blob counts twice.
-        Stat workers = walkExclusiveAdding(lib, seen, sameFile);
-        long totalFiles = jarFiles + execFiles + ociFiles + workers.files;
-        long totalBytes = jarBytes + execBytes + ociBytes + workers.bytes;
+        tally.walk(repos, OwnedTally.JARS);
+        tally.walk(lib, OwnedTally.WORKERS);
+        tally.walk(storeRoot.resolve("tools"), OwnedTally.TOOLS);
+        tally.walk(JkDirs.tmp(), OwnedTally.SCRATCH);
+        tally.walk(TestStorePool.root(), OwnedTally.TEST_POOL);
+        // The test sandboxes, beside the Maven repo and for the same reason: neither is budgeted,
+        // both are large, and a developer had no way to see either grow. Walked because the caller
+        // asked what the disk holds; an action that does not touch a tier must not walk it.
+        tally.walk(TestHomes.root(), OwnedTally.TEST_HOMES);
+        tally.finish();
+        long totalFiles = tally.files(OwnedTally.JARS)
+                + tally.files(OwnedTally.EXECUTABLES)
+                + tally.files(OwnedTally.OCI)
+                + tally.files(OwnedTally.WORKERS);
+        long totalBytes = tally.bytes(OwnedTally.JARS)
+                + tally.bytes(OwnedTally.EXECUTABLES)
+                + tally.bytes(OwnedTally.OCI)
+                + tally.bytes(OwnedTally.WORKERS);
         DiskUsage.Stats mavenLocal;
         try {
             mavenLocal = DiskUsage.of(m2 != null ? m2 : M2Dirs.localRepository());
         } catch (Exception e) {
             mavenLocal = new DiskUsage.Stats(0, 0);
         }
-        // The test sandboxes, beside the Maven repo and for the same reason: neither is budgeted,
-        // both are large, and a developer had no way to see either grow. Walked because the caller
-        // asked what the disk holds; an action that does not touch a tier must not walk it.
-        DiskUsage.Stats sandboxes;
-        try {
-            sandboxes = DiskUsage.of(TestHomes.root());
-        } catch (Exception e) {
-            sandboxes = new DiskUsage.Stats(0, 0);
-        }
-        DiskUsage.Stats tools = usageOf(storeRoot.resolve("tools"));
-        DiskUsage.Stats scratch = usageOf(JkDirs.tmp());
-        DiskUsage.Stats testPool = usageOf(TestStorePool.root());
         // What the next pass would take: retired installs' blobs and blobs past their window.
         StoreCasGc.Report reclaimable = StoreCasGc.preview(storeRoot);
         List<String> stats = List.of(
                 pack("reclaimable", reclaimable.deleted(), reclaimable.freedBytes()),
-                pack("jars", jarFiles, jarBytes),
-                pack("executables", execFiles, execBytes),
-                pack("oci", ociFiles, ociBytes),
-                pack("workers", workers.files, workers.bytes),
+                pack("shared", tally.sharedFiles(), tally.sharedBytes()),
+                pack("jars", tally.files(OwnedTally.JARS), tally.bytes(OwnedTally.JARS)),
+                pack("executables", tally.files(OwnedTally.EXECUTABLES), tally.bytes(OwnedTally.EXECUTABLES)),
+                pack("oci", tally.files(OwnedTally.OCI), tally.bytes(OwnedTally.OCI)),
+                pack("workers", tally.files(OwnedTally.WORKERS), tally.bytes(OwnedTally.WORKERS)),
                 pack("maven-local", mavenLocal.files(), mavenLocal.bytes()),
-                pack("test-homes", sandboxes.files(), sandboxes.bytes()),
-                pack("tools", tools.files(), tools.bytes()),
-                pack("scratch", scratch.files(), scratch.bytes()),
-                pack("test-store", testPool.files(), testPool.bytes()));
+                pack("test-homes", tally.files(OwnedTally.TEST_HOMES), tally.bytes(OwnedTally.TEST_HOMES)),
+                pack("tools", tally.files(OwnedTally.TOOLS), tally.bytes(OwnedTally.TOOLS)),
+                pack("scratch", tally.files(OwnedTally.SCRATCH), tally.bytes(OwnedTally.SCRATCH)),
+                pack("test-store", tally.files(OwnedTally.TEST_POOL), tally.bytes(OwnedTally.TEST_POOL)));
         return CacheInventoryAck.usage("store-usage", stats, totalFiles, totalBytes);
-    }
-
-    /** What {@code dir} holds, or nothing when it cannot be read. */
-    private static DiskUsage.Stats usageOf(Path dir) {
-        try {
-            return DiskUsage.of(dir);
-        } catch (IOException | RuntimeException unreadable) {
-            return new DiskUsage.Stats(0, 0);
-        }
     }
 
     private static CacheInventoryAck repoSearch(Path storeRoot, List<String> terms) {
@@ -759,16 +736,81 @@ public final class CacheInventoryOps {
         return ArtifactKind.OTHER;
     }
 
-    private record Stat(long files, long bytes) {}
+    /**
+     * Files and owned bytes per bucket over several walks of one home, an inode counted once and
+     * only when every one of its links turns up in the walks; the bytes of the rest are shared.
+     */
+    static final class OwnedTally {
+        static final int JARS = 0;
+        static final int EXECUTABLES = 1;
+        static final int OCI = 2;
+        static final int WORKERS = 3;
+        static final int TOOLS = 4;
+        static final int SCRATCH = 5;
+        static final int TEST_POOL = 6;
+        static final int TEST_HOMES = 7;
 
-    private static Stat walkExclusiveAdding(Path dir, Set<Object> seenKeys, DiskUsage.SameFileKeys sameFile)
-            throws IOException {
-        long[] tally = {0, 0};
-        PathUtil.forEachReadableFile(dir, (file, attrs) -> {
-            tally[0]++;
-            if (seenKeys.add(identityKey(file, attrs, sameFile))) tally[1] += attrs.size();
-        });
-        return new Stat(tally[0], tally[1]);
+        private final long[] files = new long[8];
+        private final long[] bytes = new long[8];
+        private final DiskUsage.SameFileKeys sameFile = new DiskUsage.SameFileKeys();
+
+        /** Per multi-link identity: {bucket, size, link count, links met}. */
+        private final Map<Object, long[]> links = new HashMap<>();
+
+        private long sharedFiles;
+        private long sharedBytes;
+
+        void walk(Path dir, int bucket) {
+            try {
+                PathUtil.forEachReadableFile(dir, (file, attrs) -> add(file, attrs, bucket));
+            } catch (IOException | RuntimeException unreadable) {
+                // a tree that will not read adds nothing
+            }
+        }
+
+        void add(Path file, BasicFileAttributes attrs, int bucket) {
+            files[bucket]++;
+            long nlink = DiskUsage.linkCount(file);
+            if (nlink <= 1) {
+                bytes[bucket] += attrs.size();
+                return;
+            }
+            long[] met = links.get(identityKey(file, attrs, sameFile));
+            if (met == null) {
+                links.put(identityKey(file, attrs, sameFile), new long[] {bucket, attrs.size(), nlink, 1});
+            } else {
+                met[3]++;
+            }
+        }
+
+        /** Settle every multi-link inode: owned by its first bucket when all its links were met, else shared. */
+        void finish() {
+            for (long[] l : links.values()) {
+                if (l[3] >= l[2]) {
+                    bytes[(int) l[0]] += l[1];
+                } else {
+                    sharedFiles++;
+                    sharedBytes += l[1];
+                }
+            }
+            links.clear();
+        }
+
+        long files(int bucket) {
+            return files[bucket];
+        }
+
+        long bytes(int bucket) {
+            return bytes[bucket];
+        }
+
+        long sharedFiles() {
+            return sharedFiles;
+        }
+
+        long sharedBytes() {
+            return sharedBytes;
+        }
     }
 
     /**

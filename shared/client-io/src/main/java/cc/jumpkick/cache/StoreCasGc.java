@@ -47,7 +47,8 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * <p>A blob younger than {@link Policy#minAge} is never touched: its writer may not have recorded it
- * anywhere yet.
+ * anywhere yet. Nor is one another tree also links: deleting the store's name would free nothing,
+ * so it neither counts toward the budget nor runs its window until the store holds its last link.
  */
 public final class StoreCasGc {
 
@@ -291,6 +292,13 @@ public final class StoreCasGc {
             if (hex.isEmpty()) return;
             total[0] += attrs.size();
             if (pinned.contains(hex.get())) {
+                pinnedCount[0]++;
+                return;
+            }
+            // Another tree also links this blob (a private home, a project's target/): deleting the
+            // store's name frees nothing, and it is not the store's to count until it holds the last link.
+            if (DiskUsage.linkCount(file) > 1) {
+                total[0] -= attrs.size();
                 pinnedCount[0]++;
                 return;
             }

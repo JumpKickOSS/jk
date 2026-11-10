@@ -190,7 +190,8 @@ public final class CacheCommand extends GroupCommand {
                 statFromAck(ack, "tools"),
                 statFromAck(ack, "scratch"),
                 statFromAck(ack, "test-store"),
-                statFromAck(ack, "reclaimable"));
+                statFromAck(ack, "reclaimable"),
+                statFromAck(ack, "shared"));
     }
 
     private static Stats statFromAck(CacheInventoryAck ack, String name) {
@@ -231,13 +232,15 @@ public final class CacheCommand extends GroupCommand {
             Stats tools,
             Stats scratch,
             Stats testPool,
-            Stats reclaimable) {
+            Stats reclaimable,
+            Stats shared) {
         StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers) {
             this(
                     jars,
                     executables,
                     oci,
                     workers,
+                    new Stats(0, 0),
                     new Stats(0, 0),
                     new Stats(0, 0),
                     new Stats(0, 0),
@@ -255,8 +258,44 @@ public final class CacheCommand extends GroupCommand {
                 Stats testHomes,
                 Stats tools,
                 Stats scratch,
+                Stats testPool,
+                Stats reclaimable) {
+            this(
+                    jars,
+                    executables,
+                    oci,
+                    workers,
+                    mavenLocal,
+                    testHomes,
+                    tools,
+                    scratch,
+                    testPool,
+                    reclaimable,
+                    new Stats(0, 0));
+        }
+
+        StoreUsageStats(
+                Stats jars,
+                Stats executables,
+                Stats oci,
+                Stats workers,
+                Stats mavenLocal,
+                Stats testHomes,
+                Stats tools,
+                Stats scratch,
                 Stats testPool) {
-            this(jars, executables, oci, workers, mavenLocal, testHomes, tools, scratch, testPool, new Stats(0, 0));
+            this(
+                    jars,
+                    executables,
+                    oci,
+                    workers,
+                    mavenLocal,
+                    testHomes,
+                    tools,
+                    scratch,
+                    testPool,
+                    new Stats(0, 0),
+                    new Stats(0, 0));
         }
 
         long totalFiles() {
@@ -845,6 +884,13 @@ public final class CacheCommand extends GroupCommand {
         out.add("  Test download pool (aged by use): "
                 + Theme.colorize(
                         fmtCount(s.testPool().files) + " files · " + fmtSize(s.testPool().bytes), t.normalGray()));
+        // Linked in from outside the home (~/.m2, a project's target/, another home): not jk's to count.
+        if (s.shared().files > 0) {
+            out.add("  Shared with other trees (not counted): "
+                    + Theme.colorize(
+                            fmtCount(s.shared().files) + " files · " + fmtSize(s.shared().bytes), t.normalGray())
+                    + Theme.colorize("  (counted once the last outside link goes)", t.normalGray()));
+        }
         // Retired installs and blobs past their window: what the next prune takes without asking.
         if (s.reclaimable().files > 0) {
             out.add("  Reclaimable at the next prune: "

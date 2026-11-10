@@ -23,18 +23,28 @@ import org.jspecify.annotations.Nullable;
  * This helper deduplicates on {@code (dev, ino)} so each underlying blob contributes once — same
  * idea as {@code du} across hard links.
  *
- * <p>Only files with {@code nlink > 1} enter the seen-set at all (a single-link file cannot be
- * met twice), and the set itself is a primitive open-addressed long set — the previous
- * one-boxed-{@code fileKey}-per-file {@code HashSet} allocated tens of MB per cache-vitals walk
- * on a large store, every 60&nbsp;s while a dashboard tab was open. Platforms without
- * the {@code unix:} attribute view (Windows) fall back to the old per-{@code fileKey} object set.
+ * <p>Only files with {@code nlink > 1} are tracked at all (a single-link file cannot be met twice,
+ * and is plainly the walk's own). A tracked inode counts once, under the first root it turns up
+ * in, and only when every one of its links turns up in the walk: an inode another tree also links
+ * ({@code ~/.m2}, a project's {@code target/}, a private home) is reported as shared, not owned.
+ * Windows reads the link count and file identity through {@link WindowsFileIdentity}; a file it
+ * cannot read is counted as owned through the {@code fileKey} / {@link SameFileKeys} fallback.
  */
 public final class DiskUsage {
 
     private DiskUsage() {}
 
-    /** File count (directory entries) and unique-byte size for a tree or exclusive multi-tree walk. */
-    public record Stats(long files, long bytes) {}
+    /**
+     * File count (directory entries), the unique bytes this walk owns, and the bytes it found but
+     * does not own: an inode with a link outside the walked trees ({@code ~/.m2}, a project's
+     * {@code target/}, another home) belongs to whoever holds that link until its link count is all
+     * the walk's own, so its bytes are {@code sharedBytes}, never {@code bytes}.
+     */
+    public record Stats(long files, long bytes, long sharedBytes) {
+        public Stats(long files, long bytes) {
+            this(files, bytes, 0L);
+        }
+    }
 
     /**
      * Walk one directory tree. Every regular file is counted in {@link Stats#files()}; each
@@ -57,9 +67,14 @@ public final class DiskUsage {
     public static Stats[] exclusive(List<Path> roots) throws IOException {
         Objects.requireNonNull(roots, "roots");
         SeenLinks seen = new SeenLinks();
+        long[][] totals = new long[roots.size()][];
+        for (int i = 0; i < roots.size(); i++) {
+            totals[i] = walkExclusive(roots.get(i), seen, i);
+        }
+        long[] shared = seen.unowned(roots.size());
         Stats[] out = new Stats[roots.size()];
         for (int i = 0; i < roots.size(); i++) {
-            out[i] = walkExclusive(roots.get(i), seen);
+            out[i] = new Stats(totals[i][0], totals[i][1] - shared[i], shared[i]);
         }
         return out;
     }
@@ -79,7 +94,7 @@ public final class DiskUsage {
         if (root == null || !Files.isDirectory(root)) return out;
         SeenLinks seen = new SeenLinks();
         PathUtil.forEachRegularFile(root, (p, attrs) -> {
-            long size = regularSize(p, attrs, seen);
+            long size = regularSize(p, attrs, seen, 0);
             if (size < 0) return;
             out[0]++;
             out[1] += size;
@@ -87,20 +102,25 @@ public final class DiskUsage {
                 if (p.startsWith(within.get(i))) out[2 + i]++;
             }
         });
+        out[1] -= seen.unowned(1)[0];
         return out;
     }
 
     /**
      * {@code p}'s bytes when it is a regular file whose inode this walk has not met, 0 when it has,
-     * and -1 when it is not a regular file or will not read.
+     * and -1 when it is not a regular file or will not read. A multi-link inode is recorded against
+     * {@code root}, the walk's root it was first met under, so {@link SeenLinks#unowned} can take its
+     * bytes back when not all of its links turn up.
      */
-    private static long regularSize(Path p, BasicFileAttributes attrs, SeenLinks seen) {
+    private static long regularSize(Path p, BasicFileAttributes attrs, SeenLinks seen, int root) {
         if (seen.unixSupported) {
             try {
                 Map<String, Object> u = Files.readAttributes(p, "unix:isRegularFile,nlink,size,dev,ino");
                 if (!Boolean.TRUE.equals(u.get("isRegularFile"))) return -1;
                 long nlink = attr(u, "nlink");
-                return nlink <= 1 || seen.addInode(attr(u, "dev"), attr(u, "ino")) ? attr(u, "size") : 0;
+                long size = attr(u, "size");
+                if (nlink <= 1) return size;
+                return seen.link(attr(u, "dev") * 0x9E3779B97F4A7C15L + attr(u, "ino"), nlink, size, root);
             } catch (UnsupportedOperationException | IllegalArgumentException e) {
                 seen.unixSupported = false;
             } catch (IOException unreadable) {
@@ -108,9 +128,31 @@ public final class DiskUsage {
             }
         }
         if (!attrs.isRegularFile()) return -1;
+        // Windows: NTFS keeps a link count and a file index that no attribute view reports.
+        WindowsFileIdentity.Info win = seen.windowsSupported ? WindowsFileIdentity.read(p) : null;
+        if (win != null) {
+            if (win.links() <= 1) return attrs.size();
+            return seen.link(win.volume() * 0x9E3779B97F4A7C15L + win.index(), win.links(), attrs.size(), root);
+        }
+        seen.windowsSupported = false;
         Object key = attrs.fileKey();
         if (key == null) key = seen.sameFileIdentity(p, attrs.size(), attrs.lastModifiedTime());
         return seen.addObject(key) ? attrs.size() : 0;
+    }
+
+    /**
+     * How many directory entries link to {@code file}: the unix link count, or NTFS's on Windows;
+     * 1 when the platform will not say, which treats the file as its one holder's.
+     */
+    public static long linkCount(Path file) {
+        try {
+            Object n = Files.getAttribute(file, "unix:nlink");
+            if (n instanceof Number count) return count.longValue();
+        } catch (UnsupportedOperationException | IllegalArgumentException | IOException notUnix) {
+            // fall through to Windows
+        }
+        WindowsFileIdentity.Info win = WindowsFileIdentity.read(file);
+        return win == null ? 1L : Math.max(1L, win.links());
     }
 
     /** Sum of {@link Stats#bytes()} — true unique storage across exclusive sections. */
@@ -131,19 +173,17 @@ public final class DiskUsage {
         return n;
     }
 
-    private static Stats walkExclusive(Path dir, SeenLinks seen) throws IOException {
-        if (dir == null || !Files.isDirectory(dir)) {
-            return new Stats(0, 0);
-        }
+    private static long[] walkExclusive(Path dir, SeenLinks seen, int root) throws IOException {
         long[] totals = {0, 0};
+        if (dir == null || !Files.isDirectory(dir)) return totals;
         PathUtil.forEachRegularFile(dir, (p, attrs) -> {
-            long size = regularSize(p, attrs, seen);
+            long size = regularSize(p, attrs, seen, root);
             if (size >= 0) {
                 totals[0]++;
                 totals[1] += size;
             }
         });
-        return new Stats(totals[0], totals[1]);
+        return totals;
     }
 
     /**
@@ -198,33 +238,39 @@ public final class DiskUsage {
 
     private static final class SeenLinks {
         boolean unixSupported = true;
+        boolean windowsSupported = true;
+
+        /** Per multi-link inode met: {root it was first met under, its size, its link count, links met}. */
+        private final Map<Long, long[]> links = new HashMap<>();
+
+        /**
+         * Meet one link of inode {@code key}: its {@code size} the first time, 0 after, recording
+         * how many of its {@code nlink} links this walk finds.
+         */
+        long link(long key, long nlink, long size, int root) {
+            long[] seenLink = links.get(key);
+            if (seenLink == null) {
+                links.put(key, new long[] {root, size, nlink, 1});
+                return size;
+            }
+            seenLink[3]++;
+            return 0;
+        }
+
+        /**
+         * Per root, the bytes of the inodes first met under it whose links did not all turn up in
+         * the walk: another tree holds them, so they are not the walk's to count.
+         */
+        long[] unowned(int roots) {
+            long[] out = new long[roots];
+            for (long[] l : links.values()) {
+                if (l[3] < l[2]) out[(int) l[0]] += l[1];
+            }
+            return out;
+        }
+
         private @Nullable Set<Object> objects; // fallback platforms only, lazily created
         private @Nullable SameFileKeys sameFile; // null-fileKey platforms only, lazily created
-        private long[] slots = new long[1 << 10];
-        private int used;
-        private boolean hasZero;
-
-        boolean addInode(long dev, long ino) {
-            long key = dev * 0x9E3779B97F4A7C15L + ino;
-            if (key == 0) {
-                boolean fresh = !hasZero;
-                hasZero = true;
-                return fresh;
-            }
-            if (used >= slots.length / 2) grow();
-            int mask = slots.length - 1;
-            int i = (int) (mix(key) & mask);
-            while (true) {
-                long cur = slots[i];
-                if (cur == 0) {
-                    slots[i] = key;
-                    used++;
-                    return true;
-                }
-                if (cur == key) return false;
-                i = (i + 1) & mask;
-            }
-        }
 
         boolean addObject(Object key) {
             Set<Object> set = objects;
@@ -236,23 +282,6 @@ public final class DiskUsage {
             SameFileKeys keys = sameFile;
             if (keys == null) sameFile = keys = new SameFileKeys();
             return keys.identity(path, size, modified);
-        }
-
-        private void grow() {
-            long[] old = slots;
-            slots = new long[old.length << 1];
-            used = 0;
-            boolean zero = hasZero;
-            hasZero = false;
-            for (long k : old) {
-                if (k != 0) addInode(0, k); // dev already folded into k; re-insert raw
-            }
-            hasZero = zero;
-        }
-
-        private static long mix(long z) {
-            z = (z ^ (z >>> 33)) * 0xFF51AFD7ED558CCDL;
-            return z ^ (z >>> 33);
         }
     }
 }
