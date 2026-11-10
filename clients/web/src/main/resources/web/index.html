@@ -236,11 +236,9 @@
                     <div v-if="i.sub" class="tl-sub">{{ i.sub }}</div>
                     <!-- The live build, laid out as the terminal: the bar, then what is running, then the module cells. -->
                     <div v-if="i.state === 'run' && i.card" class="live-build" role="link" tabindex="0" @click="openRun(i)" @keydown.enter.prevent="openRun(i)">
-                      <div class="cardbar" role="progressbar" :aria-valuenow="progress(i.card)" aria-valuemin="0" aria-valuemax="100">
-                        <span class="cardbar-fill" :style="{ width: progress(i.card) + '%' }"></span></div>
-                      <div class="live-line"><span class="live-doing" :data-tip="doingLine(i.card)"><span class="live-doing-text"><span v-for="(seg, k) in doingSegments(i.card)" :key="k" :class="seg.cls">{{ seg.text }}</span></span></span><span class="spacer"></span>
-                        <span v-if="hasEta(i.card)" class="eta" data-tip="estimated time remaining"><span class="eta-label">ETA</span> <span class="eta-cd">{{ etaCountdown(i.card) }}</span></span>
-                        <span v-else class="millis elapsed-warn">{{ elapsed(i.card) }}</span>
+                      <build-head :label="headLabel(i.card)" :pct="progress(i.card)" state="running" :eta="hasEta(i.card) ? etaCountdown(i.card) : ''" :clock="elapsed(i.card)"></build-head>
+                      <worker-lanes :lanes="workerLanes(i.card)"></worker-lanes>
+                      <div class="live-line"><span class="spacer"></span>
                         <button v-if="i.card.id != null" type="button" class="rebuild icon danger" @click.stop="cancelCard(i.card)" aria-label="Cancel" data-tip="Cancel this run"><jk-icon name="ban"></jk-icon></button></div>
                       <div class="cells" aria-label="Modules">
                         <i v-for="c in moduleCells(i.card)" :key="c.key" :class="c.state" :data-tip="c.tip"></i></div>
@@ -491,8 +489,6 @@
                   @click="cancelCard(projectRun.card)" aria-label="Cancel" data-tip="Cancel this run"><jk-icon name="ban"></jk-icon></button>
           <button v-if="!isLive(projectRun.card) && projectRun.card.historyId" class="rebuild icon danger"
                   @click="deleteRun(projectRun.card)" aria-label="Delete" data-tip="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
-          <span v-if="projectRun.outcome === 'running' && hasEta(projectRun.card)" class="eta" data-tip="estimated time remaining">
-            <span class="eta-label">ETA</span> <span class="eta-cd">{{ etaCountdown(projectRun.card) }}</span></span>
           <span class="millis" :class="{ 'has-io': ioLines(projectRun.card).length }" :tabindex="ioLines(projectRun.card).length ? 0 : null"
                 :aria-label="ioLines(projectRun.card).length ? ioSummary(projectRun.card) : null">{{ projectRun.outcome === 'running' ? elapsed(projectRun.card) : duration(projectRun.card.millis) }}
             <span v-if="ioLines(projectRun.card).length" class="io" role="tooltip">
@@ -505,12 +501,10 @@
             </span></span>
           <span v-if="projectRun.outcome !== 'running'" class="ago" :data-tip="fmtDateTime(projectRun.card.finishedAt) || undefined">{{ ago(projectRun.card.finishedAt) }}</span>
         </div>
+        <!-- Laid out as the terminal: the chip and bar, then the fixed worker rows; the module cells close the pane. -->
+        <build-head :label="headLabel(projectRun.card)" :pct="progress(projectRun.card)" :state="projectRun.outcome === 'running' ? 'running' : projectRun.outcome" :eta="projectRun.outcome === 'running' && hasEta(projectRun.card) ? etaCountdown(projectRun.card) : ''" :clock="projectRun.outcome === 'running' ? elapsed(projectRun.card) : duration(projectRun.card.millis)"></build-head>
         <template v-if="projectRun.outcome === 'running'">
-          <!-- Laid out as the terminal: the bar, then what is running; the module cells close the pane. -->
-          <div class="cardbar" role="progressbar" :aria-valuenow="progress(projectRun.card)" aria-valuemin="0" aria-valuemax="100">
-            <span class="cardbar-fill" :style="{ width: progress(projectRun.card) + '%' }"><span class="cardbar-pct">{{ progress(projectRun.card) }}%</span></span>
-          </div>
-          <div class="live-line"><span class="live-doing" :data-tip="doingLine(projectRun.card)"><span class="live-doing-text"><span v-for="(seg, k) in doingSegments(projectRun.card)" :key="k" :class="seg.cls">{{ seg.text }}</span></span></span></div>
+          <worker-lanes :lanes="workerLanes(projectRun.card)"></worker-lanes>
           <!-- The run's downloads while bytes move, as the terminal's Download block. -->
           <div v-if="projectRun.card.downloads" class="downloads">
             <div class="downloads-head">Download <span class="downloads-sep">›</span> {{ downloadsHead(projectRun.card.downloads) }}</div>

@@ -132,12 +132,19 @@ episode and build number) for the outcome chip, the failing headline and the del
 `edited N files` line goes before every run whose `delta.files` is not empty. Each of its paths is
 a link that opens `<file-viewer>`: the file's current content from `GET /api/project/file` for the
 run's project and checkout, in read-only Monaco, or as plain text past `canHighlight`. A file the
-edit deleted (`(gone)`) stays plain text; a binary one opens to a message saying so. The live build is
-`strip.js`: `doingSegments` (`doingLine` is its plain text, the hover tip), `moduleCells` (padded
-with waiting cells to the record's `moduleCount`) and the card's own progress and ETA (`cards.js`).
-The live line keeps the CLI's detail colours (`detailSegments`: the class gold, the method purple)
-and stays on one row: a line too wide for its card loses its left end behind a leading `…`, so the
-test class and method on the right stay in view (an `rtl` box around an isolated `ltr` run).
+edit deleted (`(gone)`) stays plain text; a binary one opens to a message saying so. The live build is laid out as the terminal paints it (`buildhead.js`, `strip.js`). `<build-head>`
+is the top bar: a blue chip with a spinner and the command name, a right-pointing edge, the
+gradient bar starting with the matching reverse chevron a pixel behind it, the percentage at the
+bar's far end, then the ETA and the elapsed clock (the card's own progress and countdown,
+`cards.js`). A finished run keeps the bar at 100%, the chip turns green or red, the spinner stops
+and the clock reads the final wall. `<worker-lanes>` is a fixed set of rows from `workerLanes`
+(`doingLine` and `doingSegments` stay as the hover text): at most four, seeded from the record's
+`moduleCount`, grown only to the most modules seen running at once and never shrunk, so the pane
+never changes height mid-build. A module keeps its row while it runs and a freed row reads
+`idle`. A busy row is a static dot, the artifactId in bold cyan, the phase, and the live detail in
+the CLI's detail colours (`detailSegments`: the class gold, the method purple) without the `[wN]`
+tag. Only the detail truncates, at its right end with `…`, as in the terminal. `moduleCells` (padded
+with waiting cells to `moduleCount`) is the strip of squares; the running ones breathe in CSS.
 
 With no session in the route (`#console/<id>`), the console holds the rail's first card at load
 (`consoleAutoSession`) so a reordering rail does not move the selection; a watcher on

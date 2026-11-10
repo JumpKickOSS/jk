@@ -39,6 +39,7 @@ import {
 } from './format.js';
 import { JkIcon } from './icons.js';
 import { PhaseChain } from './phase.js';
+import { BuildHead, WorkerLanes } from './buildhead.js';
 import { installData, installMethods, registerWorker } from './pwa.js';
 import { RunCoverage } from './coverage.js';
 import { RunDelta } from './delta.js';
@@ -723,6 +724,8 @@ if (typeof Vue !== 'undefined' && typeof document !== 'undefined') {
   Vue.createApp(appOptions)
     .component('jk-icon', JkIcon)
     .component('phase-chain', PhaseChain)
+    .component('build-head', BuildHead)
+    .component('worker-lanes', WorkerLanes)
     .component('run-delta', RunDelta)
     .component('run-coverage', RunCoverage)
     .component('fail-report', FailReport)

@@ -103,6 +103,52 @@ export function doingSegments(card) {
   return segs;
 }
 
+/** The pane never reserves more worker rows than this, whatever the build's width. */
+export const MAX_LANES = 4;
+
+/** Per-card lane memory (sticky slots + row count); a WeakMap so a render never writes reactive state. */
+const laneMemory = new WeakMap();
+
+/**
+ * The fixed worker rows of a running build: exactly {@link #laneSize} entries, each either
+ * `{ idle: true }` or `{ key, module, op, segs, tip }` (the module's artifactId, the running
+ * phase's label, and the live detail's colour segments without the trailing `[wN]`).
+ *
+ * The rows never come and go while the build runs. The row count is seeded from the workspace's
+ * module count (at most {@link MAX_LANES}) and can only grow, up to the most modules ever seen
+ * running at once; a module keeps its row for as long as it runs, and a freed row shows `idle`.
+ * [] when the run is not running.
+ */
+export function workerLanes(card) {
+  if (!card || outcomeOf(card) !== 'running') return [];
+  const mem = laneMemory.get(card) || { slots: [], size: 0 };
+  laneMemory.set(card, mem);
+  const running = orderedModules((card.modules || []).filter((m) => m.state === 'running'));
+  const seed = Math.min(MAX_LANES, Math.max(1, typeof card.moduleCount === 'number' ? card.moduleCount : 1));
+  mem.size = Math.min(MAX_LANES, Math.max(mem.size, seed, running.length));
+  const live = new Set(running.map((m) => m.dir));
+  mem.slots = mem.slots.slice(0, mem.size).map((d) => (d != null && live.has(d) ? d : null));
+  while (mem.slots.length < mem.size) mem.slots.push(null);
+  for (const m of running) {
+    if (mem.slots.includes(m.dir)) continue;
+    const free = mem.slots.indexOf(null);
+    if (free >= 0) mem.slots[free] = m.dir;
+  }
+  return mem.slots.map((dir) => {
+    const m = dir == null ? null : running.find((x) => x.dir === dir);
+    return m ? laneOf(m) : { idle: true };
+  });
+}
+
+function laneOf(m) {
+  const p = phaseChainOf(m).filter((x) => x.state === 'running').pop();
+  const detail = liveStepDetail(m.coord || '', m.steps);
+  const segs = detailSegments(detail).filter((x) => !x.text.startsWith('  [w'));
+  const module = moduleName(m);
+  const op = p ? p.label : 'Working';
+  return { key: m.dir || '.', module, op, segs, tip: [module, op, segs.map((x) => x.text).join('')].filter(Boolean).join(' › ') };
+}
+
 /** A module is slow when its wall is at least this multiple of the run's median module wall… */
 export const SLOW_FACTOR = 2;
 /** …and at least this long, so a 40 ms module beside 10 ms ones is not called slow. */

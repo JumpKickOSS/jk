@@ -279,6 +279,65 @@ class WorkspaceSiblingClassesE2eTest {
                 .startsWith("cache hit");
     }
 
+    /**
+     * A sibling with no sources is its resources and nothing else: its jar holds what copy-resources
+     * placed, and a consumer's assembly nests that jar. Its classes never change, so the consumer's
+     * compile (keyed on the sibling's ABI) holds, and the only thing that can reach the assembly is
+     * the sibling's repackaged jar. The forecast used to price such a sibling as having nothing to
+     * package, so an edit to a resource rebuilt the sibling's jar and left every fat jar over it
+     * with the old bytes, on this build and on every one after it.
+     */
+    @Test
+    void a_resource_edit_in_a_sourceless_sibling_reaches_the_consumers_assembly(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("sibling-classes-cache");
+        Path ws = sourcelessSiblingWorkspace(tmp);
+        lock(ws, cache);
+        BuildLayout app = BuildLayout.of(ws, ws.resolve("app"), JkBuildParser.parse(ws.resolve("app/jk.toml")));
+
+        Probe first = new Probe(false);
+        WorkspaceResult initial = build(ws, cache, first);
+        assertThat(initial.success())
+                .as("initial build; failed steps " + first.failed())
+                .isTrue();
+        assertThat(entryText(app.assemblyJar(), "greeting.txt")).isEqualTo("v1");
+
+        // Nothing changed: the sibling is not priced as work, and neither is the consumer.
+        List<TaskForecast.Module> settled = forecast(ws, cache);
+        assertThat(module(settled, "lib").dirty()).as("nothing edited: lib").isFalse();
+        assertThat(module(settled, "app").dirty()).as("nothing edited: app").isFalse();
+
+        Files.writeString(ws.resolve("lib/src/main/resources/greeting.txt"), "v2");
+
+        // The forecast and the build agree: the sibling repackages, and so does what bundles it.
+        List<TaskForecast.Module> plan = forecast(ws, cache);
+        assertThat(step(plan, "lib", TaskNames.PACKAGE_JAR).cached())
+                .as("lib's jar holds its resources: " + module(plan, "lib").steps())
+                .isFalse();
+        assertThat(module(plan, "app").dirty())
+                .as("app bundles lib's jar: " + module(plan, "app").steps())
+                .isTrue();
+        assertThat(step(plan, "app", TaskNames.PACKAGE_ASSEMBLY).cached())
+                .as("app's assembly nests lib's jar: " + module(plan, "app").steps())
+                .isFalse();
+
+        Probe edited = new Probe(false);
+        assertThat(build(ws, cache, edited).success())
+                .as("after the edit; failed steps " + edited.failed())
+                .isTrue();
+        assertThat(entryText(app.assemblyJar(), "greeting.txt"))
+                .as("app's assembly carries lib's new resource, not the one it was built with")
+                .isEqualTo("v2");
+
+        // And it holds: the run that followed an edit leaves nothing for the next one to repair.
+        Probe again = new Probe(false);
+        assertThat(build(ws, cache, again).success()).isTrue();
+        assertThat(entryText(app.assemblyJar(), "greeting.txt")).isEqualTo("v2");
+        List<TaskForecast.Module> after = forecast(ws, cache);
+        assertThat(module(after, "app").dirty())
+                .as("settled after the edit: app")
+                .isFalse();
+    }
+
     private static List<TaskForecast.Module> forecast(Path ws, Path cache) throws IOException {
         BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();
@@ -310,6 +369,46 @@ class WorkspaceSiblingClassesE2eTest {
     private static WorkspaceResult build(Path ws, Path cache, Probe probe, int modulesAtOnce) {
         return WorkspaceExecute.buildWorkspace(
                 new WorkspaceRequest(ws, cache, null, 0, null, true, false, modulesAtOnce, null, false, false), probe);
+    }
+
+    /** The text of {@code entry} inside {@code jar}. */
+    private static String entryText(Path jar, String entry) throws IOException {
+        assertThat(jar).isRegularFile();
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            ZipEntry e = zip.getEntry(entry);
+            assertThat(e).as(entry + " inside " + jar).isNotNull();
+            try (InputStream in = zip.getInputStream(e)) {
+                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        }
+    }
+
+    /** lib has resources and no sources, like jk's own web assets; app is an assembled application over it. */
+    private static Path sourcelessSiblingWorkspace(Path tmp) throws IOException {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        root(ws);
+        Path lib = Files.createDirectories(ws.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "lib"
+                version = "1.0.0"
+                java    = 25
+                javadoc = false
+                """);
+        Files.createDirectories(lib.resolve("src/main/resources"));
+        Files.writeString(lib.resolve("src/main/resources/greeting.txt"), "v1");
+        app(ws, """
+                package com.example.app;
+
+                public final class Main {
+                    private Main() {}
+
+                    public static void main(String[] args) {
+                        System.out.println("app");
+                    }
+                }
+                """);
+        return ws;
     }
 
     /** The text of lib's class as nested in {@code jar}, for the string constants its bodies carry. */
