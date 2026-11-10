@@ -236,6 +236,17 @@ test("an episode's timeline joins runs to records, places edits before the run t
   );
   assert.equal(items[1].sub, 'QuoteTest#threeNightWeekendStay expected 41250 but was 41249');
   assert.equal(items[2].sub, 'core/PricingRules.java · db/migration/V7__round_half_even.sql · +1 more');
+  assert.deepEqual(
+    items[2].files,
+    [
+      { path: 'core/PricingRules.java', mark: '', viewable: true },
+      { path: 'db/migration/V7__round_half_even.sql', mark: 'new', viewable: true },
+    ],
+    'each shown path keeps its mark, for its own link',
+  );
+  assert.equal(items[2].more, 1);
+  assert.equal(items[2].projectId, 'p1', "the link reads the file from the run's project");
+  assert.equal(items[2].dir, '/w/hotel', "and from the run's checkout");
   assert.equal(items[3].delta.cls, 'bad', 'the run carries its one-chip delta');
   assert.equal(items[4].card.id, 77, 'the live build carries its card for the strip');
   assert.equal(items[4].projectId, 'p1');
@@ -449,4 +460,38 @@ test('a painted action or decision frame leaves a jk-console-event mark saying w
     globalThis.requestAnimationFrame = saved.raf;
     globalThis.document = saved.document;
   }
+});
+
+test("an edit line's deleted file, and a type the file view does not serve, are not links", () => {
+  const delta = { files: { count: 3, shown: ['web/app.js', 'core/Gone.java (gone)', 'core/Fee.java (new)'] } };
+  const items = episodeTimeline(ep(), { actions: [runAction(1, 1067, 'green')], records: [run({ buildNumber: 1067, delta })], session: claude(), current: true });
+  assert.deepEqual(
+    items[0].files.map((f) => [f.path, f.mark, f.viewable]),
+    [
+      ['web/app.js', '', false],
+      ['core/Gone.java', 'gone', false],
+      ['core/Fee.java', 'new', true],
+    ],
+  );
+  assert.equal(items[0].more, 0);
+});
+
+test('a delta row reads as its path and mark; a deleted file is marked gone', async () => {
+  const { deltaFiles } = await spa('console.js');
+  assert.deepEqual(deltaFiles({ files: { count: 3, shown: ['a/B.java', 'c/D.java (gone)', 'e (new)/F.java (new)'] } }), [
+    { path: 'a/B.java', mark: '' },
+    { path: 'c/D.java', mark: 'gone' },
+    { path: 'e (new)/F.java', mark: 'new' },
+  ]);
+  assert.deepEqual(deltaFiles(null), []);
+});
+
+test("the file viewer says why a file can't be shown", async () => {
+  const { viewerMessage } = await spa('fileviewer.js');
+  assert.match(viewerMessage({ status: 404, error: 'not found' }), /moved or deleted/);
+  assert.match(viewerMessage({ status: 413, error: 'file too large' }), /too large/);
+  assert.match(viewerMessage({ status: 415, error: 'binary file' }), /binary/);
+  assert.match(viewerMessage({ status: 400, error: 'path escapes the checkout' }), /path escapes the checkout/);
+  assert.match(viewerMessage({ status: 502 }), /HTTP 502/);
+  assert.equal(viewerMessage(undefined), 'The file could not be read.');
 });

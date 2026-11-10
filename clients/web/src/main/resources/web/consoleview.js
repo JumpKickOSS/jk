@@ -53,6 +53,7 @@ export function consoleData(route) {
     runEpisodePage: null, // the session page holding the run page's episode
     projectSessions: null, // the Sessions tab: { projectId, sessions, details }
     consolePaintedMs: null, // first meaningful paint of the console, ms since navigation start
+    fileView: null, // the edited file open read-only over the page: { projectId, dir, path, mark }
   };
 }
 
@@ -257,6 +258,18 @@ export const consoleMethods = {
   },
   selectSession(id) {
     location.hash = buildConsoleHash(id);
+  },
+  /** An `edited N files` path → the file read-only over the page; focus returns to the link on close. */
+  openEditedFile(item, file, event) {
+    if (!item || !item.projectId || !file || !file.viewable) return;
+    this._fileViewOpener = event && event.currentTarget ? event.currentTarget : null;
+    this.fileView = { projectId: item.projectId, dir: item.dir || null, path: file.path, mark: file.mark || '' };
+  },
+  closeFileView() {
+    this.fileView = null;
+    const opener = this._fileViewOpener;
+    this._fileViewOpener = null;
+    if (opener && opener.isConnected) this.$nextTick(() => opener.focus());
   },
   /** A timeline run → its run page; a run with no number yet opens the project, which follows it. */
   openRun(item) {

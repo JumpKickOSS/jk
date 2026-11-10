@@ -19,6 +19,7 @@ import {
 import { cardMethods } from './cards.js';
 import { BuildBars, ModuleDepGraph } from './chart.js';
 import { CodeView } from './code.js';
+import { FileViewer } from './fileviewer.js';
 import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
 import { DecisionDialog, decisionData, decisionMethods } from './decisions.js';
 import { askLine, notifyData, notifyMethods } from './notify.js';
@@ -728,6 +729,7 @@ if (typeof Vue !== 'undefined' && typeof document !== 'undefined') {
     .component('build-bars', BuildBars)
     .component('module-dep-graph', ModuleDepGraph)
     .component('code-view', CodeView)
+    .component('file-viewer', FileViewer)
     .component('decision-dialog', DecisionDialog)
     .mount('#app');
 

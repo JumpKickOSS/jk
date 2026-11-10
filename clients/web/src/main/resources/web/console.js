@@ -7,6 +7,7 @@
 
 import { deltaChip } from './delta.js';
 import { outcomeOf } from './outcome.js';
+import { langFromPath } from './paths.js';
 
 /** A session that ended more than this long ago leaves the rail (it stays on the project's Sessions tab). */
 export const RAIL_ENDED_MILLIS = 60 * 60 * 1000;
@@ -213,24 +214,41 @@ function runChip(state, rec) {
   return 'ok';
 }
 
-/** Distinct file paths a delta's shown rows name, without the `(new)` / `(gone)` marks. */
-function deltaPaths(delta) {
+/** A delta's shown rows as `{ path, mark }`, the mark `new`, `gone` or '' for a changed file. */
+export function deltaFiles(delta) {
   const rows = (delta && delta.files && delta.files.shown) || [];
-  return rows.map((r) => String(r).replace(/\s+\((new|gone)\)$/, ''));
+  return rows.map((r) => {
+    const m = /^(.*?)\s+\((new|gone)\)$/.exec(String(r));
+    return m ? { path: m[1], mark: m[2] } : { path: String(r), mark: '' };
+  });
 }
 
-/** The `edited N files` line jk places before the run that saw the edits. */
-function editItem(rec, at) {
-  const files = rec.delta.files;
-  const shown = deltaPaths(rec.delta);
-  const more = files.count - shown.length;
+/** Distinct file paths a delta's shown rows name, without the `(new)` / `(gone)` marks. */
+function deltaPaths(delta) {
+  return deltaFiles(delta).map((f) => f.path);
+}
+
+/**
+ * The `edited N files` line jk places before the run that saw the edits. `files` lists the shown
+ * paths with their marks, and whether the file view can open them, and `more` counts the rest, for the links the console draws; `projectId`
+ * and `dir` name the checkout the paths are relative to. `sub` is the same list as one string.
+ */
+function editItem(rec, at, projectId = null) {
+  const count = rec.delta.files.count;
+  // A deleted file has nothing to read, and the engine's file view serves only the types it knows.
+  const files = deltaFiles(rec.delta).map((f) => ({ ...f, viewable: f.mark !== 'gone' && !!langFromPath(f.path) }));
+  const more = Math.max(0, count - files.length);
   return {
     key: 'edit-' + rec.id,
     family: 'edit',
     at,
     state: '',
-    title: 'edited ' + files.count + (files.count === 1 ? ' file' : ' files'),
-    sub: shown.join(' · ') + (more > 0 ? ' · +' + more + ' more' : ''),
+    title: 'edited ' + count + (count === 1 ? ' file' : ' files'),
+    sub: files.map((f) => f.path).join(' · ') + (more > 0 ? ' · +' + more + ' more' : ''),
+    files,
+    more,
+    projectId: rec.projectId || projectId || null,
+    dir: rec.dir || null,
     tip: 'JumpKick sees edits at the next run, through its file delta; they are placed just before it',
   };
 }
@@ -247,7 +265,7 @@ export function episodeTimeline(episode, { actions = [], records = [], cards = [
   const items = [];
   const seen = new Set();
   const pushRun = (item, rec) => {
-    if (rec && rec.delta && rec.delta.files && rec.delta.files.count > 0) items.push(editItem(rec, item.at));
+    if (rec && rec.delta && rec.delta.files && rec.delta.files.count > 0) items.push(editItem(rec, item.at, item.projectId));
     items.push(item);
   };
   for (const a of actions || []) {

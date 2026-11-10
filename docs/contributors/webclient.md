@@ -46,6 +46,7 @@ stopped providing.
 | `report.js` | `<fail-report>`: one failure body for the compact card and the module branch |
 | `chart.js` | `<build-bars>` and `<module-dep-graph>`: the two ECharts surfaces |
 | `code.js` | `<code-view>`: the `#project/<id>/files` pane |
+| `fileviewer.js` | `<file-viewer>`: one workspace file read-only over the page, as an `edited N files` path opens it |
 | `monaco.js` | Monaco and the preview CDNs: version pins, SRI hashes, AMD parking, editor options |
 | `preview.js` | The Preview half: markdown, mermaid, graphviz, asciidoc, d2, images |
 | `paths.js` | Workspace paths: extension → language, previewable kinds, markdown href resolution |
@@ -128,7 +129,11 @@ trigger and label (`cardInSession`: `mcp` + `claude-code 3f9a`; the shell is `cl
 and placed at the end of the session's current episode; a finished run reaches the page on its next
 read, which `request-finish` schedules. A run line joins its action to its journal record (by
 episode and build number) for the outcome chip, the failing headline and the delta chip, and an
-`edited N files` line goes before every run whose `delta.files` is not empty. The live build is
+`edited N files` line goes before every run whose `delta.files` is not empty. Each of its paths is
+a link that opens `<file-viewer>`: the file's current content from `GET /api/project/file` for the
+run's project and checkout, in read-only Monaco, or as plain text past `canHighlight`. A file the
+edit deleted (`(gone)`) and a type the file API does not serve (`langFromPath` is null) stay plain
+text. The live build is
 `strip.js`: `doingSegments` (`doingLine` is its plain text, the hover tip), `moduleCells` (padded
 with waiting cells to the record's `moduleCount`) and the card's own progress and ETA (`cards.js`).
 The live line keeps the CLI's detail colours (`detailSegments`: the class gold, the method purple)
