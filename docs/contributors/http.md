@@ -147,21 +147,45 @@ Manager.
 
 **Every `/api/*` call requires a valid bearer token**, including loopback binds. There is no
 tokenless “watch-only” mode — a bare browser open without a token must not see live builds or
-history. Static content stays open, in two tiers: the classpath shell (`index.html`, JS, CSS,
-images shipped in the jar) is served under the SPA's own CSP so it can show the blocking
-authorization dialog, while files under the default on-disk `web-root` (`~/.jk/state/web`, where user reports and
-other build-written content may land) are served with `Content-Security-Policy: sandbox` — a
-unique opaque origin with scripts and forms disabled, so nothing dropped there can script the
-dashboard origin or read the stored bearer token. A `web-root` the user set (`JK_HTTP_WEB_ROOT` or
-`[http] web-root`) is a dashboard source tree they pointed the engine at, so its files get the
-shell's policy and the dashboard runs from it. The service worker, `/sw.js`, is the one exception
-to disk first: it comes from the jar unless the user set `web-root`, since a worker planted in the
-default root would control every page of the origin and outlive its file
-([web client](webclient.md#the-installed-app)).
+history. Static content stays open. By default the engine serves **only the dashboard shipped in its jar**
+(`index.html`, JS, CSS, images, the manifest and the service worker), under the SPA's own CSP so it can
+show the blocking authorization dialog. It reads nothing from disk: a build can write anywhere it can
+reach, and a file the dashboard page loads as a script runs in the dashboard's origin with the page's
+bearer token in reach, whatever policy its response carries. So `~/.jk/state/web`, which builds can
+write, is never read: an `app.js` there must not replace the dashboard's.
+
+Serving from disk is opt-in, through a directory the user names:
+
+| Setting | Meaning | Honoured |
+|---|---|---|
+| `JK_HTTP_WEB_ROOT`, `[http] web-root` | A dashboard source tree. The env var wins over the file. | Always: the user chose it |
+| `[http] web-overlay` | The same, for developing the dashboard. Config file only, no env spelling. | Only when the running build's version ends in `-SNAPSHOT` (any case) |
+| neither | The jar alone | The default |
+
+A file in the directory replaces the shipped file of the same path, under the shell's policy so the
+dashboard runs from it, the service worker included; a path the directory lacks falls through to the
+jar. `web-root` beats `web-overlay`: with both set the overlay is ignored.
+
+The overlay's gate is the version stamped into the jar by the build (`JkVersion.VERSION`, what
+`jk --version` prints), never an env var, a config key or a file under `~/.jk`, so nothing a build or a
+sandboxed process can write turns it on in a release. A release's version is never a `-SNAPSHOT`:
+`scripts/release-version.sh` refuses to release one. "Ends in" is the rule, so `1.2.3-SNAPSHOT-rc1` is
+not a snapshot. A release engine that finds a `web-overlay` in its config logs `http: web-overlay
+ignored: not a snapshot build`, and `jk doctor` warns on the config row; neither stops the engine.
+A snapshot engine with an overlay logs its directory at start, marks every file it serves from it with
+an `X-Jk-Web-Overlay: 1` response header, and reports `webOverlay: true` in `GET /api/status` beside
+`webRoot`, the directory served ("" for the jar alone).
+
+Both directories get the same checks: a request path with `..`, a backslash or a NUL is a 404, and a
+file whose real path leaves the directory (a symlink) is not served.
+
+Point either at a directory only you can write. It can replace scripts that run with the page's bearer
+token, so a directory a build or a sandboxed process can write defeats the point of the default. A
+snapshot is a development build: no deployed or shared environment should run one with an overlay set.
 
 Classpath shell files are `Cache-Control: no-cache` plus a version+mtime `ETag`, so a new
 engine jar is visible on the next load (revalidate always; unchanged bytes are a `304`). Disk
-`web-root` is also `no-cache` (`Last-Modified`). `/api/*` is `no-store`. There is no
+files (a named `web-root` or the overlay) are also `no-cache` (`Last-Modified`). `/api/*` is `no-store`. There is no
 `max-age` on the shell: a still-fresh cached copy would hide a replacement engine, including
 security patches, and `location.reload()` after an `engineEpoch` mismatch does not bust
 subresources the browser still considers fresh. Non-loopback clients carry the token the same way; `EventSource`

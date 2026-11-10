@@ -5,6 +5,7 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -24,7 +25,19 @@ import org.tomlj.TomlTable;
  * layer in {@link #fromToml} and to the env layer in {@link #resolve()} alike.
  */
 public record JkHttpConfig(
-        String host, int port, int maxConcurrentRequests, int maxEventStreams, String webRoot, Mcp mcp) {
+        String host,
+        int port,
+        int maxConcurrentRequests,
+        int maxEventStreams,
+        String webRoot,
+        String webOverlay,
+        Mcp mcp) {
+
+    /** A config with no {@code web-overlay}: every caller that does not exercise the overlay. */
+    public JkHttpConfig(
+            String host, int port, int maxConcurrentRequests, int maxEventStreams, String webRoot, Mcp mcp) {
+        this(host, port, maxConcurrentRequests, maxEventStreams, webRoot, DEFAULT_WEB_OVERLAY, mcp);
+    }
 
     public static final String DEFAULT_HOST = "127.0.0.1";
 
@@ -36,8 +49,17 @@ public record JkHttpConfig(
     /** Web-UI SSE budget ({@code GET /api/events}); a separate cap from RPC admission. */
     public static final int DEFAULT_MAX_EVENT_STREAMS = 16;
 
-    /** Relative to the jk home root — i.e. {@code ~/.jk/state/web} by default. */
-    public static final String DEFAULT_WEB_ROOT = "state/web";
+    /**
+     * {@code [http] web-root} / {@code JK_HTTP_WEB_ROOT}: unset by default, so the engine serves only
+     * the dashboard shipped in its jar. A directory the engine reads is something the user named.
+     */
+    public static final String DEFAULT_WEB_ROOT = "";
+
+    /** {@code [http] web-overlay}: unset by default; honoured only by a {@code -SNAPSHOT} build. */
+    public static final String DEFAULT_WEB_OVERLAY = "";
+
+    /** The version suffix that marks a development build, compared case-insensitively. */
+    private static final String SNAPSHOT_SUFFIX = "-snapshot";
 
     /**
      * {@code [mcp] max-sessions}: MCP connections the engine keeps loaded while any is idle; past it,
@@ -65,6 +87,7 @@ public record JkHttpConfig(
             DEFAULT_MAX_CONCURRENT_REQUESTS,
             DEFAULT_MAX_EVENT_STREAMS,
             DEFAULT_WEB_ROOT,
+            DEFAULT_WEB_OVERLAY,
             Mcp.DEFAULTS);
 
     private static final MachineConfig<String> HOST = MachineConfig.of(DEFAULT_HOST);
@@ -81,6 +104,9 @@ public record JkHttpConfig(
             MachineConfig.of(DEFAULT_MAX_EVENT_STREAMS, m -> m >= 1);
 
     private static final MachineConfig<String> WEB_ROOT = MachineConfig.of(DEFAULT_WEB_ROOT);
+
+    /** Config file only: a process environment is no place for a setting that can replace the dashboard. */
+    private static final MachineConfig<String> WEB_OVERLAY = MachineConfig.of(DEFAULT_WEB_OVERLAY);
 
     private static final MachineConfig<Boolean> MCP_ENABLED = MachineConfig.of(Mcp.DEFAULTS.enabled());
 
@@ -120,6 +146,7 @@ public record JkHttpConfig(
                         EnvValues.intValue(env, "JK_HTTP_MAX_EVENT_STREAMS").orElse(null)),
                 WEB_ROOT.layerOver(
                         base.webRoot, EnvValues.string(env, "JK_HTTP_WEB_ROOT").orElse(null)),
+                base.webOverlay,
                 new Mcp(
                         MCP_ENABLED.layerOver(
                                 base.mcp.enabled(),
@@ -154,6 +181,7 @@ public record JkHttpConfig(
                 MAX_EVENT_STREAMS.layer(
                         TomlValues.optInt(http, "max-event-streams").orElse(null)),
                 WEB_ROOT.layer(TomlValues.optString(http, "web-root").orElse(null)),
+                WEB_OVERLAY.layer(TomlValues.optString(http, "web-overlay").orElse(null)),
                 mcpFrom(parsed.get().getTable("mcp"))));
     }
 
@@ -174,23 +202,49 @@ public record JkHttpConfig(
     }
 
     /**
-     * Whether {@code web-root} was set (env or file) rather than left at {@link #DEFAULT_WEB_ROOT}.
-     * A set root is a dashboard source tree the user pointed the engine at, served under the
-     * dashboard's own policy; the default root is a drop zone builds may write into, and stays
-     * sandboxed.
+     * A directory the engine serves dashboard files from, ahead of the jar's: {@code dir}, and whether
+     * it is the development {@code overlay} rather than a {@code web-root} the user set.
      */
-    public boolean devWebRoot() {
-        return !DEFAULT_WEB_ROOT.equals(webRoot);
+    public record WebDisk(Path dir, boolean overlay) {}
+
+    /**
+     * Whether {@code version} names a development build: it ends in {@code -SNAPSHOT}, in any case.
+     * "Ends in" is the rule, so {@code 1.2.3-SNAPSHOT-rc1} is a release candidate, not a snapshot.
+     * The caller passes the version the build stamped into the jar; nothing here reads the
+     * environment or a file, because the one thing the {@code web-overlay} gate must not be is
+     * something the attacker it guards against can set.
+     */
+    public static boolean isSnapshot(String version) {
+        return version.toLowerCase(Locale.ROOT).endsWith(SNAPSHOT_SUFFIX);
     }
 
-    /** {@code web-root} resolved against the live {@link JkDirs#home()} root when relative. */
-    public Path webRootPath() {
-        return webRootPath(JkDirs.home());
+    /**
+     * The directory dashboard files are served from before the jar's, or empty for the shipped
+     * dashboard alone. Precedence: {@code web-root} (env, then file; the user named it), then
+     * {@code web-overlay} when {@code version} is a snapshot, else nothing. A relative path resolves
+     * against {@code homeDir}.
+     */
+    public Optional<WebDisk> webDisk(Path homeDir, String version) {
+        if (!webRoot.isBlank()) return Optional.of(new WebDisk(resolveDir(webRoot, homeDir), false));
+        if (!webOverlay.isBlank() && isSnapshot(version)) {
+            return Optional.of(new WebDisk(resolveDir(webOverlay, homeDir), true));
+        }
+        return Optional.empty();
     }
 
-    /** As {@link #webRootPath()} but against an explicit anchor — for tests. */
-    public Path webRootPath(Path homeDir) {
-        Path p = Path.of(webRoot);
+    /**
+     * Why a configured {@code web-overlay} is not in effect, as one line for the engine log and
+     * {@code jk doctor}; empty when none is configured or it is honoured.
+     */
+    public Optional<String> webOverlayIgnored(String version) {
+        if (webOverlay.isBlank()) return Optional.empty();
+        if (!isSnapshot(version)) return Optional.of("web-overlay ignored: not a snapshot build");
+        if (!webRoot.isBlank()) return Optional.of("web-overlay ignored: web-root is set");
+        return Optional.empty();
+    }
+
+    private static Path resolveDir(String configured, Path homeDir) {
+        Path p = Path.of(configured);
         return (p.isAbsolute() ? p : homeDir.resolve(p)).normalize();
     }
 }

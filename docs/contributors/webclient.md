@@ -204,9 +204,10 @@ open page relies on.
 
 **Serving.** `StaticContent` serves `sw.js` at the root, so its scope is the whole dashboard, as
 `text/javascript` with the shell's policy, whose `worker-src 'self'` lets the page register it, and `manifest.webmanifest` as `application/manifest+json`.
-The worker comes only from where the shell comes from: the jar, or a `web-root` the user set (a
-dashboard source tree). A worker controls every page of its origin and outlives its file, so one a
-build wrote into the default, build-writable `state/web` is never served.
+The worker comes only from where the shell comes from: the jar, or a directory the user named
+(`web-root`, or a snapshot build's `web-overlay`: a dashboard source tree). A worker controls every
+page of its origin and outlives its file, so nothing is read from a location a build can write by
+default: `~/.jk/state/web` is never served.
 
 **Notifications through the worker.** `notify.js` shows and closes notifications through an
 adapter chosen per notification: while a worker controls the page (`navigator.serviceWorker.controller`)

@@ -21,6 +21,7 @@ import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
@@ -28,6 +29,7 @@ import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -103,7 +105,7 @@ public final class DoctorCommand implements CliCommand {
         // Collect checks first so JSON and human share the same facts. Tools are scanned (and
         // repaired — broken links unlinked, fingerprints written) exactly once, here, so
         // `-O jsonl` performs the same repair the human view does instead of only reporting it.
-        Check config = checkConfig(JkDirs.userConfigFile());
+        Check config = checkConfig(JkDirs.userConfigFile(), JkVersion.VERSION);
         Check engine = withHeapDump(checkEngine(), EngineHeapDump.find(EnginePaths.current()));
         Check cache = checkDirs();
         Check state = checkStateMode();
@@ -494,11 +496,24 @@ public final class DoctorCommand implements CliCommand {
      * resolves, fetches or authenticates, so it is a failure here too, with the position to fix;
      * doctor itself keeps running so the rest of the report still helps.
      */
-    static Check checkConfig(Path file) {
+    static Check checkConfig(Path file, String version) {
         if (!Files.exists(file)) return new Check(Status.OK, "config", "no " + file + " (defaults)");
         return GlobalConfig.userConfigProblem(file)
                 .map(e -> new Check(Status.FAIL, "config", Objects.toString(e.getMessage(), file.toString())))
-                .orElseGet(() -> new Check(Status.OK, "config", file + " parses"));
+                .orElseGet(() -> parsedConfig(file, version));
+    }
+
+    /**
+     * A config that parses is a warning when it names an {@code [http] web-overlay} this engine will
+     * not serve: a developer whose edits do not show up is told why, here as in the engine log.
+     */
+    private static Check parsedConfig(Path file, String version) {
+        String ignored = JkHttpConfig.fromToml(file)
+                .flatMap(http -> http.webOverlayIgnored(version))
+                .orElse(null);
+        return ignored == null
+                ? new Check(Status.OK, "config", file + " parses")
+                : new Check(Status.WARN, "config", file + " parses · " + ignored);
     }
 
     private static Check checkEngine() {

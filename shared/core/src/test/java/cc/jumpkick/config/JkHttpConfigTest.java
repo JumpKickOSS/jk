@@ -53,7 +53,8 @@ class JkHttpConfigTest {
         assertThat(JkHttpConfig.DEFAULTS.host()).isEqualTo("127.0.0.1");
         assertThat(JkHttpConfig.DEFAULTS.port()).isEqualTo(8910);
         assertThat(JkHttpConfig.DEFAULTS.maxConcurrentRequests()).isEqualTo(16);
-        assertThat(JkHttpConfig.DEFAULTS.webRoot()).isEqualTo("state/web");
+        assertThat(JkHttpConfig.DEFAULTS.webRoot()).isEmpty();
+        assertThat(JkHttpConfig.DEFAULTS.webOverlay()).isEmpty();
     }
 
     @Test
@@ -71,12 +72,90 @@ class JkHttpConfigTest {
         assertThat(c.port()).isEqualTo(8911);
         assertThat(c.maxConcurrentRequests()).isEqualTo(4);
         assertThat(c.webRoot()).isEqualTo("/srv/jk-web");
-        assertThat(c.devWebRoot()).isTrue();
+        assertThat(c.webDisk(Path.of("/home"), "1.0.0"))
+                .contains(new JkHttpConfig.WebDisk(Path.of("/srv/jk-web"), false));
     }
 
     @Test
-    void only_a_set_web_root_is_a_dev_root() {
-        assertThat(JkHttpConfig.DEFAULTS.devWebRoot()).isFalse();
+    void nothing_is_served_from_disk_unless_the_user_names_a_directory(@TempDir Path tempDir) {
+        assertThat(JkHttpConfig.DEFAULTS.webDisk(tempDir, "1.0.0")).isEmpty();
+        assertThat(JkHttpConfig.DEFAULTS.webDisk(tempDir, "1.0.0-SNAPSHOT")).isEmpty();
+    }
+
+    @Test
+    void web_root_in_the_file_and_in_the_environment_name_the_same_disk(@TempDir Path tempDir) throws IOException {
+        Path dir = tempDir.resolve("dash");
+        Path fileOnly = tempDir.resolve("file.toml");
+        Files.writeString(fileOnly, "[http]\nweb-root = '" + dir + "'\n");
+        Path empty = tempDir.resolve("empty.toml");
+        Files.writeString(empty, "[http]\n");
+
+        JkHttpConfig fromFile = JkHttpConfig.resolve(fileOnly, k -> null).orElseThrow();
+        JkHttpConfig fromEnv = JkHttpConfig.resolve(empty, Map.of("JK_HTTP_WEB_ROOT", dir.toString())::get)
+                .orElseThrow();
+
+        assertThat(fromFile.webDisk(tempDir, "1.0.0")).contains(new JkHttpConfig.WebDisk(dir, false));
+        assertThat(fromEnv.webDisk(tempDir, "1.0.0")).isEqualTo(fromFile.webDisk(tempDir, "1.0.0"));
+    }
+
+    @Test
+    void the_environment_web_root_beats_the_file_one(@TempDir Path tempDir) throws IOException {
+        Path inFile = tempDir.resolve("a");
+        Path inEnv = tempDir.resolve("b");
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[http]\nweb-root = '" + inFile + "'\n");
+
+        JkHttpConfig c = JkHttpConfig.resolve(toml, Map.of("JK_HTTP_WEB_ROOT", inEnv.toString())::get)
+                .orElseThrow();
+
+        assertThat(c.webDisk(tempDir, "1.0.0")).contains(new JkHttpConfig.WebDisk(inEnv, false));
+    }
+
+    @Test
+    void web_overlay_is_honoured_only_by_a_snapshot_build(@TempDir Path tempDir) throws IOException {
+        Path overlay = tempDir.resolve("overlay");
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[http]\nweb-overlay = '" + overlay + "'\n");
+        JkHttpConfig c = JkHttpConfig.fromToml(toml).orElseThrow();
+
+        assertThat(c.webDisk(tempDir, "1.2.3-SNAPSHOT")).contains(new JkHttpConfig.WebDisk(overlay, true));
+        assertThat(c.webDisk(tempDir, "1.2.3-snapshot")).contains(new JkHttpConfig.WebDisk(overlay, true));
+        assertThat(c.webDisk(tempDir, "1.2.3")).isEmpty();
+        assertThat(c.webDisk(tempDir, "1.2.3-SNAPSHOT-rc1")).isEmpty();
+        assertThat(c.webOverlayIgnored("1.2.3")).contains("web-overlay ignored: not a snapshot build");
+        assertThat(c.webOverlayIgnored("1.2.3-SNAPSHOT")).isEmpty();
+    }
+
+    @Test
+    void the_snapshot_rule_is_that_the_version_ends_in_snapshot() {
+        assertThat(JkHttpConfig.isSnapshot("1.2.3")).isFalse();
+        assertThat(JkHttpConfig.isSnapshot("1.2.3-SNAPSHOT")).isTrue();
+        assertThat(JkHttpConfig.isSnapshot("1.2.3-snapshot")).isTrue();
+        assertThat(JkHttpConfig.isSnapshot("1.2.3-SNAPSHOT-rc1")).isFalse();
+        assertThat(JkHttpConfig.isSnapshot("")).isFalse();
+    }
+
+    @Test
+    void a_set_web_root_outranks_the_overlay(@TempDir Path tempDir) throws IOException {
+        Path root = tempDir.resolve("root");
+        Path overlay = tempDir.resolve("overlay");
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[http]\nweb-root = '" + root + "'\nweb-overlay = '" + overlay + "'\n");
+        JkHttpConfig c = JkHttpConfig.fromToml(toml).orElseThrow();
+
+        assertThat(c.webDisk(tempDir, "1.2.3-SNAPSHOT")).contains(new JkHttpConfig.WebDisk(root, false));
+        assertThat(c.webOverlayIgnored("1.2.3-SNAPSHOT")).contains("web-overlay ignored: web-root is set");
+    }
+
+    @Test
+    void web_overlay_has_no_environment_spelling(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[http]\n");
+
+        JkHttpConfig c = JkHttpConfig.resolve(toml, Map.of("JK_HTTP_WEB_OVERLAY", tempDir.toString())::get)
+                .orElseThrow();
+
+        assertThat(c.webOverlay()).isEmpty();
     }
 
     @Test
@@ -231,7 +310,8 @@ class JkHttpConfigTest {
 
     @Test
     void relative_web_root_resolves_against_home(@TempDir Path tempDir) {
-        assertThat(JkHttpConfig.DEFAULTS.webRootPath(tempDir)).isEqualTo(tempDir.resolve("state/web"));
+        JkHttpConfig c = new JkHttpConfig("127.0.0.1", 8910, 16, 16, "state/web", JkHttpConfig.Mcp.DEFAULTS);
+        assertThat(c.webDisk(tempDir, "1.0.0")).contains(new JkHttpConfig.WebDisk(tempDir.resolve("state/web"), false));
     }
 
     @Test
@@ -239,7 +319,7 @@ class JkHttpConfigTest {
         // Platform-absolute (drive root on Windows, "/" on Unix) — Path.of("/…") is not absolute on Windows.
         Path absolute = tempDir.getRoot().resolve("srv").resolve("jk-web");
         JkHttpConfig c = new JkHttpConfig("127.0.0.1", 8910, 16, 16, absolute.toString(), JkHttpConfig.Mcp.DEFAULTS);
-        assertThat(c.webRootPath(tempDir)).isEqualTo(absolute.normalize());
+        assertThat(c.webDisk(tempDir, "1.0.0")).contains(new JkHttpConfig.WebDisk(absolute.normalize(), false));
     }
 
     @Test

@@ -7,19 +7,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.testing.Symlinks;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Static content over real HTTP: the disk web-root and its classpath fallback, the sandbox CSP and
- * the shell's for a web-root the user set,
+ * Static content over real HTTP: the shipped dashboard alone by default, a directory the user named
+ * ({@code web-root}, or a snapshot build's {@code web-overlay}) ahead of it under the shell's CSP,
  * revalidation headers and 304s, HEAD, the 405 on a mutation, traversal, and the {@code Host}
  * header gate. Fixture in {@link HttpEngineServerHarness}.
  */
@@ -55,79 +60,173 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
     }
 
     @Test
-    void disk_content_is_sandboxed_while_the_classpath_shell_is_not() throws Exception {
-        // Disk web-root is tokenless AND build-writable, so any HTML that lands there must not be
-        // able to script the dashboard origin and read localStorage['jk-http-token'].
-        // A bare `sandbox` CSP forces a unique opaque origin with scripts/forms disabled.
-        Files.writeString(webRoot.resolve("report.html"), "<html><script>alert(1)</script></html>");
-        HttpResponse<String> disk = get("/report.html");
-        assertThat(disk.statusCode()).isEqualTo(200);
-        assertThat(disk.headers().firstValue("Content-Security-Policy")).contains("sandbox");
-        // The shipped shell keeps its own (non-sandbox) CSP — the SPA must still run scripts.
-        HttpResponse<String> shell = get("/app.js");
-        assertThat(shell.headers().firstValue("Content-Security-Policy")).isPresent();
-        assertThat(shell.headers().firstValue("Content-Security-Policy").orElseThrow())
-                .doesNotContain("sandbox")
-                .startsWith("default-src 'self'");
+    void a_directory_the_user_named_serves_its_files_under_the_shell_policy(@TempDir Path dev) throws Exception {
+        // A set web-root is a dashboard source tree (JK_HTTP_WEB_ROOT at a checkout): its scripts
+        // must run, so its files get the shell's policy, its service worker included.
+        Files.writeString(dev.resolve("index.html"), "<html>dev dash</html>");
+        Files.writeString(dev.resolve(StaticContent.WORKER), "// dev worker");
+        HttpEngineServer devServer = serverFor(
+                new JkHttpConfig("127.0.0.1", 0, 16, 16, dev.toString(), JkHttpConfig.Mcp.DEFAULTS),
+                stateDir,
+                "9.9.9-test",
+                null);
+        try {
+            HttpResponse<String> resp = fetch(devServer, "index.html");
+            assertThat(resp.body()).isEqualTo("<html>dev dash</html>");
+            assertThat(resp.headers().firstValue("Content-Security-Policy")).contains(StaticContent.SHELL_POLICY);
+            assertThat(fetch(devServer, StaticContent.WORKER).body()).isEqualTo("// dev worker");
+            assertThat(resp.headers().firstValue(StaticContent.OVERLAY_HEADER)).isEmpty();
+        } finally {
+            devServer.close();
+        }
     }
 
     @Test
-    void a_web_root_the_user_set_serves_its_files_under_the_shell_policy(@TempDir Path dev) throws Exception {
-        // A set web-root is a dashboard source tree (JK_HTTP_WEB_ROOT at a checkout): its scripts
-        // must run, so it gets the shell's policy; the default root stays sandboxed.
-        Files.writeString(dev.resolve("index.html"), "<html>dev dash</html>");
-        HttpEngineServer devServer = new HttpEngineServer(
-                new JkHttpConfig("127.0.0.1", 0, 16, 16, dev.toString(), JkHttpConfig.Mcp.DEFAULTS),
-                dev,
-                stateDir.resolve("dev.http-token"),
-                logFile,
+    void with_no_directory_named_only_the_shipped_dashboard_is_served(@TempDir Path home) throws Exception {
+        // The default location a build can write to is never read: a planted script, worker or page
+        // there would run in the dashboard's origin with the page's bearer token in reach.
+        Path planted = Files.createDirectories(home.resolve("state/web"));
+        Files.writeString(planted.resolve("app.js"), "alert(document.cookie)");
+        Files.writeString(planted.resolve(StaticContent.WORKER), "self.addEventListener('fetch', () => {});");
+        Files.writeString(planted.resolve("report.html"), "<html>report</html>");
+        Files.writeString(planted.resolve("hello.txt"), "planted");
+        HttpEngineServer jarOnly = serverFor(
+                new JkHttpConfig("127.0.0.1", 0, 16, 16, JkHttpConfig.DEFAULT_WEB_ROOT, JkHttpConfig.Mcp.DEFAULTS),
+                home,
                 "9.9.9-test",
+                null);
+        try {
+            HttpResponse<String> app = fetch(jarOnly, "app.js");
+            assertThat(app.body()).contains("Vue.createApp").doesNotContain("alert(document.cookie)");
+            assertThat(app.headers().firstValue("Content-Security-Policy").orElseThrow())
+                    .startsWith("default-src 'self'");
+
+            HttpResponse<String> worker = fetch(jarOnly, "sw.js");
+            assertThat(worker.statusCode()).isEqualTo(200);
+            assertThat(worker.body()).contains("notificationclick").doesNotContain("'fetch'");
+            assertThat(worker.headers().firstValue("Content-Type")).contains("text/javascript; charset=utf-8");
+            // Revalidated on every update check, so an engine upgrade installs its own worker.
+            assertThat(worker.headers().firstValue("Cache-Control")).contains("no-cache");
+
+            // Not even a path the jar does not ship: nothing under the default location is served.
+            assertThat(fetch(jarOnly, "report.html").statusCode()).isEqualTo(404);
+            assertThat(fetch(jarOnly, "hello.txt").statusCode()).isEqualTo(404);
+        } finally {
+            jarOnly.close();
+        }
+    }
+
+    @Test
+    void the_shipped_manifest_and_icons_are_served_from_the_jar() throws Exception {
+        HttpResponse<String> manifest = get("/manifest.webmanifest");
+        assertThat(manifest.statusCode()).isEqualTo(200);
+        assertThat(manifest.headers().firstValue("Content-Type")).contains("application/manifest+json; charset=utf-8");
+        assertThat(manifest.body()).contains("\"display\": \"standalone\"");
+        assertThat(get("/icon-512.png").headers().firstValue("Content-Type")).contains("image/png");
+    }
+
+    @Test
+    void a_snapshot_build_serves_its_overlay_over_the_shipped_files_and_falls_through_for_the_rest(
+            @TempDir Path overlay) throws Exception {
+        Files.writeString(overlay.resolve("app.js"), "// overlay app");
+        List<String> log = new ArrayList<>();
+        HttpEngineServer dev = serverFor(overlayConfig(overlay), stateDir, "9.9.9-SNAPSHOT", log::add);
+        try {
+            HttpResponse<String> app = fetch(dev, "app.js");
+            assertThat(app.body()).isEqualTo("// overlay app");
+            assertThat(app.headers().firstValue(StaticContent.OVERLAY_HEADER)).contains("1");
+            assertThat(app.headers().firstValue("Content-Security-Policy")).contains(StaticContent.SHELL_POLICY);
+            // A shipped file the overlay lacks still comes from the jar, unmarked.
+            HttpResponse<String> code = fetch(dev, "code.js");
+            assertThat(code.body()).contains("export const CodeView");
+            assertThat(code.headers().firstValue(StaticContent.OVERLAY_HEADER)).isEmpty();
+            assertThat(log).anyMatch(l -> l.contains("web-overlay") && l.contains(overlay.toString()));
+        } finally {
+            dev.close();
+        }
+    }
+
+    @Test
+    void a_release_build_ignores_the_overlay_says_so_and_still_starts(@TempDir Path overlay) throws Exception {
+        Files.writeString(overlay.resolve("app.js"), "// overlay app");
+        for (String release : List.of("9.9.9", "9.9.9-SNAPSHOT-rc1")) {
+            List<String> log = new ArrayList<>();
+            HttpEngineServer server = serverFor(overlayConfig(overlay), stateDir, release, log::add);
+            try {
+                HttpResponse<String> app = fetch(server, "app.js");
+                assertThat(app.body()).contains("Vue.createApp").doesNotContain("// overlay app");
+                assertThat(app.headers().firstValue(StaticContent.OVERLAY_HEADER))
+                        .isEmpty();
+                assertThat(log).contains("http: web-overlay ignored: not a snapshot build");
+            } finally {
+                server.close();
+            }
+        }
+    }
+
+    @Test
+    void a_web_root_outranks_the_overlay(@TempDir Path overlay, @TempDir Path root) throws Exception {
+        Files.writeString(overlay.resolve("app.js"), "// overlay app");
+        Files.writeString(root.resolve("app.js"), "// root app");
+        JkHttpConfig both = new JkHttpConfig(
+                "127.0.0.1", 0, 16, 16, root.toString(), overlay.toString(), JkHttpConfig.Mcp.DEFAULTS);
+        HttpEngineServer server = serverFor(both, stateDir, "9.9.9-SNAPSHOT", null);
+        try {
+            HttpResponse<String> app = fetch(server, "app.js");
+            assertThat(app.body()).isEqualTo("// root app");
+            assertThat(app.headers().firstValue(StaticContent.OVERLAY_HEADER)).isEmpty();
+        } finally {
+            server.close();
+        }
+    }
+
+    @Test
+    void a_symlink_in_the_overlay_is_not_served(@TempDir Path overlay) throws Exception {
+        Path secret = stateDir.resolve("overlay-secret.txt");
+        Files.writeString(secret, "TOP SECRET");
+        Symlinks.create(overlay.resolve("leak.txt"), secret);
+        HttpEngineServer dev = serverFor(overlayConfig(overlay), stateDir, "9.9.9-SNAPSHOT", null);
+        try {
+            HttpResponse<String> resp = fetch(dev, "leak.txt");
+            assertThat(resp.statusCode()).isNotEqualTo(200);
+            assertThat(resp.body()).doesNotContain("TOP SECRET");
+            Files.writeString(overlay.resolveSibling("outside.txt"), "outside");
+            assertThat(fetch(dev, "%2e%2e/outside.txt").statusCode()).isEqualTo(404);
+        } finally {
+            dev.close();
+        }
+    }
+
+    private static JkHttpConfig overlayConfig(Path overlay) {
+        return new JkHttpConfig(
+                "127.0.0.1", 0, 16, 16, JkHttpConfig.DEFAULT_WEB_ROOT, overlay.toString(), JkHttpConfig.Mcp.DEFAULTS);
+    }
+
+    /** A started server of its own, so a test can vary the config and the version the gate reads. */
+    private HttpEngineServer serverFor(JkHttpConfig config, Path home, String version, @Nullable Consumer<String> log)
+            throws IOException {
+        HttpEngineServer started = new HttpEngineServer(
+                config,
+                home,
+                stateDir.resolve(UUID.randomUUID() + ".http-token"),
+                logFile,
+                version,
                 () -> snapshot,
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
                 () -> metricsRows,
                 () -> cacheSnapshot,
-                null);
-        devServer.start();
-        try {
-            HttpResponse<String> resp = client.send(
-                    HttpRequest.newBuilder(URI.create(requireNonNull(devServer.url()) + "index.html"))
-                            .build(),
-                    HttpResponse.BodyHandlers.ofString());
-            assertThat(resp.body()).isEqualTo("<html>dev dash</html>");
-            assertThat(resp.headers().firstValue("Content-Security-Policy")).contains(StaticContent.SHELL_POLICY);
-            // A dashboard source tree serves its own service worker too.
-            Files.writeString(dev.resolve(StaticContent.WORKER), "// dev worker");
-            HttpResponse<String> worker = client.send(
-                    HttpRequest.newBuilder(URI.create(requireNonNull(devServer.url()) + StaticContent.WORKER))
-                            .build(),
-                    HttpResponse.BodyHandlers.ofString());
-            assertThat(worker.body()).isEqualTo("// dev worker");
-        } finally {
-            devServer.close();
-        }
-        assertThat(get("/index.html").headers().firstValue("Content-Security-Policy"))
-                .contains(StaticContent.SANDBOX_POLICY);
+                log);
+        started.start();
+        return started;
     }
 
-    @Test
-    void the_service_worker_comes_from_the_shell_and_never_from_the_default_disk_root() throws Exception {
-        // A worker controls every page of the origin and outlives its file: one planted in the
-        // build-writable default root must not shadow the shipped one.
-        Files.writeString(webRoot.resolve(StaticContent.WORKER), "self.addEventListener('fetch', () => {});");
-        HttpResponse<String> worker = get("/sw.js");
-        assertThat(worker.statusCode()).isEqualTo(200);
-        assertThat(worker.body()).contains("notificationclick").doesNotContain("'fetch'");
-        assertThat(worker.headers().firstValue("Content-Type")).contains("text/javascript; charset=utf-8");
-        // Revalidated on every update check, so an engine upgrade installs its own worker.
-        assertThat(worker.headers().firstValue("Cache-Control")).contains("no-cache");
-
-        HttpResponse<String> manifest = get("/manifest.webmanifest");
-        assertThat(manifest.statusCode()).isEqualTo(200);
-        assertThat(manifest.headers().firstValue("Content-Type")).contains("application/manifest+json; charset=utf-8");
-        assertThat(manifest.body()).contains("\"display\": \"standalone\"");
-        assertThat(get("/icon-512.png").headers().firstValue("Content-Type")).contains("image/png");
+    private HttpResponse<String> fetch(HttpEngineServer target, String path) throws Exception {
+        return client.send(
+                HttpRequest.newBuilder(URI.create(requireNonNull(target.url()) + path))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     @Test

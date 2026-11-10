@@ -98,12 +98,9 @@ abstract class HttpEngineServerHarness {
         return httpConfig(host, port, maxConcurrentRequests, JkHttpConfig.Mcp.DEFAULTS);
     }
 
-    /**
-     * The default {@code web-root} setting, as an engine nobody pointed at a dashboard tree has: the
-     * server serves {@link #webRoot} under the sandbox policy.
-     */
+    /** A {@code web-root} the user named: the server serves {@link #webRoot} ahead of the shipped dashboard. */
     JkHttpConfig httpConfig(String host, int port, int maxConcurrentRequests, JkHttpConfig.Mcp mcp) {
-        return new JkHttpConfig(host, port, maxConcurrentRequests, 16, JkHttpConfig.DEFAULT_WEB_ROOT, mcp);
+        return new JkHttpConfig(host, port, maxConcurrentRequests, 16, webRoot.toString(), mcp);
     }
 
     /** A journal rooted under the test's temp state dir — endpoints exist; content is per-test. */

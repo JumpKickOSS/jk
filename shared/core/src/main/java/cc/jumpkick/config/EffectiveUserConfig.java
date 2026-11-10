@@ -112,6 +112,7 @@ public final class EffectiveUserConfig {
         add(out, "http.max-concurrent-requests", d.maxConcurrentRequests(), e.maxConcurrentRequests());
         add(out, "http.max-event-streams", d.maxEventStreams(), e.maxEventStreams());
         add(out, "http.web-root", d.webRoot(), e.webRoot());
+        add(out, "http.web-overlay", d.webOverlay(), e.webOverlay());
         add(out, "mcp.enabled", d.mcp().enabled(), e.mcp().enabled());
         add(out, "mcp.max-event-streams", d.mcp().maxEventStreams(), e.mcp().maxEventStreams());
         add(out, "mcp.max-sessions", d.mcp().maxSessions(), e.mcp().maxSessions());

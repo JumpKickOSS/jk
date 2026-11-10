@@ -41,7 +41,12 @@ final class HttpReadApi {
     private static final int MAX_FS_ENTRIES = 400;
 
     private final JkHttpConfig config;
-    private final Path webRoot;
+    /** The directory dashboard files are served from before the jar's; empty for the jar alone. */
+    private final String webDir;
+
+    /** Whether {@link #webDir} is the development overlay, so a page loaded from it can say so. */
+    private final boolean webOverlay;
+
     private final Path logFile;
     private final Supplier<StatusSnapshot> status;
     private final EngineHttpJobs jobs;
@@ -62,7 +67,8 @@ final class HttpReadApi {
                 .put("maxEventStreams", config.maxEventStreams())
                 .put("mcpEnabled", config.mcp().enabled())
                 .put("mcpMaxEventStreams", config.mcp().maxEventStreams())
-                .put("webRoot", webRoot.toString())
+                .put("webRoot", webDir)
+                .put("webOverlay", webOverlay)
                 .toString();
         HttpResponses.sendJson(exchange, 200, body);
     }
