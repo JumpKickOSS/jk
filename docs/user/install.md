@@ -56,8 +56,8 @@ releases](../contributors/releases.md). Reporting a signature or install defect:
 
 ## Updates
 
-JumpKick keeps itself current. The engine checks the signed latest-release pointer at most once a
-day, when it has had no build for 10 minutes or after the third build in a row that never left it
+JumpKick keeps itself current. The engine checks the signed latest-release pointer at most every
+12 hours (a conditional request, so an unchanged pointer costs one round trip and no download), when it has had no build for 10 minutes or after the third build in a row that never left it
 that quiet. When there is a newer release it downloads and verifies it, installs it, and starts the
 new engine; builds still running finish on the old one. A build that starts in the middle pauses
 the update until the next quiet spell (or three more builds). Your next command runs the new release.

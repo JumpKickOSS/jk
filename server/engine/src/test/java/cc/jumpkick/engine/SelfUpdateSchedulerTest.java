@@ -57,13 +57,13 @@ class SelfUpdateSchedulerTest {
     }
 
     @Test
-    void the_check_runs_at_most_once_a_day_and_a_failed_one_retries_hourly() {
+    void the_check_runs_at_most_every_twelve_hours_and_a_failed_one_retries_hourly() {
         var s = scheduler();
         Instant now = clock.instant();
-        home.state = SelfUpdateState.EMPTY.withCheck(now.minus(Duration.ofHours(23)), RUNNING);
+        home.state = SelfUpdateState.EMPTY.withCheck(now.minus(Duration.ofHours(11)), RUNNING);
         assertThat(s.next(now)).isInstanceOf(SelfUpdateScheduler.Next.Nothing.class);
 
-        home.state = SelfUpdateState.EMPTY.withCheck(now.minus(Duration.ofHours(24)), RUNNING);
+        home.state = SelfUpdateState.EMPTY.withCheck(now.minus(Duration.ofHours(12)), RUNNING);
         assertThat(s.next(now)).isInstanceOf(SelfUpdateScheduler.Next.Check.class);
 
         home.state = home.state.withAttempt(now.minus(Duration.ofMinutes(59)));

@@ -59,6 +59,7 @@ import java.util.Optional;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk self} — self-update: install under {@code <home>/lib/jk-engine/} (parking the previous
@@ -486,24 +487,37 @@ public final class SelfCommand extends GroupCommand {
 
         /**
          * {@code --check}: the signed latest-release pointer against the running version, recorded
-         * in the update state the engine's scheduler reads. A pointer that cannot be read is recorded
-         * as an attempt, so the scheduler backs off.
+         * in the update state the engine's scheduler reads. The pointer's ETag rides back as {@code
+         * If-None-Match}, so an unchanged pointer is a 304 that keeps the recorded version. A
+         * pointer older than the running version is a completed check, not a failure: a development
+         * build, or a release whose pointer has not moved yet, is simply ahead of the site. A pointer
+         * that cannot be read is recorded as an attempt, so the scheduler backs off.
          */
         private static int check(URI base, ReleaseVerifier verifier, String running) throws IOException {
-            String latest;
+            SelfUpdateState before = SelfUpdateState.read();
+            String sentEtag = before.latest() == null ? null : before.latestEtag();
+            ReleaseArtifacts.PointerCheck found;
             try {
-                latest = ReleaseArtifacts.latestVersion(base, verifier, running);
+                found = ReleaseArtifacts.checkLatest(base, verifier, sentEtag);
             } catch (IOException unreachable) {
                 SelfUpdateState.update(s -> s.withAttempt(Clock.SYSTEM.instant()));
                 throw unreachable;
             }
-            SelfUpdateState.update(s -> s.withCheck(Clock.SYSTEM.instant(), latest));
-            if (Versions.compare(latest, running) > 0) {
-                CommandWedge.printOk("Self", "jk " + latest + " is available (this is " + running + ")");
-            } else {
-                CommandWedge.printOk("Self", "jk " + running + " is the latest release");
-            }
+            String latest = found.notModified() ? before.latest() : found.version();
+            SelfUpdateState.update(s -> s.withCheck(Clock.SYSTEM.instant(), latest, found.etag()));
+            CommandWedge.printOk("Self", checkSummary(latest, running));
             return 0;
+        }
+
+        /** What {@code --check} says about {@code latest} against {@code running}. */
+        static String checkSummary(@Nullable String latest, String running) {
+            if (latest == null || Versions.compare(latest, running) == 0) {
+                return "jk " + running + " is the latest release";
+            }
+            if (Versions.compare(latest, running) > 0) {
+                return "jk " + latest + " is available (this is " + running + ")";
+            }
+            return "jk " + running + " is newer than the latest release, " + latest;
         }
 
         /**

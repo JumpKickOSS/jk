@@ -16,7 +16,7 @@ class SelfUpdateStateTest {
     @Test
     void every_field_round_trips(@TempDir Path dir) throws Exception {
         Path file = dir.resolve("self-update.toml");
-        SelfUpdateState written = SelfUpdateState.update(file, s -> s.withCheck(T, "0.17.0")
+        SelfUpdateState written = SelfUpdateState.update(file, s -> s.withCheck(T, "0.17.0", "\"etag-1\"")
                 .withFirstSeen(T.minusSeconds(60))
                 .withHold("0.16.2", "0.17.0")
                 .withSnoozeUntil(T.plusSeconds(3600))
@@ -25,6 +25,15 @@ class SelfUpdateStateTest {
 
         assertThat(SelfUpdateState.read(file)).isEqualTo(written);
         assertThat(written.isHeld()).isTrue();
+        assertThat(written.latestEtag()).isEqualTo("\"etag-1\"");
+    }
+
+    @Test
+    void the_etag_is_kept_only_while_it_vouches_for_the_recorded_version() {
+        SelfUpdateState checked = SelfUpdateState.EMPTY.withCheck(T, "0.17.0", "\"etag-1\"");
+        assertThat(checked.withCheck(T.plusSeconds(60), "0.17.0").latestEtag()).isEqualTo("\"etag-1\"");
+        assertThat(checked.withCheck(T.plusSeconds(60), "0.18.0").latestEtag()).isNull();
+        assertThat(checked.withAttempt(T.plusSeconds(60)).latestEtag()).isEqualTo("\"etag-1\"");
     }
 
     @Test

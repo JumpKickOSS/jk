@@ -100,6 +100,53 @@ class ReleaseArtifactsTest {
                 .hasMessageContaining("malformed");
     }
 
+    @Test
+    void a_check_sends_the_etag_back_and_a_304_downloads_nothing() throws Exception {
+        try (StubReleaseDirectory release = new StubReleaseDirectory(VERSION)) {
+            release.latest("0.14.0", "\"v1\"");
+
+            ReleaseArtifacts.PointerCheck first =
+                    ReleaseArtifacts.checkLatest(release.base(), release.verifier(), null);
+            assertThat(first.notModified()).isFalse();
+            assertThat(first.version()).isEqualTo("0.14.0");
+            assertThat(first.etag()).isEqualTo("\"v1\"");
+
+            ReleaseArtifacts.PointerCheck again =
+                    ReleaseArtifacts.checkLatest(release.base(), release.verifier(), first.etag());
+            assertThat(again.notModified()).isTrue();
+            assertThat(again.etag()).isEqualTo("\"v1\"");
+
+            release.latest("0.15.0", "\"v2\"");
+            ReleaseArtifacts.PointerCheck moved =
+                    ReleaseArtifacts.checkLatest(release.base(), release.verifier(), first.etag());
+            assertThat(moved.version()).isEqualTo("0.15.0");
+            assertThat(moved.etag()).isEqualTo("\"v2\"");
+
+            assertThat(release.pointerRequests()).containsExactly("", "\"v1\"", "\"v1\"");
+        }
+    }
+
+    @Test
+    void a_check_records_an_older_pointer_instead_of_refusing_it() throws Exception {
+        try (StubReleaseDirectory release = new StubReleaseDirectory(VERSION)) {
+            release.latest("0.13.0", null);
+            ReleaseArtifacts.PointerCheck older =
+                    ReleaseArtifacts.checkLatest(release.base(), release.verifier(), null);
+            assertThat(older.version()).isEqualTo("0.13.0");
+            assertThat(older.etag()).isNull();
+        }
+    }
+
+    @Test
+    void a_check_still_refuses_a_pointer_it_cannot_verify() throws Exception {
+        try (StubReleaseDirectory release = new StubReleaseDirectory(VERSION);
+                StubReleaseDirectory other = new StubReleaseDirectory(VERSION)) {
+            release.latest("0.14.0", null);
+            assertThatThrownBy(() -> ReleaseArtifacts.checkLatest(release.base(), other.verifier(), null))
+                    .isInstanceOf(IOException.class);
+        }
+    }
+
     private static byte[] body(String version) {
         return ("version " + version + "\nissued 1757700000\n").getBytes(StandardCharsets.US_ASCII);
     }

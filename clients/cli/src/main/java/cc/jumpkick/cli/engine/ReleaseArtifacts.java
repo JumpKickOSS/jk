@@ -14,6 +14,8 @@ import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The verified download path from a release directory ({@code releases/<version>/}): the signed
@@ -183,14 +185,59 @@ public final class ReleaseArtifacts {
 
     /** {@link #latestVersion(URI, ReleaseVerifier, String)} over the pointer object already fetched. */
     static String latestVersion(ReleaseVerifier verifier, byte[] object, String running) throws IOException {
-        ReleaseVerifier.SignedPointer signed = ReleaseVerifier.parseSignedPointer(object);
-        verifier.verify(signed.signedBytes(), signed.signature());
-        String latest = signed.pointer().version();
+        String latest = pointerVersion(verifier, object);
         if (Versions.compare(latest, running) < 0) {
             throw new IOException("refusing latest release " + latest + ": older than this jk " + running
                     + "; `jk self update " + latest + "` downgrades on purpose");
         }
         return latest;
+    }
+
+    /** The version a signed pointer object names, once its signature verifies. */
+    static String pointerVersion(ReleaseVerifier verifier, byte[] object) throws IOException {
+        ReleaseVerifier.SignedPointer signed = ReleaseVerifier.parseSignedPointer(object);
+        verifier.verify(signed.signedBytes(), signed.signature());
+        return signed.pointer().version();
+    }
+
+    /**
+     * What a check of the latest-release pointer found: the pointer is unchanged since the ETag the
+     * caller sent ({@code version} empty), or it names {@code version} and carries {@code etag}.
+     */
+    public record PointerCheck(
+            @Nullable String version, @Nullable String etag) {
+        /** Whether the server answered 304 to the caller's {@code If-None-Match}. */
+        public boolean notModified() {
+            return version == null;
+        }
+    }
+
+    /**
+     * Read the signed {@code latest/LATEST} pointer for a check, sending {@code etag} as {@code
+     * If-None-Match} when there is one: a 304 says the version recorded with that ETag still
+     * stands, and nothing is downloaded. Unlike {@link #latestVersion} an older release is not
+     * refused here: a check only records what the site says, and nothing older than the running
+     * version is ever downloaded or installed from it.
+     */
+    public static PointerCheck checkLatest(URI releasesBase, ReleaseVerifier verifier, @Nullable String etag)
+            throws IOException {
+        URI uri = URI.create(releasesBase + "/latest/LATEST");
+        Http http = new Http();
+        String what = "latest-release pointer";
+        HttpResponse<byte[]> response;
+        try {
+            response = etag == null ? http.get(uri) : http.get(uri, Map.of("If-None-Match", etag));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted while downloading the " + what + " from " + uri);
+        } catch (IOException e) {
+            throw downloadFailed(uri, what, e);
+        }
+        if (etag != null && response.statusCode() == 304) return new PointerCheck(null, etag);
+        byte[] object = ok(response, uri, what);
+        return new PointerCheck(
+                pointerVersion(verifier, object),
+                response.headers().firstValue("ETag").orElse(null));
     }
 
     /**

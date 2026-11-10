@@ -30,7 +30,7 @@ import java.util.function.IntSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The engine updating jk on its own. A check is due once a day; while one is due, the run starts
+ * The engine updating jk on its own. A check is due every 12 hours; while one is due, the run starts
  * after {@link #QUIET} with no build in flight, or when the {@link #BUILDS_IN_A_ROW}th build since
  * it fell due finishes without such a gap. The run is check, download, install, one after the
  * other: each step is {@code jk self update} on the PATH client, so the engine and a person run the
@@ -44,7 +44,7 @@ import org.jspecify.annotations.Nullable;
 final class SelfUpdateScheduler implements AutoCloseable {
 
     /** Gap between checks that reached the release site. */
-    static final Duration CHECK_EVERY = Duration.ofHours(24);
+    static final Duration CHECK_EVERY = Duration.ofHours(12);
 
     /** Gap before a check, or a download, that failed is tried again. */
     static final Duration RETRY_AFTER = Duration.ofHours(1);

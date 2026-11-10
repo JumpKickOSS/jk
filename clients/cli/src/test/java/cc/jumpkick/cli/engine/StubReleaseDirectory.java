@@ -25,7 +25,9 @@ import org.jspecify.annotations.Nullable;
  * key: {@code SHA256SUMS} is generated from the artifacts {@link #put} here and {@code
  * SHA256SUMS.sig} signs it, so a test describes a release by naming its files. The knobs model
  * what goes wrong between a release and a client: a status for one path, a manifest that says
- * something else ({@link #freezeSums} then {@link #put}), a body with no declared length.
+ * something else ({@link #freezeSums} then {@link #put}), a body with no declared length. It also
+ * serves the signed latest-release pointer ({@link #latest}) with an ETag, answering a matching
+ * {@code If-None-Match} with 304.
  */
 public final class StubReleaseDirectory implements AutoCloseable {
 
@@ -39,6 +41,9 @@ public final class StubReleaseDirectory implements AutoCloseable {
     private final List<String> requested = new CopyOnWriteArrayList<>();
     private volatile byte @Nullable [] frozenSums;
     private volatile boolean chunked;
+    private volatile byte @Nullable [] latestPointer;
+    private volatile @Nullable String latestEtag;
+    private final List<String> pointerRequests = new CopyOnWriteArrayList<>();
 
     public StubReleaseDirectory(String version) throws IOException {
         this.version = version;
@@ -63,6 +68,23 @@ public final class StubReleaseDirectory implements AutoCloseable {
             } else {
                 exchange.sendResponseHeaders(200, chunked && artifacts.containsKey(name) ? 0 : body.length);
                 exchange.getResponseBody().write(body);
+            }
+            exchange.close();
+        });
+        server.createContext("/releases/latest/LATEST", exchange -> {
+            String ifNoneMatch = exchange.getRequestHeaders().getFirst("If-None-Match");
+            pointerRequests.add(ifNoneMatch == null ? "" : ifNoneMatch);
+            byte[] pointer = latestPointer;
+            String etag = latestEtag;
+            if (pointer == null) {
+                exchange.sendResponseHeaders(404, -1);
+            } else if (etag != null && etag.equals(ifNoneMatch)) {
+                exchange.getResponseHeaders().set("ETag", etag);
+                exchange.sendResponseHeaders(304, -1);
+            } else {
+                if (etag != null) exchange.getResponseHeaders().set("ETag", etag);
+                exchange.sendResponseHeaders(200, pointer.length);
+                exchange.getResponseBody().write(pointer);
             }
             exchange.close();
         });
@@ -103,6 +125,28 @@ public final class StubReleaseDirectory implements AutoCloseable {
     /** Stream artifacts with no {@code Content-Length}, as a proxy or a compressing CDN edge does. */
     public void chunked(boolean chunked) {
         this.chunked = chunked;
+    }
+
+    /** Serve {@code latest/LATEST} naming {@code version}, signed with this directory's key, under {@code etag}. */
+    public void latest(String version, @Nullable String etag) throws IOException {
+        byte[] body = ("version " + version + "\nissued 1757700000\n").getBytes(StandardCharsets.US_ASCII);
+        String signature;
+        try {
+            Signature signer = Signature.getInstance("SHA256withRSA");
+            signer.initSign(key.getPrivate());
+            signer.update(body);
+            signature = Base64.getEncoder().encodeToString(signer.sign());
+        } catch (GeneralSecurityException e) {
+            throw new IOException("could not sign the pointer", e);
+        }
+        latestPointer = (new String(body, StandardCharsets.US_ASCII) + "signature " + signature + "\n")
+                .getBytes(StandardCharsets.US_ASCII);
+        latestEtag = etag;
+    }
+
+    /** The {@code If-None-Match} each pointer request carried ({@code ""} for none), in arrival order. */
+    public List<String> pointerRequests() {
+        return List.copyOf(pointerRequests);
     }
 
     /** Every path asked for under the version directory, in arrival order. */
