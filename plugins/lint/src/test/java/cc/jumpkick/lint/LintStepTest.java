@@ -484,12 +484,33 @@ class LintStepTest {
     }
 
     @Test
+    @Tag("integration") // forks Checkstyle
+    void a_rule_set_checkstyle_cannot_load_fails_the_step_rather_than_passing_on_an_empty_report(@TempDir Path tmp)
+            throws Exception {
+        FakeBuildIo io = lintModule(tmp, "error", SOURCE);
+        FakeBuildIo.write(tmp.resolve("checkstyle.xml"), """
+                <?xml version="1.0"?>
+                <!DOCTYPE module PUBLIC "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+                    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+                <module name="Checker">
+                  <module name="NoSuchCheckAnywhere"/>
+                </module>
+                """);
+
+        assertThatThrownBy(() -> LintStep.run(io, LintTool.CHECKSTYLE))
+                .hasMessageContaining("checkstyle failed")
+                .hasMessageContaining("before writing its report");
+    }
+
+    @Test
     void exit_codes_after_a_completed_analysis_are_not_failures() {
         assertThat(LintStep.ran(LintTool.CHECKSTYLE, 3)).isTrue();
         assertThat(LintStep.ran(LintTool.PMD, 4)).isTrue();
         assertThat(LintStep.ran(LintTool.PMD, 1)).isFalse();
         assertThat(LintStep.ran(LintTool.SPOTBUGS, 3)).isTrue();
         assertThat(LintStep.ran(LintTool.SPOTBUGS, 4)).isFalse();
+        assertThat(LintStep.ran(LintTool.SPOTBUGS, 8)).isFalse();
+        assertThat(LintStep.ran(LintTool.SPOTBUGS, -1)).isFalse();
         assertThat(LintStep.ran(LintTool.DETEKT, 2)).isTrue();
         assertThat(LintStep.ran(LintTool.DETEKT, 3)).isFalse();
     }

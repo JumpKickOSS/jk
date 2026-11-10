@@ -101,7 +101,9 @@ final class LintStep {
         List<String> output = new ArrayList<>();
         int exit = exec.java().classpath(classpath).mainClass(tool.main()).args(args).cwd(exec.moduleDir()).stream(
                 output::add);
-        if (!Files.isRegularFile(report) || !ran(tool, exit)) {
+        // Checkstyle opens its -o file before it reads the configuration, so a rule set it cannot
+        // load leaves an empty report behind it: that is a failed run, not a clean one.
+        if (!Files.isRegularFile(report) || Files.size(report) == 0 || !ran(tool, exit)) {
             List<String> tail = output.subList(Math.max(0, output.size() - TAIL), output.size());
             throw new IllegalStateException(label + " failed (exit " + exit + ") before writing its report"
                     + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)));
@@ -139,7 +141,7 @@ final class LintStep {
         return switch (tool) {
             case CHECKSTYLE -> true; // the exit is the error count
             case PMD -> PMD_RAN.contains(exit);
-            case SPOTBUGS -> (exit & 4) == 0; // bit 1 bugs found, bit 2 classes missing, bit 4 an error
+            case SPOTBUGS -> exit >= 0 && exit <= 3; // bit 1 bugs found, bit 2 classes missing; anything else an error
             case DETEKT -> exit == 0 || exit == 2; // 2: the configured issue budget is spent
         };
     }
