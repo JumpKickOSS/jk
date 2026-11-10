@@ -151,6 +151,7 @@ They are not project-overridable.
 ```toml
 [http]
 # enabled = false          # default is on (loopback, token-gated /api)
+# web-root = "/path/to/web"  # serve the dashboard from this directory first; default is the shipped one only
 
 [mcp]
 # enabled = false          # 404 /mcp only; dashboard stays
@@ -160,7 +161,7 @@ They are not project-overridable.
 # tools = "loop"           # tools/list: "loop" (six tools) or "all"; a client can also pass extended=true
 ```
 
-`JK_HTTP_ENABLED=false`, `JK_MCP_ENABLED=false`, `JK_MCP_MAX_SESSIONS=64`, `JK_MCP_SESSION_EXPIRY=8h`,
+`JK_HTTP_ENABLED=false`, `JK_HTTP_WEB_ROOT=/path/to/web`, `JK_MCP_ENABLED=false`, `JK_MCP_MAX_SESSIONS=64`, `JK_MCP_SESSION_EXPIRY=8h`,
 `JK_MCP_TOOLS=all`. `session-expiry` covers every session (MCP, BSP, shell, dashboard), so it
 applies with `[http] enabled = false` or `[mcp] enabled = false` too. Details: [MCP](mcp.md),
 [Web](web.md).

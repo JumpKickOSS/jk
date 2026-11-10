@@ -92,7 +92,7 @@ public final class EngineHttpFront {
         if (config == null || hub == null) return;
         HttpEngineServer candidate = new HttpEngineServer(
                 config,
-                config.webRootPath(),
+                JkDirs.home(),
                 paths.httpToken(),
                 paths.log(),
                 version,

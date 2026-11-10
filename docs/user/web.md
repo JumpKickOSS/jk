@@ -283,6 +283,23 @@ MCP `new` hands out such a link when its client supports only URL elicitation
 project you create. A create after the call stopped waiting (five minutes) is still wired for that
 agent, and the new project's page says the agent was not told.
 
+## Serve the dashboard from a directory
+
+The engine serves the dashboard shipped in its own jar and nothing else from disk. To work on the
+dashboard, or to serve a modified copy, name a directory:
+
+```toml
+[http]
+web-root = "/home/you/src/jk/clients/web/src/main/resources/web"
+```
+
+`JK_HTTP_WEB_ROOT` takes the same value and wins over the file. A file in the directory replaces the
+shipped file of the same path; a path it lacks is still served from the jar. Restart the engine
+(`jk engine stop`) after changing either.
+
+The dashboard's scripts run with your bearer token in reach, so point `web-root` only at a directory
+that you alone can write, never one a build or another process writes into.
+
 ## Decisions
 
 Your agent asks you; the dashboard is where the details live. An operation that waits for a person

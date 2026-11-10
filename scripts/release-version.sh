@@ -6,7 +6,7 @@
 # Prints the version when <requested> is well-formed and equals the jk.toml version; otherwise
 # says which check failed and exits 1. The release tag is the request; the source is the
 # answer — a run that publishes a tree stamped with one version under another's name is refused
-# here, before anything is built. With no request (a dry run that publishes nothing) the declared
+# here, before anything is built. A declared -SNAPSHOT version is refused whatever is requested. With no request (a dry run that publishes nothing) the declared
 # version is printed.
 set -euo pipefail
 
@@ -17,6 +17,12 @@ REQUESTED="${1:-}"
 declared="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$SOURCE" | head -1)"
 if [[ -z "$declared" ]]; then
   echo "release-version: $SOURCE declares no version = \"…\"" >&2
+  exit 1
+fi
+# A release never carries a -SNAPSHOT version: the engine serves a development-only dashboard overlay
+# to a build whose version ends in -SNAPSHOT (any case), so a released one must not.
+if [[ "$declared" == *-[Ss][Nn][Aa][Pp][Ss][Hh][Oo][Tt] ]]; then
+  echo "release-version: $SOURCE declares $declared; a release is never a -SNAPSHOT" >&2
   exit 1
 fi
 if [[ -z "$REQUESTED" ]]; then

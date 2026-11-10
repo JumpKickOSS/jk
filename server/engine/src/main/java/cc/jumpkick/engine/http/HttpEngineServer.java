@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -55,7 +56,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final JkHttpConfig config;
     private final StaticContent staticContent;
     private final HttpAdmission admission;
-    private final Path webRoot;
+    private final Optional<JkHttpConfig.WebDisk> webDisk;
     private final HttpTokenGate tokens;
     private final EngineEpochGate epoch;
     private final Path logFile;
@@ -181,8 +182,9 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * @param webRoot the resolved on-disk static root (the caller resolves {@code web-root} against
-     * the live {@code JkDirs}; tests pass a temp dir) — need not exist
+     * @param homeDir the jk home a relative {@code web-root} / {@code web-overlay} resolves against
+     * ({@code JkDirs.home()} in real use; tests pass a temp dir). Nothing is read from it unless the
+     * config names a directory: with neither setting the engine serves the shipped dashboard alone
      * @param tokenFile where to persist the minted bearer token (owner-only permissions) so the CLI
      * can hand the user a tokenized URL — {@code EnginePaths.Paths#httpToken} in real use
      * @param logFile the engine's own log ({@code EnginePaths.Paths#log}), tailed by {@code
@@ -198,7 +200,7 @@ public final class HttpEngineServer implements AutoCloseable {
      */
     public HttpEngineServer(
             JkHttpConfig config,
-            Path webRoot,
+            Path homeDir,
             Path tokenFile,
             Path logFile,
             String version,
@@ -210,9 +212,9 @@ public final class HttpEngineServer implements AutoCloseable {
             Supplier<CacheSnapshot> cache,
             @Nullable Consumer<String> log) {
         this.config = config;
-        this.staticContent = new StaticContent(webRoot, version, config.devWebRoot());
+        this.webDisk = config.webDisk(homeDir, version);
+        this.staticContent = new StaticContent(webDisk.orElse(null), version);
         this.admission = new HttpAdmission(config);
-        this.webRoot = webRoot;
         this.tokens = new HttpTokenGate(tokenFile);
         this.epoch = new EngineEpochGate(status);
         this.logFile = logFile;
@@ -224,6 +226,13 @@ public final class HttpEngineServer implements AutoCloseable {
         this.cache = cache;
         this.liveVitals = new LiveVitals(events, status, cache);
         this.log = log != null ? log : s -> {};
+        // The overlay replaces shipped files, so a running one is said once at start; a configured
+        // one that is not in effect is said too, because a developer whose edits do not show up
+        // should not have to guess why. Neither stops the engine.
+        webDisk.filter(JkHttpConfig.WebDisk::overlay)
+                .ifPresent(d ->
+                        this.log.accept("http: web-overlay " + d.dir() + " is served ahead of the shipped dashboard"));
+        config.webOverlayIgnored(version).ifPresent(note -> this.log.accept("http: " + note));
         this.progressTokens = new ProgressTokenRegistry();
         // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
         // MCP journal reads are redacted at the supplier — every consumer (history view=full,
@@ -257,7 +266,16 @@ public final class HttpEngineServer implements AutoCloseable {
         NewProjectWizard wizard = new NewProjectWizard(this::url, tokens::tokenText);
         if (this.mcp != null) this.mcp.wizard(wizard);
         HttpNewProjectApi newProjectApi = new HttpNewProjectApi(journal, wizard);
-        this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);
+        this.readApi = new HttpReadApi(
+                config,
+                webDisk.map(d -> d.dir().toString()).orElse(""),
+                webDisk.map(JkHttpConfig.WebDisk::overlay).orElse(false),
+                logFile,
+                status,
+                jobs,
+                metrics,
+                cache,
+                this::url);
         api.register("GET", "/api/status", readApi::handleStatus);
         api.register("GET", "/api/config", readApi::handleConfig);
         api.register("GET", "/api/events", sse::serveDashboard);

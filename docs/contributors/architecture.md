@@ -241,19 +241,20 @@ one live checkout, `jk-results.md` prints `checkout: <dir>` under the headline, 
 and MCP resolve `project=<id>` to a checkout explicitly ([HTTP](http.md#get-apiproject),
 [web client](webclient.md#project-routes)).
 
-### Dashboard static assets (`web-root`)
+### Dashboard static assets (`web-root`, `web-overlay`)
 
-The engine HTTP server serves the dashboard from **disk first**, then classpath `/web`
-(in the engine jar). Both tiers are `Cache-Control: no-cache` (store, but revalidate every
-load): disk so worktree edits show up on refresh without reinstalling; classpath so a new
-engine jar is not hidden by a still-fresh `max-age`. Classpath responses also carry a
-version+mtime `ETag` (`"jk-<version>-<stamp>"`) — unchanged jar → `304`.
+The engine HTTP server serves the dashboard from the classpath `/web` (in the engine jar) and, only
+when the user names a directory, from that directory first. Both tiers are `Cache-Control: no-cache`
+(store, but revalidate every load): disk so worktree edits show up on refresh without reinstalling;
+classpath so a new engine jar is not hidden by a still-fresh `max-age`. Classpath responses also
+carry a version+mtime `ETag` (`"jk-<version>-<stamp>"`) — unchanged jar → `304`.
 
 | Source | Key |
 |---|---|
 | Env | `JK_HTTP_WEB_ROOT` (absolute path preferred) |
-| Config | `~/.jk/config.toml` → `[http] web-root` |
-| Default | `~/.jk/state/web` (under the platform state dir) |
+| Config | `~/.jk/config.toml` → `[http] web-root` (same value, same meaning as the env var) |
+| Config, snapshot builds only | `~/.jk/config.toml` → `[http] web-overlay` |
+| Default | none: the jar alone (`~/.jk/state/web` is never read) |
 
 Point at the worktree for UI iteration:
 
@@ -264,10 +265,11 @@ jk engine start
 # edit style.css / index.html / *.webp → hard-refresh the browser
 ```
 
-Relative `web-root` values resolve against the JumpKick home root (`~/.jk`, or `$JK_HOME`).
-Only files present under the root are overridden; anything missing still falls through to the jar.
-A root set this way is served under the shell's CSP, so the dashboard runs from it; the default
-root is sandboxed ([HTTP](http.md#auth-tiers)).
+Relative values resolve against the JumpKick home root (`~/.jk`, or `$JK_HOME`). Only files present
+under the directory are overridden; anything missing still falls through to the jar. The directory's
+files are served under the shell's CSP, so the dashboard runs from them. `web-overlay` is the same
+for a `-SNAPSHOT` build and is ignored by a release; the rules, the gate and the reasoning are in
+[HTTP](http.md#auth-tiers).
 
 ### HTTP server knobs
 

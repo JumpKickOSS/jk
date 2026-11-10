@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.host.Log;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
@@ -23,17 +24,18 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Static files: disk {@code web-root} first (no-cache, size-snapshotted GET so concurrent appends
- * cannot corrupt framing), then classpath {@code /web} (no-cache, version+mtime ETag). No directory
- * listings.
+ * Static files: the dashboard shipped on the classpath ({@code /web}, no-cache, version+mtime ETag),
+ * optionally preceded by a disk directory the user named ({@link
+ * cc.jumpkick.config.JkHttpConfig#webDisk}): a {@code web-root}, or a {@code -SNAPSHOT} build's {@code
+ * web-overlay}. Disk files are no-cache and size-snapshotted per GET so concurrent appends cannot
+ * corrupt framing. No directory listings.
  *
- * <p>The default disk root is sandboxed ({@code Content-Security-Policy: sandbox}); a root the user
- * set ({@link cc.jumpkick.config.JkHttpConfig#devWebRoot}) is a dashboard source tree and gets the
- * shell's policy, so the dashboard runs from it.
- *
- * <p>The dashboard's service worker ({@value #WORKER}) comes only from where the shell comes from:
- * the classpath, or a root the user set. A worker controls every page of the origin and outlives
- * its file, so one a build planted in the default root must never register.
+ * <p>With no such directory only the jar is served. Nothing is read from a default location: a build
+ * can write anywhere it can reach, and a file the dashboard page loads as a script runs in the
+ * dashboard's origin with the page's bearer token in reach, whatever policy the response carries. A
+ * directory the user named is their own dashboard source tree, so its files get the shell's policy
+ * and a file there replaces the shipped one of the same path; a path it lacks falls through to the
+ * jar.
  */
 final class StaticContent {
 
@@ -41,6 +43,9 @@ final class StaticContent {
 
     /** The dashboard's service worker, at the root so its scope is the whole dashboard. */
     static final String WORKER = "sw.js";
+
+    /** Set on every file served from the overlay, so a response is never mistaken for the shipped one. */
+    static final String OVERLAY_HEADER = "X-Jk-Web-Overlay";
 
     private static final DateTimeFormatter HTTP_DATE =
             DateTimeFormatter.RFC_1123_DATE_TIME.withLocale(Locale.US).withZone(ZoneOffset.UTC);
@@ -93,23 +98,11 @@ final class StaticContent {
             // able to add one that posts off-origin.
             + "form-action 'none';";
 
-    /**
-     * The default disk root's policy. That root is never token-gated, and builds may write arbitrary
-     * user content (HTML reports) into it. Without a policy, such HTML is same-origin with the SPA and
-     * can read localStorage['jk-http-token'] — the sole credential. A bare {@code sandbox} renders it
-     * in a unique opaque origin with scripts, forms, and plugins disabled: styles and images still
-     * work (reports stay readable), but nothing under it can script the dashboard origin or
-     * exfiltrate the token.
-     */
-    static final String SANDBOX_POLICY = "sandbox";
+    /** The directory the user named, or {@code null} to serve the jar alone. */
+    private final @Nullable Path root;
 
-    private final Path root;
-
-    /** The policy disk files are served under: the shell's for a dev root, else the sandbox. */
-    private final String diskPolicy;
-
-    /** Whether the user set {@link #root}, which may then serve the service worker. */
-    private final boolean devRoot;
+    /** Whether {@link #root} is the development overlay rather than a {@code web-root}. */
+    private final boolean overlay;
 
     /**
      * {@code "jk-<version>-<mtime-hex>"}. Classpath assets always revalidate ({@code no-cache}) so
@@ -119,14 +112,12 @@ final class StaticContent {
     private final String classpathEtag;
 
     /**
-     * @param root the resolved {@code web-root} — need not exist (classpath still serves)
-     * @param devRoot whether the user set {@code root} to serve a dashboard from, which earns its
-     * files the shell's policy instead of the sandbox
+     * @param disk the directory to serve ahead of the jar, or {@code null} for the jar alone; it need
+     * not exist (the jar still serves)
      */
-    StaticContent(Path root, String version, boolean devRoot) {
-        this.root = root.normalize();
-        this.diskPolicy = devRoot ? SHELL_POLICY : SANDBOX_POLICY;
-        this.devRoot = devRoot;
+    StaticContent(JkHttpConfig.@Nullable WebDisk disk, String version) {
+        this.root = disk == null ? null : disk.dir().normalize();
+        this.overlay = disk != null && disk.overlay();
         this.classpathEtag = "\"jk-" + version + "-" + classpathStamp() + "\"";
     }
 
@@ -168,7 +159,7 @@ final class StaticContent {
             HttpResponses.sendText(exchange, 404, "not found\n");
             return;
         }
-        if ((devRoot || !rel.equals(WORKER)) && serveFromDisk(exchange, rel, head)) return;
+        if (root != null && serveFromDisk(root, exchange, rel, head)) return;
         if (serveFromClasspath(exchange, rel, head)) return;
         HttpResponses.sendText(exchange, 404, "not found\n");
     }
@@ -189,12 +180,12 @@ final class StaticContent {
         return path;
     }
 
-    private boolean serveFromDisk(HttpExchange exchange, String rel, boolean head) throws IOException {
+    private boolean serveFromDisk(Path root, HttpExchange exchange, String rel, boolean head) throws IOException {
         Path file = root.resolve(rel).normalize();
         if (!file.startsWith(root) || !Files.isRegularFile(file)) return false;
-        // Lexical containment is not enough: builds may write into web-root, so a symlink planted
-        // there would resolve outside and be served *unauthenticated* (static content is never
-        // token-gated). Compare real paths.
+        // Lexical containment is not enough: a build may write into a directory the user named, so a
+        // symlink planted there would resolve outside and be served *unauthenticated* (static
+        // content is never token-gated). Compare real paths.
         try {
             if (!file.toRealPath().startsWith(root.toRealPath())) return false;
         } catch (IOException e) {
@@ -207,7 +198,8 @@ final class StaticContent {
         } catch (IOException e) {
             return false; // deleted between the check and now — fall through to classpath/404
         }
-        exchange.getResponseHeaders().set("Content-Security-Policy", diskPolicy);
+        exchange.getResponseHeaders().set("Content-Security-Policy", SHELL_POLICY);
+        if (overlay) exchange.getResponseHeaders().set(OVERLAY_HEADER, "1");
         exchange.getResponseHeaders().set("Cache-Control", "no-cache");
         exchange.getResponseHeaders().set("Last-Modified", HTTP_DATE.format(lastModified));
         if (notModifiedSince(exchange.getRequestHeaders().getFirst("If-Modified-Since"), lastModified)) {
