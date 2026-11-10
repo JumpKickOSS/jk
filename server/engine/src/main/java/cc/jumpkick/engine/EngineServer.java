@@ -26,7 +26,6 @@ import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
-import cc.jumpkick.engine.journal.NoopRecords;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.plugin.JobWorkers;
@@ -219,7 +218,9 @@ public final class EngineServer implements AutoCloseable {
      * They go on from the journal's newest, so a wait on a new engine's id never reads an earlier
      * engine's run that had the same one.
      */
-    private final AtomicLong requestIds = new AtomicLong(NoopRecords.newestRequestId(BuildJournal.current()));
+    private final BuildJournal journal = BuildJournal.current();
+
+    private final AtomicLong requestIds = new AtomicLong(journal.newestRequestId());
 
     /**
      * One row per request: progress, accumulator, emit throttle. Retired ids cannot
@@ -240,8 +241,6 @@ public final class EngineServer implements AutoCloseable {
     private final Path userConfig;
 
     private final JkHistoryConfig historyConfig;
-
-    private final BuildJournal journal = BuildJournal.current();
 
     /** The running invocation/step aggregates every finished build/test folds into. */
     private Path metricsFile = BuildMetrics.defaultFile();

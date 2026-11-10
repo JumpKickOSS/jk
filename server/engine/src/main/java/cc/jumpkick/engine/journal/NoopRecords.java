@@ -14,14 +14,6 @@ public final class NoopRecords {
 
     private final ConcurrentHashMap<Long, String> byRequestId = new ConcurrentHashMap<>();
 
-    /** The highest request id among {@code journal}'s newest records: where a starting engine numbers on from. */
-    public static long newestRequestId(BuildJournal journal) {
-        return journal.rawRecords(200).stream()
-                .mapToLong(r -> BuildJournal.scanLong(r, "requestId"))
-                .max()
-                .orElse(0);
-    }
-
     void put(BuildRecord finished) {
         if (byRequestId.size() >= MAX) byRequestId.clear();
         byRequestId.put(finished.requestId(), Json.write(finished));

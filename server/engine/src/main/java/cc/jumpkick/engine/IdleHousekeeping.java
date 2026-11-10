@@ -374,10 +374,21 @@ public final class IdleHousekeeping {
         }
     }
 
-    private void pruneJournal() {
+    /**
+     * How often an idle boundary prunes the journal: a prune sizes every retained run, and an agent
+     * looping short builds reaches a boundary after every one of them.
+     */
+    static final long JOURNAL_PRUNE_EVERY_MILLIS = 60 * 60 * 1000L;
+
+    /** When the journal was last pruned; the first boundary after start always prunes. */
+    private long journalPrunedAt = Long.MIN_VALUE;
+
+    void pruneJournal() {
         if (!historyConfig.enabled()) return;
+        long now = clock.getAsLong();
+        if (journalPrunedAt != Long.MIN_VALUE && now - journalPrunedAt < JOURNAL_PRUNE_EVERY_MILLIS) return;
+        journalPrunedAt = now;
         try {
-            long now = clock.getAsLong();
             BuildJournal.PruneResult r =
                     journal.prune(historyConfig.maxAgeMillis(), historyConfig.maxDiskBytes(), now, decisions::prune);
             if (r.removedEntries() > 0) {

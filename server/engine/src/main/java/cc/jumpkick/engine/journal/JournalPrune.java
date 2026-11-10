@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
@@ -19,9 +21,13 @@ final class JournalPrune {
     record Entry(
             Path path, long millis, long size, @Nullable String decision) {
 
-        /** A run or session directory, last changed at {@code millis}. */
-        static Entry dir(Path dir, long millis) {
-            return new Entry(dir, millis, sizeOf(dir), null);
+        /**
+         * A run or session directory, last changed at {@code millis}, billed for the bytes of its
+         * files not already in {@code billed}: runs hard-link the snapshots they share, and a file
+         * linked into ten runs takes its disk once, not ten times.
+         */
+        static Entry dir(Path dir, long millis, Set<Object> billed) {
+            return new Entry(dir, millis, sizeOf(dir, billed), null);
         }
     }
 
@@ -39,7 +45,8 @@ final class JournalPrune {
             Predicate<String> dropDecision) {
         List<Entry> entries = new ArrayList<>(runs);
         // Ended sessions and settled decisions share the runs' age and disk budgets.
-        entries.addAll(SessionJournal.prunable(buildsRoot, nowMillis, Entry::dir));
+        Set<Object> billed = new HashSet<>();
+        entries.addAll(SessionJournal.prunable(buildsRoot, nowMillis, (dir, at) -> Entry.dir(dir, at, billed)));
         entries.addAll(SessionJournal.prunableDecisions(
                 buildsRoot, nowMillis, (file, at, size) -> new Entry(file, at, size, SessionJournal.decisionId(file))));
         int removed = 0;
@@ -78,11 +85,14 @@ final class JournalPrune {
         return true;
     }
 
-    private static long sizeOf(Path dir) {
+    private static long sizeOf(Path dir, Set<Object> billed) {
         // The walk already read each entry's size; asking Files.size again would stat every file twice.
         long[] total = {0L};
         try {
-            PathUtil.forEachRegularFile(dir, (f, attrs) -> total[0] += attrs.size());
+            PathUtil.forEachRegularFile(dir, (f, attrs) -> {
+                Object key = attrs.fileKey();
+                if (key == null || billed.add(key)) total[0] += attrs.size();
+            });
         } catch (IOException e) {
             return 0L;
         }

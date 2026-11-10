@@ -76,7 +76,7 @@ class NoopJournalTest {
         assertThat(dir.resolve(ProjectBuilds.RECORD)).exists();
         assertThat(dir.resolve(BuildJournal.ENGINE_OWNER)).doesNotExist();
         assertThat(journal.get(locator).orElseThrow().running()).isFalse();
-        assertThat(NoopRecords.newestRequestId(new BuildJournal(tmp.resolve("builds"), HOUR)))
+        assertThat(new BuildJournal(tmp.resolve("builds"), HOUR).newestRequestId())
                 .as("a new engine numbers its requests on from the journal's")
                 .isEqualTo(12);
     }

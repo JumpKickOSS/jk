@@ -9,6 +9,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.TestClassWalls;
 import java.io.IOException;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -162,5 +164,71 @@ class IdleHousekeepingTest {
         assertThat(drained).as("the last plan still ends the drain").isTrue();
         assertThat(log).noneMatch(line -> line.contains("prune"));
         assertThat(dump).as("the successor's boundary retires it").exists();
+    }
+
+    @Test
+    void the_journal_is_pruned_at_most_hourly_however_many_boundaries_pass(@TempDir Path roots) {
+        BuildJournal journal = new BuildJournal(roots.resolve("builds"));
+        AtomicLong now = new AtomicLong(System.currentTimeMillis());
+        List<String> log = new CopyOnWriteArrayList<>();
+        IdleHousekeeping housekeeping = new IdleHousekeeping(
+                new AtomicInteger(0),
+                new ReentrantReadWriteLock(),
+                new JkHistoryConfig(true, 30, 512),
+                journal,
+                new DecisionQueue(),
+                () -> roots.resolve("metrics.jsonl"),
+                () -> BuildMetrics.Limits.DEFAULTS,
+                roots.resolve("engine"),
+                now::get,
+                log::add,
+                () -> false,
+                () -> false,
+                () -> {});
+        journal.append(oldRun("/a"), BuildJournal.Snapshot.NONE);
+        housekeeping.pruneJournal();
+        assertThat(journal.list()).as("the first boundary prunes").isEmpty();
+
+        journal.append(oldRun("/b"), BuildJournal.Snapshot.NONE);
+        now.addAndGet(60_000L);
+        housekeeping.pruneJournal();
+        assertThat(journal.list())
+                .as("a minute later the next boundary does not")
+                .hasSize(1);
+
+        now.addAndGet(IdleHousekeeping.JOURNAL_PRUNE_EVERY_MILLIS);
+        housekeeping.pruneJournal();
+        assertThat(journal.list()).as("an hour on it does").isEmpty();
+    }
+
+    private static BuildRecord oldRun(String dir) {
+        return new BuildRecord(
+                null,
+                0L,
+                BuildRecord.SCHEMA,
+                "build",
+                dir,
+                "g:a",
+                null,
+                1_600_000_000_000L,
+                1_600_000_000_100L,
+                100,
+                true,
+                false,
+                0,
+                "9.9-test",
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                "cli",
+                null,
+                null,
+                null,
+                false,
+                null,
+                0L,
+                null,
+                List.of());
     }
 }

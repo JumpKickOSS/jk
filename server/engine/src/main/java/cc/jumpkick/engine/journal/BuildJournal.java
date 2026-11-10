@@ -26,9 +26,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -917,13 +919,14 @@ public final class BuildJournal {
      */
     public PruneResult prune(long maxAgeMillis, long maxDiskBytes, long nowMillis, Predicate<String> dropDecision) {
         List<JournalPrune.Entry> candidates = new ArrayList<>();
+        Set<Object> billed = new HashSet<>();
         for (JournalIndex.Entry e : runs.newest()) {
             // Never reap a run that has not finished: the idle gate is checked before this call,
             // so a build admitted in between would otherwise have its `running` stub deleted out
             // from under it.
             if (e.running()) continue;
             long when = e.sortKey() > 0 ? e.sortKey() : idMillis(e.id(), e.dirMillis() > 0 ? e.dirMillis() : nowMillis);
-            candidates.add(JournalPrune.Entry.dir(e.dir(), when));
+            candidates.add(JournalPrune.Entry.dir(e.dir(), when, billed));
         }
         PruneResult result =
                 JournalPrune.prune(buildsRoot, candidates, maxAgeMillis, maxDiskBytes, nowMillis, dropDecision);
@@ -1031,6 +1034,17 @@ public final class BuildJournal {
         } catch (IOException e) {
             return null;
         }
+    }
+
+    /**
+     * The highest request id any run on this root carries: where a starting engine numbers on from,
+     * so a wait on its ids never reads an earlier engine's run. One pass over the index, which the
+     * engine's later reads reuse.
+     */
+    public long newestRequestId() {
+        long max = 0;
+        for (JournalIndex.Entry e : runs.newest()) max = Math.max(max, e.requestId());
+        return max;
     }
 
     /** Head reads the index has made: with {@link #recordReads}, the lookup-cost seam tests measure. */
