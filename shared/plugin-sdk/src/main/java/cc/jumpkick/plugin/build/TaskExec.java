@@ -7,6 +7,7 @@ import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
@@ -282,8 +283,12 @@ public interface TaskExec {
                     cmd = writeArgFile(cmd, argFile, charset);
                 }
             }
-            ProcessBuilder pb =
-                    new ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(output);
+            // No terminal behind a tool a step forks: a passphrase or "overwrite?" prompt reads end
+            // of input and fails at once, where an open pipe nobody writes would hang the step.
+            ProcessBuilder pb = new ProcessBuilder(cmd)
+                    .redirectErrorStream(true)
+                    .redirectOutput(output)
+                    .redirectInput(ProcessBuilder.Redirect.from(new File(Os.isWindows() ? "NUL" : "/dev/null")));
             if (cwd != null) pb.directory(cwd.toFile());
             pb.environment().putAll(env);
             if (argFile == null) return pb.start();
@@ -330,7 +335,9 @@ public interface TaskExec {
         }
 
         private static boolean needsArgFile(List<String> cmd) {
-            if (!Os.isWindows() || cmd.size() <= 1) return false;
+            // Every OS: a classpath or a class list past the threshold is one exec away from E2BIG
+            // on macOS and Linux too, not only past Windows' command-line limit.
+            if (cmd.size() <= 1) return false;
             String exe = Path.of(cmd.get(0)).getFileName().toString().toLowerCase(Locale.ROOT);
             if (!exe.equals("java") && !exe.equals("java.exe") && !exe.equals("javac") && !exe.equals("javac.exe")) {
                 return false;

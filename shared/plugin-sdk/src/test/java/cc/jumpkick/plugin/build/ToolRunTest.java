@@ -5,9 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JdkFingerprint;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -66,5 +70,17 @@ class ToolRunTest {
                         "--second",
                         "--third",
                         "--last");
+    }
+
+    /** A forked tool that prompts reads end of input at once rather than waiting on a pipe nobody writes. */
+    @Test
+    @Timeout(20)
+    void a_tool_that_reads_stdin_sees_end_of_input() throws Exception {
+        Assumptions.assumeTrue(Files.isExecutable(Path.of("/bin/sh")), "a POSIX shell");
+        List<String> lines = new ArrayList<>();
+        int exit = new TaskExec.ToolRun(Path.of("/bin/sh"))
+                .args(List.of("-c", "read answer || echo eof")).stream(lines::add);
+        assertThat(exit).isZero();
+        assertThat(lines).containsExactly("eof");
     }
 }
