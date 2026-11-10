@@ -53,6 +53,7 @@ Thumbs.db
 # --- Local tooling / scratch ---
 .claude/
 .cursor/
+.playwright-mcp/
 
 # IDE BSP launch config (local)
 .bsp/
