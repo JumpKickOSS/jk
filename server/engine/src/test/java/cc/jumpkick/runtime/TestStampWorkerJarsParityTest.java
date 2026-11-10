@@ -195,4 +195,18 @@ class TestStampWorkerJarsParityTest {
             zos.closeEntry();
         }
     }
+
+    @Test
+    void a_user_project_named_jk_cli_is_not_jks_own(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "jk-cli"
+                version = "1.0"
+                java = 25
+                """);
+        JkBuild project = JkBuildParser.parse(tmp.resolve("jk.toml"));
+        assertThat(PlannerSupport.needsNestedEngineIsolation(project))
+                .as("its tests get no redirected JK_HOME, CI=false or disabled HTTP")
+                .isFalse();
+    }
 }

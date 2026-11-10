@@ -135,14 +135,14 @@ class WorkspaceExecuteSelectionTest {
                 [application]
                 main = "ex.Main"
                 assembly = true
-                """);
+                """, "cc.jumpkick");
         Path cli = module("jk-cli", "cli", """
                 [application]
                 main = "cc.jumpkick.cli.Jk"
 
                 [test-dependencies]
                 jk-engine = { workspace = true }
-                """);
+                """, "cc.jumpkick");
         Path app = module("app", "app", """
                 [test-dependencies]
                 jk-engine = { workspace = true }
@@ -259,18 +259,22 @@ class WorkspaceExecuteSelectionTest {
     }
 
     private Path module(String name, String dirName, String extra) throws Exception {
+        return module(name, dirName, extra, "ex");
+    }
+
+    private Path module(String name, String dirName, String extra, String group) throws Exception {
         Path dir = tmp.resolve(dirName);
         Files.createDirectories(dir.resolve("src/main/java/ex"));
         Files.writeString(
                 dir.resolve("src/main/java/ex/Main.java"),
                 "package ex; public class Main { public static void main(String[] a) {} }\n");
         Files.writeString(dir.resolve("jk.toml"), """
-                group = "ex"
+                group = "%s"
                 name = "%s"
                 version = "1.0"
                 java = 25
                 %s
-                """.formatted(name, extra));
+                """.formatted(group, name, extra));
         Files.writeString(dir.resolve("jk-lock.toml"), "schema = 1\n");
         return dir;
     }

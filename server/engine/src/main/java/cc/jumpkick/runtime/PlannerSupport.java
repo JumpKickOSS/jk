@@ -460,10 +460,15 @@ public final class PlannerSupport {
      * test} that must not share the host engine's {@code JK_STATE_DIR} (host would die mid-suite).
      */
     public static boolean needsNestedEngineIsolation(JkBuild project) {
-        if (project == null || project.project() == null) return false;
-        String name = project.project().name();
-        if ("jk-cli".equals(name)) return true;
-        return "cc.jumpkick.cli.Jk".equals(project.mainClass());
+        if (project == null || !selfHosted(project)) return false;
+        return "jk-cli".equals(project.project().name()) || "cc.jumpkick.cli.Jk".equals(project.mainClass());
+    }
+
+    /** The group of jk's own modules: a project named {@code jk-cli} under any other is the user's. */
+    static final String SELF_GROUP = "cc.jumpkick";
+
+    private static boolean selfHosted(JkBuild project) {
+        return project.project() != null && SELF_GROUP.equals(project.project().group());
     }
 
     /** The workspace module a nested-engine suite launches, from its assembly jar. */
@@ -471,7 +476,7 @@ public final class PlannerSupport {
 
     /** True when {@code module} is the engine a nested-engine suite launches. */
     public static boolean isEngineModule(JkBuild module) {
-        return module.project() != null && ENGINE_MODULE.equals(module.project().name());
+        return selfHosted(module) && ENGINE_MODULE.equals(module.project().name());
     }
 
     /**
