@@ -131,7 +131,7 @@ public final class WireStream {
     /**
      * Read a job's stream to its terminal. The job's {@code jid} is registered as this process's
      * cancel handle for as long as the stream is live, so Ctrl-C ({@link
-     * EngineClient#cancelBestEffortForInterrupt}) can cancel it by id — the only handle that works
+     * EngineCancel#cancelBestEffortForInterrupt}) can cancel it by id — the only handle that works
      * for a verb whose journal dir is the cache rather than the user's project, which is every
      * verb that takes no {@code dir} ({@code jk cache clean}, {@code jk tool resolve}, {@code jk
      * tool run <script>}).

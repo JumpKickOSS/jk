@@ -715,9 +715,13 @@ population = { examined = 4 }
 [cli-test-isolated-state.populations]
 "clients/cli" = { examined = 330 }
 
+[cli-test-shared-store-trees]
+[cli-test-shared-store-trees.populations]
+"clients/cli" = { examined = 460 }
+
 [clock-owner]
 [clock-owner.populations]
-"clients/cli" = { classes = 763, sites = 47305 }
+"clients/cli" = { classes = 812, sites = 52432 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
@@ -739,10 +743,6 @@ population = { examined = 4 }
 [[clock-owner.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.cli.CliFailure#appendLog([Ljava/lang/String;Ljava/lang/Throwable;)V -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.engine.EngineCancel#cancelBestEffortForInterrupt(Ljava/nio/file/Path;)V -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
@@ -1455,6 +1455,10 @@ population = { examined = 1929 }
 [install-tests-redirect-m2]
 population = { files = 1888 }
 
+[jdk-installs-in-engine]
+[jdk-installs-in-engine.populations]
+"clients/cli" = { classes = 812, sites = 52432 }
+
 [jdk-removal-confined]
 [jdk-removal-confined.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
@@ -1879,6 +1883,7 @@ population = { files = 2240 }
 
 [one-module-planner]
 [one-module-planner.populations]
+"clients/cli" = { classes = 812, sites = 0 }
 "plugins/quarkus" = { classes = 19, sites = 0 }
 "server/engine" = { classes = 1342, sites = 90304 }
 "server/io" = { classes = 59, sites = 0 }

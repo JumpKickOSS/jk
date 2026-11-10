@@ -5,13 +5,10 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.WorkspaceScan;
-import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Signals;
 import cc.jumpkick.terminal.Terminals;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -24,7 +21,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>Order matters:
  *
  * <ol>
- * <li>Cooperative session cancel + engine {@code cancel-request} (jid / project dir) — same
+ * <li>Cooperative session cancel + engine {@code cancel-request} for this process's jobs — same
  * kill path as the web UI and {@code jk cancel}
  * <li>Settle the active plan region ("Build job was cancelled by user took …")
  * <li>Run the verb's interrupt hooks — the child a {@code jk run} owns, and {@code jk dev}'s app
@@ -165,23 +162,10 @@ public final class GlobalCancel {
         // background thread so the user sees the cancelled settle immediately instead of a
         // still-animating spinner while a wedged engine eats socket watchdogs.
         SessionContext.current().cancel().cancel();
-        // The session's working dir honors -C/--dir (the raw process CWD does not),
-        // and jobs register their workspace-root ENTRY dir — resolve to it so Ctrl-C from a
-        // member dir cancels the covering workspace build.
-        Path invocationDir;
-        try {
-            invocationDir = SessionContext.current().workingDir();
-        } catch (RuntimeException e) {
-            invocationDir = null;
-        }
-        if (invocationDir == null) {
-            invocationDir = WorkingDirectory.current();
-        }
-        Path dir = WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
         Thread rpc = Thread.ofPlatform()
                 .daemon(true)
                 .name("jk-sigint-cancel")
-                .start(() -> EngineCancel.cancelBestEffortForInterrupt(dir));
+                .start(EngineCancel::cancelBestEffortForInterrupt);
         // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
         settleAsCanceled();
 

@@ -9,8 +9,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The jids this CLI process has started, noted from {@code job-start} and forgotten on the stream's
  * terminal or a positive cancel ack. {@code LIVE} is process-global on purpose — one set per CLI
- * process — so the Ctrl-C handler can cancel every job this process owns as a best-effort supplement
- * to the dir-scoped cancel, from whatever thread the signal lands on.
+ * process — so the Ctrl-C handler can cancel every job this process owns, and only those, from
+ * whatever thread the signal lands on.
  */
 public final class ActiveJobs {
 

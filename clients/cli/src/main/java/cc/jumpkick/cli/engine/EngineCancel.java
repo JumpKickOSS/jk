@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -14,6 +15,7 @@ import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Optional;
 
 /**
@@ -65,27 +67,36 @@ public final class EngineCancel {
      * but <em>never</em> spawns or replaces an engine and never blocks long. Call this from the
      * Ctrl-C handler before {@code halt}; the hard exit is the backup if this is too late.
      *
-     * <p>Cancels every tracked jid from this CLI process, then a dir-scoped cancel for {@code cwd}.
-     * A jid whose {@code job-start} arrives after the signal is cancelled by the thread that reads it
-     * (see {@link ActiveJobs#interrupt}). All failures are swallowed.
+     * <p>Cancels every tracked jid from this CLI process, and only those: another client's jobs in
+     * the same workspace are not this signal's to stop. A jid whose {@code job-start} arrives after
+     * the signal is cancelled by the thread that reads it (see {@link ActiveJobs#interrupt}), and
+     * the engine cancels a job whose connection closes. All failures are swallowed.
      */
-    public static void cancelBestEffortForInterrupt(Path cwd) {
+    public static void cancelBestEffortForInterrupt() {
+        try {
+            cancelTracked(EnginePaths.activeSocket(EnginePaths.current()));
+        } catch (Throwable ignored) {
+            // never throw into the SIGINT handler
+        }
+    }
+
+    /** {@link #cancelBestEffortForInterrupt} against the engine at {@code socket}. */
+    static void cancelTracked(Path socket) {
+        cancelBestEffort(socket, ActiveJobs.interrupt(late -> cancelQuietly(socket, late)));
+    }
+
+    /**
+     * Cancel each of {@code jids} at the engine on {@code socket}, never spawning or replacing an
+     * engine and giving up after a few seconds in all. Failures are swallowed.
+     */
+    public static void cancelBestEffort(Path socket, Collection<Long> jids) {
         try {
             // Overall deadline: each RPC self-limits at SOCKET_TIMEOUT_MILLIS, but N stale jids
             // against a wedged engine would still serialize to N×2s of dead air.
-            long deadline = System.nanoTime() + 3 * SOCKET_TIMEOUT_MILLIS * 1_000_000L / 2;
-            Path socket = EnginePaths.activeSocket(EnginePaths.current());
-            for (long jid : ActiveJobs.interrupt(late -> cancelQuietly(socket, late))) {
-                if (System.nanoTime() >= deadline) break;
+            long deadline = Clock.SYSTEM.nanos() + 3 * SOCKET_TIMEOUT_MILLIS * 1_000_000L / 2;
+            for (long jid : jids) {
+                if (Clock.SYSTEM.nanos() >= deadline) break;
                 cancelQuietly(socket, jid);
-            }
-            if (cwd != null && System.nanoTime() < deadline) {
-                try {
-                    Optional<String> ack = cancelOnce(socket, ProtoLifecycle.cancelRequestForDir(cwd.toString()), -1);
-                    if (ack.isPresent()) ActiveJobs.forgetAll();
-                } catch (Exception ignored) {
-                    // best-effort
-                }
             }
         } catch (Throwable ignored) {
             // never throw into the SIGINT handler
