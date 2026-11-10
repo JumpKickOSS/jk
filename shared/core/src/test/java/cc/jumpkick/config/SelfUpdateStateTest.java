@@ -19,7 +19,7 @@ class SelfUpdateStateTest {
         SelfUpdateState written = SelfUpdateState.update(file, s -> s.withCheck(T, "0.17.0", "\"etag-1\"")
                 .withFirstSeen(T.minusSeconds(60))
                 .withHold("0.16.2", "0.17.0")
-                .withSnoozeUntil(T.plusSeconds(3600))
+                .withSnooze("0.17.0", T.plusSeconds(3600))
                 .withInteractiveSeen(T)
                 .withNotice("0.16.2"));
 

@@ -28,6 +28,10 @@ public sealed interface Icon {
         return new Glyph(Glyphs.BANG, Glyphs.BANG_PLAIN);
     }
 
+    static Icon up() {
+        return new Glyph(Glyphs.UP, Glyphs.UP_PLAIN);
+    }
+
     static Icon cancelled() {
         return new Glyph(Glyphs.CANCELLED, Glyphs.CANCELLED_PLAIN);
     }

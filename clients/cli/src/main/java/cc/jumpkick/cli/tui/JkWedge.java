@@ -116,6 +116,11 @@ public final class JkWedge implements Widget {
         return warning(title, RichText.empty());
     }
 
+    /** The yellow {@code ↑ Update} chip that offers or announces a new JumpKick release. */
+    public static JkWedge update(String title, RichText message) {
+        return new JkWedge(Icon.up(), title, message, Variant.WARNING, null);
+    }
+
     /** Single painted line (wedge is always one row). */
     public String renderLine(RenderContext ctx) {
         String glyph = icon.paint(ctx);

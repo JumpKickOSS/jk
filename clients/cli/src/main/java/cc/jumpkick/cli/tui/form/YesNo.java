@@ -25,6 +25,11 @@ public final class YesNo implements Question<Boolean> {
         this.focusYes = Boolean.TRUE.equals(defaultValue);
     }
 
+    /** Whether Yes holds the focus now; Enter would answer it. */
+    boolean focusYes() {
+        return focusYes;
+    }
+
     @Override
     public String label() {
         return label;

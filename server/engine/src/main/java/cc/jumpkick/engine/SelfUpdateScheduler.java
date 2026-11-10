@@ -7,6 +7,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.SelfUpdateState;
+import cc.jumpkick.config.UpdateOffer;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ProcessEnv;
@@ -44,7 +45,7 @@ import org.jspecify.annotations.Nullable;
 final class SelfUpdateScheduler implements AutoCloseable {
 
     /** Gap between checks that reached the release site. */
-    static final Duration CHECK_EVERY = Duration.ofHours(12);
+    static final Duration CHECK_EVERY = UpdateOffer.CHECK_EVERY;
 
     /** Gap before a check, or a download, that failed is tried again. */
     static final Duration RETRY_AFTER = Duration.ofHours(1);

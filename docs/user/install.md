@@ -74,10 +74,23 @@ jk self update 0.16.2       # go back to a release, and hold there
 | Value | What happens |
 |-------|--------------|
 | `"auto"` | Updates as above, without asking. The default on CI and wherever no one answers a terminal (coding agents, scripts) |
-| `"ask"` | The engine downloads; the next command run at a terminal offers it: `[Y]es / [n]ot now / [a]lways / ne[v]er`. *Always* writes `"auto"`, *never* writes `"never"`, *not now* asks again in a day. The default on a machine where someone uses JumpKick at a terminal |
+| `"ask"` | The engine downloads and waits; the offer below is the only way in. The default on a machine where someone uses JumpKick at a terminal |
 | `"never"` | No checks and no downloads. `jk self update` still updates by hand |
 
-Before 1.0 updates are compulsory: `"ask"` and `"never"` in the config file are ignored (JumpKick says
+Once a newer release is downloaded, the next command you run at a terminal offers it after its
+own output:
+
+```text
+ ↑ Update  A new version of JumpKick is available. Update Now?  Yes  No
+```
+
+Yes (or Enter) installs it now; running builds finish on the old engine. No asks again after the
+next check, 12 hours at most, or as soon as a newer release is downloaded; it quiets the same offer
+in the web console and in MCP clients too. Commands that failed, print machine output (`--json`,
+`-O`, `--agent`) or run without a terminal never ask.
+
+Before 1.0 updates are compulsory, and the engine installs a downloaded release at its next quiet
+spell whatever you answered; Yes only gets it sooner. `"ask"` and `"never"` in the config file are ignored (JumpKick says
 so once), and only `JK_SELF_UPDATE=never` turns them off. Development builds (`-SNAPSHOT`) never
 update themselves. On CI, a JumpKick home less than a day old (a fresh runner) does not update itself;
 the installer or wrapper that created it already fetched the latest release.

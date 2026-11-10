@@ -25,6 +25,9 @@ public final class Glyphs {
     /** Warning marker — U+203C double exclamation. Paint with {@code Theme.warning()}. */
     public static final String BANG = "‼";
 
+    /** Update marker — U+2191 upwards arrow, on the yellow chip that offers a new release. */
+    public static final String UP = "↑";
+
     /**
      * Cancelled-job marker — U+229B circled asterisk. Same glyph as {@code jk jobs} / history
      * cancelled rows. Paint with the cancelled (explain-pill gray) chip, not the red fail chip.
@@ -60,6 +63,7 @@ public final class Glyphs {
     public static final String CHECK_PLAIN = "+";
     public static final String CROSS_PLAIN = "!";
     public static final String BANG_PLAIN = "!";
+    public static final String UP_PLAIN = "^";
     /** Cancelled under plain — {@code o}, matching {@code jk jobs} ASCII pills. */
     public static final String CANCELLED_PLAIN = "o";
     /** Unchecked / pending box under plain — bracket form so it still reads as a checkbox. */

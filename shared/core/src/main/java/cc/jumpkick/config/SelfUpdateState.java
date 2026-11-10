@@ -29,7 +29,8 @@ import org.jspecify.annotations.Nullable;
  * first-seen = "2026-10-01T08:00:00Z"     # the first time this home ran the scheduler
  * held = "0.16.2"                         # a deliberate downgrade: no auto-update until cleared
  * held-from = "0.17.0"
- * snooze-until = "2026-10-31T09:00:00Z"   # "not now" at the prompt
+ * snooze-until = "2026-10-31T09:00:00Z"   # "not now" to an offered update, on any surface
+ * snooze-version = "0.17.0"               # the version that answer was about
  * interactive-seen = "2026-10-30T09:00:00Z"
  * notice = "0.16.2"                       # the version that last printed the pre-1.0 notice
  * </pre>
@@ -43,6 +44,7 @@ public record SelfUpdateState(
         @Nullable String held,
         @Nullable String heldFrom,
         @Nullable Instant snoozeUntil,
+        @Nullable String snoozeVersion,
         @Nullable Instant interactiveSeen,
         @Nullable String notice) {
 
@@ -74,6 +76,7 @@ public record SelfUpdateState(
             b.held = v.get("held");
             b.heldFrom = v.get("held-from");
             b.snoozeUntil = instant(v, "snooze-until");
+            b.snoozeVersion = v.get("snooze-version");
             b.interactiveSeen = instant(v, "interactive-seen");
             b.notice = v.get("notice");
             return b.build();
@@ -145,8 +148,12 @@ public record SelfUpdateState(
         });
     }
 
-    public SelfUpdateState withSnoozeUntil(@Nullable Instant until) {
-        return with(b -> b.snoozeUntil = until);
+    /** "Not now" to {@code version}, until {@code until}; see {@link UpdateOffer}. */
+    public SelfUpdateState withSnooze(String version, Instant until) {
+        return with(b -> {
+            b.snoozeVersion = version;
+            b.snoozeUntil = until;
+        });
     }
 
     public SelfUpdateState withInteractiveSeen(Instant at) {
@@ -173,6 +180,7 @@ public record SelfUpdateState(
         put(v, "held", held);
         put(v, "held-from", heldFrom);
         put(v, "snooze-until", snoozeUntil);
+        put(v, "snooze-version", snoozeVersion);
         put(v, "interactive-seen", interactiveSeen);
         put(v, "notice", notice);
         return MinimalToml.writeFlat(v);
@@ -219,6 +227,9 @@ public record SelfUpdateState(
         Instant snoozeUntil;
 
         @Nullable
+        String snoozeVersion;
+
+        @Nullable
         Instant interactiveSeen;
 
         @Nullable
@@ -235,6 +246,7 @@ public record SelfUpdateState(
             held = s.held;
             heldFrom = s.heldFrom;
             snoozeUntil = s.snoozeUntil;
+            snoozeVersion = s.snoozeVersion;
             interactiveSeen = s.interactiveSeen;
             notice = s.notice;
         }
@@ -249,6 +261,7 @@ public record SelfUpdateState(
                     held,
                     heldFrom,
                     snoozeUntil,
+                    snoozeVersion,
                     interactiveSeen,
                     notice);
         }

@@ -5,17 +5,24 @@ import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.PreparedUpdate;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.Interactivity;
-import cc.jumpkick.cli.tui.Prompt;
+import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.cli.tui.form.InlineYesNo;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.SelfUpdateState;
-import cc.jumpkick.config.UserConfigEditor;
+import cc.jumpkick.config.UpdateOffer;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.terminal.TerminalSession;
+import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.util.JkDirs;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -26,16 +33,18 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * What a command at a terminal does once it has finished: record that a person uses jk here (the
- * engine's default asks first where one does), print the notice that a pre-1.0 {@code
- * self-update = "ask"} or {@code "never"} is ignored, and, under {@code ask}, offer an update the
- * engine has downloaded. A command that failed, speaks a machine format, or manages jk itself is
- * left alone.
+ * What a command at a terminal does once it has finished: record that a person uses jk here, print
+ * the notice that a pre-1.0 {@code self-update = "ask"} or {@code "never"} is ignored, and offer an
+ * update the engine has downloaded:
+ *
+ * <pre> ↑ Update  A new version of JumpKick is available. Update Now?  [Yes]  No </pre>
+ *
+ * <p>The offer comes whenever updating is on and a newer release is staged ({@link UpdateOffer}):
+ * before 1.0 that is always, and the engine installs the update at its next quiet spell anyway, so
+ * Yes only gets it sooner. No quiets the offer on every surface until the next check. A command
+ * that failed, speaks a machine format, or manages jk itself is left alone.
  */
 final class SelfUpdatePrompt {
-
-    /** How long "not now" keeps the prompt quiet. */
-    static final Duration SNOOZE = Duration.ofHours(24);
 
     /** How stale the "a person was here" stamp may get before it is written again. */
     static final Duration SEEN_REFRESH = Duration.ofHours(1);
@@ -43,13 +52,8 @@ final class SelfUpdatePrompt {
     /** Commands after which jk never prompts: jk managing itself, and long-lived protocol servers. */
     static final Set<String> QUIET_COMMANDS = Set.of("self", "engine", "mcp", "lsp", "completion", "shell");
 
-    /** The prompt's answers. */
-    enum Answer {
-        YES,
-        NOT_NOW,
-        ALWAYS,
-        NEVER
-    }
+    /** The question on the yellow chip. */
+    static final String QUESTION = "A new version of JumpKick is available. Update Now?";
 
     private SelfUpdatePrompt() {}
 
@@ -88,38 +92,31 @@ final class SelfUpdatePrompt {
                             + " jk updates itself until then");
             state = SelfUpdateState.update(s -> s.withNotice(version));
         }
-        if (SelfUpdatePolicy.decide(version, env, configured, state, true).action() != SelfUpdatePolicy.Action.ASK) {
+        if (SelfUpdatePolicy.decide(version, env, configured, state, true).action() == SelfUpdatePolicy.Action.OFF) {
             return;
         }
-        if (state.snoozeUntil() != null && now.isBefore(state.snoozeUntil())) return;
-        Optional<PreparedUpdate> ready =
-                PreparedUpdate.read(EngineInstall.current().engineHome()).filter(p -> p.newerThan(version));
-        if (ready.isEmpty()) return;
-        String next = ready.get().version();
-        Answer answer = new Prompt<>(
-                        RichText.plain("jk " + next + " is ready (this is " + version + "). Update now?"),
-                        List.of(
-                                new Prompt.Binding<>('y', "update", Answer.YES),
-                                new Prompt.Binding<>('n', "not now", Answer.NOT_NOW),
-                                new Prompt.Binding<>('a', "always update", Answer.ALWAYS),
-                                new Prompt.Binding<>('v', "never update", Answer.NEVER)),
-                        Answer.YES,
-                        Answer.NOT_NOW)
-                .ask();
-        switch (answer) {
-            case YES -> install(next);
-            case NOT_NOW -> SelfUpdateState.update(s -> s.withSnoozeUntil(now.plus(SNOOZE)));
-            case ALWAYS -> {
-                UserConfigEditor.setSelfUpdate(JkDirs.userConfigFile(), SelfUpdatePolicy.Mode.AUTO);
-                install(next);
-            }
-            case NEVER -> {
-                UserConfigEditor.setSelfUpdate(JkDirs.userConfigFile(), SelfUpdatePolicy.Mode.NEVER);
-                CliOutput.stderr()
-                        .println("jk: wrote " + SelfUpdatePolicy.KEY + " = \"never\" to " + JkDirs.userConfigFile()
-                                + "; `jk self update` still updates by hand");
-            }
+        String staged = PreparedUpdate.read(EngineInstall.current().engineHome())
+                .map(PreparedUpdate::version)
+                .orElse(null);
+        Optional<String> offer = UpdateOffer.due(state, staged, version, now);
+        if (offer.isEmpty()) return;
+        String next = offer.get();
+        if (ask()) {
+            install(next);
+        } else {
+            SelfUpdateState.update(s -> UpdateOffer.snooze(s, next, now));
         }
+    }
+
+    /** The offer on the controlling terminal; anything but Yes (No, Esc, end of input) is "not now". */
+    private static boolean ask() {
+        if (!Interactivity.canAsk()) return false;
+        TerminalSession tty = Terminals.controlling();
+        if (!tty.isLive()) return false;
+        RenderContext ctx = RenderContext.current();
+        String lead = JkWedge.update("Update", RichText.plain(QUESTION)).renderLine(ctx);
+        var in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        return InlineYesNo.ask(tty, CliOutput.stderr(), in, ctx, lead, true).orElse(false);
     }
 
     /** {@code jk self update <version>} on the PATH client: installs the download and hands the engine over. */
