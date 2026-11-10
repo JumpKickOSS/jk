@@ -24,6 +24,12 @@ import org.junit.jupiter.api.io.TempDir;
 /** Machine JSONL shape + output mode aliases (docs/user/machine-output.md). */
 class JsonlShapeTest {
 
+    @Test
+    void a_replayed_warning_says_so_and_any_other_does_not() {
+        assertThat(JsonlShape.warn("compile-java", "javac", "w", true)).contains("\"replayed\":true");
+        assertThat(JsonlShape.warn("compile-java", "javac", "w", false)).doesNotContain("replayed");
+    }
+
     @BeforeEach
     void liveFile() {
         // Reads the transcript while it is written; the lazy open has tests of its own.

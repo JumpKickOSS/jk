@@ -484,6 +484,7 @@ public final class ForkedJavac {
             List<String> aot, List<String> module, PluginTuning tuning, @Nullable Long xmxBytes) {
         List<String> flags = new ArrayList<>(aot);
         flags.addAll(JdkCompilerAccess.JVM_FLAGS);
+        flags.addAll(JdkCompilerAccess.LOCALE_FLAGS);
         flags.addAll(JvmOptions.compilerWorkerFlags(tuning, xmxBytes));
         // A worker can wait minutes for its next build; give back what malloc holds.
         flags.add(TRIM_NATIVE_HEAP);

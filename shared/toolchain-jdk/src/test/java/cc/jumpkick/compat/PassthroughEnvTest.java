@@ -17,6 +17,7 @@ class PassthroughEnvTest {
         Map<String, String> env = new HashMap<>();
         env.put("JAVA_TOOL_OPTIONS", "-Xmx512m");
         env.put("_JAVA_OPTIONS", "-Dfoo=bar");
+        env.put("JDK_JAVA_OPTIONS", "-Duser.language=ja");
         env.put("MAVEN_OPTS", "-Xmx2g");
         env.put("GRADLE_OPTS", "-Dorg.gradle.daemon=false");
         env.put("KOTLIN_HOME", "/opt/kotlin");
@@ -30,7 +31,13 @@ class PassthroughEnvTest {
 
         assertThat(env)
                 .doesNotContainKeys(
-                        "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_HOME", "MAVEN_OPTS", "GRADLE_OPTS", "KOTLIN_HOME");
+                        "JAVA_TOOL_OPTIONS",
+                        "_JAVA_OPTIONS",
+                        "JDK_JAVA_OPTIONS",
+                        "JDK_HOME",
+                        "MAVEN_OPTS",
+                        "GRADLE_OPTS",
+                        "KOTLIN_HOME");
         assertThat(env).containsEntry("PATH", "/usr/bin:/bin");
         assertThat(env).containsEntry("HOME", "/home/alice");
     }

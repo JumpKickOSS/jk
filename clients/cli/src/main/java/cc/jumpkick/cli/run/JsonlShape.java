@@ -284,8 +284,19 @@ public final class JsonlShape {
     }
 
     static String warn(String step, String code, String msg) {
-        return step(new WarnEvent("", step, code, msg, "", "", "", "", "", "", "", "", 0, 0, 0, List.of(), "", 0, 0)
+        return warn(step, code, msg, false);
+    }
+
+    /** A warning as {@code -O jsonl} writes it; {@code replayed} when a step that did not run said it again. */
+    static String warn(String step, String code, String msg, boolean replayed) {
+        return step(new WarnEvent(
+                        "", step, code, msg, "", "", "", "", "", "", "", "", 0, 0, 0, List.of(), "", 0, 0, replayed)
                 .encode());
+    }
+
+    /** A replayed warning of {@code module}, a module the build did not run, as {@code -O jsonl} writes it. */
+    public static String moduleWarn(String module, String step, String code, String msg) {
+        return Jsonl.append(warn(step, code, msg, true), "\"module\":" + Jsonl.quote(module));
     }
 
     static String error(String step, String code, String msg) {

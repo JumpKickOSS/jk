@@ -180,6 +180,12 @@ public final class JournalWriter {
         if (a != null) a.addPreflightFailure(stage, millis, reason);
     }
 
+    /** A compiler warning a module the run did not build said again; the reports carry it as the module's. */
+    public void accModuleWarning(long requestId, String dir, String step, String code, String message) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.addWarning(dir, step, code, message);
+    }
+
     public void accRunErrors(long requestId, List<String> errors) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null) a.addRunErrors(errors);

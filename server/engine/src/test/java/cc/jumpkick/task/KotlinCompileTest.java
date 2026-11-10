@@ -187,6 +187,7 @@ class KotlinCompileTest {
         Files.createDirectories(state);
         write(state.resolve("caches.bin"), "state");
         LangCompile.recordTree(state, "the-state-key", Map.of("x/A.class", "aa", "x/B.class", "bb"));
+        CompileWarnings.writeLedger(state, List.of());
 
         compileMissing(req, cas, cache);
         assertThat(state.resolve("caches.bin"))
@@ -198,6 +199,34 @@ class KotlinCompileTest {
         assertThat(state.resolve("caches.bin"))
                 .as("a tree short of B starts the state over")
                 .doesNotExist();
+    }
+
+    /** A state without its warnings ledger cannot say what the sources it leaves alone warned: it starts over. */
+    @Test
+    void a_state_without_its_warnings_ledger_starts_over(@TempDir Path dir) throws IOException {
+        Cas cas = new Cas(dir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, dir.resolve("actions"));
+        Path src = write(dir.resolve("A.kt"), "package x\nclass A");
+        Path out = dir.resolve("out");
+        Path state = dir.resolve("ic");
+        KotlincRequest req = KotlincRequest.builder()
+                .sources(List.of(src))
+                .classpath(List.of())
+                .outputDir(out)
+                .jvmTarget(21)
+                .workerClasspath(List.of(write(dir.resolve("worker.jar"), "not a real jar")))
+                .javaHome(Path.of(System.getProperty("java.home")))
+                .workingDir(state)
+                .build();
+        Files.createDirectories(out.resolve("x"));
+        write(out.resolve("x/A.class"), "A");
+        Files.createDirectories(state);
+        write(state.resolve("caches.bin"), "state");
+        LangCompile.recordTree(state, "the-state-key", Map.of("x/A.class", "aa"));
+
+        compileMissing(req, cas, cache);
+
+        assertThat(state.resolve("caches.bin")).doesNotExist();
     }
 
     /** A compile with no record: the bogus worker cannot run it, so only what happens before the fork is observed. */

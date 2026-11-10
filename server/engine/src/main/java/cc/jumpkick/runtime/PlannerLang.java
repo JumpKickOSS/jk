@@ -35,11 +35,11 @@ import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.KotlinClasspathAbi;
 import cc.jumpkick.task.LangCompile;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -184,14 +184,12 @@ public final class PlannerLang {
      * token}. Checked and written through {@link FreshnessStamp.ClasspathTokens}, so the stamp
      * compares tokens and never a jar's mtime or content identity: a sibling rewritten with the
      * same ABI leaves the stamp fresh and the compile is answered without computing a key, while
-     * one whose ABI moved is stale before any source mtime is read. Sorted: the stamp does not care
-     * about classpath order any more than the key does. The option-bearing facts ride the digest
-     * ({@link KotlinConfig#digest}) beside it.
+     * one whose ABI moved is stale before any source mtime is read. In classpath order, as the key
+     * spells it. The option-bearing facts ride the digest ({@link KotlinConfig#digest}) beside it.
      */
     static List<String> kotlinStampTokens(List<Path> classpath, KotlinClasspathAbi.Snapshotter snapshotter)
             throws IOException {
-        List<String> tokens = new ArrayList<>(KotlinClasspathAbi.tokens(classpath, snapshotter));
-        tokens.sort(Comparator.naturalOrder());
+        List<String> tokens = KotlinClasspathAbi.tokens(classpath, snapshotter);
         List<String> lines = new ArrayList<>(tokens.size());
         for (String token : tokens) lines.add("cp:" + token);
         return lines;
@@ -391,8 +389,18 @@ public final class PlannerLang {
         String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
         parts.add("groovy:" + (groovyVersion == null ? "" : groovyVersion));
         parts.add("jvmTarget:" + CompileSupport.effectiveRelease(release, JvmOptions.hostFeature(javaHome)));
+        parts.add("jdk:" + groovyJdkToken());
         for (String arg : groovyArgs(project, lock, moduleDir)) parts.add("arg:" + arg);
         return FreshnessStamp.optionsDigest(parts);
+    }
+
+    /** The JDK groovyc runs on, as its action key spells it: the engine's own. */
+    private static String groovyJdkToken() {
+        try {
+            return ActionKey.jdkToken(JavaHomes.runningJavaHome());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** {@link #groovyStampDigest} from the running step's published state. */

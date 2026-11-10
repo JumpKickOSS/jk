@@ -15,6 +15,7 @@ import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -198,6 +199,7 @@ public final class WorkerCompileDriver {
         List<String> jvmFlags = new ArrayList<>(flags);
         // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
         jvmFlags.add("--enable-native-access=ALL-UNNAMED");
+        jvmFlags.addAll(JdkCompilerAccess.LOCALE_FLAGS);
         // One worker argv assembly for the whole engine (PluginLoader.command); JvmOptions
         // re-heads it with the java binary plus this job's memory flags.
         List<String> assembled = PluginLoader.command(hostJavaHome, classpath, jvmFlags, List.of(PluginProtocol.SERVE));
@@ -237,6 +239,8 @@ public final class WorkerCompileDriver {
             Served served = served(hostJavaHome, fork.classpath(), fork.jvmFlags(), overrideXmx);
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             @Nullable String[] status = {null};
+            // The sources an incremental worker said it recompiled; null when it said nothing.
+            List<List<Path>> compiled = new ArrayList<>(1);
             // Non-protocol lines (JDK/compiler chatter) are dropped on success, but a plugin
             // that DIES before speaking protocol (a broken classpath, a JVM crash) leaves its
             // whole story there — keep a bounded tail and surface it on failure, or the build
@@ -246,7 +250,8 @@ public final class WorkerCompileDriver {
                     new WarmWorkers.Launch(
                             job.tool(),
                             served.command(),
-                            job.env().withJavaHome(hostJavaHome),
+                            WorkerEnv.strict()
+                                    .with(job.env().withJavaHome(hostJavaHome).compilerEnvironment()),
                             fork.prefix(),
                             HeapScope.get()),
                     fork.spec(),
@@ -257,6 +262,11 @@ public final class WorkerCompileDriver {
                             if (PluginProtocol.DIAGNOSTIC.equals(t))
                                 diagnostics.add(fork.decode().apply(json));
                             else if (PluginProtocol.RESULT.equals(t)) status[0] = Jsonl.str(json, "status");
+                            else if (PluginProtocol.COMPILED.equals(t)) {
+                                if (compiled.isEmpty()) compiled.add(new ArrayList<>());
+                                for (String f : Jsonl.strArray(json, "files"))
+                                    compiled.getFirst().add(Path.of(f));
+                            }
                         }
 
                         @Override
@@ -278,7 +288,11 @@ public final class WorkerCompileDriver {
                         new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, tail.toString()));
             }
             return new Outcome(
-                    new CompileResult(success, diagnostics), cause, served.xmx(), served.planned(), job.tool());
+                    new CompileResult(success, diagnostics, compiled.isEmpty() ? null : compiled.getFirst()),
+                    cause,
+                    served.xmx(),
+                    served.planned(),
+                    job.tool());
         } finally {
             Files.deleteIfExists(fork.spec());
         }

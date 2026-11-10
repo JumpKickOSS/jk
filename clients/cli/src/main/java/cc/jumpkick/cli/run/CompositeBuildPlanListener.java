@@ -83,6 +83,12 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
+    public void warn(String step, String code, String message, boolean replayed) {
+        a.warn(step, code, message, replayed);
+        b.warn(step, code, message, replayed);
+    }
+
+    @Override
     public void error(String step, String code, String message) {
         a.error(step, code, message);
         b.error(step, code, message);

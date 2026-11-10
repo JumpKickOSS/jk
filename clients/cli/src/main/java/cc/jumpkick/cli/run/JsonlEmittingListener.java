@@ -80,7 +80,12 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
 
     @Override
     public void warn(String step, String code, String msg) {
-        line(JsonlShape.warn(step, code, msg), EngineProtocol.WARN);
+        warn(step, code, msg, false);
+    }
+
+    @Override
+    public void warn(String step, String code, String msg, boolean replayed) {
+        line(JsonlShape.warn(step, code, msg, replayed), EngineProtocol.WARN);
     }
 
     @Override

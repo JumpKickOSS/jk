@@ -506,7 +506,7 @@ class JkResultsAgentTest {
                 + " give it up (the default keyring is locked); the repository is tried without it.";
         BuildAccumulator a = new BuildAccumulator("lock", "/ws/rest-service", "com.example:rest-service", "cli");
         a.addTask("/ws/rest-service", "lock", "resolve", "FAIL", 400, 0);
-        a.addNotice(RunNotices.CODE, keychain);
+        a.addWarning(null, null, RunNotices.CODE, keychain);
         BuildRecord base = a.toRecord(1_000, false, 400, "0.14.0", null);
         BuildRecord.Diag err = new BuildRecord.Diag("error", "/ws/rest-service", "lock", "verbatim", """
                 Cannot resolve dependencies:
@@ -532,8 +532,8 @@ class JkResultsAgentTest {
                 + " give it up (the default keyring is locked); the repository is tried without it.";
         BuildAccumulator a = new BuildAccumulator("build", "/ws/rest-service", "com.example:rest-service", "cli");
         a.addTask("/ws/rest-service", "build", "resolve", "SUCCESS", 400, 0);
-        a.addNotice(RunNotices.CODE, keychain);
-        a.addNotice(RunNotices.CODE, "jk: notice: a second note");
+        a.addWarning(null, null, RunNotices.CODE, keychain);
+        a.addWarning(null, null, RunNotices.CODE, "jk: notice: a second note");
         BuildRecord base = a.toRecord(1_000, false, 400, "0.14.0", null);
         BuildRecord r = record("build", true, false, 400, null, base.diagnostics(), base.steps());
 

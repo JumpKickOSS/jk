@@ -80,6 +80,14 @@ class ProtoEventsFrozenBytesTest {
         assertThat(ProtoEvents.warn("a/b", "compile-java", "W1", "unchecked"))
                 .isEqualTo(
                         "{\"type\":\"warn\",\"dir\":\"a/b\",\"task\":\"compile-java\",\"code\":\"W1\",\"message\":\"unchecked\"}");
+        String replayed = ProtoEvents.warn("a/b", "compile-java", "W1", "unchecked", true);
+        assertThat(replayed)
+                .isEqualTo(
+                        "{\"type\":\"warn\",\"dir\":\"a/b\",\"task\":\"compile-java\",\"code\":\"W1\",\"message\":\"unchecked\",\"replayed\":true}");
+        assertThat(WarnEvent.decode(replayed).replayed()).isTrue();
+        assertThat(WarnEvent.decode(ProtoEvents.warn("a/b", "compile-java", "W1", "unchecked", false))
+                        .replayed())
+                .isFalse();
         assertThat(ProtoEvents.errorLine("a/b", "run-tests", "E1", "boom", "FooTest.bar", "java.lang.AssertionError"))
                 .isEqualTo(
                         "{\"type\":\"error-line\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"code\":\"E1\",\"message\":\"boom\",\"test\":\"FooTest.bar\",\"exceptionClass\":\"java.lang.AssertionError\"}");

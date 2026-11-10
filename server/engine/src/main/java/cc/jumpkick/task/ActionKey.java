@@ -10,6 +10,7 @@ import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.BuildIdentity;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -246,11 +247,8 @@ public final class ActionKey {
         appendSources(sb, request.sources());
         for (String line : kotlincJavaSourceTokens(request)) sb.append(line).append('\n');
 
-        // The classpath's ABI, order-independent: the worker joins the entries in request order,
-        // but kotlinc resolves the same declarations either way.
-        List<String> cp = new ArrayList<>(KotlinClasspathAbi.tokens(request.classpath(), snapshotter));
-        cp.sort(Comparator.naturalOrder());
-        for (String token : cp) {
+        // The classpath's ABI in request order: kotlinc takes a class from the first entry that has it.
+        for (String token : KotlinClasspathAbi.tokens(request.classpath(), snapshotter)) {
             sb.append("cp:").append(token).append('\n');
         }
         // The compiler itself, by content: a different Build Tools API closure is a different
@@ -370,6 +368,8 @@ public final class ActionKey {
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
         sb.append("jvmTarget:").append(request.jvmTarget()).append('\n');
+        // groovyc runs on, and links against the platform classes of, the engine's own JDK.
+        sb.append("jdk:").append(jdkToken(JavaHomes.runningJavaHome())).append('\n');
         sb.append("args:").append(optionsToken(request.extraArgs())).append('\n');
 
         // The hashed set IS the spec's SOURCE set (GroovycInputs): explicit sources plus every
@@ -610,12 +610,13 @@ public final class ActionKey {
         sb.append(prefix).append(ClasspathFingerprint.entry(entry)).append('\n');
     }
 
-    /** {@code prefix + token} per entry, sorted by path so list order cannot move a key. */
+    /**
+     * {@code prefix + token} per entry, in list order: a compiler takes a class from the first entry
+     * that has it, so two entries trading places can change what it compiles against.
+     */
     private static void appendCpTokens(List<String> into, String prefix, List<Path> entries, EntryToken token)
             throws IOException {
-        List<Path> sorted = new ArrayList<>(entries);
-        sorted.sort(Comparator.comparing(Path::toString));
-        for (Path entry : sorted) into.add(prefix + token.of(entry));
+        for (Path entry : entries) into.add(prefix + token.of(entry));
     }
 
     private static void appendSources(StringBuilder sb, List<Path> sources) throws IOException {

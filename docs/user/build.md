@@ -457,6 +457,21 @@ variable of it: `CI`, repository credentials, the git agent, the CI profile, col
 `CI=true jk guard` checks rather than writes, whichever shell started the engine. A request from
 MCP or the HTTP API has no shell of its own, and those decisions read the engine's.
 
+A compiler worker never gets `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS` or `JDK_JAVA_OPTIONS`, under
+`inherit = true` or through `vars`: the JVM reads its options from them, and a `-Duser.language`
+or a `-javaagent` there would change what the compiler says without changing the compile's key.
+Compilers run in English; a `-J-Duser.language=…` in `[javac] args` overrides that and is part of
+the key. Test JVMs get what the module forwards.
+
+### Compiler warnings on every build
+
+A build that does not run a compiler still shows the warnings its classes were compiled with:
+a compile restored from the cache, one found up to date, and a module the build skips because
+nothing in it changed all show them again, exactly as the compile that ran printed them. An
+incremental compile shows those of the sources it left alone beside its own. Fixing the code is
+the only way to make one go away. In `details.jsonl` and `-O jsonl` such a warning carries
+`"replayed":true` ([Machine output](machine-output.md#event-vocabulary)).
+
 ## Node modules
 
 A module with `package.json` beside a `jk.toml` that declares `node` builds with three steps,

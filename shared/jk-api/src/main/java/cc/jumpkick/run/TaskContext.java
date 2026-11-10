@@ -69,6 +69,14 @@ public interface TaskContext {
         warn(code, message);
     }
 
+    /**
+     * {@link #keyedWarn} for a warning the step's last run said and this run says again without
+     * running the tool: a compile restored from the cache or found up to date.
+     */
+    default void replayedWarn(String code, String key, String message) {
+        keyedWarn(code, key, message);
+    }
+
     /** {@link #error(String, String)} with the tool's own key for the diagnostic. */
     default void keyedError(String code, String key, String message) {
         error(code, message);

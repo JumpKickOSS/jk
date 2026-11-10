@@ -37,20 +37,37 @@ public final class LangCompile {
     private LangCompile() {}
 
     /**
-     * Outcome of a {@link #run}. {@code diagnostics} are the worker's, one entry each. {@code
-     * movedSources} are the sources whose bytes changed between the key and the worker's return:
-     * the compile is not recorded and the next build recompiles them.
+     * Outcome of a {@link #run}. {@code diagnostics} are the worker's, one entry each; {@code
+     * replayed} the warnings of sources this run did not compile, as their last compile said them
+     * (every warning of a cache hit). {@code movedSources} are the sources whose bytes changed
+     * between the key and the worker's return: the compile is not recorded and the next build
+     * recompiles them.
      */
     public record Result(
             boolean success,
             String outcome,
             String actionKey,
             List<CompileResult.Diagnostic> diagnostics,
+            List<CompileResult.Diagnostic> replayed,
             List<Path> movedSources) {
 
         public Result {
             diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
+            replayed = replayed == null ? List.of() : List.copyOf(replayed);
             movedSources = movedSources == null ? List.of() : List.copyOf(movedSources);
+        }
+
+        /** The warnings this run's own compile said: the worker's other lines are its chatter. */
+        public List<CompileResult.Diagnostic> freshWarnings() {
+            return CompileWarnings.replayable(diagnostics, true);
+        }
+
+        /** Every warning the classes this run left on disk were compiled with. */
+        public List<CompileResult.Diagnostic> warnings() {
+            List<CompileResult.Diagnostic> out = new ArrayList<>(replayed);
+            out.addAll(freshWarnings());
+            out.sort(CompileWarnings.ORDER);
+            return out;
         }
 
         /** True when an existing record satisfied the request (no compile ran). */
@@ -111,7 +128,7 @@ public final class LangCompile {
                 ActionCache.ActionRecord cached = MirroredOutputs.omitting(request.outputDir(), hit.get());
                 if (actionCache.restore(cached, request.outputDir())) {
                     reconcileState(workingDir, key, cached.outputs());
-                    return cacheHit(key);
+                    return cacheHit(key, cached, request.sources());
                 }
             }
         }
@@ -125,6 +142,7 @@ public final class LangCompile {
                 && workingDir != null
                 && Files.isDirectory(workingDir)
                 && (!hasClasses(request.outputDir())
+                        || !CompileWarnings.hasLedger(workingDir)
                         || treeShortOfState(workingDir, request.outputDir())
                         || javaDeclarationsMoved(actionCache, workingDir, request))) {
             PathUtil.deleteRecursively(workingDir);
@@ -133,7 +151,7 @@ public final class LangCompile {
                 taskId,
                 key,
                 request.outputDir(),
-                request.sources().isEmpty(),
+                request.sources(),
                 persist,
                 cas,
                 actionCache,
@@ -210,7 +228,7 @@ public final class LangCompile {
                 wipe(request);
                 ActionCache.ActionRecord cached = MirroredOutputs.omitting(request.outputDir(), hit.get());
                 if (actionCache.restore(cached, request.outputDir())) {
-                    return cacheHit(key);
+                    return cacheHit(key, cached, request.sources());
                 }
             }
         }
@@ -219,7 +237,7 @@ public final class LangCompile {
                 taskId,
                 key,
                 request.outputDir(),
-                request.sources().isEmpty(),
+                request.sources(),
                 persist,
                 cas,
                 actionCache,
@@ -235,13 +253,14 @@ public final class LangCompile {
      * request, for {@code jk why-rebuilt}; {@code moved} names the sources whose bytes differ from
      * that snapshot once the worker has returned. A compile with a moved source is not recorded —
      * the key names bytes the worker may not have read — and {@code stateDir}, the incremental
-     * state that would pair the earlier hash with the later classes, is dropped.
+     * state that would pair the earlier hash with the later classes, is dropped. The warnings
+     * ledger lives in {@code stateDir} beside that state and moves only with it.
      */
     static Result forkAndStore(
             String taskId,
             String key,
             Path outputDir,
-            boolean noSources,
+            List<Path> sources,
             boolean persist,
             Cas cas,
             ActionCache actionCache,
@@ -268,25 +287,35 @@ public final class LangCompile {
         }
         Map<String, String> outputs = MirroredOutputs.without(outputDir, prewriter.finish());
         if (!cr.success()) {
-            return new Result(false, "errors", key, cr.diagnostics(), List.of());
+            return new Result(false, "errors", key, cr.diagnostics(), List.of(), List.of());
         }
+        @Nullable Path state = stateDir != null && Files.isDirectory(stateDir) ? stateDir : null;
         // Never cache a zero-output "success" for a non-empty source set: a compiler convinced
         // nothing changed (stale incremental state) can report success over an empty output
         // dir, and caching that poisons every later run under the same key.
-        if (outputs.isEmpty() && !noSources) {
-            return new Result(true, "compiled-no-outputs", key, cr.diagnostics(), List.of());
+        if (outputs.isEmpty() && !sources.isEmpty()) {
+            if (state != null) Files.deleteIfExists(state.resolve(CompileWarnings.LEDGER));
+            return new Result(true, "compiled-no-outputs", key, cr.diagnostics(), List.of(), List.of());
         }
+        CompileWarnings.Merged warnings = CompileWarnings.merge(
+                state != null ? CompileWarnings.readLedger(state, sources) : List.of(),
+                state != null ? cr.compiled() : null,
+                sources,
+                CompileWarnings.replayable(cr.diagnostics(), true));
         List<Path> movedSources = moved.since(snapshot);
         if (!movedSources.isEmpty()) {
-            if (stateDir != null && Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
-            return new Result(true, "compiled", key, cr.diagnostics(), movedSources);
+            if (state != null) PathUtil.deleteRecursively(state);
+            return new Result(true, "compiled", key, cr.diagnostics(), warnings.kept(), movedSources);
         }
-        if (stateDir != null && Files.isDirectory(stateDir)) recordTree(stateDir, key, outputs);
+        if (state != null) {
+            recordTree(state, key, outputs);
+            CompileWarnings.writeLedger(state, warnings.all());
+        }
         // Store on rebuild/force too: the work re-ran and must refresh the action pointer so
         // the next non-rebuild explain sees CACHE_HIT (same as JavaCompile). Only
         // ephemeral (verify-scratch) runs skip the write — their keys never recur.
-        if (persist) actionCache.storeWithOutputs(taskId, key, snapshot, outputs);
-        return new Result(true, "compiled", key, cr.diagnostics(), List.of());
+        if (persist) actionCache.storeWithOutputs(taskId, key, snapshot, outputs, CompileWarnings.said(warnings.all()));
+        return new Result(true, "compiled", key, cr.diagnostics(), warnings.kept(), List.of());
     }
 
     /** The inputs a stored record carries for {@code jk why-rebuilt}, taken before the worker reads a source. */
@@ -301,8 +330,15 @@ public final class LangCompile {
         List<Path> since(Map<String, String> snapshot) throws IOException;
     }
 
-    private static Result cacheHit(String key) {
-        return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of());
+    /** A restore of {@code hit}, saying again the warnings its compile said. */
+    private static Result cacheHit(String key, ActionCache.ActionRecord hit, List<Path> sources) {
+        return new Result(
+                true,
+                "cache-hit:" + key.substring(0, 8),
+                key,
+                List.of(),
+                CompileWarnings.fromSaid(hit.said(), sources),
+                List.of());
     }
 
     /**

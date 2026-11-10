@@ -156,7 +156,12 @@ public final class BridgingPlanListener implements BuildPlanListener {
 
     @Override
     public void warn(String step, String code, String message) {
-        sink.emit(new EngineEvent.Warn(dir, step, code, redact(message)));
+        warn(step, code, message, false);
+    }
+
+    @Override
+    public void warn(String step, String code, String message, boolean replayed) {
+        sink.emit(new EngineEvent.Warn(dir, step, code, redact(message), replayed, ""));
     }
 
     @Override

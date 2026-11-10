@@ -398,6 +398,13 @@ public final class ActionCache {
         return storeWithOutputs(taskId, actionKey, inputs, outputs, Set.of(), null, List.of());
     }
 
+    /** As {@link #storeWithOutputs(String, String, Map, Map)}, keeping what the action {@linkplain ActionRecord#said() said}. */
+    public ActionRecord storeWithOutputs(
+            String taskId, String actionKey, Map<String, String> inputs, Map<String, String> outputs, List<String> said)
+            throws IOException {
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, Set.of(), null, said);
+    }
+
     /**
      * The store every path funnels through: the record, then the task pointer, then the Class-C
      * generation trim. {@code executables} are the outputs a restore gives the bit back to; {@code

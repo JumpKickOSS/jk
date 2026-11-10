@@ -130,7 +130,7 @@ public final class JavaCompilerHost {
                     // Composed here, on the request's thread: the worker forks on a thread of its
                     // own, which carries no request.
                     WorkerEnv env =
-                            WorkerEnv.strict().with(req.env().withJavaHome(home).environment());
+                            WorkerEnv.strict().with(req.env().withJavaHome(home).compilerEnvironment());
                     PluginTuning tuning = JvmOptions.currentTuning();
                     return new CompilerPool(
                             key,

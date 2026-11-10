@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Worker JSONL diagnostics must come back with a parseable {@code path:line[:col]:} header. */
 class WorkerDiagnosticsTest {
@@ -51,6 +52,19 @@ class WorkerDiagnosticsTest {
         assertThat(locus.file()).isEqualTo("src/Baz.kt");
         assertThat(locus.line()).isEqualTo(2);
         assertThat(locus.col()).isEqualTo(5);
+    }
+
+    @Test
+    void a_kotlinc_warning_with_an_absolute_locus_names_its_source(@TempDir Path dir) {
+        Path file = dir.resolve("src/A.kt").toAbsolutePath();
+        CompileResult.Diagnostic d = WorkerDiagnostics.text("WARNING", file.toUri() + ":3:5 'f' is deprecated.");
+
+        assertThat(d.source()).isEqualTo(file);
+        assertThat(d.line()).isEqualTo(3);
+        assertThat(d.column()).isEqualTo(5);
+        assertThat(WorkerDiagnostics.text("WARNING", "src/A.kt:3:5: warning: x").source())
+                .as("a relative locus names no file of this host")
+                .isNull();
     }
 
     @Test

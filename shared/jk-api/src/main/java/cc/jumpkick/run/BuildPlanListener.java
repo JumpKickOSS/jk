@@ -39,6 +39,14 @@ public interface BuildPlanListener {
 
     default void warn(String step, String code, String message) {}
 
+    /**
+     * A warning; {@code replayed} when a step that did not run said it again as its last run said it
+     * (a compile restored from the cache or found up to date). Rendered as any other warning.
+     */
+    default void warn(String step, String code, String message, boolean replayed) {
+        warn(step, code, message);
+    }
+
     default void error(String step, String code, String message) {}
 
     /** Two-field test-failure form (label + exception class only). Prefer {@link #error(String, String, String, TestFailureInfo)}. */

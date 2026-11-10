@@ -11,6 +11,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.KspResolver;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.CompileWarnings;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.ProjectedFiles;
 import java.io.IOException;
@@ -122,7 +123,7 @@ final class KspForecast {
         Path outBase = PlannerKsp.kspOutBase(layout);
         List<Path> kspJars = KspProcessors.split(processorCp).ksp();
         if (!PlannerKsp.runsMainRound(in.project(), in.dir()) || kspJars.isEmpty()) return Round.none(outBase);
-        return decide(in, outBase, roundInputs, classpath, processorCp, kspJars);
+        return decide(in, TaskNames.KSP, outBase, roundInputs, classpath, processorCp, kspJars);
     }
 
     /**
@@ -150,11 +151,12 @@ final class KspForecast {
         for (Path source : handWritten) {
             if (!source.startsWith(outBase)) inputs.add(source);
         }
-        return decide(in, outBase, inputs, classpath, testProcessorCp, kspJars);
+        return decide(in, TaskNames.COMPILE_TEST, outBase, inputs, classpath, testProcessorCp, kspJars);
     }
 
     private static Round decide(
             Inputs in,
+            String producer,
             Path outBase,
             List<Path> stampInputs,
             List<Path> classpath,
@@ -171,7 +173,8 @@ final class KspForecast {
                 in.release());
         List<Path> stampCp = new ArrayList<>(classpath);
         stampCp.addAll(kspJars);
-        boolean fresh = FreshnessStamp.isFresh(outBase, BuildStamps.KSP, stampInputs, stampCp, in.release(), digest);
+        boolean fresh = StepWarnings.kept(in.dir(), CompileWarnings.roundFile(producer))
+                && FreshnessStamp.isFresh(outBase, BuildStamps.KSP, stampInputs, stampCp, in.release(), digest);
         // The processor path is in the key by content: a processor bump names another record.
         String key = PlannerKsp.roundKey(outBase, digest, stampInputs, classpath, processorCp, in.identity());
         Map<String, String> outputs = in.actionCache()

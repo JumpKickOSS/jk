@@ -16,6 +16,7 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.KotlinAbiWarmup;
+import cc.jumpkick.runtime.StepWarnings;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
@@ -71,6 +72,12 @@ final class WorkspaceRunPhase {
                 WorkspaceArtifacts.computeLinks(resources.preflight().moduleDirs(), request.entryDir());
         for (BuildGraph.BuildUnit unit : resources.cleanUnits()) {
             WorkspaceArtifacts.linkModule(request.entryDir(), unit.dir(), workspaceLinks);
+        }
+        // A module the build does not run is up to date, and its classes were compiled with the
+        // warnings its compile steps kept: a build of every module would show them.
+        boolean tests = compilesTests(request);
+        for (BuildGraph.BuildUnit unit : resources.cleanUnits()) {
+            StepWarnings.replayModule(unit.dir(), unit.coord(), tests, listener);
         }
 
         // Whose test compilation any sibling can actually read. Computed once, off the manifests
@@ -186,6 +193,15 @@ final class WorkspaceRunPhase {
         return !outcome.success() && !keepGoing ? outcome : null;
     }
 
+    /** Whether {@code request}'s build compiles tests: what decides whether a module it skips says its test warnings. */
+    static boolean compilesTests(WorkspaceRequest request) {
+        return switch (request.target().tests()) {
+            case NOT_RUN -> false;
+            case UNLESS_SKIPPED -> !request.skipTests();
+            case COMPILED, ALWAYS -> true;
+        };
+    }
+
     /**
      * Run one module and emit its module start/finish lifecycle. Signals leave the plan: the
      * classes publish admits dependents to the schedule (they compile against this module's
@@ -228,6 +244,11 @@ final class WorkspaceRunPhase {
             ModulePlan module, WorkspaceBuildListener listener, SiblingArtifacts siblings, Clock clock, long started) {
         try {
             BuildPlanResult result = EffortWeights.withOverReserveTails(module.plan()::run);
+            if (result.success()) {
+                List<String> steps = new ArrayList<>();
+                for (Task t : module.plan().steps()) steps.add(t.name());
+                StepWarnings.forgetStepsNotIn(module.dir(), steps);
+            }
             // Recorded before completion publishes: a dependent that finds this module's output
             // absent then names the step that failed to produce it.
             if (!result.success()) failedStep(result).ifPresent(step -> siblings.failed(module.coord(), step));

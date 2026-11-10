@@ -12,8 +12,10 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.CompileWarnings;
 import cc.jumpkick.task.FreshnessStamp;
 import java.nio.file.Path;
 import java.util.List;
@@ -33,6 +35,10 @@ final class GroovyForecastStamps {
     static void writeBuildStamp(Path workspace, Path moduleDir, List<Path> groovySources, Cas cas) throws Exception {
         JkBuild project = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
         BuildLayout layout = BuildLayout.of(workspace, moduleDir, project);
+        // A compile that ran leaves the warnings it said beside its stamp, none here.
+        CompileWarnings.writeCurrent(
+                CompileWarnings.currentFile(layout.buildDir().resolve("incremental"), TaskNames.COMPILE_GROOVY),
+                List.of());
         Lockfile lock = LockfileReader.read(workspace.resolve("jk-lock.toml"));
         int release = project.project().javaRelease();
         Path javaHome = TaskForecaster.forecastJavaHome(moduleDir, project, lock);

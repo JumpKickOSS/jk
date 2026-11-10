@@ -496,6 +496,30 @@ class ActionKeyTest {
                 .isNotEqualTo(constOne);
     }
 
+    /** A dependency that deprecates a method changes what javac warns about, so it moves the key. */
+    @Test
+    void a_dependency_that_deprecates_a_method_moves_the_javac_key(@TempDir Path tempDir) throws IOException {
+        Path src = Files.writeString(tempDir.resolve("Hello.java"), "class Hello {}");
+        Path dep = AbiJars.jar(tempDir.resolve("dep.jar"), AbiJars.classWithMethods("n"));
+        String before = ActionKey.forJavac("compile-main", withClasspath(src, tempDir, dep), "0.1.0");
+
+        AbiJars.jar(dep, AbiJars.classWithDeprecatedMethod("n"));
+
+        assertThat(ActionKey.forJavac("compile-main", withClasspath(src, tempDir, dep), "0.1.0"))
+                .isNotEqualTo(before);
+    }
+
+    /** javac takes a class from the first entry that has it: two entries trading places move the key. */
+    @Test
+    void classpath_order_moves_the_javac_key(@TempDir Path tempDir) throws IOException {
+        Path src = Files.writeString(tempDir.resolve("Hello.java"), "class Hello {}");
+        Path a = AbiJars.jar(tempDir.resolve("a.jar"), AbiJars.classWithMethods("n"));
+        Path b = AbiJars.jar(tempDir.resolve("b.jar"), AbiJars.classWithMethods("m"));
+
+        assertThat(ActionKey.forJavac("compile-main", withClasspath(src, tempDir, a, b), "0.1.0"))
+                .isNotEqualTo(ActionKey.forJavac("compile-main", withClasspath(src, tempDir, b, a), "0.1.0"));
+    }
+
     /** The processor path stays full content: a processor's behaviour is its bodies. */
     @Test
     void a_body_only_processor_change_moves_the_javac_key(@TempDir Path tempDir) throws IOException {
@@ -536,10 +560,10 @@ class ActionKeyTest {
                 .containsEntry("pp:" + PortablePath.key(processor), ClasspathFingerprint.entry(processor));
     }
 
-    private static CompileRequest withClasspath(Path src, Path tempDir, Path dep) {
+    private static CompileRequest withClasspath(Path src, Path tempDir, Path... deps) {
         return CompileRequest.builder()
                 .sources(List.of(src))
-                .classpath(List.of(dep))
+                .classpath(List.of(deps))
                 .outputDir(tempDir.resolve("out"))
                 .release(25)
                 .build();

@@ -21,8 +21,9 @@ public final class PassthroughEnv {
      * with the caller that needs it gone:
      *
      * <ul>
-     *   <li>{@code JAVA_TOOL_OPTIONS}, {@code _JAVA_OPTIONS} — all callers: every JVM launched below
-     *       us reads them, and they carry arbitrary flags including {@code -javaagent}.
+     *   <li>{@code JAVA_TOOL_OPTIONS}, {@code _JAVA_OPTIONS}, {@code JDK_JAVA_OPTIONS} — all callers:
+     *       every JVM launched below us reads them (the last through the {@code java} launcher), and
+     *       they carry arbitrary flags including {@code -javaagent}.
      *   <li>{@code JDK_HOME} — {@code jk shell}: an interactive shell's rc files and IDE-spawned
      *       launchers prefer it over {@code JAVA_HOME}, so leaving it would silently undo the very
      *       pin {@code jk shell} exists to apply.
@@ -34,7 +35,13 @@ public final class PassthroughEnv {
      * </ul>
      */
     private static final String[] STRIPPED = {
-        "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_HOME", "KOTLIN_HOME", "MAVEN_OPTS", "GRADLE_OPTS",
+        "JAVA_TOOL_OPTIONS",
+        "_JAVA_OPTIONS",
+        "JDK_JAVA_OPTIONS",
+        "JDK_HOME",
+        "KOTLIN_HOME",
+        "MAVEN_OPTS",
+        "GRADLE_OPTS",
     };
 
     private PassthroughEnv() {}

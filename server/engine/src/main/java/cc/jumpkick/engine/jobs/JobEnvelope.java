@@ -704,7 +704,8 @@ public final class JobEnvelope {
         String redacted = EventRedaction.redactEnv(dir, message);
         String safe = redacted == null ? message : redacted;
         BuildAccumulator acc = host.accumulatorOf(id);
-        if (acc != null && !BuildAccumulator.INPUTS_CHANGED.equals(code)) acc.addNotice(RunNotices.CODE, safe);
+        if (acc != null && !BuildAccumulator.INPUTS_CHANGED.equals(code))
+            acc.addWarning(null, null, RunNotices.CODE, safe);
         if (writer != null) WireWriter.sendQuiet(writer, ProtoEvents.warn(dir, "", RunNotices.CODE, safe));
         host.publishEvent(
                 "warn",

@@ -33,6 +33,14 @@ public final class JdkCompilerAccess {
             "--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
             "--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED");
 
+    /**
+     * The locale every compiler worker runs in: English, whatever the shell that started the engine
+     * spoke. A compiler words its diagnostics in the JVM's locale, and a warning said again from the
+     * cache must read as the compile said it. A module's own {@code -J-Duser.language} comes after
+     * these and wins; it is in the compile's key.
+     */
+    public static final List<String> LOCALE_FLAGS = List.of("-Duser.language=en", "-Duser.country=US");
+
     /** True when {@code arg} is a {@code -J} spelling of a flag in {@link #JVM_FLAGS}. */
     public static boolean grants(String arg) {
         return arg.startsWith(LAUNCHER_PREFIX) && JVM_FLAGS.contains(arg.substring(LAUNCHER_PREFIX.length()));

@@ -195,6 +195,20 @@ public final class WorkerEnv {
     }
 
     /**
+     * The variables every JVM reads its options from, whatever starts it. A compiler worker never
+     * gets them, {@code [env] inherit} or not: a {@code -Duser.language} or a {@code -javaagent} in
+     * one changes what the compiler says without moving the compile's key.
+     */
+    static final Set<String> JVM_OPTIONS = Set.of("JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS");
+
+    /** {@link #environment()} for a compiler worker: without {@link #JVM_OPTIONS}. */
+    public Map<String, String> compilerEnvironment() {
+        Map<String, String> env = new LinkedHashMap<>(environment());
+        env.keySet().removeIf(k -> JVM_OPTIONS.contains(k.toUpperCase(Locale.ROOT)));
+        return env;
+    }
+
+    /**
      * {@code extras} with {@code JAVA_HOME} defaulted to the JVM this engine is running in.
      *
      * <p>A worker always has one, and it always names the JDK the worker actually runs under. A

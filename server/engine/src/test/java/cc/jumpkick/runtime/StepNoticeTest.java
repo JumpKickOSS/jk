@@ -263,7 +263,7 @@ class StepNoticeTest {
     private static void inRun(BuildAccumulator acc, Runnable body) {
         IoLedger run = new IoLedger();
         IoLedger.open(run);
-        RunNotices.openSink(run, (code, message) -> acc.addNotice(RunNotices.CODE, message));
+        RunNotices.openSink(run, (code, message) -> acc.addWarning(null, null, RunNotices.CODE, message));
         try {
             SessionContext.runWhere(Session.defaults(), body);
         } finally {

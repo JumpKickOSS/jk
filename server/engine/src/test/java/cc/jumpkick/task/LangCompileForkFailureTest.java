@@ -38,7 +38,7 @@ class LangCompileForkFailureTest {
                             "compile-kotlin",
                             "key",
                             out,
-                            false,
+                            List.of(out.resolve("A.kt")),
                             true,
                             cas,
                             cache,

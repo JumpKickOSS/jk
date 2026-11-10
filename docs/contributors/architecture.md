@@ -501,7 +501,14 @@ and exclusions stay GA-scoped.
    by declaration digest (`JavaSourceApi`), and options, the JDK and the compiler closure ride
    along: kotlinc's Build Tools API closure, groovyc's worker and runtime, and the launch
    classpath of JumpKick's own javac worker (`WorkerClosure`), each by content, so a reinstalled worker
-   re-keys the compiles it drives under a release version too. The processor path stays full content. A body-only change in a dependency therefore
+   re-keys the compiles it drives under a release version too. Classpath and processor-path
+   entries enter in order, since a compiler takes a class from the first entry that has it.
+   groovyc's key carries the engine's own JDK, which groovyc runs on and links against. A compile
+   record keeps the warnings its compile said (`CompileWarnings`, the record's `said`): a hit says
+   them again, an incremental compile merges them per source with the ledger beside its Zinc or
+   Build Tools API state, and each step leaves the warnings of the classes on disk in
+   `target/incremental/warnings/<step>`, which an up-to-date step and a module the build does not
+   run say again. The processor path stays full content. A body-only change in a dependency therefore
    leaves every consumer's compile key — and its freshness stamp — alone; the compilers still see
    the full jars and directories. A jar's ABI is extracted through `JarClassReader`, which scans
    the central directory as a stream and holds one window of class names at a time (never

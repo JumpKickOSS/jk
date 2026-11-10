@@ -18,6 +18,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathProcessors;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.CompilerJdk;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.engine.plugin.HeapNotes;
@@ -63,6 +64,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -514,6 +516,7 @@ public final class PlannerCompile {
         }
         if (sources.isEmpty()) {
             ctx.label("no Java sources");
+            StepWarnings.clear(ctx, TaskNames.COMPILE_JAVA);
             if (dropOutputOfRemovedSources(javaOut)) ResourceMirror.relay(javaOut, incremental(ctx));
             Files.createDirectories(javaOut);
             ctx.put(BUILD_OUTCOME, "no-sources");
@@ -579,17 +582,13 @@ public final class PlannerCompile {
         }
         // A fresh stamp vouches for the inputs, not for the tree: one that lost an output its
         // compile record owns falls through to the action cache, whose hit restores the record's
-        // whole tree, instead of packaging the subset it has.
-        if (!rerun
-                && FreshnessStamp.isFresh(
-                        javaOut,
-                        BuildStamps.JAVA,
-                        sources,
-                        FreshnessStamp.ClasspathTokens.of(stampTokens),
-                        ctx.require(RELEASE),
-                        optionsDigest)
-                && ModuleOutputs.compileOutputsOnDisk(cx.actionCache(), javaOut)) {
+        // whole tree, instead of packaging the subset it has; nor for warnings without their file.
+        Optional<List<CompileResult.Diagnostic>> kept = StepWarnings.read(ctx, TaskNames.COMPILE_JAVA, sources, rerun);
+        int release = ctx.require(RELEASE);
+        if (kept.isPresent()
+                && CompileUpToDate.java(cx.actionCache(), javaOut, sources, stampTokens, release, optionsDigest)) {
             ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
+            JavacDiagnostics.report(ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, List.of(), kept.get());
             ctx.label("up to date");
             ctx.cached();
             ctx.put(BUILD_OUTCOME, "up-to-date");
@@ -730,8 +729,8 @@ public final class PlannerCompile {
      * the console renderer adds its own ✗/⚠ marker.
      */
     private static void reportJavacResult(TaskContext ctx, CompileRequest request, JavaCompile.Result r) {
-        boolean errored =
-                JavacDiagnostics.report(ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, r.diagnostics());
+        boolean errored = JavacDiagnostics.report(
+                ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, r.diagnostics(), r.replayed());
         if (!r.success()) {
             // Never fail silently: if no ERROR diagnostic surfaced (crash,
             // swallowed output), say so explicitly.
@@ -740,6 +739,7 @@ public final class PlannerCompile {
             }
             throw new RuntimeException("javac reported errors");
         }
+        StepWarnings.keep(ctx, TaskNames.COMPILE_JAVA, JavacDiagnostics.TOOL, r.warnings());
         if (r.cacheHit()) {
             ctx.label("cache hit " + r.actionKey().substring(0, 8));
             ctx.cached();
@@ -913,6 +913,7 @@ public final class PlannerCompile {
                     }
                     if (ktSources.isEmpty()) {
                         ctx.label("no Kotlin sources");
+                        StepWarnings.clear(ctx, TaskNames.COMPILE_KOTLIN);
                         ctx.put(KOTLIN_OUTCOME, "no-sources");
                         return;
                     }
@@ -970,7 +971,9 @@ public final class PlannerCompile {
                     // A fresh stamp vouches for the inputs, not for the tree: the merged classes
                     // must still hold every output the stamped compile's record owns, or a partly
                     // wiped tree stays "up to date" and the jar lacks the same classes.
-                    if (!rerun
+                    Optional<List<CompileResult.Diagnostic>> ktKept =
+                            StepWarnings.read(ctx, TaskNames.COMPILE_KOTLIN, ktSources, rerun);
+                    if (ktKept.isPresent()
                             && FreshnessStamp.isFresh(
                                     classes,
                                     BuildStamps.KOTLIN,
@@ -980,6 +983,7 @@ public final class PlannerCompile {
                                     optionsDigest)
                             && ModuleOutputs.compileOutputsOnDisk(actionCache, classes, BuildStamps.KOTLIN)) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
+                        JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.KOTLINC, List.of(), ktKept.get());
                         ctx.label("up to date");
                         ctx.cached();
                         ctx.put(KOTLIN_OUTCOME, "up-to-date");
@@ -999,6 +1003,7 @@ public final class PlannerCompile {
                                 "kotlinc failed without diagnostics");
                         throw new RuntimeException("kotlinc reported errors");
                     }
+                    StepWarnings.sayAndKeep(ctx, TaskNames.COMPILE_KOTLIN, JavacDiagnostics.KOTLINC, kr);
                     if (kr.cacheHit()) {
                         ctx.label("cache hit " + kr.actionKey().substring(0, 8));
                         ctx.cached();
@@ -1066,6 +1071,7 @@ public final class PlannerCompile {
                     }
                     if (gvSources.isEmpty()) {
                         ctx.label("no Groovy sources");
+                        StepWarnings.clear(ctx, TaskNames.COMPILE_GROOVY);
                         ctx.put(GROOVY_OUTCOME, "no-sources");
                         return;
                     }
@@ -1124,16 +1130,14 @@ public final class PlannerCompile {
                     List<String> stampTokens = ActionKey.groovycClasspathTokens(request);
                     ctx.put(GROOVY_STAMP_TOKENS, stampTokens);
                     // As compile-kotlin: the stamp vouches for the inputs, the record for the tree.
-                    if (!rerun
-                            && FreshnessStamp.isFresh(
-                                    classes,
-                                    BuildStamps.GROOVY,
-                                    freshInputs,
-                                    FreshnessStamp.ClasspathTokens.of(stampTokens),
-                                    ctx.require(RELEASE),
-                                    optionsDigest)
-                            && ModuleOutputs.compileOutputsOnDisk(actionCache, classes, BuildStamps.GROOVY)) {
+                    Optional<List<CompileResult.Diagnostic>> gvKept =
+                            StepWarnings.read(ctx, TaskNames.COMPILE_GROOVY, gvSources, rerun);
+                    int release = ctx.require(RELEASE);
+                    if (gvKept.isPresent()
+                            && CompileUpToDate.groovy(
+                                    actionCache, classes, freshInputs, stampTokens, release, optionsDigest)) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
+                        JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.GROOVYC, List.of(), gvKept.get());
                         ctx.label("up to date");
                         ctx.cached();
                         ctx.put(GROOVY_OUTCOME, "up-to-date");
@@ -1150,6 +1154,7 @@ public final class PlannerCompile {
                                 ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");
                         throw new RuntimeException("groovyc reported errors");
                     }
+                    StepWarnings.sayAndKeep(ctx, TaskNames.COMPILE_GROOVY, JavacDiagnostics.GROOVYC, gr);
                     if (gr.cacheHit()) {
                         ctx.label("cache hit " + gr.actionKey().substring(0, 8));
                         ctx.cached();

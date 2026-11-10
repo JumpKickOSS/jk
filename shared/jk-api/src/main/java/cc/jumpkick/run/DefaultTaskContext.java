@@ -218,6 +218,12 @@ final class DefaultTaskContext implements TaskContext {
     }
 
     @Override
+    public void replayedWarn(String code, String key, String message) {
+        plan.warningsRef().add(new BuildPlanResult.Diagnostic(step, code, message).withKey(key));
+        plan.emit(l -> l.warn(step, code, message, true));
+    }
+
+    @Override
     public void keyedError(String code, String key, String message) {
         plan.errorsRef().add(new BuildPlanResult.Diagnostic(step, code, message).withKey(key));
         plan.emit(l -> l.error(step, code, message));

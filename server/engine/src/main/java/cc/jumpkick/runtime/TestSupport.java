@@ -706,8 +706,9 @@ public final class TestSupport {
      * processors (Lombok, Immutables, …) run over test sources too. The request is {@link
      * PlannerCompile#testCompileRequest}'s, the same body the forecast keys from.
      */
-    public static Compiled compileWithCache(
+    static Compiled compileWithCache(
             TaskContext ctx,
+            StepWarnings warnings,
             String taskId,
             PlannerCompile.TestCompile compile,
             Path generatedSourceDir,
@@ -791,8 +792,8 @@ public final class TestSupport {
         // Surface javac diagnostics by severity — errors fail, warnings (e.g.
         // deprecation/unchecked) are shown but don't. Mirrors the main-compile
         // step so test sources report warnings the same way.
-        boolean errored =
-                JavacDiagnostics.report(ctx, request.classpath(), ClasspathResolver.COMPILE_TEST, r.diagnostics());
+        boolean errored = JavacDiagnostics.report(
+                ctx, request.classpath(), ClasspathResolver.COMPILE_TEST, r.diagnostics(), r.replayed());
         if (!r.success()) {
             // A failure must never be silent: if the compiler produced no ERROR
             // diagnostic (crash, swallowed output), say so explicitly.
@@ -801,6 +802,7 @@ public final class TestSupport {
             }
             return Compiled.FAILED;
         }
+        warnings.add(JavacDiagnostics.TOOL, r.warnings());
         if (TaskNames.COMPILE_TEST.equals(taskId)) {
             // run-tests folds this into its stamp: the test javac configuration is an input to
             // the suite's outcome, and nothing else in the stamp reads it.

@@ -215,6 +215,24 @@ public final class ProtoEvents {
         return diagnostic(EngineProtocol.WARN, dir, step, code, message, "", NO_FAILURE);
     }
 
+    /**
+     * A compiler warning of the module at {@code dir} ({@code group:name} {@code module}) that the
+     * build does not run, said again as its last build said it: always replayed, and naming its
+     * module, since no module listener on the reading side owns it.
+     */
+    public static String moduleWarn(String dir, String module, String step, String code, String message) {
+        return new WarnEvent(
+                        dir, step, code, message, "", module, "", "", "", "", "", "", 0, 0, 0, List.of(), "", 0, 0,
+                        true)
+                .encode();
+    }
+
+    /** As {@link #warn(String, String, String, String)}, marked {@code replayed} when a step that did not run said it again. */
+    public static String warn(String dir, String step, String code, String message, boolean replayed) {
+        String line = warn(dir, step, code, message);
+        return replayed ? WarnEvent.markReplayed(line) : line;
+    }
+
     public static String errorLine(
             String dir, String step, String code, String message, String test, String exceptionClass) {
         return diagnostic(

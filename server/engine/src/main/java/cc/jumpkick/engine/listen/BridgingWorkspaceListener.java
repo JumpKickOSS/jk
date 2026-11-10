@@ -45,6 +45,9 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
 
         default void moduleFinished(ModuleOutcome o) {}
 
+        /** A compiler warning of a module the run does not build, said again. */
+        default void moduleWarning(String dir, String step, String code, String message) {}
+
         default void trackModule(String dir, BuildPlanView view) {}
 
         default void trackModuleComplete(String dir, long lastDen) {}
@@ -94,6 +97,19 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
     @Override
     public void onNote(String text) {
         sink.emit(new EngineEvent.Note(text));
+    }
+
+    @Override
+    public void onModuleWarning(Path dir, String module, String step, String code, String message) {
+        String d = dir.toString();
+        String text = message;
+        try {
+            text = EventRedaction.redactorFor(d).redact(message);
+        } catch (RuntimeException e) {
+            EventRedaction.warnFailOpen(e);
+        }
+        sink.emit(new EngineEvent.Warn(d, step, code, text, true, module));
+        hooks.moduleWarning(d, step, code, text);
     }
 
     @Override

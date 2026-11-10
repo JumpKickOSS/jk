@@ -135,7 +135,7 @@ public final class KotlinCompiler implements Plugin {
         List<Path> aliases = new ArrayList<>();
         try (KotlinToolchains.BuildSession session = toolchains.createBuildSession()) {
             ExecutionPolicy policy = toolchains.createInProcessExecutionPolicy();
-            KcLogger logger = new KcLogger(proto);
+            KcLogger logger = new KcLogger(proto, sources);
 
             JvmCompilationOperation.Builder op = jvm.jvmCompilationOperationBuilder(sources, spec.outputDir.toPath());
             // Destination is a first-class builder param above; everything else jk
@@ -180,6 +180,8 @@ public final class KotlinCompiler implements Plugin {
             }
 
             result = session.executeOperation(op.build(), policy, logger);
+            List<String> compiled = logger.compiled();
+            if (workingDir != null && compiled != null) proto.compiled(compiled);
         } finally {
             for (Path alias : aliases) PathUtil.deleteRecursively(alias);
         }

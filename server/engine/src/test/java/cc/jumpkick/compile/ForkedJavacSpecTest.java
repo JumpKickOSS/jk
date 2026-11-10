@@ -82,6 +82,20 @@ class ForkedJavacSpecTest {
         assertThat(request(dir, List.of("-Xlint:all")).jvmArgs()).isEmpty();
     }
 
+    /** javac words its warnings in English, so one said again from the cache reads as it was said; a module's own -J wins. */
+    @Test
+    void the_worker_speaks_english_unless_the_module_says_otherwise() throws Exception {
+        List<String> plain =
+                SessionContext.where(Session.defaults(), () -> ForkedJavac.workerJvmFlags(List.of(), List.of()));
+        assertThat(plain).containsSubsequence(JdkCompilerAccess.LOCALE_FLAGS);
+
+        List<String> japanese = SessionContext.where(
+                Session.defaults(), () -> ForkedJavac.workerJvmFlags(List.of(), List.of("-Duser.language=ja")));
+        assertThat(japanese.lastIndexOf("-Duser.language=ja"))
+                .as("the module's flag comes after jk's, and the JVM takes the last")
+                .isGreaterThan(japanese.indexOf("-Duser.language=en"));
+    }
+
     /**
      * A worker started with a module's own JVM flags maps a cache trained under the same flags:
      * the flags that are not jk's own are what joins the AOT key, and the trainer's command

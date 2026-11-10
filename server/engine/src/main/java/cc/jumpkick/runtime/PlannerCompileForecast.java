@@ -111,7 +111,8 @@ final class PlannerCompileForecast {
                 fresh = Optional.empty();
             }
         }
-        boolean stampFresh = fresh.isPresent() && !s.compileDepDirty;
+        boolean stampFresh =
+                fresh.isPresent() && !s.compileDepDirty && StepWarnings.kept(layout, TaskNames.COMPILE_JAVA);
         ForecastSteps.noteCompileMain(out, req, mainSrc.size(), release, stampFresh, s.compileDepDirty);
         if (stampFresh) {
             // The stamp names the compile that produced this tree; that record is what the tree is

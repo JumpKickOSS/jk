@@ -377,14 +377,10 @@ public final class BuildAccumulator {
     /** The diagnostic code of {@link #addInputsChanged}. */
     public static final String INPUTS_CHANGED = "inputs-changed";
 
-    /**
-     * A run notice the request said on its stream ({@code RunNotices}, already once per run), kept
-     * as a warning so the reports carry it too: the one that says why a credential was not sent
-     * explains the 401 the run then failed on.
-     */
-    public void addNotice(String code, String message) {
-        if (message != null && !message.isBlank())
-            addDiag(new BuildRecord.Diag("warning", dir, null, code, message, null, null));
+    /** A warning of the module at {@code moduleDir}, the run's when null: a run notice, or an up-to-date module's. */
+    public void addWarning(@Nullable String moduleDir, @Nullable String step, String code, String message) {
+        if (message == null || message.isBlank()) return;
+        addDiag(new BuildRecord.Diag("warning", moduleDir == null ? dir : moduleDir, step, code, message, null, null));
     }
 
     /** At most this many changed inputs are named; the rest are counted. */

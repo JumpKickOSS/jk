@@ -153,6 +153,22 @@ class WorkerEnvTest {
     }
 
     @Test
+    void a_compiler_never_gets_the_variables_a_jvm_reads_its_options_from() throws Exception {
+        Map<String, String> engine = new LinkedHashMap<>(ENGINE);
+        engine.put("JAVA_TOOL_OPTIONS", "-javaagent:/x.jar");
+        engine.put("_JAVA_OPTIONS", "-Duser.language=ja");
+        engine.put("JDK_JAVA_OPTIONS", "-Duser.country=JP");
+        WorkerEnv inherited =
+                WorkerEnv.policy(new EnvConfig(true, List.of())).with(Map.of("JDK_JAVA_OPTIONS", "-Dset=by-module"));
+
+        Map<String, String> compiler = WorkerEnv.withEngineEnvironment(engine, inherited::compilerEnvironment);
+        Map<String, String> test = WorkerEnv.withEngineEnvironment(engine, inherited::environment);
+
+        assertThat(compiler).doesNotContainKeys("JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS");
+        assertThat(test).as("a test JVM still gets what its module inherited").containsKey("JAVA_TOOL_OPTIONS");
+    }
+
+    @Test
     void extras_land_after_the_inherited_names_and_win_over_them() {
         Map<String, String> extras = new LinkedHashMap<>();
         extras.put("JK_HOME", "/sandbox");

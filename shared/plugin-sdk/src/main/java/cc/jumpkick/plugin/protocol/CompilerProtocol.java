@@ -57,6 +57,11 @@ public final class CompilerProtocol {
         out.emit(PluginReply.classpathSnapshot(entry, sha256));
     }
 
+    /** The sources one pass of an incremental compile recompiled. */
+    public void compiled(List<String> files) {
+        out.emit(PluginReply.compiled(files));
+    }
+
     /** The terminal outcome, e.g. {@code COMPILATION_SUCCESS}. */
     public void result(String status) {
         out.emit(PluginReply.result(Map.of("status", status)));

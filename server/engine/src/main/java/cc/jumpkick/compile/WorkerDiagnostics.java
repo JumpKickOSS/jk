@@ -2,6 +2,7 @@
 package cc.jumpkick.compile;
 
 import cc.jumpkick.diagnostic.CompilerLocus;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
@@ -53,13 +54,25 @@ final class WorkerDiagnostics {
      * {@code path:line:col:} header and must pass verbatim — a severity prefix would be absorbed
      * into the parsed file name. Only headerless messages keep the severity label.
      */
+    /** The absolute file a locus names, or null when it names none this host can spell. */
+    private static @Nullable Path sourceOf(String file) {
+        try {
+            Path p = Path.of(file);
+            return p.isAbsolute() ? p : null;
+        } catch (InvalidPathException notAPath) {
+            return null;
+        }
+    }
+
     static CompileResult.Diagnostic text(@Nullable String sev, @Nullable String msg) {
         CompileResult.Severity severity =
                 "INFO".equals(sev) ? CompileResult.Severity.NOTE : CompileResult.Severity.fromName(sev);
         String text = msg == null ? "" : msg;
-        if (CompilerLocus.parse(text) == null && sev != null && !sev.isBlank()) {
-            text = sev.toLowerCase(Locale.ROOT) + ": " + text;
+        CompilerLocus locus = CompilerLocus.parse(text);
+        if (locus == null) {
+            if (sev != null && !sev.isBlank()) text = sev.toLowerCase(Locale.ROOT) + ": " + text;
+            return new CompileResult.Diagnostic(severity, null, 0, 0, text);
         }
-        return new CompileResult.Diagnostic(severity, null, 0, 0, text);
+        return new CompileResult.Diagnostic(severity, sourceOf(locus.file()), locus.line(), locus.col(), text);
     }
 }

@@ -181,7 +181,8 @@ then their transitives breadth-first through the lock graph, then what its works
 on ([Workspaces](workspaces.md#workspace-dependencies)), walked the same way; the siblings' classes
 trees and jars come after the lock rows. A workspace lock holds every member's rows, and a row only
 another member reaches is on none of this module's classpaths: a class the module uses from a
-dependency it never declared fails its compile, as it does under Maven. This is Maven's order: when two jars carry the same package
+dependency it never declared fails its compile, as it does under Maven. Order is part of each compile's key: two entries trading places compile again.
+This is Maven's order: when two jars carry the same package
 (a fork beside the library it forked), the jar the module declared is the one javac and the JVM see
 first. The order is a compile input, so moving a declaration recompiles the module.
 

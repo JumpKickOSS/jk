@@ -254,6 +254,12 @@ final class WorkspaceRunView {
             }
 
             @Override
+            public void onModuleWarning(Path dir, String module, String step, String code, String message) {
+                defer(ConsoleSpec.renderWarning(step, code, message, module));
+                mirror(JsonlShape.moduleWarn(module, step, code, message));
+            }
+
+            @Override
             public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
                 agg.applySnapshot(snap);
                 seedPlanned(snap.modulesTotal());
@@ -330,6 +336,19 @@ final class WorkspaceRunView {
                     CliOutput.out(text);
                 }
                 mirror(JsonlShape.note(text));
+            }
+
+            @Override
+            public void onModuleWarning(Path dir, String module, String step, String code, String message) {
+                String line = JsonlShape.moduleWarn(module, step, code, message);
+                if (toStdout) {
+                    event(line);
+                    return;
+                }
+                synchronized (OUT_LOCK) {
+                    CliOutput.out(ConsoleSpec.renderWarning(step, code, message, module));
+                }
+                mirror(line);
             }
 
             @Override

@@ -12,15 +12,23 @@ import org.jspecify.annotations.Nullable;
  * What a compile returned: the outcome plus one entry per compiler diagnostic. One type for every
  * language jk compiles — {@code success} mirrors {@code javac}'s exit-zero for {@link JavacRunner},
  * and the worker's {@code exit == 0 && status == COMPILATION_SUCCESS} for
- * {@link WorkerCompileDriver}'s kotlinc and groovyc forks. {@code KotlincResult} and
- * {@code GroovycResult} were byte-identical copies of this record and of each other; the spec was
- * the same in all three, so the type is.
+ * {@link WorkerCompileDriver}'s kotlinc and groovyc forks. {@code compiled} names the sources an
+ * incremental compile recompiled; null when it compiled the whole source set.
  */
-public record CompileResult(boolean success, List<Diagnostic> diagnostics) {
+public record CompileResult(
+        boolean success,
+        List<Diagnostic> diagnostics,
+        @Nullable List<Path> compiled) {
 
     public CompileResult {
         Objects.requireNonNull(diagnostics, "diagnostics");
         diagnostics = List.copyOf(diagnostics);
+        compiled = compiled == null ? null : List.copyOf(compiled);
+    }
+
+    /** A compile of the whole source set. */
+    public CompileResult(boolean success, List<Diagnostic> diagnostics) {
+        this(success, diagnostics, null);
     }
 
     public boolean hasErrors() {

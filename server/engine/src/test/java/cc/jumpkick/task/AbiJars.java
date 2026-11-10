@@ -60,6 +60,20 @@ public final class AbiJars {
         return cw.toByteArray();
     }
 
+    /** {@code public class C { @Deprecated public void n() {} }}: what javac warns about at every use of {@code n}. */
+    public static byte[] classWithDeprecatedMethod(String name) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, "C", null, "java/lang/Object", null);
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_DEPRECATED, name, "()V", null, null);
+        mv.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+        mv.visitCode();
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 1);
+        mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
     /** {@code public class C { public static final int X = v; }} — javac inlines {@code X} at every use. */
     public static byte[] classWithIntConst(int v) {
         ClassWriter cw = new ClassWriter(0);

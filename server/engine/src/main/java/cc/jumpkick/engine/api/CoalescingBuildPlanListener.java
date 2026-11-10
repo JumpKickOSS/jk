@@ -249,6 +249,11 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
+    public void warn(String step, String code, String message, boolean replayed) {
+        structural(() -> delegate.warn(step, code, message, replayed));
+    }
+
+    @Override
     public void error(String step, String code, String message) {
         structural(() -> delegate.error(step, code, message));
     }

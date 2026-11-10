@@ -270,7 +270,13 @@ final class EngineEventDecoder {
                         if (owner != null) {
                             dispatch(type, line, owner, d -> {}, d -> {}, texts);
                         } else {
-                            listener.onNote(WarnEvent.decode(line).message());
+                            WarnEvent e = WarnEvent.decode(line);
+                            // A module the build does not run says its kept compiler warnings.
+                            if (e.replayed() && !e.module().isEmpty()) {
+                                listener.onModuleWarning(Path.of(dir), e.module(), e.task(), e.code(), e.message());
+                            } else {
+                                listener.onNote(e.message());
+                            }
                         }
                     }
                     // A member's warnings render live through its listener; its result carries none.
@@ -317,7 +323,7 @@ final class EngineEventDecoder {
         if (EngineProtocol.WARN.equals(type)) {
             WarnEvent e = WarnEvent.decode(line);
             onWarning.accept(new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message()));
-            if (listener != null) listener.warn(e.task(), e.code(), e.message());
+            if (listener != null) listener.warn(e.task(), e.code(), e.message(), e.replayed());
             return;
         }
         if (listener == null) return;

@@ -132,6 +132,7 @@ public final class PlannerTest {
                             in.dir(), compact, suiteNames, project.build().testClassSuites());
                     if (src.isEmpty()) {
                         ctx.label("no test sources");
+                        StepWarnings.clear(ctx, TaskNames.COMPILE_TEST);
                         ctx.put(NO_TEST_SOURCES, true);
                         warnDeclaredTestDepsButNoSources(ctx, project, in.dir());
                         ctx.cached(); // SKIPPED — nothing to compile
@@ -166,8 +167,10 @@ public final class PlannerTest {
                     // Kotlin first, then Groovy against its output (Gradle's order), then Java against
                     // both. The step did no work when the round and every compiler restored.
                     boolean restored = round != PlannerKsp.RoundOutcome.RAN;
+                    StepWarnings warnings = new StepWarnings();
                     restored &= compileKotlinTests(
                             ctx,
+                            warnings,
                             in,
                             cas,
                             actionCache,
@@ -178,6 +181,7 @@ public final class PlannerTest {
                             outs.mixedKotlin() && javaTests);
                     restored &= compileGroovyTests(
                             ctx,
+                            warnings,
                             in,
                             cas,
                             actionCache,
@@ -188,7 +192,8 @@ public final class PlannerTest {
                             compiledSuites,
                             compact,
                             outs.mixedGroovy() && javaTests);
-                    restored &= compileJavaTests(ctx, in, cas, src, outs.javacClasspath(baseCp), testClasses);
+                    restored &= compileJavaTests(ctx, warnings, in, cas, src, outs.javacClasspath(baseCp), testClasses);
+                    warnings.write(ctx, TaskNames.COMPILE_TEST);
                     mergeLanguageOutputs(src, outs, ctx.require(LAYOUT).buildDir());
                     SuiteResources.mirror(
                             ctx,
@@ -292,6 +297,7 @@ public final class PlannerTest {
      */
     private static boolean compileGroovyTests(
             TaskContext ctx,
+            StepWarnings warnings,
             BuildPlanner.Inputs in,
             Cas cas,
             ActionCache actionCache,
@@ -326,6 +332,8 @@ public final class PlannerTest {
                     ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");
             throw new RuntimeException("test groovyc reported errors");
         }
+        JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.GROOVYC, gr.freshWarnings(), gr.replayed());
+        warnings.add(JavacDiagnostics.GROOVYC, gr.warnings());
         ctx.put(COMPILE_TEST_GROOVY_ACTION_KEY, gr.actionKey());
         return gr.cacheHit();
     }
@@ -337,6 +345,7 @@ public final class PlannerTest {
      */
     private static boolean compileKotlinTests(
             TaskContext ctx,
+            StepWarnings warnings,
             BuildPlanner.Inputs in,
             Cas cas,
             ActionCache actionCache,
@@ -372,6 +381,8 @@ public final class PlannerTest {
                     "kotlinc failed without diagnostics");
             throw new RuntimeException("test kotlinc reported errors");
         }
+        JavacDiagnostics.reportWarnings(ctx, JavacDiagnostics.KOTLINC, kr.freshWarnings(), kr.replayed());
+        warnings.add(JavacDiagnostics.KOTLINC, kr.warnings());
         ctx.put(COMPILE_TEST_KOTLIN_ACTION_KEY, kr.actionKey());
         return kr.cacheHit();
     }
@@ -381,7 +392,13 @@ public final class PlannerTest {
      * javac restored its record or had nothing to compile.
      */
     private static boolean compileJavaTests(
-            TaskContext ctx, BuildPlanner.Inputs in, Cas cas, TestSources src, List<Path> javaCp, Path testClasses)
+            TaskContext ctx,
+            StepWarnings warnings,
+            BuildPlanner.Inputs in,
+            Cas cas,
+            TestSources src,
+            List<Path> javaCp,
+            Path testClasses)
             throws Exception {
         if (src.javaTest().isEmpty() && src.scTest().isEmpty()) return true;
         Path javaTestOut = testClasses; // javac always writes to java/test/
@@ -403,6 +420,7 @@ public final class PlannerTest {
                 src.scTest().isEmpty() ? null : ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
         TestSupport.Compiled compiled = TestSupport.compileWithCache(
                 ctx,
+                warnings,
                 TaskNames.COMPILE_TEST,
                 new PlannerCompile.TestCompile(
                         src.javacSources(),

@@ -304,9 +304,11 @@ public final class PlannerVersions {
                     BuildLayout layout = ctx.require(LAYOUT);
                     dropUndeclared(project, layout);
                     boolean allCached = true;
+                    StepWarnings warnings = new StepWarnings();
                     for (ReleaseSources entry : project.build().multiRelease()) {
-                        allCached &= compile(ctx, in, cas, actionCache, project, layout, entry);
+                        allCached &= compile(ctx, warnings, in, cas, actionCache, project, layout, entry);
                     }
+                    warnings.write(ctx, TaskNames.COMPILE_VERSIONS);
                     if (allCached) ctx.cached();
                     ctx.progress(1);
                 })
@@ -316,6 +318,7 @@ public final class PlannerVersions {
     /** One entry's compile; whether it was answered without running javac. */
     private static boolean compile(
             TaskContext ctx,
+            StepWarnings warnings,
             BuildPlanner.Inputs in,
             Cas cas,
             ActionCache actionCache,
@@ -368,8 +371,8 @@ public final class PlannerVersions {
                 genDir,
                 WorkerEnv.forModule(project.build().env(), in.dir(), layout.moduleTargetDir()));
         ctx.waited(Duration.ofMillis(r.waitMillis()));
-        boolean errored =
-                JavacDiagnostics.report(ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, r.diagnostics());
+        boolean errored = JavacDiagnostics.report(
+                ctx, request.classpath(), ClasspathResolver.COMPILE_MAIN, r.diagnostics(), r.replayed());
         if (!r.success()) {
             if (!errored) {
                 ctx.error(
@@ -379,6 +382,7 @@ public final class PlannerVersions {
             }
             throw new RuntimeException("javac reported errors");
         }
+        warnings.add(JavacDiagnostics.TOOL, r.warnings());
         return r.cacheHit() || r.compiledSources().isEmpty();
     }
 

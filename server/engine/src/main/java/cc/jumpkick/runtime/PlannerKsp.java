@@ -8,6 +8,7 @@ import static cc.jumpkick.runtime.PlannerPlugin.beforeCompile;
 import static cc.jumpkick.runtime.PlannerSupport.lockModules;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.KspProcessors;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -41,6 +42,7 @@ import cc.jumpkick.runtime.base.KspResolver;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.CompileWarnings;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.PortablePath;
@@ -372,6 +374,8 @@ public final class PlannerKsp {
         if (split.ksp().isEmpty()) {
             // Processors that are all javac's leave nothing of an earlier round to read.
             PathUtil.deleteRecursively(kspOutBase(layout));
+            CompileWarnings.writeCurrent(
+                    CompileWarnings.currentFile(layout.buildDir().resolve("incremental"), TaskNames.KSP), List.of());
             ctx.label("no KSP processors");
             ctx.progress(1);
             return;
@@ -458,9 +462,16 @@ public final class PlannerKsp {
                 kspVersion,
                 ctx.require(JAVA_HOME),
                 ctx.require(RELEASE));
-        if (!rerun
+        // The warnings the round's outputs were made with: a fresh stamp without them is not up to date.
+        Path warnings = CompileWarnings.currentFile(
+                ctx.require(LAYOUT).buildDir().resolve("incremental"), CompileWarnings.roundFile(round.producer()));
+        Optional<List<CompileWarnings.Kept>> kept =
+                rerun ? Optional.empty() : CompileWarnings.readCurrent(warnings, round.stampInputs());
+        if (kept.isPresent()
                 && FreshnessStamp.isFresh(
                         outBase, BuildStamps.KSP, round.stampInputs(), stampCp, ctx.require(RELEASE), optionsDigest)) {
+            for (CompileWarnings.Kept k : kept.get())
+                ctx.replayedWarn(k.tool(), "", k.warning().describe());
             return RoundOutcome.KEPT;
         }
 
@@ -480,10 +491,14 @@ public final class PlannerKsp {
         ActionCache actionCache = cx.actionCache();
         Optional<ActionCache.ActionRecord> recorded = rerun ? Optional.empty() : actionCache.lookup(key);
         RoundOutcome outcome = RoundOutcome.REPLACED;
+        List<CompileWarnings.Kept> said = new ArrayList<>();
         if (recorded.isPresent() && actionCache.restore(recorded.get(), outBase)) {
             // The record is what the forecast projects the classes tree from after `jk clean`;
             // restoring it rather than re-running is what makes the two agree.
             ctx.label("cache hit");
+            said.addAll(CompileWarnings.keptFromSaid(recorded.get().said()));
+            for (CompileWarnings.Kept k : said)
+                ctx.replayedWarn(k.tool(), "", k.warning().describe());
         } else {
             outcome = RoundOutcome.RAN;
             ctx.label("KSP " + kspVersion + ": " + round.kspJars().size() + " processor jar(s)");
@@ -509,12 +524,17 @@ public final class PlannerKsp {
             // diagnostics are, so -q/-v behave consistently.
             for (BuildPlanner.KspDiagnostic diagnostic : kspDiagnostics(output)) {
                 ctx.warn(diagnostic.severity(), diagnostic.message());
+                said.add(new CompileWarnings.Kept(
+                        diagnostic.severity(),
+                        new CompileResult.Diagnostic(
+                                CompileResult.Severity.WARNING, null, 0, 0, diagnostic.message())));
             }
             // The round is not incremental: every run starts from cleared outputs, so its caches
             // hold nothing a later round reads, and the record is the four output dirs alone.
             PathUtil.deleteRecursively(outBase.resolve("caches"));
-            if (!in.ephemeralActions()) record(actionCache, key, outBase);
+            if (!in.ephemeralActions()) record(actionCache, key, outBase, CompileWarnings.keptSaid(said));
         }
+        CompileWarnings.writeCurrent(warnings, said);
         FreshnessStamp.write(
                 outBase,
                 BuildStamps.KSP,
@@ -529,7 +549,8 @@ public final class PlannerKsp {
     }
 
     /** Record what a round wrote under {@code outBase}, an empty round as the verdict that it wrote nothing. */
-    private static void record(ActionCache actionCache, String key, Path outBase) throws IOException {
+    private static void record(ActionCache actionCache, String key, Path outBase, List<String> said)
+            throws IOException {
         String taskId = roundTaskId(outBase);
         Map<String, String> inputs = Map.of(TaskNames.KSP, key);
         boolean wroteAny = false;
@@ -537,9 +558,9 @@ public final class PlannerKsp {
             wroteAny |= PathUtil.anyRegularFile(outBase.resolve(sub), d -> false, f -> true);
         }
         if (wroteAny) {
-            actionCache.store(taskId, key, inputs, outBase);
+            actionCache.store(taskId, key, inputs, outBase, said);
         } else {
-            actionCache.storeVerdict(taskId, key, inputs);
+            actionCache.storeVerdict(taskId, key, inputs, said);
         }
     }
 
@@ -657,6 +678,8 @@ public final class PlannerKsp {
 
     /** Remove a test round's output, which no round will refresh; true when there was any. */
     static boolean dropTestRound(BuildLayout layout) throws IOException {
+        Files.deleteIfExists(CompileWarnings.currentFile(
+                layout.buildDir().resolve("incremental"), CompileWarnings.roundFile(TaskNames.COMPILE_TEST)));
         Path outBase = kspTestOutBase(layout);
         if (!Files.exists(outBase)) return false;
         PathUtil.deleteRecursively(outBase);

@@ -155,6 +155,11 @@ public final class EngineListeners {
             }
 
             @Override
+            public void moduleWarning(String dir, String step, String code, String message) {
+                journal.accModuleWarning(rid, dir, step, code, message);
+            }
+
+            @Override
             public void trackModule(String dir, BuildPlanView view) {
                 sse.trackModuleBuildPlan(rid, dir, view, writer, false);
             }

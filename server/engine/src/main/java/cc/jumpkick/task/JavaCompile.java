@@ -37,6 +37,9 @@ public final class JavaCompile {
     static volatile Runnable beforeFork = () -> {};
 
     /**
+     * @param diagnostics what the compiler said in this run
+     * @param replayed the warnings of sources this run did not compile, as their last compile said
+     *     them: every warning of a cache hit, the untouched sources' of an incremental compile
      * @param movedSources sources whose bytes changed between the key and the worker's return;
      *     the compile is not recorded and the next build recompiles them
      * @param waitMillis time spent queued behind the shared compiler worker; see TaskContext#waited
@@ -46,17 +49,27 @@ public final class JavaCompile {
             String outcome,
             String actionKey,
             List<CompileResult.Diagnostic> diagnostics,
+            List<CompileResult.Diagnostic> replayed,
             List<Path> compiledSources,
             List<Path> movedSources,
             long waitMillis) {
         public Result {
             diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
+            replayed = replayed == null ? List.of() : List.copyOf(replayed);
             compiledSources = compiledSources == null ? List.of() : List.copyOf(compiledSources);
             movedSources = movedSources == null ? List.of() : List.copyOf(movedSources);
         }
 
         public boolean cacheHit() {
             return outcome.startsWith("cache-hit");
+        }
+
+        /** Every warning the classes this run left on disk were compiled with. */
+        public List<CompileResult.Diagnostic> warnings() {
+            List<CompileResult.Diagnostic> out = new ArrayList<>(replayed);
+            out.addAll(CompileWarnings.replayable(diagnostics, false));
+            out.sort(CompileWarnings.ORDER);
+            return out;
         }
     }
 
@@ -146,22 +159,13 @@ public final class JavaCompile {
         Path out = Objects.requireNonNull(request.outputDir(), "outputDir");
         Files.createDirectories(out);
         if (request.sources().isEmpty()) {
-            return new Result(true, "no-sources", "", List.of(), List.of(), List.of(), 0L);
+            return new Result(true, "no-sources", "", List.of(), List.of(), List.of(), List.of(), 0L);
         }
 
         String key = ActionKey.forJavac(taskId, request, jkVersion);
         if (useCache) {
-            Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
-            if (hit.isPresent()) {
-                ActionCache.ActionRecord cached = MirroredOutputs.omitting(out, hit.get());
-                if (actionCache.restore(cached, out)) {
-                    restoreReferences(actionCache, key, out);
-                    Files.createDirectories(stateDir);
-                    LangCompile.recordTree(stateDir, key, cached.outputs());
-                    return new Result(
-                            true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of(), List.of(), 0L);
-                }
-            }
+            Result restored = restored(key, request, actionCache, stateDir);
+            if (restored != null) return restored;
         }
 
         Path gen = generatedSourceDir != null ? generatedSourceDir : stateDir.resolve("gen");
@@ -170,7 +174,8 @@ public final class JavaCompile {
             deleteClasses(out);
             forgetState(stateDir);
             Files.createDirectories(stateDir);
-        } else if (Files.isDirectory(stateDir) && !hasClasses(out)) {
+        } else if (Files.isDirectory(stateDir) && (!hasClasses(out) || !CompileWarnings.hasLedger(stateDir))) {
+            // Without its ledger the state cannot say what the sources it leaves alone warned.
             forgetState(stateDir);
             Files.createDirectories(stateDir);
         }
@@ -211,18 +216,34 @@ public final class JavaCompile {
         }
         Map<String, String> outputs = MirroredOutputs.without(out, prewriter.finish());
         if (!wr.success()) {
-            return new Result(false, "errors", key, wr.diagnostics(), wr.compiledSources(), List.of(), wr.waitMillis());
+            return new Result(
+                    false,
+                    "errors",
+                    key,
+                    wr.diagnostics(),
+                    List.of(),
+                    wr.compiledSources(),
+                    List.of(),
+                    wr.waitMillis());
         }
         if (outputs.isEmpty() && !request.sources().isEmpty()) {
+            // Nothing is recorded, and the ledger no longer matches the analysis the worker wrote.
+            Files.deleteIfExists(stateDir.resolve(CompileWarnings.LEDGER));
             return new Result(
                     true,
                     "compiled-no-outputs",
                     key,
                     wr.diagnostics(),
+                    List.of(),
                     wr.compiledSources(),
                     List.of(),
                     wr.waitMillis());
         }
+        CompileWarnings.Merged warnings = CompileWarnings.merge(
+                CompileWarnings.readLedger(stateDir, request.sources()),
+                wr.compiledSources(),
+                request.sources(),
+                CompileWarnings.replayable(wr.diagnostics(), false));
         List<Path> moved = ActionKey.changedSources(request.sources(), inputs);
         if (!moved.isEmpty()) {
             // Neither version of the moved source is what the key names, and the analysis may
@@ -231,10 +252,20 @@ public final class JavaCompile {
             // next build compiles the module whole from what is on disk.
             forgetState(stateDir);
             WorkCounters.compiled(wr.compiledSources().size());
-            return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), moved, wr.waitMillis());
+            return new Result(
+                    true,
+                    "compiled",
+                    key,
+                    wr.diagnostics(),
+                    warnings.kept(),
+                    wr.compiledSources(),
+                    moved,
+                    wr.waitMillis());
         }
         if (persist) {
-            actionCache.storeWithOutputs(taskId, key, inputs, outputs);
+            Files.createDirectories(stateDir);
+            CompileWarnings.writeLedger(stateDir, warnings.all());
+            actionCache.storeWithOutputs(taskId, key, inputs, outputs, CompileWarnings.said(warnings.all()));
             storeReferences(actionCache, cas, taskId, key, out);
             // The state's ledger names the compile that produced it, so the forecast reads this
             // checkout's own last compile rather than the shared pointer's.
@@ -244,7 +275,33 @@ public final class JavaCompile {
             PathUtil.deleteRecursively(stateDir);
         }
         WorkCounters.compiled(wr.compiledSources().size());
-        return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), List.of(), wr.waitMillis());
+        return new Result(
+                true,
+                "compiled",
+                key,
+                wr.diagnostics(),
+                warnings.kept(),
+                wr.compiledSources(),
+                List.of(),
+                wr.waitMillis());
+    }
+
+    /**
+     * The compile keyed {@code key} laid back from its record, saying again the warnings its run
+     * said; null when there is no record or a blob of it is gone, and the compile runs.
+     */
+    private static @Nullable Result restored(String key, CompileRequest request, ActionCache actionCache, Path stateDir)
+            throws IOException {
+        Path out = Objects.requireNonNull(request.outputDir(), "outputDir");
+        Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
+        if (hit.isEmpty()) return null;
+        ActionCache.ActionRecord cached = MirroredOutputs.omitting(out, hit.get());
+        if (!actionCache.restore(cached, out)) return null;
+        restoreReferences(actionCache, key, out);
+        Files.createDirectories(stateDir);
+        LangCompile.recordTree(stateDir, key, cached.outputs());
+        List<CompileResult.Diagnostic> said = CompileWarnings.fromSaid(cached.said(), request.sources());
+        return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), said, List.of(), List.of(), 0L);
     }
 
     /**

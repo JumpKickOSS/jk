@@ -25,7 +25,7 @@ public final class BuildIdentity {
      * key-shape change would collide with records the old shape wrote. Not a second product
      * version: never printed, never parsed, never compared on its own.
      */
-    static final int CACHE_KEY_SALT = 7;
+    static final int CACHE_KEY_SALT = 8;
 
     private static volatile @Nullable String cachedBuildId;
 

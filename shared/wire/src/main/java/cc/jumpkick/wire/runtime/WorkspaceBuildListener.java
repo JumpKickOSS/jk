@@ -60,6 +60,13 @@ public interface WorkspaceBuildListener {
     default void onModuleFinish(ModuleOutcome outcome) {}
 
     /**
+     * A compiler warning of a module this build does not run, said again as the module's last
+     * build said it: the module at {@code dir} ({@code group:name} {@code module}) is up to date and
+     * its classes were compiled with this warning. {@code code} names the compiler.
+     */
+    default void onModuleWarning(Path dir, String module, String step, String code, String message) {}
+
+    /**
      * Remaining wall-work {@code R(t)} in milliseconds. Seeded once with {@code R0} at plan time
      * (same value as {@code jk explain}), then re-emitted as modules progress/finish so the
      * countdown tracks residual schedule — not open-loop {@code seed − elapsed}. {@code 0} means

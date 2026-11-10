@@ -112,6 +112,14 @@ public final class PluginReply {
                 .finish();
     }
 
+    /** The sources one pass of an incremental compile recompiled, each as the worker was handed it. */
+    public static String compiled(List<String> files) {
+        return JsonFields.object()
+                .string("t", PluginProtocol.COMPILED)
+                .array("files", files)
+                .finish();
+    }
+
     /** A terminal typed result payload; {@code fields} serialized by shape. */
     public static String result(Map<String, Object> fields) {
         StringBuilder b = new StringBuilder("{\"t\":\"result\"");

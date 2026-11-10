@@ -77,11 +77,20 @@ class FreshnessStampTest {
                         classes,
                         BuildStamps.JAVA,
                         List.of(src),
+                        FreshnessStamp.ClasspathTokens.of(tokens),
+                        RELEASE,
+                        DIGEST))
+                .as("the same tokens")
+                .isTrue();
+        assertThat(FreshnessStamp.isFresh(
+                        classes,
+                        BuildStamps.JAVA,
+                        List.of(src),
                         FreshnessStamp.ClasspathTokens.of(List.of("pp:file:0002", "cp:abi:0001")),
                         RELEASE,
                         DIGEST))
-                .as("same token set, in any order")
-                .isTrue();
+                .as("the same tokens in another order: a compiler takes a class from the first entry")
+                .isFalse();
         assertThat(FreshnessStamp.isFresh(
                         classes,
                         BuildStamps.JAVA,

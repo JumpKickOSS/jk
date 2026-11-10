@@ -161,13 +161,14 @@ final class ForecastLangArms {
     boolean kotlinStampFresh(ForecastScope.Prepared prepared, KotlinArm arm) throws Exception {
         List<Path> freshInputs = new ArrayList<>(prepared.ktSrc());
         if (arm.mixedWithJava()) freshInputs.addAll(prepared.mainSrc());
-        return FreshnessStamp.isFresh(
-                prepared.layout().compileStampDir(),
-                BuildStamps.KOTLIN,
-                freshInputs,
-                FreshnessStamp.ClasspathTokens.of(PlannerLang.kotlinStampTokens(arm.classpath(), snapshotter)),
-                prepared.release(),
-                arm.config().digest());
+        return StepWarnings.kept(prepared.layout(), TaskNames.COMPILE_KOTLIN)
+                && FreshnessStamp.isFresh(
+                        prepared.layout().compileStampDir(),
+                        BuildStamps.KOTLIN,
+                        freshInputs,
+                        FreshnessStamp.ClasspathTokens.of(PlannerLang.kotlinStampTokens(arm.classpath(), snapshotter)),
+                        prepared.release(),
+                        arm.config().digest());
     }
 
     /**
@@ -218,6 +219,7 @@ final class ForecastLangArms {
             if (mixed) inputs.addAll(prepared.mainSrc());
             boolean fresh = !compileDepDirty
                     && !force
+                    && StepWarnings.kept(layout, TaskNames.COMPILE_GROOVY)
                     && FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.GROOVY, inputs);
             return new LangStep(
                     fresh
@@ -233,6 +235,7 @@ final class ForecastLangArms {
         if (mixed) freshInputs.addAll(prepared.mainSrc());
         if (!compileDepDirty
                 && !force
+                && StepWarnings.kept(layout, TaskNames.COMPILE_GROOVY)
                 && FreshnessStamp.isFresh(
                         layout.compileStampDir(),
                         BuildStamps.GROOVY,

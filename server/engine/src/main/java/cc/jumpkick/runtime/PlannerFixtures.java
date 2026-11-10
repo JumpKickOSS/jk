@@ -209,6 +209,7 @@ public final class PlannerFixtures {
                     if (sources.isEmpty()) {
                         Files.createDirectories(out);
                         ctx.label("no fixture sources");
+                        StepWarnings.clear(ctx, TaskNames.COMPILE_TEST_FIXTURES);
                         ctx.cached();
                         ctx.progress(1);
                         return;
@@ -269,7 +270,7 @@ public final class PlannerFixtures {
                                     ctx.require(LAYOUT).moduleTargetDir()));
                     ctx.waited(Duration.ofMillis(r.waitMillis()));
                     boolean errored = JavacDiagnostics.report(
-                            ctx, request.classpath(), ClasspathResolver.COMPILE_TEST, r.diagnostics());
+                            ctx, request.classpath(), ClasspathResolver.COMPILE_TEST, r.diagnostics(), r.replayed());
                     if (!r.success()) {
                         if (!errored) {
                             ctx.error(
@@ -280,6 +281,7 @@ public final class PlannerFixtures {
                         }
                         throw new RuntimeException("fixture javac reported errors");
                     }
+                    StepWarnings.keep(ctx, TaskNames.COMPILE_TEST_FIXTURES, JavacDiagnostics.TOOL, r.warnings());
                     if (r.cacheHit()) {
                         ctx.label("cache hit " + r.actionKey().substring(0, 8));
                         ctx.cached();

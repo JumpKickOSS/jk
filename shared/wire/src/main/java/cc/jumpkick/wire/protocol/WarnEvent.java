@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.protocol;
 
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestFailureInfo;
 import java.util.List;
 
-/** A warning attached to a task: the plain diagnostic shape (see {@link EngineProtocol#WARN}). */
+/**
+ * A warning attached to a task: the plain diagnostic shape (see {@link EngineProtocol#WARN}), plus
+ * {@code "replayed":true} when a step that did not run said it again as its last run said it.
+ */
 public record WarnEvent(
         String dir,
         String task,
@@ -25,9 +29,14 @@ public record WarnEvent(
         List<String> snippet,
         String stack,
         int textId,
-        int sameText) {
+        int sameText,
+        boolean replayed) {
+
+    /** The field a replayed warning carries; absent on every other. */
+    static final String REPLAYED = "replayed";
+
     public String encode() {
-        return DiagnosticFields.encode(
+        String encoded = DiagnosticFields.encode(
                 EngineProtocol.WARN,
                 dir,
                 task,
@@ -49,6 +58,12 @@ public record WarnEvent(
                 "",
                 textId,
                 sameText);
+        return replayed ? markReplayed(encoded) : encoded;
+    }
+
+    /** {@code line}, an encoded warning, marked replayed. */
+    static String markReplayed(String line) {
+        return Jsonl.append(line, JsonFields.fields().bool(REPLAYED, true).body());
     }
 
     /** The record for one failure's fields, with the caller's own dir/task/code/message/test. */
@@ -79,7 +94,8 @@ public record WarnEvent(
                 f.snippet(),
                 f.stack(),
                 ref.textId(),
-                ref.sameText());
+                ref.sameText(),
+                false);
     }
 
     public static WarnEvent decode(String json) {
@@ -102,6 +118,7 @@ public record WarnEvent(
                 Jsonl.strArray(json, "snippet"),
                 DiagnosticFields.str(json, "stack"),
                 Jsonl.intValue(json, "textId", 0),
-                Jsonl.intValue(json, "sameText", 0));
+                Jsonl.intValue(json, "sameText", 0),
+                Jsonl.bool(json, REPLAYED, false));
     }
 }

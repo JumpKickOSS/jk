@@ -96,6 +96,7 @@ class CompileTestProcessorTest {
 
         boolean ok = TestSupport.compileWithCache(
                         new NoopContext(),
+                        new StepWarnings(),
                         "compile-test",
                         new PlannerCompile.TestCompile(
                                 CompileSupport.collectJavaSources(testSrc),
@@ -278,6 +279,7 @@ class CompileTestProcessorTest {
             throws Exception {
         return TestSupport.compileWithCache(
                         new NoopContext(),
+                        new StepWarnings(),
                         "compile-test",
                         new PlannerCompile.TestCompile(
                                 CompileSupport.collectJavaSources(testSrc),

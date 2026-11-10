@@ -115,6 +115,9 @@ public final class PluginProtocol {
     public static final String FILE = "file"; // format per-file outcome
     public static final String WROTE = "wrote"; // compat import wrote a file
     public static final String RESULT = "result"; // terminal typed payload
+    /** {@code {files[]}}: the sources one pass of an incremental compile recompiled. */
+    public static final String COMPILED = "compiled";
+
     /** One classpath entry's ABI snapshot: {path, sha256} — the {@link #OP_SNAPSHOT} reply. */
     public static final String CP_SNAPSHOT = "cp-snapshot";
     /** Pull-protocol slot: the worker can accept one COMPILE/PLAN (or DONE). */

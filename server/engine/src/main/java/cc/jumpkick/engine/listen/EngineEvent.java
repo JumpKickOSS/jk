@@ -89,7 +89,13 @@ public sealed interface EngineEvent {
 
     record Output(String dir, String step, String line) implements EngineEvent {}
 
-    record Warn(String dir, String step, String code, String message) implements EngineEvent {}
+    /**
+     * {@code replayed}: said again by a step that did not run, as its last run said it. {@code
+     * module} names the module ({@code group:name}) of a warning said for a module the build does
+     * not run; empty for one a running module's step says.
+     */
+    record Warn(String dir, String step, String code, String message, boolean replayed, String module)
+            implements EngineEvent {}
 
     record ErrorLine(
             String dir,

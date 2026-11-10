@@ -110,9 +110,9 @@ public final class FreshnessStamp {
     }
 
     /**
-     * True when the stamp matches the current source set, option digest and classpath token set
-     * and no source is newer. The tokens are compared as a set and never stat'ed: each one is
-     * content-derived, so equality is the whole proof.
+     * True when the stamp matches the current source set, option digest and classpath tokens and
+     * no source is newer. The tokens are compared in order, as the action key hashes them, and
+     * never stat'ed: each one is content-derived, so equality is the whole proof.
      */
     public static boolean isFresh(
             Path outputDir,
@@ -143,7 +143,7 @@ public final class FreshnessStamp {
         if (stamp == null) return Optional.empty();
         // A path-spelled stamp carries no tokens; it matches only a producer that checks by path.
         if (!stamp.classpath().isEmpty()) return Optional.empty();
-        if (!new TreeSet<>(classpath.lines()).equals(new TreeSet<>(stamp.classpathTokens()))) {
+        if (!classpath.lines().equals(stamp.classpathTokens())) {
             return Optional.empty();
         }
         return anySourceChanged(stamp, sources) ? Optional.empty() : Optional.of(stamp);
@@ -416,7 +416,7 @@ public final class FreshnessStamp {
         for (Path cp : sortedAbs(classpath)) {
             sb.append("CP ").append(cp).append('\n');
         }
-        for (String token : new TreeSet<>(classpathTokens)) {
+        for (String token : classpathTokens) {
             sb.append("TOKEN ").append(token).append('\n');
         }
         Files.writeString(stampFile, sb.toString(), StandardCharsets.UTF_8);

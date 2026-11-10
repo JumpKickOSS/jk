@@ -195,6 +195,7 @@ public final class PlannerGuardSuite {
                     if (sources.isEmpty()) {
                         Files.createDirectories(out);
                         ctx.label("no guard sources");
+                        StepWarnings.clear(ctx, TaskNames.COMPILE_GUARD);
                         ctx.cached();
                         ctx.progress(1);
                         return;
@@ -257,7 +258,7 @@ public final class PlannerGuardSuite {
                                     ctx.require(LAYOUT).moduleTargetDir()));
                     ctx.waited(Duration.ofMillis(r.waitMillis()));
                     boolean errored = JavacDiagnostics.report(
-                            ctx, request.classpath(), ClasspathResolver.COMPILE_TEST, r.diagnostics());
+                            ctx, request.classpath(), ClasspathResolver.COMPILE_TEST, r.diagnostics(), r.replayed());
                     if (!r.success()) {
                         if (!errored) {
                             ctx.error(
@@ -267,6 +268,7 @@ public final class PlannerGuardSuite {
                         }
                         throw new RuntimeException("guard suite javac reported errors");
                     }
+                    StepWarnings.keep(ctx, TaskNames.COMPILE_GUARD, JavacDiagnostics.TOOL, r.warnings());
                     // The stamp names the compile that wrote the tree, as compile-java's does: the
                     // code graph keys the suite's compiled facts by it.
                     FreshnessStamp.write(
