@@ -7,7 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
-const { cellState, doingLine, moduleCells, moduleFocus, moduleName, SLOW_MIN_MILLIS } = await spa('strip.js');
+const { cellState, doingLine, doingSegments, moduleCells, moduleFocus, moduleName, SLOW_MIN_MILLIS } = await spa('strip.js');
 
 const step = (name, phase, state, over = {}) => ({ name, phase, state, millis: state === 'running' ? null : 10, message: '', ...over });
 const mod = (dir, state, over = {}) => ({ dir, coord: 'dev:' + dir.split('/').pop(), state, millis: 1_000, steps: [], diagnostics: [], lastActivity: 0, ...over });
@@ -46,6 +46,28 @@ test('the live line says what the build is doing right now', () => {
   assert.equal(doingLine(c), 'testing service · QuoteServiceIT (+1 more)');
   assert.equal(doingLine(card([])), 'starting');
   assert.equal(doingLine(card([mod('/w/a', 'success')], { state: 'finished', success: true, finishedAt: 1 })), '', 'a finished run has no live line');
+});
+
+test('the live line is coloured in the CLI roles: the class gold, the method purple', () => {
+  const c = card([
+    mod('/w/service', 'running', {
+      lastActivity: 5,
+      steps: [step('test', 'test', 'running', { message: 'dev:service :: com.acme.QuoteServiceIT.weekendStay()' })],
+    }),
+    mod('/w/web', 'running', { lastActivity: 2, steps: [step('compile-java', 'compile', 'running')] }),
+  ]);
+  const segs = doingSegments(c);
+  assert.equal(segs.map((s) => s.text).join(''), doingLine(c), 'the segments spell the plain line');
+  assert.equal(doingLine(c), 'testing service · QuoteServiceIT.weekendStay() (+1 more)');
+  const cls = (text) => segs.filter((s) => s.text === text).map((s) => s.cls);
+  assert.deepEqual(cls('testing '), ['det-mid']);
+  assert.deepEqual(cls('service'), ['live-mod']);
+  assert.deepEqual(cls(' · '), ['det-dim']);
+  assert.deepEqual(cls('QuoteServiceIT'), ['det-type']);
+  assert.deepEqual(cls('weekendStay'), ['det-fn']);
+  assert.deepEqual(cls('1'), ['det-num'], 'the count of other running modules is a number');
+  assert.deepEqual(doingSegments(card([])), [{ text: 'starting', cls: 'det-mid' }]);
+  assert.deepEqual(doingSegments(card([mod('/w/a', 'success')], { state: 'finished', success: true, finishedAt: 1 })), []);
 });
 
 test('the run page opens only the failed and the slow modules', () => {

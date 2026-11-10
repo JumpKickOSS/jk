@@ -238,7 +238,7 @@
                     <div v-if="i.state === 'run' && i.card" class="live-build" role="link" tabindex="0" @click="openRun(i)" @keydown.enter.prevent="openRun(i)">
                       <div class="cardbar" role="progressbar" :aria-valuenow="progress(i.card)" aria-valuemin="0" aria-valuemax="100">
                         <span class="cardbar-fill" :style="{ width: progress(i.card) + '%' }"></span></div>
-                      <div class="live-line"><span class="live-doing">{{ doingLine(i.card) }}</span><span class="spacer"></span>
+                      <div class="live-line"><span class="live-doing" :data-tip="doingLine(i.card)"><span class="live-doing-text"><span v-for="(seg, k) in doingSegments(i.card)" :key="k" :class="seg.cls">{{ seg.text }}</span></span></span><span class="spacer"></span>
                         <span v-if="hasEta(i.card)" class="eta" data-tip="estimated time remaining"><span class="eta-label">ETA</span> <span class="eta-cd">{{ etaCountdown(i.card) }}</span></span>
                         <span v-else class="millis elapsed-warn">{{ elapsed(i.card) }}</span>
                         <button v-if="i.card.id != null" type="button" class="rebuild icon danger" @click.stop="cancelCard(i.card)" aria-label="Cancel" data-tip="Cancel this run"><jk-icon name="ban"></jk-icon></button></div>
@@ -508,7 +508,7 @@
           <div class="cardbar" role="progressbar" :aria-valuenow="progress(projectRun.card)" aria-valuemin="0" aria-valuemax="100">
             <span class="cardbar-fill" :style="{ width: progress(projectRun.card) + '%' }"><span class="cardbar-pct">{{ progress(projectRun.card) }}%</span></span>
           </div>
-          <div class="live-line"><span class="live-doing">{{ doingLine(projectRun.card) }}</span></div>
+          <div class="live-line"><span class="live-doing" :data-tip="doingLine(projectRun.card)"><span class="live-doing-text"><span v-for="(seg, k) in doingSegments(projectRun.card)" :key="k" :class="seg.cls">{{ seg.text }}</span></span></span></div>
           <!-- The run's downloads while bytes move, as the terminal's Download block. -->
           <div v-if="projectRun.card.downloads" class="downloads">
             <div class="downloads-head">Download <span class="downloads-sep">›</span> {{ downloadsHead(projectRun.card.downloads) }}</div>

@@ -3,7 +3,7 @@
 // cell per module coloured by state, and which modules deserve to open by default (the failed and
 // the slow). Pure functions over a folded card (fold.js), so the suite runs them headlessly.
 
-import { liveStepDetail } from './label.js';
+import { detailSegments, liveStepDetail } from './label.js';
 import { orderedModules, outcomeOf, phaseChainOf } from './outcome.js';
 
 /** The verb a running phase reads as on the one-line live build: `testing backend/service`. */
@@ -72,18 +72,35 @@ export function moduleCells(card) {
  * several modules running, the count of the others follows. '' before the first module starts.
  */
 export function doingLine(card) {
-  if (!card || outcomeOf(card) !== 'running') return '';
+  return doingSegments(card)
+    .map((s) => s.text)
+    .join('');
+}
+
+/**
+ * {@link doingLine} as colour segments `{ text, cls }`, in the CLI's `colorDetail` roles: the verb
+ * and separators mid-gray, the module plain, the detail through {@link detailSegments} (the class
+ * gold, the method purple) and the count of other running modules as a number. [] when the run
+ * is not running.
+ */
+export function doingSegments(card) {
+  if (!card || outcomeOf(card) !== 'running') return [];
   const running = orderedModules((card.modules || []).filter((m) => m.state === 'running'));
   const m = running[0];
-  if (!m) return card.modules && card.modules.length ? 'finishing' : 'starting';
+  if (!m) return [{ text: card.modules && card.modules.length ? 'finishing' : 'starting', cls: 'det-mid' }];
   const phases = phaseChainOf(m);
   const p = phases.filter((x) => x.state === 'running').pop();
   const verb = p ? PHASE_VERB[p.phase] || p.label.toLowerCase() : 'working on';
   const detail = liveStepDetail(m.coord || '', m.steps);
-  let line = verb + ' ' + moduleName(m);
-  if (detail) line += ' · ' + detail;
-  if (running.length > 1) line += ' (+' + (running.length - 1) + ' more)';
-  return line;
+  const segs = [
+    { text: verb + ' ', cls: 'det-mid' },
+    { text: moduleName(m), cls: 'live-mod' },
+  ];
+  if (detail) segs.push({ text: ' · ', cls: 'det-dim' }, ...detailSegments(detail));
+  if (running.length > 1) {
+    segs.push({ text: ' (+', cls: 'det-mid' }, { text: String(running.length - 1), cls: 'det-num' }, { text: ' more)', cls: 'det-mid' });
+  }
+  return segs;
 }
 
 /** A module is slow when its wall is at least this multiple of the run's median module wall… */

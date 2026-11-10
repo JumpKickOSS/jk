@@ -2640,8 +2640,23 @@ button.run-chip:hover { filter: brightness(1.2); }
   margin-top: 6px;
   cursor: pointer;
 }
-.live-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--tx); font-size: 12px; }
-.live-doing { color: var(--tx); overflow-wrap: anywhere; }
+.live-line { display: flex; align-items: center; gap: 10px; color: var(--tx); font-size: 12px; }
+/* One row whatever the width: too long a line loses its left end behind a leading …, so the test
+   class and method on the right always show. The rtl box puts the ellipsis on the left; the text
+   inside is an isolated ltr run, so its punctuation, `()` and `·`, keeps its order. */
+.live-doing {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  color: var(--tx);
+}
+.live-doing-text { direction: ltr; unicode-bidi: isolate; }
+.live-line > :not(.live-doing) { flex-shrink: 0; }
+.live-doing .live-mod { color: var(--tx); }
 .live-build .cardbar { margin: 4px 0 6px; }
 .cardbar + .live-line { margin: 6px 0 2px; }
 .cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(14px, 1fr)); gap: 3px; }

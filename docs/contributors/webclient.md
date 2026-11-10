@@ -129,8 +129,11 @@ and placed at the end of the session's current episode; a finished run reaches t
 read, which `request-finish` schedules. A run line joins its action to its journal record (by
 episode and build number) for the outcome chip, the failing headline and the delta chip, and an
 `edited N files` line goes before every run whose `delta.files` is not empty. The live build is
-`strip.js`: `doingLine`, `moduleCells` (padded with waiting cells to the record's `moduleCount`)
-and the card's own progress and ETA (`cards.js`).
+`strip.js`: `doingSegments` (`doingLine` is its plain text, the hover tip), `moduleCells` (padded
+with waiting cells to the record's `moduleCount`) and the card's own progress and ETA (`cards.js`).
+The live line keeps the CLI's detail colours (`detailSegments`: the class gold, the method purple)
+and stays on one row: a line too wide for its card loses its left end behind a leading `…`, so the
+test class and method on the right stay in view (an `rtl` box around an isolated `ltr` run).
 
 With no session in the route (`#console/<id>`), the console holds the rail's first card at load
 (`consoleAutoSession`) so a reordering rail does not move the selection; a watcher on
