@@ -437,22 +437,31 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 .card-head { display: flex; align-items: baseline; gap: 10px; }
 
+/* An outcome badge: dark text on its state's color lightened 20% toward white, outlined in a halo
+   a quarter of the way from that fill to white so the text reads even on the running blue. A
+   variant sets only --badge-base. */
 .badge {
+  --badge-base: var(--runc);
+  --badge-bg: color-mix(in srgb, var(--badge-base) 80%, #fff);
+  --badge-halo: color-mix(in srgb, var(--badge-bg) 75%, #fff);
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font: 600 11px/1 var(--mono);
+  font: 600 12px/1 var(--mono);
   border-radius: var(--r-sm);
   padding: 3px 9px;
   color: #000;
-  background: var(--runc);
+  background: var(--badge-bg);
+  text-shadow:
+    1px 0 var(--badge-halo), -1px 0 var(--badge-halo), 0 1px var(--badge-halo), 0 -1px var(--badge-halo),
+    1px 1px var(--badge-halo), -1px -1px var(--badge-halo), 1px -1px var(--badge-halo), -1px 1px var(--badge-halo);
   white-space: nowrap;
 }
 
-.badge.success { background: var(--okc); color: #000; }
-.badge.failed { background: var(--err); color: #000; }
-.badge.cancelled { background: var(--dim); color: #000; }
-.badge.finished { background: var(--warn); color: #000; }
+.badge.success { --badge-base: var(--okc); }
+.badge.failed { --badge-base: var(--err); }
+.badge.cancelled { --badge-base: var(--dim); }
+.badge.finished { --badge-base: var(--warn); }
 
 .coord { font-size: 12.5px; font-weight: 500; }
 .coord .cg { color: var(--cg); }
@@ -910,9 +919,9 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 /* right group: the outcome pill (#buildNumber) and the reliability readout */
 .proj-stats { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; }
-.badge.running { background: var(--runc); color: #000; }
-.badge.queued { background: var(--dim); color: #000; }
-.badge.issue { background: var(--warn); color: #000; }
+.badge.running { --badge-base: var(--runc); }
+.badge.queued { --badge-base: var(--dim); }
+.badge.issue { --badge-base: var(--warn); }
 
 .reliability {
   display: flex;
@@ -1087,7 +1096,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 /* build-history table — reuses table.stats; left-align the text columns and shrink the pill */
 table.stats.history td, table.stats.history th { text-align: left; padding: 4px 16px 4px 0; }
-table.stats.history td .badge { font-size: 10.5px; padding: 2px 7px; }
+table.stats.history td .badge { font-size: 11.5px; padding: 2px 7px; }
 table.stats.history td.ok { color: var(--ok); }
 
 /* ---- status view ---- */
