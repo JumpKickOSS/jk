@@ -351,8 +351,8 @@ class LearnedHeapRetryTest {
      * {@code die} exits 3 before any test. {@code after} reports one success, then exits 3.
      * {@code always} does that at every heap. {@code big} dies as {@code die} does below 512 MiB.
      * {@code escaped} reports {@code warm()} passing and then {@code alloc()} failed with {@code
-     * java.lang.OutOfMemoryError: Java heap space}, exiting 1 as a test JVM without exit-on-OOM
-     * does. {@code runner} reports {@code warm()} passing and then exits 70 naming the heap error,
+     * java.lang.OutOfMemoryError: Java heap space}, finishing its plan and exiting 1 as a test JVM
+     * without exit-on-OOM does. {@code runner} reports {@code warm()} passing and then exits 70 naming the heap error,
      * as the test runner does when a heap error escapes JUnit. A heap of 256 MiB or more passes, except {@code always} and {@code big}. {@code partial}
      * runs {@code demo.A}, {@code demo.B} and {@code demo.C}: at 128 MiB {@code A} passes and the
      * other two fail with escaped heap errors, at 256 MiB {@code B} fails an assertion and {@code
@@ -377,11 +377,12 @@ class LearnedHeapRetryTest {
                 mode="MODE"
                 if [ "$mode" = "partial" ]; then
                   f() { printf '%s\\n' "##JKT:{\\"event\\":\\"finished\\",\\"type\\":\\"TEST\\",\\"status\\":\\"$2\\",\\"uniqueId\\":\\"[engine:junit-jupiter]/[class:$1]/[method:t()]\\",\\"testClass\\":\\"$1\\",\\"testMethod\\":\\"t()\\",\\"duration_ms\\":1$3}"; }
+                  plan_done() { printf '%s\\n' '##JKT:{"event":"plan_finished","duration_ms":1,"failed":true}'; }
                   heap=',"throwable":{"class":"java.lang.OutOfMemoryError","message":"Java heap space","stack":""}'
                   assertion=',"throwable":{"class":"java.lang.AssertionError","message":"expected 1","stack":""}'
                   case "$mx" in
-                    -Xmx128m) f demo.A SUCCESSFUL ""; f demo.B FAILED "$heap"; f demo.C FAILED "$heap"; exit 1 ;;
-                    -Xmx256m) f demo.B FAILED "$assertion"; f demo.C FAILED "$heap"; exit 1 ;;
+                    -Xmx128m) f demo.A SUCCESSFUL ""; f demo.B FAILED "$heap"; f demo.C FAILED "$heap"; plan_done; exit 1 ;;
+                    -Xmx256m) f demo.B FAILED "$assertion"; f demo.C FAILED "$heap"; plan_done; exit 1 ;;
                   esac
                   echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
                   exit 3
@@ -396,6 +397,7 @@ class LearnedHeapRetryTest {
                 fi
                 if [ "$mode" = "escaped" ] && [ "$small" = 1 ]; then
                   printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"FAILED","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","testClass":"demo.Big","testMethod":"alloc()","duration_ms":1,"throwable":{"class":"java.lang.OutOfMemoryError","message":"Java heap space","stack":""}}'
+                  printf '%s\\n' '##JKT:{"event":"plan_finished","duration_ms":1,"failed":true}'
                   exit 1
                 fi
                 if [ "$mode" = "runner" ] && [ "$small" = 1 ]; then

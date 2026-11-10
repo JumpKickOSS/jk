@@ -334,15 +334,17 @@ final class ResultAggregator {
 
     /**
      * Why the fork did not run its plan to the end, or {@code null} when it did. The runner exits
-     * 1 for a failed test it already reported, so a non-zero exit is a death only when nothing
-     * failed; exit 0 is a death when {@code plan_finished} never came, and a plan that finished
-     * short of the tests discovery announced lost some on the way. A cancel that arrived after
-     * every discovered test was reported did finish: that one stays green.
+     * 1 for a failed test it already reported once its plan finished, so that exit is a death only
+     * when nothing failed or the plan never finished, and any other non-zero exit is one whatever
+     * failed before it (a later test's System.exit, an OOM kill); exit 0 is a death when {@code
+     * plan_finished} never came, and a plan that finished short of the tests discovery announced
+     * lost some on the way. A cancel that arrived after every discovered test was reported did
+     * finish: that one stays green.
      */
     private @Nullable String incomplete(int exitCode, long reported) {
         if (cancelAfterEveryTest(reported)) return null;
-        if (exitCode != 0) {
-            return failed > 0 ? null : "worker " + WorkerContainment.failure(exitCode, "exited " + exitCode);
+        if (exitCode != 0 && !(exitCode == 1 && failed > 0 && planFinished)) {
+            return "worker " + WorkerContainment.failure(exitCode, "exited " + exitCode);
         }
         if (!planFinished) {
             String reportedOf = discoveredTests < 0

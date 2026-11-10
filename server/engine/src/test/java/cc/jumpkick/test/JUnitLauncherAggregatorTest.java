@@ -216,6 +216,23 @@ class JUnitLauncherAggregatorTest {
         });
     }
 
+    /** A failure reported, then the JVM dies (a later test's System.exit(1), an OOM kill): the rest never ran. */
+    @Test
+    void a_fork_that_dies_after_a_reported_failure_is_still_incomplete() {
+        for (int exit : new int[] {1, 137}) {
+            var agg = new ResultAggregator();
+            agg.accept("{\"event\":\"discovery_total\",\"classes\":2,\"tests\":40}");
+            agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+            agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"FAILED\"}");
+
+            var result = agg.toResult(exit);
+
+            assertThat(result.failures())
+                    .as("exit %d with no plan_finished", exit)
+                    .anySatisfy(row -> assertThat(row.method()).isEqualTo("(test run)"));
+        }
+    }
+
     @Test
     void a_fork_that_exits_0_with_no_event_and_no_plan_is_a_launcher_failure() {
         var agg = new ResultAggregator();
