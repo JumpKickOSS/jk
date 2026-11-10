@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Objects;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -165,5 +167,18 @@ class LinkingTest {
         Linking.linkOrCopy(source, target);
 
         assertThat(Files.readString(target)).isEqualTo("new");
+    }
+
+    /** Two directories of one device are one pair; the key is the device, not the mount's name. */
+    @Test
+    void the_volume_pair_is_keyed_by_device_and_names_no_mount(@TempDir Path dir) throws Exception {
+        Path a = Files.writeString(Files.createDirectories(dir.resolve("a")).resolve("blob"), "x");
+        Path b = Files.createDirectories(dir.resolve("b")).resolve("out");
+        Path c = Files.createDirectories(dir.resolve("c")).resolve("out");
+        Linking.VolumePair ab = Objects.requireNonNull(Linking.VolumePair.of(a, b));
+        assertThat(ab).isNotNull().isEqualTo(Linking.VolumePair.of(a, c));
+        Assumptions.assumeTrue(
+                Files.getFileStore(dir).supportsFileAttributeView("unix"), "a device attribute to key on");
+        assertThat(ab.source()).isEqualTo(String.valueOf(Files.getAttribute(dir, "unix:dev")));
     }
 }

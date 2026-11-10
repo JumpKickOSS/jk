@@ -151,17 +151,30 @@ public final class Linking {
         void run() throws IOException;
     }
 
-    /** The (source, target) filesystem pair, or {@code null} when either store cannot be read. */
-    private record VolumePair(String source, String target) {
+    /**
+     * The (source, target) device pair, or {@code null} when either side cannot be read. A device
+     * number, not {@link java.nio.file.FileStore#name}: two btrfs subvolumes of one partition, every
+     * tmpfs and every overlay mount share a store name, and one cross-device failure between two of
+     * them must not turn every later link within one into a copy. One stat per side, no mount table.
+     * Where the platform has no device attribute the directories themselves are the pair.
+     */
+    record VolumePair(String source, String target) {
         static @Nullable VolumePair of(Path source, Path target) {
+            Path parent = target.getParent();
+            Path targetDir = parent == null ? target : parent;
             try {
-                Path parent = target.getParent();
+                return new VolumePair(device(source), device(targetDir));
+            } catch (UnsupportedOperationException | IllegalArgumentException noDeviceView) {
+                Path sourceDir = source.toAbsolutePath().getParent();
                 return new VolumePair(
-                        Files.getFileStore(source).name(),
-                        Files.getFileStore(parent == null ? target : parent).name());
+                        String.valueOf(sourceDir), targetDir.toAbsolutePath().toString());
             } catch (IOException | RuntimeException unknown) {
                 return null; // cannot classify — try the link and let it answer
             }
+        }
+
+        private static String device(Path p) throws IOException {
+            return String.valueOf(Files.getAttribute(p, "unix:dev"));
         }
     }
 }
