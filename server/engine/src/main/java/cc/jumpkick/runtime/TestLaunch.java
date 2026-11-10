@@ -442,7 +442,8 @@ final class TestLaunch {
                 .withJvmArgs(testJvmArgs)
                 .withClassPatterns(effectiveSel.classes())
                 .withExcludedClasses(projectUnderTest.build().testExcludeClasses())
-                .withDebug(in.session().debugJvm());
+                .withDebug(in.session().debugJvm())
+                .withKeepOutput(in.verbose());
         if (jacoco != null && coverageExec != null) {
             launcher.withCoverage(new CoverageAgent(jacoco.agentJar(), coverageExec));
         }

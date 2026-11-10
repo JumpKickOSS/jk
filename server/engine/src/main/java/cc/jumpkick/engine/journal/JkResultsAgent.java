@@ -147,10 +147,12 @@ public final class JkResultsAgent {
         appendNotices(sb, record, reason);
         appendGuardWithheld(sb, record);
         appendMemoryEvents(sb, record);
-        if (ok && !reported) return sb.toString();
-        sb.append(body(record, loci, tests, opt));
-        String delta = deltaLine(record);
-        if (delta != null) sb.append(delta).append('\n');
+        if (!ok || reported) {
+            sb.append(body(record, loci, tests, opt));
+            String delta = deltaLine(record);
+            if (delta != null) sb.append(delta).append('\n');
+        }
+        if (opt.next == Next.ALL) JkResultsPrinted.append(sb, tests, record.dir());
         return sb.toString();
     }
 
@@ -562,6 +564,7 @@ public final class JkResultsAgent {
             List<String> blocks,
             List<String> files) {
         List<String> seen = new ArrayList<>();
+        Map<String, MarkdownTestReport.Printed> printed = JkResultsPrinted.byClass(tests);
         for (Locus d : loci) {
             if (!d.test()) continue;
             String id = testId(d.diag());
@@ -570,7 +573,15 @@ public final class JkResultsAgent {
             seen.add(id);
             List<Row> rows = rows(d.diag(), d.file(), d.line(), r.dir(), opt.fullSnippets);
             blocks.add(testBlock(
-                    id, d.message(), d.diag().stack(), d.diag().exceptionClass(), d.file(), d.line(), rows, r.dir()));
+                            id,
+                            d.message(),
+                            d.diag().stack(),
+                            d.diag().exceptionClass(),
+                            d.file(),
+                            d.line(),
+                            rows,
+                            r.dir())
+                    + JkResultsPrinted.hint(printed.get(d.diag().className())));
             files.add(d.file());
         }
         if (tests == null) return;
@@ -582,7 +593,15 @@ public final class JkResultsAgent {
                 if (id.isEmpty() || seen.contains(id)) continue;
                 String message = e.failureMessage() == null ? "" : e.failureMessage();
                 blocks.add(testBlock(
-                        id, JkResultsHints.firstLine(message), e.failureStack(), null, "", 0, List.of(), r.dir()));
+                                id,
+                                JkResultsHints.firstLine(message),
+                                e.failureStack(),
+                                null,
+                                "",
+                                0,
+                                List.of(),
+                                r.dir())
+                        + JkResultsPrinted.hint(printed.get(e.className())));
                 files.add("");
             }
         }
@@ -922,7 +941,7 @@ public final class JkResultsAgent {
         return path.startsWith("/") || path.matches("[A-Za-z]:/.*");
     }
 
-    private static String one(String s, String projectDir) {
+    static String one(String s, String projectDir) {
         if (s == null) return "";
         String t =
                 s.replace('\r', ' ').replace('\n', ' ').replaceAll("\\s+", " ").strip();

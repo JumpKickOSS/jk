@@ -151,8 +151,8 @@ for “unit + integration + optional house-rule scripts.” [Why](why.md#test-ru
 | **`jk results -d`** | Full `details.jsonl`. MCP `details` is a budgeted tail (`jk://runs/latest/details`) |
 | **`target/jk-profile.json`** | Timings (Perfetto / `chrome://tracing`), not failure triage |
 
-Do **not** set `TERM=dumb` and scrape wedges. Do **not** use `-v` / `--verbose` as the
-primary agent API — verbose is for humans and still points at the same files.
+Do **not** set `TERM=dumb` and scrape wedges. `-v` / `--verbose` adds one thing to the agent
+report: what each test class printed ([Test](test.md#what-a-test-printed)).
 
 ```bash
 jk test -O jsonl

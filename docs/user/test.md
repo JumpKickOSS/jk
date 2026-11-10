@@ -293,6 +293,11 @@ the `<system-out>` of that class's `target/surefire-reports/TEST-<class>.xml`
 for a full one. The test JVM merges stderr into stdout, so `<system-err>` stays empty. Each class
 keeps its first 262,144 characters of output, and a closing line counts the lines cut. The files are written
 when the module's run ends; a class re-run after its JVM ran out of heap reports the re-run.
+`jk test -v` also shows each line on the terminal as the test prints it. The agent report (`--agent`,
+MCP `run`) puts it in the verdict: under a failed test whose class printed, `printed N lines; jk test
+-v shows them`, and on a `-v` run an `OUT <class> printed N lines` block per class holding its last
+40 lines (200 across the run), naming the report file when earlier lines are left out. An up-to-date
+suite prints nothing; `-r` runs it again.
 While the run goes, each class that finishes adds a `class-finish` line to the run's
 `details.jsonl` (its tests, failures, skips and wall), so a run cancelled or timed out part way
 still names every class that completed ([Machine output](machine-output.md#event-vocabulary)). To

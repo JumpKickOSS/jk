@@ -82,6 +82,31 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void output_printed_while_a_class_runs_is_counted_for_that_class_in_the_published_results(@TempDir Path ws) {
+        RunResults sink = new RunResults();
+        RunResults.open(sink);
+        try {
+            var md = new MarkdownTestReport(true);
+            var agg = new ResultAggregator(TestProgressListener.noop(), 0, null, md);
+            agg.userOutput("JVM banner before any class");
+            agg.accept(
+                    "{\"event\":\"started\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]\",\"type\":\"CONTAINER\"}");
+            agg.userOutput("A says hello");
+            agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]/[method:a()]\","
+                    + "\"testClass\":\"A\",\"testMethod\":\"a()\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+            agg.accept(
+                    "{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]\",\"type\":\"CONTAINER\","
+                            + "\"status\":\"SUCCESSFUL\"}");
+            md.publish(ws.toString(), "g:a", cls -> "");
+            assertThat(sink.takeTests().getFirst().printed())
+                    .containsOnlyKeys("A")
+                    .containsEntry("A", new MarkdownTestReport.Printed(1, List.of("A says hello"), ""));
+        } finally {
+            RunResults.close();
+        }
+    }
+
+    @Test
     void counts_successful_failed_and_skipped_tests() {
         var agg = new ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");

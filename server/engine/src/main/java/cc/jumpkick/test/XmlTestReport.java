@@ -210,13 +210,18 @@ public final class XmlTestReport {
         for (var kv : byClass.entrySet()) {
             try {
                 Path dir = Files.createDirectories(dirFor.apply(kv.getKey()));
-                Path file = dir.resolve("TEST-" + fileNameComponent(kv.getKey()) + ".xml");
+                Path file = dir.resolve(fileName(kv.getKey()));
                 Files.writeString(file, buildXml(kv.getKey(), kv.getValue()));
             } catch (IOException e) {
                 if (first == null) first = e;
             }
         }
         if (first != null) throw first;
+    }
+
+    /** The name of {@code className}'s report file: {@code TEST-<classname>.xml}. */
+    static String fileName(String className) {
+        return "TEST-" + fileNameComponent(className) + ".xml";
     }
 
     /**

@@ -3,7 +3,9 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.run.ContextPropagator;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
@@ -73,16 +75,25 @@ public final class RunResults {
         return AMBIENT.get();
     }
 
-    /** Fold {@code entries} under {@code scopeKey}; a second run of the same module merges into the first. */
-    void publishTests(String scopeKey, String label, List<MarkdownTestReport.Entry> entries) {
-        MarkdownTestReport.ModuleRun add = new MarkdownTestReport.ModuleRun(scopeKey, label, entries);
+    /**
+     * Fold {@code entries} and what their classes {@code printed} under {@code scopeKey}; a second
+     * run of the same module merges into the first, its printed output replacing the first's.
+     */
+    void publishTests(
+            String scopeKey,
+            String label,
+            List<MarkdownTestReport.Entry> entries,
+            Map<String, MarkdownTestReport.Printed> printed) {
+        MarkdownTestReport.ModuleRun add = new MarkdownTestReport.ModuleRun(scopeKey, label, entries, printed);
         tests.merge(scopeKey, add, (a, b) -> {
             List<MarkdownTestReport.Entry> merged =
                     new ArrayList<>(a.entries().size() + b.entries().size());
             merged.addAll(a.entries());
             merged.addAll(b.entries());
+            Map<String, MarkdownTestReport.Printed> out = new LinkedHashMap<>(a.printed());
+            out.putAll(b.printed());
             String keep = !a.label().isBlank() ? a.label() : b.label();
-            return new MarkdownTestReport.ModuleRun(scopeKey, keep, merged);
+            return new MarkdownTestReport.ModuleRun(scopeKey, keep, merged, out);
         });
     }
 

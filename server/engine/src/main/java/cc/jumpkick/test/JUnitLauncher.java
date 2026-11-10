@@ -148,6 +148,15 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /** Whether the published results keep the last lines each class printed, for the agent report. */
+    private boolean keepOutput;
+
+    /** Keep the last lines each class printed in the published results ({@code -v}). */
+    public JUnitLauncher withKeepOutput(boolean keep) {
+        this.keepOutput = keep;
+        return this;
+    }
+
     /**
      * When set, the worker count passed to {@link #run} is the auto share ({@link TestWorkers#autoShare}),
      * not an explicit pin. The launcher then sizes the pool from recorded class walls.
@@ -425,14 +434,27 @@ public final class JUnitLauncher {
      */
     private void writeXml(@Nullable XmlTestReport xml, @Nullable Path testResultsDir) {
         if (testResultsDir == null || xml == null) return;
-        Path integration = integrationResultsDir;
         try {
-            xml.writeAll(className -> integration != null && TestSuites.INTEGRATION.equals(suites.suiteOf(className))
-                    ? integration
-                    : testResultsDir);
+            xml.writeAll(className -> xmlDir(className, testResultsDir));
         } catch (IOException e) {
             // Non-fatal: the tests ran; only the report failed to land.
         }
+    }
+
+    private Path xmlDir(String className, Path testResultsDir) {
+        Path integration = integrationResultsDir;
+        return integration != null && TestSuites.INTEGRATION.equals(suites.suiteOf(className))
+                ? integration
+                : testResultsDir;
+    }
+
+    /** The XML file holding {@code className}'s results; empty when no XML is written. */
+    private String xmlFile(String className, @Nullable Path testResultsDir) {
+        if (testResultsDir == null) return "";
+        return xmlDir(className, testResultsDir)
+                .resolve(XmlTestReport.fileName(className))
+                .toAbsolutePath()
+                .toString();
     }
 
     private static String name(Path p) {
@@ -687,7 +709,7 @@ public final class JUnitLauncher {
             throws IOException, InterruptedException {
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
         runXml = xml;
-        MarkdownTestReport md = new MarkdownTestReport();
+        MarkdownTestReport md = new MarkdownTestReport(keepOutput);
         runMd = md;
         var aggregator = new ResultAggregator(listener, /* workerId */ 0, xml, md, moduleLabel);
         // Capture the worker's non-protocol output so a hard crash (uncaught
@@ -706,7 +728,7 @@ public final class JUnitLauncher {
         }
         if (heapOverride == null) result = retrySuite(javaHome, classpath, flags, listener, result, List.of());
         writeXml(xml, testResultsDir);
-        publishTests(md, testClassesDir);
+        publishTests(md, testClassesDir, testResultsDir);
         return result;
     }
 
@@ -1014,7 +1036,7 @@ public final class JUnitLauncher {
         // One shared report per format — all worker threads write into them (both are thread-safe).
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
         runXml = xml;
-        MarkdownTestReport md = new MarkdownTestReport();
+        MarkdownTestReport md = new MarkdownTestReport(keepOutput);
         runMd = md;
 
         PullWorkerPool pool = new PullWorkerPool(this, javaHome, classpath, testClassesDir, listener);
@@ -1050,7 +1072,7 @@ public final class JUnitLauncher {
             summary = merge(summary, serial);
         }
         writeXml(xml, testResultsDir);
-        publishTests(md, testClassesDir);
+        publishTests(md, testClassesDir, testResultsDir);
         return summary;
     }
 
@@ -1068,7 +1090,7 @@ public final class JUnitLauncher {
     }
 
     /** Fold this launch's JUnit events into the request's sink, which {@code jk-results.md} drains. */
-    private void publishTests(MarkdownTestReport md, Path testClassesDir) {
+    private void publishTests(MarkdownTestReport md, Path testClassesDir, @Nullable Path testResultsDir) {
         if (md == null) return;
         Path scope = inferredModuleDir != null ? inferredModuleDir : testClassesDir;
         String key = "";
@@ -1080,7 +1102,7 @@ public final class JUnitLauncher {
             }
         }
         String label = !moduleLabel.isBlank() ? moduleLabel : leafName(key);
-        md.publish(key, label);
+        md.publish(key, label, cls -> xmlFile(cls, testResultsDir));
     }
 
     private static String leafName(String path) {

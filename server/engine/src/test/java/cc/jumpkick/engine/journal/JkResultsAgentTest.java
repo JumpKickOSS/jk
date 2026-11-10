@@ -781,7 +781,7 @@ class JkResultsAgentTest {
                 List.of());
     }
 
-    private static BuildRecord record(
+    static BuildRecord record(
             String kind,
             boolean success,
             boolean cancelled,

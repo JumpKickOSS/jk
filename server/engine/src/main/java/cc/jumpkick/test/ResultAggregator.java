@@ -136,7 +136,9 @@ final class ResultAggregator {
      */
     synchronized void userOutput(String line) {
         listener.onUserOutput(workerId, line);
-        if (xmlReport != null && runningClass != null) xmlReport.recordOutput(runningClass, line);
+        if (runningClass == null) return;
+        if (xmlReport != null) xmlReport.recordOutput(runningClass, line);
+        if (mdReport != null) mdReport.recordOutput(runningClass, line);
     }
 
     private void acceptJson(String json) {
