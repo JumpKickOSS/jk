@@ -234,14 +234,14 @@
                             :data-tip="'Open the run' + (i.buildNumber ? ' #' + i.buildNumber : '')"><template v-if="i.buildNumber">#{{ i.buildNumber }} · </template>{{ i.chip }}</button>
                     <span v-if="i.delta" class="run-delta-chip timeline-delta" :class="i.delta.cls" :data-tip="i.delta.tip">{{ i.delta.text }}</span>
                     <div v-if="i.sub" class="tl-sub">{{ i.sub }}</div>
-                    <!-- The live build: one line, one bar with its ETA, one strip of module cells. -->
+                    <!-- The live build, laid out as the terminal: the bar, then what is running, then the module cells. -->
                     <div v-if="i.state === 'run' && i.card" class="live-build" role="link" tabindex="0" @click="openRun(i)" @keydown.enter.prevent="openRun(i)">
+                      <div class="cardbar" role="progressbar" :aria-valuenow="progress(i.card)" aria-valuemin="0" aria-valuemax="100">
+                        <span class="cardbar-fill" :style="{ width: progress(i.card) + '%' }"></span></div>
                       <div class="live-line"><span class="live-doing">{{ doingLine(i.card) }}</span><span class="spacer"></span>
                         <span v-if="hasEta(i.card)" class="eta" data-tip="estimated time remaining"><span class="eta-label">ETA</span> <span class="eta-cd">{{ etaCountdown(i.card) }}</span></span>
                         <span v-else class="millis elapsed-warn">{{ elapsed(i.card) }}</span>
                         <button v-if="i.card.id != null" type="button" class="rebuild icon danger" @click.stop="cancelCard(i.card)" aria-label="Cancel" data-tip="Cancel this run"><jk-icon name="ban"></jk-icon></button></div>
-                      <div class="cardbar" role="progressbar" :aria-valuenow="progress(i.card)" aria-valuemin="0" aria-valuemax="100">
-                        <span class="cardbar-fill" :style="{ width: progress(i.card) + '%' }"></span></div>
                       <div class="cells" aria-label="Modules">
                         <i v-for="c in moduleCells(i.card)" :key="c.key" :class="c.state" :data-tip="c.tip"></i></div>
                     </div>
@@ -504,10 +504,11 @@
           <span v-if="projectRun.outcome !== 'running'" class="ago" :data-tip="fmtDateTime(projectRun.card.finishedAt) || undefined">{{ ago(projectRun.card.finishedAt) }}</span>
         </div>
         <template v-if="projectRun.outcome === 'running'">
-          <div class="live-line"><span class="live-doing">{{ doingLine(projectRun.card) }}</span></div>
+          <!-- Laid out as the terminal: the bar, then what is running; the module cells close the pane. -->
           <div class="cardbar" role="progressbar" :aria-valuenow="progress(projectRun.card)" aria-valuemin="0" aria-valuemax="100">
             <span class="cardbar-fill" :style="{ width: progress(projectRun.card) + '%' }"><span class="cardbar-pct">{{ progress(projectRun.card) }}%</span></span>
           </div>
+          <div class="live-line"><span class="live-doing">{{ doingLine(projectRun.card) }}</span></div>
           <!-- The run's downloads while bytes move, as the terminal's Download block. -->
           <div v-if="projectRun.card.downloads" class="downloads">
             <div class="downloads-head">Download <span class="downloads-sep">›</span> {{ downloadsHead(projectRun.card.downloads) }}</div>
@@ -523,7 +524,7 @@
         <run-delta v-if="projectRun.card.delta" :delta="projectRun.card.delta" :millis="projectRun.card.millis"></run-delta>
         <!-- Coverage: the record's per-module rows as the results file prints them, and the HTML report (coverage.js). -->
         <run-coverage v-if="projectRun.card.coverage && projectRun.card.coverage.length" :coverage="projectRun.card.coverage" :previous="projectRun.previousCoverage" :history-id="projectRun.card.historyId"></run-coverage>
-        <div v-if="projectRun.card.modules.length > 1" class="cells run-cells" aria-label="Modules">
+        <div v-if="projectRun.outcome !== 'running' && projectRun.card.modules.length > 1" class="cells run-cells" aria-label="Modules">
           <i v-for="c in moduleCells(projectRun.card)" :key="c.key" :class="c.state" :data-tip="c.tip"></i></div>
         <div v-for="f in runModules.expanded" :key="f.module.dir" class="module" :class="'module-' + f.reason">
           <div v-if="projectRun.card.modules.length > 1" class="module-row">
@@ -557,6 +558,8 @@
             <span class="console-dir">{{ lastSegment(o.dir) }}</span> <span class="console-sep">›</span> {{ o.line }}
           </div>
         </div>
+        <div v-if="projectRun.outcome === 'running' && projectRun.card.modules.length > 1" class="cells run-cells" aria-label="Modules">
+          <i v-for="c in moduleCells(projectRun.card)" :key="c.key" :class="c.state" :data-tip="c.tip"></i></div>
       </section>
 
       <template v-if="projectDetail && !projectDetail.empty">
