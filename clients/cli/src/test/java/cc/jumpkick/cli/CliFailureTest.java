@@ -103,4 +103,20 @@ class CliFailureTest {
         int code = CliFailure.unhandled(new IllegalStateException("still reported"), new String[] {"build"});
         assertThat(code).isEqualTo(Exit.SOFTWARE);
     }
+
+    @Test
+    void the_log_keeps_no_option_value_and_rolls_past_its_cap() throws IOException {
+        CliFailure.appendLog(
+                new String[] {"publish", "-P", "s3cret", "--key-passphrase=hunter2"}, new IllegalStateException("x"));
+        String log = Files.readString(state.resolve(CliFailure.LOG_NAME));
+        assertThat(log)
+                .contains("jk publish -P --key-passphrase")
+                .doesNotContain("s3cret")
+                .doesNotContain("hunter2");
+
+        Files.writeString(state.resolve(CliFailure.LOG_NAME), "x".repeat((int) CliFailure.LOG_MAX_BYTES + 1));
+        CliFailure.appendLog(new String[] {"tree"}, new IllegalStateException("y"));
+        assertThat(state.resolve(CliFailure.LOG_NAME + ".1")).exists();
+        assertThat(Files.size(state.resolve(CliFailure.LOG_NAME))).isLessThan(CliFailure.LOG_MAX_BYTES);
+    }
 }

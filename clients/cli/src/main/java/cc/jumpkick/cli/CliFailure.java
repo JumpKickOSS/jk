@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -10,10 +11,13 @@ import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -29,6 +33,9 @@ final class CliFailure {
 
     /** Under the state root; appended to, never rotated — the entries are rare by construction. */
     static final String LOG_NAME = "cli.log";
+
+    /** The size past which {@link #LOG_NAME} is rolled to {@code cli.log.1} before the next entry. */
+    static final long LOG_MAX_BYTES = 1L << 20;
 
     static final String CWD_GONE = "Could not determine current working directory.";
 
@@ -111,9 +118,14 @@ final class CliFailure {
     static void appendLog(String[] args, Throwable t) {
         try {
             Path log = JkDirs.state().resolve(LOG_NAME);
+            // One previous generation is kept: the file is a journal of recent failures, not an archive.
+            if (Files.isRegularFile(log) && Files.size(log) > LOG_MAX_BYTES) {
+                Files.move(log, log.resolveSibling(LOG_NAME + ".1"), StandardCopyOption.REPLACE_EXISTING);
+            }
             StringWriter sw = new StringWriter();
             PrintWriter pw = new PrintWriter(sw);
-            pw.println(Instant.now() + "  jk " + String.join(" ", args));
+            // Option values are left out: one may be a password (jk publish -P …).
+            pw.println(Instant.now() + "  " + ChangeActor.shell(List.of(args)).label());
             t.printStackTrace(pw);
             pw.println();
             pw.flush();
