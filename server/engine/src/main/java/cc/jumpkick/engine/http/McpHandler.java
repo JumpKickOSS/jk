@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.decisions.Decisions;
+import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.http.mcp.McpConnections;
 import cc.jumpkick.engine.http.mcp.McpContext;
@@ -61,6 +62,13 @@ public final class McpHandler {
 
     private final McpContext ctx;
     private volatile McpTools tools = McpTools.standard();
+
+    private final McpUpdateOffer updateOffer = new McpUpdateOffer();
+
+    /** What a session is asked about a downloaded update ({@link McpUpdateOffer}). */
+    void setSelfUpdate(Supplier<SelfUpdateControl> control) {
+        updateOffer.control(control);
+    }
 
     /** Which rows {@code tools/list} answers; the loop set unless the machine config opted into all. */
     private volatile McpTools.Surface surface = McpTools.Surface.LOOP;
@@ -381,7 +389,11 @@ public final class McpHandler {
             }
             case "ping" -> Map.of();
             case "tools/list" -> tools.listing(surface, params, connection != null && connection.pinned());
-            case "tools/call" -> tools.call(ctx, params, connection, outbound);
+            case "tools/call" -> {
+                // A downloaded update is put to the person first, once per session (McpUpdateOffer).
+                String updateLine = updateOffer.before(new McpCall(ctx, Map.of(), null, connection, outbound));
+                yield McpUpdateOffer.append(tools.call(ctx, params, connection, outbound), updateLine);
+            }
             case "resources/list" -> McpResources.list();
             case "resources/read" -> McpResources.read(ctx, params, connection);
             case "prompts/list" -> McpPrompts.list();

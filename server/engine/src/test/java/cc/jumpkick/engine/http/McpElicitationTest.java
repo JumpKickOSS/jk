@@ -28,8 +28,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -224,6 +226,112 @@ class McpElicitationTest {
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(unknown.statusCode()).isEqualTo(400);
+    }
+
+    /** An update on offer, recording what the session's answer did to it. */
+    private static final class FakeUpdate implements SelfUpdateControl {
+        volatile @Nullable String offered = "0.52.0";
+        final List<String> did = new CopyOnWriteArrayList<>();
+
+        @Override
+        public Optional<String> offer() {
+            return Optional.ofNullable(offered);
+        }
+
+        @Override
+        public boolean installing() {
+            return false;
+        }
+
+        @Override
+        public boolean installNow() {
+            did.add("install");
+            return true;
+        }
+
+        @Override
+        public boolean snooze() {
+            did.add("snooze");
+            offered = null;
+            return true;
+        }
+    }
+
+    @Test
+    void a_downloaded_update_is_put_to_the_person_once_before_the_tool_runs() throws Exception {
+        FakeUpdate update = new FakeUpdate();
+        mcp.setSelfUpdate(() -> update);
+        String session = initialize("2025-11-25", "{\"elicitation\":{\"form\":{}}}");
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call =
+                CompletableFuture.supplyAsync(() -> mcp.handle(CALL, session, null, null, sent::add), threads);
+
+        Map<String, Object> asked = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        assertThat(object(asked, "params").get("message"))
+                .isEqualTo(
+                        "A new version of JumpKick (0.52.0) is downloaded. Update now? Running builds finish first.");
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + asked.get("id") + "\",\"result\":{\"action\":\"accept\"}}", session);
+
+        // Then the tool itself runs, and asks its own question.
+        Map<String, Object> own = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        assertThat(object(own, "params").get("message")).isEqualTo("Go ahead?");
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + own.get("id") + "\",\"result\":{\"action\":\"decline\"}}", session);
+        assertThat(text(call.get(10, TimeUnit.SECONDS))).isEqualTo("decline");
+        assertThat(update.did).containsExactly("install");
+
+        // The same session is not asked about the same release again.
+        CompletableFuture<McpHandler.Reply> again =
+                CompletableFuture.supplyAsync(() -> mcp.handle(CALL, session, null, null, sent::add), threads);
+        Map<String, Object> next = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        assertThat(object(next, "params").get("message")).isEqualTo("Go ahead?");
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + next.get("id") + "\",\"result\":{\"action\":\"decline\"}}", session);
+        again.get(10, TimeUnit.SECONDS);
+        assertThat(update.did).containsExactly("install");
+    }
+
+    @Test
+    void declining_the_update_is_the_shared_not_now() throws Exception {
+        FakeUpdate update = new FakeUpdate();
+        mcp.setSelfUpdate(() -> update);
+        String session = initialize("2025-11-25", "{\"elicitation\":{\"form\":{}}}");
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call =
+                CompletableFuture.supplyAsync(() -> mcp.handle(CALL, session, null, null, sent::add), threads);
+        Map<String, Object> asked = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + asked.get("id") + "\",\"result\":{\"action\":\"decline\"}}",
+                session);
+        Map<String, Object> own = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + own.get("id") + "\",\"result\":{\"action\":\"decline\"}}", session);
+        call.get(10, TimeUnit.SECONDS);
+        assertThat(update.did).containsExactly("snooze");
+    }
+
+    @Test
+    void a_client_that_cannot_be_asked_gets_one_line_and_no_way_to_install() {
+        FakeUpdate update = new FakeUpdate();
+        mcp.setSelfUpdate(() -> update);
+        String silent = initialize("2025-11-25", "{}");
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+
+        Map<String, Object> result = object(
+                parseObject(mcp.handle(CALL, silent, null, null, sent::add).body()), "result");
+        List<Map<String, Object>> content = objects(result, "content");
+        assertThat(content).hasSize(2);
+        assertThat(String.valueOf(content.get(1).get("text")))
+                .startsWith("JumpKick 0.52.0 is downloaded and installs itself when the engine is idle.")
+                .contains("`jk self update`");
+        assertThat(update.did).isEmpty();
+        assertThat(sent).isEmpty();
+
+        // Once per session and release.
+        Map<String, Object> second = object(
+                parseObject(mcp.handle(CALL, silent, null, null, sent::add).body()), "result");
+        assertThat(objects(second, "content")).hasSize(1);
     }
 
     private static final String CALL =

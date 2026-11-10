@@ -45,6 +45,8 @@ class McpBridgeTest {
     private final Set<String> forgotten = ConcurrentHashMap.newKeySet();
     private final AtomicInteger opened = new AtomicInteger();
     private volatile boolean eventsDown;
+    /** The engine version a renewed session answers with: an update happened in between. */
+    private volatile String renewedVersion = "0.51.0";
 
     @BeforeEach
     void start() throws IOException {
@@ -80,9 +82,14 @@ class McpBridgeTest {
                 return;
             }
             if (body.contains("slow")) pause(SLOW_MS);
+            String version = opened.get() <= 1 ? "0.51.0" : renewedVersion;
+            String result = body.contains("\"initialize\"")
+                    ? "{\"protocolVersion\":\"2025-11-25\",\"serverInfo\":{\"name\":\"jk\",\"version\":\"" + version
+                            + "\"}}"
+                    : "{}";
             byte[] out = body.contains("boom")
                     ? "nope".getBytes(StandardCharsets.UTF_8)
-                    : "{\"jsonrpc\":\"2.0\",\n\"id\":1,\"result\":{}}".getBytes(StandardCharsets.UTF_8);
+                    : ("{\"jsonrpc\":\"2.0\",\n\"id\":1,\"result\":" + result + "}").getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(body.contains("boom") ? 500 : 200, out.length);
             exchange.getResponseBody().write(out);
             exchange.close();
@@ -251,6 +258,21 @@ class McpBridgeTest {
                 .as("the client sees its own initialize answered, then the retried call, nothing else")
                 .hasSize(2)
                 .allSatisfy(line -> assertThat(line).contains("\"result\""));
+    }
+
+    @Test
+    void a_session_renewed_on_a_newer_engine_tells_the_client_its_tools_may_have_changed() throws IOException {
+        forgotten.add("ab12");
+        renewedVersion = "0.52.0";
+        String hello = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}}}";
+        String out = serve(
+                new McpBridge(this::live, "/ws/app"),
+                hello,
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
+        String[] lines = out.split("\n");
+        assertThat(lines).hasSize(3);
+        assertThat(lines[1]).isEqualTo("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}");
+        assertThat(lines[2]).contains("\"result\"");
     }
 
     @Test

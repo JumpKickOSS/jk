@@ -124,7 +124,8 @@ public final class McpRpc {
     public static Map<String, Object> initialize(
             String protocolVersion, String serverName, String version, String instructions) {
         Map<String, Object> caps = new LinkedHashMap<>();
-        caps.put("tools", Map.of("listChanged", false));
+        // A bridge that reconnects to a newer engine tells its client the tool list may have changed.
+        caps.put("tools", Map.of("listChanged", true));
         caps.put("resources", Map.of("subscribe", false, "listChanged", false));
         caps.put("prompts", Map.of("listChanged", false));
         // Streamable-HTTP progress: GET /mcp with Accept: text/event-stream.

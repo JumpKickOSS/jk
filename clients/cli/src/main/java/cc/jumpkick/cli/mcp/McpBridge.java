@@ -97,6 +97,9 @@ public final class McpBridge {
     private volatile @Nullable String session;
     private volatile @Nullable String protocolVersion;
 
+    /** The engine version the session answered with ({@code serverInfo.version}); a renewal may find another. */
+    private volatile @Nullable String engineVersion;
+
     /** The client's {@code initialize}, repeated when the engine no longer knows the session. */
     private volatile @Nullable String initialize;
 
@@ -178,10 +181,11 @@ public final class McpBridge {
     /** Note the revision an {@code initialize} reply negotiated; the reply itself goes on unchanged. */
     private String initialized(String reply) {
         try {
-            if (MiniJson.parse(reply) instanceof Map<?, ?> m
-                    && m.get("result") instanceof Map<?, ?> result
-                    && result.get("protocolVersion") instanceof String version) {
-                protocolVersion = version;
+            if (MiniJson.parse(reply) instanceof Map<?, ?> m && m.get("result") instanceof Map<?, ?> result) {
+                if (result.get("protocolVersion") instanceof String version) protocolVersion = version;
+                if (result.get("serverInfo") instanceof Map<?, ?> info && info.get("version") instanceof String v) {
+                    engineVersion = v;
+                }
             }
         } catch (RuntimeException e) {
             // Not JSON: an error line, already shaped for the client.
@@ -407,8 +411,14 @@ public final class McpBridge {
             Answer answer = post(hello, null);
             String opened = session;
             if (answer.status() / 100 != 2 || opened == null || opened.equals(gone)) return false;
+            String before = engineVersion;
             initialized(answer.body());
             post(MiniJson.write(Map.of("jsonrpc", "2.0", "method", "notifications/initialized")), opened);
+            // jk updated itself: the new engine may serve other tools, so the client reads them again.
+            String after = engineVersion;
+            if (before != null && after != null && !before.equals(after)) {
+                toClient.accept(MiniJson.write(Map.of("jsonrpc", "2.0", "method", "notifications/tools/list_changed")));
+            }
             return true;
         }
     }

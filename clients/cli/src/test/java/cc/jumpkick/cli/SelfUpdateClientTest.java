@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.command.interop.McpCommand;
 import cc.jumpkick.config.NerdFontCaps;
 import java.util.List;
 import java.util.Optional;
@@ -57,6 +58,20 @@ class SelfUpdateClientTest {
                 .contains("Updated")
                 .contains("JumpKick was updated to 0.51.0 (from 0.50.3). What's new: "
                         + "https://github.com/JumpKickOSS/jk/releases/tag/v0.51.0");
+    }
+
+    @Test
+    void jk_mcp_keeps_serving_through_the_newer_engine_an_update_installed() {
+        Optional<String> installed = Optional.of("0.52.0");
+        assertThat(McpCommand.servesNewerInstall("0.52.0", false, "0.51.0", installed))
+                .isTrue();
+        // Not when it drains, is not newer, or is not what the install names.
+        assertThat(McpCommand.servesNewerInstall("0.52.0", true, "0.51.0", installed))
+                .isFalse();
+        assertThat(McpCommand.servesNewerInstall("0.51.0", false, "0.51.0", installed))
+                .isFalse();
+        assertThat(McpCommand.servesNewerInstall("0.53.0", false, "0.51.0", installed))
+                .isFalse();
     }
 
     @Test

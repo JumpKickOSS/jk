@@ -104,9 +104,17 @@ the installer or wrapper that created it already fetched the latest release.
 update until a plain `jk self update` (or any update to the same or a newer release) clears the
 hold. `jk engine status` shows the hold, the last check, and a download waiting to install.
 
-A command started by the release that was just replaced hands itself to the new one. A long-running
-client from before the update (an MCP server, a watch) stops and asks to be started again rather
-than displace the newer engine.
+A command started by the release that was just replaced hands itself to the new one. A running
+`jk mcp` keeps serving its agent across the update: it reconnects to the new engine and tells the
+agent's host to read the tool list again. (A `jk mcp` started by a release before 0.51.0 predates this
+and stops once, asking to be started again.) Other long-running clients from before the update (a
+watch) stop and ask to be started again rather than displace the newer engine.
+
+An MCP client whose host shows elicitations is asked once per session, before its next tool call:
+"A new version of JumpKick (X) is downloaded. Update now?" Accept installs it (that call still
+finishes); decline is the same "not now" as everywhere else. A client that cannot be asked gets one
+line in that call's result telling the user how to install it; the agent itself is never offered a
+way to install.
 
 ## The JVM client
 

@@ -184,6 +184,7 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", HttpSelfUpdateApi.PATH, selfUpdate::handleState);
         api.register("POST", HttpSelfUpdateApi.INSTALL, selfUpdate::handleInstall);
         api.register("POST", HttpSelfUpdateApi.SNOOZE, selfUpdate::handleSnooze);
+        if (mcp != null) mcp.setSelfUpdate(control);
     }
 
     /**
