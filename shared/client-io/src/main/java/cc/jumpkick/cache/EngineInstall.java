@@ -3,6 +3,7 @@ package cc.jumpkick.cache;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AppInstallConfig;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -262,6 +263,35 @@ public final class EngineInstall {
         return binDir.resolve("jk");
     }
 
+    /** A client an install parked: {@code jk.old}, {@code jk.exe.old-<nanos>}, {@code jkx.bat.old} and so on. */
+    private static final Pattern PARKED = Pattern.compile("jkx?(\\.exe|\\.bat|\\.cmd)?\\.old(-\\d+)?");
+
+    /**
+     * Delete the clients earlier installs parked under {@code binDir}. A parked client still running
+     * keeps its file on Windows (the delete is refused while it is mapped) and is left for the next
+     * sweep; nothing else is touched. Returns how many went.
+     */
+    public static int sweepParked(Path binDir) {
+        int[] removed = {0};
+        try {
+            PathUtil.forEachChild(binDir, (p, attrs) -> {
+                if (attrs.isRegularFile()
+                        && PARKED.matcher(p.getFileName().toString()).matches()) {
+                    try {
+                        Files.delete(p);
+                        removed[0]++;
+                    } catch (IOException stillRunning) {
+                        // Mapped by a process that has not exited yet: the next sweep takes it.
+                    }
+                }
+                return true;
+            });
+        } catch (IOException e) {
+            return removed[0];
+        }
+        return removed[0];
+    }
+
     public static Path parkedName(Path live) {
         return live.resolveSibling(live.getFileName() + ".old");
     }
@@ -278,6 +308,8 @@ public final class EngineInstall {
      */
     static void installBinaries(Path clientSource, Path binDir, boolean windows) throws IOException {
         Files.createDirectories(binDir);
+        // The clients an earlier install parked go first; the one this install parks stays until the next.
+        sweepParked(binDir);
         String jkName = windows ? "jk.exe" : "jk";
         String jkxName = windows ? "jkx.exe" : "jkx";
         Path jk = binDir.resolve(jkName);

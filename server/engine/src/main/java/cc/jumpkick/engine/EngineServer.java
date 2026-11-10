@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.compat.ToolInstaller;
 import cc.jumpkick.config.JkEngineConfig;
@@ -663,6 +664,8 @@ public final class EngineServer implements AutoCloseable {
         changeNotices.start();
         // The first engine of a freshly installed version says so once, in the bell.
         UpdatedNotice.announce(notices, version, SelfUpdateState.file());
+        // Clients an update parked (jk.exe.old-…) go once nothing runs them any more; off the startup path.
+        Thread.ofVirtual().name("jk-engine-sweep-parked").start(() -> EngineInstall.sweepParked(JkDirs.binDir()));
         // Sessions a previous engine left open carry on here; off the startup path.
         Thread.ofVirtual().name("jk-engine-sessions-adopt").start(() -> {
             int adopted = sessionLog.adopt();

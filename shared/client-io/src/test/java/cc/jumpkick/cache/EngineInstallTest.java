@@ -424,6 +424,41 @@ class EngineInstallTest {
     }
 
     @Test
+    void the_clients_earlier_installs_parked_are_swept_and_nothing_else(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        for (String parked :
+                List.of("jk.old", "jkx.old", "jk.exe.old", "jk.exe.old-123456789", "jkx.exe.old-42", "jk.bat.old")) {
+            Files.writeString(bin.resolve(parked), "parked");
+        }
+        for (String kept : List.of("jk", "jkx", "jk.exe", "jk-jvm", "jk.older", "notes.old", "jk.old.txt")) {
+            Files.writeString(bin.resolve(kept), "kept");
+        }
+
+        assertThat(EngineInstall.sweepParked(bin)).isEqualTo(6);
+
+        try (var entries = Files.list(bin)) {
+            assertThat(entries.map(p -> p.getFileName().toString()))
+                    .containsExactlyInAnyOrder("jk", "jkx", "jk.exe", "jk-jvm", "jk.older", "notes.old", "jk.old.txt");
+        }
+        assertThat(EngineInstall.sweepParked(tmp.resolve("no-such-bin"))).isZero();
+    }
+
+    @Test
+    void an_install_sweeps_the_last_parked_client_and_parks_the_current_one(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Files.writeString(bin.resolve("jk"), "v2");
+        Files.writeString(bin.resolve("jkx"), "v2");
+        Files.writeString(bin.resolve("jk.old-99"), "v1");
+        Path src = Files.writeString(tmp.resolve("v3"), "v3");
+
+        EngineInstall.installBinaries(src, bin, false);
+
+        assertThat(bin.resolve("jk.old-99")).doesNotExist();
+        assertThat(bin.resolve("jk.old")).hasContent("v2");
+        assertThat(bin.resolve("jk")).hasContent("v3");
+    }
+
+    @Test
     void a_source_that_cannot_be_copied_leaves_the_live_client_on_path(@TempDir Path tmp) throws Exception {
         Path bin = Files.createDirectories(tmp.resolve("bin"));
         Files.writeString(bin.resolve("jk"), "old-jk");
