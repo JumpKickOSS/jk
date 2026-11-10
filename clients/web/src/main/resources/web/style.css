@@ -2689,7 +2689,13 @@ button.run-chip:hover { filter: brightness(1.2); }
 .cardbar + .live-line { margin: 6px 0 2px; }
 .cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(14px, 1fr)); gap: 3px; }
 .cells i { height: 14px; border-radius: 3px; background: rgba(var(--okc-rgb), 0.55); }
-.cells i.running { background: var(--run); box-shadow: 0 0 6px rgba(var(--run-rgb), 0.7); }
+.cells i.running { background: var(--run); box-shadow: 0 0 6px rgba(var(--run-rgb), 0.7); animation: breathe 2.4s ease-in-out infinite; }
+/* The running squares breathe (client-side only: no server ticks drive it). */
+@keyframes breathe {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(var(--run-rgb), 0.85); }
+  50% { opacity: 0.45; box-shadow: 0 0 2px rgba(var(--run-rgb), 0.3); }
+}
+@media (prefers-reduced-motion: reduce) { .cells i.running { animation: none; } }
 .cells i.waiting { background: var(--s3); }
 .cells i.failed { background: var(--err); }
 .cells i.cancelled { background: var(--dim); }
@@ -2992,3 +2998,50 @@ main.activity-page { max-width: min(64rem, 100%); }
 .file-viewer-msg { padding: 12px 16px; margin: 0; }
 .modal > .file-viewer-editor { flex: 1 1 auto; min-height: 0; }
 .modal > .file-viewer-plain { flex: 1 1 auto; min-height: 0; margin: 0; overflow: auto; }
+
+/* ---- The live build's top bar and fixed worker rows (buildhead.js), laid out as the terminal ---- */
+.bhead { --chev: 8px; display: flex; align-items: center; height: 20px; margin: 8px 0 4px; font-family: var(--mono); font-size: 11.5px; }
+.bchip {
+  display: inline-flex; align-items: center; gap: 7px; flex: none; height: 100%;
+  padding: 0 calc(var(--chev) + 8px) 0 9px;
+  background: var(--run); color: #fff; font-weight: 700;
+  border-radius: 6px 0 0 6px;
+  clip-path: polygon(0 0, calc(100% - var(--chev)) 0, 100% 50%, calc(100% - var(--chev)) 100%, 0 100%);
+}
+.bhead-success .bchip { background: var(--okc); }
+.bhead-failed .bchip { background: var(--err); }
+.bhead-cancelled .bchip, .bhead-finished .bchip { background: var(--dim); }
+.bspin { width: 11px; height: 11px; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; }
+/* The track starts one chevron-width under the chip's tip, so the two diagonals run parallel, 1px apart. */
+.btrack {
+  position: relative; flex: 1 1 auto; min-width: 0; height: 100%;
+  margin-left: calc(1px - var(--chev));
+  background: var(--s2); border-radius: 0 6px 6px 0; overflow: hidden;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, var(--chev) 50%);
+}
+.bfill {
+  position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 6px 6px 0;
+  background: linear-gradient(90deg, var(--prog-a), var(--prog-b));
+  transition: width var(--dur-slow) var(--ease-smooth);
+}
+.bhead-failed .bfill { background: var(--err); }
+.bhead-cancelled .bfill, .bhead-finished .bfill { background: var(--dim); }
+.bpct {
+  position: absolute; right: 8px; top: 0; bottom: 0; display: flex; align-items: center;
+  color: #fff; font-weight: 700; font-size: 11px; white-space: nowrap;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.45), 0 1px 1px rgba(0, 0, 0, 0.35);
+}
+.bclock { flex: none; display: inline-flex; align-items: baseline; gap: 5px; margin-left: 10px; color: var(--dim); white-space: nowrap; }
+.bsep, .bel { color: var(--dim); }
+
+.lanes { display: flex; flex-direction: column; gap: 1px; margin: 4px 0 6px; font-family: var(--mono); font-size: 12px; }
+.lane { display: flex; align-items: baseline; gap: 6px; height: 18px; line-height: 18px; white-space: nowrap; overflow: hidden; }
+.lane > * { flex: none; }
+.lane-dot { color: var(--run); }
+.lane-mod { color: var(--cg); font-weight: 700; }
+.lane-sep { color: var(--dim); }
+.lane-op { color: var(--run); font-weight: 700; }
+/* Only the last segment gives way: the detail takes the leftover width and ends in an ellipsis. */
+.lane > .lane-detail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--det-mid); }
+.lane-idle .lane-dot { color: var(--dim); }
+.lane-idle-text { color: var(--dim); font-style: italic; }

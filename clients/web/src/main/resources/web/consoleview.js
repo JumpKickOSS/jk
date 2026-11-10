@@ -26,7 +26,7 @@ import {
 } from './console.js';
 import { bannerRows, fetchDecisions, foldDecision, waitingSessions } from './needs.js';
 import { buildConsoleHash, buildProjectHash } from './route.js';
-import { doingLine, doingSegments, moduleCells } from './strip.js';
+import { doingLine, doingSegments, moduleCells, workerLanes } from './strip.js';
 import { LOG, SSE } from './wire.js';
 
 /** Sessions the rail asks for; the Sessions tab of a project asks for more. */
@@ -358,6 +358,9 @@ export const consoleMethods = {
   },
   moduleCells(card) {
     return moduleCells(card);
+  },
+  workerLanes(card) {
+    return workerLanes(card);
   },
   /** The glyph of a timeline line, by its family and outcome. */
   timelineIcon(item) {

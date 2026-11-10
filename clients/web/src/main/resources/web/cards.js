@@ -211,6 +211,12 @@ export const cardMethods = {
     if (k === 'mvn') return 'tool: mvn';
     return k;
   },
+  /** The top bar chip's command name: `Build`, `Test`, `Compile` — the kind, capitalized. */
+  headLabel(card) {
+    const k = (card && card.kind) || '';
+    if (k === 'mvn') return 'Tool: mvn';
+    return k ? k.charAt(0).toUpperCase() + k.slice(1) : '';
+  },
   // The capitalized phase a diagnostic belongs to, joined from the module's step rows (which carry
   // the phase) by matching the diagnostic's step name. '' when the step has no phase or isn't found
   // the failure line then reads step › … without a phase prefix.

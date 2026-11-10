@@ -99,3 +99,32 @@ test('a cancelled run opens nothing; its modules stay folded', () => {
   assert.deepEqual(focus.expanded, []);
   assert.equal(focus.rest.length, 2);
 });
+
+const { workerLanes, MAX_LANES } = await spa('strip.js');
+
+test('worker lanes are a fixed set: sticky rows, idle when freed, never more than four', () => {
+  const run = (dir, phase, name, message = '') =>
+    mod(dir, 'running', { steps: [step(name, phase, 'running', { message })] });
+  const c = card([run('/w/rest', 'test', 'test', 'CatalogControllerTest  [w1]'), run('/w/core', 'compile', 'compile-java')], { moduleCount: 9 });
+  let lanes = workerLanes(c);
+  assert.equal(lanes.length, MAX_LANES, 'seeded from the module count, capped at four');
+  assert.equal(MAX_LANES, 4);
+  const first = lanes.find((l) => l.module === 'rest');
+  assert.equal(first.op, 'Test');
+  assert.equal(first.segs.map((s) => s.text).join(''), 'CatalogControllerTest', 'the [wN] tag is dropped');
+  assert.equal(lanes.filter((l) => l.idle).length, 2);
+  const slotOfRest = lanes.findIndex((l) => l.module === 'rest');
+  c.modules[1].state = 'success'; // core finishes; rest keeps its row
+  lanes = workerLanes(c);
+  assert.equal(lanes.length, MAX_LANES, 'the row count never shrinks');
+  assert.equal(lanes.findIndex((l) => l.module === 'rest'), slotOfRest);
+  assert.equal(lanes.filter((l) => l.idle).length, 3);
+  assert.deepEqual(workerLanes({ ...c, state: 'success', success: true }), [], 'a finished run has no lanes');
+});
+
+test('a one-module build reserves one row and grows only to the peak concurrency', () => {
+  const c = card([mod('/w/a', 'running', { steps: [step('compile-java', 'compile', 'running')] })]);
+  assert.equal(workerLanes(c).length, 1);
+  c.modules.push(mod('/w/b', 'running', { steps: [step('test', 'test', 'running')] }));
+  assert.equal(workerLanes(c).length, 2);
+});
