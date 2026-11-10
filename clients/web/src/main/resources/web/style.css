@@ -2561,6 +2561,9 @@ main.console-page { max-width: min(92rem, 100%); }
   .rail-sessions > .rail-head, .rail-sessions > .empty { flex: none; margin: 0; align-self: center; }
   .rail-sessions .sess-card { flex: none; width: 16rem; scroll-snap-align: start; }
 }
+/* The right rail drops under the timeline as two cards per row, then one per row when narrow. */
+@media (max-width: 1100px) { .rail-right { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+@media (max-width: 640px) { .rail-right { grid-template-columns: minmax(0, 1fr); } }
 .rail-right { display: grid; gap: 12px; }
 .rail-right .panel { padding: 12px 14px; }
 
