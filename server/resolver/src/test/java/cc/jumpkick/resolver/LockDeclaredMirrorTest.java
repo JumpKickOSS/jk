@@ -90,9 +90,14 @@ class LockDeclaredMirrorTest {
 
         assertThat(lock.artifacts()).anyMatch(a -> a.name().startsWith("com.foo:leaf:"));
         assertThat(central.requestsFor(LEAF_JAR) + mirror.requestsFor(LEAF_JAR))
+                // Every request each server saw, in order: the one time this failed (JK-R8911) it
+                // said only "2 from central", which no rerun has reproduced since.
                 .as(
-                        "leaf's jar: %d from central, %d from the declared mirror",
-                        central.requestsFor(LEAF_JAR), mirror.requestsFor(LEAF_JAR))
+                        "leaf's jar: %d from central, %d from the declared mirror%ncentral saw %s%nmirror saw %s",
+                        central.requestsFor(LEAF_JAR),
+                        mirror.requestsFor(LEAF_JAR),
+                        central.requested(),
+                        mirror.requested())
                 .isEqualTo(1);
     }
 
