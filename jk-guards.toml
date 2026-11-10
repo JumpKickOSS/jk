@@ -542,11 +542,13 @@ reason = "this rule's own hit fixture"
 
 # G59. A comment that narrates history describes a tree that no longer exists. State the current
 # invariant; history belongs in the commit body. Comments and prose only: a string literal that
-# says "formerly" is data.
+# says "formerly" is data, and so is a Markdown code span. An older jk has no prose view and holds
+# the rule back.
 [guards.no-historical-narration]
-kind     = "text"
-files    = ["**/*.java", "**/*.kt", "**/*.kts", "**/*.md", ".github/**/*.yml"]
-blank    = "code"
+kind        = "text"
+requires-jk = "0.50.5"
+files       = ["**/*.java", "**/*.kt", "**/*.kts", "**/*.md", ".github/**/*.yml"]
+blank       = "prose"
 patterns = [
   '(?i)(?:this|it|they|javadoc) used to\b',
   '(?i)\bused to (?:be|say|live|scan)\b',
@@ -575,18 +577,20 @@ in     = "docs/contributors/comments.md"
 reason = "names the banned narration phrases as the policy"
 
 # G123. The product is JumpKick; `jk` is the command. Docs prose that says "jk" for the product
-# reads as a command name where the other tools get their product names. The code view of Markdown
+# reads as a command name where the other tools get their product names. The prose view of Markdown
 # blanks fenced blocks, code spans, link targets and URLs, so `jk build`, `~/.jk` and jk.toml pass.
+# An older jk has no prose view and holds the rule back.
 [guards.product-name-in-docs]
-kind      = "text"
-files     = ["README.md", "docs/**/*.md"]
-languages = ["prose"]
-blank     = "code"
-pattern   = '(?<![\w./~\\-])jk(?![\w/\\-]|\.\w)'
-hit       = "Between builds jk keeps 186 MiB resident."
-miss      = "Run `jk build`; it reads `~/.jk` and jk.toml, as [the guide](docs/jk.md) says."
-instead   = "JumpKick for the product, the tool or a comparison; `jk` in a code span for the command, a command line or a path"
-why       = "a doc that calls the product by its command name reads as a command, where Gradle and Maven get their names"
+kind        = "text"
+requires-jk = "0.50.5"
+files       = ["README.md", "docs/**/*.md"]
+languages   = ["prose"]
+blank       = "prose"
+pattern     = '(?<![\w./~\\-])jk(?![\w/\\-]|\.\w)'
+hit         = "Between builds jk keeps 186 MiB resident."
+miss        = "Run `jk build`; it reads `~/.jk` and jk.toml, as [the guide](docs/jk.md) says."
+instead     = "JumpKick for the product, the tool or a comparison; `jk` in a code span for the command, a command line or a path"
+why         = "a doc that calls the product by its command name reads as a command, where Gradle and Maven get their names"
 
 # G60. A JSON object spliced by hand — chop the closing brace, append fields, re-close — got the
 # separator wrong on an empty object every time it was written. Jsonl.append owns it.

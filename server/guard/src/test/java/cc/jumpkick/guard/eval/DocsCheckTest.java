@@ -54,13 +54,13 @@ class DocsCheckTest {
     }
 
     @Test
-    void the_code_view_of_markdown_reads_prose_and_skips_code(@TempDir Path root) throws Exception {
+    void the_prose_view_of_markdown_reads_prose_and_skips_code(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
                 [guards.product-name]
                 kind = "text"
                 files = ["**/*.md"]
                 languages = ["prose"]
-                blank = "code"
+                blank = "prose"
                 pattern = '\\bwidget\\b'
                 hit = "the widget is fast"
                 miss = "run `widget build`"
@@ -77,5 +77,39 @@ class DocsCheckTest {
         Files.writeString(root.resolve("README.md"), "# Readme\n\n```\nwidget\n```\nThe widget keeps 186 MiB.\n");
         assertThat(DocsCheck.check(root, load.rules(), Baseline.EMPTY).text())
                 .contains("GUARD product-name", "README.md:6");
+    }
+
+    @Test
+    void the_code_view_reads_markdown_whole_and_the_prose_view_reads_a_source_files_comments(@TempDir Path root)
+            throws Exception {
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.comments-only]
+                kind = "text"
+                files = ["**/*.md", "**/*.java"]
+                blank = "code"
+                pattern = 'widget'
+                hit = "// widget"
+                instead = "i"
+                why = "w"
+                [guards.prose]
+                kind = "text"
+                files = ["**/*.md", "**/*.java"]
+                blank = "prose"
+                pattern = 'widget'
+                hit = "// widget"
+                miss = "String s = \\"widget\\";"
+                instead = "i"
+                why = "w"
+                """);
+        Files.writeString(root.resolve("README.md"), "# Readme\n\nRun `widget build`.\n");
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        String text = DocsCheck.check(root, load.rules(), Baseline.EMPTY).text();
+        assertThat(text).as("code reads Markdown as written, code span and all").contains("GUARD comments-only");
+        // prose's hit and miss are read as Java: the comment bites and the literal does not, or the
+        // rule would come back scanner-failed.
+        assertThat(text)
+                .as("prose skips the span, and reads a Java comment but not a literal")
+                .doesNotContain("GUARD prose");
     }
 }

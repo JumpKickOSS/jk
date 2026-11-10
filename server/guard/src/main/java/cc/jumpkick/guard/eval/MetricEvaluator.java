@@ -389,7 +389,7 @@ final class MetricEvaluator implements BatchEvaluator {
             TomlTable tt = target.table();
             if (tt.isString("pattern")) run.patterns.add(Pattern.compile(String.valueOf(tt.getString("pattern"))));
             for (String p : ForbidEvaluator.strings(tt, "patterns")) run.patterns.add(Pattern.compile(p));
-            run.blank = TextFiles.blankMode(tt.isString("blank") ? tt.getString("blank") : null);
+            run.view = TextView.of(tt.isString("blank") ? tt.getString("blank") : null);
         }
         return run;
     }
@@ -400,7 +400,7 @@ final class MetricEvaluator implements BatchEvaluator {
         final Bound bound;
         final List<Pattern> patterns = new ArrayList<>();
         final Map<String, Double> perUnit = new TreeMap<>();
-        CodeText.Blank blank = CodeText.Blank.COMMENTS;
+        TextView view = TextView.COMMENTS;
 
         MatchesRun(Rule rule, List<String> files, String targetId, String per, Bound bound) {
             super(rule, files);
@@ -416,10 +416,9 @@ final class MetricEvaluator implements BatchEvaluator {
 
         @Override
         Runnable see(TextFiles.Entry f, String text, String module) {
-            String view =
-                    f.language().lexable ? CodeText.blank(text, blank, f.language() == TextFiles.Language.JS) : text;
+            String seen = view.apply(text, f.language());
             double counted = 0;
-            for (Pattern p : patterns) counted += countMatches(p, view);
+            for (Pattern p : patterns) counted += countMatches(p, seen);
             double n = counted;
             String unit = per.equals("module") ? module : per.equals("tree") ? "tree" : f.rel();
             return () -> perUnit.merge(unit, n, Double::sum);

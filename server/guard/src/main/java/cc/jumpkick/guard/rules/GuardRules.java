@@ -15,6 +15,8 @@ import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.GuardsConfig;
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -55,7 +57,24 @@ public final class GuardRules {
     /** Above this a rule is a program, not a rule. Warned, not refused. */
     static final int TOKEN_BUDGET = 60;
 
+    /** The common key naming the oldest jk that reads a rule as written. */
+    static final String REQUIRES_JK = "requires-jk";
+
+    /** What {@value #REQUIRES_JK} takes: a release, never a snapshot or a range. */
+    private static final Pattern RELEASE = Pattern.compile("[0-9]+(\\.[0-9]+)*");
+
     private GuardRules() {}
+
+    /**
+     * Whether a jk at {@code running} is older than the release a rule {@code required}. A snapshot
+     * is a build on the way to its release and reads what that release reads, so {@code
+     * 0.50.5-SNAPSHOT} satisfies {@code 0.50.5}.
+     */
+    static boolean tooOld(String running, String required) {
+        String release =
+                running.endsWith("-SNAPSHOT") ? running.substring(0, running.length() - "-SNAPSHOT".length()) : running;
+        return Versions.compare(release, required) < 0;
+    }
 
     /** Load the root rule file, or an empty set when it does not exist. */
     public static LoadResult load(Path root, GuardsConfig config) {
@@ -416,10 +435,37 @@ public final class GuardRules {
     /** A rule above {@link #TOKEN_BUDGET}: its id, its size, and where it starts. */
     private record OverBudget(String id, int tokens, int line) {}
 
+    /**
+     * Whether this jk reads rule {@code id} at all: true without {@value #REQUIRES_JK}, or when this
+     * jk is that release or later. A rule for a newer jk adds a {@link Severity#HELD} notice, and a
+     * value that is no release an error; either way the caller reads nothing further.
+     */
+    private static boolean readable(String id, TomlTable t, Path file, TomlParseResult doc, List<LoadError> problems) {
+        if (!t.contains(REQUIRES_JK)) return true;
+        int line = lineOf(doc, List.of("guards", id, REQUIRES_JK));
+        String required = t.isString(REQUIRES_JK) ? t.getString(REQUIRES_JK) : null;
+        if (required == null || !RELEASE.matcher(required).matches()) {
+            problems.add(err(file, line, id, "`" + REQUIRES_JK + "` is a release such as \"0.50.5\""));
+            return false;
+        }
+        if (!tooOld(JkVersion.VERSION, required)) return true;
+        problems.add(new LoadError(
+                Severity.HELD,
+                file,
+                line,
+                id,
+                "held back: the rule needs jk " + required + " or later and this is " + JkVersion.VERSION
+                        + "; `jk self update` brings it in"));
+        return false;
+    }
+
     private static @Nullable Rule readRule(
             String id, TomlTable t, RuleSource source, TomlParseResult doc, List<LoadError> problems) {
         Path file = source.file();
         int start = problems.size();
+        // Before anything else is read: a rule written for a newer jk may use a kind, a key or a
+        // value this one does not know, and it is held back rather than refused or scanned wrong.
+        if (!readable(id, t, file, doc, problems)) return null;
         String kindId = t.isString("kind") ? t.getString("kind") : null;
         if (kindId == null) {
             problems.add(err(file, source.line(), id, "missing required key `kind`"));

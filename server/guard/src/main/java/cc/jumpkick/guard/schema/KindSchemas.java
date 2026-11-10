@@ -41,9 +41,13 @@ final class KindSchemas {
             optional("allow", TABLE_LIST, "{ in, reason } pairs where the rule does not apply; a stale entry is red"),
             optional("baseline", BOOL, "tolerate today's violations in jk-guards-baseline.toml; tighten-only"),
             optional("fixture", STRING, "guard-fixtures/<id> with Bad and Ok sources that prove the rule bites"),
-            optional("locked", BOOL, "a pack's word: a consumer cannot allow against this rule"));
+            optional("locked", BOOL, "a pack's word: a consumer cannot allow against this rule"),
+            optional(
+                    "requires-jk",
+                    STRING,
+                    "the oldest JumpKick release that reads this rule as written; an older one holds it back with a notice"));
 
-    static final List<String> BLANK_MODES = List.of("comments", "comments+strings", "none", "code");
+    static final List<String> BLANK_MODES = List.of("comments", "comments+strings", "none", "code", "prose");
 
     private static final Map<Kind, List<KeySpec>> KEYS = new EnumMap<>(Kind.class);
     private static final Map<Kind, List<KeyGroup>> GROUPS = new EnumMap<>(Kind.class);
@@ -258,7 +262,7 @@ final class KindSchemas {
                                 STRING,
                                 false,
                                 BLANK_MODES,
-                                "the view: comments blanked (default), comments+strings, none, or code (comments only; in Markdown, the prose outside code)"),
+                                "the view: comments blanked (default), comments+strings, none, code (comments only), or prose (comments, and Markdown outside its code)"),
                         optional("count", TABLE, "{ exactly | min | max, per = file | tree | match }"),
                         optional("owner", STRING_OR_LIST, "files where a match is legal"),
                         optional("languages", STRING_LIST, "restrict to these source languages")),

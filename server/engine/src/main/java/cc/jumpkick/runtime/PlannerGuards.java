@@ -76,6 +76,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -804,11 +805,14 @@ final class PlannerGuards {
 
     /**
      * Model lane only: a baseline entry for a rule no source declares is an error. Live ids are the
-     * TOML rules plus every {@code @Guard} id under {@code src/guard}. True when any orphan was reported.
+     * TOML rules, the rules held back for a newer jk and every {@code @Guard} id under {@code
+     * src/guard}. True when any orphan was reported.
      */
     private static boolean reportOrphans(TaskContext ctx, GuardsPlan g, LoadResult load, Baseline baseline)
             throws IOException {
-        Set<String> live = GuardSuites.liveIds(g.root(), load.rules().rules().keySet());
+        Set<String> live =
+                new HashSet<>(GuardSuites.liveIds(g.root(), load.rules().rules().keySet()));
+        live.addAll(load.held()); // declared for a newer jk: its entries wait for it
         boolean orphans = false;
         for (String orphan : baseline.orphans(live)) {
             orphans = true;

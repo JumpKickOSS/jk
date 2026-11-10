@@ -40,6 +40,57 @@ class GuardRulesTest {
     }
 
     @Test
+    void a_rule_for_a_newer_jk_is_held_back_before_its_keys_are_read(@TempDir Path dir) throws IOException {
+        LoadResult r = load(dir, """
+                [guards.from-the-future]
+                kind        = "telepathy"
+                requires-jk = "999.0"
+                why         = "a kind this jk has never heard of"
+                [guards.today]
+                kind        = "text"
+                requires-jk = "0.1"
+                pattern     = "zzz"
+                hit         = "zzz"
+                instead     = "i"
+                why         = "w"
+                """);
+        assertThat(r.hasErrors()).as(messages(r).toString()).isFalse();
+        assertThat(r.rules().ids()).containsExactly("today");
+        assertThat(r.held()).containsExactly("from-the-future");
+        LoadError held = r.warnings().getFirst();
+        assertThat(held.severity()).isEqualTo(LoadError.Severity.HELD);
+        assertThat(held.line()).isEqualTo(3);
+        assertThat(held.render())
+                .startsWith(
+                        "jk-guards.toml:3: [from-the-future] held back: the rule needs jk 999.0 or later and this is ")
+                .endsWith("; `jk self update` brings it in");
+    }
+
+    @Test
+    void requires_jk_names_a_release(@TempDir Path dir) throws IOException {
+        LoadResult r = load(dir, """
+                [guards.vague]
+                kind        = "text"
+                requires-jk = "latest"
+                pattern     = "zzz"
+                hit         = "zzz"
+                instead     = "i"
+                why         = "w"
+                """);
+        assertThat(messages(r)).containsExactly("`requires-jk` is a release such as \"0.50.5\"");
+        assertThat(r.held()).isEmpty();
+    }
+
+    @Test
+    void a_snapshot_reads_what_its_release_reads() {
+        assertThat(GuardRules.tooOld("0.50.4", "0.50.5")).isTrue();
+        assertThat(GuardRules.tooOld("0.50.5-SNAPSHOT", "0.50.5")).isFalse();
+        assertThat(GuardRules.tooOld("0.50.5", "0.50.5")).isFalse();
+        assertThat(GuardRules.tooOld("0.51.0", "0.50.5")).isFalse();
+        assertThat(GuardRules.tooOld("0.50.10", "0.50.9")).isFalse();
+    }
+
+    @Test
     void the_spring_rules_file_from_the_prd_loads_clean(@TempDir Path dir) throws IOException {
         LoadResult r = load(dir, resource("spring-rules.toml"));
         assertThat(r.errors()).as(messages(r).toString()).isEmpty();

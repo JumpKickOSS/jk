@@ -129,6 +129,18 @@ module's work starts, naming the module.
 Every key the loader accepts, by kind; `common` keys apply to every kind.
 `jk guard explain --schema <kind>` prints the same table for one kind with an example.
 
+A `text` rule's `blank` picks the view its pattern reads. `comments` (the default) and
+`comments+strings` read code, `code` reads only a source file's comments, and `none` reads every
+file as written. `prose` reads what a person wrote as language: a source file's comments, and in
+Markdown the text outside fenced blocks, code spans, HTML, link targets and URLs, so a rule about
+wording can cover Java and the docs at once. The four code views read Markdown as written.
+
+A rule that needs a newer JumpKick than some of its readers carry says so with
+`requires-jk = "0.50.5"`. An older `jk` reads that key before any other, leaves the rule out and
+prints one `held back` line naming the release; it neither refuses the file nor scans the rule
+with a view it does not have. A snapshot reads what its release reads. Only a `jk` that knows the
+key can hold a rule back: one older than the key refuses it like any unknown key.
+
 <!-- guard-schemas:start -->
 | kind | key | required | type | meaning |
 |---|---|---|---|---|
@@ -179,7 +191,7 @@ Every key the loader accepts, by kind; `common` keys apply to every kind.
 | text | hit |  | string | a snippet the pattern must match through the chosen view — the bite proof |
 | text | miss |  | string | a snippet the pattern must not match |
 | text | files |  | string list | file globs; default the module source trees |
-| text | blank |  | string | the view: comments blanked (default), comments+strings, none, or code (comments only; in Markdown, the prose outside code) [comments \| comments+strings \| none \| code] |
+| text | blank |  | string | the view: comments blanked (default), comments+strings, none, code (comments only), or prose (comments, and Markdown outside its code) [comments \| comments+strings \| none \| code \| prose] |
 | text | count |  | table | { exactly \| min \| max, per = file \| tree \| match } |
 | text | owner |  | string or list | files where a match is legal |
 | text | languages |  | string list | restrict to these source languages |
@@ -216,6 +228,7 @@ Every key the loader accepts, by kind; `common` keys apply to every kind.
 | common | baseline |  | bool | tolerate today's violations in jk-guards-baseline.toml; tighten-only |
 | common | fixture |  | string | guard-fixtures/<id> with Bad and Ok sources that prove the rule bites |
 | common | locked |  | bool | a pack's word: a consumer cannot allow against this rule |
+| common | requires-jk |  | string | the oldest JumpKick release that reads this rule as written; an older one holds it back with a notice |
 <!-- guard-schemas:end -->
 
 A baselined `metric` with `min` and no `cap` is a floor: a unit is red when it falls more than

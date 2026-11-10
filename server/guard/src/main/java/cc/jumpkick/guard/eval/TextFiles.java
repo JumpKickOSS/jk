@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
-import cc.jumpkick.host.CodeText;
 import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -40,7 +39,7 @@ final class TextFiles {
         JS(true, true),
         GROOVY(false, true),
         SCALA(false, true),
-        /** Markdown, text, AsciiDoc: scanned whole, except that the {@code code} view blanks Markdown's code. */
+        /** Markdown, text, AsciiDoc: scanned whole, except that the {@code prose} view blanks Markdown's code. */
         PROSE(false, false),
         /** TOML, YAML, JSON, XML, properties, shell: not lexed; scanned whole under every mode. */
         CONFIG(false, false),
@@ -190,16 +189,5 @@ final class TextFiles {
     static boolean sniff(byte[] head) {
         for (byte b : head) if (b == 0) return false;
         return true;
-    }
-
-    /** The {@code blank} spelling → the projection. */
-    static CodeText.Blank blankMode(@Nullable String spelling) {
-        if (spelling == null) return CodeText.Blank.COMMENTS;
-        return switch (spelling) {
-            case "comments+strings" -> CodeText.Blank.COMMENTS_AND_STRINGS;
-            case "none" -> CodeText.Blank.NONE;
-            case "code" -> CodeText.Blank.CODE;
-            default -> CodeText.Blank.COMMENTS;
-        };
     }
 }

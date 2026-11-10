@@ -40,7 +40,7 @@ final class TextEvaluator implements BatchEvaluator {
     private static final class Prepared {
         final Rule rule;
         final List<Pattern> patterns = new ArrayList<>();
-        final CodeText.Blank blank;
+        final TextView view;
         final List<String> files;
         final List<String> owners;
         final List<String> languages;
@@ -62,7 +62,7 @@ final class TextEvaluator implements BatchEvaluator {
         Prepared(Rule rule) {
             TomlTable t = rule.table();
             this.rule = rule;
-            this.blank = TextFiles.blankMode(t.isString("blank") ? t.getString("blank") : null);
+            this.view = TextView.of(t.isString("blank") ? t.getString("blank") : null);
             this.files = ForbidEvaluator.strings(t, "files");
             this.owners = ForbidEvaluator.strings(t, "owner");
             this.languages = ForbidEvaluator.strings(t, "languages");
@@ -150,14 +150,14 @@ final class TextEvaluator implements BatchEvaluator {
         String miss = t.isString("miss") ? t.getString("miss") : null;
         p.hit = hit;
         if (hit != null) {
-            Object view = project(hit, p.blank, snippetLanguage(p));
+            Object view = project(hit, p.view, snippetLanguage(p));
             if (!anyMatch(p.patterns, viewText(view))) {
-                return "hit does not match through the `" + blankName(p.blank)
+                return "hit does not match through the `" + p.view.spelling()
                         + "` view; the pattern reads the wrong layer, or the hit is wrong";
             }
         }
         if (miss != null) {
-            Object view = project(miss, p.blank, snippetLanguage(p));
+            Object view = project(miss, p.view, snippetLanguage(p));
             if (anyMatch(p.patterns, viewText(view))) return "miss matches: the pattern is wider than the rule says";
         }
         return null;
@@ -179,7 +179,7 @@ final class TextEvaluator implements BatchEvaluator {
     static int snippetHits(Rule rule, String text, String fileName) {
         Prepared p = new Prepared(rule);
         if (compileAndBite(p) != null) return -1;
-        Object view = project(text, p.blank, TextFiles.languageOf(fileName));
+        Object view = project(text, p.view, TextFiles.languageOf(fileName));
         CharSequence chars = viewText(view);
         int n = 0;
         for (Pattern pattern : p.patterns) {
@@ -215,14 +215,14 @@ final class TextEvaluator implements BatchEvaluator {
      * The view a rule scans. Code views ({@code comments}, {@code comments+strings}) are squashed so a
      * wrapped call cannot evade a one-line pattern; {@code none} is the text as written, because a
      * rule that asked for everything is matching prose, markup and keys where adjacency means what
-     * it says ({@code class="x"} is not {@code "class"}); {@code code} is the comments alone, and in
-     * prose the text outside code ({@link MarkdownProse}).
+     * it says ({@code class="x"} is not {@code "class"}); {@code code} is the comments alone, and
+     * {@code prose} the comments or, in Markdown, the text outside code ({@link MarkdownProse});
+     * neither is squashed.
      */
-    private static Object project(String text, CodeText.Blank mode, TextFiles.Language lang) {
-        if (lang == TextFiles.Language.PROSE && mode == CodeText.Blank.CODE) return MarkdownProse.blank(text);
-        if (!lang.lexable || mode == CodeText.Blank.NONE) return text;
-        String blanked = CodeText.blank(text, mode, lang == TextFiles.Language.JS);
-        return mode == CodeText.Blank.CODE ? blanked : Squashed.of(blanked);
+    private static Object project(String text, TextView view, TextFiles.Language lang) {
+        String projected = view.apply(text, lang);
+        boolean squash = lang.lexable && (view == TextView.COMMENTS || view == TextView.COMMENTS_AND_STRINGS);
+        return squash ? Squashed.of(projected) : projected;
     }
 
     private static CharSequence viewText(Object view) {
@@ -250,15 +250,15 @@ final class TextEvaluator implements BatchEvaluator {
         if (applicable.isEmpty()) return List.of();
         String text = TextFiles.read(f.file());
         if (text == null) return List.of();
-        Map<CodeText.Blank, Object> views = new EnumMap<>(CodeText.Blank.class);
+        Map<TextView, Object> views = new EnumMap<>(TextView.class);
         List<Seen> out = new ArrayList<>(applicable.size());
         for (Prepared p : applicable) {
             boolean inOwner = matchesAny(p.owners, f.rel());
-            if (!f.language().lexable && f.language().code && p.blank != CodeText.Blank.NONE) {
+            if (!f.language().lexable && f.language().code && p.view.blank() != CodeText.Blank.NONE) {
                 out.add(new Seen(p, f.rel(), inOwner, true, List.of(), null));
                 continue;
             }
-            Object view = views.computeIfAbsent(p.blank, mode -> project(text, mode, f.language()));
+            Object view = views.computeIfAbsent(p.view, v -> project(text, v, f.language()));
             List<Hit> hits = new ArrayList<>();
             String failure = null;
             try {
@@ -389,14 +389,5 @@ final class TextEvaluator implements BatchEvaluator {
 
     private static String abbreviate(String s) {
         return s.length() <= 80 ? s : s.substring(0, 77) + "...";
-    }
-
-    private static String blankName(CodeText.Blank b) {
-        return switch (b) {
-            case COMMENTS -> "comments";
-            case COMMENTS_AND_STRINGS -> "comments+strings";
-            case NONE -> "none";
-            case CODE -> "code";
-        };
     }
 }

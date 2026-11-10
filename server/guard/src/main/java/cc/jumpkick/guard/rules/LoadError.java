@@ -13,7 +13,12 @@ public record LoadError(
 
     public enum Severity {
         ERROR,
-        WARNING
+        WARNING,
+        /**
+         * A rule this jk is too old to read ({@code requires-jk}): left out of the set, and reported
+         * as a notice rather than as an error or a red scan.
+         */
+        HELD
     }
 
     public boolean isError() {
