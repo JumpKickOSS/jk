@@ -84,6 +84,21 @@ class StorageSurfacesRenderTest {
     }
 
     @Test
+    void store_usage_says_what_the_next_prune_would_reclaim_and_nothing_when_it_would_take_nothing() {
+        var none = new CacheCommand.Stats(0, 0);
+        var some = new CacheCommand.StoreUsageStats(
+                none, none, none, none, none, none, none, none, none, new CacheCommand.Stats(384, 4_000_000_000L));
+        String joined = TestAnsi.strip(String.join("\n", CacheCommand.renderStoreUsageTable(some, "today")));
+        assertThat(joined)
+                .contains("Reclaimable at the next prune: 384 files")
+                .contains("(jk cache clean takes it now)");
+
+        var nothing = new CacheCommand.StoreUsageStats(none, none, none, none, none, none, none, none, none, none);
+        assertThat(TestAnsi.strip(String.join("\n", CacheCommand.renderStoreUsageTable(nothing, "today"))))
+                .doesNotContain("Reclaimable");
+    }
+
+    @Test
     void store_usage_names_the_trees_that_age_out_by_use() {
         var none = new CacheCommand.Stats(0, 0);
         var stats = new CacheCommand.StoreUsageStats(

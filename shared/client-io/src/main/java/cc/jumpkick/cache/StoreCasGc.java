@@ -356,13 +356,24 @@ public final class StoreCasGc {
      * failure leaves the store as it was.
      */
     public static Report afterInstall() {
+        return pass(JkStores.store(), false);
+    }
+
+    /**
+     * What the next pass over the store at {@code storeRoot} would reclaim, removing nothing: the
+     * blobs of retired installs and every other blob past its window, as {@code jk storage usage}
+     * reports them.
+     */
+    public static Report preview(Path storeRoot) {
+        return pass(storeRoot, true);
+    }
+
+    private static Report pass(Path storeRoot, boolean dryRun) {
         try {
-            Path storeRoot = JkStores.store();
-            double pressure = DiskPressure.factor(JkCacheConfig.DiskSpace.probe(storeRoot));
-            Policy policy = Policy.defaults(pressure)
-                    .withBudget(DiskPressure.budgetBytes(JkCacheConfig.DiskSpace.probe(storeRoot)));
+            JkCacheConfig.DiskSpace space = JkCacheConfig.DiskSpace.probe(storeRoot);
+            Policy policy = Policy.defaults(DiskPressure.factor(space)).withBudget(DiskPressure.budgetBytes(space));
             AccessLedger ledger = AccessLedger.at(storeRoot.resolve(".access"));
-            return run(JkStores.storeCas(), pinnedShas(), ledger.load(), policy, Clock.SYSTEM.millis(), false);
+            return run(new Cas(storeRoot), pinnedShas(), ledger.load(), policy, Clock.SYSTEM.millis(), dryRun);
         } catch (IOException | RuntimeException e) {
             return new Report(0, 0L, 0, 0);
         }

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.StoreCasGc;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
@@ -284,7 +285,10 @@ public final class CacheInventoryOps {
         DiskUsage.Stats tools = usageOf(storeRoot.resolve("tools"));
         DiskUsage.Stats scratch = usageOf(JkDirs.tmp());
         DiskUsage.Stats testPool = usageOf(TestStorePool.root());
+        // What the next pass would take: retired installs' blobs and blobs past their window.
+        StoreCasGc.Report reclaimable = StoreCasGc.preview(storeRoot);
         List<String> stats = List.of(
+                pack("reclaimable", reclaimable.deleted(), reclaimable.freedBytes()),
                 pack("jars", jarFiles, jarBytes),
                 pack("executables", execFiles, execBytes),
                 pack("oci", ociFiles, ociBytes),

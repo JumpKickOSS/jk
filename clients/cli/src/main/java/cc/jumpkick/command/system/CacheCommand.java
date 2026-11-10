@@ -189,7 +189,8 @@ public final class CacheCommand extends GroupCommand {
                 statFromAck(ack, "test-homes"),
                 statFromAck(ack, "tools"),
                 statFromAck(ack, "scratch"),
-                statFromAck(ack, "test-store"));
+                statFromAck(ack, "test-store"),
+                statFromAck(ack, "reclaimable"));
     }
 
     private static Stats statFromAck(CacheInventoryAck ack, String name) {
@@ -229,7 +230,8 @@ public final class CacheCommand extends GroupCommand {
             Stats testHomes,
             Stats tools,
             Stats scratch,
-            Stats testPool) {
+            Stats testPool,
+            Stats reclaimable) {
         StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers) {
             this(
                     jars,
@@ -240,7 +242,21 @@ public final class CacheCommand extends GroupCommand {
                     new Stats(0, 0),
                     new Stats(0, 0),
                     new Stats(0, 0),
+                    new Stats(0, 0),
                     new Stats(0, 0));
+        }
+
+        StoreUsageStats(
+                Stats jars,
+                Stats executables,
+                Stats oci,
+                Stats workers,
+                Stats mavenLocal,
+                Stats testHomes,
+                Stats tools,
+                Stats scratch,
+                Stats testPool) {
+            this(jars, executables, oci, workers, mavenLocal, testHomes, tools, scratch, testPool, new Stats(0, 0));
         }
 
         long totalFiles() {
@@ -829,6 +845,14 @@ public final class CacheCommand extends GroupCommand {
         out.add("  Test download pool (aged by use): "
                 + Theme.colorize(
                         fmtCount(s.testPool().files) + " files · " + fmtSize(s.testPool().bytes), t.normalGray()));
+        // Retired installs and blobs past their window: what the next prune takes without asking.
+        if (s.reclaimable().files > 0) {
+            out.add("  Reclaimable at the next prune: "
+                    + Theme.colorize(
+                            fmtCount(s.reclaimable().files) + " files · " + fmtSize(s.reclaimable().bytes),
+                            t.normalGray())
+                    + Theme.colorize("  (jk cache clean takes it now)", t.normalGray()));
+        }
         return out;
     }
 
