@@ -30,10 +30,33 @@ class ZincProcessorLoaderCacheTest {
         Path procDir = writeGeneratingProcessor(tmp.resolve("proc"));
 
         ZincJavaCompiler.ProcessorLoad first = load(procDir);
+        first.release();
         ZincJavaCompiler.ProcessorLoad second = load(procDir);
 
         assertThat(first.any()).isTrue();
-        assertThat(second.loader()).isSameAs(first.loader());
+        assertThat(second.loader())
+                .as("the next compile reuses the warm loader")
+                .isSameAs(first.loader());
+        second.release();
+    }
+
+    /**
+     * Processor classes keep static state, so two compiles running at once each hold a loader of
+     * their own; neither ever sees the other's.
+     */
+    @Test
+    void compiles_running_at_once_never_share_a_loader(@TempDir Path tmp) throws Exception {
+        Path procDir = writeGeneratingProcessor(tmp.resolve("proc"));
+
+        ZincJavaCompiler.ProcessorLoad one = load(procDir);
+        ZincJavaCompiler.ProcessorLoad two = load(procDir);
+        assertThat(two.loader()).isNotSameAs(one.loader());
+        one.release();
+        two.release();
+
+        ZincJavaCompiler.ProcessorLoad again = load(procDir);
+        assertThat(again.loader()).as("both stay warm for later compiles").isIn(one.loader(), two.loader());
+        again.release();
     }
 
     /** A module whose processors differ must not be handed the previous module's loader. */

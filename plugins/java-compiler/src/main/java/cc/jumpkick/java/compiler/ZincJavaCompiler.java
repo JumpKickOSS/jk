@@ -19,6 +19,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -840,16 +841,20 @@ public final class ZincJavaCompiler {
      * its last lease ends, never under a compile still loading processor classes from it.
      */
     static final class ProcessorLoad {
-        private static final ProcessorLoad NONE = new ProcessorLoad(false, null);
+        private static final ProcessorLoad NONE = new ProcessorLoad(false, null, null);
 
         private final boolean any;
         private final @Nullable URLClassLoader loader;
+        /** The pool this loader goes back to when its compile ends; null for {@link #none()}. */
+        private final @Nullable Pool pool;
+
         private int leases;
         private boolean retired;
 
-        ProcessorLoad(boolean any, @Nullable URLClassLoader loader) {
+        ProcessorLoad(boolean any, @Nullable URLClassLoader loader, @Nullable Pool pool) {
             this.any = any;
             this.loader = loader;
+            this.pool = pool;
         }
 
         static ProcessorLoad none() {
@@ -865,16 +870,24 @@ public final class ZincJavaCompiler {
             return loader;
         }
 
-        /** Hold the loader open for one compile; pair with {@link #release}. */
+        /** Hold the loader for one compile; pair with {@link #release}. */
         synchronized ProcessorLoad acquire() {
             leases++;
             return this;
         }
 
-        /** End one compile's hold; a retired loader with no holds left closes now. */
-        synchronized void release() {
-            if (leases > 0) leases--;
-            if (retired && leases == 0) close();
+        /** End one compile's hold: back to its pool for the next compile, or closed if retired. */
+        void release() {
+            boolean idle;
+            synchronized (this) {
+                if (leases > 0) leases--;
+                if (retired) {
+                    if (leases == 0) close();
+                    return;
+                }
+                idle = leases == 0;
+            }
+            if (idle && pool != null) returnToPool(this);
         }
 
         /** The cache no longer hands this loader out: close it once nothing holds it. */
@@ -891,6 +904,36 @@ public final class ZincJavaCompiler {
                 // nothing is compiling against it any more; unload is best-effort
             }
         }
+    }
+
+    /**
+     * The loaders of one processor path at one digest, idle ones waiting for the next compile. Each
+     * compile holds a loader of its own: processor classes keep static state (caches, registries)
+     * that compiles of different modules running at once would otherwise share. Built under the
+     * cache's lock and read under it.
+     */
+    static final class Pool {
+        final String digest;
+        final ArrayDeque<ProcessorLoad> idle = new ArrayDeque<>();
+
+        Pool(String digest) {
+            this.digest = digest;
+        }
+
+        void retireAll() {
+            for (ProcessorLoad l : idle) l.retire();
+            idle.clear();
+        }
+    }
+
+    /** Idle loaders one pool keeps; more than this many compiles at once close their extras when done. */
+    private static final int IDLE_PER_POOL = 4;
+
+    private static synchronized void returnToPool(ProcessorLoad load) {
+        Pool pool = Objects.requireNonNull(load.pool);
+        boolean current = PROCESSOR_LOADERS.containsValue(pool);
+        if (current && pool.idle.size() < IDLE_PER_POOL) pool.idle.addFirst(load);
+        else load.retire();
     }
 
     /**
@@ -913,18 +956,16 @@ public final class ZincJavaCompiler {
      * handed out is leased ({@link ProcessorLoad#acquire}): compiles share the worker, and a loader
      * dropped from the cache closes only after the last compile using it has finished.
      */
-    private static final LinkedHashMap<List<Path>, LoadedProcessors> PROCESSOR_LOADERS =
-            new LinkedHashMap<>(8, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<List<Path>, LoadedProcessors> eldest) {
-                    if (size() <= PROCESSOR_LOADER_CAP) return false;
-                    eldest.getValue().load().retire();
-                    return true;
-                }
-            };
+    private static final LinkedHashMap<List<Path>, Pool> PROCESSOR_LOADERS = new LinkedHashMap<>(8, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<List<Path>, Pool> eldest) {
+            if (size() <= PROCESSOR_LOADER_CAP) return false;
+            eldest.getValue().retireAll();
+            return true;
+        }
+    };
 
     /** A cached loader with the {@link ZincWorkdir#processorDigest} of the path it loaded. */
-    private record LoadedProcessors(String digest, ProcessorLoad load) {}
 
     /**
      * The loader for {@code processorPath}, built once per worker and reused while the path's
@@ -939,16 +980,21 @@ public final class ZincJavaCompiler {
     static synchronized ProcessorLoad processorsFor(List<Path> processorPath, String processorDigest) {
         if (processorPath == null || processorPath.isEmpty()) return ProcessorLoad.none();
         List<Path> key = List.copyOf(processorPath);
-        LoadedProcessors cached = PROCESSOR_LOADERS.get(key);
-        if (cached != null && cached.digest().equals(processorDigest))
-            return cached.load().acquire();
-        if (cached != null) cached.load().retire();
-        ProcessorLoad load = loadProcessors(key);
-        PROCESSOR_LOADERS.put(key, new LoadedProcessors(processorDigest, load));
-        return load.acquire();
+        Pool pool = PROCESSOR_LOADERS.get(key);
+        if (pool != null && !pool.digest.equals(processorDigest)) {
+            pool.retireAll();
+            PROCESSOR_LOADERS.remove(key);
+            pool = null;
+        }
+        if (pool == null) {
+            pool = new Pool(processorDigest);
+            PROCESSOR_LOADERS.put(key, pool);
+        }
+        ProcessorLoad idle = pool.idle.pollFirst();
+        return (idle != null ? idle : loadProcessors(key, pool)).acquire();
     }
 
-    private static ProcessorLoad loadProcessors(List<Path> processorPath) {
+    private static ProcessorLoad loadProcessors(List<Path> processorPath, Pool pool) {
         if (processorPath == null || processorPath.isEmpty()) return ProcessorLoad.none();
         URL[] urls = new URL[processorPath.size()];
         for (int i = 0; i < processorPath.size(); i++) {
@@ -977,7 +1023,7 @@ public final class ZincJavaCompiler {
             }
             throw new IllegalStateException("broken annotation processor registration: " + e.getMessage(), e);
         }
-        return new ProcessorLoad(any, loader);
+        return new ProcessorLoad(any, loader, pool);
     }
 
     /**
