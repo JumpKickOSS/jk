@@ -90,9 +90,6 @@ public class PubGrubSolver {
      */
     private final Set<Incompatibility> recorded = Collections.newSetFromMap(new IdentityHashMap<>());
 
-    /** Every {@link #addIncompatibility} call, copies included — what the conflict watermark compares. */
-    private int clauseAdditions;
-
     /**
      * {@code pkg@version} pairs whose dependency clauses are already recorded. A package version
      * decided again after a backjump has the same dependencies, and its clauses are still in the
@@ -122,14 +119,6 @@ public class PubGrubSolver {
 
     /** The watch over the running {@link #solve}; null between solves. */
     private @Nullable StallWatch watch;
-
-    /**
-     * Fingerprints of decision maps that already caused a conflict, each with how many clause
-     * additions had happened by then. Re-entering one under the same count means learning failed
-     * to exclude that assignment (loop). Cleared when a universe expands (prior conflicts may have
-     * been cap artifacts).
-     */
-    private final Map<Long, Integer> conflictedDecisionFingerprints = new HashMap<>();
 
     /**
      * Optional progress hook fired after each successful non-root {@link PartialSolution#decide}.
@@ -241,7 +230,6 @@ public class PubGrubSolver {
         this.rootPkg = rootPkg;
         this.decisionCount = 0;
         this.stepCount = 0;
-        this.conflictedDecisionFingerprints.clear();
         Term rootTerm = Term.positive(rootPkg, VersionSet.exact(rootVersion));
 
         floatingRoots.clear();
@@ -258,7 +246,6 @@ public class PubGrubSolver {
         solution.bindUniverse(rootPkg);
         solution.decide(rootPkg, rootVersion);
         decisionCount++;
-        noteDecision(rootPkg, rootVersion);
 
         String next = rootPkg;
         StallWatch stalls = new StallWatch(
@@ -312,54 +299,6 @@ public class PubGrubSolver {
         Incompatibility inco = new Incompatibility(
                 List.of(Term.positive(root(), VersionSet.EMPTY)), new Incompatibility.Cause.BudgetExceeded(reason));
         throw new UnsatisfiableException(inco);
-    }
-
-    /**
-     * After {@link PartialSolution#decide}, fail closed if this full decision map already conflicted
-     * (learning failed to exclude it).
-     */
-    private void noteDecision(String pkg, String version) {
-        long fp = decisionFingerprint();
-        Integer known = conflictedDecisionFingerprints.get(fp);
-        // Re-entering a decision map that conflicted is ordinary search when a clause was learned in
-        // between — the learned clause is what steers the next decisions elsewhere. Only the same
-        // map under the same incompatibility set is a loop: nothing changed, nothing will.
-        if (known != null && known == clauseAdditions) {
-            throwBudget("solver loop: re-entered conflicted decision assignment (watermark); last decide "
-                    + pkg
-                    + "@"
-                    + version);
-        }
-    }
-
-    /**
-     * Mark the current decision map as known-unsat. Multiple incompatibilities may fire on the same
-     * assignment before a real backtrack — only {@link #noteDecision} fails closed when decides
-     * rebuild this map later.
-     */
-    private void watermarkConflict() {
-        conflictedDecisionFingerprints.put(decisionFingerprint(), clauseAdditions);
-    }
-
-    /** Stable fingerprint of the current package→version decision map (TreeMap order). */
-    private long decisionFingerprint() {
-        long h = 0xcbf29ce484222325L; // FNV-1a offset basis
-        // decisionByPackage is a TreeMap — iteration is sorted by package key.
-        for (Map.Entry<String, String> e : solution.decisionsUnsorted().entrySet()) {
-            h = fnv1a(h, e.getKey());
-            h = (h ^ 0) * 0x100000001b3L;
-            h = fnv1a(h, e.getValue());
-            h = (h ^ '\n') * 0x100000001b3L;
-        }
-        return h;
-    }
-
-    private static long fnv1a(long h, String s) {
-        for (int i = 0; i < s.length(); i++) {
-            h ^= s.charAt(i);
-            h *= 0x100000001b3L;
-        }
-        return h;
     }
 
     // --- unit propagation --------------------------------------------------
@@ -420,9 +359,6 @@ public class PubGrubSolver {
                 && solution.relationTo(inco).kind() != PartialSolution.IncompatibilityRelation.SATISFIED) {
             return null;
         }
-        // Once per conflict entry (not per resolution step): the decision map at the conflict is
-        // unsat. Resolution may walk several derived incompatibilities before backtracking.
-        watermarkConflict();
         Incompatibility current = inco;
         while (true) {
             checkBudget();
@@ -690,7 +626,6 @@ public class PubGrubSolver {
         }
         solution.decide(pkg, pick);
         decisionCount++;
-        noteDecision(pkg, pick);
         checkBudget();
         if (onDecision != null) {
             onDecision.accept(pkg, pick);
@@ -941,9 +876,6 @@ public class PubGrubSolver {
         // candidate the pin was chosen from, or Unavailable(pin) can empty the domain incorrectly.
         universes.put(pkg, VersionUniverse.of(pkg, capExpanded(pkg, source.expandedVersions(pkg))));
         solution.rebindAfterUniverseExpand(pkg);
-        // Prior conflicts may have been artifacts of a singleton/compact candidate list. Expanding
-        // invalidates those watermarks so a genuine wider solve can rebuild the same decides.
-        conflictedDecisionFingerprints.clear();
     }
 
     /** Expand every lazy singleton and capped universe; true when any changed. */
@@ -990,7 +922,6 @@ public class PubGrubSolver {
     }
 
     protected void addIncompatibility(Incompatibility inco) {
-        clauseAdditions++;
         if (!recorded.add(inco)) return;
         incompatibilities.add(inco);
         Set<String> pkgs = new LinkedHashSet<>();

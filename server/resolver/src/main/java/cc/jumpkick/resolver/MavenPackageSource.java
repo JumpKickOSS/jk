@@ -37,6 +37,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -1069,16 +1070,11 @@ public final class MavenPackageSource implements PackageSource {
         if (!warmedUp.compareAndSet(false, true)) return;
         if (bomConstraints.isEmpty() && lockedVersionPrefs.isEmpty()) return;
 
+        // The previous lock's pins first: they are the graph the solve will walk. A BOM's managed
+        // entries come after, in sorted order, as the cap allows; the map they arrive in is
+        // unordered, and taking its first entries prefetched an arbitrary slice of a large BOM
+        // while the real graph waited.
         Map<String, String> pins = new LinkedHashMap<>();
-        for (var e : bomConstraints.entrySet()) {
-            if (e.getValue() == null || e.getValue().isBlank()) continue;
-            try {
-                pins.putIfAbsent(PackageId.ofGa(e.getKey()).key(), e.getValue());
-            } catch (RuntimeException badKey) {
-                // skip
-                Log.debug("warmUp: skip", badKey);
-            }
-        }
         for (var e : lockedVersionPrefs.entrySet()) {
             if (e.getValue() == null || e.getValue().isBlank()) continue;
             try {
@@ -1087,6 +1083,15 @@ public final class MavenPackageSource implements PackageSource {
                         ? PackageId.parse(key).key()
                         : PackageId.ofGa(key).key();
                 pins.putIfAbsent(pkg, e.getValue());
+            } catch (RuntimeException badKey) {
+                // skip
+                Log.debug("warmUp: skip", badKey);
+            }
+        }
+        for (var e : new TreeMap<>(bomConstraints).entrySet()) {
+            if (e.getValue() == null || e.getValue().isBlank()) continue;
+            try {
+                pins.putIfAbsent(PackageId.ofGa(e.getKey()).key(), e.getValue());
             } catch (RuntimeException badKey) {
                 // skip
                 Log.debug("warmUp: skip", badKey);

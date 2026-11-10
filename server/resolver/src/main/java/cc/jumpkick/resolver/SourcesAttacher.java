@@ -72,6 +72,9 @@ final class SourcesAttacher {
                             pkg.withSourcesChecksum("sha256:" + hit.fetched().sha256()));
                     continue;
                 }
+            } catch (InterruptedException cancelled) {
+                // A cancel stops the walk, not just this row's fetch.
+                throw cancelled;
             } catch (Exception e) {
                 /* sources not available for this package */
                 Log.debug("attach: sources not available for this package", e);

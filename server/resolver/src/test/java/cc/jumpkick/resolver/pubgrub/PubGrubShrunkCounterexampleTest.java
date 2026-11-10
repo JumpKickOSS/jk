@@ -15,8 +15,7 @@ import org.junit.jupiter.api.Test;
  * dropping a pivot term the satisfier only partially satisfied, without the paper's residual; a
  * package state whose continuous set froze at bind time, so a term outside a lazy singleton
  * universe was re-derived until the step budget ran out; a stale lazy universe carrying a conflict
- * that a wider one dissolves; a loop watermark firing on a re-visited decision map before the new
- * clause could steer away from it; a positive term "contradicted" by a package with no positive
+ * that a wider one dissolves; a positive term "contradicted" by a package with no positive
  * commitment; the previous satisfier being sought only in other packages, so a {@code p *}
  * satisfier narrowed by earlier {@code ¬p} derivations backjumped to the root; and a negative
  * satisfier counted as covering a positive pivot, so the learned clause lost the pivot's presence.

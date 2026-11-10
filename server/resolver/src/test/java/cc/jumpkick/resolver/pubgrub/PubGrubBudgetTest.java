@@ -137,7 +137,7 @@ class PubGrubBudgetTest {
                     String msg = Diagnostics.render(((UnsatisfiableException) ex).rootCause());
                     assertThat(msg.toLowerCase())
                             .as("names the unsatisfiable requirement")
-                            .containsAnyOf("loop", "watermark", "no version", "cannot");
+                            .containsAnyOf("no version", "cannot");
                     assertThat(msg)
                             .as("fails closed on the missing version, not by burning the budget")
                             .doesNotContain("budget exceeded");
@@ -152,12 +152,12 @@ class PubGrubBudgetTest {
     }
 
     /**
-     * Prefer-pin backtrack (existing interning scenario) still finds a solution — watermarks must
+     * Prefer-pin backtrack (existing interning scenario) still finds a solution: backtracking must
      * not turn a legitimate alternate assignment into a hard unsat.
      */
     @Test
     @Timeout(5)
-    void watermark_allows_prefer_pin_backtrack() throws Exception {
+    void a_prefer_pin_backtrack_still_finds_a_solution() throws Exception {
         InMemoryPackageSource.Builder b = InMemoryPackageSource.builder();
         for (int v = 100; v >= 1; v--) {
             b.version("shared", v + ".0.0");
