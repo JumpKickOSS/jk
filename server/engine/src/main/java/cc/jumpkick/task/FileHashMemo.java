@@ -60,8 +60,11 @@ import org.jspecify.annotations.Nullable;
 public final class FileHashMemo {
 
     /**
-     * Entries one store keeps. Around 200 B each, so the cap is a heap bound before it is a disk
-     * one; a workspace with more distinct input files than this re-hashes its coldest.
+     * Entries one store keeps of what neither of the last two builds touched. Around 200 B each, so
+     * the cap is a heap bound before it is a disk one. It is soft: an entry the current or previous
+     * build used is never evicted, so a workspace bigger than the cap holds its own footprint (two
+     * builds' worth at most) rather than evicting, in build order, the files the next build reads
+     * first and re-hashing every one of them.
      */
     private static final int MAX_ENTRIES = 32_768;
 
@@ -221,13 +224,14 @@ public final class FileHashMemo {
     }
 
     /**
-     * The entries to drop so {@code entries} keeps {@code keep}: the least recently used first,
+     * The entries to drop so {@code entries} keeps {@code keep}, never one used at or after the tick
+     * {@code protectedFrom} (the last two builds): the least recently used first,
      * ranked on one reading of every entry's use tick taken before the sort. A hit moves {@link
      * Entry#used} while a trim runs — the map is concurrent and nothing holds readers off — and a
      * sort keyed on the live field asks a comparator whose answers change under it, which TimSort
      * rejects as a contract violation. A tie on the tick breaks on the key, so the order is total.
      */
-    static List<Map.Entry<String, Entry>> victims(Map<String, Entry> entries, int keep) {
+    static List<Map.Entry<String, Entry>> victims(Map<String, Entry> entries, int keep, long protectedFrom) {
         record Ranked(Map.Entry<String, Entry> entry, long used) {}
         List<Ranked> all = new ArrayList<>(entries.size());
         for (Map.Entry<String, Entry> e : entries.entrySet()) all.add(new Ranked(e, e.getValue().used));
@@ -236,7 +240,8 @@ public final class FileHashMemo {
         all.sort(Comparator.comparingLong(Ranked::used)
                 .thenComparing(r -> r.entry().getKey()));
         List<Map.Entry<String, Entry>> out = new ArrayList<>(drop);
-        for (int i = 0; i < drop; i++) out.add(all.get(i).entry());
+        for (int i = 0; i < drop && all.get(i).used() < protectedFrom; i++)
+            out.add(all.get(i).entry());
         return out;
     }
 
@@ -284,6 +289,14 @@ public final class FileHashMemo {
         private final ConcurrentMap<String, Entry> entries = new ConcurrentHashMap<>();
         private final AtomicBoolean trimming = new AtomicBoolean();
         private volatile boolean dirty;
+
+        /**
+         * The use tick at the last two flushes, which fall at build boundaries: an entry used at or
+         * after {@link #previousBoundary} served the current or the previous build.
+         */
+        private volatile long previousBoundary = Long.MIN_VALUE;
+
+        private volatile long lastBoundary = Long.MIN_VALUE;
 
         private Store(Path dir) {
             this.file = dir.resolve(STORE_FILE);
@@ -348,7 +361,7 @@ public final class FileHashMemo {
         private void trim() {
             if (!trimming.compareAndSet(false, true)) return;
             try {
-                for (Map.Entry<String, Entry> victim : victims(entries, MAX_ENTRIES)) {
+                for (Map.Entry<String, Entry> victim : victims(entries, MAX_ENTRIES, previousBoundary)) {
                     if (entries.remove(victim.getKey(), victim.getValue())) log.dropped();
                 }
             } finally {
@@ -357,6 +370,8 @@ public final class FileHashMemo {
         }
 
         void flush() {
+            previousBoundary = lastBoundary;
+            lastBoundary = USE_TICK.get();
             if (!dirty) return;
             dirty = false;
             try {

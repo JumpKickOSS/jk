@@ -397,11 +397,12 @@ class FileHashMemoTest {
             e.used = ticks[i];
             entries.put("k" + i, e);
         }
-        assertThat(FileHashMemo.victims(entries, 3))
+        assertThat(FileHashMemo.victims(entries, 3, Long.MAX_VALUE))
                 .extracting(Map.Entry::getKey)
                 .containsExactly("k1", "k5", "k3", "k7", "k0");
-        assertThat(FileHashMemo.victims(entries, ticks.length)).isEmpty();
-        assertThat(FileHashMemo.victims(entries, ticks.length + 1)).isEmpty();
+        assertThat(FileHashMemo.victims(entries, ticks.length, Long.MAX_VALUE)).isEmpty();
+        assertThat(FileHashMemo.victims(entries, ticks.length + 1, Long.MAX_VALUE))
+                .isEmpty();
     }
 
     /**
@@ -431,7 +432,8 @@ class FileHashMemoTest {
         }
         try {
             for (int round = 0; round < 40; round++) {
-                assertThat(FileHashMemo.victims(entries, 10_000)).hasSize(10_000);
+                assertThat(FileHashMemo.victims(entries, 10_000, Long.MAX_VALUE))
+                        .hasSize(10_000);
             }
         } finally {
             stop.set(true);
@@ -477,5 +479,24 @@ class FileHashMemoTest {
         });
         assertThat(FileHashMemo.contentReads()).as("the reloaded store answers").isEqualTo(3);
         assertThat(FileHashMemo.loadedStores()).isEqualTo(CacheRootStores.MAX_LOADED);
+    }
+
+    /**
+     * A build touches its files in the same order every time: an LRU smaller than the build evicts
+     * exactly the files the next one reads first. What the last two builds used is never a victim.
+     */
+    @Test
+    void eviction_spares_whatever_the_last_two_builds_used() {
+        Map<String, FileHashMemo.Entry> entries = new HashMap<>();
+        for (int i = 0; i < 6; i++) {
+            FileHashMemo.Entry e = new FileHashMemo.Entry(new StatIdentity(1, 1, 0, ""), false, "t" + i);
+            e.used = i;
+            entries.put("k" + i, e);
+        }
+        assertThat(FileHashMemo.victims(entries, 2, 3))
+                .as("only entries used before the protected tick go, however far over the cap")
+                .extracting(Map.Entry::getKey)
+                .containsExactly("k0", "k1", "k2");
+        assertThat(FileHashMemo.victims(entries, 2, 0)).isEmpty();
     }
 }
