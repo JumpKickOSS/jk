@@ -114,7 +114,7 @@ final class TextEvaluator implements BatchEvaluator {
         // Files are scanned in parallel and merged in corpus order, so a rule sees its files in the
         // same order whatever the scheduling: a failure stops a rule at the same file every run.
         FileModules modules = FileModules.of(ctx);
-        List<List<Seen>> perFile = ParallelMap.map(TextFiles.corpus(root), f -> scanFile(f, live, modules));
+        List<List<Seen>> perFile = ParallelMap.map(TextFiles.corpus(ctx, root), f -> scanFile(f, live, modules));
         for (List<Seen> seen : perFile) {
             for (Seen s : seen) {
                 Prepared p = s.rule();

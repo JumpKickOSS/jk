@@ -80,7 +80,8 @@ final class MetricEvaluator implements BatchEvaluator {
             // Files are measured in parallel; each measure is applied in corpus order, and a run
             // that failed takes nothing after the file it failed on.
             FileModules modules = FileModules.of(ctx);
-            List<List<Runnable>> perFile = ParallelMap.map(TextFiles.corpus(root), f -> measureFile(f, runs, modules));
+            List<List<Runnable>> perFile =
+                    ParallelMap.map(TextFiles.corpus(ctx, root), f -> measureFile(f, runs, modules));
             for (List<Runnable> steps : perFile) for (Runnable step : steps) step.run();
             for (TextRun run : runs) {
                 out.put(run.rule.id(), run.failure != null ? Evaluation.failed(run.failure) : run.finish());

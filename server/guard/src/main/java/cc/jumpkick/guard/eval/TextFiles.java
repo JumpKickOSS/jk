@@ -7,6 +7,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.WalkSkip;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -83,6 +84,24 @@ final class TextFiles {
     interface CorpusVisit {
         void visit(String rel, Path file, BasicFileAttributes attrs) throws IOException;
     }
+
+    /** {@link #corpus(Path)}, walked once per lane run however many evaluators ask for it. */
+    static List<Entry> corpus(EvalContext ctx, Path root) throws IOException {
+        try {
+            return ctx.memo(new CorpusKey(root.toAbsolutePath().normalize()), c -> {
+                try {
+                    return corpus(root);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
+
+    /** The lane-run memo key of one root's corpus. */
+    private record CorpusKey(Path root) {}
 
     /** Every readable text file under {@code root}, sorted by relative path. */
     static List<Entry> corpus(Path root) throws IOException {
