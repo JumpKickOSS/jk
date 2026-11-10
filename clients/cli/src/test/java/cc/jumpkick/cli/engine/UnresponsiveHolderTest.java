@@ -7,6 +7,9 @@ import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.wire.EnginePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -43,15 +46,47 @@ class UnresponsiveHolderTest {
     }
 
     @Test
-    void a_live_silent_jvm_named_by_the_pid_file_is_the_holder() throws Exception {
+    void a_live_silent_engine_named_by_the_pid_file_is_the_holder() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process wedge = SleepMain.spawn(60_000);
+        Process wedge = SleepMain.spawn(60_000, ENGINE_MAIN);
         try {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(wedge.pid()));
             assertThat(EngineProcessControl.unresponsiveHolderPid(socket)).isEqualTo(wedge.pid());
         } finally {
             wedge.destroyForcibly();
             wedge.waitFor();
+        }
+    }
+
+    /** On the sleeper's command line, so it reads as a resident engine. */
+    private static final String ENGINE_MAIN = "cc.jumpkick.engine.EngineMain";
+
+    @Test
+    void a_recycled_pid_is_no_holder_and_a_stop_leaves_it_alive() throws Exception {
+        Path socket = tempDirs.create().resolve("gen1.sock");
+        Path pidFile = EnginePaths.pidFor(socket);
+        Process jvm = SleepMain.spawn(60_000);
+        Process engineLike = null;
+        try {
+            Files.writeString(pidFile, Long.toString(jvm.pid()));
+            assertThat(EngineProcessControl.unresponsiveHolderPid(socket))
+                    .as("a JVM that is not an engine")
+                    .isZero();
+            assertThat(EngineProcessControl.forceStop(socket)).isTrue();
+            assertThat(jvm.isAlive())
+                    .as("nothing listening and no engine: the stop kills nothing")
+                    .isTrue();
+
+            // An engine-looking process started well after the file was written took over its pid.
+            engineLike = SleepMain.spawn(60_000, ENGINE_MAIN);
+            Files.writeString(pidFile, Long.toString(engineLike.pid()));
+            Files.setLastModifiedTime(pidFile, FileTime.from(Instant.now().minus(Duration.ofHours(1))));
+            assertThat(EngineProcessControl.unresponsiveHolderPid(socket)).isZero();
+            assertThat(EngineProcessControl.forceStop(socket)).isTrue();
+            assertThat(engineLike.isAlive()).isTrue();
+        } finally {
+            jvm.destroyForcibly();
+            if (engineLike != null) engineLike.destroyForcibly();
         }
     }
 }

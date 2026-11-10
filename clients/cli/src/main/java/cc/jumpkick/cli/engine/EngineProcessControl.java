@@ -10,6 +10,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -155,7 +156,7 @@ public final class EngineProcessControl {
 
     /** As {@link #forceStop(Path)}, waiting {@code replyTimeoutMillis} for the {@code bye}. */
     public static boolean forceStop(@Nullable Path socket, int replyTimeoutMillis) {
-        long pid = readPidForSocket(socket);
+        long pid = enginePidForSocket(socket);
         SocketChannel ch;
         try {
             ch = EngineWire.connect(socket);
@@ -217,20 +218,35 @@ public final class EngineProcessControl {
      * recycled by something visibly not a JVM), i.e. genuinely not running.
      */
     public static long unresponsiveHolderPid(Path socket) {
-        long pid = readPidForSocket(socket);
-        if (pid <= 0 || pid == ProcessHandle.current().pid()) return 0;
-        return ProcessHandle.of(pid)
-                .filter(ProcessHandle::isAlive)
-                // A recycled pid must not get an engine's hard kill. An unreadable command
-                // (privilege) stays a candidate — the pid file is jk-owned state, so a live pid
-                // named there is overwhelmingly ours.
-                .filter(h -> h.info()
-                        .command()
-                        .map(c -> c.contains("java") || c.contains("jk"))
-                        .orElse(true))
-                .map(ProcessHandle::pid)
-                .orElse(0L);
+        long pid = enginePidForSocket(socket);
+        return pid == ProcessHandle.current().pid() ? 0 : Math.max(pid, 0);
     }
+
+    /**
+     * The pid {@code socket}'s pid file names when that process is still the engine that wrote it,
+     * else {@code -1}. A pid file outlives an engine that died uncleanly and its pid is recycled: a
+     * live process counts only when it looks like an engine ({@link EngineFleet#isEnginePid}) and
+     * started no later than the file was written, so a stop never kills an unrelated process.
+     */
+    static long enginePidForSocket(@Nullable Path socket) {
+        if (socket == null) return -1;
+        Path pidFile = EnginePaths.pidFor(socket);
+        long pid = readPidFile(pidFile);
+        if (pid <= 0) return -1;
+        Optional<ProcessHandle> handle = ProcessHandle.of(pid).filter(ProcessHandle::isAlive);
+        if (handle.isEmpty()) return -1;
+        try {
+            Instant written = Files.getLastModifiedTime(pidFile).toInstant();
+            Optional<Instant> started = handle.get().info().startInstant();
+            if (started.isPresent() && started.get().isAfter(written.plus(PID_FILE_SLACK))) return -1;
+        } catch (IOException e) {
+            return -1;
+        }
+        return EngineFleet.isEnginePid(pid) ? pid : -1;
+    }
+
+    /** How long after its start an engine may write its pid file and still be the process it names. */
+    private static final Duration PID_FILE_SLACK = Duration.ofSeconds(5);
 
     /** First line of a pid file as a long, or {@code -1}. */
     static long readPidFile(Path pidFile) {

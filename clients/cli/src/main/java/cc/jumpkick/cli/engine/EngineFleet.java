@@ -461,11 +461,11 @@ public final class EngineFleet {
      * <p>A command line settles it. When none is available (Windows with the CIM snapshot
      * unavailable — a blocked or absent PowerShell), the corroboration left is jk's own pid file
      * plus a JVM launcher as the executable, which is the same evidence
-     * {@link EngineClient#unresponsiveHolderPid} acts on. It narrows recycling to "recycled onto
+     * {@link EngineProcessControl#unresponsiveHolderPid} acts on. It narrows recycling to "recycled onto
      * another JVM" rather than ruling it out; the alternative is to stop listing engines jk itself
      * recorded, and a fleet that hides its own engines is the failure this class exists for.
      */
-    private static boolean isEnginePid(long pid) {
+    static boolean isEnginePid(long pid) {
         return ProcessHandle.of(pid).map(EngineFleet::looksLikeEngine).orElse(false);
     }
 

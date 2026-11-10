@@ -111,7 +111,8 @@ class EngineStopCommandTest {
     @Tag("integration")
     void now_stops_a_silent_engine_regardless() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process holder = SleepMain.spawn(60_000);
+        // An engine by its command line: a stop kills only what its pid file names as an engine.
+        Process holder = SleepMain.spawn(60_000, "cc.jumpkick.engine.EngineMain");
         try (ScriptedEngine ignored = ScriptedEngine.silent(socket)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
 
