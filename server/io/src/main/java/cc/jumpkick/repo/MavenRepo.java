@@ -629,11 +629,21 @@ public final class MavenRepo {
         return mirrored(coord, MavenLayout.artifactPath(coord), Leg.ARTIFACT, expectedSha256, abort);
     }
 
-    /** The store's copy of {@code coord}'s POM, no HTTP: a POM is not pinned, so nothing confirms it. */
-    public Optional<Fetched> tryLocalPom(Coordinate coord) {
+    /**
+     * The store's copy of {@code coord}'s POM. A copy jk wrote answers as stored; one in the Maven
+     * local repository that jk never verified (a {@code mvn install} of a fork, a download from
+     * another repository) answers only once this repository's published checksum agrees with it,
+     * as a jar does.
+     */
+    public Optional<Fetched> tryLocalPom(Coordinate coord) throws IOException, InterruptedException {
         boolean force = SessionContext.current().config().forceOr(false);
         if (force) return Optional.empty();
-        return tryLocalMirror(MavenLayout.pomPath(coord), null);
+        return mirrored(coord, MavenLayout.pomPath(coord), Leg.RESOLVE, null, NO_ABORT);
+    }
+
+    /** Whether the store holds a copy of {@code coord}'s POM, verified or not; no read, no network. */
+    public boolean storeHoldsPom(Coordinate coord) {
+        return repoStore.locate(MavenLayout.pomPath(coord)).isPresent();
     }
 
     public Fetched fetchMetadata(Coordinate coord) throws IOException, InterruptedException {
@@ -1095,7 +1105,8 @@ public final class MavenRepo {
      * The store's copy of {@code relativePath} when it may answer for {@code coord}: a copy whose
      * bytes verify as the pin, or — without one — as what its memo recorded ({@link
      * #tryLocalMirror}); an unpinned artifact is then confirmed by the checksum the repository
-     * publishes ({@link #confirmed}). A POM or metadata file is served as stored.
+     * publishes ({@link #confirmed}), and so is a POM in the Maven local repository that jk never
+     * verified. A POM or metadata file jk wrote is served as stored.
      */
     private Optional<Fetched> mirrored(
             Coordinate coord, String relativePath, Leg leg, @Nullable String expectedSha256, BooleanSupplier abort)
@@ -1105,10 +1116,29 @@ public final class MavenRepo {
         boolean unvouched = repoStore.m2Backed()
                 && expectedSha256 == null
                 && repoStore.readSha256Sidecar(relativePath).isEmpty();
-        Optional<Fetched> local = tryLocalMirror(relativePath, expectedSha256);
+        // An unvouched copy gets no memo until it is confirmed: a memo is what makes it vouched.
+        Optional<Fetched> local = unvouched ? candidate(relativePath) : tryLocalMirror(relativePath, expectedSha256);
         if (local.isEmpty() || expectedSha256 != null || (leg != Leg.ARTIFACT && !unvouched)) return local;
         if (local.get().sha256().equalsIgnoreCase(verified.get(relativePath))) return local;
-        return confirmed(coord, relativePath, local.get(), leg, abort, unvouched);
+        Optional<Fetched> answer = confirmed(coord, relativePath, local.get(), leg, abort, unvouched);
+        if (unvouched && answer.isPresent() && answer.get().sha256().equalsIgnoreCase(verified.get(relativePath))) {
+            repoStore.verify(relativePath, answer.get().sha256());
+        }
+        return answer;
+    }
+
+    /** The store's copy of {@code relativePath} with its digest, read and hashed but not recorded. */
+    private Optional<Fetched> candidate(String relativePath) {
+        Optional<Path> located = repoStore.locate(relativePath);
+        if (located.isEmpty()) return Optional.empty();
+        String sha = hashQuietly(located.get());
+        if (sha.isBlank()) return Optional.empty();
+        try {
+            return Optional.of(
+                    new Fetched(baseUrl.resolve(relativePath), located.get(), sha, Files.size(located.get())));
+        } catch (IOException e) {
+            return Optional.empty();
+        }
     }
 
     /**

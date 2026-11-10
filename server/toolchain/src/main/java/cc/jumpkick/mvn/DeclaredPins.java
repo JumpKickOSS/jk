@@ -305,7 +305,7 @@ public final class DeclaredPins {
     /** Whether a release repository the lock asks for {@code coord} holds its POM in the local store, no network read. */
     private static boolean mirrored(Coordinate coord, RepoGroup repos) {
         for (MavenRepo repo : repos.repositoriesFor(coord)) {
-            if (repo.servesReleases() && repo.tryLocalPom(coord).isPresent()) return true;
+            if (repo.servesReleases() && repo.storeHoldsPom(coord)) return true;
         }
         return false;
     }
