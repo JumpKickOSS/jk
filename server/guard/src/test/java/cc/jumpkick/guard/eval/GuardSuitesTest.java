@@ -158,6 +158,10 @@ class GuardSuitesTest {
                 GuardSuites.declared(index(suite("c/C", "MODULE", "fine|w||" + TEXT_V)));
         assertThat(GuardSuites.loadErrors(textReaders, toml)).isEmpty();
         assertThat(GuardSuites.anyReadsText(textReaders)).isTrue();
+        List<GuardSuites.Declared> modelReaders = GuardSuites.declared(index(
+                suite("e/E", "MODULE", "fine|w||(Lcc/jumpkick/guard/api/Model;Lcc/jumpkick/guard/api/Violations;)V")));
+        assertThat(GuardSuites.anyReadsModel(modelReaders)).isTrue();
+        assertThat(GuardSuites.anyReadsModel(textReaders)).isFalse();
         assertThat(GuardSuites.anyReadsText(GuardSuites.declared(index(suite("d/D", "MODULE", "fine|w||" + FACTS_V)))))
                 .isFalse();
     }

@@ -13,6 +13,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -77,21 +78,37 @@ final class TextFiles {
 
     record Entry(Path file, String rel, Language language) {}
 
+    /** One file of the corpus: its {@code /}-separated path relative to the root, the file, its attributes. */
+    @FunctionalInterface
+    interface CorpusVisit {
+        void visit(String rel, Path file, BasicFileAttributes attrs) throws IOException;
+    }
+
     /** Every readable text file under {@code root}, sorted by relative path. */
     static List<Entry> corpus(Path root) throws IOException {
-        Path r = root.toAbsolutePath().normalize();
         List<Entry> out = new ArrayList<>();
+        walk(
+                root,
+                (rel, p, attrs) ->
+                        out.add(new Entry(p, rel, languageOf(p.getFileName().toString()))));
+        out.sort((a, b) -> a.rel.compareTo(b.rel));
+        return out;
+    }
+
+    /**
+     * Visit every file {@link #corpus} reads, with its {@code /}-separated path relative to {@code
+     * root} and its attributes: the one predicate both the text rules and the tree lane's key use.
+     */
+    static void walk(Path root, CorpusVisit visit) throws IOException {
+        Path r = root.toAbsolutePath().normalize();
         PathUtil.forEachRegularFile(r, d -> skip(r, d), (p, attrs) -> {
             if (attrs.size() > MAX_BYTES) return;
             String name = p.getFileName().toString();
             // In a linked worktree `.git` is a pointer file naming the worktree, not a directory.
             if (SKIP_DIRS.contains(name)) return;
             for (String ext : BINARY_EXT) if (name.endsWith(ext)) return;
-            String rel = r.relativize(p.toAbsolutePath().normalize()).toString().replace('\\', '/');
-            out.add(new Entry(p, rel, languageOf(name)));
+            visit.visit(r.relativize(p.toAbsolutePath().normalize()).toString().replace('\\', '/'), p, attrs);
         });
-        out.sort((a, b) -> a.rel.compareTo(b.rel));
-        return out;
     }
 
     static boolean skip(Path root, Path dir) {
@@ -103,8 +120,8 @@ final class TextFiles {
         // Gradle's build/ is the one beside a Gradle script; a package named build is a package.
         if (n.equals("build")) return OutputDirs.isBuildOutputDir(dir);
         if (!SKIP_DIRS.contains(n)) return false;
-        String rel = root.relativize(dir).toString().replace('\\', '/');
-        // `target` under a source root is a package, not output.
+        String rel = "/" + root.relativize(dir).toString().replace('\\', '/');
+        // `target` under a source root is a package, not output: the root's own src/ included.
         return !rel.contains("/src/");
     }
 

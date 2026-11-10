@@ -48,6 +48,7 @@ public final class GuardSuites {
     static final String ALLOW = "cc.jumpkick.guard.api.Allow";
     static final String FIXTURE = "cc.jumpkick.guard.api.Fixture";
     static final String TEXT_PARAM = "Lcc/jumpkick/guard/api/Text;";
+    static final String MODEL_PARAM = "Lcc/jumpkick/guard/api/Model;";
     public static final String REPORT = "report.jsonl";
     /** The {@code id =} attribute in a structure view of the annotation body (strings blanked). */
     private static final Pattern GUARD_ID_ATTR = Pattern.compile("(?<![\\w.])id\\s*=");
@@ -67,7 +68,8 @@ public final class GuardSuites {
             boolean workspace,
             List<Allow> allows,
             @Nullable String fixture,
-            boolean readsText) {
+            boolean readsText,
+            boolean readsModel) {
 
         public String source() {
             return className + "#" + method;
@@ -108,7 +110,8 @@ public final class GuardSuites {
                         workspace,
                         List.copyOf(allows),
                         fixture,
-                        m.desc().contains(TEXT_PARAM)));
+                        m.desc().contains(TEXT_PARAM),
+                        m.desc().contains(MODEL_PARAM)));
             }
         }
         return out;
@@ -457,6 +460,12 @@ public final class GuardSuites {
     private static String first(AnnotationFacts a, String key) {
         List<String> v = a.values().get(key);
         return v == null || v.isEmpty() ? "" : v.get(0);
+    }
+
+    /** Whether any declared guard reads {@code Model}: the lane then keys on the manifests and the lock too. */
+    public static boolean anyReadsModel(List<Declared> declared) {
+        for (Declared d : declared) if (d.readsModel()) return true;
+        return false;
     }
 
     /** Whether any declared guard reads {@code Text}: the lane then keys on the tree's inputs too. */

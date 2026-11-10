@@ -8,6 +8,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.eval.Evaluators;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.OutputArtifacts;
+import cc.jumpkick.guard.eval.TreeCorpus;
 import cc.jumpkick.guard.eval.WorkspaceModel;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.explain.RuleSummaries;
@@ -32,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -145,8 +147,9 @@ final class GuardKeys {
 
     /**
      * What a module's {@code src/guard} suite adds to its lane's key, for the run and the forecast
-     * alike: the suite's index digest, every module's facts when a guard reads the workspace, and the
-     * tree's text when a guard reads {@code Text}, so an edit to root text re-runs that suite.
+     * alike: the suite's index digest, every module's facts when a guard reads the workspace, the
+     * tree's text when a guard reads {@code Text}, so an edit to root text re-runs that suite, and
+     * every manifest and the lock when a guard reads {@code Model}.
      */
     static List<String> suiteTokens(
             String suiteDigest, List<GuardSuites.Declared> declared, Path root, List<Path> workspaceModules)
@@ -158,6 +161,13 @@ final class GuardKeys {
             tokens.addAll(workspaceTestTokens(root, workspaceModules));
         }
         if (GuardSuites.anyReadsText(declared)) tokens.addAll(BuildLogicSupport.workspaceInputTokens(root));
+        if (GuardSuites.anyReadsModel(declared)) {
+            tokens.add(fileToken("manifest", ManifestPaths.manifestIn(root)));
+            for (Path m : workspaceModules) {
+                tokens.add(fileToken("manifest:" + root.relativize(m), ManifestPaths.manifestIn(m)));
+            }
+            tokens.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
+        }
         return tokens;
     }
 
@@ -266,6 +276,18 @@ final class GuardKeys {
         }
     }
 
+    /**
+     * The tree lane's read set, for its run and its forecast alike: every file its text rules read,
+     * by the rules' own walk, with its content hash.
+     */
+    static List<String> treeTokens(Path root) throws IOException {
+        List<String> tokens = new ArrayList<>();
+        TreeCorpus.walk(
+                root, (rel, file, attrs) -> tokens.add("tree:" + rel + ":" + FileHashMemo.contentHash(file, attrs)));
+        Collections.sort(tokens);
+        return tokens;
+    }
+
     /** {@code guard-tree}, gate only: the text scan's verdict, keyed on the tree's inputs, rules and baseline. */
     static Optional<TaskForecast.Task> forecastTreeLane(Path root, ActionCache actionCache) {
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
@@ -273,7 +295,7 @@ final class GuardKeys {
         try {
             LoadResult load = PlannerGuards.rules(g);
             if (load.hasErrors()) return Optional.of(tree("guards · jk-guards.toml does not load"));
-            List<String> tokens = new ArrayList<>(BuildLogicSupport.workspaceInputTokens(root));
+            List<String> tokens = new ArrayList<>(treeTokens(root));
             addRuleTokens(tokens, load);
             String key = laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, root), tokens, baselineSha(root));
             if (actionCache.lookup(key).isPresent()) {
