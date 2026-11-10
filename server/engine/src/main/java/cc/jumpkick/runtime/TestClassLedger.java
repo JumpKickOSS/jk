@@ -113,13 +113,14 @@ final class TestClassLedger {
     }
 
     /**
-     * After a run that finished: store the ledger under the settled {@code stampKey}, warn {@link
-     * #PASSED_ON_RERUN} for a class that went from red to green with nothing changed, and answer
-     * {@code ran} as the whole suite, the classes left out counted in.
+     * After a run that finished: store the ledger under the settled {@code stampKey} unless the run
+     * was red for a reason no class owns, warn {@link #PASSED_ON_RERUN} for a class that went from
+     * red to green with nothing changed, and answer {@code ran} as the whole suite, the classes left
+     * out counted in.
      */
     TestSummary finish(
             TaskContext ctx, ActionCache cache, String testTaskId, @Nullable String stampKey, TestSummary ran) {
-        store(cache, testTaskId, stampKey);
+        storeUnlessSuiteRed(cache, testTaskId, stampKey, ran);
         List<String> flaky = passedOnRerun();
         if (!flaky.isEmpty()) {
             ctx.warn(
@@ -251,6 +252,23 @@ final class TestClassLedger {
             if (before != null && !before.green() && e.getValue().green()) out.add(e.getKey());
         }
         return out;
+    }
+
+    /**
+     * {@link #store} when every failure in {@code ran} belongs to a class this run recorded red.
+     * A failure no class owns (a worker that died after its classes finished, tests discovery
+     * announced that were never reported) leaves the ledger as it was: the classes it would record
+     * green may be the ones that lost tests, and settling them would turn the suite green with
+     * those tests never run.
+     */
+    void storeUnlessSuiteRed(ActionCache cache, String testTaskId, @Nullable String stampKey, TestSummary ran) {
+        long owned = 0;
+        for (Entry e : recorded.values()) owned += e.failed();
+        if (ran.failed() > owned) {
+            Log.debug("test run red beyond its classes; class ledger not stored");
+            return;
+        }
+        store(cache, testTaskId, stampKey);
     }
 
     /**

@@ -163,4 +163,36 @@ class TestClassLedgerTest {
         }
         assertThat(load().settledClasses()).containsExactly("demo.OkTest");
     }
+
+    @Test
+    void a_run_red_for_a_reason_no_class_owns_settles_nothing() {
+        TestClassLedger first = load();
+        TestProgressListener l = first.recording(TestProgressListener.noop());
+        run(l, "demo.OkTest", "SUCCESSFUL", "SUCCESSFUL");
+        run(l, "demo.OtherTest", "SUCCESSFUL");
+        // Every class finished green, but a worker exited non-zero after DONE: one failure, no class.
+        first.storeUnlessSuiteRed(cache, TASK, STAMP, new TestSummary(4, 3, 1, 0, List.of()));
+
+        assertThat(load().settledClasses())
+                .as("the next run under this stamp runs every class again")
+                .isEmpty();
+    }
+
+    @Test
+    void a_run_whose_failures_all_belong_to_red_classes_is_stored() {
+        TestClassLedger first = load();
+        TestProgressListener l = first.recording(TestProgressListener.noop());
+        run(l, "demo.OkTest", "SUCCESSFUL");
+        run(l, "demo.RedTest", "FAILED", "FAILED");
+        first.storeUnlessSuiteRed(cache, TASK, STAMP, new TestSummary(3, 1, 2, 0, List.of()));
+        assertThat(load().settledClasses()).containsExactly("demo.OkTest");
+
+        // A second failure beyond the red class's two, such as a lost-tests shortfall row, stores nothing new.
+        TestClassLedger second = load();
+        run(second.recording(TestProgressListener.noop()), "demo.RedTest", "SUCCESSFUL", "SUCCESSFUL");
+        second.storeUnlessSuiteRed(cache, TASK, STAMP, new TestSummary(3, 2, 1, 0, List.of()));
+        assertThat(load().settledClasses())
+                .as("RedTest stays red until a run vouches for it")
+                .containsExactly("demo.OkTest");
+    }
 }
