@@ -4,6 +4,7 @@ package cc.jumpkick.engine.graph;
 import cc.jumpkick.compat.NodeProvisioning;
 import cc.jumpkick.compat.ToolProgress;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.LockPaths;
@@ -69,7 +70,8 @@ final class GraphScripts {
     /** npm-installs both packages into a sibling directory, then moves it into place. */
     private static boolean install(NodeHome home, Path dir) throws IOException, InterruptedException {
         if (SessionContext.current().offline()) return false;
-        INSTALL.lock();
+        // Interruptible: one workspace's install must not hold every other graph request uncancellable.
+        INSTALL.lockInterruptibly();
         try {
             if (installed(dir)) return true;
             Files.createDirectories(dir.getParent());
@@ -81,6 +83,8 @@ final class GraphScripts {
                                 "--no-audit",
                                 "--no-fund",
                                 "--no-package-lock",
+                                // Nothing the packages declare runs: oxc ships prebuilt bindings.
+                                "--ignore-scripts",
                                 "--prefix",
                                 staging.toString(),
                                 "oxc-parser@" + OXC_PARSER,
@@ -91,10 +95,16 @@ final class GraphScripts {
                 pb.environment().put("PATH", home.path(pb.environment().get("PATH")));
                 pb.environment().putAll(NodeCaches.env(home.packageManager(), JkDirs.cache(), JkDirs.store()));
                 pb.environment().put("npm_config_update_notifier", "false");
-                Process p = pb.start();
-                if (!p.waitFor(5, TimeUnit.MINUTES)) {
+                // Registered with the request, so a cancel stops it; and stopped here on an interrupt.
+                Process p = JobWorkers.start(pb);
+                try {
+                    if (!p.waitFor(5, TimeUnit.MINUTES)) {
+                        p.destroyForcibly();
+                        return false;
+                    }
+                } catch (InterruptedException e) {
                     p.destroyForcibly();
-                    return false;
+                    throw e;
                 }
                 if (p.exitValue() != 0 || !installed(staging)) return false;
                 Files.move(staging, dir, StandardCopyOption.ATOMIC_MOVE);
