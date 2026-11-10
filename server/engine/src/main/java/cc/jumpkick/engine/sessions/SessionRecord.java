@@ -44,6 +44,12 @@ public record SessionRecord(
         return now - lastActiveAt > idleGapMillis ? IDLE : LIVE;
     }
 
+    /** This session naming {@code episode} as its current one, or none. */
+    public SessionRecord withEpisode(@Nullable String episode) {
+        return new SessionRecord(
+                id, origin, client, label, project, projectId, startedAt, lastActiveAt, endedAt, state, episode);
+    }
+
     public SessionRecord withState(String state) {
         return new SessionRecord(
                 id, origin, client, label, project, projectId, startedAt, lastActiveAt, endedAt, state, episode);

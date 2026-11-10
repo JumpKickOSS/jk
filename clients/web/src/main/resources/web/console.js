@@ -397,6 +397,20 @@ export function earlierEpisodes(detail) {
     }));
 }
 
+/**
+ * The episode pane's state when it has no episode to show: `loading` until the session list and
+ * the selected session's page have answered, `failed` when that page did not load, `no-episode`
+ * when it loaded with none, `empty` when there is no session at all. A page that answered is never
+ * shown as loading.
+ */
+export function consolePaneState({ sessionsLoaded, selectedId, detailFor, detail }) {
+  if (!sessionsLoaded) return 'loading';
+  if (!selectedId) return 'empty';
+  if (detailFor !== selectedId) return 'loading';
+  if (!detail) return 'failed';
+  return 'no-episode';
+}
+
 /** The episode a page names as current: the session's `episode`, else its newest. */
 export function currentEpisode(detail) {
   if (!detail || !detail.session) return null;

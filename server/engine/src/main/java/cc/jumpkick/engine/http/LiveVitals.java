@@ -164,11 +164,13 @@ public final class LiveVitals implements AutoCloseable {
     /**
      * Connect hydrate for one new subscription: current status plus the last captured cache
      * snapshot, delivered to <em>that subscription only</em> — existing tabs already hold these
-     * facts, and re-broadcasting them duplicated chrome on every new tab. The cache side
-     * never walks the disk on the connect path: it re-sends a stored snapshot when one
-     * exists. It does <strong>not</strong> schedule a fresh walk — exclusive store walks allocate
-     * tens of MiB and leave SerialGC committed heap expanded; first numbers come from
-     * {@code GET /api/cache} (Status view), post-build {@link #nudgeCache()}, or the slow sampler.
+     * facts, and re-broadcasting them duplicated chrome on every new tab. The cache side never
+     * walks the disk on the connect path: it re-sends a stored snapshot when one exists. When
+     * none does yet (a fresh engine), it asks the sampler thread for one walk and publishes the
+     * totals to every dashboard when it lands, so an open stream gets them without a reload or
+     * the 60 s sampler. The walk is the single-flight, TTL-memoized one {@code GET /api/cache}
+     * shares, so a reconnect storm, or the page's own first-paint {@code GET /api/cache}, still
+     * walks the store once.
      */
     public void hydrateFor(HttpEvents.Subscription sub) {
         try {
@@ -185,8 +187,9 @@ public final class LiveVitals implements AutoCloseable {
         if (last != null) {
             lastCache.set(PresentCache.of(last));
             events.deliverTo(sub, "cache", last.toThinJson());
+            return;
         }
-        // No async publishCache here: engine-start reconnect storms must not walk multi-GiB stores.
+        nudgeCache();
     }
 
     private void tickStatusSafe() {

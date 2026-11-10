@@ -23,6 +23,7 @@ const {
   currentEpisode,
   earlierEpisodes,
   EPISODES_KEPT,
+  consolePaneState,
   episodeHeader,
   episodeTimeline,
   foldEpisodeIntoRail,
@@ -284,6 +285,17 @@ test('a session page keeps only the newest episodes the engine serves, and count
   const header = episodeHeader(currentEpisode(detail), { timeline: [], records: [], episodes: detail.episodes, now: NOW });
   assert.equal(header.number, 2108);
   assert.equal(header.of, 2108, 'episode 2108 of 2108, not of the 50 the page holds');
+});
+
+test('the episode pane says loading only while a load is in flight, never for a page that answered', () => {
+  const sel = 'cli-shell-x';
+  assert.equal(consolePaneState({ sessionsLoaded: false, selectedId: null, detailFor: null, detail: null }), 'loading');
+  assert.equal(consolePaneState({ sessionsLoaded: true, selectedId: null, detailFor: null, detail: null }), 'empty');
+  assert.equal(consolePaneState({ sessionsLoaded: true, selectedId: sel, detailFor: null, detail: null }), 'loading');
+  assert.equal(consolePaneState({ sessionsLoaded: true, selectedId: sel, detailFor: 'other', detail: null }), 'loading');
+  assert.equal(consolePaneState({ sessionsLoaded: true, selectedId: sel, detailFor: sel, detail: null }), 'failed');
+  const page = { session: { id: sel }, episodes: [], actions: [] };
+  assert.equal(consolePaneState({ sessionsLoaded: true, selectedId: sel, detailFor: sel, detail: page }), 'no-episode');
 });
 
 test('earlier episodes fold newest first; the page names its current one', () => {

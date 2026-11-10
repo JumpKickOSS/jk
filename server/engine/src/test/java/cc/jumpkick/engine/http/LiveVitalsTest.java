@@ -298,9 +298,8 @@ class LiveVitalsTest {
      * same latch is proved to fire on the seed walk, so "it never fired" cannot mean "the latch
      * was never wired up".
      *
-     * <p>Reading the count immediately after {@code hydrateFor} returns is sound because
-     * {@code hydrateFor} is synchronous and, by its own contract, schedules nothing: any walk it
-     * was going to start has started by the time the frames are readable.
+     * <p>Reading the count immediately after {@code hydrateFor} returns is sound when a snapshot
+     * is stored: {@code hydrateFor} then re-sends it synchronously and schedules nothing.
      */
     private record WalkProbe(Supplier<CacheSnapshot> capture, AtomicReference<CountDownLatch> started) {
         static WalkProbe returning(CacheSnapshot snapshot) {
@@ -349,20 +348,36 @@ class LiveVitalsTest {
     }
 
     @Test
-    void hydrate_without_snapshot_does_not_walk() throws Exception {
+    void hydrate_without_snapshot_walks_once_off_the_connect_path_and_pushes_the_totals() throws Exception {
+        // A fresh engine has no snapshot: an open stream must get the totals when the first walk
+        // lands, not wait for the 60 s sampler or a reload. The walk runs on the sampler thread,
+        // never the connect path, and a later connect re-sends what it captured.
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
-        WalkProbe probe = WalkProbe.returning(
-                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0, 0, 0, 0, 0));
-        try (LiveVitals live = new LiveVitals(hub, status::get, probe.capture());
+        CacheSnapshot snapshot = new CacheSnapshot(
+                10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0, 0, 0, 0, 0);
+        AtomicReference<Thread> walker = new AtomicReference<>();
+        WalkProbe probe = WalkProbe.returning(snapshot);
+        Supplier<CacheSnapshot> capture = () -> {
+            walker.set(Thread.currentThread());
+            return probe.capture().get();
+        };
+        try (LiveVitals live = new LiveVitals(hub, status::get, capture);
                 HttpEvents.Subscription sub = hub.subscribe()) {
             live.hydrateFor(sub);
             assertThat(sub.next(2_000)).contains("event: status");
-            // No stored snapshot, so no cache frame — and hydrate must not go and make one. The read
-            // below is bounded rather than latched because it asserts the ABSENCE of a frame on a
-            // queue that `hydrateFor` has already finished writing to.
-            assertThat(sub.next(200)).isNull();
-            probe.assertDidNotWalk("hydrate with no stored snapshot must not walk either");
+            probe.assertWalked("a connect with no snapshot asks for one walk");
+            assertThat(sub.next(5_000))
+                    .as("the totals are pushed when the walk lands")
+                    .contains("event: cache");
+            assertThat(walker.get()).as("never on the connect path").isNotSameAs(Thread.currentThread());
+
+            try (HttpEvents.Subscription next = hub.subscribe()) {
+                live.hydrateFor(next);
+                assertThat(next.next(2_000)).contains("event: status");
+                assertThat(next.next(2_000)).contains("event: cache");
+                probe.assertDidNotWalk("a later connect re-sends the captured snapshot");
+            }
         }
     }
 

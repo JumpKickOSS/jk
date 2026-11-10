@@ -9,6 +9,7 @@ import {
   currentEpisode,
   hostLabel,
   earlierEpisodes,
+  consolePaneState,
   episodeHeader,
   episodeTimeline,
   foldEpisodeIntoRail,
@@ -44,6 +45,9 @@ export function consoleData(route) {
     consoleSession: route.session || null, // the session the route selects (#console/<id>)
     consoleAutoSession: null, // with none routed, the rail's first card at load, held so it does not jump
     sessionDetail: null, // the selected session's `/api/sessions/<id>` page
+    // The session whose page load last finished, answered or failed: until it is the selected one
+    // the episode pane is loading; after, an empty page means no episode, not a load in flight.
+    sessionDetailFor: null,
     decisions: [], // open decisions, oldest first
     decisionsAvailable: false, // false while the engine has no decision queue (404)
     runEpisodePage: null, // the session page holding the run page's episode
@@ -66,6 +70,15 @@ export const consoleComputed = {
   },
   selectedSessionRow() {
     return this.sessions.find((s) => s.id === this.selectedSessionId) || null;
+  },
+  /** What the episode pane shows while it has no episode: see {@link consolePaneState}. */
+  consolePane() {
+    return consolePaneState({
+      sessionsLoaded: this.sessionsLoaded,
+      selectedId: this.selectedSessionId,
+      detailFor: this.sessionDetailFor,
+      detail: this.sessionDetail,
+    });
   },
   /** The selected session's current episode: header, timeline, and the earlier ones folded. */
   consoleEpisode() {
@@ -144,6 +157,7 @@ export const consoleMethods = {
     if (this.authModal) return;
     if (!id) {
       this.sessionDetail = null;
+      this.sessionDetailFor = null;
       this.markConsolePainted();
       return;
     }
@@ -152,9 +166,13 @@ export const consoleMethods = {
       if (id !== this.selectedSessionId) return;
       this.sessionDetail = page;
     } catch (e) {
+      if (id === this.selectedSessionId) {
+        this.sessionDetail = null;
+        this.sessionDetailFor = id;
+      }
       if (this.handleHttpError(e)) return;
-      if (id === this.selectedSessionId) this.sessionDetail = null;
     }
+    if (id === this.selectedSessionId) this.sessionDetailFor = id;
     this.markConsolePainted();
   },
   /** Open decisions; an engine with no queue (404) leaves the banner absent. */

@@ -285,6 +285,9 @@ class SessionLogTest {
         assertThat(next.adopt()).isEqualTo(1);
         assertThat(journal.actions(id)).as("no kept episode owns them").isEmpty();
         assertThat(journal.read(id).orElseThrow()).doesNotContainKey("episodes");
+        assertThat(next.session(id, 0, 1).orElseThrow().session())
+                .as("an episode compacted away is no current episode")
+                .doesNotContainKey("episode");
         assertThat(next.placeRun("cli", null, "build", "/ws/app", T + 1_000)).isEqualTo(id + ".2106");
     }
 

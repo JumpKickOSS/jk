@@ -14,7 +14,7 @@ import {
   del,
   events,
   noteEngineEpoch,
-  hardRefreshForEpoch,
+  settleEpochReload,
 } from './api.js';
 import { cardMethods } from './cards.js';
 import { BuildBars, ModuleDepGraph } from './chart.js';
@@ -217,6 +217,7 @@ export const appOptions = {
       this.projectHistory = [];
       this.sessions = [];
       this.sessionDetail = null;
+      this.sessionDetailFor = null;
       this.decisions = [];
       this.notices = [];
       this.unseen = 0;
@@ -249,18 +250,16 @@ export const appOptions = {
         const status = await get('/api/status', { bootstrap: true });
         // Latch the engine epoch from the bootstrap payload BEFORE any gated call.
         // Without this the next probe carries no X-Jk-Engine-Epoch, the server 409s, and every
-        // fresh tab pays a full reload. A mismatch here means a stale epoch from a previous
-        // engine generation survived in sessionStorage — reload once now, before painting.
-        if (noteEngineEpoch(status) === 'mismatch') {
-          hardRefreshForEpoch();
-          return false;
-        }
+        // fresh tab pays a full reload. A stale epoch from an older engine in sessionStorage is
+        // simply replaced: this page has read nothing yet, so there is nothing to reload.
+        noteEngineEpoch(status, { fresh: true });
       } catch (e) {
         if (e.status === 401) {
           this.markUnauthorized({ clear: true });
           return false;
         }
         // engine down / network — not an auth failure (token is present; reconnect later)
+        settleEpochReload();
         return true;
       }
       // Prove a stored token still works (stale localStorage after rotate-token is the common case).

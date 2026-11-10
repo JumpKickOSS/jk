@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
@@ -261,9 +262,16 @@ public final class SessionLog {
             live.episodeLines = lines.size();
             for (EpisodeInference.Stored e : live.episodes.stored())
                 live.written.put(e.episode().id(), lineText(e));
+            // The record names the newest episode it keeps, or none: an episode compacted away is
+            // not a current one, and a page asked for it would find nothing.
+            Episode newest = live.episodes.current();
+            String keptCurrent = newest == null ? null : newest.id();
+            boolean renamed = !Objects.equals(r.episode(), keptCurrent);
+            if (renamed) live.record = live.record.withEpisode(keptCurrent);
             List<Map<String, Object>> actions = journal.actions(r.id());
             live.seq = actions.isEmpty() ? 0 : Episode.num(actions.getLast(), "seq");
             if (live.episodeLines > EpisodeInference.KEEP || actions.size() > KEPT_ACTIONS) compact(live, actions);
+            else if (renamed) persist(live);
             byId.put(r.id(), live);
             Live other = byKey.get(key(r.origin(), r.label()));
             if (other == null || other.record.lastActiveAt() < r.lastActiveAt())

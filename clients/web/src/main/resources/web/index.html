@@ -201,8 +201,10 @@
 
         <!-- The selected session's current episode: header, attempts arc, action timeline. -->
         <section class="panel episode" aria-label="Current episode">
-          <p v-if="!consoleEpisode && (!sessionsLoaded || sessionRail.length)" class="empty small">Loading…</p>
-          <p v-else-if="!consoleEpisode && sessionsLoaded" class="empty small">When a session acts, its current episode shows here: the goal, each action it took, and every build as one line.</p>
+          <p v-if="!consoleEpisode && consolePane === 'loading'" class="empty small">Loading…</p>
+          <p v-else-if="!consoleEpisode && consolePane === 'failed'" class="empty small">This session's timeline could not be loaded. It loads again when the engine answers.</p>
+          <p v-else-if="!consoleEpisode && consolePane === 'no-episode'" class="empty small">No episode yet. This session's next command or tool call starts one, and it shows here as it happens.</p>
+          <p v-else-if="!consoleEpisode" class="empty small">When a session acts, its current episode shows here: the goal, each action it took, and every build as one line.</p>
           <template v-if="consoleEpisode">
             <div class="ep-head">
               <span class="badge" :class="outcomeClass(consoleEpisode.header.outcome)">{{ consoleEpisode.header.outcome }}</span>

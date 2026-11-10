@@ -34,6 +34,8 @@ globalThis.window = {
 
 const {
   hardRefreshForEpoch,
+  noteEngineEpoch,
+  settleEpochReload,
   registerDirtyGuard,
   unregisterDirtyGuard,
   releaseDeferredEpochReload,
@@ -105,6 +107,28 @@ test('reload latch still breaks reload loops', () => {
   hardRefreshForEpoch();
   assert.equal(reloads, 0, 'in-flight latch swallows the second reload');
   assert.equal(store.has('jk-epoch-reload'), false, 'latch consumed');
+});
+
+// The engine restarted twice: the first restart's reload landed while no engine answered, and the
+// page booted against the second. Its bootstrap saw a changed epoch, the latch swallowed the
+// reload, and the boot gave up: a dashboard that never connected until reloaded by hand.
+test("a page's own bootstrap latches a changed epoch and carries on, never reloading", () => {
+  store.set('jk-engine-epoch', 'engine-2');
+  store.set('jk-epoch-reload', '1');
+  assert.equal(noteEngineEpoch({ engineEpoch: 'engine-3' }, { fresh: true }), 'ok');
+  assert.equal(store.get('jk-engine-epoch'), 'engine-3');
+  assert.equal(store.has('jk-epoch-reload'), false, 'the reload that brought the page here is over');
+  assert.equal(reloads, 0);
+
+  assert.equal(noteEngineEpoch({ engineEpoch: 'engine-4' }), 'mismatch', 'a page that has read from engine 3 must reload');
+});
+
+test('a page that booted with no engine answering reloads on the next engine, not swallowing it', () => {
+  store.set('jk-engine-epoch', 'engine-2');
+  store.set('jk-epoch-reload', '1');
+  settleEpochReload();
+  hardRefreshForEpoch();
+  assert.equal(reloads, 1);
 });
 
 // A failed build's diagnostics arrive as a named `error` frame. EventSource dispatches named frames

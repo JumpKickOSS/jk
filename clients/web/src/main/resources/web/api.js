@@ -106,9 +106,12 @@ export function engineEpoch() {
 /**
  * Latch {@code engineEpoch} from a status payload. Returns {@code 'mismatch'} when the generation
  * changed (caller should hard-reload), {@code 'ok'} when unchanged or first latch, {@code 'none'}
- * when the payload has no epoch.
+ * when the payload has no epoch. With {@code fresh} — the page's own bootstrap, before it has read
+ * anything — a changed generation is latched and answered {@code 'ok'}: the page holds nothing
+ * from the older engine, so a reload could only repeat this load. Reloading there once left a
+ * page dead: the loop guard swallowed the reload and the boot gave up without connecting.
  */
-export function noteEngineEpoch(statusOrEpoch) {
+export function noteEngineEpoch(statusOrEpoch, { fresh = false } = {}) {
   const next =
     statusOrEpoch == null
       ? null
@@ -126,6 +129,10 @@ export function noteEngineEpoch(statusOrEpoch) {
     // Latch the new generation before the caller reloads (mirrors handleEpochConflict) so the
     // post-reload hydrate sees a consistent epoch and clears the reload latch in one pass.
     sessionStorage.setItem(EPOCH_KEY, next);
+    if (fresh) {
+      clearReloadLatch();
+      return 'ok';
+    }
     return 'mismatch';
   }
   // Epoch-consistent hydrate: the tab and engine agree, so any pending reload latch is stale.
@@ -137,6 +144,15 @@ export function noteEngineEpoch(statusOrEpoch) {
 
 function clearReloadLatch() {
   sessionStorage.removeItem(RELOAD_FLAG);
+}
+
+/**
+ * A page that booted with no engine answering holds nothing from any engine: the reload that
+ * brought it here is over, so the next generation change it sees reloads it rather than being
+ * taken for a loop.
+ */
+export function settleEpochReload() {
+  clearReloadLatch();
 }
 
 /**
