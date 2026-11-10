@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
@@ -201,5 +202,31 @@ class EngineWireEnsureOnceTest {
         assertThat(ensures)
                 .as("the first ensure, then one more after the connect failed")
                 .hasValue(2);
+    }
+
+    /** A failed ensure answers every later request of the invocation at once, with the same reason. */
+    @Test
+    void a_failed_ensure_is_remembered_for_the_rest_of_the_invocation() throws Exception {
+        EnginePaths.Paths paths = EnginePaths.resolve(tempDirs.create());
+        AtomicInteger ensures = new AtomicInteger();
+        EngineWire.Ensure failing = (p, v) -> {
+            ensures.incrementAndGet();
+            throw new IOException("engine pid 42 is busy");
+        };
+        SessionContext.invocation(() -> {
+            for (int i = 0; i < 3; i++) {
+                assertThatThrownBy(() -> EngineWire.stream(paths, "{}", (reader, ch) -> "unreached", failing))
+                        .hasMessage("engine pid 42 is busy");
+            }
+            return null;
+        });
+        assertThat(ensures).as("three requests, one ensure").hasValue(1);
+
+        SessionContext.invocation(() -> {
+            assertThatThrownBy(() -> EngineWire.stream(paths, "{}", (reader, ch) -> "unreached", failing))
+                    .hasMessage("engine pid 42 is busy");
+            return null;
+        });
+        assertThat(ensures).as("the next invocation in this JVM asks again").hasValue(2);
     }
 }

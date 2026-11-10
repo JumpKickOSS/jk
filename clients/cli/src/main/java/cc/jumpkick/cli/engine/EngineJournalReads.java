@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.HistoryDeleteRequest;
@@ -60,7 +59,7 @@ public final class EngineJournalReads {
 
     /** Send a history/metrics request, collect the flat reply lines up to (not including) the terminal. */
     private static List<String> streamHistory(EnginePaths.Paths paths, String request) throws IOException {
-        EngineSpawn.ensure(paths, JkVersion.VERSION);
+        EngineWire.ensured(paths);
         List<String> out = new ArrayList<>();
         try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =

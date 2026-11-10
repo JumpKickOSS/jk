@@ -10,7 +10,6 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -50,7 +49,7 @@ public final class WebCommand implements CliCommand {
         boolean noOpen = in.isSet("no-open");
         EnginePaths.Paths paths = EnginePaths.current();
         try {
-            EngineClient.ensureRunning(paths, JkVersion.VERSION);
+            EngineClient.ensured(paths);
         } catch (IOException e) {
             CommandWedge.printFail("Web", e.getMessage());
             return Exit.SOFTWARE;

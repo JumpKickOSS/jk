@@ -73,6 +73,15 @@ public final class EngineClient {
     }
 
     /**
+     * As {@link #ensureRunning}, once per process: a failure as well as a success answers every
+     * later ask of the invocation, so a prewarm that could not reach the engine is not followed by
+     * the same wait at each request. For callers that need the engine up, not its handshake.
+     */
+    public static void ensured(EnginePaths.Paths paths) throws IOException {
+        EngineWire.ensured(paths);
+    }
+
+    /**
      * Forget the engine this process ensured, so its next request probes again. For the caller that
      * has just changed what the engine pointer names — {@code jk install} materializing the tree's
      * engine — and needs its next request served by that engine: the probe finds the resident one

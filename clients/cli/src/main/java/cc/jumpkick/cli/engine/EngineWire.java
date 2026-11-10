@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.api.ClientEnvForward;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
@@ -32,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import org.jspecify.annotations.Nullable;
 
@@ -200,10 +202,43 @@ public final class EngineWire {
     private static Path ensuredSocket(EnginePaths.Paths paths, Ensure ensure) throws IOException {
         Ensured hit = ENSURED;
         if (hit != null && hit.paths().equals(paths)) return hit.socket();
-        ensure.run(paths, JkVersion.VERSION);
+        return ensureRemembering(paths, ensure);
+    }
+
+    /** Ensure for {@code paths}, unless this invocation already saw that fail; a success is remembered for {@link #stream}. */
+    private static Path ensureRemembering(EnginePaths.Paths paths, Ensure ensure) throws IOException {
+        AtomicReference<@Nullable IOException> failed = SessionContext.perInvocation(
+                new FailedEnsure(paths), () -> new AtomicReference<@Nullable IOException>());
+        @Nullable IOException known = failed.get();
+        if (known != null) throw new IOException(known.getMessage(), known);
+        try {
+            ensure.run(paths, JkVersion.VERSION);
+        } catch (IOException e) {
+            failed.compareAndSet(null, e);
+            throw e;
+        }
         Path socket = EnginePaths.activeSocket(paths);
         ENSURED = new Ensured(paths, socket);
         return socket;
+    }
+
+    /**
+     * The key of an ensure this invocation already saw fail, answered at once until the
+     * invocation's next pass. One ensure against a silent engine can spend a quarter of a minute
+     * probing and minutes waiting, and a command makes several requests; asking again each time
+     * only multiplied the wait before the one error that reports it. Per invocation, not per
+     * process: a long-lived client ({@code jk dev}, an IDE sync, the MCP server) asks again on its
+     * next pass, and invocations sharing a JVM never answer for each other.
+     */
+    private record FailedEnsure(EnginePaths.Paths paths) {}
+
+    /**
+     * The socket of a live, version-matched engine for {@code paths}. A failure answers the rest of
+     * the invocation at once; a success is probed afresh, since these callers connect on their own
+     * and, unlike {@link #stream}, have no retry for an engine that went away since the last ask.
+     */
+    static Path ensured(EnginePaths.Paths paths) throws IOException {
+        return ensureRemembering(paths, EngineSpawn::ensure);
     }
 
     /** Test seam: forget the ensured endpoint, so the next RPC re-probes. */

@@ -3,7 +3,6 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
@@ -80,7 +79,7 @@ final class EnginePluginAdapter {
             BiConsumer<String, String> onEvent,
             @Nullable Consumer<String> preFinish)
             throws IOException {
-        EngineClient.ensureRunning(paths, JkVersion.VERSION);
+        EngineClient.ensured(paths);
 
         try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
@@ -220,7 +219,7 @@ final class EnginePluginAdapter {
             BiConsumer<String, String> onLine,
             Function<String, T> decode)
             throws IOException {
-        EngineClient.ensureRunning(paths, JkVersion.VERSION);
+        EngineClient.ensured(paths);
 
         try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
