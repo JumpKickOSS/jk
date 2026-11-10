@@ -33,6 +33,26 @@ class EpisodeInferenceTest {
     }
 
     @Test
+    void a_settled_episode_is_judged_by_its_last_run_and_stays_closed_across_a_resume() {
+        EpisodeInference inference = new EpisodeInference("s", GAP);
+        String first = inference.place(T, "/ws/app").episode();
+        inference.fold(first, Fact.run(T, 5_000, "/ws/app", "app", false, List.of("QuoteTest#oneNightStay")));
+
+        assertThat(inference.settle()).singleElement().satisfies(c -> {
+            assertThat(c.outcomeChanged()).isTrue();
+            assertThat(c.episode().outcome()).isEqualTo(Episode.RED);
+            assertThat(c.episode().lastAt()).isEqualTo(T + 5_000);
+        });
+        assertThat(inference.settle()).as("settled once").isEmpty();
+
+        EpisodeInference resumed = EpisodeInference.resume("s", GAP, inference.episodes(), inference.state());
+        assertThat(Objects.requireNonNull(resumed.current()).outcome()).isEqualTo(Episode.RED);
+        assertThat(resumed.place(T + 6_000, "/ws/app").episode())
+                .as("a settled episode takes no more facts, even inside the idle gap")
+                .isEqualTo("s.2");
+    }
+
+    @Test
     void a_goal_titles_a_new_episode_and_the_same_goal_again_keeps_it() {
         EpisodeInference inference = new EpisodeInference("s", GAP);
         Fact run = Fact.run(T, 0, "/ws/app", "app", true, List.of());

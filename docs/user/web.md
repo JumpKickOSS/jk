@@ -107,7 +107,9 @@ all, the title is inferred from what the episode did, in this order:
 | Only code-graph questions | `Exploring the code` |
 | Anything else | `Working in <module>` |
 
-An open episode is **working**. A closed one is **green** or **red** by its last run (or, with no
+An episode is **working** while something acts in it: a fact within the last ten minutes, or one of
+its builds in flight. Ten quiet minutes with nothing running, or an engine restart for a session no
+connection stands behind (the shell, the dashboard), close it. A closed one is **green** or **red** by its last run (or, with no
 run, its last action), and **abandoned** when nothing in it was judged. `GET /api/sessions` lists
 live and recent sessions with their current episode; `GET /api/sessions/<id>` returns one with its
 episodes and a page of its timeline ([HTTP](../contributors/http.md#get-apisessions)).

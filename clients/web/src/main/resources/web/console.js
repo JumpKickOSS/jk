@@ -340,10 +340,15 @@ export function changedFiles(records) {
 /**
  * The selected episode's header: title and its source, outcome, number of how many, the attempts
  * arc, wall (to now while working), time in jk (the actions' and runs' walls), files changed.
+ * An open episode is working only while its session is live or one of its runs is in flight, the
+ * rule the rail's {@link railState} keeps; otherwise it reads idle and its wall stops at its last
+ * fact, so a page that missed the engine settling it never counts up forever.
  */
-export function episodeHeader(episode, { timeline = [], records = [], episodes = [], now = Date.now() } = {}) {
+export function episodeHeader(episode, { timeline = [], records = [], episodes = [], session = null, now = Date.now() } = {}) {
   if (!episode) return null;
-  const working = episode.outcome === 'working';
+  const running = (timeline || []).some((i) => i.state === 'run' && i.card);
+  const open = episode.outcome === 'working';
+  const working = open && (running || !session || session.state === 'live');
   const end = working ? now : episode.lastAt || now;
   let inJk = 0;
   for (const i of timeline) {
@@ -355,7 +360,7 @@ export function episodeHeader(episode, { timeline = [], records = [], episodes =
     id: episode.id,
     title: episode.title,
     source: titleSourceLabel(episode),
-    outcome: episode.outcome,
+    outcome: open && !working ? 'idle' : episode.outcome,
     number: episode.number,
     of: (episodes || []).length || episode.number,
     project: projectName(episode.project),

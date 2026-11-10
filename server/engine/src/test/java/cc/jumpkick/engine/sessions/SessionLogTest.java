@@ -134,6 +134,83 @@ class SessionLogTest {
     }
 
     @Test
+    void a_quiet_sessions_open_episode_settles_at_the_idle_gap_judged_by_its_last_run() {
+        String episode = Objects.requireNonNull(log.placeRun("cli", null, "build", "/ws/app", T));
+        log.runFinished(run(episode, 27, T, true));
+        String shell = sessionOf(episode);
+        now.set(T + 900 + EpisodeInference.DEFAULT_IDLE_GAP_MILLIS + 1);
+        log.sweep();
+
+        SessionLog.Page page = log.session(shell, 0, 1).orElseThrow();
+        assertThat(page.session()).containsEntry("state", "idle");
+        assertThat(page.episodes())
+                .singleElement()
+                .as("nothing works on it any more: its wall stops at its last fact")
+                .satisfies(e -> assertThat(e).containsEntry("outcome", "green"));
+        assertThat(events).endsWith("episode:outcome", "session:idle");
+        assertThat(root.resolve("sessions").resolve(shell).resolve("session.json"))
+                .content()
+                .contains("\"closed\":\"IDLE\"");
+
+        events.clear();
+        log.sweep();
+        assertThat(events).as("settled once").isEmpty();
+        assertThat(log.placeRun("cli", null, "build", "/ws/app", now.get()))
+                .as("the next run starts the next episode")
+                .isEqualTo(shell + ".2");
+    }
+
+    @Test
+    void a_session_with_a_run_in_flight_stays_live_and_working_past_the_idle_gap() {
+        AtomicBoolean building = new AtomicBoolean(true);
+        log.running((origin, label) -> building.get() && origin.equals("cli") && label == null);
+        String episode = Objects.requireNonNull(log.placeRun("cli", null, "build", "/ws/app", T));
+        String shell = sessionOf(episode);
+        now.set(T + 3 * EpisodeInference.DEFAULT_IDLE_GAP_MILLIS);
+        log.sweep();
+
+        SessionLog.Page page = log.session(shell, 0, 1).orElseThrow();
+        assertThat(page.session()).containsEntry("state", "live");
+        assertThat(page.episodes()).singleElement().satisfies(e -> assertThat(e).containsEntry("outcome", "working"));
+        assertThat(log.sessions(10)).singleElement().satisfies(r -> assertThat(r)
+                .containsEntry("state", "live"));
+
+        building.set(false);
+        log.sweep();
+        assertThat(log.session(shell, 0, 1).orElseThrow().session())
+                .as("its build is gone and it acted long ago")
+                .containsEntry("state", "idle");
+        assertThat(log.session(shell, 0, 1).orElseThrow().episodes())
+                .singleElement()
+                .satisfies(e -> assertThat(e).as("nothing judged it").containsEntry("outcome", "abandoned"));
+    }
+
+    @Test
+    void a_new_engine_settles_the_open_episode_of_a_session_with_no_connection_behind_it() {
+        String episode = Objects.requireNonNull(log.placeRun("cli", null, "build", "/ws/app", T));
+        log.runFinished(run(episode, 27, T, false));
+        String shell = sessionOf(episode);
+        assertThat(log.session(shell, 0, 1).orElseThrow().episodes())
+                .singleElement()
+                .satisfies(e -> assertThat(e).containsEntry("outcome", "working"));
+
+        SessionLog next = newLog();
+        events.clear();
+        now.set(T + 60_000);
+        assertThat(next.adopt()).as("the session itself carries on").isEqualTo(1);
+        SessionLog.Page page = next.session(shell, 0, 1).orElseThrow();
+        assertThat(page.session()).containsEntry("state", "live");
+        assertThat(page.episodes())
+                .singleElement()
+                .as("no run of the engine that watched it is in flight here")
+                .satisfies(e -> assertThat(e).containsEntry("outcome", "red"));
+        assertThat(events).containsExactly("episode:outcome");
+        assertThat(next.placeRun("cli", null, "build", "/ws/app", T + 61_000))
+                .as("the shell's next run is the next episode of the same session")
+                .isEqualTo(shell + ".2");
+    }
+
+    @Test
     void an_attached_session_ends_after_the_expiry_and_its_connection_is_forgotten() {
         List<String> forgotten = new ArrayList<>();
         log.whenConnectionEnds(forgotten::add);
@@ -244,6 +321,8 @@ class SessionLogTest {
         String before = Files.readString(dir.resolve("session.json"));
 
         SessionLog successor = newLog();
+        // The displaced engine is alive and still finishing the run: adoption leaves its episode open.
+        successor.adoptAfter(() -> true);
         successor.adopt();
         primary.set(false);
         log.runFinished(run(episode, 27, T + 1_000, false));
@@ -264,6 +343,7 @@ class SessionLogTest {
         SessionLog.Page page = successor.session(id, 0, 10).orElseThrow();
         assertThat(page.episodes()).singleElement().satisfies(e -> assertThat(e)
                 .containsEntry("title", "Fixing QuoteTest#threeNightWeekendStay")
+                .containsEntry("outcome", "working")
                 .containsEntry("runs", 1));
         assertThat(page.actions()).singleElement().satisfies(a -> assertThat(a)
                 .containsEntry("summary", "test #27")
@@ -295,7 +375,10 @@ class SessionLogTest {
         assertThat(checking.await(10, TimeUnit.SECONDS)).isTrue();
 
         SessionLog successor = newLog();
-        successor.adoptAfter(log::stopWriting);
+        successor.adoptAfter(() -> {
+            log.stopWriting();
+            return true;
+        });
         Thread adopting = Thread.ofPlatform().start(successor::adopt);
         adopting.join(Duration.ofMillis(300));
         assertThat(adopting.isAlive())

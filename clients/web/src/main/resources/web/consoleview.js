@@ -81,7 +81,13 @@ export const consoleComputed = {
       current: true,
     });
     return {
-      header: episodeHeader(ep, { timeline, records: this.projectHistory, episodes: detail.episodes, now: this.now }),
+      header: episodeHeader(ep, {
+        timeline,
+        records: this.projectHistory,
+        episodes: detail.episodes,
+        session: this.selectedSessionRow || detail.session,
+        now: this.now,
+      }),
       timeline,
       earlier: earlierEpisodes(detail),
     };

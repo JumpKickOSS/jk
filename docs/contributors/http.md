@@ -402,7 +402,7 @@ projectId?, startedAt, lastActiveAt, endedAt?, state, episode?, current? }`: `or
 trigger (`mcp`, `bsp`, `web`, `cli`), `client` the name the client gave itself (the host the
 dashboard shows), `label` the run records' `session` (`claude-code 3f9a`;
 absent for the shell and the dashboard), `state` `live`, `idle` (quiet for the idle gap, ten
-minutes) or `ended`, `episode` the current episode's id and `current` that episode. An episode is
+minutes, with none of its builds in flight on this engine) or `ended`, `episode` the current episode's id and `current` that episode. An episode is
 `{ id, session, number, project, projectId?, title, titleSource, outcome, startedAt, lastAt, runs,
 actions }`: `id` is `<session>.<number>`, `titleSource` `goal` (the agent's `goal` argument),
 `lastGoal` (the session's last goal, for an episode no call named one for) or `inferred`, and
@@ -435,13 +435,18 @@ default 24 hours, read by `SessionExpiry` whether or not the engine serves HTTP)
 is later. The rule is the same for every session, attached or not, adopted or not, and an ending
 session takes its connection with it: `SessionLog` drops it, deletes `connection.json`, and tells
 `McpConnections` to unload it, so its id is a 404 from then on. The idle gap (ten minutes) marks a
-session `idle` and splits episodes; it never ends a session.
+session `idle`, settles its open episode (`working` becomes `green`, `red` or `abandoned` by its
+last run or action) and splits episodes; it never ends a session. A session with a build in flight
+on this engine stays `live`, and its episode `working`, however long the build takes: the answer
+comes from the engine's in-flight builds, which a restarted engine starts with none of.
 
 An engine adopts every session a previous engine left open, whether that engine was displaced or
 died: each stays open with its episodes as they stood (`session.json` keeps the running tallies
 inference needs under `inference`) and its timeline's sequence. An adopted session is under the
 same expiry as any other; one whose connection or label acts again on the new engine is the same
-session as before.
+session as before. A session with no connection behind it (the shell, the dashboard, a BSP client)
+has its open episode settled as it is adopted, since nothing can come back to it, unless the
+displaced engine is alive and still handing its runs over; the idle gap settles those.
 
 ### Decisions
 

@@ -22,7 +22,8 @@ import org.jspecify.annotations.Nullable;
  *   <li>the session has none yet;
  *   <li>its project is not the current episode's;
  *   <li>the session has been quiet longer than the idle gap; or
- *   <li>the current episode is closed: a red streak of runs ended green, or a {@link #goal} took it.
+ *   <li>the current episode is closed: a red streak of runs ended green, a {@link #goal} took it,
+ *       or it was {@link #settle settled} once nothing worked on it any more.
  * </ul>
  *
  * <p>A red streak ending green does not close an episode the agent named a goal for: the goal
@@ -148,9 +149,22 @@ public final class EpisodeInference {
 
     /** The session ended: close its open episode. */
     public List<Change> end() {
+        return closeCurrent(Closed.ENDED);
+    }
+
+    /**
+     * Nothing is working on the session's open episode any more: it went quiet past the idle gap
+     * with no run in flight, or the engine that watched it is gone. Close it, judged by its last
+     * run or action. The next fact starts a new episode, as it would after the idle gap anyway.
+     */
+    public List<Change> settle() {
+        return closeCurrent(Closed.IDLE);
+    }
+
+    private List<Change> closeCurrent(Closed why) {
         Draft cur = episodes.isEmpty() ? null : episodes.getLast();
         if (cur == null || cur.closed != null) return List.of();
-        return List.of(cur.close(Closed.ENDED));
+        return List.of(cur.close(why));
     }
 
     /**
@@ -242,7 +256,9 @@ public final class EpisodeInference {
         /** A later fact or goal started the next episode. */
         SUPERSEDED,
         /** The session ended. */
-        ENDED
+        ENDED,
+        /** Nothing worked on it any more: quiet past the idle gap, or its engine is gone. */
+        IDLE
     }
 
     /** One episode as it accumulates. */

@@ -17,7 +17,8 @@ import org.jspecify.annotations.Nullable;
  *     surface with no session of its own (the shell, the dashboard)
  * @param project the checkout its latest fact acted on, or null before its first
  * @param endedAt when its connection closed; 0 while it has not
- * @param state {@code live}, {@code idle} once it has been quiet for the idle gap, {@code ended}
+ * @param state {@code live}, {@code idle} once it has been quiet for the idle gap with no run in
+ *     flight, {@code ended}
  * @param episode the id of its current episode, or null before its first fact
  */
 public record SessionRecord(

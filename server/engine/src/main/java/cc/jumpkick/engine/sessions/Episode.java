@@ -17,8 +17,9 @@ import org.jspecify.annotations.Nullable;
  * @param title what it is doing: the agent's goal, or a title inferred from its facts
  * @param titleSource {@code goal} when the agent named it for this episode, {@code lastGoal} when
  *     the episode took the session's last goal for want of one, {@code inferred} otherwise
- * @param outcome {@code working} while open; once closed {@code green} or {@code red} by its last
- *     run (or, with none, its last action), {@code abandoned} when nothing in it was judged
+ * @param outcome {@code working} while open: something acted in it within the idle gap or one of
+ *     its runs is in flight; once closed {@code green} or {@code red} by its last run (or, with
+ *     none, its last action), {@code abandoned} when nothing in it was judged
  * @param lastAt when its last fact finished
  * @param runs the runs placed in it
  * @param actions the non-run actions placed in it

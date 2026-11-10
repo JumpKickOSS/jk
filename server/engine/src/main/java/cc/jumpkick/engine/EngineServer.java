@@ -422,6 +422,10 @@ public final class EngineServer implements AutoCloseable {
         // One writer: once a successor holds the endpoint, the runs this engine finishes go to it.
         log.writeWhile(() -> state().writesSessions(), run -> drain.finished(run.toMap()));
         log.adoptAfter(() -> election.stopPredecessorSessions(displaced));
+        // A session is live while one of its builds is in flight here; a restarted engine has none.
+        log.running((origin, label) -> inFlightBuilds.list().stream()
+                .anyMatch(h -> origin.equals(h.trigger())
+                        && Objects.toString(label, "").equals(Objects.toString(h.session(), ""))));
         return log;
     }
 

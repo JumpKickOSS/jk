@@ -246,6 +246,25 @@ test("an episode's timeline joins runs to records, places edits before the run t
   assert.equal(header.source, 'goal from the agent');
 });
 
+test("an open episode of an idle session with nothing running reads idle, its wall stopped at its last fact", () => {
+  const idle = claude({ state: 'idle', lastActiveAt: NOW - 107 * 60_000 });
+  const stale = ep({ startedAt: NOW - 110 * 60_000, lastAt: NOW - 107 * 60_000 });
+  const header = episodeHeader(stale, { timeline: [], records: [], episodes: [stale], session: idle, now: NOW });
+  assert.equal(header.outcome, 'idle');
+  assert.equal(header.wallMillis, 3 * 60_000, 'the wall stops at its last fact, not now');
+
+  const live = episodeHeader(stale, { timeline: [], records: [], episodes: [stale], session: claude(), now: NOW });
+  assert.equal(live.outcome, 'working');
+  assert.equal(live.wallMillis, 110 * 60_000, 'a live session runs to now');
+
+  const building = [{ family: 'run', state: 'run', card: { id: 77 } }];
+  const busy = episodeHeader(stale, { timeline: building, records: [], episodes: [stale], session: idle, now: NOW });
+  assert.equal(busy.outcome, 'working', 'a run in flight keeps it working whatever the session reads');
+
+  const settled = episodeHeader(ep({ outcome: 'green' }), { timeline: [], records: [], episodes: [], session: idle, now: NOW });
+  assert.equal(settled.outcome, 'green', 'a closed episode keeps its outcome');
+});
+
 test('a finished run not yet written as an action still shows, once', () => {
   const done = historyCard(run({ buildNumber: 1068, success: true }));
   const items = episodeTimeline(ep(), { actions: [], records: [], cards: [{ ...done, startedAt: NOW - 100_000 }], session: claude(), current: true });
