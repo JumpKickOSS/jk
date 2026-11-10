@@ -27,6 +27,9 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -119,6 +122,34 @@ class SchemaPinsTest {
 
         assertThat(again.schemas()).isEqualTo(first.schemas());
         assertThat(requests).isEmpty();
+    }
+
+    /** Modules laying the same schema set at once each get the whole set; none fails or reads half. */
+    @Test
+    void concurrent_layers_of_one_set_all_get_it_whole() throws Exception {
+        Cas cas = new Cas(tmp.resolve("store"));
+        Path project = project();
+        Path workspaceLock = tmp.resolve("jk-lock.toml");
+        Lockfile lock = RequestShell.where(
+                shell,
+                () -> SchemaPins.pin(Lockfile.empty("0.0.0"), null, tmp, Map.of(project, build()), cas, label -> {}));
+        LockfileWriter.write(lock, workspaceLock);
+
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        try {
+            List<Future<SchemaFiles.Dir>> laid = new ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                laid.add(pool.submit(() -> SchemaFiles.forPlugin("avro", build(), project, workspaceLock, cas)
+                        .orElseThrow()));
+            }
+            for (var f : laid) {
+                SchemaFiles.Dir dir = f.get();
+                assertThat(Files.readString(dir.dir().resolve("orders-value.avsc")))
+                        .isEqualTo(ORDER);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     @Test

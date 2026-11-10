@@ -11,7 +11,9 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.SchemaEntry;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileAlreadyExistsException;
@@ -72,7 +74,21 @@ public final class SchemaFiles {
             digest.append(row.key()).append(' ').append(row.sha256Hex()).append('\n');
         String token = Hashing.sha256Hex(digest.toString().getBytes(StandardCharsets.UTF_8));
         Path dir = cas.root().resolve("schemas").resolve(token.substring(0, 40));
-        if (!Files.isRegularFile(dir.resolve(COMPLETE))) lay(dir, rows, declared.get(), cas);
+        if (!Files.isRegularFile(dir.resolve(COMPLETE))) {
+            // One layer per set at a time, in this engine and across engines on one store; a
+            // second asker waits and then finds the set complete.
+            Files.createDirectories(dir.getParent());
+            FileLocks.Action layIfAbsent = () -> {
+                if (Files.isRegularFile(dir.resolve(COMPLETE))) return;
+                try {
+                    lay(dir, rows, declared.get(), cas);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new InterruptedIOException("laying schemas was interrupted");
+                }
+            };
+            FileLocks.withLock(dir.resolveSibling(dir.getFileName() + ".lock"), layIfAbsent);
+        }
         return Optional.of(new Dir(dir.resolve(type), token));
     }
 
@@ -81,8 +97,10 @@ public final class SchemaFiles {
     /** Writes the set beside {@code dir} and moves it in whole, so a reader never sees half of it. */
     private static void lay(Path dir, List<SchemaEntry> rows, LockSchemas.Declared declared, Cas cas)
             throws IOException, InterruptedException {
-        Path staging = dir.resolveSibling(
-                dir.getFileName() + "." + ProcessHandle.current().pid() + ".tmp");
+        // Per process and thread: the lock above serializes layers, and a staging name of their
+        // own keeps one that a killed layer left behind from being anyone else's.
+        Path staging = dir.resolveSibling(dir.getFileName() + "."
+                + ProcessHandle.current().pid() + "-" + Thread.currentThread().threadId() + ".tmp");
         PathUtil.deleteRecursivelyOrThrow(staging);
         for (SchemaEntry row : rows) {
             byte[] text = text(row, declared, cas);
@@ -100,6 +118,11 @@ public final class SchemaFiles {
             }
         }
         AtomicWrites.replace(staging.resolve(COMPLETE), new byte[0]);
+        // Only an incomplete directory (a layer killed mid-move) is replaced; a complete one is kept.
+        if (Files.isRegularFile(dir.resolve(COMPLETE))) {
+            PathUtil.deleteRecursivelyOrThrow(staging);
+            return;
+        }
         PathUtil.deleteRecursivelyOrThrow(dir);
         try {
             Files.move(staging, dir, StandardCopyOption.ATOMIC_MOVE);
