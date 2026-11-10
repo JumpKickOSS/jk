@@ -1773,6 +1773,18 @@ button.browse:hover::before {
 /* ---- Help / About modal ---- */
 .modal.about { width: 460px; }
 
+/* ---- What's new (after an update; whatsnew.js) ---- */
+.modal.whats-new { width: 560px; max-width: calc(100vw - 32px); }
+.whats-new-body { padding: 4px 18px 8px; max-height: 60vh; }
+.whats-new-entry + .whats-new-entry { margin-top: 14px; }
+.whats-new-version { margin: 8px 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--warn); }
+.whats-new-entry ul { margin: 0; padding-left: 18px; }
+.whats-new-entry li { margin: 0 0 8px; line-height: 1.45; color: var(--tx); }
+.whats-new-entry li strong { color: var(--bright); }
+.whats-new-entry li code { font-size: 12px; color: var(--cg); }
+.whats-new-entry li a,
+.modal.whats-new .modal-foot a { color: var(--cn); }
+
 /* New project form (the #new wizard). Primary/ghost/browse chrome lives with the shared interactive
  * polish rules above; this block is form layout + field surfaces + custom checkbox. */
 .browser-modal-bg { z-index: 70; }

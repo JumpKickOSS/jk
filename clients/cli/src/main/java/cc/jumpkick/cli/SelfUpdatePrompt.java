@@ -13,6 +13,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.config.UpdateOffer;
+import cc.jumpkick.config.WhatsNew;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkVersion;
@@ -38,6 +39,10 @@ import org.jspecify.annotations.Nullable;
  * update the engine has downloaded:
  *
  * <pre> ↑ Update  A new version of JumpKick is available. Update Now?  [Yes]  No </pre>
+ *
+ * <p>The first such command after an install says so, once:
+ *
+ * <pre> ↑ Updated  JumpKick was updated to 0.51.0 (from 0.50.3). What's new: https://… </pre>
  *
  * <p>The offer comes whenever updating is on and a newer release is staged ({@link UpdateOffer}):
  * before 1.0 that is always, and the engine installs the update at its next quiet spell anyway, so
@@ -92,6 +97,10 @@ final class SelfUpdatePrompt {
                             + " jk updates itself until then");
             state = SelfUpdateState.update(s -> s.withNotice(version));
         }
+        if (state.announceDue(version, state.announcedCli())) {
+            CliOutput.stderr().println(announcement(RenderContext.current(), state.updatedFrom(), version));
+            state = SelfUpdateState.update(s -> s.withAnnouncedCli(version));
+        }
         if (SelfUpdatePolicy.decide(version, env, configured, state, true).action() == SelfUpdatePolicy.Action.OFF) {
             return;
         }
@@ -106,6 +115,12 @@ final class SelfUpdatePrompt {
         } else {
             SelfUpdateState.update(s -> UpdateOffer.snooze(s, next, now));
         }
+    }
+
+    /** The yellow {@code ↑ Updated} line: what changed and where its highlights are. */
+    static String announcement(RenderContext ctx, @Nullable String from, String to) {
+        String text = WhatsNew.headline(from == null ? to : from, to) + ". What's new: " + WhatsNew.releaseUrl(to);
+        return JkWedge.update("Updated", RichText.plain(text)).renderLine(ctx);
     }
 
     /** The offer on the controlling terminal; anything but Yes (No, Esc, end of input) is "not now". */

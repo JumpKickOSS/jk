@@ -89,6 +89,11 @@ next check, 12 hours at most, or as soon as a newer release is downloaded; it qu
 in the web console and in MCP clients too. Commands that failed, print machine output (`--json`,
 `-O`, `--agent`) or run without a terminal never ask.
 
+After an update, the web console's bell says "JumpKick was updated to X (from Y)" once and opens
+a **What's new** dialog with the highlights of every release you moved across
+([What's new](whats-new.md)); the first command you run at a terminal prints the same line with a
+link to the release notes.
+
 Before 1.0 updates are compulsory, and the engine installs a downloaded release at its next quiet
 spell whatever you answered; Yes only gets it sooner. `"ask"` and `"never"` in the config file are ignored (JumpKick says
 so once), and only `JK_SELF_UPDATE=never` turns them off. Development builds (`-SNAPSHOT`) never

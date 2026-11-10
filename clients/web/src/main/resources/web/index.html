@@ -928,6 +928,37 @@
     <decision-dialog v-if="decisionId && !authModal" :id="decisionId" :key="decisionId" :event="decisionEvent" :now="now"
                      :guarded="decisionAuto === decisionId" @close="closeDecision()"></decision-dialog>
 
+    <!-- What's new: the last update's highlights, from the bell's "JumpKick was updated" (whatsnew.js). -->
+    <div v-if="whatsNew && !authModal" class="modal-bg" @click.self="closeWhatsNew()">
+      <div class="modal whats-new" role="dialog" aria-modal="true" aria-labelledby="whats-new-title">
+        <div class="modal-head">
+          <img class="about-logo" src="/jk-logo.svg" alt="" width="40" height="40">
+          <div>
+            <div id="whats-new-title" class="about-title">What's new in JumpKick</div>
+            <div class="about-sub">{{ whatsNew.headline || whatsNew.version || '' }}</div>
+          </div>
+          <span class="spacer"></span>
+          <button class="icon-btn" @click="closeWhatsNew()" aria-label="Close" data-tip="Close"><jk-icon name="x"></jk-icon></button>
+        </div>
+        <div class="modal-scroll whats-new-body">
+          <div v-if="whatsNew.loading" class="dim">Loading…</div>
+          <div v-else-if="whatsNew.error" class="dim">The engine did not answer. Try again in a moment.</div>
+          <div v-else-if="!whatsNew.entries || !whatsNew.entries.length" class="dim">No highlights came with this release.</div>
+          <section v-for="entry in (whatsNew.entries || [])" :key="entry.version" class="whats-new-entry">
+            <h3 class="whats-new-version">{{ entry.version }}</h3>
+            <ul>
+              <li v-for="(b, i) in entry.bullets" :key="i" v-html="whatsNewHtml(b)"></li>
+            </ul>
+          </section>
+        </div>
+        <div class="modal-foot">
+          <a v-if="whatsNew.releaseUrl" class="small" :href="whatsNew.releaseUrl" target="_blank" rel="noopener">Every change in {{ whatsNew.version }} on GitHub</a>
+          <span class="spacer"></span>
+          <button type="button" class="action-cyan" @click="closeWhatsNew()">Got it</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Help / About (header ? button) -->
     <div v-if="help" class="modal-bg" @click.self="help = false">
       <div class="modal about">

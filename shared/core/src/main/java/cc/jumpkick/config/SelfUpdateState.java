@@ -33,6 +33,11 @@ import org.jspecify.annotations.Nullable;
  * snooze-version = "0.17.0"               # the version that answer was about
  * interactive-seen = "2026-10-30T09:00:00Z"
  * notice = "0.16.2"                       # the version that last printed the pre-1.0 notice
+ * updated-from = "0.16.2"                 # the last install: from this version …
+ * updated-to = "0.17.0"                   # … to this one …
+ * updated-at = "2026-10-30T09:05:00Z"     # … at this time
+ * announced-web = "0.17.0"                # the install the web console's bell has announced
+ * announced-cli = "0.17.0"                # the install a terminal command has announced
  * </pre>
  */
 public record SelfUpdateState(
@@ -46,7 +51,12 @@ public record SelfUpdateState(
         @Nullable Instant snoozeUntil,
         @Nullable String snoozeVersion,
         @Nullable Instant interactiveSeen,
-        @Nullable String notice) {
+        @Nullable String notice,
+        @Nullable String updatedFrom,
+        @Nullable String updatedTo,
+        @Nullable Instant updatedAt,
+        @Nullable String announcedWeb,
+        @Nullable String announcedCli) {
 
     public static final String FILE_NAME = "self-update.toml";
 
@@ -79,6 +89,11 @@ public record SelfUpdateState(
             b.snoozeVersion = v.get("snooze-version");
             b.interactiveSeen = instant(v, "interactive-seen");
             b.notice = v.get("notice");
+            b.updatedFrom = v.get("updated-from");
+            b.updatedTo = v.get("updated-to");
+            b.updatedAt = instant(v, "updated-at");
+            b.announcedWeb = v.get("announced-web");
+            b.announcedCli = v.get("announced-cli");
             return b.build();
         } catch (IOException e) {
             return EMPTY;
@@ -164,6 +179,33 @@ public record SelfUpdateState(
         return with(b -> b.notice = version);
     }
 
+    /** An install from {@code from} to {@code to} finished at {@code at}; neither surface has announced it. */
+    public SelfUpdateState withUpdated(String from, String to, Instant at) {
+        return with(b -> {
+            b.updatedFrom = from;
+            b.updatedTo = to;
+            b.updatedAt = at;
+        });
+    }
+
+    /** The web console's bell has announced the install to {@code version}. */
+    public SelfUpdateState withAnnouncedWeb(String version) {
+        return with(b -> b.announcedWeb = version);
+    }
+
+    /** A terminal command has announced the install to {@code version}. */
+    public SelfUpdateState withAnnouncedCli(String version) {
+        return with(b -> b.announcedCli = version);
+    }
+
+    /**
+     * Whether the last install is to {@code running} and {@code announced} (one surface's record)
+     * has not told anyone yet: the one moment that surface says "JumpKick was updated".
+     */
+    public boolean announceDue(String running, @Nullable String announced) {
+        return updatedFrom != null && running.equals(updatedTo) && !running.equals(announced);
+    }
+
     private SelfUpdateState with(Consumer<Builder> change) {
         Builder b = new Builder(this);
         change.accept(b);
@@ -183,6 +225,11 @@ public record SelfUpdateState(
         put(v, "snooze-version", snoozeVersion);
         put(v, "interactive-seen", interactiveSeen);
         put(v, "notice", notice);
+        put(v, "updated-from", updatedFrom);
+        put(v, "updated-to", updatedTo);
+        put(v, "updated-at", updatedAt);
+        put(v, "announced-web", announcedWeb);
+        put(v, "announced-cli", announcedCli);
         return MinimalToml.writeFlat(v);
     }
 
@@ -235,6 +282,21 @@ public record SelfUpdateState(
         @Nullable
         String notice;
 
+        @Nullable
+        String updatedFrom;
+
+        @Nullable
+        String updatedTo;
+
+        @Nullable
+        Instant updatedAt;
+
+        @Nullable
+        String announcedWeb;
+
+        @Nullable
+        String announcedCli;
+
         Builder() {}
 
         Builder(SelfUpdateState s) {
@@ -249,6 +311,11 @@ public record SelfUpdateState(
             snoozeVersion = s.snoozeVersion;
             interactiveSeen = s.interactiveSeen;
             notice = s.notice;
+            updatedFrom = s.updatedFrom;
+            updatedTo = s.updatedTo;
+            updatedAt = s.updatedAt;
+            announcedWeb = s.announcedWeb;
+            announcedCli = s.announcedCli;
         }
 
         SelfUpdateState build() {
@@ -263,7 +330,12 @@ public record SelfUpdateState(
                     snoozeUntil,
                     snoozeVersion,
                     interactiveSeen,
-                    notice);
+                    notice,
+                    updatedFrom,
+                    updatedTo,
+                    updatedAt,
+                    announcedWeb,
+                    announcedCli);
         }
     }
 }

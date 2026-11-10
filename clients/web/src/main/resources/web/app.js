@@ -22,6 +22,7 @@ import { CodeView } from './code.js';
 import { FileViewer } from './fileviewer.js';
 import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
 import { DecisionDialog, decisionData, decisionMethods } from './decisions.js';
+import { whatsNewData, whatsNewMethods } from './whatsnew.js';
 import { askLine, notifyData, notifyMethods } from './notify.js';
 import { activityData, activityFilters, activityMethods, activityKindLabel, channelLabel, diffLines, surfaceLabel } from './activity.js';
 import { bellLook, justNow, noticeData, noticeMethods } from './notices.js';
@@ -83,6 +84,7 @@ export const appOptions = {
   data: () => ({
     ...consoleData(routeFromHash()),
     ...decisionData(routeFromHash()),
+    ...whatsNewData(),
     ...notifyData(),
     ...noticeData(),
     ...activityData(routeFromHash()),
@@ -155,6 +157,7 @@ export const appOptions = {
       if (this.view === 'project' && this.projectTab === 'sessions') this.loadProjectSessions();
       if (this.view === 'new') this.enterWizard();
       if (this.view === 'activity') this.loadActivity();
+      if (routeFromHash().whatsNew) this.openWhatsNew();
     }
     // The service worker: installability, and notifications whose clicks come back as messages.
     registerWorker(navigator.serviceWorker, (message) => this.workerMessage(message));
@@ -214,6 +217,7 @@ export const appOptions = {
     ...decisionMethods,
     ...notifyMethods,
     ...noticeMethods,
+    ...whatsNewMethods,
     ...activityMethods,
     ...installMethods,
     ...cardMethods,
@@ -458,6 +462,8 @@ export const appOptions = {
       const r = routeFromHash();
       // #decision/<id> opens its dialog over the page that is showing.
       if (this.routeDecision(r, change)) return;
+      // #whats-new opens the last update's highlights over the page (whatsnew.js).
+      if (this.routeWhatsNew(r, change)) return;
       const idChanged = r.projectId !== this.selectedProjectId;
       const dirChanged = (r.dir || null) !== this.selectedProjectDir;
       this.view = r.view;

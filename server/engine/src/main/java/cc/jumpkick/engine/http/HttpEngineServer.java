@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.config.SelfUpdateState;
+import cc.jumpkick.config.WhatsNew;
 import cc.jumpkick.engine.activity.Activity;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
@@ -54,6 +56,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private static final long BIND_RETRY_MILLIS = 200;
 
     private final JkHttpConfig config;
+    private final String engineVersion;
     private final StaticContent staticContent;
     private final HttpAdmission admission;
     private final Optional<JkHttpConfig.WebDisk> webDisk;
@@ -167,6 +170,9 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/notices", noticesApi::handleList);
         api.register("POST", HttpNoticesApi.SEEN, noticesApi::handleSeen);
         notices.onChange(c -> events.publishDashboard(EventCatalog.SSE_NOTICE, JsonOut.rawObject(c.toMap())));
+        // The "updated" notice opens the dialog this serves.
+        HttpWhatsNewApi whatsNew = new HttpWhatsNewApi(engineVersion, SelfUpdateState::read, WhatsNew.file());
+        api.register("GET", HttpWhatsNewApi.PATH, whatsNew::handle);
     }
 
     /**
@@ -212,6 +218,7 @@ public final class HttpEngineServer implements AutoCloseable {
             Supplier<CacheSnapshot> cache,
             @Nullable Consumer<String> log) {
         this.config = config;
+        this.engineVersion = version;
         this.webDisk = config.webDisk(homeDir, version);
         this.staticContent = new StaticContent(webDisk.orElse(null), version);
         this.admission = new HttpAdmission(config);

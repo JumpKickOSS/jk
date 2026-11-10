@@ -52,6 +52,7 @@ export function parseTruthy(raw) {
  *  #console/<sessionId>                       (the console with one session selected)
  *  #new?<key>=<value>&…                       (the new-project wizard, pre-filled)
  *  #decision/<id>                             (a decision's dialog over the page under it; decisions.js)
+ *  #whats-new                                 (the highlights of the last update, over the page; whatsnew.js)
  *  #activity?kind=…&project=…&session=…&surface=…   (the Activity page, filtered; activity.js)
  *  #activity/<entryId>                        (the Activity page with one entry open)
  *  #project/<id>
@@ -105,6 +106,9 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
   // The new-project wizard; its query is the answers it opens with (wizard-model.js#linkFromHash).
   if (pathPart === '#new') {
     return routeFields({ view: 'new' });
+  }
+  if (pathPart === '#whats-new') {
+    return routeFields({ whatsNew: true });
   }
   if (pathPart.startsWith('#decision/')) {
     const id = decodeComp(pathPart.slice('#decision/'.length));

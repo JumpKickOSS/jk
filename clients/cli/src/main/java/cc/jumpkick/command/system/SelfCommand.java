@@ -26,7 +26,9 @@ import cc.jumpkick.config.NerdFontNames;
 import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.config.TerminalCapsCache;
 import cc.jumpkick.config.UserConfigEditor;
+import cc.jumpkick.config.WhatsNew;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
@@ -40,6 +42,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.terminal.Terminals;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.version.Versions;
@@ -452,6 +455,8 @@ public final class SelfCommand extends GroupCommand {
                 return 0;
             }
             CommandWedge.printOk("Self", version + " installed (" + installed.get() + ")");
+            // The new engine's bell and the next terminal command each say so once.
+            SelfUpdateState.update(s -> s.withUpdated(running, version, Clock.SYSTEM.instant()));
             if (downgrade) {
                 SelfUpdateState.update(s -> s.withHold(version, running));
                 CliOutput.out("auto-update is held at " + version + "; `jk self update` resumes it");
@@ -567,10 +572,32 @@ public final class SelfCommand extends GroupCommand {
                 kind = PreparedUpdate.Client.NATIVE;
             }
             cas.put(engine.bytes(), engine.sha256());
+            fetchWhatsNew(release, target, install);
             PreparedUpdate prepared =
                     new PreparedUpdate(target, running, engine.sha256(), kind, clientSha, Clock.SYSTEM.instant());
             prepared.write(install.engineHome());
             return prepared;
+        }
+
+        /** {@code jk-whats-new-<version>.md}: the release's highlights, shown once it is installed. */
+        static String whatsNewName(String version) {
+            return "jk-whats-new-" + version + ".md";
+        }
+
+        /**
+         * Keep the release's highlights beside the prepared record, verified like every artifact.
+         * A release from before they shipped has none, and highlights never fail an update.
+         */
+        private static void fetchWhatsNew(ReleaseArtifacts.Manifest release, String target, EngineInstall install) {
+            String name = whatsNewName(target);
+            try {
+                if (!release.has(name)) return;
+                ReleaseArtifacts.Verified notes =
+                        release.fetch(name, "release highlights", ReleaseArtifacts.Progress.NONE);
+                PreparedUpdate.writeWhatsNew(install.engineHome(), notes.bytes());
+            } catch (IOException e) {
+                Log.debug("self update: highlights of " + target + " not kept", e);
+            }
         }
 
         /**
@@ -594,9 +621,28 @@ public final class SelfCommand extends GroupCommand {
                     JvmClientInstall.retire(JkDirs.binDir(), JvmClientInstall.libDir(), Os.isWindows());
                 }
             }
+            keepWhatsNew(install);
             PreparedUpdate.delete(install.engineHome());
             StoreCasGc.afterInstall();
             return engine.engineJar().toString();
+        }
+
+        /**
+         * The installed release's highlights move from beside the prepared record to the state
+         * directory, where the bell and the terminal read them; a release without them leaves none,
+         * so an older release's file is never shown for this one.
+         */
+        private static void keepWhatsNew(EngineInstall install) {
+            try {
+                Optional<byte[]> notes = PreparedUpdate.readWhatsNew(install.engineHome());
+                if (notes.isPresent()) {
+                    AtomicWrites.replace(WhatsNew.file(), notes.get());
+                } else {
+                    Files.deleteIfExists(WhatsNew.file());
+                }
+            } catch (IOException e) {
+                Log.debug("self update: highlights not kept", e);
+            }
         }
 
         /** {@code jk-engine-<version>.jar}, the release's platform-neutral engine. */

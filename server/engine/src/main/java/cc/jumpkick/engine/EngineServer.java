@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.activity.ChangeNotices;
 import cc.jumpkick.engine.api.InFlightBuilds;
@@ -28,6 +29,7 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.notices.Notices;
+import cc.jumpkick.engine.notices.UpdatedNotice;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
@@ -654,6 +656,8 @@ public final class EngineServer implements AutoCloseable {
         engineMaintenance.onTick(sessionLog::sweep);
         diskWatch = DiskWatch.start(idle, log);
         changeNotices.start();
+        // The first engine of a freshly installed version says so once, in the bell.
+        UpdatedNotice.announce(notices, version, SelfUpdateState.file());
         // Sessions a previous engine left open carry on here; off the startup path.
         Thread.ofVirtual().name("jk-engine-sessions-adopt").start(() -> {
             int adopted = sessionLog.adopt();

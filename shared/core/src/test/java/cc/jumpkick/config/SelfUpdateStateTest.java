@@ -21,11 +21,26 @@ class SelfUpdateStateTest {
                 .withHold("0.16.2", "0.17.0")
                 .withSnooze("0.17.0", T.plusSeconds(3600))
                 .withInteractiveSeen(T)
-                .withNotice("0.16.2"));
+                .withNotice("0.16.2")
+                .withUpdated("0.16.2", "0.17.0", T)
+                .withAnnouncedWeb("0.17.0")
+                .withAnnouncedCli("0.16.2"));
 
         assertThat(SelfUpdateState.read(file)).isEqualTo(written);
         assertThat(written.isHeld()).isTrue();
         assertThat(written.latestEtag()).isEqualTo("\"etag-1\"");
+    }
+
+    @Test
+    void each_surface_announces_an_install_once() {
+        SelfUpdateState installed = SelfUpdateState.EMPTY.withUpdated("0.16.2", "0.17.0", T);
+        assertThat(installed.announceDue("0.17.0", installed.announcedWeb())).isTrue();
+        SelfUpdateState told = installed.withAnnouncedWeb("0.17.0");
+        assertThat(told.announceDue("0.17.0", told.announcedWeb())).isFalse();
+        assertThat(told.announceDue("0.17.0", told.announcedCli())).isTrue();
+        // Another version than the one installed (a checkout, a second home) announces nothing.
+        assertThat(installed.announceDue("0.18.0-SNAPSHOT", null)).isFalse();
+        assertThat(SelfUpdateState.EMPTY.announceDue("0.17.0", null)).isFalse();
     }
 
     @Test

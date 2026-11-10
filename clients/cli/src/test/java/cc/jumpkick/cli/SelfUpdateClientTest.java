@@ -3,6 +3,9 @@ package cc.jumpkick.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.config.NerdFontCaps;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -45,6 +48,15 @@ class SelfUpdateClientTest {
                     .as(machine)
                     .isFalse();
         }
+    }
+
+    @Test
+    void the_updated_line_names_both_versions_and_the_release_notes() {
+        var ctx = new RenderContext(Theme.active(), false, NerdFontCaps.NONE, 200, 0);
+        assertThat(SelfUpdatePrompt.announcement(ctx, "0.50.3", "0.51.0"))
+                .contains("Updated")
+                .contains("JumpKick was updated to 0.51.0 (from 0.50.3). What's new: "
+                        + "https://github.com/JumpKickOSS/jk/releases/tag/v0.51.0");
     }
 
     @Test

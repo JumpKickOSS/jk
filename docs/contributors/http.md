@@ -556,6 +556,13 @@ notice?, seenUpTo, unseen }`, so clearing the count in one tab clears it in ever
 keeps the newest 50 and the marker per machine in `<state>/notices.json`, rewritten whole on each
 change; seen is not resolved, so the open decisions stay in the bell from `GET /api/decisions`.
 
+The first engine of a freshly installed version adds one `updated` notice ("JumpKick was updated
+to X (from Y)", `href` `#whats-new`) and records `announced-web` in `self-update.toml`, so a
+restart does not repeat it. `GET /api/whats-new` serves the dialog it opens: `{ version, from?,
+headline?, releaseUrl, entries: [{ version, bullets: [markdown…] }] }`, the highlights of every
+release the last install moved across (from the `whats-new.md` the install kept), or this version's
+own when the last install was not to it.
+
 ### One channel per decision
 
 `Decisions.alert` carries out `[ui] ask` once a decision reaches `NEEDS-YOU`. Under `notify` it asks

@@ -29,6 +29,9 @@ import java.util.Optional;
  * prepared-at = "2026-10-30T14:02:11Z"
  * </pre>
  *
+ * <p>Beside it, {@code jk-update-whats-new.md} holds the release's highlights when the release
+ * ships them ({@code jk-whats-new-<version>.md}, verified against the same signed manifest).
+ *
  * @param version the release this installs
  * @param from the version that downloaded it
  * @param engineSha256 the CAS blob of {@code jk-engine-<version>.jar}
@@ -40,6 +43,9 @@ public record PreparedUpdate(
         String version, String from, String engineSha256, Client client, String clientSha256, Instant preparedAt) {
 
     public static final String FILE_NAME = "jk-update.toml";
+
+    /** The staged release's highlights, beside the record. */
+    public static final String WHATS_NEW_FILE = "jk-update-whats-new.md";
 
     /** The client a prepared update installs. */
     public enum Client {
@@ -87,9 +93,27 @@ public record PreparedUpdate(
         AtomicWrites.replace(file(engineHome), MinimalToml.writeFlat(v));
     }
 
-    /** Remove the record under {@code engineHome}, if any. */
+    /** Remove the record under {@code engineHome}, and the highlights beside it, if any. */
     public static void delete(Path engineHome) throws IOException {
         Files.deleteIfExists(file(engineHome));
+        Files.deleteIfExists(engineHome.resolve(WHATS_NEW_FILE));
+    }
+
+    /** Keep the staged release's verified highlights beside the record. */
+    public static void writeWhatsNew(Path engineHome, byte[] markdown) throws IOException {
+        Files.createDirectories(engineHome);
+        AtomicWrites.replace(engineHome.resolve(WHATS_NEW_FILE), markdown);
+    }
+
+    /** The staged release's highlights, when the release shipped them. */
+    public static Optional<byte[]> readWhatsNew(Path engineHome) {
+        Path file = engineHome.resolve(WHATS_NEW_FILE);
+        if (!Files.isRegularFile(file)) return Optional.empty();
+        try {
+            return Optional.of(Files.readAllBytes(file));
+        } catch (IOException e) {
+            return Optional.empty();
+        }
     }
 
     /** Whether this installs something newer than {@code running}. */
