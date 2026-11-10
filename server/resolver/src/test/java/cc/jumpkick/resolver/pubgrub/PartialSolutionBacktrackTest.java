@@ -80,6 +80,33 @@ class PartialSolutionBacktrackTest {
         }
     }
 
+    /**
+     * A package narrowed at a level, its universe expanded at that same level, then narrowed again:
+     * the checkpoint the second narrowing takes already holds the first, so a backjump below the
+     * level must rebuild the package rather than restore it.
+     */
+    @Test
+    void a_backjump_past_a_mid_level_expansion_drops_that_levels_narrowing() {
+        Map<String, VersionUniverse> universes = new HashMap<>();
+        PartialSolution live = new PartialSolution(universes);
+        live.decide("root", "1.0");
+        // An assignment below the level, which the backjump keeps.
+        live.derive(Term.positive("a", VersionSet.ALL), CAUSE);
+        live.derive(Term.positive("x", VersionSet.ALL), CAUSE);
+        live.decide("x", "5");
+        int level = live.decisionLevel();
+        live.derive(Term.negative("a", VersionSet.exact("5")), CAUSE);
+        universes.put("a", VersionUniverse.of("a", List.of("4")));
+        live.bindUniverse("a");
+        universes.put("a", VersionUniverse.of("a", VERSIONS));
+        live.rebindAfterUniverseExpand("a");
+        live.derive(Term.negative("a", VersionSet.exact("4")), CAUSE);
+
+        live.backtrack(level - 1);
+
+        assertEquivalentToReplay(live, universes, "narrow, expand, narrow at one level, then backjump below it");
+    }
+
     private static Term randomTerm(Random random, String pkg) {
         String v = VERSIONS.get(random.nextInt(VERSIONS.size()));
         VersionSet set =

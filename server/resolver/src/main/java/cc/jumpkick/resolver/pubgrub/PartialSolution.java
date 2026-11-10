@@ -125,7 +125,16 @@ public final class PartialSolution {
          */
         final ArrayDeque<Checkpoint> checkpoints = new ArrayDeque<>();
 
+        /**
+         * The decision level the universe changed at, or -1. The state at that level already holds
+         * the level's assignments from before the change, so a checkpoint taken there would restore
+         * them on a backjump that drops them: no checkpoint is taken at or below it, and a backjump
+         * there folds the survivors in instead.
+         */
+        int checkpointFloor = -1;
+
         void checkpoint(int level) {
+            if (level <= checkpointFloor) return;
             Checkpoint last = checkpoints.peekLast();
             if (last == null || last.level() < level) {
                 checkpoints.addLast(new Checkpoint(level, continuous, allowed, hasPositive, mentioned, firstIndex));
@@ -270,6 +279,7 @@ public final class PartialSolution {
         }
         PackageState s = byPackage.computeIfAbsent(pkg, k -> new PackageState());
         s.checkpoints.clear();
+        s.checkpointFloor = decisionLevel;
         s.continuous = VersionSet.ALL;
         s.narrow(cont);
         s.hasPositive = hasPos || s.hasPositive;
