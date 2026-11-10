@@ -447,10 +447,15 @@ public final class PlannerPackage {
         ForecastScope.Prepared prepared = s.prepared();
         BuildLayout layout = prepared.layout();
         boolean noSources = prepared.noSources();
-        if (noSources && (Files.isRegularFile(layout.mainJar()) || s.project.isWorkspaceRoot())) {
-            // A source-less member packages an empty jar (its copied resources) that sibling
-            // classpaths demand; with the jar in place there is nothing to forecast. A source-less
-            // workspace root runs its scripts and packages nothing.
+        if (noSources
+                && (s.project.isWorkspaceRoot() || (Files.isRegularFile(layout.mainJar()) && !s.mainResourceDrift))) {
+            // A source-less member packages a jar of its copied resources that sibling classpaths
+            // demand; with the jar in place and its resources as the classes tree holds them there
+            // is nothing to forecast. A source-less workspace root runs its scripts and packages
+            // nothing. A member whose resources drifted is not that case: its jar is those
+            // resources, so it is priced by its key like any jar. Returning nothing here read an
+            // edited resource as no work, and a consumer that bundles the jar (an assembly, a
+            // native image) then keyed on the old bytes and was never scheduled.
             return null;
         }
         if (s.compileDirty) {
@@ -524,9 +529,9 @@ public final class PlannerPackage {
         // A source-less module's jar (its copied resources) is one sibling classpaths demand:
         // forecasting nothing would leave it unscheduled while its consumers fail on it, so a
         // missing jar with no record is scheduled until it exists.
-        String miss = noSources
-                ? "package · module has no sources"
-                : s.mainResourceDrift ? "repackage · resources changed" : "repackage";
+        String miss = s.mainResourceDrift
+                ? "repackage · resources changed"
+                : noSources ? "package · module has no sources" : "repackage";
         return new TaskForecast.Task(TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, miss, null);
     }
 }
