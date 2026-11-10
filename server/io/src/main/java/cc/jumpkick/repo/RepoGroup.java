@@ -477,14 +477,14 @@ public final class RepoGroup {
      * the hit recorded (one stat); a path gone or changed under the memo (cache GC, a manual wipe,
      * a truncated file) is dropped so the store is asked again.
      */
-    private static @Nullable RepoFetched liveHit(ConcurrentHashMap<String, RepoFetched> cache, String key) {
+    private @Nullable RepoFetched liveHit(ConcurrentHashMap<String, RepoFetched> cache, String key) {
         RepoFetched hit = cache.get(key);
         if (hit == null) return null;
         Path path = hit.fetched().cachePath();
         if (path != null) {
             try {
                 BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
-                if (attrs.isRegularFile() && attrs.size() == hit.fetched().size()) return hit;
+                if (attrs.isRegularFile() && attrs.size() == hit.fetched().size()) return rebound(hit);
             } catch (IOException gone) {
                 // dropped below
             }
@@ -825,6 +825,20 @@ public final class RepoGroup {
             if (answered.isPresent()) return answered;
         }
         return local;
+    }
+
+    /**
+     * {@code hit} answered by this group's own repository at the same URL. The memo outlives the
+     * group that filled it, and a later job's group holds other {@link MavenRepo} objects: under
+     * their own names, credentials and reachability. Handing back the old one broke holder-first
+     * ordering (an identity match), and let a lock record another project's repository name.
+     */
+    private @Nullable RepoFetched rebound(RepoFetched hit) {
+        for (MavenRepo mine : repos) {
+            if (mine == hit.repo()) return hit;
+            if (mine.fetchBase().equals(hit.repo().fetchBase())) return new RepoFetched(mine, hit.fetched());
+        }
+        return null;
     }
 
     /** {@code asked} with {@code holder} moved to the front when it is among them; otherwise as is. */
