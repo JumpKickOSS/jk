@@ -119,4 +119,9 @@ class SbomTest {
         assertThat(json).contains("\"checksumValue\":\"aaaa\"");
         assertThat(json).contains("\"checksumValue\":\"bbbb\"");
     }
+
+    @Test
+    void spdx_renders_the_same_bytes_every_time_so_a_publish_rerun_matches_what_it_uploaded() {
+        assertThat(Sbom.spdx(PROJECT, null)).isEqualTo(Sbom.spdx(PROJECT, null));
+    }
 }

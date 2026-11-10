@@ -38,7 +38,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -175,12 +174,16 @@ public final class Publisher implements Plugin, PublishExtension {
 
         if (c.bool("slsa", false)) {
             String jarFilename = jar.getFileName().toString();
+            // A function of the jar, no clock and no random id: a re-run after a partial publish
+            // renders the same bytes, so the provenance already uploaded is recognised as the same.
+            String jarSha = Checksums.sha256Hex(jarBytes);
             SlsaProvenance.BuildContext buildCtx = new SlsaProvenance.BuildContext(
-                    "https://github.com/buildjk/jk",
-                    "https://buildjk.dev/jk-build/v1",
-                    UUID.randomUUID().toString(),
-                    Instant.now(),
-                    Instant.now(),
+                    "https://github.com/JumpKickOSS/jk",
+                    "https://jumpkick.build/jk-build/v1",
+                    UUID.nameUUIDFromBytes(("slsa\0" + jarSha).getBytes(StandardCharsets.UTF_8))
+                            .toString(),
+                    null,
+                    null,
                     Map.of("configRef", ManifestPaths.MANIFEST),
                     Map.of(
                             "group", project.project().group(),
@@ -190,8 +193,8 @@ public final class Publisher implements Plugin, PublishExtension {
                                     project.project().jdk() == null
                                             ? ""
                                             : project.project().jdk()));
-            byte[] provenance = SlsaProvenance.generate(
-                    List.of(new SlsaProvenance.Subject(jarFilename, Checksums.sha256Hex(jarBytes))), buildCtx);
+            byte[] provenance =
+                    SlsaProvenance.generate(List.of(new SlsaProvenance.Subject(jarFilename, jarSha)), buildCtx);
             artifacts.add(new MavenPublisher.Artifact(".intoto.json", provenance));
             ctx.label("artifact " + project.project().name() + "-"
                     + project.project().version() + ".intoto.json");

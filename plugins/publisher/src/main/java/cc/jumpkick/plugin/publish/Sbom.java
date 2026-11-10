@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.publish;
 
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CycloneDxSbom;
+import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
@@ -31,16 +32,43 @@ public final class Sbom {
                 lock == null ? List.of() : CycloneDxSbom.components(lock));
     }
 
-    /** Render an SPDX 2.3 JSON SBOM. */
+    /**
+     * Render an SPDX 2.3 JSON SBOM; deterministic like {@link #cyclonedx}: the namespace is a
+     * name-based UUID over the packages it lists and {@code created} is the instant every entry of a
+     * jk jar carries, so a re-run of a publish renders the same bytes.
+     */
     public static byte[] spdx(JkBuild project, @Nullable Lockfile lock) {
-        String docNamespace = "https://buildjk.dev/sbom/"
+        StringBuilder packages = new StringBuilder(256);
+        packages.append("\"packages\":[");
+        appendSpdxPackage(
+                packages,
+                "SPDXRef-Package-Root",
+                project.project().group(),
+                project.project().name(),
+                project.project().version(),
+                null);
+        if (lock != null) {
+            int i = 0;
+            for (Lockfile.Artifact pkg : ClasspathResolver.artifactsFor(lock, ClasspathResolver.RUNTIME)) {
+                packages.append(',');
+                appendSpdxPackage(
+                        packages,
+                        "SPDXRef-Package-" + sanitizeId(pkg.name()) + "-" + i++,
+                        pkg.moduleGroup(),
+                        pkg.moduleArtifact(),
+                        pkg.version(),
+                        pkg.checksumHex());
+            }
+        }
+        packages.append(']');
+        String docNamespace = "https://jumpkick.build/sbom/"
                 + project.project().group()
                 + "/"
                 + project.project().name()
                 + "/"
                 + project.project().version()
                 + "/"
-                + UUID.randomUUID();
+                + UUID.nameUUIDFromBytes(packages.toString().getBytes(StandardCharsets.UTF_8));
         StringBuilder sb = new StringBuilder(512);
         sb.append('{');
         kv(sb, "spdxVersion", "SPDX-2.3");
@@ -55,7 +83,7 @@ public final class Sbom {
         comma(sb);
 
         sb.append("\"creationInfo\":{");
-        kv(sb, "created", Instant.now().toString());
+        kv(sb, "created", Instant.ofEpochSecond(DeterministicZip.EPOCH_SECONDS).toString());
         comma(sb);
         sb.append("\"creators\":[\"Tool: jk\"]");
         sb.append('}');
@@ -64,28 +92,7 @@ public final class Sbom {
         sb.append("\"documentDescribes\":[\"SPDXRef-Package-Root\"]");
         comma(sb);
 
-        sb.append("\"packages\":[");
-        appendSpdxPackage(
-                sb,
-                "SPDXRef-Package-Root",
-                project.project().group(),
-                project.project().name(),
-                project.project().version(),
-                null);
-        if (lock != null) {
-            int i = 0;
-            for (Lockfile.Artifact pkg : ClasspathResolver.artifactsFor(lock, ClasspathResolver.RUNTIME)) {
-                sb.append(',');
-                appendSpdxPackage(
-                        sb,
-                        "SPDXRef-Package-" + sanitizeId(pkg.name()) + "-" + i++,
-                        pkg.moduleGroup(),
-                        pkg.moduleArtifact(),
-                        pkg.version(),
-                        pkg.checksumHex());
-            }
-        }
-        sb.append(']');
+        sb.append(packages);
 
         sb.append('}');
         sb.append('\n');

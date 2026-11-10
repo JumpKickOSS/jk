@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.publish;
 import cc.jumpkick.jsonl.Jsonl;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,8 +33,8 @@ public final class SlsaProvenance {
             String builderId,
             String buildType,
             @Nullable String invocationId,
-            Instant startedOn,
-            Instant finishedOn,
+            @Nullable Instant startedOn,
+            @Nullable Instant finishedOn,
             Map<String, String> externalParameters,
             Map<String, String> internalParameters) {
 
@@ -98,13 +99,16 @@ public final class SlsaProvenance {
         sb.append('}');
         sb.append(',');
         sb.append("\"metadata\":{");
-        if (context.invocationId() != null) {
-            kv(sb, "invocationId", context.invocationId());
-            sb.append(',');
+        List<String[]> metadata = new ArrayList<>();
+        if (context.invocationId() != null) metadata.add(new String[] {"invocationId", context.invocationId()});
+        if (context.startedOn() != null)
+            metadata.add(new String[] {"startedOn", context.startedOn().toString()});
+        if (context.finishedOn() != null)
+            metadata.add(new String[] {"finishedOn", context.finishedOn().toString()});
+        for (int i = 0; i < metadata.size(); i++) {
+            if (i > 0) sb.append(',');
+            kv(sb, metadata.get(i)[0], metadata.get(i)[1]);
         }
-        kv(sb, "startedOn", context.startedOn().toString());
-        sb.append(',');
-        kv(sb, "finishedOn", context.finishedOn().toString());
         sb.append('}');
         sb.append('}');
 
