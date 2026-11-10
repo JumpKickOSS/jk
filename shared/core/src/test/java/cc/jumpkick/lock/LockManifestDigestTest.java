@@ -3,10 +3,12 @@ package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Settled;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -151,5 +153,35 @@ class LockManifestDigestTest {
                 version = "1.0.1"
                 """);
         assertThat(LockManifestDigest.compute(dir)).isNotEqualTo(before);
+    }
+
+    @Test
+    void a_member_added_under_a_module_glob_moves_the_digest(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["libs/*"]
+                """);
+        Files.createDirectories(dir.resolve("libs/one"));
+        Files.writeString(
+                dir.resolve("libs/one/jk.toml"), "group = \"com.example\"\nname = \"one\"\nversion = \"1.0.0\"\n");
+        // Judged as settled, so the memo answers from its stamps rather than re-reading fresh writes.
+        Settled.aheadForTests(Duration.ofMinutes(1));
+        try {
+            String before = LockManifestDigest.compute(dir);
+            long reads = LockManifestDigest.manifestReads();
+            assertThat(LockManifestDigest.compute(dir)).isEqualTo(before);
+            assertThat(LockManifestDigest.manifestReads()).as("a memo hit").isEqualTo(reads);
+
+            Files.createDirectories(dir.resolve("libs/two"));
+            Files.writeString(
+                    dir.resolve("libs/two/jk.toml"), "group = \"com.example\"\nname = \"two\"\nversion = \"1.0.0\"\n");
+            assertThat(LockManifestDigest.compute(dir)).isNotEqualTo(before);
+        } finally {
+            Settled.aheadForTests(null);
+        }
     }
 }

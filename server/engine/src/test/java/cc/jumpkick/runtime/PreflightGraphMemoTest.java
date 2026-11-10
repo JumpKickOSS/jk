@@ -253,4 +253,28 @@ class PreflightGraphMemoTest {
         Files.delete(tmp.resolve(".jk/scripts"));
         assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
     }
+
+    @Test
+    void tryLoadGraph_misses_when_a_module_glob_gains_a_member(@TempDir Path tmp) throws Exception {
+        writeWorkspace(tmp);
+        Files.writeString(
+                tmp.resolve("jk.toml"),
+                Files.readString(tmp.resolve("jk.toml"))
+                        .replace("modules = [\"a\", \"b\"]", "modules = [\"a\", \"b\", \"libs/*\"]"));
+        Path one = tmp.resolve("libs/one");
+        Files.createDirectories(one);
+        Files.writeString(one.resolve("jk.toml"), "group = \"t\"\nname = \"one\"\nversion = \"0.1.0\"\njava = 25\n");
+        var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
+        BuildGraph.Result full = BuildGraph.resolve(tmp, entry);
+        assertThat(full.hasErrors()).isFalse();
+        PreflightMemo.storeGraph(tmp, full);
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isPresent();
+
+        // A new member under the glob edits no existing file.
+        Path two = tmp.resolve("libs/two");
+        Files.createDirectories(two);
+        Files.writeString(two.resolve("jk.toml"), "group = \"t\"\nname = \"two\"\nversion = \"0.1.0\"\njava = 25\n");
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
+        assertThat(PreflightMemo.graphStructureMatches(tmp, full)).isFalse();
+    }
 }

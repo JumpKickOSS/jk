@@ -4,6 +4,7 @@ package cc.jumpkick.lock;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Settled;
@@ -54,9 +55,12 @@ public final class LockManifestDigest {
 
         Map<String, byte[]> parts = new LinkedHashMap<>();
         // Every file whose bytes enter the digest, with the stamp it was read at. That set is what
-        // the memo re-validates, so a member added to [workspace] is caught by the root manifest's
-        // own stamp changing and a member edited in place by its own.
+        // the memo re-validates, so a member added to a literal [workspace] list is caught by the
+        // root manifest's own stamp changing and a member edited in place by its own. A glob's
+        // members are re-expanded instead: adding `libs/new/jk.toml` under `libs/*` edits no file.
         List<Stamp> inputs = new ArrayList<>();
+        List<String> globs = List.of();
+        List<String> globMembers = List.of();
         Path rootToml = ManifestPaths.manifestIn(owner);
         if (!Files.isRegularFile(rootToml)) {
             absent(rootToml, inputs);
@@ -66,6 +70,10 @@ public final class LockManifestDigest {
                 JkBuild root = JkBuildParser.parseLocal(rootToml);
                 addPathDepManifests(parts, owner, owner, root, inputs);
                 if (root.isWorkspaceRoot()) {
+                    globs = root.workspaceModules().stream()
+                            .filter(WorkspaceModules::isGlob)
+                            .toList();
+                    if (!globs.isEmpty()) globMembers = WorkspaceModules.expand(owner, globs);
                     for (Map.Entry<Path, JkBuild> member :
                             WorkspaceLoader.loadModules(owner, root).entrySet()) {
                         Path mt = ManifestPaths.manifestIn(member.getKey());
@@ -95,7 +103,7 @@ public final class LockManifestDigest {
             absent(libs, inputs);
         }
         String digest = hashParts(parts);
-        MEMO.put(owner, new Cached(List.copyOf(inputs), digest));
+        MEMO.put(owner, new Cached(owner, List.copyOf(inputs), globs, globMembers, digest));
         return digest;
     }
 
@@ -142,18 +150,24 @@ public final class LockManifestDigest {
         }
     }
 
-    /** A digest and the exact inputs that produced it. */
-    private record Cached(List<Stamp> inputs, String digest) {
+    /** A digest, the exact inputs that produced it, and what the root's module globs expanded to. */
+    private record Cached(Path owner, List<Stamp> inputs, List<String> globs, List<String> globMembers, String digest) {
 
         /**
          * Whether every consulted path still looks exactly as it did — same bytes-identity where a
-         * file was read, still absent where one was probed and missing. Any doubt recomputes.
+         * file was read, still absent where one was probed and missing — and every module glob
+         * still selects the same members. Any doubt recomputes.
          */
         boolean stillMatches() {
             for (Stamp s : inputs) {
                 if (!s.matchesDisk()) return false;
             }
-            return true;
+            if (globs.isEmpty()) return true;
+            try {
+                return WorkspaceModules.expand(owner, globs).equals(globMembers);
+            } catch (RuntimeException e) {
+                return false;
+            }
         }
     }
 

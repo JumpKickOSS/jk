@@ -7,6 +7,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
@@ -606,7 +607,8 @@ public final class PreflightMemo {
     }
 
     /**
-     * Structure key: entry {@code jk.toml}/{@code jk-lock.toml} (workspace membership) + ordered unit
+     * Structure key: entry {@code jk.toml}/{@code jk-lock.toml} and the expanded module list
+     * (workspace membership) + ordered unit
      * dirs with each module's toml/lock digests. Entry root is always included so dropping a module
      * from {@code [workspace].modules} invalidates even when the unit folder still exists. Edges are
      * not hashed (derived from manifests when tomls are unchanged).
@@ -623,6 +625,9 @@ public final class PreflightMemo {
             feed(md, "logic=" + (BuildLogicToml.resolve(root).isPresent() ? "1" : "0"));
             feedFile(md, GuardsPresence.rulesFile(root));
             feedFile(md, ManifestPaths.manifestIn(root));
+            // The manifest's bytes pin a literal module list; a glob's members are what it expands
+            // to now, so a new member directory under `libs/*` moves the key without any edit.
+            for (Path member : WorkspaceModules.memberDirs(root)) feed(md, "member=" + relKey(root, member));
             Path rootLock = LockPaths.lockFile(root).toAbsolutePath().normalize();
             feedFile(md, rootLock);
             for (Path dir : unitDirs) {
